@@ -690,6 +690,49 @@ fn transport_env(t: Node) -> List<FieldInit> {
 }
 
 // =========================================================================
+// ExprData structural primitives
+//
+// expr_children: extracts every child expression Node from an ExprData.
+// map_expr_children: applies a transform to every child expression Node
+// and reconstructs the ExprData with the transformed children.
+//
+// These are the L2 dissolution foundation. All ExprData walks that are
+// pure structural recursion (resolve_expr_types, collectors, self-call
+// detection) reduce to expr_children or map_expr_children + per-node logic.
+// =========================================================================
+
+fn expr_children(node: Node) -> List<Node> {
+  match node.expr_data {
+    ExprFieldAccess { base: b, field: _, summary: _ } => [b]
+    ExprCall { func: _, args: a, call_semantics: _ } => a |> map(na => na.value)
+    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } => concat([r], a |> map(na => na.value))
+    ExprMatch { scrutinee: s, arms: arms } =>
+      let arm_nodes = arms |> flat_map(arm =>
+        let guard_nodes = match arm.guard { Some { value: g } => [g]  None => [] }
+        concat(guard_nodes, [arm.body])
+      )
+      concat([s], arm_nodes)
+    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+      match e { Some { value: el } => [c, t, el]  None => [c, t] }
+    ExprLet { name: _, value: v, body: b } =>
+      match b { Some { value: body } => [v, body]  None => [v] }
+    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } => fs |> map(f => f.value)
+    ExprListLit { elements: els } => els
+    ExprBinOp { op: _, left: l, right: r } => [l, r]
+    ExprUnaryOp { op: _, operand: o } => [o]
+    ExprLambda { params: _, body: b, semantics: _ } => [b]
+    ExprStringInterp { parts: ps } => ps |> flat_map(p => match p { Interpolation { expr: e } => [e]  Text { value: _ } => [] })
+    ExprBlock { stmts: ss } => ss
+    ExprCast { expr: e, target: _ } => [e]
+    ExprForEach { variable: _, collection: c, body: b } => [c, b]
+    ExprIndex { base: b, index: i } => [b, i]
+    ExprSlice { base: b, start: s, end: e } => [b, s, e]
+    ExprReturn { value: v } => [v]
+    _ => []
+  }
+}
+
+// =========================================================================
 // Self-call detection -- Node expression walkers
 //
 // These functions walk Node expr_data trees to detect self-recursive calls
@@ -699,66 +742,10 @@ fn transport_env(t: Node) -> List<FieldInit> {
 
 fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, args: _, call_semantics: _ } =>
       if f == fn_name { true }
-      else { a |> any(na => expr_has_self_call(texpr: na.value, fn_name: fn_name)) }
-    ExprError { kind: _, message: _ } => false
-    ExprVar { name: _, binding_kind: _ } => false
-    ExprLiteral { value: _ } => false
-    ExprFieldAccess { base: b, field: _, summary: _ } =>
-      expr_has_self_call(texpr: b, fn_name: fn_name)
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
-      expr_has_self_call(texpr: r, fn_name: fn_name)
-        || a |> any(na => expr_has_self_call(texpr: na.value, fn_name: fn_name))
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      expr_has_self_call(texpr: s, fn_name: fn_name)
-        || arm_list |> any(arm => expr_has_self_call(texpr: arm.body, fn_name: fn_name))
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      expr_has_self_call(texpr: c, fn_name: fn_name)
-        || expr_has_self_call(texpr: t, fn_name: fn_name)
-        || match e {
-          Some { value: eb } => expr_has_self_call(texpr: eb, fn_name: fn_name)
-          None => false
-        }
-    ExprLet { name: _, value: v, body: bd } =>
-      expr_has_self_call(texpr: v, fn_name: fn_name)
-        || match bd {
-          Some { value: b } => expr_has_self_call(texpr: b, fn_name: fn_name)
-          None => false
-        }
-    ExprBlock { stmts: ss } =>
-      ss |> any(s => expr_has_self_call(texpr: s, fn_name: fn_name))
-    ExprBinOp { op: _, left: l, right: r } =>
-      expr_has_self_call(texpr: l, fn_name: fn_name)
-        || expr_has_self_call(texpr: r, fn_name: fn_name)
-    ExprUnaryOp { op: _, operand: e } =>
-      expr_has_self_call(texpr: e, fn_name: fn_name)
-    ExprLambda { params: _, body: bd, semantics: _ } =>
-      expr_has_self_call(texpr: bd, fn_name: fn_name)
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
-      fs |> any(fi => expr_has_self_call(texpr: fi.value, fn_name: fn_name))
-    ExprListLit { elements: els } =>
-      els |> any(el => expr_has_self_call(texpr: el, fn_name: fn_name))
-    ExprStringInterp { parts: ps } =>
-      ps |> any(p => match p {
-        Interpolation { expr: e } => expr_has_self_call(texpr: e, fn_name: fn_name)
-        Text { value: _ } => false
-      })
-    ExprCast { expr: e, target: _ } =>
-      expr_has_self_call(texpr: e, fn_name: fn_name)
-    ExprForEach { variable: _, collection: c, body: bd } =>
-      expr_has_self_call(texpr: c, fn_name: fn_name)
-        || expr_has_self_call(texpr: bd, fn_name: fn_name)
-    ExprIndex { base: b, index: i } =>
-      expr_has_self_call(texpr: b, fn_name: fn_name)
-        || expr_has_self_call(texpr: i, fn_name: fn_name)
-    ExprSlice { base: b, start: s, end: e } =>
-      expr_has_self_call(texpr: b, fn_name: fn_name)
-        || expr_has_self_call(texpr: s, fn_name: fn_name)
-        || expr_has_self_call(texpr: e, fn_name: fn_name)
-    ExprReturn { value: v } =>
-      expr_has_self_call(texpr: v, fn_name: fn_name)
-    NoExprData => false
+      else { expr_children(node: texpr) |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
+    _ => expr_children(node: texpr) |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
   }
 }
 
