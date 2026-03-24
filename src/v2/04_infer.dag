@@ -2624,7 +2624,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     if node_has_structure(n: item) {
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
-        connective: item.connective, params: [], return_type: none,
+        connective: item.connective, params: item.params, return_type: none,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -2760,7 +2760,23 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 
 // Substitute type slot references in a node. A slot reference is a leaf node
 // whose name matches a key in slot_bindings. Used for generic instantiation.
-fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>) -> Node {
+// Check if a node is a user-defined generic type use site.
+// True when the node has children (type args) and its name resolves to a
+// type declaration with params that's NOT a built-in parameterized type.
+fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
+  if is_parameterized_type(name: n.name) { false }
+  else if node_has_structure(n: n) { false }
+  else if node_is_map(n: n) { false }
+  else if is_recursive_type(env: env, name: n.name) { false }
+  else {
+    match lookup_type(env: env, name: n.name) {
+      Some { value: decl } => decl.params |> count > 0
+      None => false
+    }
+  }
+}
+
+fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String) -> Node {
   let is_slot = n.children |> count == 0 && n.connective == none && n.body == none && n.return_type == none
   if is_slot {
     match map_get(slot_bindings, n.name) {
@@ -2768,7 +2784,27 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>) -> Node {
       None => n
     }
   } else {
-    let new_children = n.children |> map(child => substitute_type_slots(n: child, slot_bindings: slot_bindings))
+    // Don't recurse into self-references (recursive types like MyList<T> in tail)
+    let new_children = n.children |> map(child =>
+      if child.name == decl_name {
+        // Self-reference in recursive type (e.g., MyList<T> in tail).
+        // Substitute slots in the type args but don't expand the self-reference.
+        let substituted_args = child.children |> map(arg =>
+          substitute_type_slots(n: arg, slot_bindings: slot_bindings, decl_name: decl_name)
+        )
+        Node {
+          name: child.name, span: child.span, children: substituted_args,
+          connective: child.connective, params: child.params,
+          return_type: child.return_type, return_cardinality: child.return_cardinality,
+          uses: child.uses, body: child.body, transport: child.transport,
+          properties: child.properties, type_annotation: child.type_annotation,
+          config: child.config, is_self_recursive: child.is_self_recursive,
+          has_non_tail_self_call: child.has_non_tail_self_call, expr_data: child.expr_data
+        }
+      } else {
+        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name)
+      }
+    )
     Node {
       name: n.name, span: n.span, children: new_children,
       connective: n.connective, params: n.params,
@@ -2876,6 +2912,29 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         }
       }
     }
+  } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
+    // Generic type use site (e.g., Pair<Int, String>, Box<Int>, MyList<Int>).
+    // Look up declaration, substitute slot references with concrete arguments.
+    let decl = match lookup_type(env: env, name: n.name) { Some { value: d } => d  None => n }
+    let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
+    let resolved_args = map(arg_results, ar => ar.resolved)
+    let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
+    let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+      let idx = pair.first
+      let slot_name = pair.second.name
+      match resolved_args |> enumerate |> filter(p => p.first == idx) |> map(p => p.second) |> first {
+        Some { value: arg } => map_insert(acc, slot_name, arg)
+        None => acc
+      }
+    )
+    let substituted_children = decl.children |> map(child =>
+      substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: n.name)
+    )
+    let result = NodeResolveResult {
+      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
+      diagnostics: arg_diags
+    }
+    result
   } else if node_is_map(n: n) {
     // Map: recurse on both key and value children
     let key_child = match n.children |> first {
@@ -2908,54 +2967,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           diagnostics: el_diags
         }
       None => NodeResolveResult { resolved: n, diagnostics: [] }
-    }
-  } else if n.children |> count > 1 && node_is_map(n: n) == false {
-    // Generic type use site (e.g., Pair<Int, String>): look up declaration,
-    // substitute slot references with concrete type arguments.
-    match lookup_type(env: env, name: n.name) {
-      Some { value: decl } =>
-        if decl.params |> count > 0 || node_has_structure(n: decl) {
-          // Resolve each type argument
-          let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
-          let resolved_args = map(arg_results, ar => ar.resolved)
-          let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
-          // Build slot bindings: param name → resolved argument
-          let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
-            let idx = pair.first
-            let slot_name = pair.second.name
-            match resolved_args |> enumerate |> filter(p => p.first == idx) |> map(p => p.second) |> first {
-              Some { value: arg } => map_insert(acc, slot_name, arg)
-              None => acc
-            }
-          )
-          // Substitute slots in declaration's children (struct fields / enum variants)
-          let substituted_children = decl.children |> map(child =>
-            substitute_type_slots(n: child, slot_bindings: slot_bindings)
-          )
-          let result = NodeResolveResult {
-            resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
-            diagnostics: arg_diags
-          }
-          result
-        } else {
-          // Not a generic type — resolve children individually
-          let child_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
-          let resolved_children = map(child_results, cr => cr.resolved)
-          let child_diags = flat_map(child_results, cr => cr.diagnostics)
-          NodeResolveResult {
-            resolved: Node { name: n.name, span: n.span, children: resolved_children, connective: n.connective, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
-            diagnostics: child_diags
-          }
-        }
-      None =>
-        // Unknown type with children — resolve children
-        let child_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
-        let resolved_children = map(child_results, cr => cr.resolved)
-        let child_diags = flat_map(child_results, cr => cr.diagnostics)
-        NodeResolveResult {
-          resolved: Node { name: n.name, span: n.span, children: resolved_children, connective: n.connective, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
-          diagnostics: child_diags
-        }
     }
   } else if n.children |> count == 0 {
     // Leaf node: lookup in env, recurse if found

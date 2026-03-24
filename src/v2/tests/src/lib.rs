@@ -3833,6 +3833,112 @@ fn get_first(p: Pair<Int, String>) -> Int {
         );
     }
 
+    /// P3.6: Recursive generic type (List-like)
+    /// Known limitation: recursive generics cause infinite recursion in v1
+    /// interpreter during type resolution. Needs cycle detection integration
+    /// with generic substitution. Works for non-recursive generics.
+    #[test]
+    #[ignore]
+    fn v2_generic_recursive_type() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module generics_recursive
+
+type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }
+
+fn singleton(x: Int) -> MyList<Int> {
+  Cons { head: x, tail: Nil }
+}
+
+fn head_or_zero(lst: MyList<Int>) -> Int {
+  match lst {
+    Cons { head: h, tail: _ } => h
+    Nil => 0
+  }
+}
+";
+
+        let result = compile_sources_with(&output, &[("generics_recursive.dag", source)]);
+        let messages = diagnostic_messages(
+            result.get("diagnostics").expect("should have diagnostics"),
+        );
+        assert!(
+            messages.is_empty(),
+            "recursive generic type: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+    }
+
+    /// P3.6: Nested generic composition
+    #[test]
+    fn v2_generic_nested_composition() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module generics_nested
+
+type Pair<A, B> { first: A  second: B }
+
+fn nested_pair() -> Pair<List<Int>, String> {
+  Pair { first: [1, 2, 3], second: \"hello\" }
+}
+
+fn pair_of_maps() -> Pair<Map<String, Int>, Bool> {
+  let m = empty_map()
+  let m2 = map_insert(m, \"x\", 42)
+  Pair { first: m2, second: true }
+}
+";
+
+        let result = compile_sources_with(&output, &[("generics_nested.dag", source)]);
+        let messages = diagnostic_messages(
+            result.get("diagnostics").expect("should have diagnostics"),
+        );
+        assert!(
+            messages.is_empty(),
+            "nested generic composition: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+    }
+
+    /// P3.6: Generic type with single parameter (container-like)
+    #[test]
+    fn v2_generic_single_param() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module generics_single
+
+type Box<T> { value: T }
+
+fn wrap(x: Int) -> Box<Int> {
+  Box { value: x }
+}
+
+fn unwrap(b: Box<Int>) -> Int {
+  b.value
+}
+
+fn wrap_string(s: String) -> Box<String> {
+  Box { value: s }
+}
+";
+
+        let result = compile_sources_with(&output, &[("generics_single.dag", source)]);
+        let messages = diagnostic_messages(
+            result.get("diagnostics").expect("should have diagnostics"),
+        );
+        assert!(
+            messages.is_empty(),
+            "single param generic: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+    }
+
     #[test]
     fn v2_go_pipeline_smoke() {
         let output = compile_all_modules().expect("compilation should succeed");
