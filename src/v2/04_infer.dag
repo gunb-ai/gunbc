@@ -2694,12 +2694,15 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       acc
     }
   )
-  // Register type parameter names from generic declarations so inference
+  // Register type parameter names from generic type declarations so inference
   // can resolve slot references (e.g., "A" and "B" in type Pair<A, B>).
   // Slot names resolve to leaf nodes; normalization substitutes them at
   // use sites. Phase 3 MVP: registered globally, not scoped to declaration.
+  // Only register params from items already recognized as type bindings —
+  // prevents function params from leaking into the type namespace.
   let param_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
-    if item.params |> count > 0 && item.body == none && item.transport == none {
+    let is_type_decl = match map_get(local_bindings, item.name) { Some { value: _ } => true  None => false }
+    if item.params |> count > 0 && is_type_decl {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
         map_insert(pacc, p.name, TypeBinding { name: p.name, resolved: leaf_node(name: p.name) })
       )
@@ -2957,8 +2960,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     // Generic type use site (e.g., Pair<Int, String>, Box<Int>, MyList<Int>).
-    // Look up declaration, substitute slot references with concrete arguments.
+    // Look up declaration, validate arity, substitute slot references with concrete arguments.
     let decl = match lookup_type(env: env, name: n.name) { Some { value: d } => d  None => n }
+    let expected_arity = decl.params |> count
+    let actual_arity = n.children |> count
+    let arity_diags = if expected_arity != actual_arity {
+      [Diagnostic { message: concat("type ", n.name, " expects ", to_string(value: expected_arity), " type arguments, got ", to_string(value: actual_arity)), severity: Error, span: n.span, module_name: Some { value: module_name }, category: Some { value: TypeMismatch } }]
+    } else { [] }
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
@@ -2976,7 +2984,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let is_recursive = is_recursive_type(env: env, name: n.name)
     let result = NodeResolveResult {
       resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
-      diagnostics: arg_diags
+      diagnostics: concat(arity_diags, arg_diags)
     }
     result
   } else if node_is_map(n: n) {

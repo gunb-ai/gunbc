@@ -808,9 +808,11 @@ fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
     return rust_container(kind: "optional", inner: emit_rust_node_type(n: with_required_cardinality(n: n), rc_types: rc_types))
   }
   let kind = classify_type_structure(n: n)
-  if kind == TypeLeaf {
+  let is_leaf = kind == TypeLeaf
+  let is_conj = kind == TypeConj
+  if is_leaf {
     emit_rust_node_type_leaf(n: n, rc_types: rc_types)
-  } else if kind == TypeConj {
+  } else if is_conj {
     emit_rust_node_type_conj(n: n, rc_types: rc_types)
   } else {
     emit_rust_node_type_disj(n: n, rc_types: rc_types)

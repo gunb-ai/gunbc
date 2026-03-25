@@ -890,20 +890,22 @@ fn emit_node_type_leaf(n: Node, target: RenderTarget) -> String {
   if n.children |> count == 0 {
     emit_primitive_type(name: n.name, target: target)
   } else if node_is_map(n: n) {
-    let default_str = match target { Go => "string"  Python => "str"  _ => "String" }
+    // After resolution, Map nodes always have 2 children (key + value).
+    // None branches are structurally required by match but unreachable.
     let k = match n.children |> first {
       Some { value: kn } => emit_node_type(n: kn, target: target)
-      None => default_str
+      None => "__EMIT_BUG_MISSING_MAP_KEY__"
     }
     let v = match skip(n.children, 1) |> first {
       Some { value: vn } => emit_node_type(n: vn, target: target)
-      None => default_str
+      None => "__EMIT_BUG_MISSING_MAP_VALUE__"
     }
     emit_map_type(key_type: k, val_type: v, target: target)
   } else if n.children |> count == 1 {
+    // Single-child container. count == 1 guarantees first succeeds.
     let inner = match n.children |> first {
       Some { value: child } => emit_node_type(n: child, target: target)
-      None => match target { Go => "interface{}"  Python => "Any"  _ => "()" }
+      None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
     }
     // NonEmpty variants map to same container as their base type
     let container_kind = if n.name == "NonEmptyList" { "list" }
@@ -922,14 +924,15 @@ fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
       None => n.name
     }
   } else if n.name == "Tuple" {
-    let fallback = match target { Go => "interface{}"  Python => "Any"  _ => "()" }
+    // Tuple nodes always have children after resolution.
+    // None branches are structurally required by match but unreachable.
     let first_str = match n.children |> first {
       Some { value: c } => emit_node_type(n: c, target: target)
-      None => fallback
+      None => "__EMIT_BUG_MISSING_TUPLE_FIRST__"
     }
     let second_str = match skip(n.children, 1) |> first {
       Some { value: c } => emit_node_type(n: c, target: target)
-      None => fallback
+      None => "__EMIT_BUG_MISSING_TUPLE_SECOND__"
     }
     match target {
       Go => concat("struct{ First ", first_str, "; Second ", second_str, " }")
@@ -939,7 +942,9 @@ fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
   } else if n.name != "" {
     n.name
   } else {
-    match target { Go => "interface{}"  Python => "dict"  _ => "()" }
+    // Anonymous product type with no name. This is a bug — all conj nodes
+    // should have names after resolution.
+    "__EMIT_BUG_ANONYMOUS_CONJ__"
   }
 }
 
@@ -947,7 +952,9 @@ fn emit_node_type_disj(n: Node, target: RenderTarget) -> String {
   if n.name != "" {
     n.name
   } else {
-    match target { Go => "interface{}"  Python => "dict"  _ => "()" }
+    // Anonymous coproduct type with no name. This is a bug — all disj nodes
+    // should have names after resolution.
+    "__EMIT_BUG_ANONYMOUS_DISJ__"
   }
 }
 
