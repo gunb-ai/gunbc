@@ -559,6 +559,39 @@ pub fn is_str_begin_kind(kind: Rc<TokenKind>) -> bool {
 }
 }
 
+pub fn is_str_mid_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::StrMid { value: _, .. } => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_str_end_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::StrEnd { value: _, .. } => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_unknown_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Unknown { char: _, .. } => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
 pub fn is_newline_kind(kind: Rc<TokenKind>) -> bool {
     match kind.as_ref() {
     TokenKind::Newline => {
@@ -573,6 +606,721 @@ pub fn is_newline_kind(kind: Rc<TokenKind>) -> bool {
 pub fn is_eof_kind(kind: Rc<TokenKind>) -> bool {
     match kind.as_ref() {
     TokenKind::Eof => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_module_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwModule => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_import_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwImport => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_type_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwType => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_fn_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwFn => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_func_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwFunc => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_service_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwService => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_resource_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwResource => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_data_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwData => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_extern_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwExtern => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_interface_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwInterface => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_pipeline_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwPipeline => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_profile_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwProfile => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_pattern_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwPattern => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_let_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwLet => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_return_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwReturn => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_match_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwMatch => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_if_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwIf => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_else_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwElse => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_for_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwFor => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_in_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwIn => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_where_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwWhere => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_with_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwWith => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_true_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwTrue => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_false_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwFalse => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_none_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwNone => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_acquire_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwAcquire => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_release_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwRelease => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_capability_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwCapability => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_operation_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwOperation => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_input_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwInput => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_output_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwOutput => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_idempotent_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwIdempotent => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_readonly_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwReadonly => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_hermetic_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::KwHermetic => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lbrace_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::LBrace => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_rbrace_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::RBrace => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lparen_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::LParen => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_rparen_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::RParen => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lbracket_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::LBracket => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_rbracket_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::RBracket => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lt_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Lt => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_gt_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Gt => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_le_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Le => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_ge_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Ge => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_fat_arrow_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::FatArrow => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_arrow_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Arrow => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_colon_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Colon => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_comma_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Comma => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_dot_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Dot => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_dot_dot_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::DotDot => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_eq_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Eq => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_eq_eq_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::EqEq => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_ne_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Ne => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_plus_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Plus => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_minus_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Minus => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_star_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Star => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_slash_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Slash => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_percent_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Percent => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_bang_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Bang => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_and_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::And => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_or_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Or => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_question_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Question => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_null_coalesce_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::NullCoalesce => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_pipe_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::Pipe => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_pipe_arrow_kind(kind: Rc<TokenKind>) -> bool {
+    match kind.as_ref() {
+    TokenKind::PipeArrow => {
         true
     }
     _ => {
@@ -596,6 +1344,567 @@ pub fn peek_is_newline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
     match peek_kind(tokens.clone(), state.clone()) {
     Some(kind) => {
         is_newline_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_eof(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_eof_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_lit_str(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_lit_str_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_lbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_lbrace_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_rbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_rbrace_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_lparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_lparen_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_rparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_rparen_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_lbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_lbracket_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_rbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_rbracket_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_colon(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_colon_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_comma(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_comma_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_dot_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_dot_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_dot_dot_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_eq_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_fat_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_fat_arrow_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_arrow_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_lt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_lt_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_gt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_gt_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_pipe(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_pipe_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_pipe_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_pipe_arrow_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_question(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_question_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_module(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_module_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_import(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_import_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_type(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_type_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_fn(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_fn_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_func(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_func_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_service(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_service_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_resource(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_resource_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_data(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_data_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_extern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_extern_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_interface(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_interface_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_pipeline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_pipeline_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_profile(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_profile_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_pattern_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_let(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_let_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_return(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_return_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_match(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_match_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_if(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_if_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_else(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_else_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_for(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_for_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_in(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_in_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_where(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_where_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_with(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_with_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_true(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_true_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_false(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_false_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_idempotent(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_idempotent_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_readonly(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_readonly_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_hermetic(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_hermetic_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_capability_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_operation(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_operation_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_input(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_input_kind(kind.clone())
+    }
+    None => {
+        false
+    }
+}
+}
+
+pub fn peek_is_kw_output(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        is_kw_output_kind(kind.clone())
     }
     None => {
         false
@@ -833,25 +2142,321 @@ pub fn kind_tag(kind: Rc<TokenKind>) -> String {
 }
 }
 
-pub fn check(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, tag: &str) -> bool {
-    let k = peek_kind(tokens.clone(), state.clone());
-    match k.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(kind) => {
-        let kind = Rc::new(kind.clone());
-        kind_tag(kind.clone()) == tag
-    }
-    None => {
-        false
-    }
+pub fn kind_matches_tag(kind: Rc<TokenKind>, tag: &str) -> bool {
+    if tag == "KwModule" {
+    is_kw_module_kind(kind.clone())
+} else {
+    if tag == "KwImport" {
+    is_kw_import_kind(kind.clone())
+} else {
+    if tag == "KwType" {
+    is_kw_type_kind(kind.clone())
+} else {
+    if tag == "KwFn" {
+    is_kw_fn_kind(kind.clone())
+} else {
+    if tag == "KwFunc" {
+    is_kw_func_kind(kind.clone())
+} else {
+    if tag == "KwService" {
+    is_kw_service_kind(kind.clone())
+} else {
+    if tag == "KwResource" {
+    is_kw_resource_kind(kind.clone())
+} else {
+    if tag == "KwData" {
+    is_kw_data_kind(kind.clone())
+} else {
+    if tag == "KwExtern" {
+    is_kw_extern_kind(kind.clone())
+} else {
+    if tag == "KwInterface" {
+    is_kw_interface_kind(kind.clone())
+} else {
+    if tag == "KwPipeline" {
+    is_kw_pipeline_kind(kind.clone())
+} else {
+    if tag == "KwProfile" {
+    is_kw_profile_kind(kind.clone())
+} else {
+    if tag == "KwPattern" {
+    is_kw_pattern_kind(kind.clone())
+} else {
+    if tag == "KwLet" {
+    is_kw_let_kind(kind.clone())
+} else {
+    if tag == "KwReturn" {
+    is_kw_return_kind(kind.clone())
+} else {
+    if tag == "KwMatch" {
+    is_kw_match_kind(kind.clone())
+} else {
+    if tag == "KwIf" {
+    is_kw_if_kind(kind.clone())
+} else {
+    if tag == "KwElse" {
+    is_kw_else_kind(kind.clone())
+} else {
+    if tag == "KwFor" {
+    is_kw_for_kind(kind.clone())
+} else {
+    if tag == "KwIn" {
+    is_kw_in_kind(kind.clone())
+} else {
+    if tag == "KwWhere" {
+    is_kw_where_kind(kind.clone())
+} else {
+    if tag == "KwWith" {
+    is_kw_with_kind(kind.clone())
+} else {
+    if tag == "KwTrue" {
+    is_kw_true_kind(kind.clone())
+} else {
+    if tag == "KwFalse" {
+    is_kw_false_kind(kind.clone())
+} else {
+    if tag == "KwNone" {
+    is_kw_none_kind(kind.clone())
+} else {
+    if tag == "KwAcquire" {
+    is_kw_acquire_kind(kind.clone())
+} else {
+    if tag == "KwRelease" {
+    is_kw_release_kind(kind.clone())
+} else {
+    if tag == "KwCapability" {
+    is_kw_capability_kind(kind.clone())
+} else {
+    if tag == "KwOperation" {
+    is_kw_operation_kind(kind.clone())
+} else {
+    if tag == "KwInput" {
+    is_kw_input_kind(kind.clone())
+} else {
+    if tag == "KwOutput" {
+    is_kw_output_kind(kind.clone())
+} else {
+    if tag == "KwIdempotent" {
+    is_kw_idempotent_kind(kind.clone())
+} else {
+    if tag == "KwReadonly" {
+    is_kw_readonly_kind(kind.clone())
+} else {
+    if tag == "KwHermetic" {
+    is_kw_hermetic_kind(kind.clone())
+} else {
+    if tag == "LBrace" {
+    is_lbrace_kind(kind.clone())
+} else {
+    if tag == "RBrace" {
+    is_rbrace_kind(kind.clone())
+} else {
+    if tag == "LParen" {
+    is_lparen_kind(kind.clone())
+} else {
+    if tag == "RParen" {
+    is_rparen_kind(kind.clone())
+} else {
+    if tag == "LBracket" {
+    is_lbracket_kind(kind.clone())
+} else {
+    if tag == "RBracket" {
+    is_rbracket_kind(kind.clone())
+} else {
+    if tag == "Lt" {
+    is_lt_kind(kind.clone())
+} else {
+    if tag == "Gt" {
+    is_gt_kind(kind.clone())
+} else {
+    if tag == "Le" {
+    is_le_kind(kind.clone())
+} else {
+    if tag == "Ge" {
+    is_ge_kind(kind.clone())
+} else {
+    if tag == "FatArrow" {
+    is_fat_arrow_kind(kind.clone())
+} else {
+    if tag == "Arrow" {
+    is_arrow_kind(kind.clone())
+} else {
+    if tag == "Colon" {
+    is_colon_kind(kind.clone())
+} else {
+    if tag == "Comma" {
+    is_comma_kind(kind.clone())
+} else {
+    if tag == "Dot" {
+    is_dot_kind(kind.clone())
+} else {
+    if tag == "DotDot" {
+    is_dot_dot_kind(kind.clone())
+} else {
+    if tag == "Eq" {
+    is_eq_kind(kind.clone())
+} else {
+    if tag == "EqEq" {
+    is_eq_eq_kind(kind.clone())
+} else {
+    if tag == "Ne" {
+    is_ne_kind(kind.clone())
+} else {
+    if tag == "Plus" {
+    is_plus_kind(kind.clone())
+} else {
+    if tag == "Minus" {
+    is_minus_kind(kind.clone())
+} else {
+    if tag == "Star" {
+    is_star_kind(kind.clone())
+} else {
+    if tag == "Slash" {
+    is_slash_kind(kind.clone())
+} else {
+    if tag == "Percent" {
+    is_percent_kind(kind.clone())
+} else {
+    if tag == "Bang" {
+    is_bang_kind(kind.clone())
+} else {
+    if tag == "And" {
+    is_and_kind(kind.clone())
+} else {
+    if tag == "Or" {
+    is_or_kind(kind.clone())
+} else {
+    if tag == "Question" {
+    is_question_kind(kind.clone())
+} else {
+    if tag == "NullCoalesce" {
+    is_null_coalesce_kind(kind.clone())
+} else {
+    if tag == "Pipe" {
+    is_pipe_kind(kind.clone())
+} else {
+    if tag == "PipeArrow" {
+    is_pipe_arrow_kind(kind.clone())
+} else {
+    if tag == "Ident" {
+    is_ident_kind(kind.clone())
+} else {
+    if tag == "LitStr" {
+    is_lit_str_kind(kind.clone())
+} else {
+    if tag == "LitInt" {
+    is_lit_int_kind(kind.clone())
+} else {
+    if tag == "LitFloat" {
+    is_lit_float_kind(kind.clone())
+} else {
+    if tag == "StrBegin" {
+    is_str_begin_kind(kind.clone())
+} else {
+    if tag == "StrMid" {
+    is_str_mid_kind(kind.clone())
+} else {
+    if tag == "StrEnd" {
+    is_str_end_kind(kind.clone())
+} else {
+    if tag == "Newline" {
+    is_newline_kind(kind.clone())
+} else {
+    if tag == "Eof" {
+    is_eof_kind(kind.clone())
+} else {
+    false
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
 }
 }
 
 pub fn expect(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, tag: &str) -> Rc<TokenResult> {
-    if check(tokens.clone(), state.clone(), &tag) {
+    let k = peek_kind(tokens.clone(), state.clone());
+    let matches = match k.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(kind) => {
+        let kind = Rc::new(kind.clone());
+        kind_matches_tag(kind.clone(), &tag)
+    }
+    None => {
+        false
+    }
+};
+    if matches.clone() {
     let adv = advance(tokens.clone(), state.clone());
     Rc::new(TokenResult { token: adv.token.clone(), state: adv.state.clone(), err: None })
 } else {
-    let k = peek_kind(tokens.clone(), state.clone());
     let found = match k.as_ref().map(|__rc| __rc.as_ref()) {
     Some(kind) => {
         let kind = Rc::new(kind.clone());
@@ -931,97 +2536,97 @@ pub fn expect_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Nam
 }
 
 pub fn keyword_to_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Option<String> {
-    if check(tokens.clone(), state.clone(), "KwType") {
+    if peek_is_kw_type(tokens.clone(), state.clone()) {
     Some("type".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwResource") {
+    if peek_is_kw_resource(tokens.clone(), state.clone()) {
     Some("resource".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwCapability") {
+    if peek_is_kw_capability(tokens.clone(), state.clone()) {
     Some("capability".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwOperation") {
+    if peek_is_kw_operation(tokens.clone(), state.clone()) {
     Some("operation".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwPattern") {
+    if peek_is_kw_pattern(tokens.clone(), state.clone()) {
     Some("pattern".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwInput") {
+    if peek_is_kw_input(tokens.clone(), state.clone()) {
     Some("input".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwOutput") {
+    if peek_is_kw_output(tokens.clone(), state.clone()) {
     Some("output".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwData") {
+    if peek_is_kw_data(tokens.clone(), state.clone()) {
     Some("data".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwMatch") {
+    if peek_is_kw_match(tokens.clone(), state.clone()) {
     Some("match".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwService") {
+    if peek_is_kw_service(tokens.clone(), state.clone()) {
     Some("service".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwImport") {
+    if peek_is_kw_import(tokens.clone(), state.clone()) {
     Some("import".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwModule") {
+    if peek_is_kw_module(tokens.clone(), state.clone()) {
     Some("module".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwFn") {
+    if peek_is_kw_fn(tokens.clone(), state.clone()) {
     Some("fn".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwFunc") {
+    if peek_is_kw_func(tokens.clone(), state.clone()) {
     Some("func".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwExtern") {
+    if peek_is_kw_extern(tokens.clone(), state.clone()) {
     Some("extern".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwLet") {
+    if peek_is_kw_let(tokens.clone(), state.clone()) {
     Some("let".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwReturn") {
+    if peek_is_kw_return(tokens.clone(), state.clone()) {
     Some("return".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwIf") {
+    if peek_is_kw_if(tokens.clone(), state.clone()) {
     Some("if".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwElse") {
+    if peek_is_kw_else(tokens.clone(), state.clone()) {
     Some("else".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwFor") {
+    if peek_is_kw_for(tokens.clone(), state.clone()) {
     Some("for".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwIn") {
+    if peek_is_kw_in(tokens.clone(), state.clone()) {
     Some("in".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwWhere") {
+    if peek_is_kw_where(tokens.clone(), state.clone()) {
     Some("where".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwWith") {
+    if peek_is_kw_with(tokens.clone(), state.clone()) {
     Some("with".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwTrue") {
+    if peek_is_kw_true(tokens.clone(), state.clone()) {
     Some("true".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwFalse") {
+    if peek_is_kw_false(tokens.clone(), state.clone()) {
     Some("false".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwInterface") {
+    if peek_is_kw_interface(tokens.clone(), state.clone()) {
     Some("interface".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwPipeline") {
+    if peek_is_kw_pipeline(tokens.clone(), state.clone()) {
     Some("pipeline".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwProfile") {
+    if peek_is_kw_profile(tokens.clone(), state.clone()) {
     Some("profile".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwIdempotent") {
+    if peek_is_kw_idempotent(tokens.clone(), state.clone()) {
     Some("idempotent".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwReadonly") {
+    if peek_is_kw_readonly(tokens.clone(), state.clone()) {
     Some("readonly".to_string())
 } else {
-    if check(tokens.clone(), state.clone(), "KwHermetic") {
+    if peek_is_kw_hermetic(tokens.clone(), state.clone()) {
     Some("hermetic".to_string())
 } else {
     None
@@ -1065,7 +2670,7 @@ pub fn skip_newlines(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<P
         loop {
             let tokens = __tco_p_tokens;
             let state = __tco_p_state;
-            if check(tokens.clone(), state.clone(), "Newline") {
+            if peek_is_newline(tokens.clone(), state.clone()) {
     let adv = advance(tokens.clone(), state.clone());
      {
         let __tco_0 = tokens.clone();
@@ -1082,18 +2687,21 @@ pub fn skip_newlines(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<P
     })
 }
 
+pub fn is_continuation_kind(kind: Rc<TokenKind>) -> bool {
+    ((is_pipe_arrow_kind(kind.clone()) || is_dot_kind(kind.clone())) || is_or_kind(kind.clone())) || is_and_kind(kind.clone())
+}
+
 pub fn skip_continuation_newlines(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ParserState> {
-    let is_continuation = if check(tokens.clone(), state.clone(), "Newline") {
+    let is_continuation = if peek_is_newline(tokens.clone(), state.clone()) {
     let s = skip_newlines(tokens.clone(), state.clone());
-    let tag = match peek_kind(tokens.clone(), s.clone()) {
+    match peek_kind(tokens.clone(), s.clone()) {
     Some(kind) => {
-        kind_tag(kind.clone())
+        is_continuation_kind(kind.clone())
     }
     None => {
-        "".to_string()
+        false
     }
-};
-    (((tag.clone() == "PipeArrow") || (tag.clone() == "Dot")) || (tag.clone() == "Or")) || (tag.clone() == "And")
+}
 } else {
     false
 };
@@ -1105,7 +2713,17 @@ pub fn skip_continuation_newlines(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
 }
 
 pub fn eat(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, tag: &str) -> Rc<EatResult> {
-    if check(tokens.clone(), state.clone(), &tag) {
+    let k = peek_kind(tokens.clone(), state.clone());
+    let matches = match k.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(kind) => {
+        let kind = Rc::new(kind.clone());
+        kind_matches_tag(kind.clone(), &tag)
+    }
+    None => {
+        false
+    }
+};
+    if matches.clone() {
     let adv = advance(tokens.clone(), state.clone());
     Rc::new(EatResult { consumed: true, state: adv.state.clone(), token: Some(adv.token.clone()) })
 } else {
@@ -1114,7 +2732,7 @@ pub fn eat(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, tag: &str) -> Rc<
 }
 
 pub fn is_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    check(tokens.clone(), state.clone(), "Ident")
+    peek_is_ident(tokens.clone(), state.clone())
 }
 
 pub fn is_keyword_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
@@ -1265,7 +2883,7 @@ pub fn parse_imports_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, acc
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "KwImport") {
+            if peek_is_kw_import(tokens.clone(), s.clone()) {
     let r = parse_import(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
     break Rc::new(ImportsResult { imports: Rc::new(Vec::new()), state: r.state.clone(), err: r.err.clone() });
@@ -1306,7 +2924,7 @@ pub fn parse_items_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, acc: 
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if at_end(tokens.clone(), s.clone()) || check(tokens.clone(), s.clone(), "Eof") {
+            if at_end(tokens.clone(), s.clone()) || peek_is_eof(tokens.clone(), s.clone()) {
     break Rc::new(ItemsResult { items: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_item(tokens.clone(), s.clone());
@@ -1383,7 +3001,7 @@ pub fn parse_import_names_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") {
+            if peek_is_rbrace(tokens.clone(), s.clone()) {
     break Rc::new(NamesResult { names: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_dotted_ident(tokens.clone(), s.clone());
@@ -1560,7 +3178,7 @@ pub fn parse_type_body_after_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
 };
     let first_name = r.name.clone();
     let s = skip_newlines(tokens.clone(), r.state.clone());
-    if check(tokens.clone(), s.clone(), "LBrace") || check(tokens.clone(), s.clone(), "Pipe") {
+    if peek_is_lbrace(tokens.clone(), s.clone()) || peek_is_pipe(tokens.clone(), s.clone()) {
     let r = parse_variant_fields(tokens.clone(), s.clone(), &first_name);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -1607,7 +3225,7 @@ pub fn parse_type_body_after_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
 }
 
 pub fn try_where_clause(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, base_te: Rc<Node>, start_span: SourceSpan) -> Rc<TypeResult> {
-    if check(tokens.clone(), state.clone(), "KwWhere") {
+    if peek_is_kw_where(tokens.clone(), state.clone()) {
     let adv = advance(tokens.clone(), state.clone());
     let r = parse_predicates(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
@@ -1990,7 +3608,7 @@ pub fn parse_callable_type_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     return Rc::new(TypeResult { type_expr: dummy_te.clone(), state: r.state.clone(), err: r.err.clone() });
 };
         let s = skip_newlines(tokens.clone(), r.state.clone());
-        let params_result = if check(tokens.clone(), s.clone(), "RParen") {
+        let params_result = if peek_is_rparen(tokens.clone(), s.clone()) {
     Rc::new(ParamsResult { params: Rc::new(Vec::new()), state: s.clone(), err: None })
 } else {
     parse_callable_param_types(tokens.clone(), s.clone(), Rc::new(Vec::new()))
@@ -2040,7 +3658,7 @@ pub fn parse_callable_param_types(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
             let e = eat(tokens.clone(), r.state.clone(), "Comma");
             if e.consumed.clone() {
     let s = skip_newlines(tokens.clone(), e.state.clone());
-    if check(tokens.clone(), s.clone(), "RParen") {
+    if peek_is_rparen(tokens.clone(), s.clone()) {
     break Rc::new(ParamsResult { params: acc.clone(), state: s.clone(), err: None });
 } else {
      {
@@ -2217,7 +3835,7 @@ pub fn parse_field_list_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if (check(tokens.clone(), s.clone(), "RBrace") || check(tokens.clone(), s.clone(), "RParen")) || at_end(tokens.clone(), s.clone()) {
+            if (peek_is_rbrace(tokens.clone(), s.clone()) || peek_is_rparen(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(FieldsResult { fields: acc.clone(), state: s.clone(), err: None });
 } else {
     if is_ident(tokens.clone(), s.clone()) || is_keyword_name(tokens.clone(), s.clone()) {
@@ -2570,7 +4188,7 @@ pub fn parse_service_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>,
             let transport = __tco_p_transport;
             let operations = __tco_p_operations;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(ServiceBodyResult { config: config.clone(), transport: transport.clone(), operations: operations.clone(), state: s.clone(), err: None });
 } else {
     let k = peek_kind(tokens.clone(), s.clone());
@@ -2686,7 +4304,7 @@ pub fn parse_config_fields(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, e
             let rate_limit = __tco_p_rate_limit;
             let retry = __tco_p_retry;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     let cfg = Rc::new(ServiceConfig { endpoint: match endpoint.as_ref().map(|__rc| __rc.as_ref()) {
     Some(e) => {
         let e = Rc::new(e.clone());
@@ -2897,7 +4515,7 @@ pub fn parse_rest_fields(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, bas
             let s = skip_newlines(tokens.clone(), state);
             let span = current_span(tokens.clone(), s.clone());
             let dummy = local_transport_node(span.clone());
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     let bu = match base_url.as_ref().map(|__rc| __rc.as_ref()) {
     Some(e) => {
         let e = Rc::new(e.clone());
@@ -2975,7 +4593,7 @@ pub fn parse_shell_fields(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, ar
             let s = skip_newlines(tokens.clone(), state);
             let span = current_span(tokens.clone(), s.clone());
             let dummy = local_transport_node(span.clone());
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(TransportResult { transport: shell_transport_node(argv.clone(), Rc::new(Vec::new()), span.clone()), state: s.clone(), err: None });
 } else {
     let r = expect_ident(tokens.clone(), s.clone());
@@ -3066,7 +4684,7 @@ pub fn parse_file_fields(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, bas
             let s = skip_newlines(tokens.clone(), state);
             let span = current_span(tokens.clone(), s.clone());
             let dummy = local_transport_node(span.clone());
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     let bp = match base_path.as_ref().map(|__rc| __rc.as_ref()) {
     Some(e) => {
         let e = Rc::new(e.clone());
@@ -3153,7 +4771,7 @@ pub fn parse_operation_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -
 };
     let name = r.name.clone();
     let s = skip_newlines(tokens.clone(), r.state.clone());
-    if check(tokens.clone(), s.clone(), "LBrace") {
+    if peek_is_lbrace(tokens.clone(), s.clone()) {
     parse_operation_v1_body(tokens.clone(), s.clone(), &name, start_span.clone())
 } else {
     parse_operation_v2_inline(tokens.clone(), s.clone(), &name, start_span.clone())
@@ -3250,7 +4868,7 @@ pub fn parse_op_body_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>,
             let mock_props = __tco_p_mock_props;
             let s = skip_newlines(tokens.clone(), state);
             let mk_result = Rc::new(OpBodyResult { inputs: inputs.clone(), outputs: outputs.clone(), modifier_props: modifier_props.clone(), transport: transport.clone(), exit_props: exit_props.clone(), response_props: response_props.clone(), mock_props: mock_props.clone(), state: s.clone(), err: None });
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break mk_result.clone();
 } else {
     let k = peek_kind(tokens.clone(), s.clone());
@@ -3837,7 +5455,7 @@ pub fn parse_exit_entries_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(ExitEntriesResult { entries: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_status_pattern(tokens.clone(), s.clone());
@@ -4079,7 +5697,7 @@ pub fn parse_response_entries_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(RespEntriesResult { entries: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_status_pattern(tokens.clone(), s.clone());
@@ -4166,7 +5784,7 @@ pub fn parse_mock_response_entries_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<Par
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(MockEntriesResult { entries: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_status_pattern(tokens.clone(), s.clone());
@@ -4278,7 +5896,7 @@ pub fn parse_resource_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
             let properties = __tco_p_properties;
             let capabilities = __tco_p_capabilities;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(ResPropResult { properties: properties.clone(), capabilities: capabilities.clone(), state: s.clone(), err: None });
 } else {
     let k = peek_kind(tokens.clone(), s.clone());
@@ -4409,7 +6027,7 @@ pub fn parse_resource_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
 pub fn skip_until_rbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<UnitResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let s = skip_newlines(tokens.clone(), state.clone());
-        if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+        if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     Rc::new(UnitResult { state: s.clone(), err: None })
 } else {
     let k = peek_kind(tokens.clone(), s.clone());
@@ -4449,7 +6067,7 @@ pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
 };
     let name = r.name.clone();
     let s = r.state.clone();
-    if check(tokens.clone(), s.clone(), "LBrace") {
+    if peek_is_lbrace(tokens.clone(), s.clone()) {
     let r2 = expect(tokens.clone(), s.clone(), "LBrace");
     if has_err(r2.err.clone()) {
     return Rc::new(CapResult { capability: dummy_cap.clone(), state: r2.state.clone(), err: r2.err.clone() });
@@ -4465,7 +6083,7 @@ pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     let cap = Rc::new(CapabilityDef { name, inputs: io.inputs.clone(), outputs: io.outputs.clone(), span: start_span.clone() });
     Rc::new(CapResult { capability: cap.clone(), state: skip_newlines(tokens.clone(), r3.state.clone()), err: None })
 } else {
-    if check(tokens.clone(), s.clone(), "LParen") {
+    if peek_is_lparen(tokens.clone(), s.clone()) {
     let r2 = expect(tokens.clone(), s.clone(), "LParen");
     if has_err(r2.err.clone()) {
     return Rc::new(CapResult { capability: dummy_cap.clone(), state: r2.state.clone(), err: r2.err.clone() });
@@ -4516,7 +6134,7 @@ pub fn parse_io_blocks_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, i
             let inputs = __tco_p_inputs;
             let outputs = __tco_p_outputs;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(IOResult { inputs: inputs.clone(), outputs: outputs.clone(), state: s.clone(), err: None });
 } else {
     let k = peek_kind(tokens.clone(), s.clone());
@@ -4698,7 +6316,7 @@ pub fn parse_params(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Pa
     return Rc::new(ParamsResult { params: Rc::new(Vec::new()), state: r.state.clone(), err: r.err.clone() });
 };
     let s = skip_newlines(tokens.clone(), r.state.clone());
-    if check(tokens.clone(), s.clone(), "RParen") {
+    if peek_is_rparen(tokens.clone(), s.clone()) {
     let adv = advance(tokens.clone(), s.clone());
     Rc::new(ParamsResult { params: Rc::new(Vec::new()), state: adv.state.clone(), err: None })
 } else {
@@ -4742,7 +6360,7 @@ pub fn parse_param_list_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
             let e = eat(tokens.clone(), s.clone(), "Comma");
             if e.consumed.clone() {
     let s2 = skip_newlines(tokens.clone(), e.state.clone());
-    if check(tokens.clone(), s2.clone(), "RParen") {
+    if peek_is_rparen(tokens.clone(), s2.clone()) {
     break Rc::new(ParamsResult { params: acc.clone(), state: s2.clone(), err: None });
 } else {
      {
@@ -4840,7 +6458,7 @@ pub fn parse_stmts_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, acc: 
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if (check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone())) || check(tokens.clone(), s.clone(), "Eof") {
+            if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) || peek_is_eof(tokens.clone(), s.clone()) {
     break Rc::new(StmtsResult { stmts: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_stmt(tokens.clone(), s.clone());
@@ -4899,7 +6517,7 @@ pub fn peek_is_eq_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     let next_tok = tokens.clone().get((state.pos.clone() + 1_i64) as usize).cloned();
     match next_tok.clone() {
     Some(t) => {
-        kind_tag(t.kind.clone()) == "Eq"
+        is_eq_kind(t.kind.clone())
     }
     None => {
         false
@@ -4960,7 +6578,7 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
             let state = __tco_p_state;
             let lhs = __tco_p_lhs;
             let min_bp = __tco_p_min_bp;
-            if at_end(tokens.clone(), state.clone()) || check(tokens.clone(), state.clone(), "Eof") {
+            if at_end(tokens.clone(), state.clone()) || peek_is_eof(tokens.clone(), state.clone()) {
     break Rc::new(ExprResult { expr: lhs.clone(), state: state.clone(), err: None });
 } else {
     let s = skip_continuation_newlines(tokens.clone(), state.clone());
@@ -4990,7 +6608,7 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
 } else {
     let adv = advance(tokens.clone(), s.clone());
     let op_kind = adv.token.kind.clone();
-    if kind_tag(op_kind.clone()) == "Dot" {
+    if is_dot_kind(op_kind.clone()) {
     let r = expect_name(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
     break Rc::new(ExprResult { expr: lhs.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -5010,7 +6628,7 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
     }
 
 } else {
-    if kind_tag(op_kind.clone()) == "PipeArrow" {
+    if is_pipe_arrow_kind(op_kind.clone()) {
     let span = current_span(tokens.clone(), state.clone());
     let r = parse_pipe_rhs(tokens.clone(), adv.state.clone(), lhs.clone(), span);
     if has_err(r.err.clone()) {
@@ -5181,7 +6799,7 @@ pub fn parse_pipe_rhs(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, receiv
         let method = r.name.clone();
         let s = r.state.clone();
         let s = skip_newlines(tokens.clone(), s.clone());
-        if check(tokens.clone(), s.clone(), "LParen") {
+        if peek_is_lparen(tokens.clone(), s.clone()) {
     let r2 = parse_call_args(tokens.clone(), s.clone());
     if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
@@ -5373,7 +6991,7 @@ pub fn parse_lambda_stmts(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, ac
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if ((check(tokens.clone(), s.clone(), "RParen") || check(tokens.clone(), s.clone(), "RBrace")) || at_end(tokens.clone(), s.clone())) || check(tokens.clone(), s.clone(), "Eof") {
+            if ((peek_is_rparen(tokens.clone(), s.clone()) || peek_is_rbrace(tokens.clone(), s.clone())) || at_end(tokens.clone(), s.clone())) || peek_is_eof(tokens.clone(), s.clone()) {
     break Rc::new(StmtsResult { stmts: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_stmt(tokens.clone(), s.clone());
@@ -5405,7 +7023,7 @@ pub fn parse_ident_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, name
         let span = current_span(tokens.clone(), state.clone());
         let adv = advance(tokens.clone(), state.clone());
         let s = adv.state.clone();
-        if check(tokens.clone(), s.clone(), "FatArrow") {
+        if peek_is_fat_arrow(tokens.clone(), s.clone()) {
     let adv2 = advance(tokens.clone(), s.clone());
     let r = parse_lambda_body(tokens.clone(), adv2.state.clone());
     if has_err(r.err.clone()) {
@@ -5413,7 +7031,7 @@ pub fn parse_ident_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, name
 };
     Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: Rc::new(vec!(name.to_string())), body: r.expr.clone(), semantics: None }), None, span), state: r.state.clone(), err: None })
 } else {
-    if is_uppercase_start(&name) && check(tokens.clone(), s.clone(), "LBrace") {
+    if is_uppercase_start(&name) && peek_is_lbrace(tokens.clone(), s.clone()) {
     parse_record_literal(tokens.clone(), s.clone(), &name, span)
 } else {
     Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprVar { name: name.to_string(), binding_kind: None }), None, span), state: s.clone(), err: None })
@@ -5524,7 +7142,7 @@ pub fn parse_index_or_slice(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
 };
         let first_expr = r.expr.clone();
         let s = r.state.clone();
-        if check(tokens.clone(), s.clone(), "DotDot") {
+        if peek_is_dot_dot(tokens.clone(), s.clone()) {
     let adv = advance(tokens.clone(), s.clone());
     let r = parse_expr(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
@@ -5554,7 +7172,7 @@ pub fn parse_call_args(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
     return Rc::new(ArgsResult { args: Rc::new(Vec::new()), state: r.state.clone(), err: r.err.clone() });
 };
         let s = skip_newlines(tokens.clone(), r.state.clone());
-        if check(tokens.clone(), s.clone(), "RParen") {
+        if peek_is_rparen(tokens.clone(), s.clone()) {
     let adv = advance(tokens.clone(), s.clone());
     Rc::new(ArgsResult { args: Rc::new(Vec::new()), state: adv.state.clone(), err: None })
 } else {
@@ -5602,7 +7220,7 @@ pub fn parse_arg_list_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, ac
             let e = eat(tokens.clone(), s.clone(), "Comma");
             if e.consumed.clone() {
     let s2 = skip_newlines(tokens.clone(), e.state.clone());
-    if check(tokens.clone(), s2.clone(), "RParen") {
+    if peek_is_rparen(tokens.clone(), s2.clone()) {
     break Rc::new(ArgsResult { args: acc.clone(), state: s2.clone(), err: None });
 } else {
      {
@@ -5638,7 +7256,7 @@ pub fn parse_single_arg(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     let arg = Rc::new(NamedArg { name: None, value: r.expr.clone() });
     Rc::new(ArgResult { arg: arg.clone(), state: r.state.clone(), err: None })
 } else {
-    if check(tokens.clone(), name_r.state.clone(), "Colon") {
+    if peek_is_colon(tokens.clone(), name_r.state.clone()) {
     let adv = advance(tokens.clone(), name_r.state.clone());
     let r = parse_expr(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
@@ -5725,11 +7343,11 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
             let state = __tco_p_state;
             let lhs = __tco_p_lhs;
             let min_bp = __tco_p_min_bp;
-            if (at_end(tokens.clone(), state.clone()) || check(tokens.clone(), state.clone(), "Eof")) || check(tokens.clone(), state.clone(), "LBrace") {
+            if (at_end(tokens.clone(), state.clone()) || peek_is_eof(tokens.clone(), state.clone())) || peek_is_lbrace(tokens.clone(), state.clone()) {
     break Rc::new(ExprResult { expr: lhs.clone(), state: state.clone(), err: None });
 } else {
     let s = skip_continuation_newlines(tokens.clone(), state.clone());
-    if check(tokens.clone(), s.clone(), "LParen") && (14_i64 >= min_bp.clone()) {
+    if peek_is_lparen(tokens.clone(), s.clone()) && (14_i64 >= min_bp.clone()) {
     let r = parse_call_args(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
     break Rc::new(ExprResult { expr: lhs.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -5749,7 +7367,7 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     }
 
 } else {
-    if check(tokens.clone(), s.clone(), "LBracket") && (14_i64 >= min_bp.clone()) {
+    if peek_is_lbracket(tokens.clone(), s.clone()) && (14_i64 >= min_bp.clone()) {
     let span = current_span(tokens.clone(), s.clone());
     let r = parse_index_or_slice(tokens.clone(), s.clone(), lhs.clone(), span);
     if has_err(r.err.clone()) {
@@ -5776,7 +7394,7 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
 } else {
     let adv = advance(tokens.clone(), s.clone());
     let op_kind = adv.token.kind.clone();
-    if kind_tag(op_kind.clone()) == "Dot" {
+    if is_dot_kind(op_kind.clone()) {
     let r = expect_name(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
     break Rc::new(ExprResult { expr: lhs.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -5796,7 +7414,7 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     }
 
 } else {
-    if kind_tag(op_kind.clone()) == "PipeArrow" {
+    if is_pipe_arrow_kind(op_kind.clone()) {
     let span = current_span(tokens.clone(), s.clone());
     let r = parse_pipe_rhs(tokens.clone(), adv.state.clone(), lhs.clone(), span);
     if has_err(r.err.clone()) {
@@ -5866,7 +7484,7 @@ pub fn parse_match_arms_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(ArmsResult { arms: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_match_arm(tokens.clone(), s.clone());
@@ -5919,7 +7537,7 @@ pub fn parse_match_arm(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
     return Rc::new(ArmResult { arm: dummy_arm.clone(), state: r.state.clone(), err: r.err.clone() });
 };
         let s = skip_newlines(tokens.clone(), r.state.clone());
-        let r = if check(tokens.clone(), s.clone(), "LBrace") {
+        let r = if peek_is_lbrace(tokens.clone(), s.clone()) {
     parse_block(tokens.clone(), s.clone())
 } else {
     parse_match_arm_body(tokens.clone(), s.clone())
@@ -5976,7 +7594,7 @@ pub fn parse_match_arm_stmts(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>,
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if (check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone())) || check(tokens.clone(), s.clone(), "Eof") {
+            if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) || peek_is_eof(tokens.clone(), s.clone()) {
     break Rc::new(StmtsResult { stmts: acc.clone(), state: s.clone(), err: None });
 } else {
     if looks_like_arm_start(tokens.clone(), s.clone()) {
@@ -6043,7 +7661,7 @@ pub fn peek_is_fat_arrow_at(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
     let tok = tokens.clone().get((state.pos.clone() + offset.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        kind_tag(t.kind.clone()) == "FatArrow"
+        is_fat_arrow_kind(t.kind.clone())
     }
     None => {
         false
@@ -6062,7 +7680,7 @@ pub fn peek_is_tag_at(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, offset
     let tok = tokens.clone().get((state.pos.clone() + offset.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        kind_tag(t.kind.clone()) == tag
+        kind_matches_tag(t.kind.clone(), &tag)
     }
     None => {
         false
@@ -6100,7 +7718,7 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
     let tok = tokens.clone().get((idx.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        break kind_tag(t.kind.clone()) == "FatArrow";
+        break is_fat_arrow_kind(t.kind.clone());
     }
     None => {
         break false;
@@ -6116,9 +7734,7 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
     let tok = tokens.clone().get((idx.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        {
-    let tag = kind_tag(t.kind.clone());
-    if tag.clone() == "LBrace" {
+        if is_lbrace_kind(t.kind.clone()) {
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = state.clone();
@@ -6132,7 +7748,7 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
     }
 
 } else {
-    if tag.clone() == "RBrace" {
+    if is_rbrace_kind(t.kind.clone()) {
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = state.clone();
@@ -6160,7 +7776,6 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
 
 };
 };
-};
     }
     None => {
         break false;
@@ -6173,7 +7788,7 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
 
 pub fn parse_optional_guard(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<GuardResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if check(tokens.clone(), state.clone(), "KwIf") {
+        if peek_is_kw_if(tokens.clone(), state.clone()) {
     let adv = advance(tokens.clone(), state.clone());
     let r = parse_expr(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
@@ -6243,7 +7858,7 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<P
 
 pub fn parse_variant_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, name: &str) -> Rc<PatternResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if check(tokens.clone(), state.clone(), "LBrace") {
+        if peek_is_lbrace(tokens.clone(), state.clone()) {
     let adv = advance(tokens.clone(), state.clone());
     let r = parse_variant_bindings_brace(tokens.clone(), skip_newlines(tokens.clone(), adv.state.clone()));
     if has_err(r.err.clone()) {
@@ -6276,7 +7891,7 @@ pub fn parse_variant_bindings_brace_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<Pa
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(BindingsResult { field_bindings: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = expect_name(tokens.clone(), s.clone());
@@ -6365,7 +7980,7 @@ pub fn parse_if(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExprRe
         let e = eat(tokens.clone(), s.clone(), "KwElse");
         if e.consumed.clone() {
     let s = skip_newlines(tokens.clone(), e.state.clone());
-    if check(tokens.clone(), s.clone(), "KwIf") {
+    if peek_is_kw_if(tokens.clone(), s.clone()) {
     let r2 = parse_if(tokens.clone(), s.clone());
     if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: r2.expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
@@ -6494,7 +8109,7 @@ pub fn parse_field_init_list_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSta
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RBrace") || at_end(tokens.clone(), s.clone()) {
+            if peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone()) {
     break Rc::new(FieldInitsResult { fields: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_field_init(tokens.clone(), s.clone());
@@ -6536,7 +8151,7 @@ pub fn parse_field_init(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     return Rc::new(FieldInitResult { field: dummy_fi.clone(), state: name_r.state.clone(), err: name_r.err.clone() });
 };
     let n = name_r.name.clone();
-    if check(tokens.clone(), name_r.state.clone(), "Colon") {
+    if peek_is_colon(tokens.clone(), name_r.state.clone()) {
     let adv2 = advance(tokens.clone(), name_r.state.clone());
     let r = parse_expr(tokens.clone(), adv2.state.clone());
     if has_err(r.err.clone()) {
@@ -6549,7 +8164,7 @@ pub fn parse_field_init(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     Rc::new(FieldInitResult { field: fi.clone(), state: name_r.state.clone(), err: None })
 }
 } else {
-    if check(tokens.clone(), state.clone(), "LitStr") && peek_is_colon_after_ident(tokens.clone(), state.clone()) {
+    if peek_is_lit_str(tokens.clone(), state.clone()) && peek_is_colon_after_ident(tokens.clone(), state.clone()) {
     let k = peek_kind(tokens.clone(), state.clone());
     let str_name = match k.as_ref().map(|__rc| __rc.as_ref()) {
     Some(TokenKind::LitStr { value: sv, .. }) => {
@@ -6617,7 +8232,15 @@ pub fn parse_expr_list_until_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSta
             let end_tag = __tco_p_end_tag;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), &end_tag) || at_end(tokens.clone(), s.clone()) {
+            let at_end_tag = match peek_kind(tokens.clone(), s.clone()) {
+    Some(kind) => {
+        kind_matches_tag(kind.clone(), &end_tag)
+    }
+    None => {
+        false
+    }
+};
+            if at_end_tag.clone() || at_end(tokens.clone(), s.clone()) {
     break Rc::new(ExprsResult { exprs: acc.clone(), state: s.clone(), err: None });
 } else {
     let r = parse_expr(tokens.clone(), s.clone());
@@ -6661,7 +8284,7 @@ pub fn parse_paren_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
         let s = skip_newlines(tokens.clone(), r.state.clone());
-        if check(tokens.clone(), s.clone(), "RParen") {
+        if peek_is_rparen(tokens.clone(), s.clone()) {
     let adv = advance(tokens.clone(), s.clone());
     Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: Rc::new(Vec::new()), parent_enum: None }), None, span), state: adv.state.clone(), err: None })
 } else {
@@ -6724,7 +8347,7 @@ pub fn collect_fn_lambda_params(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
             let state = __tco_p_state;
             let acc = __tco_p_acc;
             let s = skip_newlines(tokens.clone(), state);
-            if check(tokens.clone(), s.clone(), "RParen") {
+            if peek_is_rparen(tokens.clone(), s.clone()) {
     break Rc::new(IdentCollectResult { success: true, params: acc.clone(), state: s.clone(), err: None });
 } else {
     let name_r = expect_ident(tokens.clone(), s.clone());
@@ -6732,7 +8355,7 @@ pub fn collect_fn_lambda_params(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     break Rc::new(IdentCollectResult { success: false, params: acc.clone(), state: name_r.state.clone(), err: name_r.err.clone() });
 } else {
     let s2 = skip_newlines(tokens.clone(), name_r.state.clone());
-    if check(tokens.clone(), s2.clone(), "Comma") {
+    if peek_is_comma(tokens.clone(), s2.clone()) {
     let adv = advance(tokens.clone(), s2.clone());
      {
         let __tco_0 = tokens.clone();
@@ -6770,9 +8393,9 @@ pub fn try_lambda_params(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
     let __len_0 = r.params.clone().len();
     __len_0 as i64
 }) >= 2_i64) {
-    if check(tokens.clone(), r.state.clone(), "RParen") {
+    if peek_is_rparen(tokens.clone(), r.state.clone()) {
     let adv = advance(tokens.clone(), r.state.clone());
-    if check(tokens.clone(), adv.state.clone(), "FatArrow") {
+    if peek_is_fat_arrow(tokens.clone(), adv.state.clone()) {
     let adv2 = advance(tokens.clone(), adv.state.clone());
     Rc::new(LambdaCheckResult { is_lambda: true, params: r.params.clone(), state: adv2.state.clone(), err: None })
 } else {
@@ -6942,7 +8565,7 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
         let dummy_expr = parse_recovery_placeholder();
         let adv = advance(tokens.clone(), state.clone());
         let s = skip_newlines(tokens.clone(), adv.state.clone());
-        if check(tokens.clone(), s.clone(), "RBrace") {
+        if peek_is_rbrace(tokens.clone(), s.clone()) {
     let adv2 = advance(tokens.clone(), s.clone());
     Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: Rc::new(Vec::new()), parent_enum: None }), None, span), state: adv2.state.clone(), err: None })
 } else {
@@ -7005,7 +8628,7 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
 };
     Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: r.fields.clone(), parent_enum: None }), None, span), state: r2.state.clone(), err: None })
 } else {
-    if check(tokens.clone(), s.clone(), "LitStr") && peek_is_colon_after_ident(tokens.clone(), s.clone()) {
+    if peek_is_lit_str(tokens.clone(), s.clone()) && peek_is_colon_after_ident(tokens.clone(), s.clone()) {
     let r = parse_field_init_list(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -7051,7 +8674,7 @@ pub fn peek_is_colon_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSta
     let next_tok = tokens.clone().get((state.pos.clone() + 1_i64) as usize).cloned();
     match next_tok.clone() {
     Some(t) => {
-        kind_tag(t.kind.clone()) == "Colon"
+        is_colon_kind(t.kind.clone())
     }
     None => {
         false
