@@ -3800,7 +3800,6 @@ fn describe(lb: Label) -> String {
     }
 
     /// P3.6: User-defined generic types compile through the full pipeline.
-    /// P3.6: User-defined generic types compile through the full pipeline.
     #[test]
     fn v2_generic_type_declaration_smoke() {
         let output = compile_all_modules().expect("compilation should succeed");

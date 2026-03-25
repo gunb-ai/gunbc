@@ -2675,7 +2675,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Slot names resolve to leaf nodes; normalization substitutes them at
   // use sites. Phase 3 MVP: registered globally, not scoped to declaration.
   let param_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
-    if item.params |> count > 0 {
+    if item.params |> count > 0 && node_has_structure(n: item) {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
         map_insert(pacc, p.name, TypeBinding { name: p.name, resolved: leaf_node(name: p.name) })
       )
