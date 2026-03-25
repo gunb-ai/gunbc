@@ -55,15 +55,15 @@ import v2.compiler.infer {
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
 import extdeps.languages.rust.emit {
-  rust_type_map, rust_keywords, rust_container_templates
+  rust_type_map, rust_keywords, rust_container_templates, rust_reserved
 }
 
 import extdeps.languages.python.emit {
-  python_type_map, python_keywords, python_container_templates
+  python_type_map, python_keywords, python_container_templates, python_reserved
 }
 
 import extdeps.languages.go.emit {
-  go_type_map, go_keywords, go_container_templates
+  go_type_map, go_keywords, go_container_templates, go_reserved
 }
 
 // =========================================================================
@@ -1121,5 +1121,59 @@ fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
       if ss |> count == 0 { false }
       else { ss |> any(s => is_tco_candidate(texpr: s, func_name: func_name)) }
     _ => false
+  }
+}
+
+// =========================================================================
+// P4.1: Shared identifier and statement rendering
+// =========================================================================
+
+// Target-dispatched identifier rendering.
+// Rust: snake_case + r#keyword escape. Go: camelCase + _suffix escape.
+// Python: snake_case + _suffix escape.
+fn emit_ident(name: String, target: RenderTarget) -> String {
+  match target {
+    Rust =>
+      let snake = to_snake(name: name)
+      if rust_reserved |> any(r => r == snake) { concat("r#", snake) }
+      else { snake }
+    Go =>
+      let parts = name |> split(delimiter: "_")
+      if parts |> count == 0 { name }
+      else {
+        let first_part = match parts |> first {
+          Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
+          None => ""
+        }
+        let rest_parts = parts |> enumerate
+          |> filter(pair => pair.first > 0)
+          |> map(pair => capitalize_first(s: pair.second))
+        let camel = concat(first_part, rest_parts |> join(separator: ""))
+        if go_reserved |> any(r => r == camel) { concat(camel, "_") }
+        else { camel }
+      }
+    Python =>
+      let snake = to_snake(name: name)
+      if python_reserved |> any(r => r == snake) { concat(snake, "_") }
+      else { snake }
+    Dag => name
+  }
+}
+
+fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat("let ", emit_ident(name: name, target: Rust), " = ", value, ";")
+    Go => concat(emit_ident(name: name, target: Go), " := ", value)
+    Python => concat(emit_ident(name: name, target: Python), " = ", value)
+    Dag => concat("let ", name, " = ", value)
+  }
+}
+
+fn emit_return(value: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat("return ", value, ";")
+    Go => concat("return ", value)
+    Python => concat("return ", value)
+    Dag => concat("return ", value)
   }
 }

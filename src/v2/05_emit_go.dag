@@ -87,7 +87,7 @@ import v2.compiler.emit {
   go_keyword, go_container, go_primitive_type,
   go_literal, go_bin_op_symbol, go_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
-  emit_node_type,
+  emit_node_type, emit_ident,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -420,7 +420,7 @@ fn emit_go_func_def(
 fn emit_go_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_go_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(go_local_ident(name: u.name), " ", emit_node_type(n: u.resource, target: Go))
+    concat(emit_ident(name: u.name, target: Go), " ", emit_node_type(n: u.resource, target: Go))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), " *", sanitize_service_name(name: sn))
@@ -441,7 +441,7 @@ fn emit_go_params(params: List<Param>) -> String {
 
 fn emit_go_param(param: Param) -> String {
   let ty = emit_node_type(n: param.type_expr, target: Go)
-  concat(go_local_ident(name: param.name), " ", ty)
+  concat(emit_ident(name: param.name, target: Go), " ", ty)
 }
 
 fn emit_go_return_type(return_type: Node) -> String {
@@ -454,7 +454,7 @@ fn emit_go_return_type(return_type: Node) -> String {
 }
 fn emit_go_pattern(pattern: MatchPattern) -> String {
   match pattern {
-    Bind { name: n } => go_local_ident(name: n)
+    Bind { name: n } => emit_ident(name: n, target: Go)
     LitPattern { value: v } => emit_literal(value: v, target: Go)
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       emit_go_variant_pattern(name: n, field_bindings: fbs)
@@ -484,7 +484,7 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
   match texpr.expr_data {
     ExprLiteral { value: v } => concat(prefix, emit_literal(value: v, target: Go))
     ExprError { kind: _, message: message } => concat(prefix, "panic(", emit_string_literal(s: message, suffix: ""), ")")
-    ExprVar { name: n, binding_kind: _ } => concat(prefix, go_local_ident(name: n))
+    ExprVar { name: n, binding_kind: _ } => concat(prefix, emit_ident(name: n, target: Go))
     ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
         match extract_typed_service_name(receiver: texpr) {
@@ -555,7 +555,7 @@ fn emit_go_typed_for_each(variable: String, collection: Node, body: Node, regist
   let elem_type = for_each_element_type_node(n: rt_type(n: collection))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
-  concat(make_indent(level: depth), "for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",
+  concat(make_indent(level: depth), "for _, ", emit_ident(name: variable, target: Go), " := range ", coll_str, " {\n",
     body_str, "\n", make_indent(level: depth), "}")
 }
 
@@ -721,7 +721,7 @@ fn emit_go_typed_if(condition: Node, then_branch: Node, else_branch: Node?, regi
 
 fn emit_go_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0)
-  let let_line = concat(make_indent(level: depth), go_local_ident(name: name), " := ", val_str)
+  let let_line = concat(make_indent(level: depth), emit_ident(name: name, target: Go), " := ", val_str)
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -788,7 +788,7 @@ fn emit_go_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, 
 }
 
 fn emit_go_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let param_strs = params |> map(p => concat(go_local_ident(name: p), " interface{}"))
+  let param_strs = params |> map(p => concat(emit_ident(name: p, target: Go), " interface{}"))
   let params_str = param_strs |> join(separator: ", ")
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: scope, depth: 0)
   concat("func(", params_str, ") interface{} { return ", body_str, " }")
@@ -837,7 +837,7 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
   match body.expr_data {
     ExprLet { name: n, value: v, body: inner } => {
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
-      let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
+      let let_line = concat(prefix, emit_ident(name: n, target: Go), " := ", val_str)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -906,7 +906,7 @@ fn emit_go_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, reg
       concat(prefix, "switch ", scrut_str, " {\n", arms_str, "\n", prefix, "}")
     ExprLet { name: n, value: v, body: bd } =>
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
-      let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
+      let let_line = concat(prefix, emit_ident(name: n, target: Go), " := ", val_str)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match bd {
         Some { value: b } =>
@@ -942,7 +942,7 @@ fn emit_go_typed_tco_switch_case(arm: MatchArm, fn_name: String, params: List<Pa
 fn emit_go_typed_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   let ordered_args = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
-  let param_names = params |> map(p => go_local_ident(name: p.name))
+  let param_names = params |> map(p => emit_ident(name: p.name, target: Go))
   let temp_lets = ordered_args |> enumerate |> map(pair =>
     concat(prefix, "tco", to_string(value: pair.first), " := ", pair.second))
   let assigns = param_names |> enumerate |> map(pair =>
@@ -998,7 +998,7 @@ fn emit_go_service_struct(name: String, transport: Node) -> String {
 
 fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(go_local_ident(name: p.name), " ", emit_node_type(n: p.type_expr, target: Go))
+    concat(emit_ident(name: p.name, target: Go), " ", emit_node_type(n: p.type_expr, target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
   let receiver = concat("(c *", service_name, ")")
@@ -1111,7 +1111,7 @@ fn emit_go_resource_def(item: Node) -> String {
 
 fn emit_go_capability_method(cap_node: Node, depth: Int) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(go_local_ident(name: p.name), " ", emit_node_type(n: p.type_expr, target: Go))
+    concat(emit_ident(name: p.name, target: Go), " ", emit_node_type(n: p.type_expr, target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
   // After dissolution, return_type on the child node IS the output type
@@ -1155,27 +1155,7 @@ fn go_export_ident(name: String) -> String {
   }
 }
 
-fn go_local_ident(name: String) -> String {
-  // camelCase: first word lowercase, rest capitalized.
-  let parts = name |> split(delimiter: "_")
-  if parts |> count == 0 {
-    name
-  } else {
-    let first_part = match parts |> first {
-      Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
-      None => ""
-    }
-    let rest_parts = parts |> enumerate
-      |> filter(pair => pair.first > 0)
-      |> map(pair => capitalize_first(s: pair.second))
-    let result = concat(first_part, rest_parts |> join(separator: ""))
-    if go_reserved |> any(r => r == result) {
-      concat(result, "_")
-    } else {
-      result
-    }
-  }
-}
+// Identifier rendering now uses shared emit_ident (05_emit.dag).
 
 // =========================================================================
 // Utility: check if a TypedGraph has service items

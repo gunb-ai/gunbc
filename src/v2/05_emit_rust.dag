@@ -99,7 +99,7 @@ import v2.compiler.emit {
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_ident,
   emit_string_literal,
   module_emit_scope,
   scope_after_expr,
@@ -599,7 +599,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemExternFunc) {
     let params_str = emit_params(params: item.params, rc_types: rc_types)
     let ret_str = emit_return_type(return_type: rt_type(n: item), rc_types: rc_types)
-    concat("pub fn ", rust_ident(name: item.name), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
+    concat("pub fn ", emit_ident(name: item.name, target: Rust), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
   } else {
     concat("compile_error!(\"unhandled item: ", item.name, "\");")
   }
@@ -672,7 +672,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
     }
     None => ""
   }
-  concat(rename_attr, "    pub ", rust_ident(name: child.name), ": ", final_ty, ",")
+  concat(rename_attr, "    pub ", emit_ident(name: child.name, target: Rust), ": ", final_ty, ",")
 }
 
 fn enum_derives(children: List<Node>) -> String {
@@ -744,11 +744,11 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
       if child.children |> count == 0 {
         concat("            ", name, "::", child.name, " => panic!(\"no ", fname, " on unit variant\"),")
       } else {
-        concat("            ", name, "::", child.name, " { ", rust_ident(name: fname), ": __val, .. } => __val.clone(),")
+        concat("            ", name, "::", child.name, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => __val.clone(),")
       }
     )
     let arms_str = arms |> join(separator: "\n")
-    concat("    pub fn ", rust_ident(name: fname), "(&self) -> ", ty, " {\n        match self {\n", arms_str, "\n        }\n    }")
+    concat("    pub fn ", emit_ident(name: fname, target: Rust), "(&self) -> ", ty, " {\n        match self {\n", arms_str, "\n        }\n    }")
   )
   let fns_str = accessor_fns |> join(separator: "\n")
   concat("impl ", name, " {\n", fns_str, "\n}")
@@ -766,7 +766,7 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, rc_types: rc_types) {
         concat("Box<", ty, ">")
       } else { ty }
-      concat("        ", rust_ident(name: f.name), ": ", final_ty, ",")
+      concat("        ", emit_ident(name: f.name, target: Rust), ": ", final_ty, ",")
     )
     let fields_str = field_lines |> join(separator: "\n")
     concat("    ", child.name, " {\n", fields_str, "\n    },")
@@ -914,7 +914,7 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Node,
   if use_tco {
     let tco_params_str = emit_tco_params(params: params, rc_types: rc_types)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    concat("pub fn ", rust_ident(name: name), "(", tco_params_str, ")", ret_str, " {\n",
+    concat("pub fn ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     emit_fn_def_non_tco(name: name, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, needs_stacker: needs_stacker)
@@ -925,13 +925,13 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Node,
 fn emit_fn_def_non_tco(name: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_stacker: Bool) -> String {
   if needs_stacker {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 2, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
+    concat("pub fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n",
       make_indent(level: depth + 2), body_str, "\n",
       make_indent(level: depth + 1), "})\n}")
   } else {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    concat("pub fn ", rust_ident(name: name), "(", params_str, ")", ret_str, " {\n",
+    concat("pub fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), body_str, "\n}")
   }
 }
@@ -961,7 +961,7 @@ fn emit_func_def(
   let ret_str = emit_func_return_type(return_type: return_type, rc_types: rc_types)
   let body_scope = build_params_scope(scope: scope, params: params)
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  concat("pub async fn ", rust_ident(name: name),
+  concat("pub async fn ", emit_ident(name: name, target: Rust),
     "(", params_str, ")", ret_str, " {\n",
     make_indent(level: depth + 1),body_str, "\n}")
 }
@@ -973,7 +973,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
   match body.expr_data {
     ExprLet { name: n, value: v, body: inner } => {
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      let let_line = concat("let ", rust_ident(name: n), " = ", val_str, ";")
+      let let_line = concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";")
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -1033,13 +1033,13 @@ fn emit_tco_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
 fn emit_tco_param(param: Param, rc_types: Map<String, Bool>) -> String {
   let n = param.type_expr
   let ty = emit_rust_node_type(n: n, rc_types: rc_types)
-  concat("mut ", rust_ident(name: param.name), ": ", ty)
+  concat("mut ", emit_ident(name: param.name, target: Rust), ": ", ty)
 }
 
 fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>, rc_types: Map<String, Bool>) -> String {
   let param_strs = params |> map(p => emit_param(param: p, rc_types: rc_types))
   let resource_strs = uses |> map(u =>
-    concat(rust_ident(name: u.name), ": &", emit_rust_node_type(n: u.resource, rc_types: rc_types))
+    concat(emit_ident(name: u.name, target: Rust), ": &", emit_rust_node_type(n: u.resource, rc_types: rc_types))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": &", sanitize_service_name(name: sn))
@@ -1067,7 +1067,7 @@ fn emit_param(param: Param, rc_types: Map<String, Bool>) -> String {
   // All params are owned -- Rc-wrapped types are cheap to clone, and
   // the .clone() pattern in function bodies produces owned values.
   // Adding & to params creates reference/owned mismatches.
-  concat(rust_ident(name: param.name), ": ", ty)
+  concat(emit_ident(name: param.name, target: Rust), ": ", ty)
 }
 
 fn emit_return_type(return_type: Node, rc_types: Map<String, Bool>) -> String {
@@ -1103,15 +1103,15 @@ fn emit_simple_expr(expr: Node) -> String {
     ExprLiteral { value: v } => emit_literal(value: v, target: Rust)
     ExprError { kind: _, message: message } =>
       concat("compile_error!(", emit_string_literal(s: message, suffix: ""), ")")
-    ExprVar { name: n, binding_kind: _ } => rust_ident(name: n)
+    ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: Rust)
     ExprFieldAccess { base: b, field: f, summary: _ } =>
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
-          None => concat(emit_simple_expr(expr: b), ".", rust_ident(name: f))
+          None => concat(emit_simple_expr(expr: b), ".", emit_ident(name: f, target: Rust))
         }
       } else {
-        concat(emit_simple_expr(expr: b), ".", rust_ident(name: f))
+        concat(emit_simple_expr(expr: b), ".", emit_ident(name: f, target: Rust))
       }
     ExprStringInterp { parts: ps } =>
       emit_simple_string_interp(parts: ps)
@@ -1181,7 +1181,7 @@ fn collect_pattern_string_guards(pattern: MatchPattern) -> String {
         let guards = str_bindings |> map(fb =>
           match fb.binding {
             LitPattern { value: LitStr { value: s } } =>
-              concat(rust_ident(name: fb.field_name), " == ", emit_string_literal(s: s, suffix: ""))
+              concat(emit_ident(name: fb.field_name, target: Rust), " == ", emit_string_literal(s: s, suffix: ""))
             _ => ""
           }
         )
@@ -1206,7 +1206,7 @@ fn all_arms_are_string_lit(arms: List<MatchArm>) -> Bool {
 
 fn emit_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   match pattern {
-    Bind { name: n } => rust_ident(name: n)
+    Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
@@ -1259,10 +1259,10 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         if is_string_lit_pattern(p: fb.binding) {
-          concat("ref ", rust_ident(name: fb.field_name))
+          concat("ref ", emit_ident(name: fb.field_name, target: Rust))
         } else {
             let pat_str = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
-            concat(rust_ident(name: fb.field_name), ": ", pat_str)
+            concat(emit_ident(name: fb.field_name, target: Rust), ": ", pat_str)
         }
       )
       let bindings_str = binding_strs |> join(separator: ", ")
@@ -1375,7 +1375,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, v
 
 fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   match pattern {
-    Bind { name: n } => rust_ident(name: n)
+    Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
@@ -1414,14 +1414,14 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         if is_string_lit_pattern(p: fb.binding) {
-          concat("ref ", rust_ident(name: fb.field_name))
+          concat("ref ", emit_ident(name: fb.field_name, target: Rust))
         } else {
           if field_needs_rc_ref(field_name: fb.field_name, rc_analysis: rc_analysis) {
-            concat("ref ", rust_ident(name: fb.field_name))
+            concat("ref ", emit_ident(name: fb.field_name, target: Rust))
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
             let pat_str = emit_pattern_rc_aware(pattern: fb.binding, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
-            concat(rust_ident(name: fb.field_name), ": ", pat_str)
+            concat(emit_ident(name: fb.field_name, target: Rust), ": ", pat_str)
           }
         }
       )
@@ -1446,7 +1446,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
       } else {
         let preludes = fbs |> flat_map(fb =>
           if field_needs_rc_ref(field_name: fb.field_name, rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: ""), " = ", rust_ident(name: fb.field_name), ".as_ref() else { unreachable!() };")]
+            [concat("let ", emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: ""), " = ", emit_ident(name: fb.field_name, target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -1545,7 +1545,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
                 Some { value: FunctionValueBinding } => true
                 _ => false
               }
-              let ident = rust_ident(name: name)
+              let ident = emit_ident(name: name, target: Rust)
               let ident_str = if is_function_value {
                 ident
               } else { match resolved_type {
@@ -1555,7 +1555,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
               ident_str
             }
           None =>
-            let ident = rust_ident(name: name)
+            let ident = emit_ident(name: name, target: Rust)
             let ident_str = match resolved_type {
               Some { value: _ } => concat(ident, ".clone()")
               _ => ident
@@ -1589,8 +1589,8 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               Some { value: info } =>
                 let is_data = info.kind == DataItem
                 if is_data { to_screaming_snake(name: n) }
-                else { rust_ident(name: n) }
-              None => rust_ident(name: n)
+                else { emit_ident(name: n, target: Rust) }
+              None => emit_ident(name: n, target: Rust)
             }
         }
       }
@@ -1633,8 +1633,8 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
           TupleFirst => concat(base_str, ".0.clone()")
           TupleSecond => concat(base_str, ".1.clone()")
           OptionalUnwrap => concat(base_str, ".clone().unwrap()")
-          EnumAccessor => concat(base_str, ".", rust_ident(name: field), "()")
-          StoredField => concat(base_str, ".", rust_ident(name: field), ".clone()")
+          EnumAccessor => concat(base_str, ".", emit_ident(name: field, target: Rust), "()")
+          StoredField => concat(base_str, ".", emit_ident(name: field, target: Rust), ".clone()")
         }
       // Every field access must have a summary set by reconcile.
       None => concat("compile_error!(\"field access missing reconcile summary for '", field, "'\")")
@@ -1872,7 +1872,7 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     // Extract field inits from the update argument (ExprRecordLit).
     let field_strs = match update_arg.expr_data {
       ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
-        fs |> map(f => concat(rust_ident(name: f.name), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
+        fs |> map(f => concat(emit_ident(name: f.name, target: Rust), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)]
     }
     let fields_str = field_strs |> join(separator: ", ")
@@ -1924,7 +1924,7 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     Some { value: info } =>
       let is_func = info.kind == FuncItem
       if is_func {
-        let resource_args = info.resource_names |> map(rn => concat("&", rust_ident(name: rn)))
+        let resource_args = info.resource_names |> map(rn => concat("&", emit_ident(name: rn, target: Rust)))
         let service_args = info.service_names |> map(sn => service_var_name(service_name: sn))
         concat(resource_args, service_args)
       } else { [] }
@@ -1932,8 +1932,8 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   }
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
-  let func_name = if is_rt { concat("v2_rt::", rust_ident(name: func)) }
-    else { rust_ident(name: func) }
+  let func_name = if is_rt { concat("v2_rt::", emit_ident(name: func, target: Rust)) }
+    else { emit_ident(name: func, target: Rust) }
   // Special case: concat is variadic in DAG but binary in Rust.
   // Nest multi-arg concat calls: concat(a, b, c) becomes v2_rt::concat(v2_rt::concat(a, b), c)
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
@@ -2001,7 +2001,7 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
   let ind0 = make_indent(level: depth)
   concat("{\n",
     ind1, "let mut __collect = Vec::new();\n",
-    ind1, "for ", rust_ident(name: variable), " in ", coll_str, ".iter().cloned() {\n",
+    ind1, "for ", emit_ident(name: variable, target: Rust), " in ", coll_str, ".iter().cloned() {\n",
     ind2, "__collect.push(", body_str, ");\n",
     ind1, "}\n",
     ind1, "__collect\n",
@@ -2085,8 +2085,8 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       None => "_"
     }
     match inferred_type {
-      Some { value: ty } => concat(rust_ident(name: param_name), ": ", ty)
-      None => concat(rust_ident(name: param_name), ": ", fallback_type)
+      Some { value: ty } => concat(emit_ident(name: param_name, target: Rust), ": ", ty)
+      None => concat(emit_ident(name: param_name, target: Rust), ": ", fallback_type)
     }
   )
 }
@@ -2157,7 +2157,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             match a.value.expr_data {
               ExprLambda { params: ps, body: bd, semantics: semantics } =>
                 let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-                let p = rust_ident(name: dag_name)
+                let p = emit_ident(name: dag_name, target: Rust)
                 let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
                 let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
                 concat(recv_str, ".map(|", p, "| ", body_str, ")")
@@ -2171,7 +2171,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             match a.value.expr_data {
               ExprLambda { params: ps, body: bd, semantics: semantics } =>
                 let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-                let p = rust_ident(name: dag_name)
+                let p = emit_ident(name: dag_name, target: Rust)
                 let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
                 let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
                 concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result }")
@@ -2186,7 +2186,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           match a.value.expr_data {
             ExprLambda { params: ps, body: bd, semantics: semantics } =>
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = rust_ident(name: dag_name)
+              let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __result.push(", p, "); } } __result }")
@@ -2200,7 +2200,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           match a.value.expr_data {
             ExprLambda { params: ps, body: bd, semantics: semantics } =>
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = rust_ident(name: dag_name)
+              let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               concat("{ let mut __found = false; for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __found = true; break; } } __found }")
@@ -2214,7 +2214,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           match a.value.expr_data {
             ExprLambda { params: ps, body: bd, semantics: semantics } =>
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = rust_ident(name: dag_name)
+              let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               concat("{ let mut __all = true; for ", p, " in ", recv_str, ".iter().cloned() { if !(", body_str, ") { __all = false; break; } } __all }")
@@ -2228,7 +2228,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           match a.value.expr_data {
             ExprLambda { params: ps, body: bd, semantics: semantics } =>
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = rust_ident(name: dag_name)
+              let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend(", body_str, "); } __result }")
@@ -2362,7 +2362,7 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
     let update_arg = (args |> first).value.value
     let field_strs = match update_arg.expr_data {
       ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
-        fs |> map(f => concat(rust_ident(name: f.name), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
+        fs |> map(f => concat(emit_ident(name: f.name, target: Rust), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)]
     }
     let fields_str = field_strs |> join(separator: ", ")
@@ -2378,7 +2378,7 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
     }
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
     let all_strs = concat([recv_str], arg_strs)
-    concat("v2_rt::", rust_ident(name: function_name), "(", all_strs |> join(separator: ", "), ")")
+    concat("v2_rt::", emit_ident(name: function_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
   }
   if rust_runtime_bridge_wraps_result_in_rc(function_name: function_name, receiver: receiver, scope: scope) {
     concat(lowered, ".map(Rc::new)")
@@ -2394,7 +2394,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
       let filled_args = fill_op_default_args(ordered: args, op_params: op_params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let arg_strs = filled_args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
       let args_str = arg_strs |> join(separator: ", ")
-      concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
+      concat(var_name, ".", emit_ident(name: method, target: Rust), "(", args_str, ").await?")
     }
     IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } => {
       let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2406,7 +2406,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
       let args_str = arg_strs |> join(separator: ", ")
-      concat(recv_str, ".", rust_ident(name: method), "(", args_str, ")")
+      concat(recv_str, ".", emit_ident(name: method, target: Rust), "(", args_str, ")")
   } }
   else { "compile_error!(\"method call missing reconcile semantics\")" }
 }
@@ -2508,7 +2508,7 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let let_line = concat("let ", rust_ident(name: name), " = ", val_str, ";")
+  let let_line = concat("let ", emit_ident(name: name, target: Rust), " = ", val_str, ";")
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -2765,7 +2765,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
           } else { val_str }
-          concat("    ", rust_ident(name: f.name), ": ", field_val, ",")
+          concat("    ", emit_ident(name: f.name, target: Rust), ": ", field_val, ",")
         )
         let all_field_strs = field_strs
         let fields_str = all_field_strs |> join(separator: "\n")
@@ -2850,7 +2850,7 @@ fn emit_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, Ite
 }
 
 fn emit_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let param_strs = params |> map(p => rust_ident(name: p))
+  let param_strs = params |> map(p => emit_ident(name: p, target: Rust))
   let params_str = param_strs |> join(separator: ", ")
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   concat("|", params_str, "| ", body_str)
@@ -2939,8 +2939,8 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Param>, registry: Map<String, Ite
     ExprLet { name: n, value: v, body: _ } =>
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
-      if is_param { concat(rust_ident(name: n), " = ", val_str, ";") }
-      else { concat("let ", rust_ident(name: n), " = ", val_str, ";") }
+      if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
+      else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   }
 }
@@ -2998,7 +2998,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
     ExprLet { name: n, value: v, body: bd } =>
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
-      let let_line = if is_param { concat(rust_ident(name: n), " = ", val_str, ";") } else { concat("let ", rust_ident(name: n), " = ", val_str, ";") }
+      let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match bd {
         Some { value: b } =>
@@ -3055,7 +3055,7 @@ fn emit_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>,
 
 fn emit_typed_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let ordered_args = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-  let param_names = params |> map(p => rust_ident(name: p.name))
+  let param_names = params |> map(p => emit_ident(name: p.name, target: Rust))
   let temp_lets = ordered_args |> enumerate |> map(pair =>
     concat("let __tco_", to_string(value: pair.first), " = ", pair.second, ";"))
   let assigns = param_names |> enumerate |> map(pair =>
@@ -3193,7 +3193,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: p.type_expr, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_node_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3218,7 +3218,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     make_indent(level: depth + 2),real_body, "\n",
     "}")
   let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties)
-  concat(modifier_doc, "pub async fn ", rust_ident(name: op_node.name),
+  concat(modifier_doc, "pub async fn ", emit_ident(name: op_node.name, target: Rust),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
     make_indent(level: depth + 1),body, "\n}")
 }
@@ -3259,7 +3259,7 @@ fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, I
 fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let client_init = "let client = reqwest::Client::new();"
   let url_line = concat("let url = format!(\"{}/{}\", self.base_url, \"",
-    rust_ident(name: op_name), "\");")
+    emit_ident(name: op_name, target: Rust), "\");")
   let header_name = match transport_auth_header_name(t: transport) {
     Some { value: h } => h
     None => "Authorization"
@@ -3289,7 +3289,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
 
 fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, return_type: Node) -> String {
   let cmd_line = concat("let output = std::process::Command::new(\"",
-    rust_ident(name: op_name), "\")")
+    emit_ident(name: op_name, target: Rust), "\")")
   let env_entries = transport_env(t: transport)
   let env_lines = env_entries |> map(e =>
     concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value), ")")
@@ -3335,14 +3335,14 @@ fn emit_file_call(op_name: String, return_type: Node) -> String {
     "Ok(content)"
   }
   concat("let path = format!(\"{}/{}\", self.base_path, \"",
-    rust_ident(name: op_name), "\");\n",
+    emit_ident(name: op_name, target: Rust), "\");\n",
     "let content = std::fs::read_to_string(&path)?;\n",
     parse_line)
 }
 
 fn emit_local_call(op_name: String) -> String {
   concat("// Local binding -- direct function call\n",
-    "Ok(", rust_ident(name: op_name), "())")
+    "Ok(", emit_ident(name: op_name, target: Rust), "())")
 }
 
 // =========================================================================
@@ -3368,7 +3368,7 @@ fn emit_resource_def(item: Node) -> String {
 
 fn emit_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(rust_ident(name: p.name), ": ", emit_rust_node_type(n: p.type_expr, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_node_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3377,7 +3377,7 @@ fn emit_capability_method(cap_node: Node) -> String {
     concat("&self, ", params_str)
   }
   let ret = emit_rust_node_type(n: rt_type(n: cap_node), rc_types: empty_map())
-  concat("async fn ", rust_ident(name: cap_node.name), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
+  concat("async fn ", emit_ident(name: cap_node.name, target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
 // =========================================================================
@@ -3506,13 +3506,7 @@ fn emit_mock_prop_setup(mock_prop: FieldInit, registry: Map<String, ItemInfo>, d
 
 // Convert a DSL identifier to a valid Rust identifier.
 // Handles reserved word escaping with r# prefix.
-fn rust_ident(name: String) -> String {
-  if rust_reserved |> any(r => r == name) {
-    concat("r#", name)
-  } else {
-    to_snake(name: name)
-  }
-}
+// Identifier rendering now uses shared emit_ident (05_emit.dag).
 
 // =========================================================================
 // Cargo.toml emission
@@ -3747,7 +3741,7 @@ fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
 
 // Emit a struct field inside a subcommand variant, with clap attributes.
 fn emit_subcommand_field(param: Param) -> String {
-  let field_name = rust_ident(name: param.name)
+  let field_name = emit_ident(name: param.name, target: Rust)
   let field_type = emit_cli_param_type_node(n: param.type_expr)
   let default_attr = match param.default_value {
     // Invalid defaults are rejected before file emission; this path only renders
@@ -3886,14 +3880,14 @@ fn emit_compile_match_arm() -> String {
 fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
   let variant_name = capitalize_first(s: wf.name)
   let mod_name = module_to_filename(name: wf.module_name)
-  let fn_name = rust_ident(name: wf.name)
+  let fn_name = emit_ident(name: wf.name, target: Rust)
   let await_suffix = if has_services { ".await" } else { "" }
   if wf.params |> count == 0 {
     let service_args = emit_main_service_args(wf: wf, has_services: has_services)
     concat("Commands::", variant_name, " => ",
       mod_name, "::", fn_name, "(", service_args, ")", await_suffix, ",")
   } else {
-    let field_binds = wf.params |> map(p => rust_ident(name: p.name))
+    let field_binds = wf.params |> map(p => emit_ident(name: p.name, target: Rust))
     let binds_str = field_binds |> join(separator: ", ")
     let call_args = emit_main_call_args(wf: wf, has_services: has_services)
     concat("Commands::", variant_name, " { ", binds_str, " } => ",
@@ -3905,7 +3899,7 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 // Includes the function's params, then service instance args.
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
-    let arg_name = rust_ident(name: p.name)
+    let arg_name = emit_ident(name: p.name, target: Rust)
     if needs_reference_node(n: p.type_expr) {
       concat("&", arg_name)
     } else {
