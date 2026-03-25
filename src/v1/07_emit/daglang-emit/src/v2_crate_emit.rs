@@ -576,6 +576,21 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             })
         })
         .collect();
+    let global_data_string_names: HashSet<String> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::DataDef(dd) => {
+                    if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Named(n) if n == "String") {
+                        Some(dd.name.clone())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+        })
+        .collect();
 
     // 5. Emit each module, tracking type definitions to suppress exact duplicates
     // TEMPORARY bootstrap scaffolding (S81): downstream modules that re-declare
@@ -644,6 +659,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &global_data_names,
             &global_data_map_names,
             &global_data_string_list_names,
+            &global_data_string_names,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -972,6 +988,7 @@ fn emit_module(
     global_data_names: &HashSet<String>,
     global_data_map_names: &HashSet<String>,
     global_data_string_list_names: &HashSet<String>,
+    global_data_string_names: &HashSet<String>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -1010,6 +1027,19 @@ fn emit_module(
         _ => None,
     }));
 
+    // Collect data names that are String (emitted as &str, need .to_string() at use)
+    let mut data_string_names: HashSet<String> = global_data_string_names.clone();
+    data_string_names.extend(items.iter().filter_map(|item| match &item.node {
+        Item::DataDef(dd) => {
+            if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Named(n) if n == "String") {
+                Some(dd.name.clone())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }));
+
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
 
@@ -1026,6 +1056,7 @@ fn emit_module(
             .collect(),
         data_map_names,
         data_string_list_names,
+        data_string_names,
         optional_fields: optional_fields.clone(),
         variant_to_enum: variant_to_enum.clone(),
         struct_field_types: struct_field_types.clone(),

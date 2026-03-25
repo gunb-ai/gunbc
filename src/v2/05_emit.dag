@@ -62,15 +62,18 @@ import v2.compiler.infer {
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
 import extdeps.languages.rust.emit {
-  rust_type_map, rust_keywords, rust_container_templates, rust_reserved
+  rust_type_map, rust_keywords, rust_container_templates, rust_reserved,
+  rust_reserved_escape_prefix
 }
 
 import extdeps.languages.python.emit {
-  python_type_map, python_keywords, python_container_templates, python_reserved
+  python_type_map, python_keywords, python_container_templates, python_reserved,
+  python_reserved_escape_suffix
 }
 
 import extdeps.languages.go.emit {
-  go_type_map, go_keywords, go_container_templates, go_reserved
+  go_type_map, go_keywords, go_container_templates, go_reserved,
+  go_reserved_escape_suffix
 }
 
 // =========================================================================
@@ -1228,7 +1231,7 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
   match target {
     Rust =>
       let snake = to_snake(name: name)
-      if rust_reserved |> any(r => r == snake) { concat("r#", snake) }
+      if rust_reserved |> any(r => r == snake) { concat(rust_reserved_escape_prefix, snake) }
       else { snake }
     Go =>
       let parts = name |> split(delimiter: "_")
@@ -1242,12 +1245,12 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
           |> filter(pair => pair.first > 0)
           |> map(pair => capitalize_first(s: pair.second))
         let camel = concat(first_part, rest_parts |> join(separator: ""))
-        if go_reserved |> any(r => r == camel) { concat(camel, "_") }
+        if go_reserved |> any(r => r == camel) { concat(camel, go_reserved_escape_suffix) }
         else { camel }
       }
     Python =>
       let snake = to_snake(name: name)
-      if python_reserved |> any(r => r == snake) { concat(snake, "_") }
+      if python_reserved |> any(r => r == snake) { concat(snake, python_reserved_escape_suffix) }
       else { snake }
     Dag => name
   }

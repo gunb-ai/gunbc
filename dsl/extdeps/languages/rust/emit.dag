@@ -51,6 +51,25 @@ data rust_reserved: List<String> = [
   "virtual"
 ]
 
+// -- Reserved word escape ------------------------------------------------
+// Ref: Rust Reference, Appendix B: Raw identifiers
+// Mirrors rust_reserved_words.strategy.prefix from std.languages.
+data rust_reserved_escape_prefix: String = "r#"
+
+// -- Serialization -------------------------------------------------------
+// Ref: serde_derive docs (serde.rs), Rust derive macros
+// Mirrors rust_serialization from std.languages.
+data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
+
+// -- Project scaffold ----------------------------------------------------
+// Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)
+// Mirrors rust_scaffold from std.languages.
+data rust_source_extension: String = ".rs"
+data rust_source_dir: String = "src/"
+data rust_visibility: String = "pub "
+
 // -- Runtime function lookup tables --------------------------------------
 // Maps of functions backed by v2_rt at runtime.
 // Used by the emitter to decide calling convention (v2_rt:: prefix, &-ref args).

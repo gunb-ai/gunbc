@@ -52,3 +52,15 @@ data go_reserved: List<String> = [
   "imag", "len", "make", "new", "panic", "print", "println",
   "real", "recover"
 ]
+
+// -- Reserved word escape ------------------------------------------------
+// Ref: Go Spec -- Go uses no raw identifier escape; underscore suffix by convention.
+// Mirrors go_reserved_words.strategy from std.languages (NoEscape, but
+// the emitter appends "_" for keywords that clash with identifiers).
+data go_reserved_escape_suffix: String = "_"
+
+// -- Project scaffold ----------------------------------------------------
+// Ref: Go modules reference (go.dev/ref/mod)
+// Mirrors go_scaffold from std.languages.
+data go_source_extension: String = ".go"
+data go_manifest_file: String = "go.mod"
