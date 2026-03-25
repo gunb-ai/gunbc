@@ -27,6 +27,7 @@ fn main() {
         ("04_env", "src/v2/04_env.dag"),
         ("04_method", "src/v2/04_method.dag"),
         ("04_cycle", "src/v2/04_cycle.dag"),
+        ("04_resolve", "src/v2/04_resolve.dag"),
         ("04_infer", "src/v2/04_infer.dag"),
         ("05_emit", "src/v2/05_emit.dag"),
         ("05_emit_rust", "src/v2/05_emit_rust.dag"),

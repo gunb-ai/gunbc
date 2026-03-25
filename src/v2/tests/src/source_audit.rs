@@ -181,11 +181,12 @@ fn resolve_filters_failed_imports_and_cycles() {
 
 #[test]
 fn typecheck_resolves_and_validates_expression_tree_types() {
-    let source = read_v2_file("src/v2/04_infer.dag");
+    let resolve_source = read_v2_file("src/v2/04_resolve.dag");
     assert!(
-        source.contains("fn resolve_expr_types"),
-        "04_infer.dag should contain fn resolve_expr_types"
+        resolve_source.contains("fn resolve_expr_types"),
+        "04_resolve.dag should contain fn resolve_expr_types"
     );
+    let source = read_v2_file("src/v2/04_infer.dag");
     assert!(
         source.contains("collect_unresolved_in_expr"),
         "04_infer.dag should contain collect_unresolved_in_expr"

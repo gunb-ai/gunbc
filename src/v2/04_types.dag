@@ -98,6 +98,10 @@ fn error_type_node() -> Node {
   leaf_node(name: "Error")
 }
 
+fn no_span() -> SourceSpan {
+  SourceSpan { start: 0, end: 0 }
+}
+
 // =========================================================================
 // Type predicates
 // =========================================================================

@@ -79,6 +79,10 @@ pub fn error_type_node() -> Rc<Node> {
     leaf_node("Error")
 }
 
+pub fn no_span() -> SourceSpan {
+    SourceSpan { start: 0_i64, end: 0_i64 }
+}
+
 pub fn node_is_product(n: Rc<Node>) -> bool {
     (n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Conj))
 }
