@@ -839,7 +839,7 @@ fn main() {
                 }));
             }
 
-            eprintln!("compiling {} .dag files from {}", sources.len(), source_dir);
+            eprintln!("compiling {} .dag files from {} (target: {})", sources.len(), source_dir, target);
 
             let render_target = match target.as_str() {
                 "rust" => artifact::RenderTarget::Rust,
