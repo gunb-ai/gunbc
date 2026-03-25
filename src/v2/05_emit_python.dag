@@ -80,7 +80,7 @@ import v2.compiler.emit {
   python_literal, python_bin_op_symbol, python_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -469,9 +469,11 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
 }
 
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let shared = emit_shared_expr(texpr: texpr, target: Python)
+  match shared {
+    Some { value: result } => result
+    None =>
   match texpr.expr_data {
-    ExprLiteral { value: v } => emit_literal(value: v, target: Python)
-    ExprError { kind: _, message: message } => emit_error_expr(message: message, target: Python)
     ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: Python)
     ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
@@ -516,7 +518,9 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
       emit_py_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth)
     ExprReturn { value: v } =>
       emit_return(value: emit_py_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth), target: Python)
-    NoExprData => ""
+    // ExprLiteral, ExprError, NoExprData handled by emit_shared_expr
+    _ => ""
+  }
   }
 }
 

@@ -1400,6 +1400,31 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 }
 
 // =========================================================================
+// emit_shared_expr — shared ExprData dispatcher (P4.2 step 5)
+//
+// Handles leaf arms that are structurally identical across all backends
+// and require no recursive sub-expression emission. Returns Some for
+// handled arms, none for arms that need per-backend recursion.
+//
+// NOTE: Arms that recurse (UnaryOp, Lambda, ListLit, Return) stay
+// per-backend until self-hosting removes the v1 interpreter constraint
+// (v1 interpreter cannot evaluate lambdas as callable values).
+// Those arms already call shared helpers (emit_unary_op, emit_lambda,
+// emit_list_lit_expr, emit_return) — the deduplication is in the helpers.
+// =========================================================================
+
+fn emit_shared_expr(texpr: Node, target: RenderTarget) -> String? {
+  match texpr.expr_data {
+    ExprLiteral { value: v } =>
+      Some { value: emit_literal(value: v, target: target) }
+    ExprError { kind: _, message: message } =>
+      Some { value: emit_error_expr(message: message, target: target) }
+    NoExprData => Some { value: "" }
+    _ => none
+  }
+}
+
+// =========================================================================
 // bridge_method_base_name — canonical snake_case name for each bridge method.
 //
 // Single authority for the Bridge* → snake_case mapping. Each backend
