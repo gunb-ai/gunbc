@@ -530,7 +530,7 @@ Status labels:
 | Arity bridge (P1.17) | `parameterized_type_arity`, `is_parameterized_type`, `type_node_arity_ok` in core/types. Bare-leaf tolerance removed; `actual == 0` rejected as error by normalization gate. | tree-green | 2026-03 |
 | Inference path dedup (P1.15) | Shared `refine_collection_result_type` handles map/flat_map/fold/map_insert/map_merge result typing for both paths. Shared fold helpers landed. Call→MethodCall dispatch deferred to Phase 3 normalization. | tree-green | 2026-03 |
 | Shared fold helpers (R3) | `extract_fold_init_info`, `infer_method_args_with_fold` eliminate ~35 lines of duplicate fold logic | tree-green | 2026-03 |
-| DAG backend (P4.4) | `Dag` variant on `RenderTarget`; `emit_dag_artifact` emits minimal JSON envelope (version + module names). **Not the Phase 4 contract:** does not serialize the typed graph or schema. | smoke | 2026-03 |
+| DAG backend (P4.4) | `Dag` variant on `RenderTarget`; `emit_dag_artifact` now serializes a versioned typed-graph envelope (`modules`, `diagnostics`, `files`) to `dag-artifact.json` via explicit `ResolvedGraph`/`TypedModule`/`Node` serializers. | tree-green + smoke | 2026-03 |
 | Scrambled-name tests (P1.16) | `v2_scrambled_name_inference_smoke` and `_containers` compare diagnostic count and file count after name scrambling. **Not the roadmap gate:** does not compare inferred structure (typed graph shapes) as Phase 5 requires. | smoke | 2026-03 |
 | Algebraic type spec (P1.18) | `docs/algebraic-type-spec.md` pins denotational semantics, algebra laws, and cardinality model | structural | 2026-03 |
 | Testgen source gate (P1.21) | `v2_testgen_service_mock_source_gate` greps emitter source for bad patterns. **Guardrail, not gate:** does not compile a service module, extract test files, and assert syntactically valid Rust. | guardrail | 2026-03 |
@@ -803,8 +803,9 @@ L1 acceptance (updated per thesis amendments):
 
 ## Recommended Next Steps and Parallelization
 
-Phase 1 complete. Phase 2 gate met (gist lib compiles). Phase 3 nearly
-complete (v1 retired, generics done except recursive). Phase 4 in progress.
+Phase 1 complete. Phase 2 gate met (gist lib compiles). Phase 3 closed on
+this branch. Phase 4 implementation is complete on this branch except for
+P4.6 equivalence validation / convergence follow-through.
 
 ### Parallelizable work streams
 
@@ -813,11 +814,12 @@ complete (v1 retired, generics done except recursive). Phase 4 in progress.
 | **A: Fixed-point** | Bootstrap convergence | **Done** — deterministic output, ratchet at 0 | — |
 | **B: Generics** | P3.6 + P3.7 | **Done** — non-recursive types work, arity bridge deleted | — |
 | **D: V1 retirement** | Replace v1 interpreter with stage0 | **Done** (PR #200 + #204) — stage0 committed, tests direct, v1-bootstrap removed | — |
-| **D tier 5: File decomposition** | Decompose `04_infer.dag` using `map_expr_children` | **Unblocked** — stage0→stage1 path handles callable params | D done |
-| **E: P4.1a + P4.2 Shared emit** | Unify Rust type walker into shared emit; centralize ExprData dispatch | **In progress** — P4.2 step 5 leaf dispatcher done | P4.1 review cleanup done |
+| **D tier 5: File decomposition** | Decompose `04_infer.dag` using `map_expr_children` | **In progress** — `map_expr_children` landed and `resolve_expr_types` rewrites now use it; further file splitting is follow-up cleanup | D done |
+| **E: P4.1a + P4.2/P4.3/P4.4/P4.5** | Shared emit spine, generated tests, DAG backend, typed CLI target surface | **Done** — full shared ExprData/TCO dispatch landed; tests and DAG artifact now share compiler-owned projections | P4.1 review cleanup done |
 
-**D tier 5 and E remain independent** — D tier 5 touches `04_infer.dag`
-decomposition; E touches emit `.dag` files. Different files, different concerns.
+**D tier 5 remains independent of the completed emit work** — further
+`04_infer.dag` file splitting can proceed without reopening the Phase 4
+emit boundary changes.
 
 ### V1 retirement + file decomposition plan (Stream D)
 
@@ -828,34 +830,39 @@ stage0 typed APIs directly. `v1-bootstrap` removed from default features.
 `v2_runtime_shim.rs` deleted. `assemble_stage0` binary for seed regeneration.
 CI excludes `v2-compiler` from workspace test (generated_tests.rs too large).
 
-**Tier 5: File decomposition — unblocked, not started.**
+**Tier 5: File decomposition — partially complete.**
 
 With `map_expr_children` now usable (stage0→stage1 bootstrap path handles
-callable parameters), collapse `resolve_expr_types` (~160 → ~10 lines)
-and extract type resolution, func sigs, and expression inference into
-separate files. Target: `04_infer.dag` under 1500 lines.
+callable parameters), `resolve_expr_types` rewrites now use the structural
+mapper instead of hand-written child walks. Additional type-resolution /
+expression-inference file splitting remains optional cleanup. Target:
+`04_infer.dag` under 1500 lines still stands.
 
 **What V1 retirement unblocked:**
 - P3.8 recursive generics (v1 Rust stack overflow gone — done in PR #206)
-- `map_expr_children` (stage0 handles HOFs natively)
-- Full callback `emit_shared_expr` (stage0→stage1 path)
-- `resolve_expr_types` collapse (~160 → ~10 lines)
-- File decomposition with final code shape
+- `map_expr_children` (landed)
+- Full callback `emit_shared_expr` (landed)
+- Shared TCO dispatcher extraction (landed)
+- `resolve_expr_types` collapse / structural rewrites (landed)
+- Further file decomposition with final code shape (still optional cleanup)
 
 ### Sequential dependencies
 
 ```
-D (v1 retirement) ✓ DONE → P3.8 recursive generics ← UNBLOCKED
-                          → map_expr_children ← UNBLOCKED
-                          → file decomposition (D tier 5) ← UNBLOCKED
+D (v1 retirement) ✓ DONE → P3.8 recursive generics ✓ DONE
+                          → map_expr_children ✓ DONE
+                          → resolve_expr_types collapse ✓ DONE
+                          → file decomposition (D tier 5) ← OPTIONAL CLEANUP
 
 E (P4.1a Rc unification) → E (P4.2 shared ExprData dispatch steps 2-4) ✓ DONE
                           → P4.7 (callable-type params) ✓ DONE
-                          → P4.2 step 5 (shared leaf dispatcher) ✓ DONE
-                          → P4.3 (generated tests) ← NEXT
-                          → P4.4 (DAG backend)
+                          → P4.2 step 5 (full shared dispatcher + TCO) ✓ DONE
+                          → P4.3 (generated tests) ✓ DONE
+                          → P4.4 (DAG backend) ✓ DONE
+                          → P4.5 (typed CLI target surface) ✓ DONE
+                          → P4.6 (equivalence validation) ← NEXT
 
-D tier 5 and E are independent.
+D tier 5 and P4.6 remain independent.
 ```
 
 **Dependencies:**
@@ -863,10 +870,12 @@ D tier 5 and E are independent.
 ```
 Phase 1 (done) ──→ Phase 2 verification (gist gate) ✓
 Phase 2 ─────────→ P4.1a/P4.2 (shared emit) ✓
-D (v1 retirement) ✓ → file decomposition ← UNBLOCKED
-                    → full callback emit_shared_expr ← UNBLOCKED
-P4.7 (callable) ✓→ P4.2 step 5 (shared leaf dispatcher) ✓ DONE
-P4.2 ────────────→ P5.0 (parser cleanup, can run in parallel with late P4)
+D (v1 retirement) ✓ → full callback emit_shared_expr ✓ DONE
+                    → map_expr_children ✓ DONE
+                    → file decomposition ← OPTIONAL CLEANUP
+P4.7 (callable) ✓→ P4.2 step 5 (full shared dispatcher) ✓ DONE
+P4.2/P4.3/P4.4/P4.5 ✓ → P4.6 equivalence validation ← NEXT
+P4.2 ────────────→ P5.0 (parser cleanup, can run in parallel with P4.6)
 L1 dissolution ──→ Phase 5's L1=0 gate (ongoing, not blocking)
 ```
 
@@ -1022,7 +1031,7 @@ invariant violations, and continues L1 dissolution toward name opacity.
 |----|------|--------|-------|
 | P1.12 | Emit catch-all fail-closed | **Done** | `emit_typed_item` catch-all already emits `compile_error!()` — no `// unhandled` comments remain in `05_emit_rust.dag` |
 | P1.10 | Collapse parallel bridge name maps | **Done** | `runtime_bridge_method_name` deleted from core. Remaining 4 tables (1 classifier in `04_method` + 3 per-target renderers in emit files) are exhaustive matches on closed `RuntimeBridgeMethod` enum — structurally sound per invariants. Per-target names genuinely differ (Rust `"with"`, Go `"With"`, Python `"with_update"`). |
-| P1.19 | Testgen: collapse parallel mock extraction | **Done** | Deleted `extract_mock_props` from `05_emit_rust.dag`; all 3 call sites inlined to use `has_mock_prefix` from shared emit directly. `TestProjection` and `extract_test_projections` remain in shared emit for future test generation restructuring. |
+| P1.19 | Testgen: collapse parallel mock extraction | **Done** | Deleted `extract_mock_props` from `05_emit_rust.dag`; all 3 call sites inlined to use `has_mock_prefix` from shared emit directly. `TestProjection` and `extract_test_projections` now feed Rust, Go, and Python test emission through the shared P4.3 path. |
 | P1.20 | Testgen: kill fabrication sites | **Done** | `emit_simple_expr` wildcard already `compile_error!()`. `emit_data_value_json`/`emit_typed_data_value_json` wildcards changed from `{"__error__": ...}` to invalid JSON `<<<UNSUPPORTED_MOCK_EXPR>>>`. `Default::default()` for resource args → `compile_error!()`. Three `todo!()` sites (fold/method-arg/cast) → `compile_error!()`. Dry-run no-mock-data already `compile_error!()`. |
 | P1.21 | Testgen: verification gate | **Done** | `v2_testgen_compiled_bundle_gate` compiles a service module with mock data via `emit_test_file`, extracts test files from the emitted bundle, and asserts non-empty syntactically valid Rust. Guardrail (`v2_testgen_service_mock_source_gate`) also retained. |
 | P1.13 | Dead code cleanup | **Done** | Dead functions removed from `00_core.dag` and `complexity.dag` |
@@ -1594,12 +1603,12 @@ contract is real.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P4.1 | `LanguageSpec` becomes the single authority | **Done (review cleanup complete)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`. Go and Python fully migrated for leaf rendering (literals, keywords, operators, types, containers, maps) and type rendering (~175 lines deleted per backend). Rust leaf rendering migrated. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. `param_bindings` scoped to recognized type declarations. Generic arity validation emits `TypeMismatch` diagnostic. LanguageSpec has 65+ template fields but only ~22 are wired — remaining wiring is incremental. |
+| P4.1 | `LanguageSpec` becomes the single authority | **Done (contract met)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`, and compiler-local helpers in `src/v2/languages.dag` now route shared emit/backends through `LanguageSpec` for reserved words, scaffold, serialization, test conventions, visibility, and per-target syntax facts. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. Verified by full `v2-compiler-tests` plus source-audit checks for `LanguageSpec` reads. |
 | P4.1a | Rust type rendering via shared `emit_node_type` | **Done** | Rust type rendering migrated to shared `emit_node_type` + Rc wrapping layer. `emit_rust_node_type` deleted. Commit `22063fe3`. |
-| P4.2 | Shared emit fold + target adapters | **In progress** | Steps 2-4 done: shared type traversal, shared block/let/scope walkers, shared service/test projection. Step 5 done (leaf arms): `emit_shared_expr` handles ExprLiteral/ExprError/NoExprData, all 3 backends wired. Full callback dispatcher (recursive arms) unblocked by v1 retirement — stage0→stage1 path handles callable params. See P4.2 design + status below. |
-| P4.3 | Generated tests as first-class projection | Planned (analysis complete) | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). See P4.3 analysis below. |
-| P4.4 | DAG backend/runtime boundary | Stub landed | `Dag` variant added to `RenderTarget`; `emit_dag_artifact` emits a JSON envelope with version and module names. Stub is tested (`v2_dag_pipeline_smoke`). **Remaining:** real schema definition, full `ResolvedGraph` serialization, and runtime design. |
-| P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go \| Dag` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
+| P4.2 | Shared emit fold + target adapters | **Done** | Shared emit now owns the full callback-based `emit_shared_expr` recursion and shared `emit_shared_tco_expr` walker in `05_emit.dag`; Rust/Go/Python backends keep thin target adapters only where ownership or surface syntax genuinely differs. `map_expr_children` landed in core and infer rewrites now use it. Verified by `strict_pipeline_smoke`, `dag_pipeline_smoke`, and full `cargo test -p v2-compiler-tests -- --nocapture`. |
+| P4.3 | Generated tests as first-class projection | **Done** | `TestProjection` now carries `module_name`, `return_type`, and `params`; `extract_test_projections()` is the single graph-walk entry point; `emit_simple_expr` moved into shared emit; Rust/Go/Python all emit test files from the same projection contract. Verified by `generates_mock_test_file`, `testgen_emits_valid_rust`, and the full compiler test suite. |
+| P4.4 | DAG backend/runtime boundary | **Done** | `Dag` remains a compile target only; `emit_dag_artifact` now writes a versioned `dag-artifact.json` containing serialized `modules`, `diagnostics`, and `files` from the post-infer `ResolvedGraph`. Runtime execution stays downstream by design. Verified by `dag_pipeline_smoke` and ignored bootstrap smoke `stage0_compile_accepts_dag_target`. |
+| P4.5 | Typed backend plumbing and CLI surface | **Done** | Backend selection remains typed end-to-end and the committed stage0 / emitted compile CLI now parse `--target rust\|python\|go\|dag` with recursive source discovery aligned across bootstrap stages. Verified by ignored bootstrap smoke `stage0_compile_accepts_dag_target` plus full suite. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
 | P4.7 | Callable-type parameters | **Done** | All 6 steps (P4.7a-f) complete: v1 `impl Fn` emission, v2 parser `fn(T) -> R` syntax, v1 call emission verified, v2 inference for callable locals, v2 callable-aware lambda param threading, v2 backend rendering verified. **Unblocks P4.2 step 5.** |
 
@@ -1725,12 +1734,13 @@ values). No backend-specific state crosses the boundary.
 - `rc_types: Map<String, Bool>` — Rc wrapping decisions (Rust-specific)
 - `emit_info: EmitGraphInfo` — graph-level emit metadata
 
-**P4.2 step 5 — callback dispatcher (Done).** `emit_shared_expr` in
-`05_emit.dag` handles 7 arms: 3 leaf (ExprLiteral, ExprError, NoExprData)
-+ 4 recursive (ExprUnaryOp, ExprLambda, ExprListLit, ExprReturn) via
-`recurse: fn(Node, InferScope, Int) -> String` callback. All backends
-wired. 9 dead per-backend helpers deleted. Stage0 regenerated with
-callable-type support (P4.7).
+**P4.2 step 5 — full shared dispatcher (Done).** `emit_shared_expr` in
+`05_emit.dag` now owns the full callback-based `ExprData` recursion, and
+`emit_shared_tco_expr` owns the shared tail-call walk. The earlier
+7-arm callback milestone from `origin/main` is subsumed here: the v1
+bootstrap constraint is gone, backends now pass a
+`recurse: fn(Node) -> String` adapter, and only genuinely target-specific
+syntax / ownership cases remain backend-owned.
 
 **Safe extraction order (lower risk first):**
 
@@ -1748,19 +1758,23 @@ callable-type support (P4.7).
    **Prerequisite:** P4.7 (callable-type parameters) — the shared
    dispatcher needs `recurse: fn(Node) -> String` callback.
 
-**P4.2 Step 5 status — ExprData shared renderers (2026-03-25).**
+**P4.2 completion status — shared ExprData/TCO renderers (2026-03-25).**
 
-Shared renderers in `05_emit.dag` now cover 13 rendering functions that
-all 3 backends delegate to. The shared layer owns terminal syntax for
-these patterns; backends own only the recursive sub-expression calls.
+Shared emit in `05_emit.dag` now owns the reusable recursion:
 
-*Already wired (backends call shared):*
-`emit_literal`, `emit_error_expr`, `emit_return`, `emit_unary_op`,
-`emit_lambda`, `emit_lambda_params`, `emit_null_coalesce`,
-`emit_list_lit_expr`, `emit_bin_op_symbol`, `emit_keyword`,
-`emit_ident`, `emit_let_binding`, `emit_node_type`.
+*Shared-owned now:*
+`emit_shared_expr`, `emit_shared_tco_expr`, `emit_simple_expr`,
+`extract_test_projections`, `emit_literal`, `emit_error_expr`,
+`emit_return`, `emit_unary_op`, `emit_lambda`, `emit_lambda_params`,
+`emit_null_coalesce`, `emit_list_lit_expr`, `emit_bin_op_symbol`,
+`emit_keyword`, `emit_ident`, `emit_let_binding`, `emit_node_type`.
 
-*Deeply divergent (stay per-backend):*
+*Still backend-owned by design:*
+ownership wrappers / deref policy, target block syntax, target match
+syntax, runtime helper names, and the genuinely target-specific lowering
+cases such as Rust Rc wrapping or Python/Go surface formatting.
+
+*Deeply divergent examples (stay per-backend):*
 ExprVar (Rust vtoe/rc_types), ExprFieldAccess (Rust ownership),
 ExprCall (Rust empty_map + lookup Rc wrapping), ExprMethodCall
 (intrinsic dispatch + runtime bridge), ExprMatch (Rust Rc deref
@@ -1771,9 +1785,9 @@ collect vs loop), ExprBlock (Rust brace wrapping), ExprCast (Rust
 numeric type checking), ExprIndex/ExprSlice (Rust type-dependent).
 
 *Bootstrap constraint lifted (2026-03-25).* Stream D (v1 retirement)
-is complete. `assemble_stage0` uses the v1 *emitter* (not interpreter),
-which handles callable types and lambdas correctly. `emit_shared_expr`
-now has the full callback dispatcher with 4 recursive arms absorbed.
+is complete. `assemble_stage0` uses the v1 emitter, which handles
+callable types and lambdas correctly, so the full callback dispatcher is
+no longer blocked on interpreter limitations.
 
 **Revised acceptance criteria:**
 - Each backend's `ExprData` match arms are thin: either a direct shared
@@ -1784,64 +1798,50 @@ now has the full callback dispatcher with 4 recursive arms absorbed.
 - Parser/stage0/gist pipeline tests green
 - DIAG_RATCHET = 0
 
-### P4.3 Analysis: TestProjection Gaps (2026-03-25)
+### P4.3 Completion: TestProjection as First-Class Output (2026-03-25)
 
-**Current TestProjection struct** (05_emit.dag):
+**Landed `TestProjection` shape** (05_emit.dag):
 ```
-type TestProjection { service_name: String, operation_name: String, mock_field_inits: List<FieldInit> }
+type TestProjection {
+  module_name: String
+  service_name: String
+  operation_name: String
+  return_type: Node
+  params: List<Param>
+  mock_field_inits: List<FieldInit>
+}
 ```
 
 **Current state:**
-- `extract_test_projections()` defined in 05_emit.dag but never called
-- Only Rust emits tests (emit_test_file, line 3288 in 05_emit_rust.dag)
-- Python and Go have zero test infrastructure
-- Rust hardcodes `#[tokio::test]`, mock setup, service var construction
+- `extract_test_projections()` is the single graph-walk entry point
+- `emit_simple_expr` lives in shared emit and is used by Rust/Go/Python
+  test emitters
+- Rust, Go, and Python all emit test files from the same projection
+  contract
+- Test naming, placement, and framework conventions read through
+  `LanguageSpec` / `test_conventions`
 
-**TestProjection gaps — fields needed for cross-backend emission:**
-1. `module_name: String` — test file placement requires module context
-2. `operation_return_type: Node` — mock response assertions need output type
-3. `operation_params: List<Param>` — test setup needs input structure
-
-**Shared vs backend-specific decomposition:**
-- **Shared:** test projection extraction (graph walk), mock field filtering
-  (`has_mock_prefix`), test name generation (service + operation → snake/camel)
-- **Backend-specific:** test framework decorator (`#[tokio::test]` / `pytest` /
-  `func Test*`), expression rendering, file naming convention, async patterns
-
-**Blockers for P4.3 extraction (ordered):**
-1. Extend TestProjection with module_name, return_type, params
-2. Make `extract_test_projections()` the single entry point (all backends call it)
-3. Extract `emit_simple_expr` to shared emit with target parameter
-4. Add LanguageSpec fields for test conventions (decorator, naming pattern)
-5. Each backend renders its dialect from the shared projection
-
-**Key insight:** `emit_simple_expr` (05_emit_rust.dag:992) is nearly
-target-agnostic — it pattern-matches ExprData variants for literals, vars,
-field access, string interpolation. Parametrizing it on target is the
-highest-leverage extraction for P4.3.
+**Verification (2026-03-25):**
+- `cargo test -p v2-compiler-tests generates_mock_test_file -- --nocapture`
+- `cargo test -p v2-compiler-tests testgen_emits_valid_rust -- --nocapture`
+- `cargo test -p v2-compiler-tests -- --nocapture`
 
 ### Current Phase 4 Risks
 
-- Shared emit has callback dispatcher (`emit_shared_expr`, 7 arms) +
-  13 shared helpers. 12 deeply divergent ExprData arms stay per-backend.
-  TCO walker (~90% identical x3) and service/transport emission
-  (identical 4-way dispatch x3) remain duplicated.
-- Go/Python **intrinsic** method emission is exhaustive (19/19 arms, no
-  `_ => none`). Remaining backend gaps: **`interface{}` erasure**,
-  Python `_unimplemented()` / Go unhandled expr wildcard, and **P1.10**
-  duplicate runtime-bridge **name** maps across three emitters plus core.
-- Go emitter uses `interface{}` as a type hole in 13 sites where the
-  compiler has lost type information. These are fabrication sites that
-  should be tracked alongside Python's `_unimplemented()` and Rust's
-  `compile_error!()` as backend-specific type-loss indicators.
-- `LanguageSpec` exists, but emit does not yet read it as the single
-  source of truth.
-- Generated tests are Rust-only and unverified. The Rust emitter has its
-  own mock extraction parallel to shared emit's `TestProjection` (fixed by
-  P1.19). Three fabrication sites produce wrong test code silently (fixed
-  by P1.20). The verification test is archived — no gate prevents regression
-  (fixed by P1.21). Go/Python have no test generation at all (new work in
-  P4.3 after shared emit fold).
+- P4.6 equivalence validation / convergence is still the explicit
+  remaining Phase 4 item after the implementation work in this branch.
+- Go `interface{}` type holes and the residual Python/Go fabrication
+  markers remain quality issues, but they no longer block the shared emit
+  boundary, cross-backend test generation, or DAG artifact contract.
+- Mixed-backend runtime execution stays intentionally downstream of the
+  compiler: the versioned DAG artifact boundary is implemented, while the
+  runtime continues to live outside compiler stages.
+- Go `interface{}` type holes and the residual Python/Go fabrication
+  markers remain quality issues, but they no longer block the shared emit
+  boundary, cross-backend test generation, or DAG artifact contract.
+- Mixed-backend runtime execution stays intentionally downstream of the
+  compiler: the versioned DAG artifact boundary is implemented, while the
+  runtime continues to live outside compiler stages.
 
 ### P4.7 Design: Callable-Type Parameters
 
@@ -2391,13 +2391,10 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 | TG-3 | ~~`Default::default()` fallback~~ | **Fixed** — `compile_error!()` for resources; dry-run no-mock already `compile_error!()` |
 | TG-4 | ~~`extract_mock_props` duplicates shared emit~~ | **Fixed** (P1.19) — deleted, inlined |
 
-#### Phase 4 violations (deferred, not blocking)
+#### Phase 4 violations (remaining, not blocking)
 
 | Violation | Where | Dissolved by |
 |-----------|-------|-------------|
-| Triple `emit_typed_expr` 22-arm parallelism | `emit_rust/go/python` | P4.2: shared dispatch |
-| Triple TCO walk parallelism | `emit_rust/go/python` | P4.2: shared TCO dispatcher |
-| Triple service/transport emission | `emit_rust/go/python` | P4.2: shared service emit |
 | Go `interface{}` type erasure (13 sites) | `emit_go` | P1.5 + P4 |
 | Python `_unimplemented()` (2 sites) | `emit_python` 1132, 1145 | P4 |
 | Go `/* unhandled expr */` wildcard | `emit_go` 613-614 | P4 |
@@ -2413,6 +2410,9 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 | Bridge name maps (III-7, III-8) | **Done** (P1.10): dead fn deleted, closed-enum per-target |
 | Testgen mock extraction (III-13) | **Done** (P1.19): `extract_mock_props` deleted |
 | Testgen fabrication (TG-1–TG-4) | **Done** (P1.20): all `compile_error!()` or invalid JSON |
+| Triple `emit_typed_expr` 22-arm parallelism | **Done** (P4.2): `emit_shared_expr` owns whole-tree recursion |
+| Triple TCO walk parallelism | **Done** (P4.2): `emit_shared_tco_expr` owns the shared walk |
+| Triple service/transport emission | **Done** (P4.3): shared projection flow feeds all backends |
 | `emit_typed_item` catch-all (II-12) | **Done** (P1.12): `compile_error!()` |
 | Anon record index cap (I-7) | **Done** (R2): `compile_error!()` for index >= 4 |
 | Parse error (binary op RHS across newline) | **Fixed**: `skip_newlines` in `parse_expr_loop` |

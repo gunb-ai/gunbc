@@ -283,6 +283,7 @@ fn service_calls_under_return_inject_service_params() {
 #[test]
 fn testgen_emits_valid_rust() {
     let source = read_v2_file("src/v2/05_emit_rust.dag");
+    let shared_source = read_v2_file("src/v2/05_emit.dag");
     assert!(
         !source.contains("todo!(\"unsupported simple expr"),
         "05_emit_rust.dag should NOT contain todo!(\"unsupported simple expr"
@@ -290,8 +291,9 @@ fn testgen_emits_valid_rust() {
     assert!(
         source.contains("compile_error!(\"unsupported simple expr")
             || source.contains("compile_error!(\\\"unsupported simple expr")
-            || source.contains("emit_error_expr(message: \"unsupported simple expr"),
-        "05_emit_rust.dag should contain compile_error! or emit_error_expr for unsupported simple expr"
+            || source.contains("emit_error_expr(message: \"unsupported simple expr")
+            || shared_source.contains("emit_error_expr(message: \"unsupported simple expr"),
+        "simple expr fail-loud path should exist in Rust emit or shared emit"
     );
     assert!(
         !source.contains("Ok(Default::default())"),
@@ -313,6 +315,14 @@ fn testgen_emits_valid_rust() {
     assert!(
         emit_source.contains("TestProjection"),
         "05_emit.dag should contain TestProjection"
+    );
+    assert!(
+        emit_source.contains("Rust => concat(\"Rc<dyn Fn("),
+        "05_emit.dag should render Rust callable types as Rc<dyn Fn(...)> in shared emit"
+    );
+    assert!(
+        !emit_source.contains("Rust => concat(\"impl Fn("),
+        "05_emit.dag should not render Rust callable types as impl Fn in shared emit"
     );
 }
 

@@ -184,9 +184,19 @@ fn collect_data_ir_types<'a>(
         .collect()
 }
 
+#[derive(Clone, Copy)]
+enum CallableRustStyle {
+    ImplTrait,
+    DynRc,
+}
+
 /// Convert a DSL `TypeExpr` to a Rust type string.
 fn type_expr_to_rust(expr: &TypeExpr) -> String {
     type_expr_to_rust_with_registry(expr, None)
+}
+
+fn type_expr_to_rust_type_position(expr: &TypeExpr) -> String {
+    type_expr_to_rust_type_position_with_registry(expr, None)
 }
 
 /// Public version of type_expr_to_rust for use in v2_crate_emit.
@@ -194,15 +204,10 @@ pub fn type_expr_to_rust_pub(expr: &TypeExpr) -> String {
     type_expr_to_rust(expr)
 }
 
-/// Convert a DSL `TypeExpr` to a Rust type string, using the registry when
-/// available for structural type resolution.
-///
-/// All named types are resolved through `resolve_and_emit` which uses the
-/// structural path when a registry is available, falling back to identity-type
-/// name-based mapping for opaque types.
-pub fn type_expr_to_rust_with_registry(
+fn type_expr_to_rust_with_style(
     expr: &TypeExpr,
     registry: Option<&gunbc_ir::TypeRegistry>,
+    callable_style: CallableRustStyle,
 ) -> String {
     match expr {
         TypeExpr::Named(name) => {
@@ -231,7 +236,7 @@ pub fn type_expr_to_rust_with_registry(
             let model = language_model::model_for_backend(crate::type_mapping::Backend::Rust);
             let arg_strs: Vec<String> = args
                 .iter()
-                .map(|a| type_expr_to_rust_with_registry(a, registry))
+                .map(|a| type_expr_to_rust_with_style(a, registry, callable_style))
                 .collect();
             let container_kind = match name.as_str() {
                 "List" => Some(ContainerKind::List),
@@ -263,19 +268,22 @@ pub fn type_expr_to_rust_with_registry(
                 format!("{}<{}>", mapped, arg_strs.join(", "))
             }
         }
-        TypeExpr::Function(params, output) => format!(
-            "impl Fn({}) -> {}",
-            params
+        TypeExpr::Function(params, output) => {
+            let params_str = params
                 .iter()
-                .map(|param| type_expr_to_rust_with_registry(param, registry))
+                .map(|param| type_expr_to_rust_with_style(param, registry, callable_style))
                 .collect::<Vec<_>>()
-                .join(", "),
-            type_expr_to_rust_with_registry(output, registry)
-        ),
+                .join(", ");
+            let output_str = type_expr_to_rust_with_style(output, registry, callable_style);
+            match callable_style {
+                CallableRustStyle::ImplTrait => format!("impl Fn({params_str}) -> {output_str}"),
+                CallableRustStyle::DynRc => format!("Rc<dyn Fn({params_str}) -> {output_str}>"),
+            }
+        }
         TypeExpr::Optional(inner) => {
             format!(
                 "Option<{}>",
-                type_expr_to_rust_with_registry(inner, registry)
+                type_expr_to_rust_with_style(inner, registry, callable_style)
             )
         }
         TypeExpr::Refined(inner, refinements) => {
@@ -302,7 +310,7 @@ pub fn type_expr_to_rust_with_registry(
                     crate::type_mapping::Backend::Rust,
                 );
             }
-            type_expr_to_rust_with_registry(inner, registry)
+            type_expr_to_rust_with_style(inner, registry, callable_style)
         }
         TypeExpr::Record(fields) => {
             let field_strs: Vec<String> = fields
@@ -311,13 +319,33 @@ pub fn type_expr_to_rust_with_registry(
                     format!(
                         "{}: {}",
                         f.name,
-                        type_expr_to_rust_with_registry(&f.ty, registry)
+                        type_expr_to_rust_with_style(&f.ty, registry, callable_style)
                     )
                 })
                 .collect();
             format!("{{ {} }}", field_strs.join(", "))
         }
     }
+}
+
+/// Convert a DSL `TypeExpr` to a Rust type string, using the registry when
+/// available for structural type resolution.
+///
+/// All named types are resolved through `resolve_and_emit` which uses the
+/// structural path when a registry is available, falling back to identity-type
+/// name-based mapping for opaque types.
+pub fn type_expr_to_rust_with_registry(
+    expr: &TypeExpr,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
+    type_expr_to_rust_with_style(expr, registry, CallableRustStyle::ImplTrait)
+}
+
+fn type_expr_to_rust_type_position_with_registry(
+    expr: &TypeExpr,
+    registry: Option<&gunbc_ir::TypeRegistry>,
+) -> String {
+    type_expr_to_rust_with_style(expr, registry, CallableRustStyle::DynRc)
 }
 
 /// Check whether all variants of a sum type are simple (no fields).
@@ -347,7 +375,7 @@ pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
         TypeBody::Record(fields) => {
             let struct_fields: Vec<(String, String, bool)> = fields
                 .iter()
-                .map(|f| (f.name.clone(), type_expr_to_rust(&f.ty), true))
+                .map(|f| (f.name.clone(), type_expr_to_rust_type_position(&f.ty), true))
                 .collect();
             let mut derives = derives;
             if all_fields_default_compatible(fields) {
@@ -386,7 +414,7 @@ pub fn typedef_to_code_ir(td: &TypeDef) -> Vec<code_ir::Item> {
             items
         }
         TypeBody::Alias(type_expr) => {
-            let rust_type = type_expr_to_rust(type_expr);
+            let rust_type = type_expr_to_rust_type_position(type_expr);
             vec![code_ir::Item::Raw(format!(
                 "pub type {} = {};",
                 td.name, rust_type
@@ -416,14 +444,14 @@ pub fn common_enum_fields(variants: &[Variant]) -> Vec<(String, String)> {
     first_fields
         .into_iter()
         .filter(|(name, ty)| {
-            let ty_str = type_expr_to_rust(ty);
+            let ty_str = type_expr_to_rust_type_position(ty);
             struct_variants[1..].iter().all(|v| {
                 v.fields
                     .iter()
-                    .any(|f| f.name == *name && type_expr_to_rust(&f.ty) == ty_str)
+                    .any(|f| f.name == *name && type_expr_to_rust_type_position(&f.ty) == ty_str)
             })
         })
-        .map(|(name, ty)| (name.to_string(), type_expr_to_rust(ty)))
+        .map(|(name, ty)| (name.to_string(), type_expr_to_rust_type_position(ty)))
         .collect()
 }
 
@@ -546,7 +574,7 @@ fn format_variant(v: &Variant) -> String {
         let field_strs: Vec<String> = v
             .fields
             .iter()
-            .map(|f| format!("{}: {}", f.name, type_expr_to_rust(&f.ty)))
+            .map(|f| format!("{}: {}", f.name, type_expr_to_rust_type_position(&f.ty)))
             .collect();
         format!("{} {{ {} }}", v.name, field_strs.join(", "))
     }
@@ -569,7 +597,7 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
     let rust_name = to_screaming_snake(&dd.name);
     let (rust_type, rust_value) = match &dd.ty {
         TypeExpr::Generic(name, args) if name == "List" && args.len() == 1 => {
-            let elem_type = type_expr_to_rust(&args[0]);
+            let elem_type = type_expr_to_rust_type_position(&args[0]);
             // TEMPORARY bootstrap scaffolding (S81): In static context, List<String>
             // must emit &[&str] because string literals are &str, not String.
             let is_string_list = matches!(&args[0], TypeExpr::Named(n) if n == "String");
@@ -600,8 +628,8 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
         // R8: Don't Rc-wrap types in static context — Rc is not Sync.
         // Strip Rc wrapping from the resolved types.
         TypeExpr::Generic(name, args) if name == "Map" && args.len() == 2 => {
-            let key_type = strip_rc_wrapper(&type_expr_to_rust(&args[0]));
-            let val_type = strip_rc_wrapper(&type_expr_to_rust(&args[1]));
+            let key_type = strip_rc_wrapper(&type_expr_to_rust_type_position(&args[0]));
+            let val_type = strip_rc_wrapper(&type_expr_to_rust_type_position(&args[1]));
             let val_type_name = match &args[1] {
                 TypeExpr::Named(n) => n.as_str(),
                 _ => &val_type,
@@ -620,7 +648,7 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
             ("&str".to_string(), value)
         }
         _ => {
-            let rust_ty = type_expr_to_rust(&dd.ty);
+            let rust_ty = type_expr_to_rust_type_position(&dd.ty);
             let value = render_expr_to_rust(&dd.value, &rust_ty, STATIC_OPTS);
             (rust_ty, value)
         }
@@ -1764,7 +1792,7 @@ pub fn typedef_to_code_ir_boxed(
             let struct_fields: Vec<(String, String, bool)> = fields
                 .iter()
                 .map(|f| {
-                    let rust_ty = type_expr_to_rust(&f.ty);
+                    let rust_ty = type_expr_to_rust_type_position(&f.ty);
                     let needs_box = recursive_fields.contains(&(td.name.clone(), f.name.clone()));
                     let final_ty = if needs_box {
                         format!("Box<{}>", rust_ty)
@@ -1850,7 +1878,7 @@ pub fn typedef_to_code_ir_boxed(
             items
         }
         TypeBody::Alias(type_expr) => {
-            let rust_type = type_expr_to_rust(type_expr);
+            let rust_type = type_expr_to_rust_type_position(type_expr);
             vec![code_ir::Item::Raw(format!(
                 "pub type {} = {};",
                 td.name, rust_type
@@ -1872,7 +1900,7 @@ fn format_variant_boxed(
             .fields
             .iter()
             .map(|f| {
-                let rust_ty = type_expr_to_rust(&f.ty);
+                let rust_ty = type_expr_to_rust_type_position(&f.ty);
                 let field_key = format!("{}::{}", v.name, f.name);
                 let needs_box = recursive_fields.contains(&(type_name.to_string(), field_key));
                 let final_ty = if needs_box {
@@ -2907,6 +2935,15 @@ fn collect_text(spans: List<Span>) -> List<String> {
         assert_eq!(type_expr_to_rust(&expr), "String");
     }
 
+    #[test]
+    fn function_types_render_with_dyn_fn_in_type_position() {
+        let expr = TypeExpr::Function(
+            vec![TypeExpr::Named("Int".to_string())],
+            Box::new(TypeExpr::Named("Bool".to_string())),
+        );
+        assert_eq!(type_expr_to_rust_type_position(&expr), "Rc<dyn Fn(i64) -> bool>");
+    }
+
     /// End-to-end regression: DSL source through typecheck and Rust emit for
     /// let-bound anonymous records and `fn(Check.Output)` signatures.
     #[test]
@@ -2940,7 +2977,8 @@ fn guarded<Check>(predicate: fn(Check.Output) -> Bool) -> String {
         );
 
         // The fn(Check.Output) -> Bool parameter should render with valid Rust
-        // associated-type syntax (:: not .) and impl Fn trait (not bare fn pointer).
+        // associated-type syntax (:: not .) and remain a signature-level
+        // callable bound.
         assert!(
             rust_source.contains("impl Fn(Check::Output) -> bool"),
             "emitted Rust should render impl Fn(Check::Output) -> bool: {rust_source}"

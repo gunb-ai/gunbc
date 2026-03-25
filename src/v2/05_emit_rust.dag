@@ -62,12 +62,11 @@ import v2.std.core {
 
 import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
-  rust_reserved, rt_functions, rt_ref_map_functions,
-  rust_reserved_escape_prefix,
-  rust_struct_derives, rust_struct_derives_copy,
-  rust_enum_derives, rust_enum_derives_copy,
-  rust_serde_tag, rust_serde_rename_template,
-  rust_source_extension, rust_source_dir, rust_visibility
+  rt_functions, rt_ref_map_functions
+}
+import v2.compiler.languages {
+  scaffold_for_target, serialization_for_target,
+  test_conventions_for_target, top_level_visibility_for_target
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 
@@ -96,15 +95,14 @@ import v2.compiler.infer {
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, InterpPart,
+  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
-  rust_keyword, rust_container, rust_primitive_type,
-  rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
+  rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
-  emit_string_literal,
+  emit_string_literal, emit_simple_expr,
   module_emit_scope,
   scope_after_expr,
   lookup_item,
@@ -113,15 +111,16 @@ import v2.compiler.emit {
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name,
+  capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
   classify_typed_item, classify_type_structure,
   has_mock_prefix,
+  extract_test_projections,
   bridge_method_base_name,
-  is_tco_eligible, is_self_recursive,
+  is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,
   service_uses_transport, service_has_rest_auth,
@@ -129,6 +128,84 @@ import v2.compiler.emit {
 }
 
 // Shared helpers imported from v2.compiler.emit
+
+fn rust_source_root() -> String {
+  match scaffold_for_target(target: Rust).source_dir {
+    Some { value: dir } => dir
+    None => ""
+  }
+}
+
+fn rust_source_ext() -> String {
+  scaffold_for_target(target: Rust).source_file_extension
+}
+
+fn rust_visibility_prefix() -> String {
+  top_level_visibility_for_target(target: Rust)
+}
+
+fn rust_struct_derives_text() -> String {
+  match serialization_for_target(target: Rust).struct_derives {
+    Some { value: derives } => derives
+    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+  }
+}
+
+fn rust_struct_derives_copy_text() -> String {
+  match serialization_for_target(target: Rust).struct_derives_copy {
+    Some { value: derives } => derives
+    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+  }
+}
+
+fn rust_enum_derives_text() -> String {
+  match serialization_for_target(target: Rust).enum_derives {
+    Some { value: derives } => derives
+    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+  }
+}
+
+fn rust_enum_derives_copy_text() -> String {
+  match serialization_for_target(target: Rust).enum_derives_copy {
+    Some { value: derives } => derives
+    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+  }
+}
+
+fn rust_serde_tag_attr() -> String {
+  match serialization_for_target(target: Rust).tag_attribute {
+    Some { value: attr } => attr
+    None => "#[serde(tag = \"_variant\")]"
+  }
+}
+
+fn rust_serde_rename_template_text() -> String {
+  match serialization_for_target(target: Rust).rename_attribute_template {
+    Some { value: template } => template
+    None => "#[serde(rename = \"{0}\")]"
+  }
+}
+
+fn rust_test_file_path(module_name: String) -> String {
+  let conventions = test_conventions_for_target(target: Rust)
+  let file_dir = match conventions.file_dir {
+    Some { value: dir } => dir
+    None => ""
+  }
+  let filename = module_to_filename(name: module_name)
+  concat(file_dir, conventions.file_prefix, filename, conventions.file_suffix, rust_source_ext())
+}
+
+fn rust_test_name(projection: TestProjection) -> String {
+  test_function_name(projection: projection, target: Rust)
+}
+
+fn rust_async_test_decorator() -> String {
+  match test_conventions_for_target(target: Rust).async_decorator {
+    Some { value: decorator } => decorator
+    None => "#[tokio::test]"
+  }
+}
 
 // Rust language facts (rust_reserved, rt_functions, rt_ref_map_functions)
 // imported from extdeps.languages.rust.emit -- single source of truth.
@@ -246,9 +323,12 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
       map_insert(a, svc.name, mod_filename)
     )
   )
+  let test_projections = extract_test_projections(typed: typed)
   let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, vtoe: vtoe, rc_types: rc_types, svc_module_map: svc_module_map))
   let test_files = typed.modules
-    |> map(tm => emit_test_file(typed_module: tm))
+    |> map(tm => emit_test_file(
+      module_name: tm.module.name,
+      projections: test_projections |> filter(p => p.module_name == tm.module.name)))
     |> filter(f => f.content != "")
   let has_services = has_service_items(typed: typed)
   let lib_file = emit_lib_rs(modules: typed.modules, has_services: has_services)
@@ -275,7 +355,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
 // =========================================================================
 
 fn emit_v2_rt_module() -> TextFile {
-  TextFile { path: concat(rust_source_dir, "v2_rt", rust_source_extension), content: rust_runtime_source() }
+  TextFile { path: concat(rust_source_root(), "v2_rt", rust_source_ext()), content: rust_runtime_source() }
 }
 
 // =========================================================================
@@ -296,7 +376,7 @@ fn emit_lib_rs(modules: List<TypedModule>, has_services: Bool) -> TextFile {
   let content = concat("// Generated by v2 compiler -- do not edit.\n\n",
     "#![allow(unused_imports, unused_variables, unused_mut, dead_code, unreachable_patterns)]\n\n",
     mod_decls |> join(separator: "\n"), "\npub mod v2_rt;", dry_run_mod)
-  TextFile { path: concat(rust_source_dir, "lib", rust_source_extension), content: concat(content, "\n") }
+  TextFile { path: concat(rust_source_root(), "lib", rust_source_ext()), content: concat(content, "\n") }
 }
 
 // =========================================================================
@@ -404,7 +484,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     "// Source module: ", m.name, "\n\n",
     prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
     items_str, "\n")
-  TextFile { path: concat(rust_source_dir, filename, rust_source_extension), content: content }
+  TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content }
 }
 
 // =========================================================================
@@ -583,7 +663,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   if (kind == TypedItemTypeDef) {
     emit_type_def_from_connective(item: item, recursive_types: scope.type_env.recursive_type_set, rc_types: rc_types)
   } else if (kind == TypedItemTypeAlias) {
-    concat(rust_visibility, "type ", item.name, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
+    concat(rust_visibility_prefix(), "type ", item.name, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
@@ -601,7 +681,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemExternFunc) {
     let params_str = emit_params(params: item.params, rc_types: rc_types)
     let ret_str = emit_return_type(return_type: rt_type(n: item), rc_types: rc_types)
-    concat(rust_visibility, "fn ", emit_ident(name: item.name, target: Rust), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
+    concat(rust_visibility_prefix(), "fn ", emit_ident(name: item.name, target: Rust), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
   } else {
     concat("compile_error!(\"unhandled item: ", item.name, "\");")
   }
@@ -645,16 +725,16 @@ fn emit_struct_from_children(name: String, children: List<Node>, recursive_types
   // rust_struct_derives is the base derive set from extdeps.languages.rust.emit.
   // Non-Rc types get Copy added as a Rust-specific value semantics optimization.
   let derives = if emit_map_has(m: rc_types, key: name) {
-    rust_struct_derives
+    rust_struct_derives_text()
   } else {
-    rust_struct_derives_copy
+    rust_struct_derives_copy_text()
   }
   if children |> count == 0 {
-    concat(derives, "\n", rust_visibility, "struct ", name, ";")
+    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, ";")
   } else {
     let field_lines = children |> map(child => emit_struct_field_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types))
     let fields_str = field_lines |> join(separator: "\n")
-    concat(derives, "\n", rust_visibility, "struct ", name, " {\n", fields_str, "\n}")
+    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, " {\n", fields_str, "\n}")
   }
 }
 
@@ -669,14 +749,14 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   let rename_attr = match child.properties |> filter(p => p.name == "from_key") |> first {
     Some { value: prop } => match prop.value.expr_data {
       ExprLiteral { value: lv } => match lv {
-        LitStr { value: key } => concat("    ", apply_type_template1(template: rust_serde_rename_template, arg0: key), "\n")
+        LitStr { value: key } => concat("    ", apply_type_template1(template: rust_serde_rename_template_text(), arg0: key), "\n")
         _ => ""
       }
       _ => ""
     }
     None => ""
   }
-  concat(rename_attr, "    ", rust_visibility, emit_ident(name: child.name, target: Rust), ": ", final_ty, ",")
+  concat(rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: child.name, target: Rust), ": ", final_ty, ",")
 }
 
 fn enum_derives(children: List<Node>) -> String {
@@ -684,8 +764,8 @@ fn enum_derives(children: List<Node>) -> String {
   // Simple enums (all-unit variants) get Copy added as a Rust-specific optimization.
   let complex = children |> filter(v => v.children |> count > 0)
   match complex |> count == 0 {
-    true => rust_enum_derives_copy
-    false => rust_enum_derives
+    true => rust_enum_derives_copy_text()
+    false => rust_enum_derives_text()
   }
 }
 
@@ -693,7 +773,7 @@ fn emit_enum_from_children(name: String, children: List<Node>, recursive_types: 
   let derives = enum_derives(children: children)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types))
   let variants_str = variant_lines |> join(separator: "\n")
-  let enum_def = concat(derives, "\n", rust_serde_tag, "\n", rust_visibility, "enum ", name, " {\n", variants_str, "\n}")
+  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
   let accessor_impl = emit_enum_shared_accessors(name: name, children: children, recursive_types: recursive_types, rc_types: rc_types)
   if accessor_impl == "" { enum_def }
@@ -805,7 +885,7 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Node,
   if use_tco {
     let tco_params_str = emit_tco_params(params: params, rc_types: rc_types)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    concat(rust_visibility, "fn ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
+    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
   } else {
     emit_fn_def_non_tco(name: name, params_str: params_str, ret_str: ret_str, body: body, registry: registry, scope: body_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, needs_stacker: needs_stacker)
@@ -816,13 +896,13 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Node,
 fn emit_fn_def_non_tco(name: String, params_str: String, ret_str: String, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, needs_stacker: Bool) -> String {
   if needs_stacker {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 2, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    concat(rust_visibility, "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n",
       make_indent(level: depth + 2), body_str, "\n",
       make_indent(level: depth + 1), "})\n}")
   } else {
     let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    concat(rust_visibility, "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
+    concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1), body_str, "\n}")
   }
 }
@@ -852,7 +932,7 @@ fn emit_func_def(
   let ret_str = emit_func_return_type(return_type: return_type, rc_types: rc_types)
   let body_scope = build_params_scope(scope: scope, params: params)
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  concat(rust_visibility, "async fn ", emit_ident(name: name, target: Rust),
+  concat(rust_visibility_prefix(), "async fn ", emit_ident(name: name, target: Rust),
     "(", params_str, ")", ret_str, " {\n",
     make_indent(level: depth + 1),body_str, "\n}")
 }
@@ -923,7 +1003,7 @@ fn emit_tco_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
 
 fn emit_tco_param(param: Param, rc_types: Map<String, Bool>) -> String {
   let n = param.type_expr
-  let ty = emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
+  let ty = emit_rust_param_type(n: n, rc_types: rc_types)
   concat("mut ", emit_ident(name: param.name, target: Rust), ": ", ty)
 }
 
@@ -952,9 +1032,23 @@ fn emit_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
   strs |> join(separator: ", ")
 }
 
+fn emit_rust_param_type(n: Node, rc_types: Map<String, Bool>) -> String {
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: rc_types))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: Rust, rc_types: rc_types)
+      _ => "()"
+    }
+    concat("impl Fn(", param_str, ") -> ", ret_str)
+  } else {
+    emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
+  }
+}
+
 fn emit_param(param: Param, rc_types: Map<String, Bool>) -> String {
   let n = param.type_expr
-  let ty = emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
+  let ty = emit_rust_param_type(n: n, rc_types: rc_types)
   // All params are owned -- Rc-wrapped types are cheap to clone, and
   // the .clone() pattern in function bodies produces owned values.
   // Adding & to params creates reference/owned mismatches.
@@ -977,59 +1071,6 @@ fn needs_reference_node(n: Node) -> Bool {
     let is_copy = is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
       || (n.name == "Unit" && n.children |> count == 0)
     is_copy == false
-  }
-}
-
-// =========================================================================
-// Simple expression emission -- for transport binding / mock prop nodes
-//
-// Transport Node properties and mock properties
-// use simple ExprData forms (not post-reconciliation expressions). These are always simple forms:
-// ExprLiteral, ExprVar, ExprFieldAccess, ExprStringInterp. This function handles just
-// those cases, replacing the full emit_expr tree.
-// =========================================================================
-
-fn emit_simple_expr(expr: Node) -> String {
-  match expr.expr_data {
-    ExprLiteral { value: v } => emit_literal(value: v, target: Rust)
-    ExprError { kind: _, message: message } =>
-      emit_error_expr(message: message, target: Rust)
-    ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: Rust)
-    ExprFieldAccess { base: b, field: f, summary: _ } =>
-      if is_typed_service_call_receiver(receiver: expr) {
-        match extract_typed_service_name(receiver: expr) {
-          Some { value: svc_name } => service_var_name(service_name: svc_name)
-          None => concat(emit_simple_expr(expr: b), ".", emit_ident(name: f, target: Rust))
-        }
-      } else {
-        concat(emit_simple_expr(expr: b), ".", emit_ident(name: f, target: Rust))
-      }
-    ExprStringInterp { parts: ps } =>
-      emit_simple_string_interp(parts: ps)
-    _ => emit_error_expr(message: "unsupported simple expr in transport binding", target: Rust)
-  }
-}
-
-fn emit_simple_string_interp(parts: List<StringPart>) -> String {
-  let fmt_parts = parts |> map(p => match p {
-    Text { value: v } =>
-      let escaped = v
-        |> split(delimiter: "{") |> join(separator: "{{")
-      let escaped2 = escaped
-        |> split(delimiter: "}") |> join(separator: "}}")
-      InterpPart { format_segment: escaped2, arg_expr: "" }
-    Interpolation { expr: e } =>
-      InterpPart { format_segment: "{}", arg_expr: emit_simple_expr(expr: e) }
-  })
-  let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
-  let args = fmt_parts
-    |> map(p => p.arg_expr)
-    |> filter(a => a != "")
-  if args |> count == 0 {
-    concat("\"", fmt_str, "\".to_string()")
-  } else {
-    let args_str = args |> join(separator: ", ")
-    concat("format!(\"", fmt_str, "\", ", args_str, ")")
   }
 }
 
@@ -1606,53 +1647,145 @@ fn rust_runtime_bridge_wraps_result_in_rc(function_name: String, receiver: Node,
   (function_name == "map_get" || function_name == "lookup") && rust_lookup_receiver_needs_rc_wrap(receiver: receiver, scope: scope)
 }
 
-fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let shared = emit_shared_expr(texpr: texpr, target: Rust, recurse: (t, s, d) => emit_typed_expr(texpr: t, registry: registry, scope: s, depth: d, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), scope: scope, depth: depth)
-  match shared {
-    Some { value: result } => result
-    None =>
-  match texpr.expr_data {
+fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprVar { name: n, binding_kind: binding_kind } =>
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: texpr.return_type, vtoe: vtoe, rc_types: rc_types, registry: registry, emit_info: emit_info)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.return_type, vtoe: vtoe, rc_types: rc_types, registry: registry, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
+  }
+}
+
+fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprFieldAccess { base: b, field: f, summary: summary } =>
-      if is_typed_service_call_receiver(receiver: texpr) {
-        match extract_typed_service_name(receiver: texpr) {
+      if is_typed_service_call_receiver(receiver: expr) {
+        match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
           None => emit_typed_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         }
       } else {
         emit_typed_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       }
-    ExprCall { func: f, args: a, call_semantics: call_semantics } =>
-      emit_typed_call_expr(func: f, args: a, return_type: texpr.return_type, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_field_access expected ExprFieldAccess", target: Rust)
+  }
+}
+
+fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
+    ExprCall { func: f, args: a, call_semantics: _ } =>
+      emit_typed_call_expr(func: f, args: a, return_type: expr.return_type, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
+  }
+}
+
+fn emit_rust_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
-      emit_typed_method_call(receiver: r, method: m, args: a, result_type: texpr.return_type, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_typed_method_call(receiver: r, method: m, args: a, result_type: expr.return_type, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_method_call expected ExprMethodCall", target: Rust)
+  }
+}
+
+fn emit_rust_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprMatch { scrutinee: s, arms: arm_list } =>
       emit_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_match expected ExprMatch", target: Rust)
+  }
+}
+
+fn emit_rust_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprIf { condition: c, then_branch: t, else_branch: e } =>
       emit_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_if expected ExprIf", target: Rust)
+  }
+}
+
+fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprLet { name: n, value: v, body: bd } =>
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_let expected ExprLet", target: Rust)
+  }
+}
+
+fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: texpr), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    ExprBinOp { op: o, left: l, right: r } =>
-      emit_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: expr), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
+  }
+}
+
+fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprStringInterp { parts: ps } =>
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_string_interp expected ExprStringInterp", target: Rust)
+  }
+}
+
+fn emit_rust_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprBlock { stmts: ss } =>
       emit_typed_block(stmts: ss, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_block expected ExprBlock", target: Rust)
+  }
+}
+
+fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprCast { expr: e, target: t } =>
       emit_typed_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_cast expected ExprCast", target: Rust)
+  }
+}
+
+fn emit_rust_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprForEach { variable: v, collection: c, body: bd } =>
       emit_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_for_each expected ExprForEach", target: Rust)
+  }
+}
+
+fn emit_rust_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprIndex { base: b, index: i } =>
       emit_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_index expected ExprIndex", target: Rust)
+  }
+}
+
+fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprSlice { base: b, start: s, end: e } =>
       emit_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    // ExprLiteral, ExprError, NoExprData, ExprUnaryOp, ExprLambda, ExprListLit, ExprReturn handled by emit_shared_expr
-    _ => ""
+    _ => emit_error_expr(message: "emit_rust_expr_slice expected ExprSlice", target: Rust)
   }
-  }
+}
+
+fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  emit_shared_expr(
+    texpr: texpr,
+    target: Rust,
+    wrap_result: result => result,
+    recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_field_access: expr => emit_rust_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_call: expr => emit_rust_expr_call(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_method_call: expr => emit_rust_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_match: expr => emit_rust_expr_match(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_if: expr => emit_rust_expr_if(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_let: expr => emit_rust_expr_let(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_record_lit: expr => emit_rust_expr_record_lit(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_string_interp: expr => emit_rust_expr_string_interp(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_block: expr => emit_rust_expr_block(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_cast: expr => emit_rust_expr_cast(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_for_each: expr => emit_rust_expr_for_each(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_index: expr => emit_rust_expr_index(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_slice: expr => emit_rust_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
 }
 
 // Clone Var/FieldAccess arguments to prevent move issues in closures.
@@ -2804,30 +2937,38 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Param>, regist
   concat("loop {\n", make_indent(level: depth + 1),inner, "\n}")
 }
 
-fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  match texpr.expr_data {
+fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match frame.expr.expr_data {
     ExprCall { func: f, args: a, call_semantics: _ } =>
-      if f == fn_name {
-        emit_typed_tco_reassign(args: a, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      } else {
-        let call_str = emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat("break ", call_str, ";")
-      }
+      let call_str = emit_typed_call(func: f, args: a, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      concat("break ", call_str, ";")
+    _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
+  }
+}
+
+fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match frame.expr.expr_data {
     ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      let cond_str = emit_typed_expr(texpr: c, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      let then_str = emit_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      let cond_str = emit_typed_expr(texpr: c, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      let then_str = emit_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       match e {
         Some { value: eb } =>
-          let else_str = emit_typed_tco_expr(texpr: eb, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          let else_str = emit_typed_tco_expr(texpr: eb, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
           concat("if ", cond_str, " {\n",
-            make_indent(level: depth + 1),then_str, "\n} else {\n",
-            make_indent(level: depth + 1),else_str, "\n}")
+            make_indent(level: frame.depth + 1), then_str, "\n} else {\n",
+            make_indent(level: frame.depth + 1), else_str, "\n}")
         None =>
           concat("if ", cond_str, " {\n",
-            make_indent(level: depth + 1),then_str, "\n}")
+            make_indent(level: frame.depth + 1), then_str, "\n}")
       }
+    _ => emit_error_expr(message: "emit_rust_tco_if expected ExprIf", target: Rust)
+  }
+}
+
+fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match frame.expr.expr_data {
     ExprMatch { scrutinee: s, arms: arm_list } =>
-      let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let tco_scrut_type = match s.return_type {
         Some { value: Resolved { node: rt } } =>
           if node_is_optional(n: rt) {
@@ -2837,7 +2978,7 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
       }
       let rc_match = analyze_rc_match(scrutinee: s, arms: arm_list, scrut_type: tco_scrut_type, vtoe: vtoe, rc_types: rc_types)
       let arm_strs = arm_list |> map(arm =>
-        emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: tco_scrut_type))
+        emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: tco_scrut_type))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
       if rc_match.needs_option_deref {
@@ -2849,33 +2990,61 @@ fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, regist
       } else {
         concat("match ", scrut_str, " {\n", arms_str, "\n}")
       }
+    _ => emit_error_expr(message: "emit_rust_tco_match expected ExprMatch", target: Rust)
+  }
+}
+
+fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match frame.expr.expr_data {
     ExprLet { name: n, value: v, body: bd } =>
-      let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      let val_str = emit_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
       let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
-      let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
+      let next_scope = extend_scope(scope: frame.scope, name: n, resolved: rt_type(n: v))
       match bd {
         Some { value: b } =>
-          concat(let_line, "\n", emit_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+          concat(let_line, "\n", emit_typed_tco_expr(texpr: b, fn_name: fn_name, params: params, registry: registry, scope: next_scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
         None => let_line
       }
+    _ => emit_error_expr(message: "emit_rust_tco_let expected ExprLet", target: Rust)
+  }
+}
+
+fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match frame.expr.expr_data {
     ExprBlock { stmts: ss } =>
       if ss |> count == 0 {
         "break;"
       } else {
         let init_state = emit_tco_init_block_stmts(
-          remaining: ss, text: [], scope: scope, registry: registry, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, params: params)
+          remaining: ss, text: [], scope: frame.scope, registry: registry, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, params: params)
         let last_str = match ss |> last {
           Some { value: last_expr } =>
-            emit_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+            emit_typed_tco_expr(texpr: last_expr, fn_name: fn_name, params: params, registry: registry, scope: init_state.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
           None => "break;"
         }
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
-    _ =>
-      let val_str = emit_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      concat("break ", val_str, ";")
+    _ => emit_error_expr(message: "emit_rust_tco_block expected ExprBlock", target: Rust)
   }
+}
+
+fn emit_rust_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let val_str = emit_typed_expr(texpr: frame.expr, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  concat("break ", val_str, ";")
+}
+
+fn emit_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  emit_shared_tco_expr(
+    frame: TcoFrame { expr: texpr, scope: scope, depth: depth },
+    fn_name: fn_name,
+    emit_self_call_reassign: input => emit_typed_tco_reassign(args: input.args, params: params, registry: registry, scope: input.scope, depth: input.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_non_self_call: frame => emit_rust_tco_non_self_call(frame: frame, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_if: frame => emit_rust_tco_if(frame: frame, fn_name: fn_name, params: params, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_match: frame => emit_rust_tco_match(frame: frame, fn_name: fn_name, params: params, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_let: frame => emit_rust_tco_let(frame: frame, fn_name: fn_name, params: params, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_block: frame => emit_rust_tco_block(frame: frame, fn_name: fn_name, params: params, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
+    emit_default_return: frame => emit_rust_tco_default_return(frame: frame, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
 }
 
 fn emit_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, scrut_type: String) -> String {
@@ -3015,7 +3184,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3036,7 +3205,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     make_indent(level: depth + 2),real_body, "\n",
     "}")
   let modifier_doc = emit_modifier_doc_from_props(properties: op_node.properties)
-  concat(modifier_doc, rust_visibility, "async fn ", emit_ident(name: op_node.name, target: Rust),
+  concat(modifier_doc, rust_visibility_prefix(), "async fn ", emit_ident(name: op_node.name, target: Rust),
     "(", all_params, ") -> Result<", ret_type, ", Box<dyn std::error::Error>> {\n",
     make_indent(level: depth + 1),body, "\n}")
 }
@@ -3083,7 +3252,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
     None => "Authorization"
   }
   let token_node = match transport_auth_token(t: transport) {
-    Some { value: tn } => emit_simple_expr(expr: tn)
+    Some { value: tn } => emit_simple_expr(expr: tn, target: Rust)
     None => "\"\""
   }
   let auth_line = if transport_has_auth(t: transport) {
@@ -3095,7 +3264,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let headers = transport_headers(t: transport)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
-      emit_simple_expr(expr: h.value), ");")
+      emit_simple_expr(expr: h.value, target: Rust), ");")
   )
   let send_line = "let response = request.send().await?;"
   let parse_line = "let result = response.json().await?;"
@@ -3110,7 +3279,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
     emit_ident(name: op_name, target: Rust), "\")")
   let env_entries = transport_env(t: transport)
   let env_lines = env_entries |> map(e =>
-    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value), ")")
+    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value, target: Rust), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   let output_line = "    .output()?;"
@@ -3186,7 +3355,7 @@ fn emit_resource_def(item: Node) -> String {
 
 fn emit_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3214,11 +3383,11 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   let upper_name = to_screaming_snake(name: name)
   if is_simple_type_node(n: type_node) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
-    concat(rust_visibility, "const ", upper_name, ": ", ty_str, " = ", val_str, ";")
+    concat(rust_visibility_prefix(), "const ", upper_name, ": ", ty_str, " = ", val_str, ";")
   } else if has_nested_records_node(n: type_node) {
     // Complex data with nested anonymous records -> serde deserialization
     let json_str = emit_data_value_json(value: value)
-    concat(rust_visibility, "fn ", to_snake(name: name), "() -> ", ty_str, " {\n",
+    concat(rust_visibility_prefix(), "fn ", to_snake(name: name), "() -> ", ty_str, " {\n",
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",
       "}")
@@ -3233,7 +3402,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
         )
         let inserts_str = inserts |> join(separator: "\n")
         concat("lazy_static::lazy_static! {\n",
-          "    ", rust_visibility, "static ref ", upper_name, ": ", ty_str, " = {\n",
+          "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = {\n",
           "        let mut __m = BTreeMap::new();\n",
           inserts_str, "\n",
           "        __m\n",
@@ -3242,14 +3411,14 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       _ =>
         let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
         concat("lazy_static::lazy_static! {\n",
-          "    ", rust_visibility, "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+          "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
           "}")
     }
   } else {
     // Complex types use lazy_static for heap-allocated values
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
     concat("lazy_static::lazy_static! {\n",
-      "    ", rust_visibility, "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+      "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
       "}")
   }
 }
@@ -3265,56 +3434,54 @@ fn is_simple_type_node(n: Node) -> Bool {
 // emit a test file with one test per mock.
 // =========================================================================
 
-fn emit_test_file(typed_module: TypedModule) -> TextFile {
+fn emit_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
   let depth = 0
-  let m = typed_module.module
-  let service_items = typed_module.items |> filter(item => is_service_item(item: item))
-  let test_fns = service_items
-    |> flat_map(item => emit_typed_service_tests(item: item, registry: empty_map(), depth: depth + 1))
+  let test_fns = projections
+    |> map(p => emit_operation_test(projection: p, depth: depth + 1))
   if test_fns |> count == 0 {
     TextFile { path: "", content: "" }
   } else {
-    let filename = module_to_filename(name: m.name)
+    let filename = module_to_filename(name: module_name)
     let tests_str = test_fns |> join(separator: "\n\n")
     let content = concat("// Generated tests -- do not edit.\n",
-      "// Source module: ", m.name, "\n\n",
+      "// Source module: ", module_name, "\n\n",
       "#[cfg(test)]\nmod tests {\n",
       "    use super::*;\n\n",
       make_indent(level: depth + 1),tests_str, "\n",
       "}\n")
-    TextFile { path: concat("tests/", filename, "_test", rust_source_extension), content: content }
+    TextFile { path: rust_test_file_path(module_name: module_name), content: content }
   }
 }
 
-// is_service_item is now shared -- imported from v2.compiler.emit
-
-fn emit_typed_service_tests(item: Node, registry: Map<String, ItemInfo>, depth: Int) -> List<String> {
-  if item.children |> count > 0 {
-    let safe_name = sanitize_service_name(name: item.name)
-    // Mock data lives in properties with "mock_" prefix
-    item.children
-      |> filter(c => c.properties |> any(p => has_mock_prefix(name: p.name)))
-      |> map(c => emit_operation_test(service_name: safe_name, op_node: c, registry: registry, depth: depth))
-  } else {
-    []
-  }
+fn rust_test_signature_comment(projection: TestProjection) -> String {
+  let params_str = projection.params
+    |> map(p => concat(p.name, ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map())))
+    |> join(separator: ", ")
+  concat(
+    "// Signature: ",
+    sanitize_service_name(name: projection.service_name), ".",
+    projection.operation_name,
+    "(",
+    params_str,
+    ") -> ",
+    emit_node_type(n: projection.return_type, target: Rust))
 }
 
-fn emit_operation_test(service_name: String, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  let test_name = concat("test_", to_snake(name: service_name), "_", to_snake(name: op_node.name))
-  let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: p.name))
-  let mock_setup = mock_props |> map(mp =>
-    emit_mock_prop_setup(mock_prop: mp, registry: registry, depth: depth + 1)
+fn emit_operation_test(projection: TestProjection, depth: Int) -> String {
+  let test_name = rust_test_name(projection: projection)
+  let mock_setup = projection.mock_field_inits |> map(mp =>
+    emit_mock_prop_setup(mock_prop: mp, depth: depth + 1)
   )
   let mock_str = mock_setup |> join(separator: "\n")
-  concat("#[tokio::test]\nasync fn ", test_name, "() {\n",
+  concat(rust_async_test_decorator(), "\nasync fn ", test_name, "() {\n",
+    make_indent(level: depth + 1), rust_test_signature_comment(projection: projection), "\n",
     make_indent(level: depth + 1),mock_str, "\n",
     make_indent(level: depth + 1),"// Mock-based test: verifies operation contract with fixture data.", "\n",
     "}")
 }
 
-fn emit_mock_prop_setup(mock_prop: FieldInit, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  let body_str = emit_simple_expr(expr: mock_prop.value)
+fn emit_mock_prop_setup(mock_prop: FieldInit, depth: Int) -> String {
+  let body_str = emit_simple_expr(expr: mock_prop.value, target: Rust)
   concat("let ", mock_prop.name, " = ", body_str, ";")
 }
 
@@ -3472,7 +3639,7 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     subcommand_enum, "\n\n",
     main_fn, "\n"
   )
-  TextFile { path: concat(rust_source_dir, "main", rust_source_extension), content: content }
+  TextFile { path: concat(rust_source_root(), "main", rust_source_ext()), content: content }
 }
 
 // Emit `use crate::module_name;` for each module that contains a workflow function.
@@ -3519,7 +3686,7 @@ fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) 
       make_indent(level: depth + 2), "source_dir: String,\n",
       make_indent(level: depth + 2), "#[arg(long)]\n",
       make_indent(level: depth + 2), "output_dir: String,\n",
-      make_indent(level: depth + 2), "/// Target language: rust, python, go\n",
+      make_indent(level: depth + 2), "/// Target language: rust, python, go, dag\n",
       make_indent(level: depth + 2), "#[arg(long, default_value = \"rust\")]\n",
       make_indent(level: depth + 2), "target: String,\n",
       make_indent(level: depth + 1), "},")
@@ -3644,28 +3811,38 @@ fn emit_compile_match_arm() -> String {
     "                \"rust\" => ", artifact_mod, "::RenderTarget::Rust,\n",
     "                \"python\" => ", artifact_mod, "::RenderTarget::Python,\n",
     "                \"go\" => ", artifact_mod, "::RenderTarget::Go,\n",
+    "                \"dag\" => ", artifact_mod, "::RenderTarget::Dag,\n",
     "                other => {\n",
-    "                    eprintln!(\"unknown target: {}. supported: rust, python, go\", other);\n",
+    "                    eprintln!(\"unknown target: {}. supported: rust, python, go, dag\", other);\n",
     "                    std::process::exit(1);\n",
     "                }\n",
     "            };\n",
     "            let mut sources: Vec<Rc<", pipeline_mod, "::SourceFile>> = Vec::new();\n",
-    "            let mut entries: Vec<_> = std::fs::read_dir(&source_dir)\n",
-    "                .unwrap_or_else(|e| panic!(\"failed to read source dir {}: {}\", source_dir, e))\n",
-    "                .filter_map(|e| e.ok())\n",
-    "                .collect();\n",
-    "            entries.sort_by_key(|e| e.file_name());\n",
-    "            for entry in entries {\n",
-    "                let path = entry.path();\n",
-    "                if path.extension().map(|e| e == \"dag\").unwrap_or(false) {\n",
-    "                    let content = std::fs::read_to_string(&path)\n",
-    "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n",
-    "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n",
-    "                    sources.push(Rc::new(", pipeline_mod, "::SourceFile {\n",
-    "                        path: filename,\n",
-    "                        content,\n",
-    "                    }));\n",
+    "            let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();\n",
+    "            fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {\n",
+    "                let mut entries: Vec<_> = std::fs::read_dir(dir)\n",
+    "                    .unwrap_or_else(|e| panic!(\"failed to read dir {:?}: {}\", dir, e))\n",
+    "                    .filter_map(|e| e.ok())\n",
+    "                    .collect();\n",
+    "                entries.sort_by_key(|e| e.file_name());\n",
+    "                for entry in entries {\n",
+    "                    let path = entry.path();\n",
+    "                    if path.is_dir() {\n",
+    "                        collect_dag_files(&path, files);\n",
+    "                    } else if path.extension().map(|e| e == \"dag\").unwrap_or(false) {\n",
+    "                        files.push(path);\n",
+    "                    }\n",
     "                }\n",
+    "            }\n",
+    "            collect_dag_files(std::path::Path::new(&source_dir), &mut dag_paths);\n",
+    "            for path in &dag_paths {\n",
+    "                let content = std::fs::read_to_string(path)\n",
+    "                    .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n",
+    "                let filename = path.file_name().unwrap().to_string_lossy().to_string();\n",
+    "                sources.push(Rc::new(", pipeline_mod, "::SourceFile {\n",
+    "                    path: filename,\n",
+    "                    content,\n",
+    "                }));\n",
     "            }\n",
     "            eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), source_dir, target);\n",
     "            let result = ", pipeline_mod, "::compile_sources(\n",
@@ -3777,5 +3954,5 @@ fn emit_dry_run_module() -> TextFile {
     "    }\n",
     "}\n"
   )
-  TextFile { path: concat(rust_source_dir, "dry_run", rust_source_extension), content: content }
+  TextFile { path: concat(rust_source_root(), "dry_run", rust_source_ext()), content: content }
 }

@@ -4613,7 +4613,7 @@ pub fn resolve_expr_types(texpr: Rc<Node>, env: Rc<TypeEnv>, module_name: &str) 
     ExprData::ExprFieldAccess { base, field, summary, .. } => {
         {
     let r = resolve_expr_types(base.clone(), env.clone(), &module_name);
-    Rc::new(ExprResolveResult { expr: make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: r.expr.clone(), field: field.clone(), summary: summary.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: r.diagnostics.clone() })
+    Rc::new(ExprResolveResult { expr: map_expr_children(texpr.clone(), |child| r.expr.clone()), diagnostics: r.diagnostics.clone() })
 }
     }
     ExprData::ExprCall { func, args, call_semantics: cs, .. } => {
@@ -4807,13 +4807,13 @@ pub fn resolve_expr_types(texpr: Rc<Node>, env: Rc<TypeEnv>, module_name: &str) 
     ExprData::ExprUnaryOp { op, operand: o, .. } => {
         {
     let r = resolve_expr_types(o.clone(), env.clone(), &module_name);
-    Rc::new(ExprResolveResult { expr: make_expr_node(Rc::new(ExprData::ExprUnaryOp { op: op.clone(), operand: r.expr.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: r.diagnostics.clone() })
+    Rc::new(ExprResolveResult { expr: map_expr_children(texpr.clone(), |child| r.expr.clone()), diagnostics: r.diagnostics.clone() })
 }
     }
     ExprData::ExprLambda { params: p, body: b, semantics: s, .. } => {
         {
     let r = resolve_expr_types(b.clone(), env.clone(), &module_name);
-    Rc::new(ExprResolveResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: p.clone(), body: r.expr.clone(), semantics: s.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: r.diagnostics.clone() })
+    Rc::new(ExprResolveResult { expr: map_expr_children(texpr.clone(), |child| r.expr.clone()), diagnostics: r.diagnostics.clone() })
 }
     }
     ExprData::ExprStringInterp { parts, .. } => {
@@ -4896,7 +4896,7 @@ pub fn resolve_expr_types(texpr: Rc<Node>, env: Rc<TypeEnv>, module_name: &str) 
     ExprData::ExprReturn { value: inner, .. } => {
         {
     let r = resolve_expr_types(inner.clone(), env.clone(), &module_name);
-    Rc::new(ExprResolveResult { expr: make_expr_node(Rc::new(ExprData::ExprReturn { value: r.expr.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: r.diagnostics.clone() })
+    Rc::new(ExprResolveResult { expr: map_expr_children(texpr.clone(), |child| r.expr.clone()), diagnostics: r.diagnostics.clone() })
 }
     }
     ExprData::NoExprData => {
