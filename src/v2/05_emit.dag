@@ -788,7 +788,15 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
-    let base = emit_primitive_type(name: n.name, target: target)
+    // Bare container nodes (from empty_map(), etc.) need container templates
+    // even without children — emit with "_" placeholders.
+    let base = if n.name == "Map" {
+      emit_map_type(key_type: "_", val_type: "_", target: target)
+    } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
+      emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
+    } else {
+      emit_primitive_type(name: n.name, target: target)
+    }
     // Rc wrapping for Rust named types
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", base, ">")
@@ -884,7 +892,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         let field_types = n.children |> map(child =>
           if child.return_type != none {
             emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
-          } else { "String" }
+          } else { "compile_error!(\"anonymous product field missing return_type\")" }
         )
         let result = concat("(", field_types |> join(separator: ", "), ")")
         result

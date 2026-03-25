@@ -1479,17 +1479,6 @@ pub fn emit_go_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<Fie
     })
 }
 
-pub fn emit_go_typed_list_lit(elements: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
-    let el_strs = {
-    let mut __mapped_0 = Vec::new();
-    for __elem_1 in elements.iter().cloned() {
-        __mapped_0.push(emit_go_typed_expr(__elem_1.clone(), registry.clone(), scope.clone(), 0_i64));
-    }
-    Rc::new(__mapped_0)
-};
-    emit_list_lit_expr(el_strs.clone(), RenderTarget::Go)
-}
-
 pub fn emit_go_typed_bin_op(op: BinOpKind, left: Rc<Node>, right: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     let l_str = emit_go_typed_expr(left.clone(), registry.clone(), scope.clone(), 0_i64);
     let r_str = emit_go_typed_expr(right.clone(), registry.clone(), scope.clone(), 0_i64);
@@ -1499,17 +1488,6 @@ pub fn emit_go_typed_bin_op(op: BinOpKind, left: Rc<Node>, right: Rc<Node>, regi
     let op_str = emit_bin_op_symbol(op.clone(), RenderTarget::Go);
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), l_str), " ".to_string()), op_str), " ".to_string()), r_str), ")".to_string())
 }
-}
-
-pub fn emit_go_typed_unary_op(op: UnaryOpKind, operand: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
-    let expr_str = emit_go_typed_expr(operand.clone(), registry.clone(), scope.clone(), 0_i64);
-    emit_unary_op(op, &expr_str, RenderTarget::Go)
-}
-
-pub fn emit_go_typed_lambda(params: Rc<Vec<String>>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
-    let params_str = emit_lambda_params(params.clone(), RenderTarget::Go);
-    let body_str = emit_go_typed_expr(body.clone(), registry.clone(), scope.clone(), 0_i64);
-    emit_lambda(&params_str, &body_str, RenderTarget::Go)
 }
 
 pub fn emit_go_typed_string_interp(parts: Rc<Vec<Rc<StringPart>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {

@@ -3126,7 +3126,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
-          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" {
+          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {

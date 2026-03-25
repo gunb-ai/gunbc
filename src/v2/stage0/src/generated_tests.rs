@@ -11124,7 +11124,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
-          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" {
+          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {
@@ -13888,7 +13888,15 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
-    let base = emit_primitive_type(name: n.name, target: target)
+    // Bare container nodes (from empty_map(), etc.) need container templates
+    // even without children — emit with "_" placeholders.
+    let base = if n.name == "Map" {
+      emit_map_type(key_type: "_", val_type: "_", target: target)
+    } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
+      emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
+    } else {
+      emit_primitive_type(name: n.name, target: target)
+    }
     // Rc wrapping for Rust named types
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", base, ">")
@@ -13984,7 +13992,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         let field_types = n.children |> map(child =>
           if child.return_type != none {
             emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
-          } else { "String" }
+          } else { "compile_error!(\"anonymous product field missing return_type\")" }
         )
         let result = concat("(", field_types |> join(separator: ", "), ")")
         result
@@ -15513,10 +15521,6 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<FieldInit>, registr
   }
 }
 
-fn emit_go_typed_list_lit(elements: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let el_strs = elements |> map(e => emit_go_typed_expr(texpr: e, registry: registry, scope: scope, depth: 0))
-  emit_list_lit_expr(element_strs: el_strs, target: Go)
-}
 
 fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let l_str = emit_go_typed_expr(texpr: left, registry: registry, scope: scope, depth: 0)
@@ -15529,16 +15533,6 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
   }
 }
 
-fn emit_go_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let expr_str = emit_go_typed_expr(texpr: operand, registry: registry, scope: scope, depth: 0)
-  emit_unary_op(op: op, operand_str: expr_str, target: Go)
-}
-
-fn emit_go_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let params_str = emit_lambda_params(param_names: params, target: Go)
-  let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: scope, depth: 0)
-  emit_lambda(params_str: params_str, body_str: body_str, target: Go)
-}
 
 fn emit_go_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let fmt_parts = parts |> map(p => go_typed_interp_segment(part: p, registry: registry, scope: scope))
@@ -16844,10 +16838,6 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<FieldInit>, registr
   }
 }
 
-fn emit_py_typed_list_lit(elements: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let el_strs = elements |> map(e => emit_py_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth))
-  emit_list_lit_expr(element_strs: el_strs, target: Python)
-}
 
 fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let l_str = emit_py_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth)
@@ -16860,16 +16850,6 @@ fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
   }
 }
 
-fn emit_py_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let expr_str = emit_py_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth)
-  emit_unary_op(op: op, operand_str: expr_str, target: Python)
-}
-
-fn emit_py_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let params_str = emit_lambda_params(param_names: params, target: Python)
-  let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth)
-  emit_lambda(params_str: params_str, body_str: body_str, target: Python)
-}
 
 fn emit_py_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let segments = parts |> map(p => py_typed_interp_segment(part: p, registry: registry, scope: scope, depth: depth))
@@ -20044,10 +20024,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
   }
 }
 
-fn emit_typed_list_lit(elements: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let el_strs = elements |> map(e => emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-  emit_list_lit_expr(element_strs: el_strs, target: Rust)
-}
 
 fn emit_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -20100,16 +20076,6 @@ fn is_string_typed_expr(e: Node) -> Bool {
   }
 }
 
-fn emit_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let expr_str = emit_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  emit_unary_op(op: op, operand_str: expr_str, target: Rust)
-}
-
-fn emit_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let params_str = emit_lambda_params(param_names: params, target: Rust)
-  let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  emit_lambda(params_str: params_str, body_str: body_str, target: Rust)
-}
 
 fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let fmt_parts = parts |> map(p => typed_interp_format_part(part: p, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))

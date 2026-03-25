@@ -4898,17 +4898,6 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<FieldI
     })
 }
 
-pub fn emit_typed_list_lit(elements: Rc<Vec<Rc<Node>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, vtoe: Rc<HashMap<String, String>>, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    let el_strs = {
-    let mut __mapped_0 = Vec::new();
-    for __elem_1 in elements.iter().cloned() {
-        __mapped_0.push(emit_typed_expr(__elem_1.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone()));
-    }
-    Rc::new(__mapped_0)
-};
-    emit_list_lit_expr(el_strs.clone(), RenderTarget::Rust)
-}
-
 pub fn emit_typed_bin_op(op: BinOpKind, left: Rc<Node>, right: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, vtoe: Rc<HashMap<String, String>>, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     let l_str = emit_typed_expr(left.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
     let r_str = emit_typed_expr(right.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
@@ -4981,17 +4970,6 @@ pub fn is_string_typed_expr(e: Rc<Node>) -> bool {
         false
     }
 }
-}
-
-pub fn emit_typed_unary_op(op: UnaryOpKind, operand: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, vtoe: Rc<HashMap<String, String>>, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    let expr_str = emit_typed_expr(operand.clone(), registry.clone(), scope.clone(), depth, vtoe.clone(), rc_types.clone(), emit_info.clone());
-    emit_unary_op(op, &expr_str, RenderTarget::Rust)
-}
-
-pub fn emit_typed_lambda(params: Rc<Vec<String>>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, vtoe: Rc<HashMap<String, String>>, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    let params_str = emit_lambda_params(params.clone(), RenderTarget::Rust);
-    let body_str = emit_typed_expr(body.clone(), registry.clone(), scope.clone(), depth, vtoe.clone(), rc_types.clone(), emit_info.clone());
-    emit_lambda(&params_str, &body_str, RenderTarget::Rust)
 }
 
 pub fn emit_typed_string_interp(parts: Rc<Vec<Rc<StringPart>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, depth: i64, vtoe: Rc<HashMap<String, String>>, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
