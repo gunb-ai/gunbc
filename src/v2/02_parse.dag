@@ -1093,14 +1093,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, state: type_args.state, err: type_args.err } }
     let r3 = expect(tokens: tokens, state: type_args.state, tag: "Gt")
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
-    // Build type node with args as children. Container/map properties
-    // are preserved for backward compatibility until P3.7 deletes the arity bridge.
-    let container_props = if type_name == "Map" {
-      [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: start_span) }]
-    } else if type_name == "List" || type_name == "Set" || type_name == "NonEmptyList" || type_name == "NonEmptySet" {
-      [FieldInit { name: "container_kind", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: type_name } }, return_type: none, span: start_span) }]
-    } else { [] }
-    let te = Node { name: type_name, span: start_span, children: type_args.args, connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: container_props, type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let te = Node { name: type_name, span: start_span, children: type_args.args, connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
   } else {
     // Plain named type

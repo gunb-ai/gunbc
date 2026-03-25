@@ -170,14 +170,17 @@ fn infer_builtin_call_type(name: String) -> Node? {
   } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
     Some { value: leaf_node(name: "Int") }
   } else if name == "lookup" || name == "map_get" {
+    // Dynamic audit: correct — value type depends on receiver's map type, unknown here
     Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
   } else if name == "map_insert" || name == "map_merge" || name == "with" {
     Some { value: bare_map_node() }
   } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
     Some { value: leaf_node(name: "Bool") }
   } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
+    // Dynamic audit: correct — element type depends on receiver, unknown here
     Some { value: container_node(kind_name: "List", element: leaf_node(name: "Dynamic")) }
   } else if name == "Some" {
+    // Dynamic audit: correct — inner type depends on argument, unknown here
     Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
   } else {
     none

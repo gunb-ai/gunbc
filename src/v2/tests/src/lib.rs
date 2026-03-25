@@ -455,16 +455,6 @@ mod tests {
         type_env_with_recursive_types(bindings, vec![])
     }
 
-    fn literal_value_bool(value: bool) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert(
-            "_variant".to_string(),
-            gunbc_ir::Value::Str("LitBool".to_string()),
-        );
-        map.insert("value".to_string(), gunbc_ir::Value::Bool(value));
-        gunbc_ir::Value::Map(map)
-    }
-
     fn literal_expr_value(
         literal: gunbc_ir::Value,
         span: gunbc_ir::Value,
@@ -532,13 +522,6 @@ mod tests {
             gunbc_ir::Value::Map(some_return),
             span,
         )
-    }
-
-    fn field_init_value(name: &str, value: gunbc_ir::Value) -> gunbc_ir::Value {
-        let mut map = std::collections::BTreeMap::new();
-        map.insert("name".to_string(), gunbc_ir::Value::Str(name.to_string()));
-        map.insert("value".to_string(), value);
-        gunbc_ir::Value::Map(map)
     }
 
     fn func_env_value() -> gunbc_ir::Value {
@@ -3071,10 +3054,6 @@ fn get_name() -> String {\n\
     #[test]
     fn phase6_map_alias_exposes_value_type_to_lookup_semantics() {
         let output = compile_all_modules().expect("compilation should succeed");
-        let map_type_prop = field_init_value(
-            "map_type",
-            literal_expr_value(literal_value_bool(true), zero_span_value()),
-        );
         let mut map_type = match named_type_value("Map") {
             gunbc_ir::Value::Map(map) => map,
             other => panic!("expected node map, got: {:?}", other),
@@ -3088,7 +3067,7 @@ fn get_name() -> String {\n\
         );
         map_type.insert(
             "properties".to_string(),
-            gunbc_ir::Value::List(std::sync::Arc::new(vec![map_type_prop])),
+            gunbc_ir::Value::List(std::sync::Arc::new(vec![])),
         );
         let map_type = gunbc_ir::Value::Map(map_type);
 

@@ -1076,13 +1076,15 @@ Mechanical checklist:
 - [x] Delete `node_is_dynamic(n)` — same (Dynamic = CompilerError)
 - [x] Stop `rt_node` fabricating `Node{name:"Error"}` and `Node{name:"Unit"}`
       sentinel nodes — `rt_node` returns `Node?`; callers handle `None`
-- [x] Delete `node_type_equals` Error==anything rule
-- [x] Delete `node_type_compatible` Error/Dynamic==anything rules
+- [ ] Delete `node_type_equals` Error==anything rule (blocked: ~12 error_type_node() cascade sites produce Error nodes that flow through type comparison; converting to CompilerError is L1/Phase 5 scope)
+- [ ] Delete `node_type_compatible` Error/Dynamic==anything rules (Error: same blocker as above; Dynamic: supports 15 audited polymorphic placeholder sites — removal requires type variable infrastructure, L1/Phase 5)
 - [x] Delete ~9 emit sites checking `"Error"`/`"Dynamic"` by name
 - [x] Delete `"_"` type placeholders that compensate for error-typed nodes
 - [x] Add `return_cardinality: Cardinality` to `Node` (blocks P1.4 completion)
-- [ ] Replace ~15 `leaf_node(name: "Dynamic")` fabrications in infer with
-      `CompilerError` (remaining L1 work)
+- [x] Replace Dynamic error sentinels with `error_type_node()` (8 sites in
+      `callable_return_type`, `lambda_param_types_from_scope`, fold init, method
+      result_type); 15 remaining Dynamic sites audited as correct polymorphic
+      placeholders (lambda params, method returns, kernel stubs, emit fallbacks)
 - [x] Stop `resolve_optional_node` silently swallowing `CompilerError` —
       now surfaces error as diagnostic; `leaf_node("Error")` sentinel persists
       due to `NodeResolveResult` structural constraint (Phase 5 migration)
@@ -1105,8 +1107,8 @@ infer (Dynamic fabrications) and resolution (error re-entry into node graph):
 | `00_core.dag` | `rt_node(n:)` | **Done** — returns `Node?`, no sentinel fabrication |
 | `00_core.dag` | `Node` | **Done** — `return_cardinality: Cardinality` field added |
 | `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | **Done** — deleted |
-| `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Done** — Error/Dynamic special cases removed |
-| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | **Remaining** — some Dynamic fabrications persist for unresolved inference |
+| `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Remaining** — Error/Dynamic permissive rules serve error cascade (~12 sites) and polymorphic placeholders (15 sites); removal is L1/Phase 5 |
+| `04_infer.dag` | ~23 sites fabricating `leaf_node(name: "Dynamic")` | **Done** — 8 error sentinels converted to `error_type_node()`; 15 polymorphic placeholders audited correct with `// Dynamic audit:` comments |
 | `04_infer.dag` | `resolve_optional_node` | **Done** — surfaces `CompilerError` as diagnostic; sentinel `leaf_node("Error")` persists due to `NodeResolveResult.resolved: Node` constraint |
 | `04_infer.dag` | `rt_node(...)` callers | **Remaining** — some collapse `None` into `Unit` instead of propagating failure |
 | `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Largely resolved by upstream InferredNode gating |
@@ -1555,7 +1557,11 @@ of the normalization pass naturally (post-order traversal).
   `Optional` is not a type declaration — it was dissolved into cardinality
   on binding sites in Phase 1 (P1.4)
 - Arity bridge (P1.17) is deleted — compiler reads arity from declarations
-- No short-term bridges remain from Phase 1
+- No short-term bridges remain from Phase 1 (container properties deleted,
+  Dynamic error sentinels converted to `error_type_node()`; remaining
+  Error/Dynamic permissive rules in type comparison serve permanent compiler
+  functions — error cascade recovery and polymorphic placeholders — documented
+  with audit comments, removal is L1/Phase 5 scope)
 
 ---
 
