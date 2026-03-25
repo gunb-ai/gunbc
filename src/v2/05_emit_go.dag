@@ -97,7 +97,7 @@ import v2.compiler.emit {
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name,
+  capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   has_nested_records_node,
@@ -203,12 +203,23 @@ fn go_test_file_path(module_name: String) -> String {
 }
 
 fn go_test_name(projection: TestProjection) -> String {
-  let conventions = test_conventions_for_target(target: Go)
-  concat(
-    conventions.function_prefix,
-    capitalize_first(s: to_snake(name: sanitize_service_name(name: projection.service_name))),
-    "_",
-    capitalize_first(s: to_snake(name: projection.operation_name)))
+  test_function_name(projection: projection, target: Go)
+}
+
+fn go_mock_expr_uses_fmt(expr: Node) -> Bool {
+  let rendered = emit_simple_expr(expr: expr, target: Go)
+  rendered |> split(delimiter: "fmt.Sprintf(") |> count > 1
+}
+
+fn go_test_import_block(projections: List<TestProjection>) -> String {
+  let needs_fmt = projections |> any(p =>
+    p.mock_field_inits |> any(mp => go_mock_expr_uses_fmt(expr: mp.value))
+  )
+  if needs_fmt {
+    "import (\n\t\"fmt\"\n\t\"testing\"\n)\n\n"
+  } else {
+    "import \"testing\"\n\n"
+  }
 }
 
 fn go_test_signature_comment(projection: TestProjection) -> String {
@@ -237,7 +248,7 @@ fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> 
       "// Generated tests -- do not edit.\n",
       "// Source module: ", module_name, "\n\n",
       "package ", package_name, "\n\n",
-      "import \"testing\"\n\n",
+      go_test_import_block(projections: projections),
       tests_str, "\n")
     TextFile { path: go_test_file_path(module_name: module_name), content: content }
   }

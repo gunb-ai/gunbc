@@ -1,6 +1,5 @@
 use crate::v2_core::*;
 use crate::infer_env::*;
-use crate::infer_method::*;
 use crate::infer_types::*;
 use crate::infer::*;
 use crate::artifact::*;
@@ -445,15 +444,6 @@ pub fn emit_simple_string_interp(parts: Rc<Vec<Rc<StringPart>>>, target: RenderT
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EmitContext {
-    pub field_access_index: Rc<HashMap<String, Rc<FieldSummary>>>,
-    pub intrinsic_index: Rc<HashMap<String, IntrinsicMethod>>,
-    pub bridge_index: Rc<HashMap<String, bool>>,
-    pub vtoe_index: Rc<HashMap<String, String>>,
-    pub primitive_set: Rc<HashMap<String, bool>>,
-}
-
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope { type_env: Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(Vec::new()), recursive_type_set: Rc::new(std::collections::HashMap::new()) }), func_env: Rc::new(ResolvedFuncEnv { signatures: Rc::new(std::collections::HashMap::new()) }), locals: Rc::new(std::collections::HashMap::new()), module_name: "".to_string(), service_registry: Rc::new(std::collections::HashMap::new()), item_registry: Rc::new(std::collections::HashMap::new()) })
 }
@@ -598,64 +588,6 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     __acc_0
 };
     result.result.clone()
-}
-
-pub fn build_emit_context(graph: Rc<ResolvedGraph>) -> Rc<EmitContext> {
-    let info = build_emit_graph_info(graph.modules.clone());
-    let field_idx = {
-    let mut __acc_4 = Rc::new(std::collections::HashMap::new());
-    for __elem_5 in ({
-    let __rc_0 = info.type_summaries.clone();
-    let __map_unwrapped_1 = Rc::try_unwrap(__rc_0).unwrap_or_else(|rc| (*rc).clone());
-    let mut __entries_2 = __map_unwrapped_1.into_iter().collect::<Vec<_>>();
-    __entries_2.sort_by(|a, b| a.0.cmp(&b.0));
-    let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
-    Rc::new(__values_3)
-}).iter().cloned() {
-        __acc_4 = {
-    let mut __acc_9 = __acc_4.clone();
-    for __elem_10 in ({
-    let __rc_6 = __elem_5.field_summaries.clone();
-    let __map_unwrapped_7 = Rc::try_unwrap(__rc_6).unwrap_or_else(|rc| (*rc).clone());
-    let mut __keys_8 = __map_unwrapped_7.into_keys().collect::<Vec<_>>();
-    __keys_8.sort();
-    Rc::new(__keys_8)
-}).iter().cloned() {
-        __acc_9 = match __elem_5.field_summaries.clone().get(&__elem_10.clone()).cloned() {
-    Some(fs) => {
-        {
-    let __rc_12 = __acc_9;
-    let mut __map_ins_11 = Rc::try_unwrap(__rc_12).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_11.insert(v2_rt::concat(v2_rt::concat(__elem_5.name.clone(), "::".to_string()), __elem_10.clone()), fs.clone());
-    Rc::new(__map_ins_11)
-}
-    }
-    None => {
-        __acc_9.clone()
-    }
-};
-    }
-    __acc_9
-};
-    }
-    __acc_4
-};
-    let intrinsic_idx = intrinsic_method_index();
-    let bridge_idx = Rc::new(std::collections::HashMap::new());
-    let vtoe_idx = info.variant_to_enum.clone();
-    let prim_set = {
-    let mut __acc_13 = Rc::new(std::collections::HashMap::new());
-    for __elem_14 in Rc::new(KERNEL_TYPES.iter().map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() {
-        __acc_13 = {
-    let __rc_16 = __acc_13;
-    let mut __map_ins_15 = Rc::try_unwrap(__rc_16).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_15.insert(__elem_14.clone(), true);
-    Rc::new(__map_ins_15)
-};
-    }
-    __acc_13
-};
-    Rc::new(EmitContext { field_access_index: field_idx.clone(), intrinsic_index: intrinsic_idx.clone(), bridge_index: bridge_idx.clone(), vtoe_index: vtoe_idx.clone(), primitive_set: prim_set.clone() })
 }
 
 pub fn has_nested_records_node(n: Rc<Node>) -> bool {
@@ -1154,8 +1086,51 @@ pub fn capitalize_first(s: &str) -> String {
 }
 }
 
+pub fn to_pascal(name: &str) -> String {
+    let snake = to_snake(&name);
+    let parts = {
+    let mut __split_parts_0 = Vec::new();
+    for __part_1 in snake.split("_".to_string().as_str()) {
+        __split_parts_0.push(__part_1.to_string());
+    }
+    __split_parts_0
+};
+    let pascal_parts = {
+    let mut __mapped_2 = Vec::new();
+    for __elem_3 in parts.iter().cloned() {
+        __mapped_2.push(capitalize_first(&__elem_3));
+    }
+    Rc::new(__mapped_2)
+};
+    {
+    let mut __joined_4 = String::new();
+    let mut __first_6 = true;
+    for __elem_5 in pascal_parts.iter().cloned() {
+        if !__first_6 {
+    __joined_4.push_str(&"".to_string());
+};
+        __first_6 = false;
+        __joined_4.push_str(&__elem_5);
+    }
+    __joined_4
+}
+}
+
 pub fn service_var_name(service_name: &str) -> String {
     to_snake(&sanitize_service_name(&service_name))
+}
+
+pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
+    let conventions = test_conventions_for_target(target);
+    let formatted = match conventions.name_style.clone() {
+    TestNameStyle::SnakeCaseTestNames => {
+        v2_rt::concat(v2_rt::concat(to_snake(&sanitize_service_name(&projection.service_name)), "_".to_string()), to_snake(&projection.operation_name))
+    }
+    TestNameStyle::PascalCaseTestNames => {
+        v2_rt::concat(to_pascal(&sanitize_service_name(&projection.service_name)), to_pascal(&projection.operation_name))
+    }
+};
+    v2_rt::concat(conventions.function_prefix.clone(), formatted.clone())
 }
 
 pub fn apply_type_template1(template: &str, arg0: &str) -> String {
@@ -1513,7 +1488,7 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Callable[[".to_string(), param_str.clone()), "], ".to_string()), ret_str.clone()), "]".to_string())
     }
     RenderTarget::Rust => {
-        v2_rt::concat(v2_rt::concat(v2_rt::concat("impl Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone())
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc<dyn Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone()), ">".to_string())
     }
     _ => {
         v2_rt::concat(v2_rt::concat(v2_rt::concat("Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone())

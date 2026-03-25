@@ -111,7 +111,7 @@ import v2.compiler.emit {
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name,
+  capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
@@ -197,12 +197,7 @@ fn rust_test_file_path(module_name: String) -> String {
 }
 
 fn rust_test_name(projection: TestProjection) -> String {
-  let conventions = test_conventions_for_target(target: Rust)
-  concat(
-    conventions.function_prefix,
-    to_snake(name: sanitize_service_name(name: projection.service_name)),
-    "_",
-    to_snake(name: projection.operation_name))
+  test_function_name(projection: projection, target: Rust)
 }
 
 fn rust_async_test_decorator() -> String {

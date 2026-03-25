@@ -13144,7 +13144,6 @@ import v2.std.core {
   BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
   BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
-  kernel_types,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   TransportKind, RestTransport, ShellTransport, FileTransport,
@@ -13154,23 +13153,22 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_method { intrinsic_method_index }
 import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
   ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
-  ItemInfo, UniqueAccum, emit_map_has,
-  FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo,
-  build_emit_graph_info
+  ItemInfo, UniqueAccum, emit_map_has
 }
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
+  SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   language_spec_for_target,
+  test_conventions_for_target,
   target_keyword, target_primitive_type, target_container_template
 }
 
@@ -13348,29 +13346,6 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
 }
 
 // =========================================================================
-// EmitContext -- cached indexes built once per emit call
-//
-// Root Cause A category 2: emit owns these rendering decisions but must
-// not re-derive them per expression. Each index is built once from the
-// ResolvedGraph at emit entry, then passed through all emit functions
-// for O(1) lookups.
-//
-// A-1:  field_access_index — (type_name, field_name) → FieldAccessStyle
-// A-2:  intrinsic_index   — method_name → IntrinsicMethod
-// A-3:  bridge_index      — func_name → Bool (was Call bridged to MethodCall)
-// A-7:  vtoe_index        — variant_name → parent_enum_name
-// A-10: primitive_set     — type_name → Bool (is primitive)
-// =========================================================================
-
-type EmitContext {
-  field_access_index: Map<String, FieldSummary>
-  intrinsic_index: Map<String, IntrinsicMethod>
-  bridge_index: Map<String, Bool>
-  vtoe_index: Map<String, String>
-  primitive_set: Map<String, Bool>
-}
-
-// =========================================================================
 // Scope helpers
 // =========================================================================
 
@@ -13466,45 +13441,6 @@ fn unique_strings(items: List<String>) -> List<String> {
   })
   result.result
 }
-
-// =========================================================================
-// EmitContext builders -- construct cached indexes from ResolvedGraph
-// =========================================================================
-
-// Build the full EmitContext from a ResolvedGraph. Called once at emit entry.
-// Each index is a pre-built Map for O(1) lookups during code generation.
-fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
-  let info = build_emit_graph_info(modules: graph.modules)
-  // A-1: field access index -- flatten type_summaries into keyed field lookups.
-  // Key format: "TypeName::field_name" for unique O(1) lookup.
-  let field_idx = map_values(info.type_summaries) |> fold(init: empty_map(), f: fn(acc, ts) {
-    map_keys(ts.field_summaries) |> fold(init: acc, f: fn(acc2, field_name) {
-      match map_get(ts.field_summaries, field_name) {
-        Some { value: fs } => map_insert(acc2, concat(ts.name, "::", field_name), fs)
-        None => acc2
-      }
-    })
-  })
-  // A-2: intrinsic index -- from single-authority source in infer_method
-  let intrinsic_idx = intrinsic_method_index()
-  // A-3: bridge index -- empty by default, populated by target-specific emitters
-  let bridge_idx = empty_map()
-  // A-7: vtoe index -- from variant_to_enum
-  let vtoe_idx = info.variant_to_enum
-  // A-10: primitive set
-  let prim_set = fold(kernel_types, init: empty_map(), f: (acc, name) =>
-    map_insert(acc, name, true)
-  )
-  EmitContext {
-    field_access_index: field_idx,
-    intrinsic_index: intrinsic_idx,
-    bridge_index: bridge_idx,
-    vtoe_index: vtoe_idx,
-    primitive_set: prim_set
-  }
-}
-
-
 
 // =========================================================================
 // Nested record detection -- for data definition edge cases
@@ -13715,9 +13651,32 @@ fn capitalize_first(s: String) -> String {
   }
 }
 
+fn to_pascal(name: String) -> String {
+  let snake = to_snake(name: name)
+  let parts = snake |> split(delimiter: "_")
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  pascal_parts |> join(separator: "")
+}
+
 // Derive the variable name for a service: "git.Core" -> "git_core"
 fn service_var_name(service_name: String) -> String {
   to_snake(name: sanitize_service_name(name: service_name))
+}
+
+fn test_function_name(projection: TestProjection, target: RenderTarget) -> String {
+  let conventions = test_conventions_for_target(target: target)
+  let formatted = match conventions.name_style {
+    SnakeCaseTestNames => concat(
+      to_snake(name: sanitize_service_name(name: projection.service_name)),
+      "_",
+      to_snake(name: projection.operation_name)
+    )
+    PascalCaseTestNames => concat(
+      to_pascal(name: sanitize_service_name(name: projection.service_name)),
+      to_pascal(name: projection.operation_name)
+    )
+  }
+  concat(conventions.function_prefix, formatted)
 }
 
 // =========================================================================
@@ -13908,7 +13867,7 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
     match target {
       Go => concat("func(", param_str, ")", if ret_str != "" { concat(" ", ret_str) } else { "" })
       Python => concat("Callable[[", param_str, "], ", ret_str, "]")
-      Rust => concat("impl Fn(", param_str, ") -> ", ret_str)
+      Rust => concat("Rc<dyn Fn(", param_str, ") -> ", ret_str, ">")
       _ => concat("Fn(", param_str, ") -> ", ret_str)
     }
   } else if node_is_optional(n: n) {
@@ -14729,7 +14688,7 @@ import v2.compiler.emit {
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name,
+  capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   has_nested_records_node,
@@ -14835,12 +14794,23 @@ fn go_test_file_path(module_name: String) -> String {
 }
 
 fn go_test_name(projection: TestProjection) -> String {
-  let conventions = test_conventions_for_target(target: Go)
-  concat(
-    conventions.function_prefix,
-    capitalize_first(s: to_snake(name: sanitize_service_name(name: projection.service_name))),
-    "_",
-    capitalize_first(s: to_snake(name: projection.operation_name)))
+  test_function_name(projection: projection, target: Go)
+}
+
+fn go_mock_expr_uses_fmt(expr: Node) -> Bool {
+  let rendered = emit_simple_expr(expr: expr, target: Go)
+  rendered |> split(delimiter: "fmt.Sprintf(") |> count > 1
+}
+
+fn go_test_import_block(projections: List<TestProjection>) -> String {
+  let needs_fmt = projections |> any(p =>
+    p.mock_field_inits |> any(mp => go_mock_expr_uses_fmt(expr: mp.value))
+  )
+  if needs_fmt {
+    "import (\n\t\"fmt\"\n\t\"testing\"\n)\n\n"
+  } else {
+    "import \"testing\"\n\n"
+  }
 }
 
 fn go_test_signature_comment(projection: TestProjection) -> String {
@@ -14869,7 +14839,7 @@ fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> 
       "// Generated tests -- do not edit.\n",
       "// Source module: ", module_name, "\n\n",
       "package ", package_name, "\n\n",
-      "import \"testing\"\n\n",
+      go_test_import_block(projections: projections),
       tests_str, "\n")
     TextFile { path: go_test_file_path(module_name: module_name), content: content }
   }
@@ -16066,7 +16036,7 @@ import v2.compiler.emit {
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name,
+  capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
@@ -16184,12 +16154,7 @@ fn py_test_file_path(module_name: String) -> String {
 }
 
 fn py_test_name(projection: TestProjection) -> String {
-  let conventions = test_conventions_for_target(target: Python)
-  concat(
-    conventions.function_prefix,
-    to_snake(name: sanitize_service_name(name: projection.service_name)),
-    "_",
-    to_snake(name: projection.operation_name))
+  test_function_name(projection: projection, target: Python)
 }
 
 fn emit_init_py(modules: List<TypedModule>) -> TextFile {
@@ -17414,7 +17379,7 @@ import v2.compiler.emit {
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  capitalize_first, sanitize_service_name, service_var_name,
+  capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
@@ -17500,12 +17465,7 @@ fn rust_test_file_path(module_name: String) -> String {
 }
 
 fn rust_test_name(projection: TestProjection) -> String {
-  let conventions = test_conventions_for_target(target: Rust)
-  concat(
-    conventions.function_prefix,
-    to_snake(name: sanitize_service_name(name: projection.service_name)),
-    "_",
-    to_snake(name: projection.operation_name))
+  test_function_name(projection: projection, target: Rust)
 }
 
 fn rust_async_test_decorator() -> String {

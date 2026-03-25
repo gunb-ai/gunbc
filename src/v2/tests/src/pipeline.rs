@@ -92,10 +92,19 @@ fn go_emit_generates_mock_test_file() {
     let result = compile_dag_target(source, RenderTarget::Go);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "mock_smoke_test.go");
-    assert!(content.contains("func Test"), "Go test file should contain a generated test function");
+    assert!(content.contains("func TestDemoApiPing("), "Go test file should contain a PascalCase generated test function");
     assert!(content.contains("// Signature:"), "Go test file should contain the projection signature comment");
 }
 
+#[test]
+fn go_emit_mock_test_file_imports_fmt_for_string_interp() {
+    let source = "module mock_interp\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong {-1}\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_interp_test.go");
+    assert!(content.contains("\"fmt\""), "Go test file should import fmt when mock interpolation renders fmt.Sprintf");
+    assert!(content.contains("fmt.Sprintf("), "Go test file should render fmt.Sprintf for interpolated mock strings");
+}
 #[test]
 fn dag_pipeline_smoke() {
     let source = "module dag_smoke\n\ntype Point { x: Int  y: Int }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n";

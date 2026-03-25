@@ -184,8 +184,51 @@ pub fn go_test_file_path(module_name: &str) -> String {
 }
 
 pub fn go_test_name(projection: Rc<TestProjection>) -> String {
-    let conventions = test_conventions_for_target(RenderTarget::Go);
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(conventions.function_prefix.clone(), capitalize_first(&to_snake(&sanitize_service_name(&projection.service_name)))), "_".to_string()), capitalize_first(&to_snake(&projection.operation_name)))
+    test_function_name(projection.clone(), RenderTarget::Go)
+}
+
+pub fn go_mock_expr_uses_fmt(expr: Rc<Node>) -> bool {
+    let rendered = emit_simple_expr(expr.clone(), RenderTarget::Go);
+    ({
+    let __len_2 = ({
+    let mut __split_parts_0 = Vec::new();
+    for __part_1 in rendered.split("fmt.Sprintf(".to_string().as_str()) {
+        __split_parts_0.push(__part_1.to_string());
+    }
+    __split_parts_0
+}).len();
+    __len_2 as i64
+}) > 1_i64
+}
+
+pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> String {
+    let needs_fmt = {
+    let mut __any_0 = false;
+    for __elem_1 in projections.iter().cloned() {
+        {
+let __cond = {
+    let mut __any_2 = false;
+    for __elem_3 in __elem_1.mock_field_inits.iter().cloned() {
+        if go_mock_expr_uses_fmt(__elem_3.value.clone()) {
+    __any_2 = true;
+    break;
+};
+    }
+    __any_2
+};
+if __cond {
+    __any_0 = true;
+    break;
+}
+};
+    }
+    __any_0
+};
+    if needs_fmt.clone() {
+    "import (\n	\"fmt\"\n	\"testing\"\n)\n\n".to_string()
+} else {
+    "import \"testing\"\n\n".to_string()
+}
 }
 
 pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
@@ -236,7 +279,7 @@ pub fn emit_go_test_file(module_name: &str, projections: Rc<Vec<Rc<TestProjectio
     }
     __joined_2
 };
-    let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated tests -- do not edit.\n".to_string(), "// Source module: ".to_string()), module_name.to_string()), "\n\n".to_string()), "package ".to_string()), package_name), "\n\n".to_string()), "import \"testing\"\n\n".to_string()), tests_str.clone()), "\n".to_string());
+    let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated tests -- do not edit.\n".to_string(), "// Source module: ".to_string()), module_name.to_string()), "\n\n".to_string()), "package ".to_string()), package_name), "\n\n".to_string()), go_test_import_block(projections.clone())), tests_str.clone()), "\n".to_string());
     Rc::new(TextFile { path: go_test_file_path(&module_name), content: content.clone() })
 }
 }

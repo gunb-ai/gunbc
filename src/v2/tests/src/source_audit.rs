@@ -316,6 +316,14 @@ fn testgen_emits_valid_rust() {
         emit_source.contains("TestProjection"),
         "05_emit.dag should contain TestProjection"
     );
+    assert!(
+        emit_source.contains("Rust => concat(\"Rc<dyn Fn("),
+        "05_emit.dag should render Rust callable types as Rc<dyn Fn(...)> in shared emit"
+    );
+    assert!(
+        !emit_source.contains("Rust => concat(\"impl Fn("),
+        "05_emit.dag should not render Rust callable types as impl Fn in shared emit"
+    );
 }
 
 #[test]

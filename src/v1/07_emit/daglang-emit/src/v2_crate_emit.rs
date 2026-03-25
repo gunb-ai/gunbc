@@ -810,6 +810,7 @@ enum Commands {
     },
 }
 
+#[allow(clippy::disallowed_macros)]
 fn main() {
     let cli = Cli::parse();
     match cli.command {

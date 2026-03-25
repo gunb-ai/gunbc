@@ -204,8 +204,7 @@ pub fn py_test_file_path(module_name: &str) -> String {
 }
 
 pub fn py_test_name(projection: Rc<TestProjection>) -> String {
-    let conventions = test_conventions_for_target(RenderTarget::Python);
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(conventions.function_prefix.clone(), to_snake(&sanitize_service_name(&projection.service_name))), "_".to_string()), to_snake(&projection.operation_name))
+    test_function_name(projection.clone(), RenderTarget::Python)
 }
 
 pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
