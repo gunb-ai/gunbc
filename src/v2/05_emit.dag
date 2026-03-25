@@ -853,6 +853,96 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 }
 
 // =========================================================================
+// P4.1: Shared type rendering -- unified for Go/Python (Rust has Rc logic)
+// =========================================================================
+
+fn emit_node_type(n: Node, target: RenderTarget) -> String {
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_node_type(n: p.type_expr, target: target))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: Resolved { node: rt } } => emit_node_type(n: rt, target: target)
+      _ => emit_keyword(key: "null", target: target)
+    }
+    match target {
+      Go => concat("func(", param_str, ")", if ret_str != "" { concat(" ", ret_str) } else { "" })
+      Python => concat("Callable[[", param_str, "], ", ret_str, "]")
+      _ => concat("Fn(", param_str, ") -> ", ret_str)
+    }
+  } else if node_is_optional(n: n) {
+    emit_container(kind: "optional", inner: emit_node_type(n: with_required_cardinality(n: n), target: target), target: target)
+  } else {
+    let kind = classify_type_structure(n: n)
+    if kind == TypeLeaf {
+      emit_node_type_leaf(n: n, target: target)
+    } else if kind == TypeConj {
+      emit_node_type_conj(n: n, target: target)
+    } else {
+      emit_node_type_disj(n: n, target: target)
+    }
+  }
+}
+
+fn emit_node_type_leaf(n: Node, target: RenderTarget) -> String {
+  if n.children |> count == 0 {
+    emit_primitive_type(name: n.name, target: target)
+  } else if node_is_map(n: n) {
+    let k = match n.children |> first {
+      Some { value: kn } => emit_node_type(n: kn, target: target)
+      None => "String"
+    }
+    let v = match skip(n.children, 1) |> first {
+      Some { value: vn } => emit_node_type(n: vn, target: target)
+      None => "String"
+    }
+    emit_map_type(key_type: k, val_type: v, target: target)
+  } else if n.children |> count == 1 {
+    let inner = match n.children |> first {
+      Some { value: child } => emit_node_type(n: child, target: target)
+      None => ""
+    }
+    emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
+  } else {
+    n.name
+  }
+}
+
+fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
+  if n.name == "Refined" {
+    match n.children |> first {
+      Some { value: base } => emit_node_type(n: base, target: target)
+      None => n.name
+    }
+  } else if n.name == "Tuple" {
+    let first_str = match n.children |> first {
+      Some { value: c } => emit_node_type(n: c, target: target)
+      None => ""
+    }
+    let second_str = match skip(n.children, 1) |> first {
+      Some { value: c } => emit_node_type(n: c, target: target)
+      None => ""
+    }
+    match target {
+      Go => concat("struct{ First ", first_str, "; Second ", second_str, " }")
+      Python => concat("Tuple[", first_str, ", ", second_str, "]")
+      _ => concat("(", first_str, ", ", second_str, ")")
+    }
+  } else if n.name != "" {
+    n.name
+  } else {
+    match target { Go => "interface{}"  Python => "Any"  _ => "()" }
+  }
+}
+
+fn emit_node_type_disj(n: Node, target: RenderTarget) -> String {
+  if n.name != "" {
+    n.name
+  } else {
+    match target { Go => "interface{}"  Python => "Any"  _ => "()" }
+  }
+}
+
+// =========================================================================
 // Shared item-level helpers -- identical across all backends
 // =========================================================================
 
