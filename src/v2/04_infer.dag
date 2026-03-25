@@ -3875,10 +3875,10 @@ fn resolve_func_sigs(
     items: List<Node>,
     module_name: String
 ) -> ResolveFuncSigsResult {
-  // Filter to functions only: items with params AND a body (or no structural children).
-  // Type declarations (node_has_structure) have params for generic slots, not function params.
+  // Filter to functions only: items with params AND a body.
+  // Bare generic type declarations (type List<element>) have params but no body.
   let local_func_names = items
-    |> filter(item => item.params |> count > 0 && node_has_structure(n: item) == false)
+    |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => item.name)
   let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
     map_insert(acc, fn_name, true)

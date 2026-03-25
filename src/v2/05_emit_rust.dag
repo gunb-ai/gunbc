@@ -780,9 +780,11 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
 // to render Rust type syntax.
 // =========================================================================
 
-// Rust type rendering: shared emit_node_type + Rc wrapping layer.
-// Rc wrapping is a Rust-specific rendering concern applied after base rendering.
-// Dynamic/Error, Callable, and NonEmpty variants are Rust-specific pre-processing.
+// Rust type rendering: Rc-aware recursive rendering.
+// Cannot delegate to shared emit_node_type for composite types because
+// shared rendering recurses into itself without Rc wrapping. Rust must
+// handle its own recursion so inner types get Rc<> where needed.
+// Shared emit_node_type is used only for terminal leaf rendering.
 fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
   // Rust-specific: Dynamic/Error produce compile_error!
   if n.name == "Dynamic" && n.children |> count == 0 {
@@ -791,7 +793,7 @@ fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
   if n.name == "Error" && n.children |> count == 0 {
     return "compile_error!(\"unresolved Error type reached emit\")"
   }
-  // Rust-specific: Callable uses impl Fn syntax with recursive Rust rendering
+  // Callable: impl Fn(ParamTypes) -> RetType
   if n.name == "Callable" && n.params |> count > 0 {
     let param_types = n.params |> map(p => emit_rust_node_type(n: p.type_expr, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
@@ -801,25 +803,51 @@ fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
     }
     return concat("impl Fn(", param_str, ") -> ", ret_str)
   }
-  // Rust-specific: NonEmptyList/NonEmptySet have special container names
-  if (n.name == "NonEmptyList" || n.name == "NonEmptySet") && n.children |> count == 1 {
+  // Optional: wrap inner type
+  if node_is_optional(n: n) {
+    return rust_container(kind: "optional", inner: emit_rust_node_type(n: with_required_cardinality(n: n), rc_types: rc_types))
+  }
+  let kind = classify_type_structure(n: n)
+  if kind == TypeLeaf {
+    emit_rust_node_type_leaf(n: n, rc_types: rc_types)
+  } else if kind == TypeConj {
+    emit_rust_node_type_conj(n: n, rc_types: rc_types)
+  } else {
+    emit_rust_node_type_disj(n: n, rc_types: rc_types)
+  }
+}
+
+fn emit_rust_node_type_leaf(n: Node, rc_types: Map<String, Bool>) -> String {
+  if n.children |> count == 0 {
+    let base = if n.name == "Map" { apply_type_template2(template: rust_map_template(), arg0: "_", arg1: "_") }
+      else if n.name == "List" { "Vec<_>" }
+      else if n.name == "Set" { "std::collections::BTreeSet<_>" }
+      else { emit_primitive_type(name: n.name, target: Rust) }
+    if emit_map_has(m: rc_types, key: n.name) {
+      concat("Rc<", base, ">")
+    } else {
+      base
+    }
+  } else if node_is_map(n: n) {
+    let k = match n.children |> first {
+      Some { value: kn } => emit_rust_node_type(n: kn, rc_types: rc_types)
+      None => "String"
+    }
+    let v = match skip(n.children, 1) |> first {
+      Some { value: vn } => emit_rust_node_type(n: vn, rc_types: rc_types)
+      None => "String"
+    }
+    apply_type_template2(template: rust_map_template(), arg0: k, arg1: v)
+  } else if n.children |> count == 1 {
     let inner = match n.children |> first {
       Some { value: child } => emit_rust_node_type(n: child, rc_types: rc_types)
       None => "()"
     }
-    if n.name == "NonEmptyList" {
-      return concat("NonEmptyVec<", inner, ">")
-    } else {
-      return concat("NonEmptyBTreeSet<", inner, ">")
-    }
-  }
-  // Base type from shared rendering
-  let base = emit_node_type(n: n, target: Rust)
-  // Rc wrapping layer: wrap childless leaf types that are in rc_types
-  if n.children |> count == 0 && n.name != "" && emit_map_has(m: rc_types, key: n.name) {
-    concat("Rc<", base, ">")
+    if n.name == "NonEmptyList" { concat("NonEmptyVec<", inner, ">") }
+    else if n.name == "NonEmptySet" { concat("NonEmptyBTreeSet<", inner, ">") }
+    else { rust_container(kind: to_snake(name: n.name), inner: inner) }
   } else {
-    base
+    n.name
   }
 }
 

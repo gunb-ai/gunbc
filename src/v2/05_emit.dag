@@ -863,7 +863,7 @@ fn emit_node_type(n: Node, target: RenderTarget) -> String {
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.return_type {
       Some { value: Resolved { node: rt } } => emit_node_type(n: rt, target: target)
-      _ => emit_keyword(key: "null", target: target)
+      _ => match target { Go => ""  Python => "None"  _ => "()" }
     }
     match target {
       Go => concat("func(", param_str, ")", if ret_str != "" { concat(" ", ret_str) } else { "" })
@@ -890,21 +890,26 @@ fn emit_node_type_leaf(n: Node, target: RenderTarget) -> String {
   if n.children |> count == 0 {
     emit_primitive_type(name: n.name, target: target)
   } else if node_is_map(n: n) {
+    let default_str = match target { Go => "string"  Python => "str"  _ => "String" }
     let k = match n.children |> first {
       Some { value: kn } => emit_node_type(n: kn, target: target)
-      None => "String"
+      None => default_str
     }
     let v = match skip(n.children, 1) |> first {
       Some { value: vn } => emit_node_type(n: vn, target: target)
-      None => "String"
+      None => default_str
     }
     emit_map_type(key_type: k, val_type: v, target: target)
   } else if n.children |> count == 1 {
     let inner = match n.children |> first {
       Some { value: child } => emit_node_type(n: child, target: target)
-      None => ""
+      None => match target { Go => "interface{}"  Python => "Any"  _ => "()" }
     }
-    emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
+    // NonEmpty variants map to same container as their base type
+    let container_kind = if n.name == "NonEmptyList" { "list" }
+      else if n.name == "NonEmptySet" { "set" }
+      else { to_snake(name: n.name) }
+    emit_container(kind: container_kind, inner: inner, target: target)
   } else {
     n.name
   }
@@ -917,13 +922,14 @@ fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
       None => n.name
     }
   } else if n.name == "Tuple" {
+    let fallback = match target { Go => "interface{}"  Python => "Any"  _ => "()" }
     let first_str = match n.children |> first {
       Some { value: c } => emit_node_type(n: c, target: target)
-      None => ""
+      None => fallback
     }
     let second_str = match skip(n.children, 1) |> first {
       Some { value: c } => emit_node_type(n: c, target: target)
-      None => ""
+      None => fallback
     }
     match target {
       Go => concat("struct{ First ", first_str, "; Second ", second_str, " }")
@@ -933,7 +939,7 @@ fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
   } else if n.name != "" {
     n.name
   } else {
-    match target { Go => "interface{}"  Python => "Any"  _ => "()" }
+    match target { Go => "interface{}"  Python => "dict"  _ => "()" }
   }
 }
 
@@ -941,7 +947,7 @@ fn emit_node_type_disj(n: Node, target: RenderTarget) -> String {
   if n.name != "" {
     n.name
   } else {
-    match target { Go => "interface{}"  Python => "Any"  _ => "()" }
+    match target { Go => "interface{}"  Python => "dict"  _ => "()" }
   }
 }
 
