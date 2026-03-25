@@ -86,7 +86,7 @@ import v2.compiler.emit {
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   go_keyword, go_container, go_primitive_type,
   go_literal, go_bin_op_symbol, go_map_template,
-  emit_literal, emit_bin_op_symbol, emit_keyword,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -366,7 +366,7 @@ fn emit_go_node_type(n: Node) -> String {
     return concat("func(", param_str, ")", ret_str)
   }
   if node_is_optional(n: n) {
-    return go_container(kind: "optional", inner: emit_go_node_type(n: with_required_cardinality(n: n)))
+    return emit_container(kind: "optional", inner: emit_go_node_type(n: with_required_cardinality(n: n)), target: Go)
   }
   let kind = classify_type_structure(n: n)
   if (kind == TypeLeaf) {
@@ -380,7 +380,7 @@ fn emit_go_node_type(n: Node) -> String {
 
 fn emit_go_node_type_leaf(n: Node) -> String {
   if n.children |> count == 0 {
-    go_primitive_type(name: n.name)
+    emit_primitive_type(name: n.name, target: Go)
   } else if node_is_map(n: n) {
     let k = match n.children |> first {
       Some { value: kn } => emit_go_node_type(n: kn)
@@ -390,7 +390,7 @@ fn emit_go_node_type_leaf(n: Node) -> String {
       Some { value: vn } => emit_go_node_type(n: vn)
       None => "string"
     }
-    apply_type_template2(template: go_map_template(), arg0: k, arg1: v)
+    emit_map_type(key_type: k, val_type: v, target: Go)
   } else if n.children |> count == 1 {
     let inner = match n.children |> first {
       Some { value: child } => emit_go_node_type(n: child)
@@ -398,11 +398,11 @@ fn emit_go_node_type_leaf(n: Node) -> String {
     }
     // Go has no NonEmpty distinction -- use same container
     if n.name == "NonEmptyList" {
-      go_container(kind: "list", inner: inner)
+      emit_container(kind: "list", inner: inner, target: Go)
     } else if n.name == "NonEmptySet" {
-      go_container(kind: "set", inner: inner)
+      emit_container(kind: "set", inner: inner, target: Go)
     } else {
-      go_container(kind: to_snake(name: n.name), inner: inner)
+      emit_container(kind: to_snake(name: n.name), inner: inner, target: Go)
     }
   } else {
     n.name

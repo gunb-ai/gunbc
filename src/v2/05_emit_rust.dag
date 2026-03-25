@@ -62,6 +62,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
   rust_reserved, rt_functions, rt_ref_map_functions
 }
@@ -99,6 +100,7 @@ import v2.compiler.emit {
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
+  emit_literal, emit_bin_op_symbol, emit_keyword,
   emit_string_literal,
   module_emit_scope,
   scope_after_expr,
@@ -1119,7 +1121,7 @@ fn needs_reference_node(n: Node) -> Bool {
 
 fn emit_simple_expr(expr: Node) -> String {
   match expr.expr_data {
-    ExprLiteral { value: v } => rust_literal(value: v)
+    ExprLiteral { value: v } => emit_literal(value: v, target: Rust)
     ExprError { kind: _, message: message } =>
       concat("compile_error!(", emit_string_literal(s: message, suffix: ""), ")")
     ExprVar { name: n, binding_kind: _ } => rust_ident(name: n)
@@ -1724,7 +1726,7 @@ fn rust_runtime_bridge_wraps_result_in_rc(function_name: String, receiver: Node,
 
 fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match texpr.expr_data {
-    ExprLiteral { value: v } => rust_literal(value: v)
+    ExprLiteral { value: v } => emit_literal(value: v, target: Rust)
     ExprError { kind: _, message: message } =>
       concat("compile_error!(", emit_string_literal(s: message, suffix: ""), ")")
     ExprVar { name: n, binding_kind: binding_kind } =>
@@ -2720,7 +2722,7 @@ fn emit_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<Strin
   if is_null_coalesce(op: op) {
     concat(l_str, ".unwrap_or_else(|| ", r_str, ")")
   } else {
-    let op_str = rust_bin_op_symbol(op: op)
+    let op_str = emit_bin_op_symbol(op: op, target: Rust)
     if is_string_comparison(op: op, left: left, right: right) {
       // When either side is Optional<String>, use .as_deref() to get Option<&str>
       // instead of .as_str() which doesn't exist on Option<String>.
@@ -2768,7 +2770,7 @@ fn is_string_typed_expr(e: Node) -> Bool {
 fn emit_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let expr_str = emit_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   match op {
-    Not => concat(rust_keyword(key: "not"), expr_str)
+    Not => concat(emit_keyword(key: "not", target: Rust), expr_str)
     Neg => concat("-", expr_str)
   }
 }
