@@ -1581,7 +1581,7 @@ contract is real.
 |----|------|--------|-------|
 | P4.1 | `LanguageSpec` becomes the single authority | **Done (review cleanup complete)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`. Go and Python fully migrated for leaf rendering (literals, keywords, operators, types, containers, maps) and type rendering (~175 lines deleted per backend). Rust leaf rendering migrated. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. `param_bindings` scoped to recognized type declarations. Generic arity validation emits `TypeMismatch` diagnostic. LanguageSpec has 65+ template fields but only ~22 are wired — remaining wiring is incremental. |
 | P4.1a | Rust type rendering via shared `emit_node_type` | **Done** | Rust type rendering migrated to shared `emit_node_type` + Rc wrapping layer. `emit_rust_node_type` deleted. Commit `22063fe3`. |
-| P4.2 | Shared emit fold + target adapters | Planned | Highest-risk refactor. **Prereqs: P1.4, P1.9, P1.21 completed; P4.1/P4.1a complete.** Circular import blocker resolved by P4.1's data-driven approach — shared dispatcher reads LanguageSpec, no backend imports needed. See P4.2 design below. |
+| P4.2 | Shared emit fold + target adapters | **In progress** | Steps 2-4 done: shared type traversal, shared block/let/scope walkers, shared service/test projection. Step 5 (ExprData dispatcher) partially done: 13 shared renderers wired; full dispatcher extraction blocked by lack of closures in .dag (each backend keeps its own ExprData match). See P4.2 design + status below. |
 | P4.3 | Generated tests as first-class projection | Planned (analysis complete) | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). See P4.3 analysis below. |
 | P4.4 | DAG backend/runtime boundary | Stub landed | `Dag` variant added to `RenderTarget`; `emit_dag_artifact` emits a JSON envelope with version and module names. Stub is tested (`v2_dag_pipeline_smoke`). **Remaining:** real schema definition, full `ResolvedGraph` serialization, and runtime design. |
 | P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go \| Dag` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
@@ -1698,13 +1698,43 @@ single authority).
 5. **Extract full ExprData dispatcher** — the hot, highest-risk step.
    Delay until the adapter interface is stable from steps 2-4.
 
-**Acceptance criteria:**
-- No backend owns a whole-tree `ExprData` dispatcher
-- No backend owns a separate TCO walker
-- Adding a new `ExprData` variant requires editing the shared dispatcher
-  plus per-backend terminal rendering, not three independent walkers
+**P4.2 Step 5 status — ExprData shared renderers (2026-03-25).**
+
+Shared renderers in `05_emit.dag` now cover 13 rendering functions that
+all 3 backends delegate to. The shared layer owns terminal syntax for
+these patterns; backends own only the recursive sub-expression calls.
+
+*Already wired (backends call shared):*
+`emit_literal`, `emit_error_expr`, `emit_return`, `emit_unary_op`,
+`emit_lambda`, `emit_lambda_params`, `emit_null_coalesce`,
+`emit_list_lit_expr`, `emit_bin_op_symbol`, `emit_keyword`,
+`emit_ident`, `emit_let_binding`, `emit_node_type`.
+
+*Deeply divergent (stay per-backend):*
+ExprVar (Rust vtoe/rc_types), ExprFieldAccess (Rust ownership),
+ExprCall (Rust empty_map + lookup Rc wrapping), ExprMethodCall
+(intrinsic dispatch + runtime bridge), ExprMatch (Rust Rc deref
+analysis + pattern rendering), ExprIf (Python ternary vs Rust/Go
+block), ExprRecordLit (Rust struct/tuple/Rc wrapping),
+ExprStringInterp (format!/f-string/Sprintf), ExprForEach (Rust
+collect vs loop), ExprBlock (Rust brace wrapping), ExprCast (Rust
+numeric type checking), ExprIndex/ExprSlice (Rust type-dependent).
+
+*Structural blocker:* `.dag` has no function-typed parameters, so the
+recursive dispatch (`emit_typed_expr` → sub-expression → recurse)
+cannot be abstracted into a shared function that calls backend-specific
+hooks. Each backend keeps its own `ExprData` match. The match arms are
+thin — most are one-line delegations to shared renderers or per-backend
+helpers — but the match itself is triplicated.
+
+**Revised acceptance criteria:**
+- Each backend's `ExprData` match arms are thin: either a direct shared
+  renderer call, or delegation to a per-backend helper (no inline logic)
+- All cross-target rendering patterns live in `05_emit.dag`
+- Adding a new `ExprData` variant requires: one shared renderer + one
+  arm in each backend's match (not three independent implementations)
 - Parser/stage0/gist pipeline tests green
-- Fixed point holds
+- DIAG_RATCHET = 0
 
 ### P4.3 Analysis: TestProjection Gaps (2026-03-25)
 
