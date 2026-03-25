@@ -1,22 +1,21 @@
 [workspace]
 resolver = "2"
 members = [
-    # v1 foundation -- kept as dev-dependencies for v2 test evaluation chain
+    # v1 compiler — retained for assemble_stage0 binary (seed regeneration).
+    # Tests no longer depend on v1; they call stage0 directly.
     "src/v1/00_foundation/infra",
     "src/v1/00_foundation/ir",
     "src/v1/00_foundation/daglang-contract",
     "src/v1/00_foundation/delegate-macros",
-    # v1 source -- parser used by v2 test harness to load .dag files
     "src/v1/03_source/daglang-syntax",
     "src/v1/03_source/daglang-resolve",
-    # v1 semantics -- transitive dep of daglang-lower
     "src/v1/04_semantics/daglang-typecheck",
-    # v1 graph -- evaluator used by v2 test harness to execute .dag functions
     "src/v1/05_graph/daglang-eval",
     "src/v1/05_graph/daglang-lower",
-    # v1 emit -- used by bootstrap tests to assemble stage0
     "src/v1/06_artifacts/daglang-derive",
     "src/v1/07_emit/daglang-emit",
+    # v2 stage0 — bootstrap seed (generated from .dag by v1 emitter)
+    "src/v2/stage0",
     # v2 self-hosted compiler tests
     "src/v2/tests",
 ]
@@ -43,6 +42,12 @@ stacker = "0.1"
 # avoids the linker OOM / SIGBUS failures we saw on CI runners.
 [profile.dev]
 debug = 0
+
+# Stage0 is generated code with V5 debug_asserts that panic on shared Rc
+# ownership. The fallback path (clone) is correct — the asserts are dev-time
+# ownership optimization signals, not correctness checks.
+[profile.dev.package.v2-compiler]
+debug-assertions = false
 
 [profile.release]
 debug = 0
