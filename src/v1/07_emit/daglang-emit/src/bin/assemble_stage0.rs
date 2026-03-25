@@ -4,6 +4,7 @@
 //!
 //! Example: cargo run -p daglang-emit --bin assemble_stage0 -- . src/v2/stage0
 
+#[allow(clippy::disallowed_macros)]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 3 {
