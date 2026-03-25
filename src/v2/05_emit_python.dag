@@ -77,6 +77,7 @@ import v2.compiler.emit {
   python_keyword, python_container, python_primitive_type,
   python_literal, python_bin_op_symbol, python_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
+  emit_node_type,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -99,7 +100,7 @@ fn emit_single_field_product_py_type(field_node: Node) -> String {
   if field_node.return_type == none {
     "dict"
   } else {
-    emit_py_node_type(n: rt_type(n: field_node))
+    emit_node_type(n: rt_type(n: field_node), target: Python)
   }
 }
 
@@ -252,7 +253,7 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   if (kind == TypedItemTypeDef) {
     emit_py_type_def_from_connective(item: item)
   } else if (kind == TypedItemTypeAlias) {
-    concat(item.name, " = ", emit_py_node_type(n: rt_type(n: item)))
+    concat(item.name, " = ", emit_node_type(n: rt_type(n: item), target: Python))
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
       emit_py_func_def(name: item.name, params: item.params, return_type: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
@@ -306,7 +307,7 @@ fn emit_py_dataclass_from_children(name: String, children: List<Node>) -> String
 }
 
 fn emit_py_dataclass_field_from_child(child: Node) -> String {
-  let ty = emit_py_node_type(n: rt_type(n: child))
+  let ty = emit_node_type(n: rt_type(n: child), target: Python)
   let is_optional = node_is_optional(n: rt_type(n: child))
   let default_str = if is_optional {
     " = None"
@@ -353,98 +354,7 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node) -> String 
 // to render Python type syntax.
 // =========================================================================
 
-fn emit_py_node_type(n: Node) -> String {
-  // Callable type: function used as a value -- emit Callable[[ParamTypes], RetType].
-  if n.name == "Callable" && n.params |> count > 0 {
-    let param_types = n.params |> map(p => emit_py_node_type(n: p.type_expr))
-    let param_str = param_types |> join(separator: ", ")
-    let ret_str = match n.return_type {
-      Some { value: Resolved { node: rt } } => emit_py_node_type(n: rt)
-      _ => "None"
-    }
-    return concat("Callable[[", param_str, "], ", ret_str, "]")
-  }
-  if node_is_optional(n: n) {
-    return emit_container(kind: "optional", inner: emit_py_node_type(n: with_required_cardinality(n: n)), target: Python)
-  }
-  let kind = classify_type_structure(n: n)
-  if (kind == TypeLeaf) {
-    emit_py_node_type_leaf(n: n)
-  } else if (kind == TypeConj) {
-    emit_py_node_type_conj(n: n)
-  } else {
-    emit_py_node_type_disj(n: n)
-  }
-}
-
-fn emit_py_node_type_leaf(n: Node) -> String {
-  if n.children |> count == 0 {
-    emit_primitive_type(name: n.name, target: Python)
-  } else if node_is_map(n: n) {
-    let k = match n.children |> first {
-      Some { value: kn } => emit_py_node_type(n: kn)
-      None => "str"
-    }
-    let v = match skip(n.children, 1) |> first {
-      Some { value: vn } => emit_py_node_type(n: vn)
-      None => "str"
-    }
-    emit_map_type(key_type: k, val_type: v, target: Python)
-  } else if n.children |> count == 1 {
-    let inner = match n.children |> first {
-      Some { value: child } => emit_py_node_type(n: child)
-      None => "None"
-    }
-    // Python has no NonEmpty distinction -- use same container
-    if n.name == "NonEmptyList" {
-      emit_container(kind: "list", inner: inner, target: Python)
-    } else if n.name == "NonEmptySet" {
-      emit_container(kind: "set", inner: inner, target: Python)
-    } else {
-      emit_container(kind: to_snake(name: n.name), inner: inner, target: Python)
-    }
-  } else {
-    n.name
-  }
-}
-
-fn emit_py_node_type_conj(n: Node) -> String {
-  if n.name == "Refined" {
-    match n.children |> first {
-      Some { value: base } => emit_py_node_type(n: base)
-      None => n.name
-    }
-  } else if n.name == "Tuple" {
-    let first_str = match n.children |> first {
-      Some { value: c } => emit_py_node_type(n: c)
-      None => "Any"
-    }
-    let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } => emit_py_node_type(n: c)
-      None => "Any"
-    }
-    concat("Tuple[", first_str, ", ", second_str, "]")
-  } else if n.name != "" {
-    n.name
-  } else {
-    if n.children |> count == 1 {
-      match n.children |> first {
-        Some { value: field_node } => emit_single_field_product_py_type(field_node: field_node)
-        None => "dict"
-      }
-    } else {
-      "dict"
-    }
-  }
-}
-
-fn emit_py_node_type_disj(n: Node) -> String {
-  if n.name != "" {
-    n.name
-  } else {
-    "dict"
-  }
-}
+// Type rendering now uses shared emit_node_type (05_emit.dag).
 
 // =========================================================================
 // Pure function (fn) emission
@@ -503,7 +413,7 @@ fn emit_py_func_def(
 fn emit_py_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_py_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(py_ident(name: u.name), ": ", emit_py_node_type(n: u.resource))
+    concat(py_ident(name: u.name), ": ", emit_node_type(n: u.resource, target: Python))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": ", sanitize_service_name(name: sn))
@@ -522,12 +432,12 @@ fn emit_py_params(params: List<Param>) -> String {
 }
 
 fn emit_py_param(param: Param) -> String {
-  let ty = emit_py_node_type(n: param.type_expr)
+  let ty = emit_node_type(n: param.type_expr, target: Python)
   concat(py_ident(name: param.name), ": ", ty)
 }
 
 fn emit_py_return_type(return_type: Node) -> String {
-  concat(" -> ", emit_py_node_type(n: return_type))
+  concat(" -> ", emit_node_type(n: return_type, target: Python))
 }
 fn emit_py_pattern(pattern: MatchPattern) -> String {
   match pattern {
@@ -902,7 +812,7 @@ fn emit_py_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope
 
 fn emit_py_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let expr_str = emit_py_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth)
-  let ty_str = emit_py_node_type(n: target)
+  let ty_str = emit_node_type(n: target, target: Python)
   concat(ty_str, "(", expr_str, ")")
 }
 
@@ -1076,7 +986,7 @@ fn emit_py_service_init(transport: Node, config: ServiceConfig?) -> String {
 
 fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(py_ident(name: p.name), ": ", emit_py_node_type(n: p.type_expr))
+    concat(py_ident(name: p.name), ": ", emit_node_type(n: p.type_expr, target: Python))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1084,7 +994,7 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
   } else {
     concat("self, ", params_str)
   }
-  let ret_type = emit_py_node_type(n: rt_type(n: op_node))
+  let ret_type = emit_node_type(n: rt_type(n: op_node), target: Python)
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
     None => transport
@@ -1189,7 +1099,7 @@ fn emit_py_resource_def(item: Node) -> String {
 
 fn emit_py_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(py_ident(name: p.name), ": ", emit_py_node_type(n: p.type_expr))
+    concat(py_ident(name: p.name), ": ", emit_node_type(n: p.type_expr, target: Python))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1197,7 +1107,7 @@ fn emit_py_capability_method(cap_node: Node) -> String {
   } else {
     concat("self, ", params_str)
   }
-  let ret = emit_py_node_type(n: rt_type(n: cap_node))
+  let ret = emit_node_type(n: rt_type(n: cap_node), target: Python)
   concat("@abstractmethod\n",
     "async def ", py_ident(name: cap_node.name), "(", all_params, ") -> ", ret, ":\n",
     "    ...")
@@ -1210,7 +1120,7 @@ fn emit_py_capability_method(cap_node: Node) -> String {
 // =========================================================================
 
 fn emit_py_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let ty_str = emit_py_node_type(n: type_node)
+  let ty_str = emit_node_type(n: type_node, target: Python)
   let upper_name = to_screaming_snake(name: name)
   let val_str = emit_py_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0)
   concat(upper_name, ": ", ty_str, " = ", val_str)
