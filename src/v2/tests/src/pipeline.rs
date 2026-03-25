@@ -24,7 +24,6 @@ fn generic_type_declaration_smoke() {
 }
 
 #[test]
-#[ignore] // known to need cycle detection
 fn generic_recursive_type() {
     let source = "module recursive_gen\n\ntype MyList<T> = Nil | Cons { head: T, tail: MyList<T> }\n\nfn empty() -> MyList<Int> { Nil }\n";
     let result = compile_dag(source);
