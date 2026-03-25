@@ -1944,6 +1944,10 @@ fn lambda_scope_from_semantics(scope: InferScope, params: List<String>, semantic
       params |> enumerate |> fold(init: scope, f: (acc, pair) =>
         let idx = pair.first
         let param_name = pair.second
+        // Dynamic audit: correct — scope must have a binding for every lambda param.
+        // When inference didn't resolve a param type, Dynamic is the correct sentinel.
+        // Downstream guards in lambda_param_type_strs filter Dynamic from rendered
+        // type annotations, and emit_node_type_rc catches any remaining leak.
         let param_type = match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: resolved_type } => resolved_type
           None => leaf_node(name: "Dynamic")
@@ -1962,6 +1966,9 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: lambda_semantics } =>
         match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: param_type } =>
+            // Dynamic audit: correct guard — filter Dynamic/Error sentinels from
+            // rendered lambda param type annotations. Falls back to caller-provided
+            // fallback_types (typically elem_type_str or "_"), letting Rust infer.
             if param_type.name == "Dynamic" || param_type.name == "Error" {
               none
             } else {
@@ -2146,7 +2153,9 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           match contextual_acc_type {
             Some { value: concrete_type } => concrete_type
             None =>
-              // Fallback: infer accumulator type from init expression's return type
+              // Fallback: infer accumulator type from init expression's return type.
+              // Dynamic audit: correct — Dynamic leaf_node here is caught by
+              // emit_node_type_rc which renders it as "_" for Rust type inference.
               match args |> first {
                 Some { value: init_arg } =>
                   if init_arg.value.return_type != none {
@@ -2183,6 +2192,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         Some { value: Resolved { node: rt } } =>
           let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
           let elem = for_each_element_type_node(n: resolved)
+          // Dynamic audit: correct guard — if sort_by element type is Dynamic,
+          // fall back to "_" so Rust infers the closure param type.
           if elem.name != "" && elem.name != "Dynamic" {
             emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
           } else { "_" }
@@ -2471,6 +2482,9 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
 fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
+  // Dynamic audit (both branches below): correct guards — when a field's type is
+  // Dynamic, return none rather than using "Dynamic" as a parent type qualifier.
+  // The caller falls back to other disambiguation strategies (vtoe, parent_enum).
   // First try: direct children (works for Conj/struct nodes)
   let direct = match struct_node.children |> filter(c => c.name == field_name) |> first {
     Some { value: field_child } =>
@@ -2590,6 +2604,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           match vtoe_lookup {
             Some { value: vtoe_parent } => Some { value: vtoe_parent }
             None =>
+              // Dynamic audit: correct guard — when resolved_type is Dynamic or Error,
+              // don't use it as the enum parent qualifier. Fall through to parent_enum.
               if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
                 Some { value: resolved_type.name }
               } else {
