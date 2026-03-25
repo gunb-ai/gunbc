@@ -782,43 +782,59 @@ is Phase 3 (v1 retirement, generics) and cleanup.
 
 ### Parallelizable work streams
 
-Active branches can proceed independently here:
+| Stream | What | Status | Depends on |
+|--------|------|--------|------------|
+| **A: Fixed-point** | Bootstrap convergence | **Done** — deterministic output, ratchet at 0 | — |
+| **B: Generics** | P3.6 + P3.7 | **Done** — non-recursive types work, arity bridge deleted | — |
+| **D: V1 retirement** | Replace v1 interpreter with stage0 subprocess for tests | **Planned — separate worker** | Nothing (parallel with E) |
+| **E: P4.2 Shared ExprData dispatch** | Centralize 20-arm ExprData match across 3 backends | **Next** | P4.1 done |
+| **F: P2.6 File decomposition** | Extract type resolution, func sigs from `04_infer.dag` | Blocked | V1 retirement (for `map_expr_children`) |
 
-| Stream | What | Files touched | Depends on |
-|--------|------|---------------|------------|
-| **A: Fixed-point convergence** | **Done on `cousin-wip`.** Deterministic bootstrap output landed, semantic/codegen gaps closed, and `v2_bootstrap_fixed_point` now passes end-to-end. Keep the test green; no redesign branch is required. | `05_emit_rust.dag`, `04_infer.dag`, test harness | None |
-| **B: P3.6 Generics** | Substitution logic written. Two paths: (1) simplify functions to avoid v1 module loader crash, or (2) wait for v1 retirement. Trying path 1 now. | `03_normalize.dag`, `04_infer.dag` | Path 1: nothing. Path 2: blocked by v1 retirement |
-| **C: P2.6 File decomposition** | Extract type resolution, func sigs from `04_infer.dag` | `04_infer.dag` + new split modules | Blocked by `map_expr_children` (v1 retirement) for full effect; mechanical extractions possible now |
+**Streams D and E are fully independent** — D touches test harness and
+v1 crates; E touches emit .dag files. Different files, different concerns.
 
-**Stream A status:** Closed on `cousin-wip`. The deterministic bootstrap
-change landed, the residual stage1/stage2 type/codegen gaps were fixed,
-and the byte-identical fixed-point test is now green again.
+### V1 retirement plan (Stream D)
 
-**Stream B is now active.** Trying to get generics working by
-simplifying the normalize substitution functions to avoid v1 crashes.
+Replace the v1 interpreter with a stage0 subprocess for test execution.
+The `v2_gist_full_pipeline` test (line 5542 in tests) already does this
+pattern. Four tiers:
 
-With A back to green, the remaining sequencing is:
-- B: substitution code is already written and tested — just wire it in
-- C: `map_expr_children` lands, `resolve_expr_types` collapses, file
-  boundaries stabilize
+1. **Stage0 test harness** — build stage0 once per test run, cache binary
+   via `LazyLock`. Pattern exists in gist pipeline test. (~1 session)
 
-**P3.6 generics current status (partial):**
-- Type parameter registration in `build_type_env`: **done** (slot names
-  resolve as leaf types during inference)
-- Function signature filter: **done** (generic type declarations excluded
-  from `resolve_func_sigs`)
-- Substitution logic: **written and tested** (proved to work when wired
-  in — `Pair<Int, String>` with field access compiles with 0 diagnostics)
-- Test: **written, `#[ignore]`** pending v1 retirement
-- Wiring: **blocked by v1** — function definitions in `03_normalize.dag`
-  crash the v1 module loader
+2. **Migrate `compile_sources_with` tests** — ~80 tests call the v1
+   interpreter to compile test input. Replace with: write .dag to temp,
+   run stage0 subprocess, read output files. (~1-2 sessions)
 
-### Sequential dependencies (updated)
+3. **Rewrite intermediate state tests** — ~30 tests inspect tokenizer
+   output, type env bindings, etc. through v1. Rewrite as end-to-end
+   tests (compile, check output) or add `--dump-stage` flag to stage0.
+   (~1 session)
+
+4. **Feature flag cleanup** — remove `v1-bootstrap` from default features.
+   Gate remaining v1 tests behind `#[cfg(feature = "v1-bootstrap")]`.
+   Delete `v2_runtime_shim.rs` (336 lines). Verify: `cargo test -p
+   v2-compiler-tests` runs all non-v1 tests.
+
+**Key files:** test harness (`src/v2/tests/src/lib.rs`), test Cargo.toml,
+`v2_crate_emit.rs` (stage0 assembly), `v2_runtime_shim.rs` (deletable).
+
+**What V1 retirement unblocks:**
+- P3.8 recursive generics (v1 Rust stack overflow goes away)
+- `map_expr_children` (v1 can't handle user-defined HOFs)
+- `resolve_expr_types` collapse (~160 → ~10 lines)
+- File decomposition with final code shape (Stream F)
+
+### Sequential dependencies
 
 ```
-A (fixed-point green) → v1 retirement
-  → B (wire generics substitution) → P3.7 (delete arity bridge)
-  → map_expr_children → C (full decomposition)
+D (v1 retirement) → P3.8 recursive generics
+                   → map_expr_children → F (file decomposition)
+
+E (P4.2 shared emit) → P4.3 (generated tests)
+                      → P4.4 (DAG backend)
+
+D and E run in parallel.
 ```
 
 The remaining active streams converge through v1 retirement.
