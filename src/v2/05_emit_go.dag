@@ -70,9 +70,9 @@ import extdeps.languages.go.emit {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
-  ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   expr_span,

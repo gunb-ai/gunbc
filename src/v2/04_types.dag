@@ -484,3 +484,11 @@ fn for_each_element_type_node(n: Node) -> Node {
       else { normed }
   }
 }
+
+// Map-contains-key check for Bool-valued maps (used as sets).
+fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
+  }
+}

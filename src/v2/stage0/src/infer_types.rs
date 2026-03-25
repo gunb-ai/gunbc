@@ -818,3 +818,14 @@ pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
+pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: &str) -> bool {
+    match m.clone().get(&key.to_string()).cloned() {
+    Some(_) => {
+        true
+    }
+    None => {
+        false
+    }
+}
+}
+

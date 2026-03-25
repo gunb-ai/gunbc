@@ -92,7 +92,8 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  rt_type, no_span
+  rt_type, no_span,
+  emit_map_has
 }
 import v2.compiler.infer_method {
   classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
@@ -107,6 +108,10 @@ import v2.compiler.infer_env {
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
+}
+import v2.compiler.infer_sigs {
+  ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
+  resolve_func_sigs
 }
 import v2.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -124,19 +129,6 @@ type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<Diagnostic>
-}
-
-// ResolvedFuncSig: function signature with concrete return type (never placeholder).
-// Produced by resolve_func_sigs after SCC-aware return type resolution.
-type ResolvedFuncSig {
-  name: String
-  params: List<Param>
-  return_type: Node
-  is_async: Bool
-}
-
-type ResolvedFuncEnv {
-  signatures: Map<String, ResolvedFuncSig>
 }
 
 // ResolvedGraph: the reconcile-to-emit boundary type.
@@ -197,14 +189,6 @@ type ModuleContext {
 type UniqueAccum {
   seen: Map<String, Bool>
   result: List<String>
-}
-
-// Map membership check -- returns true if key is present in the map.
-fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
-  match map_get(m, key) {
-    Some { value: _ } => true
-    None => false
-  }
 }
 
 // Typed-receiver versions of service call detection -- for Node expr_data trees.
@@ -2888,232 +2872,6 @@ type TypecheckModuleResult {
   diagnostics: List<Diagnostic>
 }
 
-// =========================================================================
-// SCC-aware function signature resolution (Contract 2)
-//
-// Converts DeclaredFuncSig (optional return_type) to ResolvedFuncSig
-// (concrete return_type) using topological ordering of the call graph.
-//
-// 1. Collect call edges between local functions from body ASTs.
-// 2. Process functions in topological order: each function's callees
-//    are resolved before the function itself.
-// 3. Annotated functions: return_type unwrapped from Some.
-// 4. Unannotated + non-recursive: infer from body (callees resolved).
-// 5. Unannotated + recursive (self or mutual): compile error.
-//
-// All 686 current functions have annotations, so paths 4-5 are future-
-// proofing. The structural contract ensures no fabrication reaches emit.
-// =========================================================================
-
-type ResolveFuncSigsResult {
-  func_env: ResolvedFuncEnv
-  diagnostics: List<Diagnostic>
-}
-
-// Accumulator for single-pass fold over function signatures:
-// collects resolved signatures and diagnostics together.
-type SigsAccum {
-  signatures: Map<String, ResolvedFuncSig>
-  diagnostics: List<Diagnostic>
-}
-
-// Call edge between two local functions.
-type CallEdge {
-  caller: String
-  callee: String
-}
-
-// Collect call edges from function body ASTs.
-// Only includes edges where the callee is a local function (in local_func_set).
-fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>) -> List<CallEdge> {
-  flat_map(items, item =>
-    if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: item.name, texpr: item.body.value, local_func_set: local_func_set)
-    } else {
-      []
-    }
-  )
-}
-
-// Walk a Node expression tree to find ExprCall nodes whose func is a local function.
-fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
-  // Per-node logic: detect local function calls and produce call edges.
-  let this_edges = match texpr.expr_data {
-    ExprCall { func: f, args: _, call_semantics: _ } =>
-      if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
-      else { [] }
-    _ => []
-  }
-  // Structural recursion into all child expressions.
-  let child_edges = expr_children(node: texpr) |> flat_map(child =>
-    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set)
-  )
-  let result = concat(this_edges, child_edges)
-  result
-}
-
-// Check if a function reaches itself through the call graph (DFS).
-fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {
-  if emit_map_has(m: visited, key: current) { false }
-  else {
-    let next_visited = map_insert(visited, current, true)
-    let callees = call_edges |> filter(e => e.caller == current) |> map(e => e.callee)
-    callees |> any(c =>
-      if c == root { true }
-      else { func_reaches_self(root: root, current: c, call_edges: call_edges, visited: next_visited) }
-    )
-  }
-}
-
-// Convert a single DeclaredFuncSig with return_type: Some to ResolvedFuncSig.
-// Caller must ensure return_type is not None.
-fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
-  ResolvedFuncSig { name: dsig.name, params: dsig.params, return_type: dsig.return_type.value, is_async: dsig.is_async }
-}
-
-// Merge all remaining declared sigs (with return_type: Some) into a resolved map.
-fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
-  fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
-    if dsig.return_type != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-    } else { acc }
-  )
-}
-
-// Topological resolution loop: process functions whose local callees are all resolved.
-// When no more progress can be made, remaining functions form cycles.
-fn topo_resolve_loop(
-    remaining: List<String>,
-    resolved: Map<String, ResolvedFuncSig>,
-    declared_sigs: Map<String, DeclaredFuncSig>,
-    call_edges: List<CallEdge>,
-    local_func_set: Map<String, Bool>,
-    module_name: String,
-    diagnostics: List<Diagnostic>
-) -> ResolveFuncSigsResult {
-  if remaining |> count == 0 {
-    // Include non-local (parent) sigs -- they have return_type: Some from conversion.
-    let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
-      if dsig.return_type != none {
-        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-      } else { acc }
-    )
-    return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { signatures: all_resolved },
-      diagnostics: diagnostics
-    }
-  }
-
-  // Find functions whose local callees are all resolved
-  let ready = remaining |> filter(fn_name =>
-    let local_callees = call_edges
-      |> filter(e => e.caller == fn_name)
-      |> map(e => e.callee)
-      |> filter(c => emit_map_has(m: local_func_set, key: c))
-    local_callees |> all(c => map_get(resolved, c) != none)
-  )
-
-  if ready |> count == 0 {
-    // Stuck -- remaining functions form cycles. All must have annotations.
-    let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
-      match map_get(declared_sigs, fn_name) {
-        Some { value: dsig } =>
-          if dsig.return_type != none {
-            SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
-          } else {
-            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
-              severity: Error,
-              message: concat("recursive function '", fn_name, "' requires return type annotation"),
-              span: none,
-              module_name: Some { value: module_name },
-              category: Some { value: TypeMismatch }
-            }) }
-          }
-        None => acc
-      }
-    )
-    // Terminate with cycle results
-    let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
-      if dsig.return_type != none {
-        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-      } else { acc }
-    )
-    return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { signatures: all_resolved },
-      diagnostics: concat(diagnostics, cycle_accum.diagnostics)
-    }
-  }
-
-  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
-  let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
-    match map_get(declared_sigs, fn_name) {
-      Some { value: dsig } =>
-        if dsig.return_type != none {
-          SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
-        } else {
-          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
-            severity: Error,
-            message: concat("function '", fn_name, "' requires return type annotation"),
-            span: none,
-            module_name: Some { value: module_name },
-            category: Some { value: TypeMismatch }
-          }) }
-        }
-      None => acc
-    }
-  )
-
-  // Remove resolved from remaining and recurse
-  let ready_set = fold(ready, init: empty_map(), f: (acc, fn_name) => map_insert(acc, fn_name, true))
-  let next_remaining = remaining |> filter(fn_name => emit_map_has(m: ready_set, key: fn_name) == false)
-
-  topo_resolve_loop(
-    remaining: next_remaining,
-    resolved: ready_accum.signatures,
-    declared_sigs: declared_sigs,
-    call_edges: call_edges,
-    local_func_set: local_func_set,
-    module_name: module_name,
-    diagnostics: ready_accum.diagnostics
-  )
-}
-
-// Main entry: resolve declared function signatures to resolved ones.
-// Converts DeclaredFuncSig (return_type: Node?) to ResolvedFuncSig (return_type: Node)
-// using SCC-aware topological ordering of the call graph.
-fn resolve_func_sigs(
-    declared_sigs: Map<String, DeclaredFuncSig>,
-    items: List<Node>,
-    module_name: String
-) -> ResolveFuncSigsResult {
-  // Filter to functions only: items with params AND a body.
-  // Bare generic type declarations (type List<element>) have params but no body.
-  let local_func_names = items
-    |> filter(item => item.params |> count > 0 && item.body != none)
-    |> map(item => item.name)
-  let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
-    map_insert(acc, fn_name, true)
-  )
-  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
-  let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
-    if emit_map_has(m: local_func_set, key: dsig.name) {
-      acc
-    } else if dsig.return_type != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-    } else {
-      acc
-    }
-  )
-  topo_resolve_loop(
-    remaining: local_func_names,
-    resolved: parent_resolved,
-    declared_sigs: declared_sigs,
-    call_edges: call_edges,
-    local_func_set: local_func_set,
-    module_name: module_name,
-    diagnostics: []
-  )
-}
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index)

@@ -7905,6 +7905,287 @@ fn detect_type_cycles_kahn(
   result
 }
 "##;
+    const SRC_V2_04_EMIT_INFO_DAG_SOURCE: &str = r##"// Emit graph info: type summaries, variant-to-enum maps, and field metadata
+// used by the emission phase. These are pure functions over Node trees —
+// no dependency on TypedModule or InferScope.
+//
+// Dependency chain:
+//   v2.compiler.infer_types (type predicates, normalization)
+//     -> v2.compiler.infer_emit_info (type summaries, field summaries)
+//       -> v2.compiler.infer (build_emit_graph_info, typecheck pipeline)
+//         -> v2.compiler.emit (consume EmitGraphInfo)
+
+module v2.compiler.infer_emit_info
+
+import v2.std.core {
+  Node,
+  InferredNode, Resolved,
+  FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
+  FieldValueShape, PlainValue, OptionalValue,
+  FieldSummary
+}
+import v2.compiler.infer_types {
+  node_has_structure, node_is_product, node_is_optional,
+  with_required_cardinality,
+  normalize_type_name, normalize_access_type_node,
+  rt_type, child_return_type_or_name, node_type_equals
+}
+
+// =========================================================================
+// Types
+// =========================================================================
+
+type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
+
+type TypeSummary {
+  name: String
+  repr: TypeRepr
+  field_summaries: Map<String, FieldSummary>
+}
+
+type EmitGraphInfo {
+  type_summaries: Map<String, TypeSummary>
+  variant_to_enum: Map<String, String>
+  enum_variant_membership: Map<String, Bool>
+  field_type_names: Map<String, String>
+}
+
+type EmitInfoBuildState {
+  type_summaries: Map<String, TypeSummary>
+  variant_to_enum: Map<String, String>
+  enum_variant_membership: Map<String, Bool>
+  field_type_names: Map<String, String>
+}
+
+// =========================================================================
+// Constructors and lookups
+// =========================================================================
+
+fn empty_emit_graph_info() -> EmitGraphInfo {
+  EmitGraphInfo {
+    type_summaries: empty_map(),
+    variant_to_enum: empty_map(),
+    enum_variant_membership: empty_map(),
+    field_type_names: empty_map()
+  }
+}
+
+fn normalize_emit_type_name(type_name: String) -> String {
+  normalize_type_name(name: type_name)
+}
+
+fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
+  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
+}
+
+// =========================================================================
+// Field summary helpers
+// =========================================================================
+
+fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
+  let normed = normalize_access_type_node(n: type_node)
+  if node_is_optional(n: normed) { OptionalValue }
+  else { PlainValue }
+}
+
+fn is_pair_children(children: List<Node>) -> Bool {
+  if children |> count != 2 { false }
+  else {
+    match children |> first {
+      Some { value: c0 } =>
+        match children |> skip(1) |> first {
+          Some { value: c1 } => c0.name == "first" && c1.name == "second"
+          None => false
+        }
+      None => false
+    }
+  }
+}
+
+fn pair_access_style(field_name: String) -> FieldAccessStyle {
+  if field_name == "first" { TupleFirst }
+  else { TupleSecond }
+}
+
+// =========================================================================
+// Struct and enum field summary builders
+// =========================================================================
+
+fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummary> {
+  let is_pair = is_pair_children(children: children)
+  fold(children, init: empty_map(), f: (acc, child) =>
+    if child.return_type == none {
+      acc
+    } else {
+      let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
+      map_insert(acc, child.name, FieldSummary {
+        access_style: style,
+        value_shape: field_value_shape_from_type_node(type_node: rt_type(n: child))
+      })
+    }
+  )
+}
+
+fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node? {
+  match variants |> first {
+    Some { value: variant } =>
+      match variant.children |> filter(f => f.name == field_name) |> first {
+        Some { value: field_child } => Some { value: field_child }
+        None => none
+      }
+    None => none
+  }
+}
+
+fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) -> Bool {
+  variants |> all(variant =>
+    variant.children |> any(field_child => field_child.name == field_name)
+  )
+}
+
+fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
+  variants |> all(variant =>
+    match variant.children |> filter(f => f.name == field_name) |> first {
+      Some { value: field_child } => node_type_equals(left: child_return_type_or_name(ch: field_child), right: expected)
+      None => false
+    }
+  )
+}
+
+fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary> {
+  let first_field_names = match variants |> first {
+    Some { value: first_variant } => first_variant.children |> map(f => f.name)
+    None => []
+  }
+  let shared = first_field_names |> filter(field_name =>
+    enum_field_present_in_all_variants(variants: variants, field_name: field_name)
+  )
+  let consistent = shared |> filter(field_name =>
+    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+      Some { value: first_field } =>
+        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_return_type_or_name(ch: first_field))
+      None => false
+    }
+  )
+  fold(consistent, init: empty_map(), f: (acc, field_name) =>
+    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+      Some { value: first_field } =>
+        map_insert(acc, field_name, FieldSummary {
+          access_style: EnumAccessor,
+          value_shape: field_value_shape_from_type_node(type_node: child_return_type_or_name(ch: first_field))
+        })
+      None => acc
+    }
+  )
+}
+
+// =========================================================================
+// Type summary builders
+// =========================================================================
+
+fn build_type_summary(item: Node) -> TypeSummary? {
+  if node_has_structure(n: item) == false || item.transport != none {
+    return none
+  }
+  if node_is_product(n: item) {
+    Some { value: TypeSummary {
+      name: normalize_emit_type_name(type_name: item.name),
+      repr: StructRepr,
+      field_summaries: build_struct_field_summaries(children: item.children)
+    } }
+  } else {
+    let unit_only = item.children |> all(child => child.children |> count == 0)
+    Some { value: TypeSummary {
+      name: normalize_emit_type_name(type_name: item.name),
+      repr: EnumRepr { unit_only: unit_only },
+      field_summaries: build_enum_field_summaries(variants: item.children)
+    } }
+  }
+}
+
+fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
+  match build_type_summary(item: item) {
+    Some { value: summary } =>
+      // Add per-variant summaries for enums so is_optional_struct_field can look up
+      // individual variant field types (e.g. VariantPattern.parent_enum).
+      let with_variants = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.type_summaries, f: (acc, variant) =>
+            if variant.children |> count > 0 {
+              map_insert(acc, normalize_emit_type_name(type_name: variant.name), TypeSummary {
+                name: normalize_emit_type_name(type_name: variant.name),
+                repr: StructRepr,
+                field_summaries: build_struct_field_summaries(children: variant.children)
+              })
+            } else { acc }
+          )
+        _ => state.type_summaries
+      }
+      let next_summaries = map_insert(with_variants, summary.name, summary)
+      // First-write-wins for variant_to_enum: if a variant name exists in
+      // multiple enums, keep the first registration. The module-level vtoe
+      // override corrects per-module based on imports. This makes vtoe
+      // construction deterministic regardless of Map iteration order.
+      let next_variants = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
+            match map_get(acc, child.name) {
+              Some { value: existing } =>
+                // Ambiguous: variant exists in multiple enums. Mark as
+                // ambiguous so the module-level override is the sole authority.
+                if existing == summary.name { acc }
+                else { map_insert(acc, child.name, "__ambiguous__") }
+              None => map_insert(acc, child.name, summary.name)
+            }
+          )
+        _ => state.variant_to_enum
+      }
+      // Build enum_variant_membership: "EnumName|VariantName" -> true
+      let next_evm = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.enum_variant_membership, f: (acc, child) =>
+            map_insert(acc, concat(summary.name, "|", child.name), true)
+          )
+        _ => state.enum_variant_membership
+      }
+      // Build field_type_names: "TypeName|field_name" -> "FieldTypeName"
+      // For structs: direct field type names. For enums: per-variant field type names.
+      let next_ftn = match summary.repr {
+        StructRepr =>
+          fold(item.children, init: state.field_type_names, f: (acc, child) =>
+            match child.return_type {
+              Some { value: Resolved { node: ft } } =>
+                let resolved_name = normalize_access_type_node(n: ft).name
+                if resolved_name != "" && resolved_name != "Dynamic" {
+                  map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
+                } else { acc }
+              _ => acc
+            }
+          )
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.field_type_names, f: (acc, variant) =>
+            fold(variant.children, init: acc, f: (inner_acc, child) =>
+              match child.return_type {
+                Some { value: Resolved { node: ft } } =>
+                  let resolved_name = normalize_access_type_node(n: ft).name
+                  if resolved_name != "" && resolved_name != "Dynamic" {
+                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
+                  } else { inner_acc }
+                _ => inner_acc
+              }
+            )
+          )
+      }
+      EmitInfoBuildState {
+        type_summaries: next_summaries,
+        variant_to_enum: next_variants,
+        enum_variant_membership: next_evm,
+        field_type_names: next_ftn
+      }
+    None => state
+  }
+}
+"##;
     const SRC_V2_04_ENV_DAG_SOURCE: &str = r##"// v2 type environment -- structural type bindings and lookup.
 //
 // Defines the TypeEnv and TypeBinding types used throughout inference
@@ -8053,7 +8334,8 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  rt_type, no_span
+  rt_type, no_span,
+  emit_map_has
 }
 import v2.compiler.infer_method {
   classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
@@ -8069,6 +8351,17 @@ import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
   NodeResolveResult, ItemResult
 }
+import v2.compiler.infer_sigs {
+  ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
+  resolve_func_sigs
+}
+import v2.compiler.infer_emit_info {
+  TypeRepr, StructRepr, EnumRepr,
+  TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  empty_emit_graph_info, normalize_emit_type_name, lookup_emit_type_summary,
+  build_struct_field_summaries, build_enum_field_summaries,
+  add_emit_item_summary
+}
 
 // =========================================================================
 // Typecheck output types
@@ -8078,19 +8371,6 @@ type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<Diagnostic>
-}
-
-// ResolvedFuncSig: function signature with concrete return type (never placeholder).
-// Produced by resolve_func_sigs after SCC-aware return type resolution.
-type ResolvedFuncSig {
-  name: String
-  params: List<Param>
-  return_type: Node
-  is_async: Bool
-}
-
-type ResolvedFuncEnv {
-  signatures: Map<String, ResolvedFuncSig>
 }
 
 // ResolvedGraph: the reconcile-to-emit boundary type.
@@ -8110,28 +8390,6 @@ type TypedModule {
   item_registry: Map<String, ItemInfo>
 }
 
-type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
-
-
-type TypeSummary {
-  name: String
-  repr: TypeRepr
-  field_summaries: Map<String, FieldSummary>
-}
-
-type EmitGraphInfo {
-  type_summaries: Map<String, TypeSummary>
-  variant_to_enum: Map<String, String>
-  enum_variant_membership: Map<String, Bool>
-  field_type_names: Map<String, String>
-}
-
-type EmitInfoBuildState {
-  type_summaries: Map<String, TypeSummary>
-  variant_to_enum: Map<String, String>
-  enum_variant_membership: Map<String, Bool>
-  field_type_names: Map<String, String>
-}
 
 // =========================================================================
 // Item registry -- maps item names to their kind and service dependencies.
@@ -8173,14 +8431,6 @@ type ModuleContext {
 type UniqueAccum {
   seen: Map<String, Bool>
   result: List<String>
-}
-
-// Map membership check -- returns true if key is present in the map.
-fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
-  match map_get(m, key) {
-    Some { value: _ } => true
-    None => false
-  }
 }
 
 // Typed-receiver versions of service call detection -- for Node expr_data trees.
@@ -8760,139 +9010,6 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
   map_get(func_env.signatures, name)
 }
 
-// -------------------------------------------------------------------------
-// Index/Slice access helpers
-// -------------------------------------------------------------------------
-
-fn empty_emit_graph_info() -> EmitGraphInfo {
-  EmitGraphInfo {
-    type_summaries: empty_map(),
-    variant_to_enum: empty_map(),
-    enum_variant_membership: empty_map(),
-    field_type_names: empty_map()
-  }
-}
-
-fn normalize_emit_type_name(type_name: String) -> String {
-  normalize_type_name(name: type_name)
-}
-
-fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
-}
-
-fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
-  let normed = normalize_access_type_node(n: type_node)
-  if node_is_optional(n: normed) { OptionalValue }
-  else { PlainValue }
-}
-
-fn is_pair_children(children: List<Node>) -> Bool {
-  if children |> count != 2 { false }
-  else {
-    match children |> first {
-      Some { value: c0 } =>
-        match children |> skip(1) |> first {
-          Some { value: c1 } => c0.name == "first" && c1.name == "second"
-          None => false
-        }
-      None => false
-    }
-  }
-}
-
-fn pair_access_style(field_name: String) -> FieldAccessStyle {
-  if field_name == "first" { TupleFirst }
-  else { TupleSecond }
-}
-
-fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummary> {
-  let is_pair = is_pair_children(children: children)
-  fold(children, init: empty_map(), f: (acc, child) =>
-    if child.return_type == none {
-      acc
-    } else {
-      let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
-      map_insert(acc, child.name, FieldSummary {
-        access_style: style,
-        value_shape: field_value_shape_from_type_node(type_node: rt_type(n: child))
-      })
-    }
-  )
-}
-
-fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node? {
-  match variants |> first {
-    Some { value: variant } =>
-      match variant.children |> filter(f => f.name == field_name) |> first {
-        Some { value: field_child } => Some { value: field_child }
-        None => none
-      }
-    None => none
-  }
-}
-
-fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) -> Bool {
-  variants |> all(variant =>
-    variant.children |> any(field_child => field_child.name == field_name)
-  )
-}
-
-fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
-  variants |> all(variant =>
-    match variant.children |> filter(f => f.name == field_name) |> first {
-      Some { value: field_child } => node_type_equals(left: child_return_type_or_name(ch: field_child), right: expected)
-      None => false
-    }
-  )
-}
-
-fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary> {
-  let first_field_names = match variants |> first {
-    Some { value: first_variant } => first_variant.children |> map(f => f.name)
-    None => []
-  }
-  let shared = first_field_names |> filter(field_name =>
-    enum_field_present_in_all_variants(variants: variants, field_name: field_name)
-  )
-  let consistent = shared |> filter(field_name =>
-    match find_first_enum_field_node(variants: variants, field_name: field_name) {
-      Some { value: first_field } =>
-        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_return_type_or_name(ch: first_field))
-      None => false
-    }
-  )
-  fold(consistent, init: empty_map(), f: (acc, field_name) =>
-    match find_first_enum_field_node(variants: variants, field_name: field_name) {
-      Some { value: first_field } =>
-        map_insert(acc, field_name, FieldSummary {
-          access_style: EnumAccessor,
-          value_shape: field_value_shape_from_type_node(type_node: child_return_type_or_name(ch: first_field))
-        })
-      None => acc
-    }
-  )
-}
-
-fn build_type_summary(item: Node) -> TypeSummary? {
-  if node_has_structure(n: item) == false || item.transport != none {
-    return none
-  }
-  if node_is_product(n: item) {
-    Some { value: TypeSummary {
-      name: normalize_emit_type_name(type_name: item.name),
-      repr: StructRepr,
-      field_summaries: build_struct_field_summaries(children: item.children)
-    } }
-  } else {
-    let unit_only = item.children |> all(child => child.children |> count == 0)
-    Some { value: TypeSummary {
-      name: normalize_emit_type_name(type_name: item.name),
-      repr: EnumRepr { unit_only: unit_only },
-      field_summaries: build_enum_field_summaries(variants: item.children)
-    } }
-  }
-}
 
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
@@ -10997,232 +11114,6 @@ type TypecheckModuleResult {
   diagnostics: List<Diagnostic>
 }
 
-// =========================================================================
-// SCC-aware function signature resolution (Contract 2)
-//
-// Converts DeclaredFuncSig (optional return_type) to ResolvedFuncSig
-// (concrete return_type) using topological ordering of the call graph.
-//
-// 1. Collect call edges between local functions from body ASTs.
-// 2. Process functions in topological order: each function's callees
-//    are resolved before the function itself.
-// 3. Annotated functions: return_type unwrapped from Some.
-// 4. Unannotated + non-recursive: infer from body (callees resolved).
-// 5. Unannotated + recursive (self or mutual): compile error.
-//
-// All 686 current functions have annotations, so paths 4-5 are future-
-// proofing. The structural contract ensures no fabrication reaches emit.
-// =========================================================================
-
-type ResolveFuncSigsResult {
-  func_env: ResolvedFuncEnv
-  diagnostics: List<Diagnostic>
-}
-
-// Accumulator for single-pass fold over function signatures:
-// collects resolved signatures and diagnostics together.
-type SigsAccum {
-  signatures: Map<String, ResolvedFuncSig>
-  diagnostics: List<Diagnostic>
-}
-
-// Call edge between two local functions.
-type CallEdge {
-  caller: String
-  callee: String
-}
-
-// Collect call edges from function body ASTs.
-// Only includes edges where the callee is a local function (in local_func_set).
-fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>) -> List<CallEdge> {
-  flat_map(items, item =>
-    if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: item.name, texpr: item.body.value, local_func_set: local_func_set)
-    } else {
-      []
-    }
-  )
-}
-
-// Walk a Node expression tree to find ExprCall nodes whose func is a local function.
-fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
-  // Per-node logic: detect local function calls and produce call edges.
-  let this_edges = match texpr.expr_data {
-    ExprCall { func: f, args: _, call_semantics: _ } =>
-      if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
-      else { [] }
-    _ => []
-  }
-  // Structural recursion into all child expressions.
-  let child_edges = expr_children(node: texpr) |> flat_map(child =>
-    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set)
-  )
-  let result = concat(this_edges, child_edges)
-  result
-}
-
-// Check if a function reaches itself through the call graph (DFS).
-fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {
-  if emit_map_has(m: visited, key: current) { false }
-  else {
-    let next_visited = map_insert(visited, current, true)
-    let callees = call_edges |> filter(e => e.caller == current) |> map(e => e.callee)
-    callees |> any(c =>
-      if c == root { true }
-      else { func_reaches_self(root: root, current: c, call_edges: call_edges, visited: next_visited) }
-    )
-  }
-}
-
-// Convert a single DeclaredFuncSig with return_type: Some to ResolvedFuncSig.
-// Caller must ensure return_type is not None.
-fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
-  ResolvedFuncSig { name: dsig.name, params: dsig.params, return_type: dsig.return_type.value, is_async: dsig.is_async }
-}
-
-// Merge all remaining declared sigs (with return_type: Some) into a resolved map.
-fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
-  fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
-    if dsig.return_type != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-    } else { acc }
-  )
-}
-
-// Topological resolution loop: process functions whose local callees are all resolved.
-// When no more progress can be made, remaining functions form cycles.
-fn topo_resolve_loop(
-    remaining: List<String>,
-    resolved: Map<String, ResolvedFuncSig>,
-    declared_sigs: Map<String, DeclaredFuncSig>,
-    call_edges: List<CallEdge>,
-    local_func_set: Map<String, Bool>,
-    module_name: String,
-    diagnostics: List<Diagnostic>
-) -> ResolveFuncSigsResult {
-  if remaining |> count == 0 {
-    // Include non-local (parent) sigs -- they have return_type: Some from conversion.
-    let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
-      if dsig.return_type != none {
-        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-      } else { acc }
-    )
-    return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { signatures: all_resolved },
-      diagnostics: diagnostics
-    }
-  }
-
-  // Find functions whose local callees are all resolved
-  let ready = remaining |> filter(fn_name =>
-    let local_callees = call_edges
-      |> filter(e => e.caller == fn_name)
-      |> map(e => e.callee)
-      |> filter(c => emit_map_has(m: local_func_set, key: c))
-    local_callees |> all(c => map_get(resolved, c) != none)
-  )
-
-  if ready |> count == 0 {
-    // Stuck -- remaining functions form cycles. All must have annotations.
-    let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
-      match map_get(declared_sigs, fn_name) {
-        Some { value: dsig } =>
-          if dsig.return_type != none {
-            SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
-          } else {
-            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
-              severity: Error,
-              message: concat("recursive function '", fn_name, "' requires return type annotation"),
-              span: none,
-              module_name: Some { value: module_name },
-              category: Some { value: TypeMismatch }
-            }) }
-          }
-        None => acc
-      }
-    )
-    // Terminate with cycle results
-    let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
-      if dsig.return_type != none {
-        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-      } else { acc }
-    )
-    return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { signatures: all_resolved },
-      diagnostics: concat(diagnostics, cycle_accum.diagnostics)
-    }
-  }
-
-  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
-  let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
-    match map_get(declared_sigs, fn_name) {
-      Some { value: dsig } =>
-        if dsig.return_type != none {
-          SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
-        } else {
-          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
-            severity: Error,
-            message: concat("function '", fn_name, "' requires return type annotation"),
-            span: none,
-            module_name: Some { value: module_name },
-            category: Some { value: TypeMismatch }
-          }) }
-        }
-      None => acc
-    }
-  )
-
-  // Remove resolved from remaining and recurse
-  let ready_set = fold(ready, init: empty_map(), f: (acc, fn_name) => map_insert(acc, fn_name, true))
-  let next_remaining = remaining |> filter(fn_name => emit_map_has(m: ready_set, key: fn_name) == false)
-
-  topo_resolve_loop(
-    remaining: next_remaining,
-    resolved: ready_accum.signatures,
-    declared_sigs: declared_sigs,
-    call_edges: call_edges,
-    local_func_set: local_func_set,
-    module_name: module_name,
-    diagnostics: ready_accum.diagnostics
-  )
-}
-
-// Main entry: resolve declared function signatures to resolved ones.
-// Converts DeclaredFuncSig (return_type: Node?) to ResolvedFuncSig (return_type: Node)
-// using SCC-aware topological ordering of the call graph.
-fn resolve_func_sigs(
-    declared_sigs: Map<String, DeclaredFuncSig>,
-    items: List<Node>,
-    module_name: String
-) -> ResolveFuncSigsResult {
-  // Filter to functions only: items with params AND a body.
-  // Bare generic type declarations (type List<element>) have params but no body.
-  let local_func_names = items
-    |> filter(item => item.params |> count > 0 && item.body != none)
-    |> map(item => item.name)
-  let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
-    map_insert(acc, fn_name, true)
-  )
-  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
-  let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
-    if emit_map_has(m: local_func_set, key: dsig.name) {
-      acc
-    } else if dsig.return_type != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-    } else {
-      acc
-    }
-  )
-  topo_resolve_loop(
-    remaining: local_func_names,
-    resolved: parent_resolved,
-    declared_sigs: declared_sigs,
-    call_edges: call_edges,
-    local_func_set: local_func_set,
-    module_name: module_name,
-    diagnostics: []
-  )
-}
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index)
@@ -11441,88 +11332,6 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
   ParentModulesResult { modules: modules, diagnostics: diagnostics }
 }
 
-fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
-  match build_type_summary(item: item) {
-    Some { value: summary } =>
-      // Add per-variant summaries for enums so is_optional_struct_field can look up
-      // individual variant field types (e.g. VariantPattern.parent_enum).
-      let with_variants = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.type_summaries, f: (acc, variant) =>
-            if variant.children |> count > 0 {
-              map_insert(acc, normalize_emit_type_name(type_name: variant.name), TypeSummary {
-                name: normalize_emit_type_name(type_name: variant.name),
-                repr: StructRepr,
-                field_summaries: build_struct_field_summaries(children: variant.children)
-              })
-            } else { acc }
-          )
-        _ => state.type_summaries
-      }
-      let next_summaries = map_insert(with_variants, summary.name, summary)
-      // First-write-wins for variant_to_enum: if a variant name exists in
-      // multiple enums, keep the first registration. The module-level vtoe
-      // override corrects per-module based on imports. This makes vtoe
-      // construction deterministic regardless of Map iteration order.
-      let next_variants = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
-            match map_get(acc, child.name) {
-              Some { value: existing } =>
-                // Ambiguous: variant exists in multiple enums. Mark as
-                // ambiguous so the module-level override is the sole authority.
-                if existing == summary.name { acc }
-                else { map_insert(acc, child.name, "__ambiguous__") }
-              None => map_insert(acc, child.name, summary.name)
-            }
-          )
-        _ => state.variant_to_enum
-      }
-      // Build enum_variant_membership: "EnumName|VariantName" -> true
-      let next_evm = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.enum_variant_membership, f: (acc, child) =>
-            map_insert(acc, concat(summary.name, "|", child.name), true)
-          )
-        _ => state.enum_variant_membership
-      }
-      // Build field_type_names: "TypeName|field_name" -> "FieldTypeName"
-      // For structs: direct field type names. For enums: per-variant field type names.
-      let next_ftn = match summary.repr {
-        StructRepr =>
-          fold(item.children, init: state.field_type_names, f: (acc, child) =>
-            match child.return_type {
-              Some { value: Resolved { node: ft } } =>
-                let resolved_name = normalize_access_type_node(n: ft).name
-                if resolved_name != "" && resolved_name != "Dynamic" {
-                  map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
-                } else { acc }
-              _ => acc
-            }
-          )
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.field_type_names, f: (acc, variant) =>
-            fold(variant.children, init: acc, f: (inner_acc, child) =>
-              match child.return_type {
-                Some { value: Resolved { node: ft } } =>
-                  let resolved_name = normalize_access_type_node(n: ft).name
-                  if resolved_name != "" && resolved_name != "Dynamic" {
-                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
-                  } else { inner_acc }
-                _ => inner_acc
-              }
-            )
-          )
-      }
-      EmitInfoBuildState {
-        type_summaries: next_summaries,
-        variant_to_enum: next_variants,
-        enum_variant_membership: next_evm,
-        field_type_names: next_ftn
-      }
-    None => state
-  }
-}
 
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
@@ -12625,6 +12434,265 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   }
 }
 "##;
+    const SRC_V2_04_SIGS_DAG_SOURCE: &str = r##"// SCC-aware function signature resolution.
+//
+// Converts DeclaredFuncSig (optional return_type) to ResolvedFuncSig
+// (concrete return_type) using topological ordering of the call graph.
+// Self-/mutual-recursive functions without annotations produce diagnostics.
+//
+// Dependency chain:
+//   v2.std.core (DeclaredFuncSig, Node, ExprCall, expr_children)
+//     -> v2.compiler.infer_types (emit_map_has)
+//       -> v2.compiler.infer_sigs (resolve_func_sigs, ResolvedFuncSig, ResolvedFuncEnv)
+//         -> v2.compiler.infer (typecheck pipeline)
+
+module v2.compiler.infer_sigs
+
+import v2.std.core {
+  Node, Param,
+  ExprData, ExprCall,
+  expr_children,
+  Diagnostic, Severity, Error,
+  ErrorCategory, TypeMismatch,
+  DeclaredFuncSig
+}
+import v2.compiler.infer_types { emit_map_has }
+
+// =========================================================================
+// Types
+// =========================================================================
+
+// ResolvedFuncSig: function signature with concrete return type (never placeholder).
+// Produced by resolve_func_sigs after SCC-aware return type resolution.
+type ResolvedFuncSig {
+  name: String
+  params: List<Param>
+  return_type: Node
+  is_async: Bool
+}
+
+type ResolvedFuncEnv {
+  signatures: Map<String, ResolvedFuncSig>
+}
+
+type ResolveFuncSigsResult {
+  func_env: ResolvedFuncEnv
+  diagnostics: List<Diagnostic>
+}
+
+// Accumulator for single-pass fold over function signatures:
+// collects resolved signatures and diagnostics together.
+type SigsAccum {
+  signatures: Map<String, ResolvedFuncSig>
+  diagnostics: List<Diagnostic>
+}
+
+// Call edge between two local functions.
+type CallEdge {
+  caller: String
+  callee: String
+}
+
+// =========================================================================
+// Call graph construction
+// =========================================================================
+
+// Collect call edges from function body ASTs.
+// Only includes edges where the callee is a local function (in local_func_set).
+fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>) -> List<CallEdge> {
+  flat_map(items, item =>
+    if item.params |> count > 0 && item.body != none {
+      collect_calls_in_expr(caller: item.name, texpr: item.body.value, local_func_set: local_func_set)
+    } else {
+      []
+    }
+  )
+}
+
+// Walk a Node expression tree to find ExprCall nodes whose func is a local function.
+fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
+  // Per-node logic: detect local function calls and produce call edges.
+  let this_edges = match texpr.expr_data {
+    ExprCall { func: f, args: _, call_semantics: _ } =>
+      if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
+      else { [] }
+    _ => []
+  }
+  // Structural recursion into all child expressions.
+  let child_edges = expr_children(node: texpr) |> flat_map(child =>
+    collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set)
+  )
+  let result = concat(this_edges, child_edges)
+  result
+}
+
+// Check if a function reaches itself through the call graph (DFS).
+fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {
+  if emit_map_has(m: visited, key: current) { false }
+  else {
+    let next_visited = map_insert(visited, current, true)
+    let callees = call_edges |> filter(e => e.caller == current) |> map(e => e.callee)
+    callees |> any(c =>
+      if c == root { true }
+      else { func_reaches_self(root: root, current: c, call_edges: call_edges, visited: next_visited) }
+    )
+  }
+}
+
+// =========================================================================
+// Signature resolution
+// =========================================================================
+
+// Convert a single DeclaredFuncSig with return_type: Some to ResolvedFuncSig.
+// Caller must ensure return_type is not None.
+fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
+  ResolvedFuncSig { name: dsig.name, params: dsig.params, return_type: dsig.return_type.value, is_async: dsig.is_async }
+}
+
+// Merge all remaining declared sigs (with return_type: Some) into a resolved map.
+fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
+  fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
+    if dsig.return_type != none {
+      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+    } else { acc }
+  )
+}
+
+// Topological resolution loop: process functions whose local callees are all resolved.
+// When no more progress can be made, remaining functions form cycles.
+fn topo_resolve_loop(
+    remaining: List<String>,
+    resolved: Map<String, ResolvedFuncSig>,
+    declared_sigs: Map<String, DeclaredFuncSig>,
+    call_edges: List<CallEdge>,
+    local_func_set: Map<String, Bool>,
+    module_name: String,
+    diagnostics: List<Diagnostic>
+) -> ResolveFuncSigsResult {
+  if remaining |> count == 0 {
+    // Include non-local (parent) sigs -- they have return_type: Some from conversion.
+    let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
+      if dsig.return_type != none {
+        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+      } else { acc }
+    )
+    return ResolveFuncSigsResult {
+      func_env: ResolvedFuncEnv { signatures: all_resolved },
+      diagnostics: diagnostics
+    }
+  }
+
+  // Find functions whose local callees are all resolved
+  let ready = remaining |> filter(fn_name =>
+    let local_callees = call_edges
+      |> filter(e => e.caller == fn_name)
+      |> map(e => e.callee)
+      |> filter(c => emit_map_has(m: local_func_set, key: c))
+    local_callees |> all(c => map_get(resolved, c) != none)
+  )
+
+  if ready |> count == 0 {
+    // Stuck -- remaining functions form cycles. All must have annotations.
+    let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
+      match map_get(declared_sigs, fn_name) {
+        Some { value: dsig } =>
+          if dsig.return_type != none {
+            SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
+          } else {
+            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
+              severity: Error,
+              message: concat("recursive function '", fn_name, "' requires return type annotation"),
+              span: none,
+              module_name: Some { value: module_name },
+              category: Some { value: TypeMismatch }
+            }) }
+          }
+        None => acc
+      }
+    )
+    // Terminate with cycle results
+    let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
+      if dsig.return_type != none {
+        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+      } else { acc }
+    )
+    return ResolveFuncSigsResult {
+      func_env: ResolvedFuncEnv { signatures: all_resolved },
+      diagnostics: concat(diagnostics, cycle_accum.diagnostics)
+    }
+  }
+
+  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
+  let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
+    match map_get(declared_sigs, fn_name) {
+      Some { value: dsig } =>
+        if dsig.return_type != none {
+          SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
+        } else {
+          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
+            severity: Error,
+            message: concat("function '", fn_name, "' requires return type annotation"),
+            span: none,
+            module_name: Some { value: module_name },
+            category: Some { value: TypeMismatch }
+          }) }
+        }
+      None => acc
+    }
+  )
+
+  // Remove resolved from remaining and recurse
+  let ready_set = fold(ready, init: empty_map(), f: (acc, fn_name) => map_insert(acc, fn_name, true))
+  let next_remaining = remaining |> filter(fn_name => emit_map_has(m: ready_set, key: fn_name) == false)
+
+  topo_resolve_loop(
+    remaining: next_remaining,
+    resolved: ready_accum.signatures,
+    declared_sigs: declared_sigs,
+    call_edges: call_edges,
+    local_func_set: local_func_set,
+    module_name: module_name,
+    diagnostics: ready_accum.diagnostics
+  )
+}
+
+// Main entry: resolve declared function signatures to resolved ones.
+// Converts DeclaredFuncSig (return_type: Node?) to ResolvedFuncSig (return_type: Node)
+// using SCC-aware topological ordering of the call graph.
+fn resolve_func_sigs(
+    declared_sigs: Map<String, DeclaredFuncSig>,
+    items: List<Node>,
+    module_name: String
+) -> ResolveFuncSigsResult {
+  // Filter to functions only: items with params AND a body.
+  // Bare generic type declarations (type List<element>) have params but no body.
+  let local_func_names = items
+    |> filter(item => item.params |> count > 0 && item.body != none)
+    |> map(item => item.name)
+  let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
+    map_insert(acc, fn_name, true)
+  )
+  let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
+  let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
+    if emit_map_has(m: local_func_set, key: dsig.name) {
+      acc
+    } else if dsig.return_type != none {
+      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+    } else {
+      acc
+    }
+  )
+  topo_resolve_loop(
+    remaining: local_func_names,
+    resolved: parent_resolved,
+    declared_sigs: declared_sigs,
+    call_edges: call_edges,
+    local_func_set: local_func_set,
+    module_name: module_name,
+    diagnostics: []
+  )
+}
+"##;
     const SRC_V2_04_TYPES_DAG_SOURCE: &str = r##"// v2 type predicates, constructors, and comparisons.
 //
 // Pure functions on Node-as-type representations. No TypeEnv, no InferScope,
@@ -13111,6 +13179,14 @@ fn for_each_element_type_node(n: Node) -> Node {
       else { normed }
   }
 }
+
+// Map-contains-key check for Bool-valued maps (used as sets).
+fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
+  }
+}
 "##;
     const SRC_V2_05_EMIT_DAG_SOURCE: &str = r##"// v2 emitter core -- target-agnostic dispatch and shared helpers.
 //
@@ -13169,16 +13245,17 @@ import v2.std.core {
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_method { intrinsic_method_index }
-import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type }
+import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type, emit_map_has }
+import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
-  ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
-  ItemInfo, UniqueAccum, emit_map_has,
-  FieldSummary, FieldAccessStyle, TypeSummary, EmitGraphInfo,
+  ItemInfo, UniqueAccum,
+  FieldSummary, FieldAccessStyle,
   build_emit_graph_info
 }
+import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
@@ -14664,9 +14741,9 @@ import extdeps.languages.go.emit {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
-  ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   expr_span,
@@ -15762,9 +15839,9 @@ import extdeps.languages.python.emit {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
-  ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   expr_span,
@@ -16866,22 +16943,23 @@ import v2.compiler.infer_types {
   node_is_optional, node_is_map, node_is_container, node_has_structure,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   leaf_node, with_required_cardinality,
-  rt_type
+  rt_type, emit_map_has
 }
+import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
-  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   infer_record_lit,
   build_emit_graph_info,
-  lookup_emit_type_summary,
   resolve_scrutinee_type_node,
   expr_span,
   ItemInfo, FuncItem, DataItem,
-  is_typed_service_call_receiver, extract_typed_service_name,
-  emit_map_has
+  is_typed_service_call_receiver, extract_typed_service_name
+}
+import v2.compiler.infer_emit_info {
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
+  lookup_emit_type_summary
 }
 
 import v2.compiler.emit {
@@ -23238,10 +23316,12 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     ("src/v2/03_normalize.dag", SRC_V2_03_NORMALIZE_DAG_SOURCE, "v2.compiler.normalize"),
                     ("src/v2/03_resolve.dag", SRC_V2_03_RESOLVE_DAG_SOURCE, "v2.compiler.resolve"),
                     ("src/v2/04_cycle.dag", SRC_V2_04_CYCLE_DAG_SOURCE, "v2.compiler.infer_cycle"),
+                    ("src/v2/04_emit_info.dag", SRC_V2_04_EMIT_INFO_DAG_SOURCE, "v2.compiler.infer_emit_info"),
                     ("src/v2/04_env.dag", SRC_V2_04_ENV_DAG_SOURCE, "v2.compiler.infer_env"),
                     ("src/v2/04_infer.dag", SRC_V2_04_INFER_DAG_SOURCE, "v2.compiler.infer"),
                     ("src/v2/04_method.dag", SRC_V2_04_METHOD_DAG_SOURCE, "v2.compiler.infer_method"),
                     ("src/v2/04_resolve.dag", SRC_V2_04_RESOLVE_DAG_SOURCE, "v2.compiler.infer_resolve"),
+                    ("src/v2/04_sigs.dag", SRC_V2_04_SIGS_DAG_SOURCE, "v2.compiler.infer_sigs"),
                     ("src/v2/04_types.dag", SRC_V2_04_TYPES_DAG_SOURCE, "v2.compiler.infer_types"),
                     ("src/v2/05_emit.dag", SRC_V2_05_EMIT_DAG_SOURCE, "v2.compiler.emit"),
                     ("src/v2/05_emit_go.dag", SRC_V2_05_EMIT_GO_DAG_SOURCE, "v2.compiler.emit_go"),
@@ -23301,10 +23381,12 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
@@ -23385,10 +23467,12 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
@@ -23735,10 +23819,12 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
@@ -23885,10 +23971,12 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),

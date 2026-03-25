@@ -15,6 +15,8 @@ pub mod infer_env;
 pub mod infer_method;
 pub mod infer_cycle;
 pub mod infer_resolve;
+pub mod infer_emit_info;
+pub mod infer_sigs;
 pub mod infer;
 pub mod emit;
 pub mod emit_rust;

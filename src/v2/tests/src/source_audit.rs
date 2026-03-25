@@ -254,14 +254,14 @@ fn final_cleanup_removes_parser_and_cli_fabrication_fallbacks() {
 
 #[test]
 fn unannotated_function_reports_signature_resolution_error() {
-    let source = read_v2_file("src/v2/04_infer.dag");
+    let source = read_v2_file("src/v2/04_sigs.dag");
     assert!(
         source.contains("collect_func_call_edges"),
-        "04_infer.dag should contain collect_func_call_edges"
+        "04_sigs.dag should contain collect_func_call_edges"
     );
     assert!(
         source.contains("topo_resolve_loop"),
-        "04_infer.dag should contain topo_resolve_loop"
+        "04_sigs.dag should contain topo_resolve_loop"
     );
 }
 

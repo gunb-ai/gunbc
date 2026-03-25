@@ -29,6 +29,7 @@ fn main() {
         ("04_cycle", "src/v2/04_cycle.dag"),
         ("04_resolve", "src/v2/04_resolve.dag"),
         ("04_emit_info", "src/v2/04_emit_info.dag"),
+        ("04_sigs", "src/v2/04_sigs.dag"),
         ("04_infer", "src/v2/04_infer.dag"),
         ("05_emit", "src/v2/05_emit.dag"),
         ("05_emit_rust", "src/v2/05_emit_rust.dag"),
