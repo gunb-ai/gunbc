@@ -686,8 +686,8 @@ Rules during the bridge era:
 
 4. **`map_expr_children` lands with Phase 3** (v1 retirement). The
    design exists and is tested; the v1 interpreter/emitter cannot
-   handle user-defined higher-order functions. Until then,
-   `resolve_expr_types` retains per-variant reconstruction.
+   handle user-defined higher-order functions (P4.7 adds this). Until
+   then, `resolve_expr_types` retains per-variant reconstruction.
 
 5. **P5.12 is design validation, not dogmatic deletion.** A closed
    typed semantic tag may still be the right intermediate even in a
@@ -826,7 +826,7 @@ subprocess pattern. Five tiers:
 
 **What V1 retirement unblocks (tiers 1-4 → tier 5):**
 - P3.8 recursive generics (v1 Rust stack overflow goes away)
-- `map_expr_children` (v1 can't handle user-defined HOFs)
+- `map_expr_children` (v1 can't handle user-defined HOFs — P4.7 fixes)
 - `resolve_expr_types` collapse (~160 → ~10 lines)
 - File decomposition with final code shape
 
@@ -836,7 +836,9 @@ subprocess pattern. Five tiers:
 D (v1 retirement) → P3.8 recursive generics
                    → map_expr_children → file decomposition (D tier 5)
 
-E (P4.1a Rc unification) → E (P4.2 shared ExprData dispatch)
+E (P4.1a Rc unification) → E (P4.2 shared ExprData dispatch steps 2-4)
+                          → P4.7 (callable-type params)
+                          → P4.2 step 5 (full shared dispatcher)
                           → P4.3 (generated tests)
                           → P4.4 (DAG backend)
 
@@ -849,6 +851,7 @@ D and E run in parallel.
 Phase 1 (done) ──→ Phase 2 verification (gist gate)
 Phase 2 ─────────→ P4.1a/P4.2 (shared emit)
 D (v1 retirement)→ file decomposition
+P4.7 (callable) ─→ P4.2 step 5 (full shared dispatcher)
 P4.2 ────────────→ P5.0 (parser cleanup, can run in parallel with late P4)
 L1 dissolution ──→ Phase 5's L1=0 gate (ongoing, not blocking)
 ```
@@ -1581,11 +1584,12 @@ contract is real.
 |----|------|--------|-------|
 | P4.1 | `LanguageSpec` becomes the single authority | **Done (review cleanup complete)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`. Go and Python fully migrated for leaf rendering (literals, keywords, operators, types, containers, maps) and type rendering (~175 lines deleted per backend). Rust leaf rendering migrated. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. `param_bindings` scoped to recognized type declarations. Generic arity validation emits `TypeMismatch` diagnostic. LanguageSpec has 65+ template fields but only ~22 are wired — remaining wiring is incremental. |
 | P4.1a | Rust type rendering via shared `emit_node_type` | **Done** | Rust type rendering migrated to shared `emit_node_type` + Rc wrapping layer. `emit_rust_node_type` deleted. Commit `22063fe3`. |
-| P4.2 | Shared emit fold + target adapters | **In progress** | Steps 2-4 done: shared type traversal, shared block/let/scope walkers, shared service/test projection. Step 5 (ExprData dispatcher) partially done: 13 shared renderers wired; full dispatcher extraction blocked by lack of closures in .dag (each backend keeps its own ExprData match). See P4.2 design + status below. |
+| P4.2 | Shared emit fold + target adapters | **In progress** | Steps 2-4 done: shared type traversal, shared block/let/scope walkers, shared service/test projection. Step 5 (ExprData dispatcher) partially done: 13 shared renderers wired; full dispatcher extraction requires callable-type parameters (P4.7). See P4.2 design + status below. |
 | P4.3 | Generated tests as first-class projection | Planned (analysis complete) | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). See P4.3 analysis below. |
 | P4.4 | DAG backend/runtime boundary | Stub landed | `Dag` variant added to `RenderTarget`; `emit_dag_artifact` emits a JSON envelope with version and module names. Stub is tested (`v2_dag_pipeline_smoke`). **Remaining:** real schema definition, full `ResolvedGraph` serialization, and runtime design. |
 | P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go \| Dag` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
+| P4.7 | Callable-type parameters | Planned | 6 bootstrap-ordered steps (P4.7a-f): v1 `impl Fn` emission, v2 parser syntax, v1 call emission, v2 inference for callable locals, v2 lambda param threading, v2 backend verification. Unblocks P4.2 step 5. See P4.7 design below. |
 
 ### P4.1 Contract: `LanguageSpec` Checklist
 
@@ -1673,16 +1677,46 @@ Backend layer owns:
 - Runtime helper names (Rust `with`, Go `With`, Python `with_update`)
 - Any unavoidable target-specific lowering
 
-**Practical mechanism.** Because `.dag` does not have first-class
-function records, the adapter mechanism is one of:
+**Practical mechanism.** P4.7 adds callable-type parameters to `.dag`.
+The shared dispatcher takes a `recurse: fn(Node) -> String` callback
+that the backend provides as a closure capturing its own state. This
+replaces the enum-dispatch workaround.
 
-1. A closed `BackendKind = Rust | Go | Python` enum plus shared
-   dispatcher functions that match on it, or
-2. A mostly-data-driven `LanguageSpec` plus a small closed set of
-   backend hook functions chosen by enum.
+**Frozen shared renderer signatures (05_emit.dag):**
 
-Option 2 is preferred because it aligns with P4.1 (`LanguageSpec` as
-single authority).
+All 13 shared renderers take `target: RenderTarget` as their sole
+shared-layer parameter plus expression data (strings, nodes, or enum
+values). No backend-specific state crosses the boundary.
+
+| Function | Parameters | Line |
+|----------|-----------|------|
+| `emit_keyword` | `key: String, target` | 748 |
+| `emit_literal` | `value: LiteralValue, target` | 757 |
+| `emit_bin_op_symbol` | `op: BinOpKind, target` | 769 |
+| `emit_node_type` | `n: Node, target` | 810 |
+| `emit_ident` | `name: String, target` | 1287 |
+| `emit_let_binding` | `name: String, value: String, target` | 1316 |
+| `emit_return` | `value: String, target` | 1325 |
+| `emit_unary_op` | `op: UnaryOpKind, operand_str: String, target` | 1340 |
+| `emit_lambda` | `params_str: String, body_str: String, target` | 1347 |
+| `emit_error_expr` | `message: String, target` | 1356 |
+| `emit_lambda_params` | `param_names: List<String>, target` | 1366 |
+| `emit_list_lit_expr` | `element_strs: List<String>, target` | 1374 |
+| `emit_null_coalesce` | `l_str: String, r_str: String, target` | 1393 |
+
+**Backend-specific state (Rust example):** Every `emit_typed_*` in
+`05_emit_rust.dag` takes 5 backend-owned parameters:
+
+- `registry: Map<String, ItemInfo>` — item registry (shared concept, per-backend threading)
+- `scope: InferScope` — variable scope (shared concept, per-backend threading)
+- `vtoe: Map<String, String>` — variant-to-enum mapping (Rust-specific)
+- `rc_types: Map<String, Bool>` — Rc wrapping decisions (Rust-specific)
+- `emit_info: EmitGraphInfo` — graph-level emit metadata
+
+**P4.2 step 5 callback contract:** The shared ExprData dispatcher
+will take `recurse: fn(Node) -> String`. Each backend provides a
+closure that captures its own state (rc_types, vtoe, etc.) and calls
+its `emit_typed_expr`. The shared layer never sees backend state.
 
 **Safe extraction order (lower risk first):**
 
@@ -1697,6 +1731,8 @@ single authority).
    dispatch across backends.
 5. **Extract full ExprData dispatcher** — the hot, highest-risk step.
    Delay until the adapter interface is stable from steps 2-4.
+   **Prerequisite:** P4.7 (callable-type parameters) — the shared
+   dispatcher needs `recurse: fn(Node) -> String` callback.
 
 **P4.2 Step 5 status — ExprData shared renderers (2026-03-25).**
 
@@ -1720,12 +1756,12 @@ ExprStringInterp (format!/f-string/Sprintf), ExprForEach (Rust
 collect vs loop), ExprBlock (Rust brace wrapping), ExprCast (Rust
 numeric type checking), ExprIndex/ExprSlice (Rust type-dependent).
 
-*Structural blocker:* `.dag` has no function-typed parameters, so the
-recursive dispatch (`emit_typed_expr` → sub-expression → recurse)
-cannot be abstracted into a shared function that calls backend-specific
-hooks. Each backend keeps its own `ExprData` match. The match arms are
-thin — most are one-line delegations to shared renderers or per-backend
-helpers — but the match itself is triplicated.
+*Next step:* The triplicated `ExprData` match violates "No parallel
+implementations." The fix is callable-type parameters in `.dag` — a
+shared dispatcher takes `recurse: fn(Node) -> String` and calls back
+into the backend for sub-expression rendering. P4.7 (below) adds this
+capability in 6 bootstrap-ordered steps. Once P4.7 lands, the shared
+dispatcher replaces all three `ExprData` matches.
 
 **Revised acceptance criteria:**
 - Each backend's `ExprData` match arms are thin: either a direct shared
@@ -1795,6 +1831,95 @@ highest-leverage extraction for P4.3.
   (fixed by P1.21). Go/Python have no test generation at all (new work in
   P4.3 after shared emit fold).
 
+### P4.7 Design: Callable-Type Parameters
+
+**Why:** The `.dag` language has callable-type representation in the IR
+(`callable_node` in `04_types.dag`) and callable-type rendering in all
+3 backends (`05_emit.dag` lines 845-858), but no way to declare a
+callable-typed parameter in `.dag` source. This blocks P4.2 step 5:
+the shared ExprData dispatcher needs a `recurse: fn(Node) -> String`
+callback to delegate sub-expression rendering to the backend.
+
+The triplication of the 19-arm `emit_typed_expr` match across Rust,
+Python, and Go backends violates "No parallel implementations." Callable
+parameters are the missing language feature that resolves this.
+
+**What already exists:**
+- `callable_node(func_params, ret)` builds `Node { name: "Callable", params: ..., return_type: ... }` (04_types.dag:92)
+- `callable_return_type(n)` extracts return type (04_types.dag:96)
+- Type rendering for Callable in all 3 backends (05_emit.dag:845-858)
+- v1 parses `fn(T1, T2) -> R` syntax (`parse_function_type_expr` in type_codegen.rs)
+- Arrow token `->` exists in v2 tokenizer (01_tokenize.dag:25)
+
+**Bootstrap-ordered steps:**
+
+| Step | What | File(s) | Status |
+|------|------|---------|--------|
+| P4.7a | v1: emit `impl Fn(T) -> R` instead of `fn(T) -> R` for callable params | `src/v1/07_emit/daglang-emit/src/type_codegen.rs` | **Done** — position constraint documented (param-only safe; struct fields need position-aware rendering) |
+| P4.7b | v2 parser: `fn(T1, T2) -> R` callable type syntax in `parse_type_expr` | `src/v2/02_parse.dag` | Planned |
+| P4.7c | v1: verify callable variable call emission works | `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | Planned |
+| P4.7d | v2 inference: resolve ExprCall against callable-typed locals in `scope.locals` | `src/v2/04_infer.dag` | Planned |
+| P4.7e | v2 inference: thread Callable formal param types to lambda args | `src/v2/04_infer.dag` | Planned |
+| P4.7f | v2 emission: verify callable-variable calls render in all backends | `05_emit_rust.dag`, `05_emit_python.dag`, `05_emit_go.dag` | Planned |
+
+**P4.7a** must land first (bootstrap ordering: v1 compiles .dag → stage0,
+so v1 must emit correct Rust for callable types before v2 .dag code can
+use them). P4.7b-c can proceed in parallel after P4.7a. P4.7d-e are
+v2-only inference changes. P4.7f is verification.
+
+**P4.7a detail:** v1's `emit_function_type` (type_codegen.rs:266) emits
+`fn(T) -> R` (bare function pointer). Closures require `impl Fn(T) -> R`.
+Since callable parameters will be used as callbacks (capturing backend
+state), `impl Fn` is required. **Done** (2026-03-25).
+
+**P4.7a constraint — position-aware callable rendering.** The current
+`impl Fn` change is blanket: `type_expr_to_rust` renders ALL callable
+types as `impl Fn(T) -> R` regardless of position. In Rust, `impl Fn`
+works in parameter and return positions but NOT in struct fields (which
+need `Box<dyn Fn(T) -> R>` or a generic parameter). The same function
+is called from struct field rendering (type_codegen.rs:350, 549, 1767),
+parameter rendering (918, 985), and return type rendering (990).
+
+This is safe today because no `.dag` source uses callable-typed struct
+fields. When that becomes possible, `type_expr_to_rust` must gain a
+`position: TypePosition` parameter (ParamType | FieldType | ReturnType)
+and emit the correct Rust syntax per position. This is a rendering
+decision (invariant 6) — the IR is position-agnostic; only the backend
+needs to know.
+
+Scope: the `.dag` language should initially restrict callable types to
+function parameter position only (P4.7b parser enforces this). Struct
+field support is a separate future item requiring position-aware rendering.
+
+**P4.7b detail:** `parse_type_expr` (02_parse.dag:1054) handles `LBrace`
+(inline record) and `Ident` (named/generic). Add a branch: when current
+token is `fn` keyword followed by `(`, parse parameter types and `-> R`
+to produce `callable_node(func_params, ret)`.
+
+**P4.7d detail:** ExprCall inference (04_infer.dag:~1767) always looks up
+`func` in `func_env`. Add fallback: if not in `func_env`, check
+`scope.locals` for a binding whose type is a Callable node. Extract
+params and return_type from the Callable to type-check the call.
+
+**P4.7e detail:** When a lambda is passed as an argument whose formal
+parameter type is Callable, thread the Callable's param types to the
+lambda's param types. Same mechanism as `LambdaSemantics` for built-in
+collection methods, generalized.
+
+**Callback signature design note.** The shared ExprData dispatcher
+callback is not simply `fn(Node) -> String`. Two parameters change
+during recursion and must be passed explicitly:
+
+- `depth: Int` — changes when entering blocks, if, match, for-each
+- `scope: InferScope` — changes when entering let-bindings (new variable)
+
+All other parameters are constant per compilation and captured by the
+closure: `registry`, `vtoe`, `rc_types`, `emit_info`. The actual
+callback signature will be `fn(Node, InferScope, Int) -> String`.
+This should be validated when P4.7d-f are implemented.
+
+**Unblocks:** P4.2 step 5 (full shared ExprData dispatcher with callback).
+
 ### Phase 4 Exit Criteria
 
 - No backend owns a whole-tree `ExprData` dispatcher
@@ -1847,10 +1972,28 @@ can interleave with either track.
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
 | P5.6 | Scrambled-name tests (full suite) | Phase 4 (emit name-opacity) | Test suite | Inference produces identical **inferred structure** (typed graph shapes) regardless of type names. Emit excluded (legitimately reads names for target identifiers). This is the L1=0 verification gate. |
-| P5.7 | Delete `node_is_*` predicates | P5.6 passing | 82 call sites | Replaced by structural graph traversal. No predicate checks type identity. |
+| P5.7 | Delete `node_is_*` predicates | P5.6 passing + P5.7a/P5.7b below | 82 call sites | Two distinct invariant violations behind the predicates. See P5.7 design below. |
 | P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
 | P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | Unnecessary when nodes carry structure directly. |
 | P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Note: collections (`Set`, `Map`, `List`) are *not* products or coproducts — they are function/indexed types in the denotational model. `Conj`/`Disj` remain relevant for record types (product) and coproduct types (e.g., `Result<T, E> = Ok \| Err`), but the collection algebra family is orthogonal. `Optional` is cardinality, not a coproduct node (P1.4). |
+
+### P5.7 Design: Predicate Dissolution (2026-03-25)
+
+The `node_is_*` predicates contain two distinct invariant violations.
+
+**Violation 1: Duplicate representations (products/coproducts).**
+
+`node_is_product` checks `properties |> any(p => p.name == "is_product") || connective == Conj`. Investigation shows products ALWAYS have BOTH set — the parser (02_parse.dag:787, 856, 1068) and inference constructors (tuple_node, anonymous records, service results) set connective AND the property string together. The `||` is not a fallback for missing connective; it's a parallel check of the same fact in two representations. Violates "No duplicate representations."
+
+**Fix (P5.7a): DONE (2026-03-25).** Deleted `is_product`/`is_coproduct` property strings. `connective` is the structural authority. `product_property()` and `coproduct_property()` deleted from `04_types.dag`. Parser (6 sites), inference (4 sites), and resolve (1 site) updated. Predicates simplified to `n.connective == Some { value: Conj/Disj }`. Reader sites in parse/resolve now use predicates or let-bindings (`.dag` parser ambiguity: `Some { value: X }` inside `if COND {` confuses the parser — use let-binding or predicate call instead).
+
+**Violation 2: String-keyed metadata (containers/maps).**
+
+`node_is_container` checks `properties |> any(p => p.name == "container_kind")`. Containers/maps are NOT products or coproducts — a `List<T>` is a sequential collection, not a conjunction. `connective` doesn't apply. The property string is the ONLY representation, but it's a string-keyed open set. Violates "No case enumeration for open sets."
+
+**Fix (P5.7b):** Add a typed enum field to Node: `collection_kind: CollectionKind?` where `CollectionKind = ListKind | SetKind | MapKind`. `container_node()` and `map_node()` (04_types.dag:70-87) set the enum instead of a property string. Predicate becomes `n.collection_kind != none`. ~8 constructor sites + predicate definitions + 30 container/map call sites.
+
+**Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that touches more code and should wait for Phase 5.
 
 #### Track D: L2 dissolution (ExprData → Node children)
 
@@ -2137,6 +2280,7 @@ current phase order.
 | Item | Why deferred |
 |------|--------------|
 | General generic syntax | Now planned as P3.6 (compositional DAG slots). Phase 3 scope covers parameterized type declarations; higher-kinded types and constraints are post-Phase 3. |
+| Callable-type parameters | Now planned as P4.7. IR and rendering exist; parser syntax, inference, and v1 `impl Fn` emission are the gaps. |
 | Full linear type checking | Ownership proof work has started, but full proof remains beyond the current migration |
 | Widen V5 | The conservative version covers current hot paths |
 

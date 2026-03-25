@@ -85,7 +85,6 @@ import v2.compiler.infer_types {
   node_is_container, node_is_optional, node_is_map,
   node_is_leaf, node_is_named_ref,
   node_is_product, node_is_coproduct, node_has_structure,
-  product_property, coproduct_property,
   normalize_access_type_node, normalize_type_name,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
@@ -725,7 +724,7 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
                   name: "", span: no_span(),
                   children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: f.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }),
                   connective: Some { value: Conj },
-                  params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+                  params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
                 },
                 op_params: op.params
               } }
@@ -2330,7 +2329,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
       name: "", span: no_span(),
       children: child_nodes, connective: Some { value: Conj },
       params: [], return_type: none, return_cardinality: Required, uses: [],
-      body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+      body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
     }
     let texpr = make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: typed_fields, parent_enum: none }, return_type: Some { value: Resolved { node: anon_node } }, span: span)
     InferResult {
@@ -2624,7 +2623,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // RecordLit and pattern matching resolve variant constructors correctly.
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [coproduct_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
 
@@ -2752,7 +2751,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [coproduct_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
   let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })

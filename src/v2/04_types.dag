@@ -47,13 +47,8 @@ fn rt_type(n: Node) -> Node {
   }
 }
 
-fn product_property() -> FieldInit {
-  FieldInit { name: "is_product", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
-}
-
-fn coproduct_property() -> FieldInit {
-  FieldInit { name: "is_coproduct", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
-}
+// P5.7a: product_property() and coproduct_property() deleted.
+// connective (Conj/Disj) is the sole authority for product/coproduct.
 
 fn with_optional_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, return_type: n.return_type, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
@@ -75,7 +70,7 @@ fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
     Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
     Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  ], connective: Some { value: Conj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [product_property()], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  ], connective: Some { value: Conj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
@@ -112,13 +107,11 @@ fn error_type_node() -> Node {
 // =========================================================================
 
 fn node_is_product(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "is_product")
-  || (n.connective != none && n.connective == Some { value: Conj })
+  n.connective != none && n.connective == Some { value: Conj }
 }
 
 fn node_is_coproduct(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "is_coproduct")
-  || (n.connective != none && n.connective == Some { value: Disj })
+  n.connective != none && n.connective == Some { value: Disj }
 }
 
 fn node_has_structure(n: Node) -> Bool {

@@ -2159,7 +2159,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             None =>
               // Fallback: infer accumulator type from init expression's return type.
               // Dynamic audit: correct — Dynamic leaf_node here is caught by
-              // emit_node_type_rc which renders it as "_" for Rust type inference.
+              // emit_node_type_rc which renders it as compile_error!.
               match args |> first {
                 Some { value: init_arg } =>
                   if init_arg.value.return_type != none {

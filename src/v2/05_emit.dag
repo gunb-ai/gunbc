@@ -322,28 +322,7 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
   }
 }
 
-// Lookup helpers for EmitContext
-fn ctx_is_intrinsic(ctx: EmitContext, method: String) -> IntrinsicMethod? {
-  map_get(ctx.intrinsic_index, method)
-}
 
-fn ctx_is_primitive(ctx: EmitContext, name: String) -> Bool {
-  match map_get(ctx.primitive_set, name) {
-    Some { value: _ } => true
-    None => false
-  }
-}
-
-fn ctx_parent_enum(ctx: EmitContext, variant: String) -> String? {
-  map_get(ctx.vtoe_index, variant)
-}
-
-fn ctx_is_bridge(ctx: EmitContext, func: String) -> Bool {
-  match map_get(ctx.bridge_index, func) {
-    Some { value: _ } => true
-    None => false
-  }
-}
 
 // =========================================================================
 // Nested record detection -- for data definition edge cases

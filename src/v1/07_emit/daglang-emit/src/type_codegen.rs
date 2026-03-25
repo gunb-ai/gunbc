@@ -264,7 +264,7 @@ pub fn type_expr_to_rust_with_registry(
             }
         }
         TypeExpr::Function(params, output) => format!(
-            "fn({}) -> {}",
+            "impl Fn({}) -> {}",
             params
                 .iter()
                 .map(|param| type_expr_to_rust_with_registry(param, registry))
@@ -2940,10 +2940,10 @@ fn guarded<Check>(predicate: fn(Check.Output) -> Bool) -> String {
         );
 
         // The fn(Check.Output) -> Bool parameter should render with valid Rust
-        // associated-type syntax (:: not .).
+        // associated-type syntax (:: not .) and impl Fn trait (not bare fn pointer).
         assert!(
-            rust_source.contains("fn(Check::Output) -> bool"),
-            "emitted Rust should render fn(Check::Output) -> bool: {rust_source}"
+            rust_source.contains("impl Fn(Check::Output) -> bool"),
+            "emitted Rust should render impl Fn(Check::Output) -> bool: {rust_source}"
         );
 
         // The let-bound anonymous record should resolve inside the function
