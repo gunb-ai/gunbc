@@ -822,7 +822,7 @@ subprocess pattern. Five tiers:
    `04_infer.dag` under 1500 lines.
 
 **Key files:** test harness (`src/v2/tests/src/lib.rs`), test Cargo.toml,
-`v2_crate_emit.rs` (stage0 assembly), `v2_runtime_shim.rs` (deletable).
+`v2_crate_emit.rs` (stage0 assembly).
 
 **What V1 retirement unblocks (tiers 1-4 → tier 5):**
 - P3.8 recursive generics (v1 Rust stack overflow goes away)
@@ -1393,7 +1393,7 @@ R9.
 | P3.1 | Verify parity with remaining v1 paths | **Done on `cousin-wip`** | `v2_bootstrap_fixed_point` passes again end-to-end. Deterministic bootstrap output landed, bare generic type declarations have an explicit non-emitting item kind, variant-parent authority is contextual, runtime bridge lookups preserve Rc wrapping, and typed intrinsic lowering now covers `sort_by` / `fold` / `empty_map` / `to_string`. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
-| P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
+| P3.4 | Runtime shim dissolution | **Done** | `runtime_rust.dag` is the authoritative runtime template. v1 legacy `v2_runtime_shim.rs` (336 lines) deleted — v1 retirement (Stream D, PR #200) made it dead code. Future: Go/Python backends may add `runtime_go.dag` / `runtime_python.dag` following the same pattern. |
 | P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
 | P3.6 | Generics (parameterized type declarations) | **Done** | Pair<A,B>, Box<T>, nested Pair<List<Int>, String> all work. Substitution in `resolve_node_bounded`. Arity bridge deleted (P3.7). Recursive generics (MyList<T> = Nil \| Cons) also work — see P3.8. |
 | P3.8 | Recursive generics | **Done** | `type MyList<T> = Nil \| Cons { head: T, tail: MyList<T> }` compiles with 0 diagnostics. Cycle detection via Kahn's algorithm in `04_cycle.dag` precomputes `recursive_type_set` on `TypeEnv`. `resolve_node_bounded` skips self-referencing fields in recursive types. v1 stack overflow blocker removed by Stream D v1 retirement (PR #200). Test: `generic_recursive_type` (active, not ignored). |
