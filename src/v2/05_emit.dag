@@ -415,30 +415,6 @@ fn emit_data_value_json(value: Node) -> String {
   }
 }
 
-// Typed variant -- operates on Node directly.
-fn emit_typed_data_value_json(value: Node) -> String {
-  match value.expr_data {
-    ExprLiteral { value: v } => match v {
-      LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
-      LitInt { value: i } => to_string(value: i)
-      LitFloat { value: f } => f
-      LitBool { value: b } => if b { "true" } else { "false" }
-      LitNull => "null"
-    }
-    ExprListLit { elements: els } => {
-      let el_strs = els |> map(e => emit_typed_data_value_json(value: e))
-      concat("[", el_strs |> join(separator: ", "), "]")
-    }
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } => {
-      let field_strs = fs |> map(f =>
-        concat("\"", escape_json_string(s: f.name), "\": ", emit_typed_data_value_json(value: f.value))
-      )
-      concat("{", field_strs |> join(separator: ", "), "}")
-    }
-    ExprVar { name: n, binding_kind: _ } => concat("\"", escape_json_string(s: n), "\"")
-    _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
-  }
-}
 
 // Escape a string for JSON output: backslashes, quotes, newlines, tabs.
 fn escape_json_string(s: String) -> String {
