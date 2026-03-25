@@ -304,13 +304,14 @@ fn testgen_emits_valid_rust() {
         !source.contains("starts_with_prefix"),
         "05_emit_rust.dag should NOT contain starts_with_prefix"
     );
+    let emit_source = read_v2_file("src/v2/05_emit.dag");
     assert!(
-        source.contains("extract_test_projections"),
-        "05_emit_rust.dag should contain extract_test_projections"
+        emit_source.contains("extract_test_projections"),
+        "05_emit.dag should contain extract_test_projections"
     );
     assert!(
-        source.contains("TestProjection"),
-        "05_emit_rust.dag should contain TestProjection"
+        emit_source.contains("TestProjection"),
+        "05_emit.dag should contain TestProjection"
     );
 }
 

@@ -1052,11 +1052,6 @@ dependencies = [
 name = "v2-compiler-tests"
 version = "0.1.0"
 dependencies = [
- "daglang-emit",
- "daglang-eval",
- "daglang-lower",
- "daglang-syntax",
- "gunbc-ir",
  "serde_json",
  "v2-compiler",
 ]
