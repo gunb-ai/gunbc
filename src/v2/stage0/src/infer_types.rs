@@ -29,14 +29,6 @@ pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn product_property() -> Rc<FieldInit> {
-    Rc::new(FieldInit { name: "is_product".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, SourceSpan { start: 0_i64, end: 0_i64 }) })
-}
-
-pub fn coproduct_property() -> Rc<FieldInit> {
-    Rc::new(FieldInit { name: "is_coproduct".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, SourceSpan { start: 0_i64, end: 0_i64 }) })
-}
-
 pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: Cardinality::CardOptional, uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
 }
@@ -45,24 +37,20 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: Cardinality::Required, uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
 }
 
-pub fn container_property(kind_name: &str) -> Rc<FieldInit> {
-    Rc::new(FieldInit { name: "container_kind".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: kind_name.to_string() }) }), None, SourceSpan { start: 0_i64, end: 0_i64 }) })
-}
-
 pub fn container_node(kind_name: &str, element: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element.clone())), connective: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(vec!(container_property(&kind_name))), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element.clone())), connective: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Tuple".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(Rc::new(Node { name: "first".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: first.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), Rc::new(Node { name: "second".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: second.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }))), connective: Some(Connective::Conj), params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(vec!(product_property())), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Tuple".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(Rc::new(Node { name: "first".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: first.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), Rc::new(Node { name: "second".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: second.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }))), connective: Some(Connective::Conj), params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(key.clone(), value.clone())), connective: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(vec!(Rc::new(FieldInit { name: "map_type".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, SourceSpan { start: 0_i64, end: 0_i64 }) }))), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(key.clone(), value.clone())), connective: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn bare_map_node() -> Rc<Node> {
-    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(vec!(Rc::new(FieldInit { name: "map_type".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, SourceSpan { start: 0_i64, end: 0_i64 }) }))), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn callable_node(func_params: Rc<Vec<Rc<Param>>>, ret: Rc<Node>) -> Rc<Node> {
@@ -76,10 +64,10 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
         ret.clone()
     }
     None => {
-        leaf_node("Dynamic")
+        error_type_node()
     }
     _ => {
-        leaf_node("Dynamic")
+        error_type_node()
     }
 }
 } else {
@@ -92,29 +80,11 @@ pub fn error_type_node() -> Rc<Node> {
 }
 
 pub fn node_is_product(n: Rc<Node>) -> bool {
-    ({
-    let mut __any_0 = false;
-    for __elem_1 in n.properties.iter().cloned() {
-        if __elem_1.name.clone() == "is_product" {
-    __any_0 = true;
-    break;
-};
-    }
-    __any_0
-}) || ((n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Conj)))
+    (n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Conj))
 }
 
 pub fn node_is_coproduct(n: Rc<Node>) -> bool {
-    ({
-    let mut __any_0 = false;
-    for __elem_1 in n.properties.iter().cloned() {
-        if __elem_1.name.clone() == "is_coproduct" {
-    __any_0 = true;
-    break;
-};
-    }
-    __any_0
-}) || ((n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Disj)))
+    (n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Disj))
 }
 
 pub fn node_has_structure(n: Rc<Node>) -> bool {
@@ -122,16 +92,7 @@ pub fn node_has_structure(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_container(n: Rc<Node>) -> bool {
-    {
-    let mut __any_0 = false;
-    for __elem_1 in n.properties.iter().cloned() {
-        if __elem_1.name.clone() == "container_kind" {
-    __any_0 = true;
-    break;
-};
-    }
-    __any_0
-}
+    (((n.name.clone() == "List") || (n.name.clone() == "Set")) || (n.name.clone() == "NonEmptyList")) || (n.name.clone() == "NonEmptySet")
 }
 
 pub fn node_is_optional(n: Rc<Node>) -> bool {
@@ -146,16 +107,7 @@ pub fn node_is_optional(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_map(n: Rc<Node>) -> bool {
-    {
-    let mut __any_0 = false;
-    for __elem_1 in n.properties.iter().cloned() {
-        if __elem_1.name.clone() == "map_type" {
-    __any_0 = true;
-    break;
-};
-    }
-    __any_0
-}
+    n.name.clone() == "Map"
 }
 
 pub fn node_is_leaf(n: Rc<Node>) -> bool {
@@ -309,16 +261,18 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
         loop {
             let left = __tco_p_left;
             let right = __tco_p_right;
+            let left_opt = node_is_optional(left.clone());
+            let right_opt = node_is_optional(right.clone());
             if (left.name.clone() == "Error") || (right.name.clone() == "Error") {
     break true;
 } else {
     if (left.name.clone() == "Dynamic") || (right.name.clone() == "Dynamic") {
     break true;
 } else {
-    if node_is_optional(left.clone()) && (right.name.clone() == "Unit") {
+    if left_opt.clone() && (right.name.clone() == "Unit") {
     break true;
 } else {
-    if (left.name.clone() == "Unit") && node_is_optional(right.clone()) {
+    if (left.name.clone() == "Unit") && right_opt.clone() {
     break true;
 } else {
     if node_is_container(left.clone()) && node_is_container(right.clone()) {
@@ -353,7 +307,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
 };
 };
 } else {
-    if node_is_optional(left.clone()) && node_is_optional(right.clone()) {
+    if left_opt.clone() && right_opt.clone() {
     let left_inner = with_required_cardinality(left.clone());
     let right_inner = with_required_cardinality(right.clone());
     if (left_inner.name.clone() == "Unit") || (right_inner.name.clone() == "Unit") {
@@ -369,7 +323,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
 
 };
 } else {
-    if node_is_optional(left.clone()) || node_is_optional(right.clone()) {
+    if left_opt.clone() || right_opt.clone() {
     break false;
 } else {
     break normalize_type_name(&left.name) == normalize_type_name(&right.name);
@@ -423,6 +377,12 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
 
 pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let left_opt = node_is_optional(left.clone());
+        let right_opt = node_is_optional(right.clone());
+        let left_leaf = node_is_leaf(left.clone());
+        let right_leaf = node_is_leaf(right.clone());
+        let left_struct = node_has_structure(left.clone());
+        let right_struct = node_has_structure(right.clone());
         if (left.name.clone() == "Error") || (right.name.clone() == "Error") {
     true
 } else {
@@ -432,16 +392,16 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     if (left.name.clone() == "Dynamic") || (right.name.clone() == "Dynamic") {
     false
 } else {
-    if node_is_optional(left.clone()) && (right.name.clone() == "Unit") {
+    if left_opt.clone() && (right.name.clone() == "Unit") {
     true
 } else {
-    if (left.name.clone() == "Unit") && node_is_optional(right.clone()) {
+    if (left.name.clone() == "Unit") && right_opt.clone() {
     true
 } else {
-    if node_is_leaf(left.clone()) && node_is_leaf(right.clone()) {
+    if left_leaf.clone() && right_leaf.clone() {
     normalize_type_name(&left.name) == normalize_type_name(&right.name)
 } else {
-    if node_has_structure(left.clone()) && node_has_structure(right.clone()) {
+    if left_struct.clone() && right_struct.clone() {
     if normalize_type_name(&left.name) != normalize_type_name(&right.name) {
     false
 } else {
@@ -484,10 +444,10 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
 }
 }
 } else {
-    if node_is_leaf(left.clone()) && node_has_structure(right.clone()) {
+    if left_leaf.clone() && right_struct.clone() {
     normalize_type_name(&left.name) == normalize_type_name(&right.name)
 } else {
-    if node_has_structure(left.clone()) && node_is_leaf(right.clone()) {
+    if left_struct.clone() && right_leaf.clone() {
     normalize_type_name(&left.name) == normalize_type_name(&right.name)
 } else {
     if node_is_container(left.clone()) && node_is_container(right.clone()) {
@@ -511,7 +471,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
 }
 }
 } else {
-    if node_is_optional(left.clone()) && node_is_optional(right.clone()) {
+    if left_opt.clone() && right_opt.clone() {
     node_type_equals(with_required_cardinality(left.clone()), with_required_cardinality(right.clone()))
 } else {
     if node_is_map(left.clone()) && node_is_map(right.clone()) {

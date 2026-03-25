@@ -80,7 +80,7 @@ import v2.compiler.emit {
   python_literal, python_bin_op_symbol, python_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -469,9 +469,11 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
 }
 
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let shared = emit_shared_expr(texpr: texpr, target: Python, recurse: (t, s, d) => emit_py_typed_expr(texpr: t, registry: registry, scope: s, depth: d), scope: scope, depth: depth)
+  match shared {
+    Some { value: result } => result
+    None =>
   match texpr.expr_data {
-    ExprLiteral { value: v } => emit_literal(value: v, target: Python)
-    ExprError { kind: _, message: message } => emit_error_expr(message: message, target: Python)
     ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: Python)
     ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
@@ -494,14 +496,8 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
       emit_py_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: _ } =>
       emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope, depth: depth)
-    ExprListLit { elements: els } =>
-      emit_py_typed_list_lit(elements: els, registry: registry, scope: scope, depth: depth)
     ExprBinOp { op: o, left: l, right: r } =>
       emit_py_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope, depth: depth)
-    ExprUnaryOp { op: o, operand: e } =>
-      emit_py_typed_unary_op(op: o, operand: e, registry: registry, scope: scope, depth: depth)
-    ExprLambda { params: ps, body: bd, semantics: _ } =>
-      emit_py_typed_lambda(params: ps, body: bd, registry: registry, scope: scope, depth: depth)
     ExprStringInterp { parts: ps } =>
       emit_py_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth)
     ExprBlock { stmts: ss } =>
@@ -514,9 +510,9 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
       emit_py_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth)
     ExprSlice { base: b, start: s, end: e } =>
       emit_py_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth)
-    ExprReturn { value: v } =>
-      emit_return(value: emit_py_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth), target: Python)
-    NoExprData => ""
+    // ExprLiteral, ExprError, NoExprData, ExprUnaryOp, ExprLambda, ExprListLit, ExprReturn handled by emit_shared_expr
+    _ => ""
+  }
   }
 }
 
@@ -718,10 +714,6 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<FieldInit>, registr
   }
 }
 
-fn emit_py_typed_list_lit(elements: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let el_strs = elements |> map(e => emit_py_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth))
-  emit_list_lit_expr(element_strs: el_strs, target: Python)
-}
 
 fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let l_str = emit_py_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth)
@@ -734,16 +726,6 @@ fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
   }
 }
 
-fn emit_py_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let expr_str = emit_py_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth)
-  emit_unary_op(op: op, operand_str: expr_str, target: Python)
-}
-
-fn emit_py_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let params_str = emit_lambda_params(param_names: params, target: Python)
-  let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth)
-  emit_lambda(params_str: params_str, body_str: body_str, target: Python)
-}
 
 fn emit_py_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let segments = parts |> map(p => py_typed_interp_segment(part: p, registry: registry, scope: scope, depth: depth))

@@ -289,8 +289,9 @@ fn testgen_emits_valid_rust() {
     );
     assert!(
         source.contains("compile_error!(\"unsupported simple expr")
-            || source.contains("compile_error!(\\\"unsupported simple expr"),
-        "05_emit_rust.dag should contain compile_error! for unsupported simple expr"
+            || source.contains("compile_error!(\\\"unsupported simple expr")
+            || source.contains("emit_error_expr(message: \"unsupported simple expr"),
+        "05_emit_rust.dag should contain compile_error! or emit_error_expr for unsupported simple expr"
     );
     assert!(
         !source.contains("Ok(Default::default())"),

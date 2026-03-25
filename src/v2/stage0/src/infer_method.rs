@@ -404,3 +404,122 @@ pub fn resolve_builtin_call_type(name: &str) -> Rc<Node> {
 }
 }
 
+pub fn intrinsic_method_index() -> Rc<HashMap<String, IntrinsicMethod>> {
+    let m = Rc::new(std::collections::HashMap::new());
+    let m = {
+    let __rc_1 = m;
+    let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_0.insert("count".to_string(), IntrinsicMethod::MethodCount);
+    Rc::new(__map_ins_0)
+};
+    let m = {
+    let __rc_3 = m;
+    let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_2.insert("join".to_string(), IntrinsicMethod::MethodJoin);
+    Rc::new(__map_ins_2)
+};
+    let m = {
+    let __rc_5 = m;
+    let mut __map_ins_4 = Rc::try_unwrap(__rc_5).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_4.insert("split".to_string(), IntrinsicMethod::MethodSplit);
+    Rc::new(__map_ins_4)
+};
+    let m = {
+    let __rc_7 = m;
+    let mut __map_ins_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_6.insert("last".to_string(), IntrinsicMethod::MethodLast);
+    Rc::new(__map_ins_6)
+};
+    let m = {
+    let __rc_9 = m;
+    let mut __map_ins_8 = Rc::try_unwrap(__rc_9).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_8.insert("first".to_string(), IntrinsicMethod::MethodFirst);
+    Rc::new(__map_ins_8)
+};
+    let m = {
+    let __rc_11 = m;
+    let mut __map_ins_10 = Rc::try_unwrap(__rc_11).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_10.insert("enumerate".to_string(), IntrinsicMethod::MethodEnumerate);
+    Rc::new(__map_ins_10)
+};
+    let m = {
+    let __rc_13 = m;
+    let mut __map_ins_12 = Rc::try_unwrap(__rc_13).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_12.insert("chars".to_string(), IntrinsicMethod::MethodChars);
+    Rc::new(__map_ins_12)
+};
+    let m = {
+    let __rc_15 = m;
+    let mut __map_ins_14 = Rc::try_unwrap(__rc_15).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_14.insert("string_contains".to_string(), IntrinsicMethod::MethodStringContains);
+    Rc::new(__map_ins_14)
+};
+    let m = {
+    let __rc_17 = m;
+    let mut __map_ins_16 = Rc::try_unwrap(__rc_17).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_16.insert("concat".to_string(), IntrinsicMethod::MethodConcat);
+    Rc::new(__map_ins_16)
+};
+    let m = {
+    let __rc_19 = m;
+    let mut __map_ins_18 = Rc::try_unwrap(__rc_19).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_18.insert("map".to_string(), IntrinsicMethod::MethodMap);
+    Rc::new(__map_ins_18)
+};
+    let m = {
+    let __rc_21 = m;
+    let mut __map_ins_20 = Rc::try_unwrap(__rc_21).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_20.insert("filter".to_string(), IntrinsicMethod::MethodFilter);
+    Rc::new(__map_ins_20)
+};
+    let m = {
+    let __rc_23 = m;
+    let mut __map_ins_22 = Rc::try_unwrap(__rc_23).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_22.insert("any".to_string(), IntrinsicMethod::MethodAny);
+    Rc::new(__map_ins_22)
+};
+    let m = {
+    let __rc_25 = m;
+    let mut __map_ins_24 = Rc::try_unwrap(__rc_25).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_24.insert("all".to_string(), IntrinsicMethod::MethodAll);
+    Rc::new(__map_ins_24)
+};
+    let m = {
+    let __rc_27 = m;
+    let mut __map_ins_26 = Rc::try_unwrap(__rc_27).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_26.insert("flat_map".to_string(), IntrinsicMethod::MethodFlatMap);
+    Rc::new(__map_ins_26)
+};
+    let m = {
+    let __rc_29 = m;
+    let mut __map_ins_28 = Rc::try_unwrap(__rc_29).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_28.insert("skip".to_string(), IntrinsicMethod::MethodSkip);
+    Rc::new(__map_ins_28)
+};
+    let m = {
+    let __rc_31 = m;
+    let mut __map_ins_30 = Rc::try_unwrap(__rc_31).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_30.insert("take".to_string(), IntrinsicMethod::MethodTake);
+    Rc::new(__map_ins_30)
+};
+    let m = {
+    let __rc_33 = m;
+    let mut __map_ins_32 = Rc::try_unwrap(__rc_33).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_32.insert("fold".to_string(), IntrinsicMethod::MethodFold);
+    Rc::new(__map_ins_32)
+};
+    let m = {
+    let __rc_35 = m;
+    let mut __map_ins_34 = Rc::try_unwrap(__rc_35).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_34.insert("sort_by".to_string(), IntrinsicMethod::MethodSortBy);
+    Rc::new(__map_ins_34)
+};
+    let m = {
+    let __rc_37 = m;
+    let mut __map_ins_36 = Rc::try_unwrap(__rc_37).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_36.insert("append".to_string(), IntrinsicMethod::MethodAppend);
+    Rc::new(__map_ins_36)
+};
+    m.clone()
+}
+

@@ -322,28 +322,7 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
   }
 }
 
-// Lookup helpers for EmitContext
-fn ctx_is_intrinsic(ctx: EmitContext, method: String) -> IntrinsicMethod? {
-  map_get(ctx.intrinsic_index, method)
-}
 
-fn ctx_is_primitive(ctx: EmitContext, name: String) -> Bool {
-  match map_get(ctx.primitive_set, name) {
-    Some { value: _ } => true
-    None => false
-  }
-}
-
-fn ctx_parent_enum(ctx: EmitContext, variant: String) -> String? {
-  map_get(ctx.vtoe_index, variant)
-}
-
-fn ctx_is_bridge(ctx: EmitContext, func: String) -> Bool {
-  match map_get(ctx.bridge_index, func) {
-    Some { value: _ } => true
-    None => false
-  }
-}
 
 // =========================================================================
 // Nested record detection -- for data definition edge cases
@@ -874,7 +853,15 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
-    let base = emit_primitive_type(name: n.name, target: target)
+    // Bare container nodes (from empty_map(), etc.) need container templates
+    // even without children — emit with "_" placeholders.
+    let base = if n.name == "Map" {
+      emit_map_type(key_type: "_", val_type: "_", target: target)
+    } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
+      emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
+    } else {
+      emit_primitive_type(name: n.name, target: target)
+    }
     // Rc wrapping for Rust named types
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", base, ">")
@@ -970,7 +957,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         let field_types = n.children |> map(child =>
           if child.return_type != none {
             emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
-          } else { "String" }
+          } else { "compile_error!(\"anonymous product field missing return_type\")" }
         )
         let result = concat("(", field_types |> join(separator: ", "), ")")
         result
@@ -1417,6 +1404,36 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
     Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
     Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
     Dag => concat(l_str, " ?? ", r_str)
+  }
+}
+
+// =========================================================================
+// emit_shared_expr — shared ExprData dispatcher (P4.2 step 5+6)
+//
+// Handles leaf arms (ExprLiteral, ExprError, NoExprData) and recursive
+// arms (UnaryOp, Lambda, ListLit, Return) that are structurally identical
+// across all backends. The `recurse` callback lets each backend supply
+// its own emit_typed_expr for sub-expression recursion.
+//
+// Returns Some for handled arms, none for arms that need per-backend logic.
+// =========================================================================
+
+fn emit_shared_expr(texpr: Node, target: RenderTarget, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope, depth: Int) -> String? {
+  match texpr.expr_data {
+    ExprLiteral { value: v } =>
+      Some { value: emit_literal(value: v, target: target) }
+    ExprError { kind: _, message: message } =>
+      Some { value: emit_error_expr(message: message, target: target) }
+    NoExprData => Some { value: "" }
+    ExprUnaryOp { op: o, operand: e } =>
+      Some { value: emit_unary_op(op: o, operand_str: recurse(e, scope, depth), target: target) }
+    ExprLambda { params: ps, body: bd, semantics: _ } =>
+      Some { value: emit_lambda(params_str: emit_lambda_params(param_names: ps, target: target), body_str: recurse(bd, scope, depth), target: target) }
+    ExprListLit { elements: els } =>
+      Some { value: emit_list_lit_expr(element_strs: els |> map(e => recurse(e, scope, depth)), target: target) }
+    ExprReturn { value: v } =>
+      Some { value: emit_return(value: recurse(v, scope, depth), target: target) }
+    _ => none
   }
 }
 

@@ -103,7 +103,7 @@ import v2.compiler.emit {
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_string_literal,
   module_emit_scope,
   scope_after_expr,
@@ -1006,7 +1006,7 @@ fn emit_simple_expr(expr: Node) -> String {
       }
     ExprStringInterp { parts: ps } =>
       emit_simple_string_interp(parts: ps)
-    _ => concat("compile_error!(\"unsupported simple expr in transport binding\")")
+    _ => emit_error_expr(message: "unsupported simple expr in transport binding", target: Rust)
   }
 }
 
@@ -1607,10 +1607,11 @@ fn rust_runtime_bridge_wraps_result_in_rc(function_name: String, receiver: Node,
 }
 
 fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let shared = emit_shared_expr(texpr: texpr, target: Rust, recurse: (t, s, d) => emit_typed_expr(texpr: t, registry: registry, scope: s, depth: d, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), scope: scope, depth: depth)
+  match shared {
+    Some { value: result } => result
+    None =>
   match texpr.expr_data {
-    ExprLiteral { value: v } => emit_literal(value: v, target: Rust)
-    ExprError { kind: _, message: message } =>
-      emit_error_expr(message: message, target: Rust)
     ExprVar { name: n, binding_kind: binding_kind } =>
       emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: texpr.return_type, vtoe: vtoe, rc_types: rc_types, registry: registry, emit_info: emit_info)
     ExprFieldAccess { base: b, field: f, summary: summary } =>
@@ -1623,41 +1624,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
         emit_typed_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       }
     ExprCall { func: f, args: a, call_semantics: call_semantics } =>
-      let call_str = if f == "empty_map" {
-        match texpr.return_type {
-          Some { value: Resolved { node: ret_type } } =>
-            let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
-            let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-            if type_str != "" && type_str != "Dynamic" {
-              concat("<", type_str, ">::new()")
-            } else {
-              "compile_error!(\"empty_map requires a concrete result type\")"
-            }
-          _ => "compile_error!(\"empty_map missing resolved return type\")"
-        }
-      } else {
-        emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      }
-      let fallback_lookup_wrap = if f == "lookup" {
-        let base_check = match a |> first {
-          Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
-          None => false
-        }
-        if base_check { true }
-        else {
-          match texpr.return_type {
-            Some { value: Resolved { node: ret_type } } =>
-              let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
-              if node_is_optional(n: resolved_ret) {
-                type_needs_rc(env: scope.type_env, type_node: with_required_cardinality(n: resolved_ret))
-              } else { false }
-            _ => false
-          }
-        }
-      } else {
-        false
-      }
-      if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
+      emit_typed_call_expr(func: f, args: a, return_type: texpr.return_type, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
       emit_typed_method_call(receiver: r, method: m, args: a, result_type: texpr.return_type, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprMatch { scrutinee: s, arms: arm_list } =>
@@ -1668,14 +1635,8 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
       emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: texpr), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    ExprListLit { elements: els } =>
-      emit_typed_list_lit(elements: els, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprBinOp { op: o, left: l, right: r } =>
       emit_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    ExprUnaryOp { op: o, operand: e } =>
-      emit_typed_unary_op(op: o, operand: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    ExprLambda { params: ps, body: bd, semantics: _ } =>
-      emit_typed_lambda(params: ps, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprStringInterp { parts: ps } =>
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprBlock { stmts: ss } =>
@@ -1688,9 +1649,9 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       emit_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprSlice { base: b, start: s, end: e } =>
       emit_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    ExprReturn { value: v } =>
-      emit_return(value: emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), target: Rust)
-    NoExprData => ""
+    // ExprLiteral, ExprError, NoExprData, ExprUnaryOp, ExprLambda, ExprListLit, ExprReturn handled by emit_shared_expr
+    _ => ""
+  }
   }
 }
 
@@ -1728,6 +1689,44 @@ fn is_map_typed_expr(texpr: Node) -> Bool {
     Some { value: Resolved { node: n } } => node_is_map(n: n)
     _ => false
   }
+}
+
+fn emit_typed_call_expr(func: String, args: List<NamedArg>, return_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let call_str = if func == "empty_map" {
+    match return_type {
+      Some { value: Resolved { node: ret_type } } =>
+        let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
+        let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
+        if type_str != "" && type_str != "Dynamic" {
+          concat("<", type_str, ">::new()")
+        } else {
+          "compile_error!(\"empty_map requires a concrete result type\")"
+        }
+      _ => "compile_error!(\"empty_map missing resolved return type\")"
+    }
+  } else {
+    emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  }
+  let fallback_lookup_wrap = if func == "lookup" {
+    let base_check = match args |> first {
+      Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
+      None => false
+    }
+    if base_check { true }
+    else {
+      match return_type {
+        Some { value: Resolved { node: ret_type } } =>
+          let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
+          if node_is_optional(n: resolved_ret) {
+            type_needs_rc(env: scope.type_env, type_node: with_required_cardinality(n: resolved_ret))
+          } else { false }
+        _ => false
+      }
+    }
+  } else {
+    false
+  }
+  if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
 }
 
 fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2155,7 +2154,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             None =>
               // Fallback: infer accumulator type from init expression's return type.
               // Dynamic audit: correct — Dynamic leaf_node here is caught by
-              // emit_node_type_rc which renders it as "_" for Rust type inference.
+              // emit_node_type_rc which renders it as compile_error!.
               match args |> first {
                 Some { value: init_arg } =>
                   if init_arg.value.return_type != none {
@@ -2658,10 +2657,6 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
   }
 }
 
-fn emit_typed_list_lit(elements: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let el_strs = elements |> map(e => emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-  emit_list_lit_expr(element_strs: el_strs, target: Rust)
-}
 
 fn emit_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2714,16 +2709,6 @@ fn is_string_typed_expr(e: Node) -> Bool {
   }
 }
 
-fn emit_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let expr_str = emit_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  emit_unary_op(op: op, operand_str: expr_str, target: Rust)
-}
-
-fn emit_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let params_str = emit_lambda_params(param_names: params, target: Rust)
-  let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  emit_lambda(params_str: params_str, body_str: body_str, target: Rust)
-}
 
 fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let fmt_parts = parts |> map(p => typed_interp_format_part(part: p, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
