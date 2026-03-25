@@ -1591,11 +1591,19 @@ pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
     let __len_1 = n.children.clone().len();
     __len_1 as i64
 }) == 0_i64 {
-    let base = emit_primitive_type(&n.name, target.clone());
-    if emit_map_has(rc_types.clone(), &n.name) {
-    v2_rt::concat(v2_rt::concat("Rc<".to_string(), base), ">".to_string())
+    let base = if n.name.clone() == "Map" {
+    emit_map_type("_", "_", target.clone())
 } else {
-    base
+    if (((n.name.clone() == "List") || (n.name.clone() == "Set")) || (n.name.clone() == "NonEmptyList")) || (n.name.clone() == "NonEmptySet") {
+    emit_container(&to_snake(&n.name), "_", target.clone())
+} else {
+    emit_primitive_type(&n.name, target.clone())
+}
+};
+    if emit_map_has(rc_types.clone(), &n.name) {
+    v2_rt::concat(v2_rt::concat("Rc<".to_string(), base.clone()), ">".to_string())
+} else {
+    base.clone()
 }
 } else {
     if node_is_map(n.clone()) {
@@ -1751,7 +1759,7 @@ pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
         __mapped_0.push(if __elem_1.return_type.clone().is_some() {
     emit_node_type_rc(rt_type(__elem_1.clone()), target.clone(), rc_types.clone())
 } else {
-    "String".to_string()
+    "compile_error!(\"anonymous product field missing return_type\")".to_string()
 });
     }
     Rc::new(__mapped_0)
