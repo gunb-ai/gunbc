@@ -18,7 +18,6 @@ import v2.std.core {
   make_expr_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type, is_kernel_numeric, is_kernel_textual,
-  parameterized_type_arity, is_parameterized_type,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   InferredNode, Resolved, CompilerError, rt_node, has_return_type,
   NodeType, Typed, InferError, Untyped
@@ -87,14 +86,8 @@ fn bare_map_node() -> Node {
   Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
-// Arity bridge check: returns true if a type node has the expected number of
-// children for its name. Returns true for non-parameterized types (no constraint).
-// Used by normalization (P1.14) to enforce arity completeness.
-fn type_node_arity_ok(n: Node) -> Bool {
-  let expected = parameterized_type_arity(name: n.name)
-  if expected == 0 { true }
-  else { n.children |> count == expected }
-}
+// P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
+// checked via declaration params in the type environment, not hardcoded names.
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
   Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, return_type: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -386,7 +379,12 @@ fn node_type_deps(n: Node) -> List<String> {
   } else if n.return_type != none {
     match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
   } else if n.children |> count > 0 {
-    flat_map(n.children, child => node_type_deps(n: child))
+    // Parameterized type reference (e.g., MyList<T>): the node name IS a
+    // dependency (MyList) AND the children (type args like T) may also be.
+    let child_deps = flat_map(n.children, child => node_type_deps(n: child))
+    if n.name != "" && is_kernel_type(name: n.name) == false {
+      concat([n.name], child_deps)
+    } else { child_deps }
   } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {
     []
   } else {

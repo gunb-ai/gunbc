@@ -65,6 +65,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import v2.compiler.artifact { RenderTarget, Go }
 import extdeps.languages.go.emit { go_reserved }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
@@ -80,11 +81,13 @@ import v2.compiler.infer {
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart,
-  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemFunction,
+  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   go_keyword, go_container, go_primitive_type,
   go_literal, go_bin_op_symbol, go_map_template,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
+  emit_node_type, emit_ident, emit_let_binding,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -246,6 +249,8 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     emit_go_type_def_from_connective(item: item)
   } else if (kind == TypedItemTypeAlias) {
     emit_go_type_alias(name: item.name, base: rt_type(n: item))
+  } else if (kind == TypedItemTypeDecl) {
+    ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
       emit_go_func_def(name: item.name, params: item.params, return_type: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
@@ -295,7 +300,7 @@ fn emit_go_struct_from_children(name: String, children: List<Node>) -> String {
 }
 
 fn emit_go_struct_field_from_child(child: Node) -> String {
-  let ty = emit_go_node_type(n: rt_type(n: child))
+  let ty = emit_node_type(n: rt_type(n: child), target: Go)
   let json_tag = concat(" `json:\"", to_snake(name: child.name), "\"`")
   concat("\t", go_export_ident(name: child.name), " ", ty, json_tag)
 }
@@ -342,7 +347,7 @@ fn emit_go_variant_struct(parent_name: String, child: Node) -> String {
 }
 
 fn emit_go_type_alias(name: String, base: Node) -> String {
-  concat("type ", name, " = ", emit_go_node_type(n: base))
+  concat("type ", name, " = ", emit_node_type(n: base, target: Go))
 }
 
 // =========================================================================
@@ -352,91 +357,7 @@ fn emit_go_type_alias(name: String, base: Node) -> String {
 // to render Go type syntax.
 // =========================================================================
 
-fn emit_go_node_type(n: Node) -> String {
-  // Callable type: function used as a value -- emit func(ParamTypes) RetType.
-  if n.name == "Callable" && n.params |> count > 0 {
-    let param_types = n.params |> map(p => emit_go_node_type(n: p.type_expr))
-    let param_str = param_types |> join(separator: ", ")
-    let ret_str = match n.return_type {
-      Some { value: Resolved { node: rt } } => concat(" ", emit_go_node_type(n: rt))
-      _ => ""
-    }
-    return concat("func(", param_str, ")", ret_str)
-  }
-  if node_is_optional(n: n) {
-    return go_container(kind: "optional", inner: emit_go_node_type(n: with_required_cardinality(n: n)))
-  }
-  let kind = classify_type_structure(n: n)
-  if (kind == TypeLeaf) {
-    emit_go_node_type_leaf(n: n)
-  } else if (kind == TypeConj) {
-    emit_go_node_type_conj(n: n)
-  } else {
-    emit_go_node_type_disj(n: n)
-  }
-}
-
-fn emit_go_node_type_leaf(n: Node) -> String {
-  if n.children |> count == 0 {
-    go_primitive_type(name: n.name)
-  } else if node_is_map(n: n) {
-    let k = match n.children |> first {
-      Some { value: kn } => emit_go_node_type(n: kn)
-      None => "string"
-    }
-    let v = match skip(n.children, 1) |> first {
-      Some { value: vn } => emit_go_node_type(n: vn)
-      None => "string"
-    }
-    apply_type_template2(template: go_map_template(), arg0: k, arg1: v)
-  } else if n.children |> count == 1 {
-    let inner = match n.children |> first {
-      Some { value: child } => emit_go_node_type(n: child)
-      None => "struct{}"
-    }
-    // Go has no NonEmpty distinction -- use same container
-    if n.name == "NonEmptyList" {
-      go_container(kind: "list", inner: inner)
-    } else if n.name == "NonEmptySet" {
-      go_container(kind: "set", inner: inner)
-    } else {
-      go_container(kind: to_snake(name: n.name), inner: inner)
-    }
-  } else {
-    n.name
-  }
-}
-
-fn emit_go_node_type_conj(n: Node) -> String {
-  if n.name == "Refined" {
-    match n.children |> first {
-      Some { value: base } => emit_go_node_type(n: base)
-      None => n.name
-    }
-  } else if n.name == "Tuple" {
-    let first_str = match n.children |> first {
-      Some { value: c } => emit_go_node_type(n: c)
-      None => "interface{}"
-    }
-    let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } => emit_go_node_type(n: c)
-      None => "interface{}"
-    }
-    concat("struct{ First ", first_str, "; Second ", second_str, " }")
-  } else if n.name != "" {
-    n.name
-  } else {
-    "interface{}"
-  }
-}
-
-fn emit_go_node_type_disj(n: Node) -> String {
-  if n.name != "" {
-    n.name
-  } else {
-    "interface{}"
-  }
-}
+// Type rendering now uses shared emit_node_type (05_emit.dag).
 
 // =========================================================================
 // Pure function (fn) emission
@@ -489,7 +410,7 @@ fn emit_go_func_def(
     None => []
   }
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names)
-  let ret_type = emit_go_node_type(n: return_type)
+  let ret_type = emit_node_type(n: return_type, target: Go)
   let body_scope = build_params_scope(scope: scope, params: params)
   let body_str = emit_go_typed_func_body(body: body, registry: registry, scope: body_scope, depth: 1)
   concat("func ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
@@ -499,7 +420,7 @@ fn emit_go_func_def(
 fn emit_go_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_go_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(go_local_ident(name: u.name), " ", emit_go_node_type(n: u.resource))
+    concat(emit_ident(name: u.name, target: Go), " ", emit_node_type(n: u.resource, target: Go))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), " *", sanitize_service_name(name: sn))
@@ -519,12 +440,12 @@ fn emit_go_params(params: List<Param>) -> String {
 }
 
 fn emit_go_param(param: Param) -> String {
-  let ty = emit_go_node_type(n: param.type_expr)
-  concat(go_local_ident(name: param.name), " ", ty)
+  let ty = emit_node_type(n: param.type_expr, target: Go)
+  concat(emit_ident(name: param.name, target: Go), " ", ty)
 }
 
 fn emit_go_return_type(return_type: Node) -> String {
-  let ty = emit_go_node_type(n: return_type)
+  let ty = emit_node_type(n: return_type, target: Go)
   if ty == "struct{}" {
     ""
   } else {
@@ -533,8 +454,8 @@ fn emit_go_return_type(return_type: Node) -> String {
 }
 fn emit_go_pattern(pattern: MatchPattern) -> String {
   match pattern {
-    Bind { name: n } => go_local_ident(name: n)
-    LitPattern { value: v } => go_literal(value: v)
+    Bind { name: n } => emit_ident(name: n, target: Go)
+    LitPattern { value: v } => emit_literal(value: v, target: Go)
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       emit_go_variant_pattern(name: n, field_bindings: fbs)
     Wildcard => "_"
@@ -561,9 +482,9 @@ fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, regis
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match texpr.expr_data {
-    ExprLiteral { value: v } => concat(prefix, go_literal(value: v))
+    ExprLiteral { value: v } => concat(prefix, emit_literal(value: v, target: Go))
     ExprError { kind: _, message: message } => concat(prefix, "panic(", emit_string_literal(s: message, suffix: ""), ")")
-    ExprVar { name: n, binding_kind: _ } => concat(prefix, go_local_ident(name: n))
+    ExprVar { name: n, binding_kind: _ } => concat(prefix, emit_ident(name: n, target: Go))
     ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
         match extract_typed_service_name(receiver: texpr) {
@@ -634,7 +555,7 @@ fn emit_go_typed_for_each(variable: String, collection: Node, body: Node, regist
   let elem_type = for_each_element_type_node(n: rt_type(n: collection))
   let body_scope = extend_scope(scope: scope, name: variable, resolved: elem_type)
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: body_scope, depth: depth + 1)
-  concat(make_indent(level: depth), "for _, ", go_local_ident(name: variable), " := range ", coll_str, " {\n",
+  concat(make_indent(level: depth), "for _, ", emit_ident(name: variable, target: Go), " := range ", coll_str, " {\n",
     body_str, "\n", make_indent(level: depth), "}")
 }
 
@@ -800,7 +721,7 @@ fn emit_go_typed_if(condition: Node, then_branch: Node, else_branch: Node?, regi
 
 fn emit_go_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0)
-  let let_line = concat(make_indent(level: depth), go_local_ident(name: name), " := ", val_str)
+  let let_line = concat(make_indent(level: depth), emit_let_binding(name: name, value: val_str, target: Go))
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -853,7 +774,7 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
     // x ?? y -> Go has no null-coalesce; use a helper func pattern
     concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
   } else {
-    let op_str = go_bin_op_symbol(op: op)
+    let op_str = emit_bin_op_symbol(op: op, target: Go)
     concat("(", l_str, " ", op_str, " ", r_str, ")")
   }
 }
@@ -861,13 +782,13 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
 fn emit_go_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_go_typed_expr(texpr: operand, registry: registry, scope: scope, depth: 0)
   match op {
-    Not => concat(go_keyword(key: "not"), expr_str)
+    Not => concat(emit_keyword(key: "not", target: Go), expr_str)
     Neg => concat("-", expr_str)
   }
 }
 
 fn emit_go_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let param_strs = params |> map(p => concat(go_local_ident(name: p), " interface{}"))
+  let param_strs = params |> map(p => concat(emit_ident(name: p, target: Go), " interface{}"))
   let params_str = param_strs |> join(separator: ", ")
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: scope, depth: 0)
   concat("func(", params_str, ") interface{} { return ", body_str, " }")
@@ -903,7 +824,7 @@ fn emit_go_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope
 
 fn emit_go_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_go_typed_expr(texpr: expr, registry: registry, scope: scope, depth: 0)
-  let ty_str = emit_go_node_type(n: target)
+  let ty_str = emit_node_type(n: target, target: Go)
   concat(ty_str, "(", expr_str, ")")
 }
 
@@ -916,7 +837,7 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
   match body.expr_data {
     ExprLet { name: n, value: v, body: inner } => {
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
-      let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
+      let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: Go))
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -985,7 +906,7 @@ fn emit_go_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, reg
       concat(prefix, "switch ", scrut_str, " {\n", arms_str, "\n", prefix, "}")
     ExprLet { name: n, value: v, body: bd } =>
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
-      let let_line = concat(prefix, go_local_ident(name: n), " := ", val_str)
+      let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: Go))
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match bd {
         Some { value: b } =>
@@ -1021,7 +942,7 @@ fn emit_go_typed_tco_switch_case(arm: MatchArm, fn_name: String, params: List<Pa
 fn emit_go_typed_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   let ordered_args = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
-  let param_names = params |> map(p => go_local_ident(name: p.name))
+  let param_names = params |> map(p => emit_ident(name: p.name, target: Go))
   let temp_lets = ordered_args |> enumerate |> map(pair =>
     concat(prefix, "tco", to_string(value: pair.first), " := ", pair.second))
   let assigns = param_names |> enumerate |> map(pair =>
@@ -1077,12 +998,12 @@ fn emit_go_service_struct(name: String, transport: Node) -> String {
 
 fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(go_local_ident(name: p.name), " ", emit_go_node_type(n: p.type_expr))
+    concat(emit_ident(name: p.name, target: Go), " ", emit_node_type(n: p.type_expr, target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
   let receiver = concat("(c *", service_name, ")")
   // After dissolution, return_type on the child node IS the output type
-  let ret_type = emit_go_node_type(n: rt_type(n: op_node))
+  let ret_type = emit_node_type(n: rt_type(n: op_node), target: Go)
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
     None => transport
@@ -1190,11 +1111,11 @@ fn emit_go_resource_def(item: Node) -> String {
 
 fn emit_go_capability_method(cap_node: Node, depth: Int) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(go_local_ident(name: p.name), " ", emit_go_node_type(n: p.type_expr))
+    concat(emit_ident(name: p.name, target: Go), " ", emit_node_type(n: p.type_expr, target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
   // After dissolution, return_type on the child node IS the output type
-  let ret = emit_go_node_type(n: rt_type(n: cap_node))
+  let ret = emit_node_type(n: rt_type(n: cap_node), target: Go)
   concat(make_indent(level: depth), go_export_ident(name: cap_node.name), "(", params_str, ") (", ret, ", error)")
 }
 
@@ -1205,7 +1126,7 @@ fn emit_go_capability_method(cap_node: Node, depth: Int) -> String {
 // =========================================================================
 
 fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let ty_str = emit_go_node_type(n: type_node)
+  let ty_str = emit_node_type(n: type_node, target: Go)
   let val_str = emit_go_typed_expr(texpr: value, registry: registry, scope: scope, depth: 0)
   concat("var ", go_export_ident(name: name), " ", ty_str, " = ", val_str)
 }
@@ -1234,27 +1155,7 @@ fn go_export_ident(name: String) -> String {
   }
 }
 
-fn go_local_ident(name: String) -> String {
-  // camelCase: first word lowercase, rest capitalized.
-  let parts = name |> split(delimiter: "_")
-  if parts |> count == 0 {
-    name
-  } else {
-    let first_part = match parts |> first {
-      Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
-      None => ""
-    }
-    let rest_parts = parts |> enumerate
-      |> filter(pair => pair.first > 0)
-      |> map(pair => capitalize_first(s: pair.second))
-    let result = concat(first_part, rest_parts |> join(separator: ""))
-    if go_reserved |> any(r => r == result) {
-      concat(result, "_")
-    } else {
-      result
-    }
-  }
-}
+// Identifier rendering now uses shared emit_ident (05_emit.dag).
 
 // =========================================================================
 // Utility: check if a TypedGraph has service items

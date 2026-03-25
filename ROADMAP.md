@@ -538,7 +538,7 @@ Status labels:
 | `rt_node` 3-variant return type | `rt_node` returns `NodeType = Typed \| InferError \| Untyped` instead of `Node?`. 137 callers migrated; `rt_type` convenience helper for emission callers; explicit 3-arm matches where error/absent distinction matters. | tree-green | 2026-03 |
 | `expr_children` structural primitive | Extracts all child expression Nodes from ExprData variants. 4 manual walks rewritten (~210 lines eliminated). `map_expr_children` designed but blocked by v1 interpreter/emitter. | tree-green | 2026-03 |
 | P2.5 resource wiring | `emit_main_service_arg_list` constructs resources (`&Network`) instead of `compile_error!()`. Resource module imports added to main.rs via `find_resource_module`. | tree-green | 2026-03 |
-| P3.1 fixed-point convergence (partial) | Stage1 cargo check errors reduced 820 → 16 via 5 emitter fixes: Optional type name, Rc match analysis, Optional string comparison, expr_children import, vtoe module-scope priority. | structural | 2026-03 |
+| P3.1 fixed-point convergence | `v2_bootstrap_fixed_point` now passes end-to-end on `cousin-wip`: stage0 builds, stage1 builds, stage2 builds, and the byte-identical compare is green. Final fixes restored explicit authority for bare generic declarations, variant parent resolution, typed intrinsic/runtime-bridge lowering, and underspecified collection refinement. | tree-green | 2026-03 |
 
 ---
 
@@ -547,18 +547,22 @@ Status labels:
 **Updated 2026-03-24.** Previous state description (2026-03-23) is superseded.
 
 **Bootstrap status:** `v2_strict_compile_diagnostic_count` passes with
-**0 diagnostics** (ratchet = 0). Workspace tests pass (122/122
+**0 diagnostics** (ratchet = 0). Workspace tests pass (125/125
 non-ignored). Clippy clean. Gist pipeline passes (`v2_gist_full_pipeline`
 lib target compiles and builds). Stage0 compiles in ~3 s, 91 MB peak RSS.
 
-**P3.1 fixed-point status:** `v2_bootstrap_fixed_point` reduced from
-**820 → 16 stage1 errors**. 5 holistic emitter fixes landed (Optional
-type rendering, Rc match analysis, Optional string comparison,
-expr_children import, vtoe module-scope priority). Remaining 16 errors
-are 5-6 distinct edge cases: 4 Optional double-wrapping (single-field
-product optimization strips variant constructors), 6 lambda type
-annotations in sort/fold, 3 tokenizer Rc/vtoe edge cases, 3 misc.
-**This work can proceed independently on a separate branch.**
+**P3.1 fixed-point status:** `v2_bootstrap_fixed_point` is now **green**
+on `cousin-wip`. The bootstrap path is deterministic again and the full
+stage0 → stage1 → stage2 fixed-point check passes, including the
+byte-identical comparison. The fixes that made the difference were not
+more fallback heuristics; they restored missing authority:
+- explicit non-emitting typed item kind for bare generic declarations
+- contextual variant-parent authority for record literals and expr refs
+- typed lowering for `sort_by`, `fold`, `empty_map`, `to_string`, and `lookup`
+- Rc-wrap preservation on runtime-bridge lookups
+- collection refinement for underspecified `list_push` / fold accumulator flows
+
+This removes the old “fixed-point redesign” blocker from Phase 3.
 
 **L2 bridge status:** `expr_children` primitive landed in `00_core.dag`.
 4 manual ExprData walks rewritten (~210 lines eliminated).
@@ -623,10 +627,10 @@ structure, not about primitive-ness.
 | `04_types.dag` | ~460 | 41 | Split from infer (`infer_types`) | `node_is_error_type` / `node_is_dynamic` **deleted** (P1.9). `node_is_optional` checks `return_cardinality` not name (P1.4). `with_optional_cardinality` / `with_required_cardinality` helpers added. `optional_node` / `optional_property` deleted. |
 | `04_env.dag` | 53 | 3 | Split from infer (`infer_env`) | `TypeEnv`, `TypeBinding`, merge/lookup/cycle helpers. |
 | `04_method.dag` | 192 | 6 | Split from infer | `classify_reconciled_intrinsic_method`, `classify_runtime_bridge_method` (single string-to-enum entry points). |
-| `05_emit.dag` | 804 | 35 | Shared helpers/context only | `classify_type_structure()`, `build_emit_context()`, name converters, `EmitContext`. Does not own tree traversal. |
-| `05_emit_rust.dag` | 3,777 | 158 | Most complete backend | 19/19 intrinsic methods. 56 fabrication sites (21 are `compile_error!` -- correct fail-loud). 14 `"_"` type placeholders, 6 `todo!()`, 8 `panic!()`. `rust_bridge_fn_name` duplicates bridge naming (P1.10). |
-| `05_emit_go.dag` | 1,280 | 70 | Incomplete backend | 19/19 intrinsic methods (exhaustive match; no `_ => none`). `go_bridge_method_name` duplicates bridge naming (P1.10). 13 `interface{}` type holes (silent type erasure). 1 `/* unhandled expr */` wildcard. |
-| `05_emit_python.dag` | 1,256 | 70 | Incomplete backend | 19/19 intrinsic methods (exhaustive match; no `_ => none`). `py_bridge_method_name` duplicates bridge naming (P1.10). 2 `_unimplemented()` placeholders. |
+| `05_emit.dag` | ~1,192 | 35+ | Shared dispatch + helpers | P4.1 landed: unified `RenderTarget` dispatch for literals, keywords, operators, primitive types, containers, maps, identifiers, let bindings, return statements. `classify_type_structure()`, `build_emit_context()`, name converters. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. **Parallel implementation problem:** `emit_node_type` (shared) and `emit_rust_node_type` (Rust) have identical traversal — see P4.1a. |
+| `05_emit_rust.dag` | ~3,993 | 158 | Most complete backend | 19/19 intrinsic methods. Migrated to shared `emit_literal`, `emit_keyword`, `emit_bin_op_symbol`, `emit_ident`, `emit_let_binding`, `emit_return`. Type rendering NOT migrated (Rc wrapping — see P4.1a). 56 fabrication sites (21 are `compile_error!` -- correct fail-loud). |
+| `05_emit_go.dag` | ~1,164 | 70 | Fully migrated for P4.1 | Leaf rendering (types, containers, maps, identifiers, let bindings) uses shared `emit_node_type`. ~175 lines deleted. 19/19 intrinsic methods (exhaustive match). 13 `interface{}` type holes (silent type erasure). |
+| `05_emit_python.dag` | ~1,153 | 70 | Fully migrated for P4.1 | Same migration as Go. ~175 lines deleted. 19/19 intrinsic methods (exhaustive match). 2 `_unimplemented()` placeholders. |
 | `05_emit_*` (cross) | — | — | 13 structurally identical function patterns across 3 backends | ExprData dispatch (21 arms x3), TCO (~90% identical x3), service/transport emission (identical 4-way dispatch x3). |
 | `complexity.dag` | 1,216 | 33 | Good proof layer | Pipeline-wired. `intrinsic_method_cost_shape` is exhaustive. `cost_of_expr` uses `MatchCostAccum` (single-pass branch costs; avoids 2^depth blowup). |
 | `ownership.dag` | 309 | 6 | Good proof layer | Pipeline-wired. `walk_expr` is 1 ExprData walk. String dispatch on `"fold"` for special accumulator threading. |
@@ -650,7 +654,7 @@ knowledge that the roadmap is actively dissolving.
 | ~~`node_is_error_type` / `node_is_dynamic`~~ | ~~`04_types.dag`~~ | **Resolved.** Predicates deleted. | P1.9 done. |
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
 | `expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~210 lines of boilerplate across 4 manual ExprData walks (collectors + self-call detection). `map_expr_children` (structural tree-map) is designed but blocked by v1 interpreter/emitter limitations — lands with Phase 3 (v1 retirement). | L2 dissolution (P5.11): when expression children move to `node.children`, `expr_children` becomes `node.children` read and is deleted. |
-| Arity bridge (`parameterized_type_arity`) | `00_core.dag`, `04_types.dag` | Hardcodes arity for known parameterized types (`Map→2`, `List→1`, `Set→1`). Compiler reads arity from this bridge instead of from `.dag` declarations. | P3.7: deleted when generics (P3.6) provide real `.dag` algebraic declarations with declared arity. |
+| ~~Arity bridge (`parameterized_type_arity`)~~ | ~~`00_core.dag`, `04_types.dag`~~ | **Resolved.** `parameterized_type_arity` and `is_parameterized_type` deleted. Compiler reads arity from `.dag` declarations. | P3.7 done. |
 
 ### L2 Bridge-Era Invariants
 
@@ -778,71 +782,74 @@ is Phase 3 (v1 retirement, generics) and cleanup.
 
 ### Parallelizable work streams
 
-These can proceed on separate branches:
+| Stream | What | Status | Depends on |
+|--------|------|--------|------------|
+| **A: Fixed-point** | Bootstrap convergence | **Done** — deterministic output, ratchet at 0 | — |
+| **B: Generics** | P3.6 + P3.7 | **Done** — non-recursive types work, arity bridge deleted | — |
+| **D: V1 retirement + file decomposition** | Replace v1 interpreter with stage0 subprocess; then decompose `04_infer.dag` | **Planned — separate worker** | Nothing (parallel with E) |
+| **E: P4.1a + P4.2 Shared emit** | Unify Rust type walker into shared emit; centralize ExprData dispatch | **Next** | P4.1 review cleanup done |
 
-| Stream | What | Files touched | Depends on |
-|--------|------|---------------|------------|
-| **A: Fixed-point test redesign** | Remaining ~10 errors are vtoe nondeterminism from HashMap iteration order in stage0. Real semantic divergences are fixed (820→~10 via 7 emitter/inference fixes). Fixed-point test needs semantic comparison instead of byte-identical diff. Design: sort emitted output, or compare AST structure, or make emitter iteration-order-insensitive. | `05_emit_rust.dag`, `04_infer.dag`, test harness | Nothing — offloaded, separate branch |
-| **B: P3.6 Generics** | Substitution logic written. Two paths: (1) simplify functions to avoid v1 module loader crash, or (2) wait for v1 retirement. Trying path 1 now. | `03_normalize.dag`, `04_infer.dag` | Path 1: nothing. Path 2: blocked by A |
-| **C: P2.6 File decomposition** | Extract type resolution, func sigs from `04_infer.dag` | `04_infer.dag` + new split modules | Blocked by `map_expr_children` (v1 retirement) for full effect; mechanical extractions possible now |
+**Streams D and E are fully independent** — D touches test harness and
+v1 crates; E touches emit .dag files. Different files, different concerns.
 
-**Stream A status:** All real semantic divergences between v1 and stage0
-emission are fixed. Remaining ~10 fixed-point errors are from HashMap
-iteration order affecting vtoe variant-to-enum resolution. The vtoe is
-now marked `__ambiguous__` for shared variants, and the module-level
-override corrects per-module — but the byte-identical comparison still
-fails because HashMap iteration order differs between runs. This is a
-test design issue, not a compiler correctness issue. Offloaded.
+### V1 retirement + file decomposition plan (Stream D)
 
-**Stream B is now active.** Trying to get generics working by
-simplifying the normalize substitution functions to avoid v1 crashes.
+Replace the v1 interpreter with a stage0 subprocess for test execution,
+then decompose `04_infer.dag` (4450 lines) using `map_expr_children`.
+The `v2_gist_full_pipeline` test (line 5542 in tests) already does the
+subprocess pattern. Five tiers:
 
-Once A's test redesign completes and v1 retires:
-- B: substitution code is already written and tested — just wire it in
-- C: `map_expr_children` lands, `resolve_expr_types` collapses, file
-  boundaries stabilize
+1. **Stage0 test harness** — build stage0 once per test run, cache binary
+   via `LazyLock`. Pattern exists in gist pipeline test. (~1 session)
 
-**P3.6 generics current status (partial):**
-- Type parameter registration in `build_type_env`: **done** (slot names
-  resolve as leaf types during inference)
-- Function signature filter: **done** (generic type declarations excluded
-  from `resolve_func_sigs`)
-- Substitution logic: **written and tested** (proved to work when wired
-  in — `Pair<Int, String>` with field access compiles with 0 diagnostics)
-- Test: **written, `#[ignore]`** pending v1 retirement
-- Wiring: **blocked by v1** — function definitions in `03_normalize.dag`
-  crash the v1 module loader
+2. **Migrate `compile_sources_with` tests** — ~80 tests call the v1
+   interpreter to compile test input. Replace with: write .dag to temp,
+   run stage0 subprocess, read output files. (~1-2 sessions)
 
-### Sequential dependencies (updated)
+3. **Rewrite intermediate state tests** — ~30 tests inspect tokenizer
+   output, type env bindings, etc. through v1. Rewrite as end-to-end
+   tests (compile, check output) or add `--dump-stage` flag to stage0.
+   (~1 session)
+
+4. **Feature flag cleanup** — remove `v1-bootstrap` from default features.
+   Gate remaining v1 tests behind `#[cfg(feature = "v1-bootstrap")]`.
+   Delete `v2_runtime_shim.rs` (336 lines). Verify: `cargo test -p
+   v2-compiler-tests` runs all non-v1 tests.
+
+5. **File decomposition** — with `map_expr_children` unblocked, collapse
+   `resolve_expr_types` (~160 → ~10 lines) and extract type resolution,
+   func sigs, and expression inference into separate files. Target:
+   `04_infer.dag` under 1500 lines.
+
+**Key files:** test harness (`src/v2/tests/src/lib.rs`), test Cargo.toml,
+`v2_crate_emit.rs` (stage0 assembly), `v2_runtime_shim.rs` (deletable).
+
+**What V1 retirement unblocks (tiers 1-4 → tier 5):**
+- P3.8 recursive generics (v1 Rust stack overflow goes away)
+- `map_expr_children` (v1 can't handle user-defined HOFs)
+- `resolve_expr_types` collapse (~160 → ~10 lines)
+- File decomposition with final code shape
+
+### Sequential dependencies
 
 ```
-A (fixed-point 16 errors) → v1 retirement
-  → B (wire generics substitution) → P3.7 (delete arity bridge)
-  → map_expr_children → C (full decomposition)
+D (v1 retirement) → P3.8 recursive generics
+                   → map_expr_children → file decomposition (D tier 5)
+
+E (P4.1a Rc unification) → E (P4.2 shared ExprData dispatch)
+                          → P4.3 (generated tests)
+                          → P4.4 (DAG backend)
+
+D and E run in parallel.
 ```
-
-All three streams converge through v1 retirement.
-
-**D. P4.1/P4.2: Shared emit / adapter contract.**
-
-Extract the 13 structurally identical function patterns across the 3
-backends (Rust/Python/Go) into a shared adapter contract. Enabled by
-P1.4 (Optional dissolution) and P1.9 (clean type nodes). This is the
-highest-leverage structural work after Phase 2.
-
-**D. P5.0: Parser cleanup.**
-
-The parser (`02_parse.dag`, 3900+ lines, 176 functions) is the largest
-L3 debt hotspot. `kind_tag` dispatches on `TokenKind` via ~200 string
-comparisons. This is the primary L3 target.
 
 **Dependencies:**
 
 ```
 Phase 1 (done) ──→ Phase 2 verification (gist gate)
-Phase 2 ─────────→ P4.2 (shared emit)
-Phase 2 ─────────→ P2.6 (infer decomposition)
-P4.2 ────────────→ P5.0 (can run in parallel with late P4)
+Phase 2 ─────────→ P4.1a/P4.2 (shared emit)
+D (v1 retirement)→ file decomposition
+P4.2 ────────────→ P5.0 (parser cleanup, can run in parallel with late P4)
 L1 dissolution ──→ Phase 5's L1=0 gate (ongoing, not blocking)
 ```
 
@@ -907,7 +914,7 @@ exists (source-pattern grep, not the emitted-bundle gate — see P1.21).
 Scrambled-name tests are *smoke* (compare counts, not inferred
 structure — see P1.16). P1.4 (Optional dissolution) complete.
 P1.9 (InferredNode) complete. P1.14/P1.17 (normalization/arity) complete.
-P1.21 (testgen gate) complete. Fixed point holds on prior branch.
+P1.21 (testgen gate) complete. Fixed point holds on `cousin-wip`.
 
 **After Phase 2 — "One real program works"**
 ```
@@ -1381,13 +1388,14 @@ R9.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P3.1 | Verify parity with remaining v1 paths | **820 → 16 errors** | 5 holistic emitter fixes landed. Remaining 16 are edge cases (Optional double-wrapping, lambda type annotations, tokenizer Rc/vtoe). **Parallelizable** — separate branch, touches only `05_emit_rust.dag`. |
+| P3.1 | Verify parity with remaining v1 paths | **Done on `cousin-wip`** | `v2_bootstrap_fixed_point` passes again end-to-end. Deterministic bootstrap output landed, bare generic type declarations have an explicit non-emitting item kind, variant-parent authority is contextual, runtime bridge lookups preserve Rc wrapping, and typed intrinsic lowering now covers `sort_by` / `fold` / `empty_map` / `to_string`. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
 | P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
-| P3.6 | Generics (parameterized type declarations) | **Partial — blocked by v1** | Inference handles slot names (param bindings registered in `build_type_env`). Substitution logic written and tested in `03_normalize.dag`. Wiring blocked: function definitions crash v1 module loader. Test `v2_generic_type_declaration_smoke` is `#[ignore]`. **Unblocks after Stream A (v1 retirement).** |
-| P3.7 | Delete arity bridge | Planned | Once P3.6 lands, the hardcoded arity bridge (P1.17) is replaced by the compiler reading arity from the `.dag` declarations. Delete the bridge. Cardinality starts falling out of structure. |
+| P3.6 | Generics (parameterized type declarations) | **Done (non-recursive)** | Pair<A,B>, Box<T>, nested Pair<List<Int>, String> all work. Substitution in `resolve_node_bounded`. Arity bridge deleted (P3.7). **Recursive generics** (MyList<T> = Nil \| Cons) crash v1 interpreter (Rust stack overflow during type resolution). See P3.8. |
+| P3.8 | Recursive generics | **Blocked by v1** | `type MyList<T> = Nil \| Cons { head: T, tail: MyList<T> }` — infinite recursion in v1 interpreter. Root cause: `resolve_node_bounded` re-enters generic substitution for self-referencing fields. Cycle detection sees MyList as recursive (node_type_deps fixed) but the v1 Rust stack overflows before the .dag depth guard fires. **Fix path:** after v1 retirement, the depth guard works in native Rust (larger stack). Or: add explicit generic-expansion memoization to `resolve_node_bounded` (avoid re-expanding the same `MyList<Int>` twice). Test: `v2_generic_recursive_type` (`#[ignore]`). |
+| P3.7 | Delete arity bridge | **Done** | `parameterized_type_arity` and `is_parameterized_type` deleted from `00_core.dag` and `04_types.dag`. Compiler reads arity from `.dag` declarations (bare `type List<element>`, `type Map<key, value>`, `type Set<element>` in `dsl/std/types.dag`). Arity validation added to `resolve_node_bounded` (TypeMismatch diagnostic on wrong arg count). |
 
 ### P3.6 Design: Generics as Compositional DAG Slots
 
@@ -1571,8 +1579,9 @@ contract is real.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P4.1 | `LanguageSpec` becomes the single authority | Planned | Shared emit already imports extdep language tables; remaining duplication must collapse into one contract. **This is how emit becomes name-opaque:** `LanguageSpec` + structural declarations provide the type→target-identifier mapping; emit no longer hardcodes `if type_name == "Map" { "HashMap" }`. |
-| P4.2 | Shared emit fold + target adapters | Planned | Highest-risk refactor. **Prereqs: P1.4, P1.9, P1.21 completed** — otherwise shared emit fossilizes current Optional/Error compatibility shims into the shared layer. See P4.2 design below. |
+| P4.1 | `LanguageSpec` becomes the single authority | **Done (review cleanup complete)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`. Go and Python fully migrated for leaf rendering (literals, keywords, operators, types, containers, maps) and type rendering (~175 lines deleted per backend). Rust leaf rendering migrated; Rust type rendering stays separate pending P4.1a. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. `param_bindings` scoped to recognized type declarations. Generic arity validation emits `TypeMismatch` diagnostic. LanguageSpec has 65+ template fields but only ~22 are wired — remaining wiring is incremental. |
+| P4.1a | Unify Rust type walker into shared emit | **Next** | `emit_rust_node_type` is a parallel implementation of `emit_node_type` — same traversal structure, identical leaf/conj/disj dispatch, but threads `rc_types: Map<String, Bool>` for Rc wrapping at 3 named-type sites (~6 lines of Rc logic). **Fix:** add `rc_types` parameter to shared `emit_node_type`; Go/Python pass `empty_map()`; Rust passes real map. Delete `emit_rust_node_type`, `emit_rust_node_type_leaf/conj/disj`. Two-pass (string → Rc post-process) was tried and failed — Rc must be applied during recursion, not on flattened strings. |
+| P4.2 | Shared emit fold + target adapters | Planned | Prereqs: P4.1 complete. Circular import blocker: `05_emit.dag` can't import from backends. Resolved by P4.1's data-driven approach — shared dispatcher reads LanguageSpec, no backend imports needed. |
 | P4.3 | Generated tests as first-class projection | Planned | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). |
 | P4.4 | DAG backend/runtime boundary | Stub landed | `Dag` variant added to `RenderTarget`; `emit_dag_artifact` emits a JSON envelope with version and module names. Stub is tested (`v2_dag_pipeline_smoke`). **Remaining:** real schema definition, full `ResolvedGraph` serialization, and runtime design. |
 | P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go \| Dag` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |

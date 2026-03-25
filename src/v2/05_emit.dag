@@ -52,16 +52,18 @@ import v2.compiler.infer {
   build_emit_graph_info
 }
 
+import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+
 import extdeps.languages.rust.emit {
-  rust_type_map, rust_keywords, rust_container_templates
+  rust_type_map, rust_keywords, rust_container_templates, rust_reserved
 }
 
 import extdeps.languages.python.emit {
-  python_type_map, python_keywords, python_container_templates
+  python_type_map, python_keywords, python_container_templates, python_reserved
 }
 
 import extdeps.languages.go.emit {
-  go_type_map, go_keywords, go_container_templates
+  go_type_map, go_keywords, go_container_templates, go_reserved
 }
 
 // =========================================================================
@@ -81,6 +83,7 @@ type BlockEmitState {
 type TypedItemKind
   = TypedItemTypeDef
   | TypedItemTypeAlias
+  | TypedItemTypeDecl
   | TypedItemFunction
   | TypedItemDataDef
   | TypedItemServiceDef
@@ -787,6 +790,175 @@ fn go_bin_op_symbol(op: BinOpKind) -> String {
 }
 
 // =========================================================================
+// P4.1: Target-dispatched rendering — unified by RenderTarget
+//
+// These functions replace per-target triples (rust_X, go_X, python_X)
+// with a single function dispatched by RenderTarget. Backends should
+// migrate to calling these instead of the per-target versions.
+// =========================================================================
+
+fn emit_keyword(key: String, target: RenderTarget) -> String {
+  match target {
+    Rust => rust_keyword(key: key)
+    Go => go_keyword(key: key)
+    Python => python_keyword(key: key)
+    Dag => key
+  }
+}
+
+fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
+  match value {
+    LitStr { value: s } =>
+      let suffix = match target { Rust => ".to_string()"  _ => "" }
+      emit_string_literal(s: s, suffix: suffix)
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
+    LitNull => emit_keyword(key: "null", target: target)
+  }
+}
+
+fn emit_bin_op_symbol(op: BinOpKind, target: RenderTarget) -> String {
+  match op {
+    Add => "+"  Sub => "-"  Mul => "*"  Div => emit_keyword(key: "div", target: target)  Mod => "%"
+    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
+    BinAnd => emit_keyword(key: "and", target: target)  BinOr => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
+  }
+}
+
+fn emit_primitive_type(name: String, target: RenderTarget) -> String {
+  match target {
+    Rust => rust_primitive_type(name: name)
+    Go => go_primitive_type(name: name)
+    Python => python_primitive_type(name: name)
+    Dag => name
+  }
+}
+
+fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
+  match target {
+    Rust => rust_container(kind: kind, inner: inner)
+    Go => go_container(kind: kind, inner: inner)
+    Python => python_container(kind: kind, inner: inner)
+    Dag => concat(kind, "<", inner, ">")
+  }
+}
+
+fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
+  match target {
+    Rust => apply_type_template2(template: rust_map_template(), arg0: key_type, arg1: val_type)
+    Go => apply_type_template2(template: go_map_template(), arg0: key_type, arg1: val_type)
+    Python => apply_type_template2(template: python_map_template(), arg0: key_type, arg1: val_type)
+    Dag => concat("Map<", key_type, ", ", val_type, ">")
+  }
+}
+
+// =========================================================================
+// P4.1: Shared type rendering -- unified for Go/Python (Rust has Rc logic)
+// =========================================================================
+
+fn emit_node_type(n: Node, target: RenderTarget) -> String {
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_node_type(n: p.type_expr, target: target))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: Resolved { node: rt } } => emit_node_type(n: rt, target: target)
+      _ => match target { Go => ""  Python => "None"  _ => "()" }
+    }
+    match target {
+      Go => concat("func(", param_str, ")", if ret_str != "" { concat(" ", ret_str) } else { "" })
+      Python => concat("Callable[[", param_str, "], ", ret_str, "]")
+      _ => concat("Fn(", param_str, ") -> ", ret_str)
+    }
+  } else if node_is_optional(n: n) {
+    emit_container(kind: "optional", inner: emit_node_type(n: with_required_cardinality(n: n), target: target), target: target)
+  } else {
+    let kind = classify_type_structure(n: n)
+    let is_leaf = kind == TypeLeaf
+    let is_conj = kind == TypeConj
+    if is_leaf {
+      emit_node_type_leaf(n: n, target: target)
+    } else if is_conj {
+      emit_node_type_conj(n: n, target: target)
+    } else {
+      emit_node_type_disj(n: n, target: target)
+    }
+  }
+}
+
+fn emit_node_type_leaf(n: Node, target: RenderTarget) -> String {
+  if n.children |> count == 0 {
+    emit_primitive_type(name: n.name, target: target)
+  } else if node_is_map(n: n) {
+    // After resolution, Map nodes always have 2 children (key + value).
+    // None branches are structurally required by match but unreachable.
+    let k = match n.children |> first {
+      Some { value: kn } => emit_node_type(n: kn, target: target)
+      None => "__EMIT_BUG_MISSING_MAP_KEY__"
+    }
+    let v = match skip(n.children, 1) |> first {
+      Some { value: vn } => emit_node_type(n: vn, target: target)
+      None => "__EMIT_BUG_MISSING_MAP_VALUE__"
+    }
+    emit_map_type(key_type: k, val_type: v, target: target)
+  } else if n.children |> count == 1 {
+    // Single-child container. count == 1 guarantees first succeeds.
+    let inner = match n.children |> first {
+      Some { value: child } => emit_node_type(n: child, target: target)
+      None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
+    }
+    // NonEmpty variants map to same container as their base type
+    let container_kind = if n.name == "NonEmptyList" { "list" }
+      else if n.name == "NonEmptySet" { "set" }
+      else { to_snake(name: n.name) }
+    emit_container(kind: container_kind, inner: inner, target: target)
+  } else {
+    n.name
+  }
+}
+
+fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
+  if n.name == "Refined" {
+    match n.children |> first {
+      Some { value: base } => emit_node_type(n: base, target: target)
+      None => n.name
+    }
+  } else if n.name == "Tuple" {
+    // Tuple nodes always have children after resolution.
+    // None branches are structurally required by match but unreachable.
+    let first_str = match n.children |> first {
+      Some { value: c } => emit_node_type(n: c, target: target)
+      None => "__EMIT_BUG_MISSING_TUPLE_FIRST__"
+    }
+    let second_str = match skip(n.children, 1) |> first {
+      Some { value: c } => emit_node_type(n: c, target: target)
+      None => "__EMIT_BUG_MISSING_TUPLE_SECOND__"
+    }
+    match target {
+      Go => concat("struct{ First ", first_str, "; Second ", second_str, " }")
+      Python => concat("Tuple[", first_str, ", ", second_str, "]")
+      _ => concat("(", first_str, ", ", second_str, ")")
+    }
+  } else if n.name != "" {
+    n.name
+  } else {
+    // Anonymous product type with no name. This is a bug — all conj nodes
+    // should have names after resolution.
+    "__EMIT_BUG_ANONYMOUS_CONJ__"
+  }
+}
+
+fn emit_node_type_disj(n: Node, target: RenderTarget) -> String {
+  if n.name != "" {
+    n.name
+  } else {
+    // Anonymous coproduct type with no name. This is a bug — all disj nodes
+    // should have names after resolution.
+    "__EMIT_BUG_ANONYMOUS_DISJ__"
+  }
+}
+
+// =========================================================================
 // Shared item-level helpers -- identical across all backends
 // =========================================================================
 
@@ -817,7 +989,7 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 // =========================================================================
 
 // Classify a typed item into one of the structural categories.
-// Returns: "type_def", "type_alias", "function", "data_def",
+// Returns: "type_def", "type_alias", "type_decl", "function", "data_def",
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
@@ -836,6 +1008,10 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     // Resources: either with capabilities (children > 0) or without (have properties but no body/transport/children).
     // Note: return_type may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
     TypedItemResourceDef
+  } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
+    // Bare parameterized type declaration (e.g., type List<element>).
+    // These are type-system declarations and intentionally emit no runtime code.
+    TypedItemTypeDecl
   } else if item.params |> count > 0 {
     TypedItemExternFunc
   } else {
@@ -958,5 +1134,59 @@ fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
       if ss |> count == 0 { false }
       else { ss |> any(s => is_tco_candidate(texpr: s, func_name: func_name)) }
     _ => false
+  }
+}
+
+// =========================================================================
+// P4.1: Shared identifier and statement rendering
+// =========================================================================
+
+// Target-dispatched identifier rendering.
+// Rust: snake_case + r#keyword escape. Go: camelCase + _suffix escape.
+// Python: snake_case + _suffix escape.
+fn emit_ident(name: String, target: RenderTarget) -> String {
+  match target {
+    Rust =>
+      let snake = to_snake(name: name)
+      if rust_reserved |> any(r => r == snake) { concat("r#", snake) }
+      else { snake }
+    Go =>
+      let parts = name |> split(delimiter: "_")
+      if parts |> count == 0 { name }
+      else {
+        let first_part = match parts |> first {
+          Some { value: p } => p |> chars |> map(c => to_lower_char(ch: c)) |> join(separator: "")
+          None => ""
+        }
+        let rest_parts = parts |> enumerate
+          |> filter(pair => pair.first > 0)
+          |> map(pair => capitalize_first(s: pair.second))
+        let camel = concat(first_part, rest_parts |> join(separator: ""))
+        if go_reserved |> any(r => r == camel) { concat(camel, "_") }
+        else { camel }
+      }
+    Python =>
+      let snake = to_snake(name: name)
+      if python_reserved |> any(r => r == snake) { concat(snake, "_") }
+      else { snake }
+    Dag => name
+  }
+}
+
+fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat("let ", emit_ident(name: name, target: Rust), " = ", value, ";")
+    Go => concat(emit_ident(name: name, target: Go), " := ", value)
+    Python => concat(emit_ident(name: name, target: Python), " = ", value)
+    Dag => concat("let ", name, " = ", value)
+  }
+}
+
+fn emit_return(value: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat("return ", value, ";")
+    Go => concat("return ", value)
+    Python => concat("return ", value)
+    Dag => concat("return ", value)
   }
 }
