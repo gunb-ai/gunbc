@@ -727,18 +727,18 @@ standard `cargo test` did not catch the regression window.
 
 Scripted audit via `scripts/l1-ratchet.sh`. The script and this table
 measure the same categories. Run `scripts/l1-ratchet.sh --check` to
-verify the ratchet (current cap: 470).
+verify the ratchet (current cap: 373).
 
 | Category | Script variable | Count | What the compiler still "knows" |
 |----------|----------------|------:|----------------------------------|
 | `.connective` direct access | `connective_field_count` | 19 | Product vs coproduct read from Node field |
 | `Conj` / `Disj` references | `conj_disj_count` | 44 | Connective shape matching (includes parse, which must produce them) |
-| Type constructors | `constructor_count` | 229 | `leaf_node`, `container_node`, `tuple_node`, etc. |
+| Type constructors | `constructor_count` | 142 | `leaf_node`, `container_node`, `tuple_node`, etc. |
 | Type-name comparisons | `typename_count` | 48 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `node_is_*` predicate calls | `predicate_count` | 105 | Centralized type-specific dispatch helpers |
-| `classify_type_structure` calls | `classify_count` | 25 | Structural classification (replaces raw `.connective` reads in emit) |
+| `node_is_*` predicate calls | `predicate_count` | 101 | Centralized type-specific dispatch helpers |
+| `classify_type_structure` calls | `classify_count` | 19 | Structural classification (replaces raw `.connective` reads in emit) |
 | `builtin_type_kind()` calls | `builtin_count` | 0 | **Deleted** |
-| **Total** | | **470** | |
+| **Total** | | **373** | |
 
 Progress since initial baseline (~373): `BuiltinTypeKind` enum and
 `builtin_type_kind()` are fully deleted. `classify_type_structure()`
@@ -894,7 +894,7 @@ cargo test --workspace --exclude v2-compiler-tests          # green
 cargo clippy --all-targets -- -D warnings                   # green
 cargo test -p v2-compiler-tests --features v1-bootstrap     # green
 cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust # green
-scripts/l1-ratchet.sh --check                               # total <= ratchet (470)
+scripts/l1-ratchet.sh --check                               # total <= ratchet (373)
 ```
 State: 0 diagnostic regressions. Algebraic type spec written. Ownership
 branch-merge fix landed. Emit catch-all fail-closed. Testgen fabrication

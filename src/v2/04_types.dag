@@ -229,10 +229,12 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   // Bridge: Error/Dynamic sentinels still enter the graph via ~14 Dynamic
   // fabrications in infer and resolve_optional_node's Error fallback.
   // Delete when those fabrication sites are replaced with CompilerError (L1 continuation).
+  let left_opt = node_is_optional(n: left)
+  let right_opt = node_is_optional(n: right)
   if left.name == "Error" || right.name == "Error" { true }
   else if left.name == "Dynamic" || right.name == "Dynamic" { true }
-  else if node_is_optional(n: left) && right.name == "Unit" { true }
-  else if left.name == "Unit" && node_is_optional(n: right) { true }
+  else if left_opt && right.name == "Unit" { true }
+  else if left.name == "Unit" && right_opt { true }
   else if node_is_container(n: left) && node_is_container(n: right) {
     if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
     else {
@@ -248,13 +250,13 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
       }
     }
   }
-  else if node_is_optional(n: left) && node_is_optional(n: right) {
+  else if left_opt && right_opt {
     let left_inner = with_required_cardinality(n: left)
     let right_inner = with_required_cardinality(n: right)
     if left_inner.name == "Unit" || right_inner.name == "Unit" { true }
     else { node_type_compatible(left: left_inner, right: right_inner) }
   }
-  else if node_is_optional(n: left) || node_is_optional(n: right) { false }
+  else if left_opt || right_opt { false }
   else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
 }
 
@@ -284,15 +286,21 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   // Bridge: Error/Dynamic sentinels still enter the graph via ~14 Dynamic
   // fabrications in infer and resolve_optional_node's Error fallback.
   // Delete when those fabrication sites are replaced with CompilerError (L1 continuation).
+  let left_opt = node_is_optional(n: left)
+  let right_opt = node_is_optional(n: right)
+  let left_leaf = node_is_leaf(n: left)
+  let right_leaf = node_is_leaf(n: right)
+  let left_struct = node_has_structure(n: left)
+  let right_struct = node_has_structure(n: right)
   if left.name == "Error" || right.name == "Error" { true }
   else if left.name == "Dynamic" && right.name == "Dynamic" { true }
   else if left.name == "Dynamic" || right.name == "Dynamic" { false }
-  else if node_is_optional(n: left) && right.name == "Unit" { true }
-  else if left.name == "Unit" && node_is_optional(n: right) { true }
-  else if node_is_leaf(n: left) && node_is_leaf(n: right) {
+  else if left_opt && right.name == "Unit" { true }
+  else if left.name == "Unit" && right_opt { true }
+  else if left_leaf && right_leaf {
     normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
   }
-  else if node_has_structure(n: left) && node_has_structure(n: right) {
+  else if left_struct && right_struct {
     if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
     else if node_is_product(n: left) != node_is_product(n: right) { false }
     else if left.children |> count != right.children |> count { false }
@@ -305,10 +313,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
       )
     }
   }
-  else if node_is_leaf(n: left) && node_has_structure(n: right) {
+  else if left_leaf && right_struct {
     normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
   }
-  else if node_has_structure(n: left) && node_is_leaf(n: right) {
+  else if left_struct && right_leaf {
     normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
   }
   else if node_is_container(n: left) && node_is_container(n: right) {
@@ -324,7 +332,7 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
       }
     }
   }
-  else if node_is_optional(n: left) && node_is_optional(n: right) {
+  else if left_opt && right_opt {
     node_type_equals(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
   }
   else if node_is_map(n: left) && node_is_map(n: right) {
