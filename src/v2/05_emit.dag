@@ -44,7 +44,8 @@ import v2.std.core {
   BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
   BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
-  kernel_types
+  kernel_types,
+  expr_has_self_call, expr_has_non_tail_self_call
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
@@ -1201,6 +1202,66 @@ fn classify_tco_expr(texpr: Node) -> TcoExprShape {
 fn block_stmts_init(stmts: List<Node>) -> List<Node> {
   if stmts |> count <= 1 { [] }
   else { stmts |> take(n: (stmts |> count) - 1) }
+}
+
+// =========================================================================
+// Shared TCO eligibility check -- identical across all backends.
+//
+// A function is TCO-eligible when it is self-recursive AND every
+// self-call is in tail position. This was duplicated in emit_fn_def,
+// emit_go_fn_def, and emit_py_fn_def.
+// =========================================================================
+
+fn is_tco_eligible(name: String, body: Node, registry: Map<String, ItemInfo>) -> Bool {
+  match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
+    None => {
+      expr_has_self_call(texpr: body, fn_name: name)
+        && expr_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true) == false
+    }
+  }
+}
+
+// is_self_recursive check -- used by Rust stacker wrapping.
+fn is_self_recursive(name: String, body: Node, registry: Map<String, ItemInfo>) -> Bool {
+  match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.is_self_recursive
+    None => expr_has_self_call(texpr: body, fn_name: name)
+  }
+}
+
+// =========================================================================
+// Shared TCO reassignment core -- build temp-then-assign lines.
+//
+// The reassignment pattern is identical across all backends:
+//   1. Evaluate each arg (done by caller, passed as ordered_args)
+//   2. Assign each arg to a temp variable: temp_prefix + idx + assign_op + arg
+//   3. Assign each temp back to its parameter: param_name + " = " + temp_prefix + idx
+//   4. Append a continue line
+//
+// Target-specific tokens:
+//   - temp_prefix: "__tco_" (Rust, Python) or "tco" (Go)
+//   - temp_assign_op: " = " (Rust, Python) or " := " (Go)
+//   - stmt_terminator: ";" (Rust) or "" (Python, Go)
+//   - continue_str: "continue;" (Rust) or "continue" (Python, Go)
+//   - line_prefix: "" (Rust, Python) or indentation (Go)
+// =========================================================================
+
+fn tco_reassign_core(
+  ordered_args: List<String>,
+  param_names: List<String>,
+  temp_var_prefix: String,
+  temp_decl_prefix: String,
+  temp_assign_op: String,
+  stmt_terminator: String,
+  continue_str: String,
+  line_prefix: String
+) -> List<String> {
+  let temp_lets = ordered_args |> enumerate |> map(pair =>
+    concat(line_prefix, temp_decl_prefix, temp_var_prefix, to_string(value: pair.first), temp_assign_op, pair.second, stmt_terminator))
+  let assigns = param_names |> enumerate |> map(pair =>
+    concat(line_prefix, pair.second, " = ", temp_var_prefix, to_string(value: pair.first), stmt_terminator))
+  concat(temp_lets, assigns, [concat(line_prefix, continue_str)])
 }
 
 fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {

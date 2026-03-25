@@ -51,8 +51,7 @@ import v2.std.core {
   BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   FieldSummary, TupleFirst, TupleSecond,
-  Text, Interpolation,
-  expr_has_self_call, expr_has_non_tail_self_call
+  Text, Interpolation
 }
 
 import v2.compiler.artifact { RenderTarget, Python }
@@ -99,7 +98,9 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   classify_typed_item, classify_type_structure,
-  bridge_method_base_name
+  bridge_method_base_name,
+  is_tco_eligible,
+  tco_reassign_core
 }
 
 // =========================================================================
@@ -365,14 +366,7 @@ fn emit_py_fn_def(name: String, params: List<Param>, return_type: Node, body: No
   let params_str = emit_py_params(params: params)
   let ret_str = emit_py_return_type(return_type: return_type)
   let body_scope = build_params_scope(scope: scope, params: params)
-  // Tail-call optimization: use cached analysis from item registry.
-  let use_tco = match lookup_item(registry: registry, name: name) {
-    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
-    None => {
-      expr_has_self_call(texpr: body, fn_name: name)
-        && expr_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true) == false
-    }
-  }
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
   if use_tco {
     let body_str = emit_py_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1)
     concat("def ", emit_ident(name: name, target: Python), "(", params_str, ")", ret_str, ":\n",
@@ -900,11 +894,11 @@ fn emit_py_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Para
 fn emit_py_typed_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let ordered_args = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
   let param_names = params |> map(p => emit_ident(name: p.name, target: Python))
-  let temp_lets = ordered_args |> enumerate |> map(pair =>
-    concat("__tco_", to_string(value: pair.first), " = ", pair.second))
-  let assigns = param_names |> enumerate |> map(pair =>
-    concat(pair.second, " = __tco_", to_string(value: pair.first)))
-  let all_lines = concat(temp_lets, assigns, ["continue"])
+  let all_lines = tco_reassign_core(
+    ordered_args: ordered_args, param_names: param_names,
+    temp_var_prefix: "__tco_", temp_decl_prefix: "",
+    temp_assign_op: " = ", stmt_terminator: "",
+    continue_str: "continue", line_prefix: "")
   all_lines |> join(separator: "\n")
 }
 

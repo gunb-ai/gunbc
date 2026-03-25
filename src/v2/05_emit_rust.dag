@@ -58,8 +58,7 @@ import v2.std.core {
   transport_base_url,
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
-  field_init_operation_modifier, operation_modifier_name,
-  expr_has_self_call, expr_has_non_tail_self_call
+  field_init_operation_modifier, operation_modifier_name
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
@@ -122,7 +121,9 @@ import v2.compiler.emit {
   typed_named_arg_matches, order_typed_call_args,
   classify_typed_item, classify_type_structure,
   has_mock_prefix,
-  bridge_method_base_name
+  bridge_method_base_name,
+  is_tco_eligible, is_self_recursive,
+  tco_reassign_core
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -795,21 +796,10 @@ fn emit_fn_def(name: String, params: List<Param>, return_type: Node, body: Node,
   let ret_str = emit_return_type(return_type: return_type, rc_types: rc_types)
   let body_scope = build_params_scope(scope: scope, params: params)
   let depth = 0
-  // Tail-call optimization: use cached analysis from item registry.
-  let use_tco = match lookup_item(registry: registry, name: name) {
-    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
-    None => {
-      expr_has_self_call(texpr: body, fn_name: name)
-        && expr_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true) == false
-    }
-  }
+  let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
   // Stacker wrapping: recursive non-TCO functions need stack growth to avoid
   // overflow on large .dag files (e.g., 02_parse.dag at ~4000 lines).
-  let is_recursive = match lookup_item(registry: registry, name: name) {
-    Some { value: info } => info.is_self_recursive
-    None => expr_has_self_call(texpr: body, fn_name: name)
-  }
-  let needs_stacker = is_recursive && use_tco == false
+  let needs_stacker = is_self_recursive(name: name, body: body, registry: registry) && use_tco == false
   if use_tco {
     let tco_params_str = emit_tco_params(params: params, rc_types: rc_types)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2922,11 +2912,11 @@ fn emit_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>,
 fn emit_typed_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let ordered_args = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
   let param_names = params |> map(p => emit_ident(name: p.name, target: Rust))
-  let temp_lets = ordered_args |> enumerate |> map(pair =>
-    concat("let __tco_", to_string(value: pair.first), " = ", pair.second, ";"))
-  let assigns = param_names |> enumerate |> map(pair =>
-    concat(pair.second, " = __tco_", to_string(value: pair.first), ";"))
-  let all_lines = concat(temp_lets, assigns, ["continue;"])
+  let all_lines = tco_reassign_core(
+    ordered_args: ordered_args, param_names: param_names,
+    temp_var_prefix: "__tco_", temp_decl_prefix: "let ",
+    temp_assign_op: " = ", stmt_terminator: ";",
+    continue_str: "continue;", line_prefix: "")
   concat("{\n", make_indent(level: depth + 1),(all_lines |> join(separator: "\n")), "\n}")
 }
 
