@@ -21467,7 +21467,9 @@ import v2.std.core {
   Diagnostic, Severity, Warning, CompileResult, Error, TextFile, SourceSpan,
   Module, Import, ImportNames, Connective, Cardinality, Field, Param, ResourceUse,
   FieldAccessStyle, FieldValueShape, FieldSummary,
-  InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics,
+  InferredNode, Resolved, CompilerError,
+  VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
+  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, ServiceConfig, Node, ErrorCategory
 }
@@ -21602,9 +21604,13 @@ fn json_optional_node(value: Node?) -> String {
 }
 
 fn json_optional_inferred_node(value: InferredNode?) -> String {
-  match value {
-    Some { value: inner } => serialize_inferred_node(inferred: inner)
-    None => "null"
+  // Use if/else instead of match to unwrap the Optional.  The self-compile
+  // exhaustiveness checker resolves InferredNode? to InferredNode (losing
+  // Optional cardinality), causing a false-positive on Some/None arms.
+  if value != none {
+    serialize_inferred_node(inferred: value.value)
+  } else {
+    "null"
   }
 }
 
@@ -21836,24 +21842,35 @@ fn serialize_lambda_semantics(value: LambdaSemantics?) -> String {
 }
 
 fn serialize_method_semantics(value: MethodSemantics?) -> String {
+  // Use if/else instead of match to unwrap the Optional.  The self-compile
+  // exhaustiveness checker resolves MethodSemantics? to MethodSemantics
+  // (losing Optional cardinality), which causes a false-positive on
+  // any match with Some/None arms.
+  if value != none {
+    serialize_method_semantics_inner(value: value.value)
+  } else {
+    "null"
+  }
+}
+
+fn serialize_method_semantics_inner(value: MethodSemantics) -> String {
   match value {
-    Some { value: PlainMethodSemantics } =>
+    PlainMethodSemantics =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    Some { value: IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } } =>
+    IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } =>
       concat(
         "{\"kind\": \"IntrinsicMethodSemantics\", \"fold_accumulator_type\": ",
         json_optional_node(value: fold_accumulator_type),
         "}")
-    Some { value: RuntimeBridgeSemantics { method: _ } } =>
+    RuntimeBridgeSemantics { method: _ } =>
       "{\"kind\": \"RuntimeBridgeSemantics\"}"
-    Some { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
+    ServiceMethodSemantics { service_name: service_name, op_params: op_params } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
         json_quote(s: service_name),
         ", \"op_params\": ",
         json_list(items: op_params |> map(p => serialize_param(param: p))),
         "}")
-    None => "null"
   }
 }
 
