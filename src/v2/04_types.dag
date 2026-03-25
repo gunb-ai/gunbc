@@ -428,7 +428,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
     LitInt { value: _ } => leaf_node(name: "Int")
     LitFloat { value: _ } => leaf_node(name: "Float")
     LitBool { value: _ } => leaf_node(name: "Bool")
-    LitNull => leaf_node(name: "Unit")
+    LitNull => with_optional_cardinality(n: leaf_node(name: "Unit"))
   }
 }
 

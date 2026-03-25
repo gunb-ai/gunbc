@@ -315,23 +315,38 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
 
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, vtoe: Map<String, String>, rc_types: Map<String, Bool>, svc_module_map: Map<String, String>) -> TextFile {
   let m = typed_module.module
-  // Build module-local vtoe: remap ambiguous variants based on this module's imports.
+  // Build module-local vtoe: remap ambiguous variants based on this module's
+  // imports AND locally-defined types. Both imported and local enums provide
+  // the correct parent for ambiguous variant names.
   let __all_imported = flat_map(m.imports, imp =>
     match imp.names {
       ImportSpecific { names: ns } => ns
       _ => []
     }
   )
-  let __imported_enums = __all_imported |> filter(n =>
+  let __local_type_names = typed_module.items |> map(item => item.name)
+  let __import_enums = __all_imported |> filter(n =>
     is_enum_type_name(type_name: n, vtoe: vtoe)
   )
-  let module_vtoe = fold(__all_imported, init: vtoe, f: (vtoe_acc, name) =>
+  let __local_enums = __local_type_names |> filter(n =>
+    is_enum_type_name(type_name: n, vtoe: vtoe)
+  )
+  let __local_variant_names = typed_module.items |> flat_map(item =>
+    if __local_enums |> any(enum_name => enum_name == item.name) {
+      item.children |> map(child => child.name)
+    } else {
+      []
+    }
+  )
+  let __module_enums = concat(__local_enums, __import_enums)
+  let __candidate_variant_names = unique_strings(items: concat(__all_imported, __local_variant_names))
+  let module_vtoe = fold(__candidate_variant_names, init: vtoe, f: (vtoe_acc, name) =>
     match map_get(vtoe_acc, name) {
       Some { value: current_parent } =>
-        let parent_ok = __imported_enums |> any(e => e == current_parent)
+        let parent_ok = __module_enums |> any(e => e == current_parent)
         if parent_ok { vtoe_acc }
         else {
-          let correct = __imported_enums |> filter(enum_name =>
+          let correct = __module_enums |> filter(enum_name =>
             emit_map_has(m: emit_info.enum_variant_membership, key: concat(enum_name, "|", name))
           ) |> first
           match correct {
@@ -2460,11 +2475,14 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       if n == "none" || n == "None" {
         true
       } else {
+        // Check use-site cardinality first (CardOptional on the raw type),
+        // then resolve to the definition. resolve_scrutinee_type_node can
+        // lose use-site cardinality when resolving to the type definition.
         match texpr.return_type {
-          Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+          Some { value: Resolved { node: rt } } => node_is_optional(n: rt) || node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
           _ =>
             match map_get(scope.locals, n) {
-              Some { value: binding } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: binding.resolved))
+              Some { value: binding } => node_is_optional(n: binding.resolved) || node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: binding.resolved))
               None => false
             }
         }
@@ -2505,7 +2523,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       }
     _ =>
       match texpr.return_type {
-        Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+        Some { value: Resolved { node: rt } } => node_is_optional(n: rt) || node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
         _ => false
       }
   }

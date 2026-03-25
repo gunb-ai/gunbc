@@ -3799,6 +3799,43 @@ fn describe(lb: Label) -> String {
         );
     }
 
+    /// P3.6: User-defined generic types compile through the full pipeline.
+    /// Ignored: substitution logic in 03_normalize.dag crashes v1 interpreter
+    /// at module load time (complex Node constructors trigger empty-outputs bug).
+    /// Un-ignore after v1 retirement (Stream A) when substitution can be wired in.
+    #[test]
+    #[ignore]
+    fn v2_generic_type_declaration_smoke() {
+        let output = compile_all_modules().expect("compilation should succeed");
+
+        let source = "\
+module generics_smoke
+
+type Pair<A, B> { first: A  second: B }
+
+fn make_pair(x: Int, y: String) -> Pair<Int, String> {
+  Pair { first: x, second: y }
+}
+
+fn get_first(p: Pair<Int, String>) -> Int {
+  p.first
+}
+";
+
+        let result = compile_sources_with(&output, &[("generics_smoke.dag", source)]);
+
+        let diagnostics = result
+            .get("diagnostics")
+            .expect("compile_sources should return diagnostics");
+        let messages = diagnostic_messages(diagnostics);
+        assert!(
+            messages.is_empty(),
+            "generic type declaration: expected 0 diagnostics, got {}: {:?}",
+            messages.len(),
+            messages,
+        );
+    }
+
     #[test]
     fn v2_go_pipeline_smoke() {
         let output = compile_all_modules().expect("compilation should succeed");
