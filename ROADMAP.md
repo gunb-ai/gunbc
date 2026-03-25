@@ -1725,13 +1725,12 @@ values). No backend-specific state crosses the boundary.
 - `rc_types: Map<String, Bool>` — Rc wrapping decisions (Rust-specific)
 - `emit_info: EmitGraphInfo` — graph-level emit metadata
 
-**P4.2 step 5 — leaf dispatcher (Done).** `emit_shared_expr` in
-`05_emit.dag` handles ExprLiteral, ExprError, NoExprData — leaf arms
-identical across all 3 backends. All backends wired: Rust/Python call
-directly, Go wraps non-empty results with `concat(prefix, result)`.
-Recursive arms (UnaryOp, Lambda, ListLit, Return) stay per-backend
-because the v1 interpreter cannot evaluate lambdas as callable values
-(bootstrap constraint). Those arms already call shared helpers.
+**P4.2 step 5 — callback dispatcher (Done).** `emit_shared_expr` in
+`05_emit.dag` handles 7 arms: 3 leaf (ExprLiteral, ExprError, NoExprData)
++ 4 recursive (ExprUnaryOp, ExprLambda, ExprListLit, ExprReturn) via
+`recurse: fn(Node, InferScope, Int) -> String` callback. All backends
+wired. 9 dead per-backend helpers deleted. Stage0 regenerated with
+callable-type support (P4.7).
 
 **Safe extraction order (lower risk first):**
 
@@ -1771,11 +1770,10 @@ ExprStringInterp (format!/f-string/Sprintf), ExprForEach (Rust
 collect vs loop), ExprBlock (Rust brace wrapping), ExprCast (Rust
 numeric type checking), ExprIndex/ExprSlice (Rust type-dependent).
 
-*Bootstrap constraint:* The full callback-based dispatcher
-(`recurse: fn(Node) -> String`) requires self-hosting — the v1
-interpreter rejects lambdas as standalone values. Once Stream D (v1
-retirement) completes, `emit_shared_expr` can absorb the recursive
-arms (UnaryOp, Lambda, ListLit, Return) with a callback parameter.
+*Bootstrap constraint lifted (2026-03-25).* Stream D (v1 retirement)
+is complete. `assemble_stage0` uses the v1 *emitter* (not interpreter),
+which handles callable types and lambdas correctly. `emit_shared_expr`
+now has the full callback dispatcher with 4 recursive arms absorbed.
 
 **Revised acceptance criteria:**
 - Each backend's `ExprData` match arms are thin: either a direct shared
@@ -1824,9 +1822,8 @@ highest-leverage extraction for P4.3.
 
 ### Current Phase 4 Risks
 
-- Shared emit has leaf dispatcher (`emit_shared_expr`) + 13 shared
-  helpers; recursive ExprData arms still per-backend. Full callback
-  dispatcher now unblocked by v1 retirement (stage0→stage1 path).
+- Shared emit has callback dispatcher (`emit_shared_expr`, 7 arms) +
+  13 shared helpers. 12 deeply divergent ExprData arms stay per-backend.
   TCO walker (~90% identical x3) and service/transport emission
   (identical 4-way dispatch x3) remain duplicated.
 - Go/Python **intrinsic** method emission is exhaustive (19/19 arms, no
@@ -1927,10 +1924,11 @@ change during recursion (`depth`, `scope`); all others are captured.
 P4.7 added callable-type support to the v2 compiler, but the v1
 **interpreter** rejects lambdas as standalone values (`eval_stack.rs:1162`).
 
-**Current state (2026-03-25):** `emit_shared_expr(texpr, target)` handles
-3 leaf arms (ExprLiteral, ExprError, NoExprData). All 3 backends wired.
-Recursive arms stay per-backend calling shared helpers. The full callback
-dispatcher becomes possible after Stream D (v1 retirement).
+**Current state (2026-03-25):** `emit_shared_expr` handles 7 arms
+(3 leaf + 4 recursive) with `recurse: fn(Node, InferScope, Int) -> String`
+callback. All 3 backends wired. `map_expr_children` landed in `00_core.dag`
+(18 ExprData variants). Stage0 regenerated with P4.7 callable support.
+DIAG_RATCHET = 0.
 
 ### Phase 4 Exit Criteria
 
