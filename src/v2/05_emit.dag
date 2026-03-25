@@ -45,7 +45,12 @@ import v2.std.core {
   BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   kernel_types,
-  expr_has_self_call, expr_has_non_tail_self_call
+  expr_has_self_call, expr_has_non_tail_self_call,
+  local_transport_node,
+  TransportKind, RestTransport, ShellTransport, FileTransport,
+  is_transport_kind,
+  transport_has_auth,
+  field_init_operation_modifier, operation_modifier_name
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
@@ -1060,6 +1065,65 @@ fn is_service_item(item: Node) -> Bool {
 fn has_service_items(typed: ResolvedGraph) -> Bool {
   typed.modules |> any(tm =>
     tm.items |> any(item => is_service_item(item: item))
+  )
+}
+
+// =========================================================================
+// Shared service/transport graph queries -- target-agnostic facts about
+// service definitions that all backends need.
+//
+// These are graph queries, not rendering decisions. They inspect the
+// service node structure to determine which transports and features are
+// used, so backends can make informed rendering decisions without
+// reimplementing the same graph walks.
+// =========================================================================
+
+// Resolve the fallback transport for a service item. If the service
+// declares no transport, default to a local transport node.
+fn service_fallback_transport(item: Node) -> Node {
+  if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
+}
+
+// Resolve the effective transport for an operation: use the per-operation
+// override if present, otherwise fall back to the service-level transport.
+fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
+  match op_node.transport {
+    Some { value: op_transport } => op_transport
+    None => fallback
+  }
+}
+
+// Check if any operation in the service (or the service-level fallback)
+// uses a given transport kind.
+fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind: TransportKind) -> Bool {
+  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+// Check if any REST operation (or the service-level fallback) has auth.
+fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = if is_transport_kind(t: fallback_transport, kind: RestTransport) {
+    transport_has_auth(t: fallback_transport)
+  } else { false }
+  let from_ops = op_children |> any(op =>
+    if op.transport != none {
+      let t = op.transport.value
+      if is_transport_kind(t: t, kind: RestTransport) { transport_has_auth(t: t) } else { false }
+    } else { false }
+  )
+  from_fallback || from_ops
+}
+
+// Extract operation modifier names from a list of property field inits.
+fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
+  properties |> flat_map(p =>
+    match field_init_operation_modifier(field_init: p) {
+      Some { value: modifier } => [operation_modifier_name(modifier: modifier)]
+      None => []
+    }
   )
 }
 

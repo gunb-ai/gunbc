@@ -52,13 +52,12 @@ import v2.std.core {
   BinOpKind,
   UnaryOpKind, StringPart, Text, Interpolation,
   ServiceConfig,
-  local_transport_node,
   TransportKind, LocalTransport, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
   transport_base_url,
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
-  field_init_operation_modifier, operation_modifier_name
+  expr_has_self_call, expr_has_non_tail_self_call
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
@@ -123,7 +122,10 @@ import v2.compiler.emit {
   has_mock_prefix,
   bridge_method_base_name,
   is_tco_eligible, is_self_recursive,
-  tco_reassign_core
+  tco_reassign_core,
+  service_fallback_transport, effective_operation_transport,
+  service_uses_transport, service_has_rest_auth,
+  extract_modifier_names
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -2934,34 +2936,11 @@ fn emit_service_def(
   registry: Map<String, ItemInfo>
 ) -> String {
   let safe_name = sanitize_service_name(name: item.name)
-  let fallback_transport = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
+  let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
   let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, config: item.config)
   let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry)
   concat(struct_def, "\n\n", impl_block)
-}
-
-// Check if any operation in the service (or the service-level fallback) uses a given transport kind.
-fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind: TransportKind) -> Bool {
-  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
-  let from_ops = op_children |> any(op =>
-    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
-  )
-  from_fallback || from_ops
-}
-
-// Check if any REST operation (or the service-level fallback) has auth.
-fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = if is_transport_kind(t: fallback_transport, kind: RestTransport) {
-    transport_has_auth(t: fallback_transport)
-  } else { false }
-  let from_ops = op_children |> any(op =>
-    if op.transport != none {
-      let t = op.transport.value
-      if is_transport_kind(t: t, kind: RestTransport) { transport_has_auth(t: t) } else { false }
-    } else { false }
-  )
-  from_fallback || from_ops
 }
 
 fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, config: ServiceConfig?) -> String {
@@ -3029,15 +3008,6 @@ fn emit_service_new_method(name: String, fallback_transport: Node, op_children: 
 }
 
 // Extract modifier names from properties.
-fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
-  properties |> flat_map(p =>
-    match field_init_operation_modifier(field_init: p) {
-      Some { value: modifier } => [operation_modifier_name(modifier: modifier)]
-      None => []
-    }
-  )
-}
-
 fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
   let names = extract_modifier_names(properties: properties)
   if names |> count == 0 {
@@ -3058,13 +3028,9 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
     concat("&self, ", params_str)
   }
   let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: empty_map())
-  // Use per-operation transport override if present, otherwise service-level transport.
-  let effective_transport = match op_node.transport {
-    Some { value: op_transport } => op_transport
-    None => transport
-  }
+  let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_return_type = rt_type(n: op_node)
-  let real_body = emit_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry, depth: depth + 2, return_type: op_return_type)
+  let real_body = emit_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry, depth: depth + 2, return_type: op_return_type)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: p.name))
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_node.name, return_type: rt_type(n: op_node), mock_props: mock_props, registry: registry)
   let body = concat(

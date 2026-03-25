@@ -24,7 +24,6 @@ import v2.std.core {
   UnaryOpKind, StringPart, NamedArg, FieldInit,
   ServiceConfig,
   DeclaredFuncSig,
-  local_transport_node,
   TransportKind, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
   transport_has_auth, transport_auth_header_name,
@@ -100,7 +99,8 @@ import v2.compiler.emit {
   classify_typed_item, classify_type_structure,
   bridge_method_base_name,
   is_tco_eligible,
-  tco_reassign_core
+  tco_reassign_core,
+  service_fallback_transport, effective_operation_transport
 }
 
 // =========================================================================
@@ -917,7 +917,7 @@ fn emit_py_service_def(
 ) -> String {
   let depth = 0
   let safe_name = sanitize_service_name(name: item.name)
-  let transport = if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
+  let transport = service_fallback_transport(item: item)
   let init_method = emit_py_service_init(transport: transport, config: item.config)
   let op_children = item.children
   let methods = op_children |> map(op_node =>
@@ -957,11 +957,8 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
     concat("self, ", params_str)
   }
   let ret_type = emit_node_type(n: rt_type(n: op_node), target: Python)
-  let effective_transport = match op_node.transport {
-    Some { value: op_transport } => op_transport
-    None => transport
-  }
-  let body = emit_py_transport_call(transport: effective_transport, op_name: op_node.name, registry: registry)
+  let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
+  let body = emit_py_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry)
   concat("async def ", emit_ident(name: op_node.name, target: Python),
     "(", all_params, ") -> ", ret_type, ":\n",
     make_indent(level: depth + 1), body)
