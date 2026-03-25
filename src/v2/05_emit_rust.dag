@@ -66,7 +66,9 @@ import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
   rust_reserved, rt_functions, rt_ref_map_functions,
   rust_reserved_escape_prefix,
-  rust_struct_derives, rust_enum_derives, rust_serde_tag,
+  rust_struct_derives, rust_struct_derives_copy,
+  rust_enum_derives, rust_enum_derives_copy,
+  rust_serde_tag, rust_serde_rename_template,
   rust_source_extension, rust_source_dir, rust_visibility
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
@@ -642,7 +644,7 @@ fn emit_struct_from_children(name: String, children: List<Node>, recursive_types
   let derives = if emit_map_has(m: rc_types, key: name) {
     rust_struct_derives
   } else {
-    "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+    rust_struct_derives_copy
   }
   if children |> count == 0 {
     concat(derives, "\n", rust_visibility, "struct ", name, ";")
@@ -664,7 +666,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   let rename_attr = match child.properties |> filter(p => p.name == "from_key") |> first {
     Some { value: prop } => match prop.value.expr_data {
       ExprLiteral { value: lv } => match lv {
-        LitStr { value: key } => concat("    #[serde(rename = \"", key, "\")]\n")
+        LitStr { value: key } => concat("    ", apply_type_template1(template: rust_serde_rename_template, arg0: key), "\n")
         _ => ""
       }
       _ => ""
@@ -679,7 +681,7 @@ fn enum_derives(children: List<Node>) -> String {
   // Simple enums (all-unit variants) get Copy added as a Rust-specific optimization.
   let complex = children |> filter(v => v.children |> count > 0)
   match complex |> count == 0 {
-    true => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+    true => rust_enum_derives_copy
     false => rust_enum_derives
   }
 }

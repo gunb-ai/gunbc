@@ -2205,8 +2205,8 @@ fn foo(item: String) -> String {
     fn phase6_emit_preserves_field_provenance_and_named_arg_ordering() {
         let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
         assert!(
-            rust_source.contains("serde(rename = "),
-            "emit_rust.dag should preserve from_key through serde rename attributes"
+            rust_source.contains("rust_serde_rename_template"),
+            "emit_rust.dag should preserve from_key through serde rename attributes (via LanguageSpec data)"
         );
         let core_source = read_v2_file("src/v2/05_emit.dag");
         assert!(
