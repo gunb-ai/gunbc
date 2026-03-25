@@ -3,6 +3,7 @@ use crate::artifact::*;
 use crate::languages::*;
 use crate::infer_env::*;
 use crate::infer_types::*;
+use crate::infer_sigs::*;
 use crate::infer::*;
 use crate::emit::*;
 use crate::v2_rt;

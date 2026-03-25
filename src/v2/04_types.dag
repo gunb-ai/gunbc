@@ -98,6 +98,10 @@ fn error_type_node() -> Node {
   leaf_node(name: "Error")
 }
 
+fn no_span() -> SourceSpan {
+  SourceSpan { start: 0, end: 0 }
+}
+
 // =========================================================================
 // Type predicates
 // =========================================================================
@@ -478,5 +482,13 @@ fn for_each_element_type_node(n: Node) -> Node {
     None =>
       if node_is_leaf(n: normed) && normed.name == "String" { leaf_node(name: "String") }
       else { normed }
+  }
+}
+
+// Map-contains-key check for Bool-valued maps (used as sets).
+fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
   }
 }

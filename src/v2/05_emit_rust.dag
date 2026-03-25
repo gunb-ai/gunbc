@@ -76,22 +76,23 @@ import v2.compiler.infer_types {
   node_is_optional, node_is_map, node_is_container, node_has_structure,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   leaf_node, with_required_cardinality,
-  rt_type
+  rt_type, emit_map_has
 }
+import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
-  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   infer_record_lit,
   build_emit_graph_info,
-  lookup_emit_type_summary,
   resolve_scrutinee_type_node,
   expr_span,
   ItemInfo, FuncItem, DataItem,
-  is_typed_service_call_receiver, extract_typed_service_name,
-  emit_map_has
+  is_typed_service_call_receiver, extract_typed_service_name
+}
+import v2.compiler.infer_emit_info {
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
+  lookup_emit_type_summary
 }
 
 import v2.compiler.emit {

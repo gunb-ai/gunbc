@@ -5,6 +5,22 @@
 
 use crate::helpers::read_v2_file;
 
+fn live_source(source: &str) -> String {
+    source
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn assert_live_contains(source: &str, needle: &str, message: &str) {
+    assert!(live_source(source).contains(needle), "{message}");
+}
+
+fn assert_live_not_contains(source: &str, needle: &str, message: &str) {
+    assert!(!live_source(source).contains(needle), "{message}");
+}
+
 #[test]
 fn pipe_arrow_token_exists() {
     let source = read_v2_file("src/v2/00_core.dag");
@@ -180,15 +196,24 @@ fn resolve_filters_failed_imports_and_cycles() {
 }
 
 #[test]
-fn typecheck_resolves_and_validates_expression_tree_types() {
-    let source = read_v2_file("src/v2/04_infer.dag");
-    assert!(
-        source.contains("fn resolve_expr_types"),
-        "04_infer.dag should contain fn resolve_expr_types"
+fn typecheck_gates_inference_on_env_errors_and_resolves_expr_types() {
+    let resolve_source = read_v2_file("src/v2/04_resolve.dag");
+    assert_live_contains(
+        &resolve_source,
+        "fn resolve_expr_types(",
+        "04_resolve.dag should define fn resolve_expr_types",
     );
-    assert!(
-        source.contains("collect_unresolved_in_expr"),
-        "04_infer.dag should contain collect_unresolved_in_expr"
+
+    let infer_source = read_v2_file("src/v2/04_infer.dag");
+    assert_live_not_contains(
+        &infer_source,
+        "fn resolve_expr_types(",
+        "04_infer.dag should not define fn resolve_expr_types",
+    );
+    assert_live_contains(
+        &infer_source,
+        "if env_errors |> count > 0 {",
+        "04_infer.dag should gate inference on env_errors before infer_items",
     );
 }
 
@@ -253,14 +278,16 @@ fn final_cleanup_removes_parser_and_cli_fabrication_fallbacks() {
 
 #[test]
 fn unannotated_function_reports_signature_resolution_error() {
-    let source = read_v2_file("src/v2/04_infer.dag");
-    assert!(
-        source.contains("collect_func_call_edges"),
-        "04_infer.dag should contain collect_func_call_edges"
+    let source = read_v2_file("src/v2/04_sigs.dag");
+    assert_live_contains(
+        &source,
+        "fn collect_func_call_edges(",
+        "04_sigs.dag should define fn collect_func_call_edges",
     );
-    assert!(
-        source.contains("topo_resolve_loop"),
-        "04_infer.dag should contain topo_resolve_loop"
+    assert_live_contains(
+        &source,
+        "fn topo_resolve_loop(",
+        "04_sigs.dag should define fn topo_resolve_loop",
     );
 }
 

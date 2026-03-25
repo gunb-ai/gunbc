@@ -1,7 +1,9 @@
 use crate::v2_core::*;
 use crate::infer_env::*;
 use crate::infer_types::*;
+use crate::infer_sigs::*;
 use crate::infer::*;
+use crate::infer_emit_info::*;
 use crate::artifact::*;
 use crate::languages::*;
 use crate::v2_rt;
