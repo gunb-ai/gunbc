@@ -836,6 +836,11 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     // Resources: either with capabilities (children > 0) or without (have properties but no body/transport/children).
     // Note: return_type may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
     TypedItemResourceDef
+  } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
+    // Bare parameterized type declaration (e.g., type List<element>).
+    // These are type-system declarations — not emitted as code.
+    // Classified as Unhandled so the emitter skips them.
+    TypedItemUnhandled
   } else if item.params |> count > 0 {
     TypedItemExternFunc
   } else {
