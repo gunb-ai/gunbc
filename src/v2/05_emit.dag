@@ -37,6 +37,13 @@ import v2.std.core {
   ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
+  RuntimeBridgeMethod,
+  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
+  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
+  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
+  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
+  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
+  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   kernel_types
 }
 
@@ -958,5 +965,46 @@ fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
       if ss |> count == 0 { false }
       else { ss |> any(s => is_tco_candidate(texpr: s, func_name: func_name)) }
     _ => false
+  }
+}
+
+// =========================================================================
+// bridge_method_base_name — canonical snake_case name for each bridge method.
+//
+// Single authority for the Bridge* → snake_case mapping. Each backend
+// either uses this directly (Rust) or derives its target convention from
+// it (Python overrides BridgeWith; Go capitalizes segments to PascalCase).
+// =========================================================================
+
+fn bridge_method_base_name(method: RuntimeBridgeMethod) -> String {
+  match method {
+    BridgeGet => "get"
+    BridgeWith => "with"
+    BridgeListPush => "list_push"
+    BridgeMapInsert => "map_insert"
+    BridgeMapMerge => "map_merge"
+    BridgeMapGet => "map_get"
+    BridgeMapHas => "map_has"
+    BridgeEmitMapHas => "emit_map_has"
+    BridgeMapValues => "map_values"
+    BridgeMapKeys => "map_keys"
+    BridgeMapContainsKey => "map_contains_key"
+    BridgeCharAt => "char_at"
+    BridgeStringAt => "string_at"
+    BridgeStringLength => "string_length"
+    BridgeLength => "length"
+    BridgeStartsWith => "starts_with"
+    BridgeEndsWith => "ends_with"
+    BridgeToString => "to_string"
+    BridgeTrim => "trim"
+    BridgeToLower => "to_lower"
+    BridgeToUpper => "to_upper"
+    BridgeReplace => "replace"
+    BridgeSubstring => "substring"
+    BridgeToInt => "to_int"
+    BridgeEmptyMap => "empty_map"
+    BridgeContains => "contains"
+    BridgeReverse => "reverse"
+    BridgeLookup => "lookup"
   }
 }

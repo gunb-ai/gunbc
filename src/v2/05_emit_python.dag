@@ -90,7 +90,8 @@ import v2.compiler.emit {
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
-  classify_typed_item, classify_type_structure
+  classify_typed_item, classify_type_structure,
+  bridge_method_base_name
 }
 
 fn emit_single_field_product_py_type(field_node: Node) -> String {
@@ -686,36 +687,8 @@ fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, arg
 }
 
 fn py_bridge_method_name(method: RuntimeBridgeMethod) -> String {
-  match method {
-    BridgeGet => "get"
-    BridgeWith => "with_update"
-    BridgeListPush => "list_push"
-    BridgeMapInsert => "map_insert"
-    BridgeMapMerge => "map_merge"
-    BridgeMapGet => "map_get"
-    BridgeMapHas => "map_has"
-    BridgeEmitMapHas => "emit_map_has"
-    BridgeMapValues => "map_values"
-    BridgeMapKeys => "map_keys"
-    BridgeMapContainsKey => "map_contains_key"
-    BridgeCharAt => "char_at"
-    BridgeStringAt => "string_at"
-    BridgeStringLength => "string_length"
-    BridgeLength => "length"
-    BridgeStartsWith => "starts_with"
-    BridgeEndsWith => "ends_with"
-    BridgeToString => "to_string"
-    BridgeTrim => "trim"
-    BridgeToLower => "to_lower"
-    BridgeToUpper => "to_upper"
-    BridgeReplace => "replace"
-    BridgeSubstring => "substring"
-    BridgeToInt => "to_int"
-    BridgeEmptyMap => "empty_map"
-    BridgeContains => "contains"
-    BridgeReverse => "reverse"
-    BridgeLookup => "lookup"
-  }
+  // Python reserved word `with` requires override; all others use base name.
+  if (method == BridgeWith) { "with_update" } else { bridge_method_base_name(method: method) }
 }
 
 fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
