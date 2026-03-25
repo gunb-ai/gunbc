@@ -204,6 +204,22 @@ fn map_index_emits_lookup_style_rust() {
 }
 
 #[test]
+fn null_coalesce_emits_rust_fallback() {
+    let source = "module test\nfn fallback(name: String?) -> String {\n  name ?? \"guest\"\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    assert!(
+        content.contains(".unwrap_or_else(||"),
+        "null coalesce should emit Rust unwrap_or_else fallback"
+    );
+    assert!(
+        content.contains("\"guest\".to_string()"),
+        "null coalesce should preserve the fallback expression in emitted Rust"
+    );
+}
+
+#[test]
 fn optional_alias_field_access() {
     let source = "module test\ndata USER: String? = \"admin\"\nfn get_user() -> String {\n  USER\n}\n";
     let result = compile_dag(source);
@@ -291,6 +307,18 @@ fn for_each_binds_loop_variable() {
 }
 
 #[test]
+fn for_each_emits_cloned_iteration_in_rust() {
+    let source = "module test\nfn demo(items: List<Int>) -> List<Int> {\n  for item in items { item + 1 }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    assert!(
+        content.contains(".iter().cloned()"),
+        "for-each should emit cloned Rust iteration"
+    );
+}
+
+#[test]
 fn emit_non_empty_wrappers() {
     let source = "module test\ndata answer: Int = 42\n";
     let result = compile_dag(source);
@@ -304,6 +332,85 @@ fn emit_pipe_methods() {
     let source = "module test\n\nfn example(items: List<String>) -> Int {\n  items |> count\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
+}
+
+#[test]
+fn rust_target_emits_cargo_toml() {
+    let source = "module test\nfn answer() -> Int { 42 }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    assert!(has_file(&result, "Cargo.toml"), "Rust target should emit Cargo.toml");
+    let cargo_toml = find_file(&result, "Cargo.toml");
+    assert!(
+        cargo_toml.contains("name = \"v2_compiled\""),
+        "emitted Cargo.toml should contain the generated crate name"
+    );
+}
+
+#[test]
+fn recursive_function_without_return_type_reports_signature_resolution_error() {
+    let source = "module test\nfn countdown(n: Int) {\n  if n == 0 {\n    0\n  } else {\n    countdown(n - 1)\n  }\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("requires return type annotation")),
+        "recursive function without return annotation should produce a signature diagnostic, got: {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn from_key_emits_serde_rename_attribute() {
+    let source = "module test\ntype Payload {\n  access_token: String from \"accessToken\"\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    assert!(
+        content.contains("#[serde(rename = \"accessToken\")]"),
+        "from-key field rename should emit a serde rename attribute"
+    );
+}
+
+#[test]
+fn named_args_are_emitted_in_param_order() {
+    let source = "module test\nfn pair(a: String, b: String) -> String {\n  a + b\n}\n\nfn demo() -> String {\n  pair(b: \"two\", a: \"one\")\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    assert!(
+        content.contains("pair(\"one\".to_string(), \"two\".to_string())"),
+        "named arguments should be reordered into parameter order in emitted Rust"
+    );
+}
+
+#[test]
+fn tail_recursive_fn_emits_tco_loops_for_rust_and_python() {
+    let source = "module test\nfn countdown(n: Int, acc: Int) -> Int {\n  if n == 0 {\n    acc\n  } else {\n    countdown(n - 1, acc + 1)\n  }\n}\n";
+
+    let rust_result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&rust_result);
+    let rust_content = find_file(&rust_result, "src/test.rs");
+    assert!(
+        rust_content.contains("loop {"),
+        "tail-recursive Rust emission should use a loop"
+    );
+    assert!(
+        rust_content.contains("continue;"),
+        "tail-recursive Rust emission should continue the loop"
+    );
+
+    let python_result = compile_dag_target(source, RenderTarget::Python);
+    assert_no_diagnostics(&python_result);
+    let py_file = python_result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"))
+        .expect("Python target should emit a .py file");
+    assert!(
+        py_file.content.contains("while True:"),
+        "tail-recursive Python emission should use a while True loop"
+    );
 }
 
 // ── Parse error handling ────────────────────────────────────────────────

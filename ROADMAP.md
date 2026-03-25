@@ -823,8 +823,9 @@ emit boundary changes.
 
 **Tiers 1-4: Done** (PR #200 + #204, merged 2026-03-24). Stage0 committed
 at `src/v2/stage0/` as a workspace member. Tests restructured into modules
-(pipeline.rs, bootstrap.rs, parse.rs, source_audit.rs, helpers.rs) calling
-stage0 typed APIs directly. `v1-bootstrap` removed from default features.
+(pipeline.rs, bootstrap.rs, parse.rs, helpers.rs) calling stage0 typed
+APIs directly; source-level ratchets live in `scripts/source_audit.py`.
+`v1-bootstrap` removed from default features.
 `v2_runtime_shim.rs` deleted. `assemble_stage0` binary for seed regeneration.
 CI excludes `v2-compiler` from workspace test (generated_tests.rs too large).
 
@@ -932,7 +933,7 @@ the "you are here" state. If any check fails, the phase is not done.
 cargo test --workspace --exclude v2-compiler-tests          # green
 cargo clippy --all-targets -- -D warnings                   # green
 cargo test -p v2-compiler-tests                             # green
-cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust # green
+python3 scripts/source_audit.py                             # green
 scripts/l1-ratchet.sh --check                               # total <= ratchet (373)
 ```
 State: 0 diagnostic regressions. Algebraic type spec written. Ownership
@@ -1610,10 +1611,10 @@ contract is real.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P4.1 | `LanguageSpec` becomes the single authority | **Done (contract met)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`, and compiler-local helpers in `src/v2/languages.dag` now route shared emit/backends through `LanguageSpec` for reserved words, scaffold, serialization, test conventions, visibility, and per-target syntax facts. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. Verified by full `v2-compiler-tests` plus source-audit checks for `LanguageSpec` reads. |
+| P4.1 | `LanguageSpec` becomes the single authority | **Done (contract met)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`, and compiler-local helpers in `src/v2/languages.dag` now route shared emit/backends through `LanguageSpec` for reserved words, scaffold, serialization, test conventions, visibility, and per-target syntax facts. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. Verified by full `v2-compiler-tests` plus `scripts/source_audit.py` ratchets for `LanguageSpec` reads. |
 | P4.1a | Rust type rendering via shared `emit_node_type` | **Done** | Rust type rendering migrated to shared `emit_node_type` + Rc wrapping layer. `emit_rust_node_type` deleted. Commit `22063fe3`. |
 | P4.2 | Shared emit fold + target adapters | **Done** | Shared emit now owns the full callback-based `emit_shared_expr` recursion and shared `emit_shared_tco_expr` walker in `05_emit.dag`; Rust/Go/Python backends keep thin target adapters only where ownership or surface syntax genuinely differs. `map_expr_children` landed in core and infer rewrites now use it. Verified by `strict_pipeline_smoke`, `dag_pipeline_smoke`, and full `cargo test -p v2-compiler-tests -- --nocapture`. |
-| P4.3 | Generated tests as first-class projection | **Done** | `TestProjection` now carries `module_name`, `return_type`, and `params`; `extract_test_projections()` is the single graph-walk entry point; `emit_simple_expr` moved into shared emit; Rust/Go/Python all emit test files from the same projection contract. Verified by `generates_mock_test_file`, `testgen_emits_valid_rust`, and the full compiler test suite. |
+| P4.3 | Generated tests as first-class projection | **Done** | `TestProjection` now carries `module_name`, `return_type`, and `params`; `extract_test_projections()` is the single graph-walk entry point; `emit_simple_expr` moved into shared emit; Rust/Go/Python all emit test files from the same projection contract. Verified by `generates_mock_test_file`, `python3 scripts/source_audit.py`, and the full compiler test suite. |
 | P4.4 | DAG backend/runtime boundary | **Done** | `Dag` remains a compile target only; `emit_dag_artifact` now writes a versioned `dag-artifact.json` containing serialized `modules`, `diagnostics`, and `files` from the post-infer `ResolvedGraph`. Runtime execution stays downstream by design. Verified by `dag_pipeline_smoke` and ignored bootstrap smoke `stage0_compile_accepts_dag_target`. |
 | P4.5 | Typed backend plumbing and CLI surface | **Done** | Backend selection remains typed end-to-end and the committed stage0 / emitted compile CLI now parse `--target rust\|python\|go\|dag` with recursive source discovery aligned across bootstrap stages. Verified by ignored bootstrap smoke `stage0_compile_accepts_dag_target` plus full suite. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
@@ -1830,7 +1831,7 @@ type TestProjection {
 
 **Verification (2026-03-25):**
 - `cargo test -p v2-compiler-tests generates_mock_test_file -- --nocapture`
-- `cargo test -p v2-compiler-tests testgen_emits_valid_rust -- --nocapture`
+- `python3 scripts/source_audit.py`
 - `cargo test -p v2-compiler-tests -- --nocapture`
 
 ### Current Phase 4 Risks
@@ -2445,7 +2446,8 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 | Fixed point | `cargo test -p v2-compiler-tests v2_bootstrap_fixed_point -- --ignored` | After any `.dag` change that affects bootstrap output |
 | Gist pipeline | `cargo test -p v2-compiler-tests v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | After any `.dag` change (goal: 0) |
-| Testgen gate | `cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust` | After P1.21; verifies generated test files are non-empty and syntactically valid |
+| Source ratchets | `python3 scripts/source_audit.py` | During ongoing bridge/deletion refactors |
+| Testgen gate | `cargo test -p v2-compiler-tests generates_mock_test_file -- --nocapture` | After P1.21; verifies generated test files are emitted across backends |
 | Scrambled-name tests | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | After P1.16; verifies name opacity |
 
 **Scrambled-name test design:** Rename all type names to arbitrary strings

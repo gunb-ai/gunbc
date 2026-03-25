@@ -34,6 +34,41 @@ fn foo(items: List<Int>) -> Int {
 }
 
 #[test]
+fn null_coalesce_syntax() {
+    let source = r#"module test
+fn fallback(name: String?) -> String {
+  name ?? "guest"
+}"#;
+    assert_parses(source, "null_coalesce_syntax");
+}
+
+#[test]
+fn where_clause_type_alias_syntax() {
+    let source = r#"module test
+type Username = String where non_empty
+"#;
+    assert_parses(source, "where_clause_type_alias_syntax");
+}
+
+#[test]
+fn service_response_blocks_syntax() {
+    let source = r#"module test
+type Pong = String
+
+service demo.Api {
+  operation Ping {
+    response {
+      200 => Pong
+    }
+    mock_response {
+      200 => "pong"
+    }
+  }
+}"#;
+    assert_parses(source, "service_response_blocks_syntax");
+}
+
+#[test]
 fn multi_stmt_if_body() {
     let source = r#"module test
 fn foo(x: Int) -> Int {
