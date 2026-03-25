@@ -1577,6 +1577,44 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
+// P4.7e: Infer a lambda arg whose formal parameter type is Callable.
+// Threads the Callable's param types to the lambda's params.
+fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_name: String?, scope: InferScope) -> ArgInferResult {
+  match lambda_expr.expr_data {
+    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
+      let span = lambda_expr.span
+      let callable_params = callable_type.params
+      let param_types = lam_params |> enumerate |> map(pair =>
+        match callable_params |> skip(pair.first) |> first {
+          Some { value: cp } => cp.type_expr
+          None => leaf_node(name: "Dynamic")
+        }
+      )
+      let typed_scope = fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
+        let pt = match callable_params |> skip(pair.first) |> first {
+          Some { value: cp } => cp.type_expr
+          None => leaf_node(name: "Dynamic")
+        }
+        extend_scope(scope: acc, name: pair.second, resolved: pt)
+      )
+      let body_result = infer_expr(texpr: lam_body, scope: typed_scope)
+      let body_typed = body_result.typed
+      let typed_lam = make_expr_node(
+        expr_data: ExprLambda {
+          params: lam_params,
+          body: body_typed,
+          semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
+        },
+        return_type: Some { value: Resolved { node: rt_type(n: body_typed) } },
+        span: span
+      )
+      ArgInferResult { typed_arg: NamedArg { name: arg_name, value: typed_lam }, diagnostics: body_result.diagnostics }
+    _ =>
+      let ar = infer_expr(texpr: lambda_expr, scope: scope)
+      ArgInferResult { typed_arg: NamedArg { name: arg_name, value: ar.typed }, diagnostics: ar.diagnostics }
+  }
+}
+
 fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>, receiver_type: Node, fallback: Node) -> Node {
   let receiver_type_name = receiver_type.name
   let receiver_is_map = node_is_map(n: receiver_type)
@@ -1765,6 +1803,12 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
 
     ExprCall { func: func_name, args: call_args, call_semantics: _ } =>
       let span = texpr.span
+      // Pre-fetch function sig for callable-aware lambda typing (P4.7e).
+      let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
+      let sig_params = match sig {
+        Some { value: s } => s.params
+        None => []
+      }
       // For bridge-eligible calls (e.g. map(list, fn)), infer the first arg
       // first so lambda params can be typed from the collection's element type.
       // For fold: also infer init arg to type accumulator param.
@@ -1776,7 +1820,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_node(name: "Dynamic")  Untyped => leaf_node(name: "Dynamic") }
         None => leaf_node(name: "Dynamic")
       }
-      let arg_infer_results = if has_lambda && call_args |> count >= 2 {
+      let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
+        // Collection method bridge path (no known sig — bridge to method call)
         match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: first_arg.value, scope: scope)
@@ -1791,14 +1836,25 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             []
         }
       } else {
-        call_args |> map(a =>
-          let ar = infer_expr(texpr: a.value, scope: scope)
-          ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
+        // Infer each arg; for lambdas where the formal param is Callable,
+        // thread the Callable's param types to the lambda (P4.7e).
+        call_args |> enumerate |> map(pair =>
+          let a = pair.second
+          let formal_param_type = match sig_params |> skip(pair.first) |> first {
+            Some { value: p } => p.type_expr
+            None => leaf_node(name: "Dynamic")
+          }
+          let is_callable_formal = formal_param_type.name == "Callable"
+          if is_lambda_expr(e: a.value) && is_callable_formal {
+            infer_lambda_with_callable_type(lambda_expr: a.value, callable_type: formal_param_type, arg_name: a.name, scope: scope)
+          } else {
+            let ar = infer_expr(texpr: a.value, scope: scope)
+            ArgInferResult { typed_arg: NamedArg { name: a.name, value: ar.typed }, diagnostics: ar.diagnostics }
+          }
         )
       }
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
-      let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
       if sig != none {
         // Tier 1: known function signature
         let resolved_type = match sig {

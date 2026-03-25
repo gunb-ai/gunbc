@@ -837,8 +837,8 @@ D (v1 retirement) → P3.8 recursive generics
                    → map_expr_children → file decomposition (D tier 5)
 
 E (P4.1a Rc unification) → E (P4.2 shared ExprData dispatch steps 2-4)
-                          → P4.7 (callable-type params)
-                          → P4.2 step 5 (full shared dispatcher)
+                          → P4.7 (callable-type params) ✓ DONE
+                          → P4.2 step 5 (full shared dispatcher) ← NEXT
                           → P4.3 (generated tests)
                           → P4.4 (DAG backend)
 
@@ -851,7 +851,7 @@ D and E run in parallel.
 Phase 1 (done) ──→ Phase 2 verification (gist gate)
 Phase 2 ─────────→ P4.1a/P4.2 (shared emit)
 D (v1 retirement)→ file decomposition
-P4.7 (callable) ─→ P4.2 step 5 (full shared dispatcher)
+P4.7 (callable) ✓→ P4.2 step 5 (full shared dispatcher) ← UNBLOCKED
 P4.2 ────────────→ P5.0 (parser cleanup, can run in parallel with late P4)
 L1 dissolution ──→ Phase 5's L1=0 gate (ongoing, not blocking)
 ```
@@ -1589,7 +1589,7 @@ contract is real.
 | P4.4 | DAG backend/runtime boundary | Stub landed | `Dag` variant added to `RenderTarget`; `emit_dag_artifact` emits a JSON envelope with version and module names. Stub is tested (`v2_dag_pipeline_smoke`). **Remaining:** real schema definition, full `ResolvedGraph` serialization, and runtime design. |
 | P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go \| Dag` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
-| P4.7 | Callable-type parameters | Planned | 6 bootstrap-ordered steps (P4.7a-f): v1 `impl Fn` emission, v2 parser syntax, v1 call emission, v2 inference for callable locals, v2 lambda param threading, v2 backend verification. Unblocks P4.2 step 5. See P4.7 design below. |
+| P4.7 | Callable-type parameters | **Done** | All 6 steps (P4.7a-f) complete: v1 `impl Fn` emission, v2 parser `fn(T) -> R` syntax, v1 call emission verified, v2 inference for callable locals, v2 callable-aware lambda param threading, v2 backend rendering verified. **Unblocks P4.2 step 5.** |
 
 ### P4.1 Contract: `LanguageSpec` Checklist
 
@@ -1856,11 +1856,11 @@ parameters are the missing language feature that resolves this.
 | Step | What | File(s) | Status |
 |------|------|---------|--------|
 | P4.7a | v1: emit `impl Fn(T) -> R` instead of `fn(T) -> R` for callable params | `src/v1/07_emit/daglang-emit/src/type_codegen.rs` | **Done** — position constraint documented (param-only safe; struct fields need position-aware rendering) |
-| P4.7b | v2 parser: `fn(T1, T2) -> R` callable type syntax in `parse_type_expr` | `src/v2/02_parse.dag` | Planned |
-| P4.7c | v1: verify callable variable call emission works | `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | Planned |
-| P4.7d | v2 inference: resolve ExprCall against callable-typed locals in `scope.locals` | `src/v2/04_infer.dag` | Planned |
-| P4.7e | v2 inference: thread Callable formal param types to lambda args | `src/v2/04_infer.dag` | Planned |
-| P4.7f | v2 emission: verify callable-variable calls render in all backends | `05_emit_rust.dag`, `05_emit_python.dag`, `05_emit_go.dag` | Planned |
+| P4.7b | v2 parser: `fn(T1, T2) -> R` callable type syntax in `parse_type_expr` | `src/v2/02_parse.dag` | **Done** — `parse_callable_type_expr` handles `fn(` prefix, delegates to `parse_callable_param_types`, produces `callable_node`. Reuses `ParamsResult` with empty-name Params. |
+| P4.7c | v1: verify callable variable call emission works | `src/v1/07_emit/daglang-emit/src/fn_codegen.rs` | **Done** (no changes needed) — `compile_call` creates `Expr::Call { func: Var(name) }` uniformly; render_rust emits `name(args)` which works for both top-level fns and `impl Fn` params |
+| P4.7d | v2 inference: resolve ExprCall against callable-typed locals in `scope.locals` | `src/v2/04_infer.dag` | **Done** — Tier 2c: between builtin calls and type constructors, checks `scope.locals` for Callable-typed binding, extracts return type via `callable_return_type` |
+| P4.7e | v2 inference: thread Callable formal param types to lambda args | `src/v2/04_infer.dag` | **Done** — sig lookup moved before arg inference; `infer_lambda_with_callable_type` threads each Callable param type to the corresponding lambda param. Collection method bridge path unchanged (only activates when sig is unknown). |
+| P4.7f | v2 emission: verify callable-variable calls render in all backends | `05_emit_rust.dag`, `05_emit_python.dag`, `05_emit_go.dag` | **Done** (no changes needed) — v1 emits `impl Fn` (P4.7a), v2 shared emit renders Callable types (05_emit.dag:845-858), ExprCall renders `name(args)` in all backends. End-to-end verification happens when .dag code first uses callable params. |
 
 **P4.7a** must land first (bootstrap ordering: v1 compiles .dag → stage0,
 so v1 must emit correct Rust for callable types before v2 .dag code can
@@ -2280,7 +2280,7 @@ current phase order.
 | Item | Why deferred |
 |------|--------------|
 | General generic syntax | Now planned as P3.6 (compositional DAG slots). Phase 3 scope covers parameterized type declarations; higher-kinded types and constraints are post-Phase 3. |
-| Callable-type parameters | Now planned as P4.7. IR and rendering exist; parser syntax, inference, and v1 `impl Fn` emission are the gaps. |
+| Callable-type parameters | **Done** (P4.7). All 6 steps complete. Unblocks P4.2 step 5. |
 | Full linear type checking | Ownership proof work has started, but full proof remains beyond the current migration |
 | Widen V5 | The conservative version covers current hot paths |
 
