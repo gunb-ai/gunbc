@@ -105,7 +105,7 @@ import v2.compiler.emit {
   scope_after_expr,
   lookup_item,
   unique_strings,
-  has_nested_records_node, emit_data_value_json, emit_typed_data_value_json, escape_json_string,
+  has_nested_records_node, emit_data_value_json, escape_json_string,
   module_to_filename,
   make_indent, to_string, to_string_helper,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
@@ -3429,7 +3429,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     concat("pub const ", upper_name, ": ", ty_str, " = ", val_str, ";")
   } else if has_nested_records_node(n: type_node) {
     // Complex data with nested anonymous records -> serde deserialization
-    let json_str = emit_typed_data_value_json(value: value)
+    let json_str = emit_data_value_json(value: value)
     concat("pub fn ", to_snake(name: name), "() -> ", ty_str, " {\n",
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",

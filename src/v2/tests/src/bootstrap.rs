@@ -259,7 +259,9 @@ fn bootstrap_fixed_point() {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-    let stage1_bin = stage1_dir.join("target/release/v2-compiler");
+    // Stage1 emits crate name "v2_compiled" (see 05_emit_rust.dag emit_cargo_toml),
+    // so the binary is v2_compiled, not v2-compiler.
+    let stage1_bin = stage1_dir.join("target/release/v2_compiled");
 
     // Stage1 -> stage2
     let stage2_dir = std::env::temp_dir().join("v2-fp-stage2");
@@ -289,6 +291,13 @@ fn bootstrap_fixed_point() {
         .output()
         .expect("diff failed");
 
+    // diff exits 0 (identical), 1 (different), 2 (error).
+    // Check for errors first, then differences.
+    assert!(
+        diff.status.code() != Some(2),
+        "diff -r failed (exit 2):\n{}",
+        String::from_utf8_lossy(&diff.stderr)
+    );
     if !diff.stdout.is_empty() {
         eprintln!(
             "Fixed point NOT reached — diff:\n{}",
@@ -296,7 +305,7 @@ fn bootstrap_fixed_point() {
         );
     }
     assert!(
-        diff.stdout.is_empty(),
+        diff.status.success(),
         "stage1 != stage2 — fixed point not reached"
     );
 

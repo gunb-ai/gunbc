@@ -43,9 +43,12 @@ stacker = "0.1"
 [profile.dev]
 debug = 0
 
-# Stage0 is generated code with V5 debug_asserts that panic on shared Rc
-# ownership. The fallback path (clone) is correct — the asserts are dev-time
-# ownership optimization signals, not correctness checks.
+# Stage0 generated code uses debug_assert!(Rc::strong_count(...) == 1) to
+# verify ownership for in-place mutation. These fire on shared Rc (expected
+# in interpreter paths); the fallback clone is correct. This suppresses ALL
+# debug_assert! in v2-compiler, not just ownership checks — acceptable
+# because stage0 is generated code with no hand-written debug assertions.
+# If hand-written debug_assert! is ever added to stage0, revisit this.
 [profile.dev.package.v2-compiler]
 debug-assertions = false
 

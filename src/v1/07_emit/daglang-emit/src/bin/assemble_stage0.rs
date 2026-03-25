@@ -46,6 +46,17 @@ fn main() {
             let source = std::fs::read_to_string(&full_path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", full_path.display(), e));
             let result = daglang_syntax::parser::parse_to_result(&source);
+            if !result.diagnostics.is_empty() {
+                eprintln!("parse errors in {}:", full_path.display());
+                for d in &result.diagnostics {
+                    eprintln!("  {:?}", d);
+                }
+                panic!(
+                    "{} parse error(s) in {} — refusing to assemble corrupt stage0",
+                    result.diagnostics.len(),
+                    full_path.display()
+                );
+            }
             (stem.to_string(), result.ast)
         })
         .collect();
