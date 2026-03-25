@@ -252,9 +252,8 @@ changes:
   order internal steps execute in, or how many times an internal helper
   runs.
 
-- **Source-audit checks are a narrow exception.** Keep source-text
-  architectural ratchets out of the main Rust test suite when possible.
-  When a source-audit check intentionally reads source text, it must
+- **Source-audit tests are a narrow exception.** When a test
+  intentionally reads source text as an architectural ratchet, it must
   anchor on live syntax or declarations and ignore comments or
   historical notes. A comment match is not evidence that a boundary or
   implementation still exists.

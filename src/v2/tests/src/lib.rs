@@ -12,6 +12,8 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod source_audit;
+#[cfg(test)]
 mod parse;
 #[cfg(test)]
 mod pipeline;
