@@ -78,6 +78,7 @@ import v2.compiler.emit {
   python_literal, python_bin_op_symbol, python_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding,
+  emit_unary_op, emit_lambda, emit_lambda_params,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -94,14 +95,6 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   classify_typed_item, classify_type_structure
-}
-
-fn emit_single_field_product_py_type(field_node: Node) -> String {
-  if field_node.return_type == none {
-    "dict"
-  } else {
-    emit_node_type(n: rt_type(n: field_node), target: Python)
-  }
 }
 
 // =========================================================================
@@ -777,17 +770,13 @@ fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
 
 fn emit_py_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let expr_str = emit_py_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth)
-  match op {
-    Not => concat(emit_keyword(key: "not", target: Python), expr_str)
-    Neg => concat("-", expr_str)
-  }
+  emit_unary_op(op: op, operand_str: expr_str, target: Python)
 }
 
 fn emit_py_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let param_strs = params |> map(p => emit_ident(name: p, target: Python))
-  let params_str = param_strs |> join(separator: ", ")
+  let params_str = emit_lambda_params(param_names: params, target: Python)
   let body_str = emit_py_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth)
-  concat("lambda ", params_str, ": ", body_str)
+  emit_lambda(params_str: params_str, body_str: body_str, target: Python)
 }
 
 fn emit_py_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {

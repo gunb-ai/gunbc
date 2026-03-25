@@ -854,84 +854,119 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 }
 
 // =========================================================================
-// P4.1: Shared type rendering -- unified for Go/Python (Rust has Rc logic)
+// P4.1a: Unified type rendering -- all targets including Rust Rc wrapping.
+// emit_node_type is the public API for Go/Python (no Rc).
+// emit_node_type_rc is the Rc-aware API for Rust callers.
 // =========================================================================
 
 fn emit_node_type(n: Node, target: RenderTarget) -> String {
+  emit_node_type_rc(n: n, target: target, rc_types: empty_map())
+}
+
+fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
+  // Dynamic/Error: inference failures that leaked to emit.
+  let is_rust = match target { Rust => true  _ => false }
+  if (n.name == "Dynamic" || n.name == "Error") && n.children |> count == 0 {
+    if is_rust {
+      return concat("compile_error!(\"unresolved ", n.name, " type reached emit\")")
+    } else {
+      return concat("__EMIT_BUG_UNRESOLVED_", n.name, "__")
+    }
+  }
+  // Callable: function type rendering
   if n.name == "Callable" && n.params |> count > 0 {
-    let param_types = n.params |> map(p => emit_node_type(n: p.type_expr, target: target))
+    let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.return_type {
-      Some { value: Resolved { node: rt } } => emit_node_type(n: rt, target: target)
+      Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: target, rc_types: rc_types)
       _ => match target { Go => ""  Python => "None"  _ => "()" }
     }
     match target {
       Go => concat("func(", param_str, ")", if ret_str != "" { concat(" ", ret_str) } else { "" })
       Python => concat("Callable[[", param_str, "], ", ret_str, "]")
+      Rust => concat("impl Fn(", param_str, ") -> ", ret_str)
       _ => concat("Fn(", param_str, ") -> ", ret_str)
     }
   } else if node_is_optional(n: n) {
-    emit_container(kind: "optional", inner: emit_node_type(n: with_required_cardinality(n: n), target: target), target: target)
+    emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
   } else {
     let kind = classify_type_structure(n: n)
     let is_leaf = kind == TypeLeaf
     let is_conj = kind == TypeConj
     if is_leaf {
-      emit_node_type_leaf(n: n, target: target)
+      emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
     } else if is_conj {
-      emit_node_type_conj(n: n, target: target)
+      emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
     } else {
-      emit_node_type_disj(n: n, target: target)
+      emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
     }
   }
 }
 
-fn emit_node_type_leaf(n: Node, target: RenderTarget) -> String {
+fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
-    emit_primitive_type(name: n.name, target: target)
+    let base = emit_primitive_type(name: n.name, target: target)
+    // Rc wrapping for Rust named types
+    if emit_map_has(m: rc_types, key: n.name) {
+      concat("Rc<", base, ">")
+    } else {
+      base
+    }
   } else if node_is_map(n: n) {
     // After resolution, Map nodes always have 2 children (key + value).
     // None branches are structurally required by match but unreachable.
     let k = match n.children |> first {
-      Some { value: kn } => emit_node_type(n: kn, target: target)
+      Some { value: kn } => emit_node_type_rc(n: kn, target: target, rc_types: rc_types)
       None => "__EMIT_BUG_MISSING_MAP_KEY__"
     }
     let v = match skip(n.children, 1) |> first {
-      Some { value: vn } => emit_node_type(n: vn, target: target)
+      Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
       None => "__EMIT_BUG_MISSING_MAP_VALUE__"
     }
     emit_map_type(key_type: k, val_type: v, target: target)
   } else if n.children |> count == 1 {
     // Single-child container. count == 1 guarantees first succeeds.
     let inner = match n.children |> first {
-      Some { value: child } => emit_node_type(n: child, target: target)
+      Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
       None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
     }
-    // NonEmpty variants map to same container as their base type
-    let container_kind = if n.name == "NonEmptyList" { "list" }
-      else if n.name == "NonEmptySet" { "set" }
-      else { to_snake(name: n.name) }
+    // NonEmpty variants: Rust uses distinct types, others map to base container
+    let is_rust = match target { Rust => true  _ => false }
+    let container_kind = if n.name == "NonEmptyList" {
+      if is_rust { "non_empty_list" } else { "list" }
+    } else if n.name == "NonEmptySet" {
+      if is_rust { "non_empty_set" } else { "set" }
+    } else { to_snake(name: n.name) }
     emit_container(kind: container_kind, inner: inner, target: target)
   } else {
     n.name
   }
 }
 
-fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
+fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name == "Refined" {
     match n.children |> first {
-      Some { value: base } => emit_node_type(n: base, target: target)
+      Some { value: base } => emit_node_type_rc(n: base, target: target, rc_types: rc_types)
       None => n.name
     }
   } else if n.name == "Tuple" {
-    // Tuple nodes always have children after resolution.
-    // None branches are structurally required by match but unreachable.
+    // Tuple children may have return_type set — unwrap to get the actual type.
     let first_str = match n.children |> first {
-      Some { value: c } => emit_node_type(n: c, target: target)
+      Some { value: c } =>
+        if c.return_type != none {
+          emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
+        } else {
+          emit_node_type_rc(n: c, target: target, rc_types: rc_types)
+        }
       None => "__EMIT_BUG_MISSING_TUPLE_FIRST__"
     }
     let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } => emit_node_type(n: c, target: target)
+      Some { value: c } =>
+        if c.return_type != none {
+          emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
+        } else {
+          emit_node_type_rc(n: c, target: target, rc_types: rc_types)
+        }
       None => "__EMIT_BUG_MISSING_TUPLE_SECOND__"
     }
     match target {
@@ -940,21 +975,59 @@ fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    n.name
+    // Named product type — Rc wrapping for Rust
+    if emit_map_has(m: rc_types, key: n.name) {
+      concat("Rc<", n.name, ">")
+    } else {
+      n.name
+    }
   } else {
-    // Anonymous product type with no name. This is a bug — all conj nodes
-    // should have names after resolution.
-    "__EMIT_BUG_ANONYMOUS_CONJ__"
+    // Anonymous product: Rust renders as tuple, others as error marker.
+    let is_rust = match target { Rust => true  _ => false }
+    if is_rust {
+      if n.children |> count == 1 {
+        // Single-field anonymous product — unwrap the field type.
+        match n.children |> first {
+          Some { value: field_node } =>
+            if field_node.return_type != none {
+              emit_node_type_rc(n: rt_type(n: field_node), target: target, rc_types: rc_types)
+            } else {
+              "compile_error!(\"anonymous product field missing return_type\")"
+            }
+          None => "compile_error!(\"anonymous product reached Node emitter\")"
+        }
+      } else {
+        // Multi-field anonymous product → Rust tuple type.
+        let field_types = n.children |> map(child =>
+          if child.return_type != none {
+            emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
+          } else { "String" }
+        )
+        let result = concat("(", field_types |> join(separator: ", "), ")")
+        result
+      }
+    } else {
+      "__EMIT_BUG_ANONYMOUS_CONJ__"
+    }
   }
 }
 
-fn emit_node_type_disj(n: Node, target: RenderTarget) -> String {
+fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name != "" {
-    n.name
+    // Named coproduct type — Rc wrapping for Rust
+    if emit_map_has(m: rc_types, key: n.name) {
+      concat("Rc<", n.name, ">")
+    } else {
+      n.name
+    }
   } else {
-    // Anonymous coproduct type with no name. This is a bug — all disj nodes
-    // should have names after resolution.
-    "__EMIT_BUG_ANONYMOUS_DISJ__"
+    // Anonymous coproduct — error in all targets.
+    let is_rust = match target { Rust => true  _ => false }
+    if is_rust {
+      "compile_error!(\"anonymous coproduct reached Node emitter\")"
+    } else {
+      "__EMIT_BUG_ANONYMOUS_DISJ__"
+    }
   }
 }
 
@@ -1189,4 +1262,43 @@ fn emit_return(value: String, target: RenderTarget) -> String {
     Python => concat("return ", value)
     Dag => concat("return ", value)
   }
+}
+
+// =========================================================================
+// P4.2: Shared per-variant expression renderers.
+// Pattern: backend dispatches ExprData, recurses on subexpressions,
+// passes pre-rendered strings to shared renderer for target syntax.
+// =========================================================================
+
+fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> String {
+  match op {
+    Not => concat(emit_keyword(key: "not", target: target), operand_str)
+    Neg => concat("-", operand_str)
+  }
+}
+
+fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat("|", params_str, "| ", body_str)
+    Go => concat("func(", params_str, ") interface{} { return ", body_str, " }")
+    Python => concat("lambda ", params_str, ": ", body_str)
+    Dag => concat("(", params_str, ") => ", body_str)
+  }
+}
+
+fn emit_error_expr(message: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat("compile_error!(\"", message, "\")")
+    Go => concat("panic(\"", message, "\")")
+    Python => concat("raise RuntimeError(\"", message, "\")")
+    Dag => concat("error(\"", message, "\")")
+  }
+}
+
+fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String {
+  let param_strs = match target {
+    Go => param_names |> map(p => concat(emit_ident(name: p, target: Go), " interface{}"))
+    _ => param_names |> map(p => emit_ident(name: p, target: target))
+  }
+  param_strs |> join(separator: ", ")
 }

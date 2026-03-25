@@ -88,6 +88,7 @@ import v2.compiler.emit {
   go_literal, go_bin_op_symbol, go_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding,
+  emit_unary_op, emit_lambda, emit_lambda_params,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -781,17 +782,13 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
 
 fn emit_go_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_go_typed_expr(texpr: operand, registry: registry, scope: scope, depth: 0)
-  match op {
-    Not => concat(emit_keyword(key: "not", target: Go), expr_str)
-    Neg => concat("-", expr_str)
-  }
+  emit_unary_op(op: op, operand_str: expr_str, target: Go)
 }
 
 fn emit_go_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let param_strs = params |> map(p => concat(emit_ident(name: p, target: Go), " interface{}"))
-  let params_str = param_strs |> join(separator: ", ")
+  let params_str = emit_lambda_params(param_names: params, target: Go)
   let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: scope, depth: 0)
-  concat("func(", params_str, ") interface{} { return ", body_str, " }")
+  emit_lambda(params_str: params_str, body_str: body_str, target: Go)
 }
 
 fn emit_go_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {

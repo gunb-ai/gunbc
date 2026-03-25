@@ -99,7 +99,8 @@ import v2.compiler.emit {
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_ident, emit_let_binding, emit_return,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params,
   emit_string_literal,
   module_emit_scope,
   scope_after_expr,
@@ -119,14 +120,6 @@ import v2.compiler.emit {
 }
 
 // Shared helpers imported from v2.compiler.emit
-
-fn emit_single_field_product_rust_type(field_node: Node, rc_types: Map<String, Bool>) -> String {
-  if field_node.return_type == none {
-    "compile_error!(\"anonymous product field missing return_type\")"
-  } else {
-    emit_rust_node_type(n: rt_type(n: field_node), rc_types: rc_types)
-  }
-}
 
 // Rust language facts (rust_reserved, rt_functions, rt_ref_map_functions)
 // imported from extdeps.languages.rust.emit -- single source of truth.
@@ -581,7 +574,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   if (kind == TypedItemTypeDef) {
     emit_type_def_from_connective(item: item, recursive_types: scope.type_env.recursive_type_set, rc_types: rc_types)
   } else if (kind == TypedItemTypeAlias) {
-    concat("pub type ", item.name, " = ", emit_rust_node_type(n: rt_type(n: item), rc_types: rc_types), ";")
+    concat("pub type ", item.name, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
@@ -657,7 +650,7 @@ fn emit_struct_from_children(name: String, children: List<Node>, recursive_types
 fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   // Struct fields use Rc-wrapped types for consistency with function signatures.
   let rt_child = rt_type(n: child)
-  let ty = emit_rust_node_type(n: rt_child, rc_types: rc_types)
+  let ty = emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, rc_types: rc_types) {
     concat("Box<", ty, ">")
   } else { ty }
@@ -722,7 +715,7 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
       match variant.children |> filter(f => f.name == fname) |> first {
-        Some { value: f } => emit_rust_node_type(n: rt_type(n: f), rc_types: rc_types)
+        Some { value: f } => emit_node_type_rc(n: rt_type(n: f), target: Rust, rc_types: rc_types)
         None => ""
       }
     )
@@ -736,7 +729,7 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
   // For each shared field, generate an accessor method.
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => f.name == fname) |> first {
-      Some { value: f } => emit_rust_node_type(n: rt_type(n: f), rc_types: rc_types)
+      Some { value: f } => emit_node_type_rc(n: rt_type(n: f), target: Rust, rc_types: rc_types)
       None => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     // Generate match arms for each variant.
@@ -762,7 +755,7 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
       let rt_f = rt_type(n: f)
-      let ty = emit_rust_node_type(n: rt_f, rc_types: rc_types)
+      let ty = emit_node_type_rc(n: rt_f, target: Rust, rc_types: rc_types)
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, rc_types: rc_types) {
         concat("Box<", ty, ">")
       } else { ty }
@@ -780,142 +773,9 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
 // to render Rust type syntax.
 // =========================================================================
 
-// Rust type rendering: Rc-aware recursive rendering.
-// Cannot delegate to shared emit_node_type for composite types because
-// shared rendering recurses into itself without Rc wrapping. Rust must
-// handle its own recursion so inner types get Rc<> where needed.
-// Shared emit_node_type is used only for terminal leaf rendering.
-fn emit_rust_node_type(n: Node, rc_types: Map<String, Bool>) -> String {
-  // Rust-specific: Dynamic/Error produce compile_error!
-  if n.name == "Dynamic" && n.children |> count == 0 {
-    return "compile_error!(\"unresolved Dynamic type reached emit\")"
-  }
-  if n.name == "Error" && n.children |> count == 0 {
-    return "compile_error!(\"unresolved Error type reached emit\")"
-  }
-  // Callable: impl Fn(ParamTypes) -> RetType
-  if n.name == "Callable" && n.params |> count > 0 {
-    let param_types = n.params |> map(p => emit_rust_node_type(n: p.type_expr, rc_types: rc_types))
-    let param_str = param_types |> join(separator: ", ")
-    let ret_str = match n.return_type {
-      Some { value: Resolved { node: rt } } => emit_rust_node_type(n: rt, rc_types: rc_types)
-      _ => "()"
-    }
-    return concat("impl Fn(", param_str, ") -> ", ret_str)
-  }
-  // Optional: wrap inner type
-  if node_is_optional(n: n) {
-    return rust_container(kind: "optional", inner: emit_rust_node_type(n: with_required_cardinality(n: n), rc_types: rc_types))
-  }
-  let kind = classify_type_structure(n: n)
-  let is_leaf = kind == TypeLeaf
-  let is_conj = kind == TypeConj
-  if is_leaf {
-    emit_rust_node_type_leaf(n: n, rc_types: rc_types)
-  } else if is_conj {
-    emit_rust_node_type_conj(n: n, rc_types: rc_types)
-  } else {
-    emit_rust_node_type_disj(n: n, rc_types: rc_types)
-  }
-}
-
-fn emit_rust_node_type_leaf(n: Node, rc_types: Map<String, Bool>) -> String {
-  if n.children |> count == 0 {
-    let base = if n.name == "Map" { apply_type_template2(template: rust_map_template(), arg0: "_", arg1: "_") }
-      else if n.name == "List" { "Vec<_>" }
-      else if n.name == "Set" { "std::collections::BTreeSet<_>" }
-      else { emit_primitive_type(name: n.name, target: Rust) }
-    if emit_map_has(m: rc_types, key: n.name) {
-      concat("Rc<", base, ">")
-    } else {
-      base
-    }
-  } else if node_is_map(n: n) {
-    let k = match n.children |> first {
-      Some { value: kn } => emit_rust_node_type(n: kn, rc_types: rc_types)
-      None => "String"
-    }
-    let v = match skip(n.children, 1) |> first {
-      Some { value: vn } => emit_rust_node_type(n: vn, rc_types: rc_types)
-      None => "String"
-    }
-    apply_type_template2(template: rust_map_template(), arg0: k, arg1: v)
-  } else if n.children |> count == 1 {
-    let inner = match n.children |> first {
-      Some { value: child } => emit_rust_node_type(n: child, rc_types: rc_types)
-      None => "()"
-    }
-    if n.name == "NonEmptyList" { concat("NonEmptyVec<", inner, ">") }
-    else if n.name == "NonEmptySet" { concat("NonEmptyBTreeSet<", inner, ">") }
-    else { rust_container(kind: to_snake(name: n.name), inner: inner) }
-  } else {
-    n.name
-  }
-}
-
-fn emit_rust_node_type_conj(n: Node, rc_types: Map<String, Bool>) -> String {
-  if n.name == "Refined" {
-    // Refinements are erased at the Rust level -- just emit the base type.
-    match n.children |> first {
-      Some { value: base } => emit_rust_node_type(n: base, rc_types: rc_types)
-      None => n.name
-    }
-  } else if n.name == "Tuple" {
-    let first_str = match n.children |> first {
-      Some { value: c } =>
-        if c.return_type != none {
-          emit_rust_node_type(n: rt_type(n: c), rc_types: rc_types)
-        } else {
-          emit_rust_node_type(n: c, rc_types: rc_types)
-        }
-      None => "()"
-    }
-    let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } =>
-        if c.return_type != none {
-          emit_rust_node_type(n: rt_type(n: c), rc_types: rc_types)
-        } else {
-          emit_rust_node_type(n: c, rc_types: rc_types)
-        }
-      None => "()"
-    }
-    concat("(", first_str, ", ", second_str, ")")
-  } else if n.name != "" {
-    if emit_map_has(m: rc_types, key: n.name) {
-      concat("Rc<", n.name, ">")
-    } else {
-      n.name
-    }
-  } else {
-    // Anonymous product.
-    if n.children |> count == 1 {
-      match n.children |> first {
-        Some { value: field_node } => emit_single_field_product_rust_type(field_node: field_node, rc_types: rc_types)
-        None => "compile_error!(\"anonymous product reached Node emitter\")"
-      }
-    } else {
-      // Anonymous multi-field product → Rust tuple type.
-      let field_types = n.children |> map(child =>
-        if child.return_type != none {
-          emit_rust_node_type(n: rt_type(n: child), rc_types: rc_types)
-        } else { "String" }
-      )
-      concat("(", field_types |> join(separator: ", "), ")")
-    }
-  }
-}
-
-fn emit_rust_node_type_disj(n: Node, rc_types: Map<String, Bool>) -> String {
-  if n.name != "" {
-    if emit_map_has(m: rc_types, key: n.name) {
-      concat("Rc<", n.name, ">")
-    } else {
-      n.name
-    }
-  } else {
-    "compile_error!(\"anonymous coproduct reached Node emitter\")"
-  }
-}
+// Rust type rendering: delegated to shared emit_node_type_rc (P4.1a).
+// Rc wrapping, Dynamic/Error guards, anonymous product handling all
+// unified in 05_emit.dag. This alias preserves call-site readability.
 
 // =========================================================================
 // Pure function (fn) emission
@@ -1062,14 +922,14 @@ fn emit_tco_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
 
 fn emit_tco_param(param: Param, rc_types: Map<String, Bool>) -> String {
   let n = param.type_expr
-  let ty = emit_rust_node_type(n: n, rc_types: rc_types)
+  let ty = emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
   concat("mut ", emit_ident(name: param.name, target: Rust), ": ", ty)
 }
 
 fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>, rc_types: Map<String, Bool>) -> String {
   let param_strs = params |> map(p => emit_param(param: p, rc_types: rc_types))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: u.name, target: Rust), ": &", emit_rust_node_type(n: u.resource, rc_types: rc_types))
+    concat(emit_ident(name: u.name, target: Rust), ": &", emit_node_type_rc(n: u.resource, target: Rust, rc_types: rc_types))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": &", sanitize_service_name(name: sn))
@@ -1079,7 +939,7 @@ fn emit_func_params(params: List<Param>, uses: List<ResourceUse>, service_names:
 }
 
 fn emit_func_return_type(return_type: Node, rc_types: Map<String, Bool>) -> String {
-  concat(" -> Result<", emit_rust_node_type(n: return_type, rc_types: rc_types), ", Box<dyn std::error::Error>>")
+  concat(" -> Result<", emit_node_type_rc(n: return_type, target: Rust, rc_types: rc_types), ", Box<dyn std::error::Error>>")
 }
 
 // =========================================================================
@@ -1093,7 +953,7 @@ fn emit_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
 
 fn emit_param(param: Param, rc_types: Map<String, Bool>) -> String {
   let n = param.type_expr
-  let ty = emit_rust_node_type(n: n, rc_types: rc_types)
+  let ty = emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
   // All params are owned -- Rc-wrapped types are cheap to clone, and
   // the .clone() pattern in function bodies produces owned values.
   // Adding & to params creates reference/owned mismatches.
@@ -1101,7 +961,7 @@ fn emit_param(param: Param, rc_types: Map<String, Bool>) -> String {
 }
 
 fn emit_return_type(return_type: Node, rc_types: Map<String, Bool>) -> String {
-  concat(" -> ", emit_rust_node_type(n: return_type, rc_types: rc_types))
+  concat(" -> ", emit_node_type_rc(n: return_type, target: Rust, rc_types: rc_types))
 }
 
 // Determine if a type should be passed by reference (Node-based).
@@ -1766,7 +1626,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
         match texpr.return_type {
           Some { value: Resolved { node: ret_type } } =>
             let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
-            let type_str = emit_rust_node_type(n: resolved_ret, rc_types: rc_types)
+            let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
             if type_str != "" && type_str != "Dynamic" {
               concat("<", type_str, ">::new()")
             } else {
@@ -2069,7 +1929,7 @@ fn collection_element_type(receiver_type: InferredNode?, rc_types: Map<String, B
     Some { value: Resolved { node: rt } } =>
       if node_is_container(n: rt) {
         match rt.children |> first {
-          Some { value: elem_node } => emit_rust_node_type(n: elem_node, rc_types: rc_types)
+          Some { value: elem_node } => emit_node_type_rc(n: elem_node, target: Rust, rc_types: rc_types)
           None => "_"
         }
       } else { "_" }
@@ -2104,7 +1964,7 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
             if param_type.name == "Dynamic" || param_type.name == "Error" {
               none
             } else {
-              Some { value: emit_rust_node_type(n: param_type, rc_types: rc_types) }
+              Some { value: emit_node_type_rc(n: param_type, target: Rust, rc_types: rc_types) }
             }
           None => none
         }
@@ -2295,7 +2155,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
               }
           }
       }
-      let acc_type_str = emit_rust_node_type(n: acc_type_node, rc_types: rc_types)
+      let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
       let init_str = match args |> first {
         Some { value: init_arg } =>
           match init_arg.value.expr_data {
@@ -2323,7 +2183,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
           let elem = for_each_element_type_node(n: resolved)
           if elem.name != "" && elem.name != "Dynamic" {
-            emit_rust_node_type(n: elem, rc_types: rc_types)
+            emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
           } else { "_" }
         _ => "_"
       }
@@ -2873,17 +2733,13 @@ fn is_string_typed_expr(e: Node) -> Bool {
 
 fn emit_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let expr_str = emit_typed_expr(texpr: operand, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  match op {
-    Not => concat(emit_keyword(key: "not", target: Rust), expr_str)
-    Neg => concat("-", expr_str)
-  }
+  emit_unary_op(op: op, operand_str: expr_str, target: Rust)
 }
 
 fn emit_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let param_strs = params |> map(p => emit_ident(name: p, target: Rust))
-  let params_str = param_strs |> join(separator: ", ")
+  let params_str = emit_lambda_params(param_names: params, target: Rust)
   let body_str = emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  concat("|", params_str, "| ", body_str)
+  emit_lambda(params_str: params_str, body_str: body_str, target: Rust)
 }
 
 fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2921,12 +2777,12 @@ fn emit_typed_block(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: I
 
 fn emit_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let expr_str = emit_typed_expr(texpr: expr, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let ty_str = emit_rust_node_type(n: target, rc_types: rc_types)
+  let ty_str = emit_node_type_rc(n: target, target: Rust, rc_types: rc_types)
   if is_primitive_numeric_node(n: target) {
     concat(expr_str, " as ", ty_str)
   } else {
     let src_ty = match expr.return_type {
-      Some { value: Resolved { node: n } } => emit_rust_node_type(n: n, rc_types: rc_types)
+      Some { value: Resolved { node: n } } => emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
       _ => ""
     }
     if src_ty != "" && src_ty == ty_str {
@@ -3223,7 +3079,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_node_type(n: p.type_expr, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3231,7 +3087,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_rust_node_type(n: rt_type(n: op_node), rc_types: empty_map())
+  let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: empty_map())
   // Use per-operation transport override if present, otherwise service-level transport.
   let effective_transport = match op_node.transport {
     Some { value: op_transport } => op_transport
@@ -3398,7 +3254,7 @@ fn emit_resource_def(item: Node) -> String {
 
 fn emit_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_node_type(n: p.type_expr, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3406,7 +3262,7 @@ fn emit_capability_method(cap_node: Node) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_rust_node_type(n: rt_type(n: cap_node), rc_types: empty_map())
+  let ret = emit_node_type_rc(n: rt_type(n: cap_node), target: Rust, rc_types: empty_map())
   concat("async fn ", emit_ident(name: cap_node.name, target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
@@ -3422,7 +3278,7 @@ fn emit_capability_method(cap_node: Node) -> String {
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   // Data defs use lazy_static (requires Sync) or serde (requires Deserialize),
   // so render types without Rc wrapping.
-  let ty_str = emit_rust_node_type(n: type_node, rc_types: empty_map())
+  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_map())
   let upper_name = to_screaming_snake(name: name)
   if is_simple_type_node(n: type_node) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)

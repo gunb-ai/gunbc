@@ -778,19 +778,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compile .dag source files to Rust
+    /// Compile .dag source files
     Compile {
         #[arg(long)]
         source_dir: String,
         #[arg(long)]
         output_dir: String,
+        /// Target language: rust, python, go, dag
+        #[arg(long, default_value = "rust")]
+        target: String,
     },
 }
 
 fn main() {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Compile { source_dir, output_dir } => {
+        Commands::Compile { source_dir, output_dir, target } => {
             // Read all .dag files from source directory (recursive)
             let mut sources: Vec<Rc<compile::SourceFile>> = Vec::new();
             fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
@@ -822,6 +825,17 @@ fn main() {
 
             eprintln!("compiling {} .dag files from {}", sources.len(), source_dir);
 
+            let render_target = match target.as_str() {
+                "rust" => artifact::RenderTarget::Rust,
+                "python" => artifact::RenderTarget::Python,
+                "go" => artifact::RenderTarget::Go,
+                "dag" => artifact::RenderTarget::Dag,
+                other => {
+                    eprintln!("error: unknown target '{}', expected rust|python|go|dag", other);
+                    std::process::exit(1);
+                }
+            };
+
             // Run the pipeline. Stage0 (this code, v1-emitted) wraps the sources
             // list in Rc::new() because v1 renders List<T> as Rc<Vec<Rc<T>>>.
             // Stage1 (v2-emitted) passes bare Vec<Rc<T>> because v2 renders
@@ -829,7 +843,7 @@ fn main() {
             // with its own emitter's type representation.
             let result = compile::compile_sources(
                 Rc::new(sources),
-                artifact::RenderTarget::Rust,
+                render_target,
             );
 
             // Write output files
