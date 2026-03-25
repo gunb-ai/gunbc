@@ -4194,6 +4194,54 @@ service github.Gist {
     }
 
     #[test]
+    fn parse_fn_with_function_typed_node_parameter() {
+        let sf = parse_or_panic(
+            "module test\nfn map_expr_children(node: Node, transform: fn(Node) -> Node) -> Node { transform(node) }",
+        );
+        assert_eq!(sf.items.len(), 1);
+        match &sf.items[0].node {
+            Item::FnDef(f) => {
+                assert_eq!(f.name, "map_expr_children");
+                assert_eq!(f.params.len(), 2);
+            }
+            other => panic!("expected FnDef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_function_type_expr_with_node_input_and_output() {
+        let mut parser = Parser::new(crate::lexer::Lexer::tokenize("fn(Node) -> Node"));
+        let ty = parser
+            .parse_type_expr()
+            .expect("function type should parse as a type expression");
+        assert!(matches!(ty, TypeExpr::Function(_, _)));
+    }
+
+    #[test]
+    fn parse_param_with_function_typed_node_value() {
+        let mut parser =
+            Parser::new(crate::lexer::Lexer::tokenize("transform: fn(Node) -> Node"));
+        let param = parser
+            .parse_param()
+            .expect("function-typed parameter should parse");
+        assert_eq!(param.name, "transform");
+        assert!(matches!(param.ty, TypeExpr::Function(_, _)));
+    }
+
+    #[test]
+    fn parse_fn_with_match_over_node_expr_data() {
+        let sf = parse_or_panic(
+            r#"module test
+fn map_expr_children(node: Node, transform: fn(Node) -> Node) -> Node {
+  match node.expr_data {
+    _ => transform(node)
+  }
+}"#,
+        );
+        assert_eq!(sf.items.len(), 1);
+    }
+
+    #[test]
     fn parse_fn_type_params_are_preserved() {
         let sf = parse_or_panic("module test\nfn identity<T>(value: T) -> T { value }");
         match &sf.items[0].node {

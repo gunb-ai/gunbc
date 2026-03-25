@@ -998,6 +998,145 @@ pub fn expr_children(node: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 }
 
+pub fn with_expr_data(node: Rc<Node>, expr_data: Rc<ExprData>) -> Rc<Node> {
+    Rc::new(Node { name: node.name.clone(), span: node.span.clone(), children: node.children.clone(), connective: node.connective.clone(), params: node.params.clone(), return_type: node.return_type.clone(), return_cardinality: node.return_cardinality.clone(), uses: node.uses.clone(), body: node.body.clone(), transport: node.transport.clone(), properties: node.properties.clone(), type_annotation: node.type_annotation.clone(), config: node.config.clone(), is_self_recursive: node.is_self_recursive.clone(), has_non_tail_self_call: node.has_non_tail_self_call.clone(), expr_data: expr_data.clone() })
+}
+
+pub fn map_expr_children(expr_node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) -> Rc<Node> {
+    match expr_node.expr_data.as_ref() {
+    ExprData::ExprFieldAccess { base: b, field: f, summary, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprFieldAccess { base: transform(b.clone()), field: f.clone(), summary: summary.clone() }))
+    }
+    ExprData::ExprCall { func, args, call_semantics, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprCall { func: func.clone(), args: {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in args.iter().cloned() {
+        __mapped_0.push(Rc::new(NamedArg { name: __elem_1.name.clone(), value: transform(__elem_1.value.clone()) }));
+    }
+    Rc::new(__mapped_0)
+}, call_semantics: call_semantics.clone() }))
+    }
+    ExprData::ExprMethodCall { receiver, method, args, method_semantics, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprMethodCall { receiver: transform(receiver.clone()), method: method.clone(), args: {
+    let mut __mapped_2 = Vec::new();
+    for __elem_3 in args.iter().cloned() {
+        __mapped_2.push(Rc::new(NamedArg { name: __elem_3.name.clone(), value: transform(__elem_3.value.clone()) }));
+    }
+    Rc::new(__mapped_2)
+}, method_semantics: method_semantics.clone() }))
+    }
+    ExprData::ExprMatch { scrutinee, arms, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprMatch { scrutinee: transform(scrutinee.clone()), arms: {
+    let mut __mapped_4 = Vec::new();
+    for __elem_5 in arms.iter().cloned() {
+        __mapped_4.push(Rc::new(MatchArm { pattern: __elem_5.pattern.clone(), guard: match __elem_5.guard.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(guard) => {
+        let guard = Rc::new(guard.clone());
+        Some(transform(guard.clone()))
+    }
+    None => {
+        None
+    }
+}, body: transform(__elem_5.body.clone()) }));
+    }
+    Rc::new(__mapped_4)
+} }))
+    }
+    ExprData::ExprIf { condition, then_branch, else_branch, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprIf { condition: transform(condition.clone()), then_branch: transform(then_branch.clone()), else_branch: match else_branch.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(branch) => {
+        let branch = Rc::new(branch.clone());
+        Some(transform(branch.clone()))
+    }
+    None => {
+        None
+    }
+} }))
+    }
+    ExprData::ExprLet { name, value, body, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprLet { name: name.clone(), value: transform(value.clone()), body: match body.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(inner) => {
+        let inner = Rc::new(inner.clone());
+        Some(transform(inner.clone()))
+    }
+    None => {
+        None
+    }
+} }))
+    }
+    ExprData::ExprRecordLit { type_name, fields, parent_enum, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprRecordLit { type_name: type_name.clone(), fields: {
+    let mut __mapped_6 = Vec::new();
+    for __elem_7 in fields.iter().cloned() {
+        __mapped_6.push(Rc::new(FieldInit { name: __elem_7.name.clone(), value: transform(__elem_7.value.clone()) }));
+    }
+    Rc::new(__mapped_6)
+}, parent_enum: parent_enum.clone() }))
+    }
+    ExprData::ExprListLit { elements, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprListLit { elements: {
+    let mut __mapped_8 = Vec::new();
+    for __elem_9 in elements.iter().cloned() {
+        __mapped_8.push(transform(__elem_9.clone()));
+    }
+    Rc::new(__mapped_8)
+} }))
+    }
+    ExprData::ExprBinOp { op, left, right, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprBinOp { op: op.clone(), left: transform(left.clone()), right: transform(right.clone()) }))
+    }
+    ExprData::ExprUnaryOp { op, operand, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprUnaryOp { op: op.clone(), operand: transform(operand.clone()) }))
+    }
+    ExprData::ExprLambda { params, body, semantics, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprLambda { params: params.clone(), body: transform(body.clone()), semantics: semantics.clone() }))
+    }
+    ExprData::ExprStringInterp { parts, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprStringInterp { parts: {
+    let mut __mapped_10 = Vec::new();
+    for __elem_11 in parts.iter().cloned() {
+        __mapped_10.push(match __elem_11.as_ref() {
+    StringPart::Text { value, .. } => {
+        Rc::new(StringPart::Text { value: value.clone() })
+    }
+    StringPart::Interpolation { expr, .. } => {
+        Rc::new(StringPart::Interpolation { expr: transform(expr.clone()) })
+    }
+});
+    }
+    Rc::new(__mapped_10)
+} }))
+    }
+    ExprData::ExprBlock { stmts, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprBlock { stmts: {
+    let mut __mapped_12 = Vec::new();
+    for __elem_13 in stmts.iter().cloned() {
+        __mapped_12.push(transform(__elem_13.clone()));
+    }
+    Rc::new(__mapped_12)
+} }))
+    }
+    ExprData::ExprCast { expr, target, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprCast { expr: transform(expr.clone()), target: transform(target.clone()) }))
+    }
+    ExprData::ExprForEach { variable, collection, body, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprForEach { variable: variable.clone(), collection: transform(collection.clone()), body: transform(body.clone()) }))
+    }
+    ExprData::ExprIndex { base, index, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprIndex { base: transform(base.clone()), index: transform(index.clone()) }))
+    }
+    ExprData::ExprSlice { base, start, end, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprSlice { base: transform(base.clone()), start: transform(start.clone()), end: transform(end.clone()) }))
+    }
+    ExprData::ExprReturn { value, .. } => {
+        with_expr_data(expr_node.clone(), Rc::new(ExprData::ExprReturn { value: transform(value.clone()) }))
+    }
+    _ => {
+        expr_node.clone()
+    }
+}
+}
+
 pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: &str) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match texpr.expr_data.as_ref() {

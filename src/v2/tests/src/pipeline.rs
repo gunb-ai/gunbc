@@ -67,6 +67,36 @@ fn go_pipeline_smoke() {
 }
 
 #[test]
+fn rust_emit_generates_mock_test_file() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "tests/mock_smoke_test.rs");
+    assert!(content.contains("test_demo_api_ping"), "Rust test file should contain the generated test function");
+    assert!(content.contains("// Signature:"), "Rust test file should contain the projection signature comment");
+}
+
+#[test]
+fn python_emit_generates_mock_test_file() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Python);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "tests/test_mock_smoke.py");
+    assert!(content.contains("def test_demo_api_ping()"), "Python test file should contain the generated test function");
+    assert!(content.contains("# Signature:"), "Python test file should contain the projection signature comment");
+}
+
+#[test]
+fn go_emit_generates_mock_test_file() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_smoke_test.go");
+    assert!(content.contains("func Test"), "Go test file should contain a generated test function");
+    assert!(content.contains("// Signature:"), "Go test file should contain the projection signature comment");
+}
+
+#[test]
 fn dag_pipeline_smoke() {
     let source = "module dag_smoke\n\ntype Point { x: Int  y: Int }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n";
     let result = compile_dag_named("dag_smoke.dag", source, RenderTarget::Dag);
@@ -76,6 +106,12 @@ fn dag_pipeline_smoke() {
     assert!(content.contains("\"version\": \"0.1.0\""), "dag artifact should contain version");
     assert!(content.contains("\"modules\""), "dag artifact should contain modules");
     assert!(content.contains("dag_smoke"), "dag artifact should reference dag_smoke");
+    assert!(content.contains("\"module\""), "dag artifact should include serialized module objects");
+    assert!(content.contains("\"items\""), "dag artifact should include serialized items");
+    assert!(content.contains("\"diagnostics\": ["), "dag artifact should include diagnostics");
+    assert!(content.contains("\"item_registry_keys\""), "dag artifact should include item registry keys");
+    assert!(content.contains("\"expr_data\""), "dag artifact should include serialized expression data");
+    assert!(content.contains("\"kind\": \"ExprRecordLit\""), "dag artifact should capture expression variants");
 }
 
 // ── Multi-module tests ──────────────────────────────────────────────────

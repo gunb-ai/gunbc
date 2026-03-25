@@ -575,6 +575,52 @@ pub fn has_cost_sum(expr: Rc<CostExpr>) -> bool {
     })
 }
 
+pub fn cost_sum_depth(expr: Rc<CostExpr>) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match expr.as_ref() {
+    CostExpr::CostSum { binder: _, upper: _, body: b, .. } => {
+        1_i64 + cost_sum_depth(b.clone())
+    }
+    CostExpr::CostAdd { left: l, right: r, .. } => {
+        {
+    let ld = cost_sum_depth(l.clone());
+    let rd = cost_sum_depth(r.clone());
+    if rd.clone() > ld.clone() {
+    rd.clone()
+} else {
+    ld.clone()
+}
+}
+    }
+    CostExpr::CostMul { left: l, right: r, .. } => {
+        {
+    let ld = cost_sum_depth(l.clone());
+    let rd = cost_sum_depth(r.clone());
+    if rd.clone() > ld.clone() {
+    rd.clone()
+} else {
+    ld.clone()
+}
+}
+    }
+    CostExpr::CostMax { left: l, right: r, .. } => {
+        {
+    let ld = cost_sum_depth(l.clone());
+    let rd = cost_sum_depth(r.clone());
+    if rd.clone() > ld.clone() {
+    rd.clone()
+} else {
+    ld.clone()
+}
+}
+    }
+    _ => {
+        0_i64
+    }
+}
+    })
+}
+
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let s = simplify_cost(expr.clone());
@@ -599,7 +645,11 @@ pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     let lc = classify_complexity(l.clone());
     let rc = classify_complexity(r.clone());
     let dominant = if has_cost_sum(l.clone()) && has_cost_sum(r.clone()) {
+    if cost_sum_depth(r.clone()) > cost_sum_depth(l.clone()) {
+    rc.clone()
+} else {
     lc.clone()
+}
 } else {
     if has_cost_sum(l.clone()) {
     lc.clone()

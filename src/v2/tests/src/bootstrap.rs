@@ -131,6 +131,68 @@ fn strict_compile_diagnostic_count() {
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
+#[test]
+#[ignore] // Requires building stage0 binary (~2 min)
+fn stage0_compile_accepts_dag_target() {
+    let build = std::process::Command::new("cargo")
+        .arg("build")
+        .arg("-p")
+        .arg("v2-compiler")
+        .arg("--release")
+        .output()
+        .expect("failed to build stage0");
+    assert!(
+        build.status.success(),
+        "stage0 build failed:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let ws = crate::helpers::workspace_root();
+    let stage0_bin = ws.join("target/release/v2-compiler");
+    assert!(
+        stage0_bin.exists(),
+        "stage0 binary not found at {}",
+        stage0_bin.display()
+    );
+
+    let source_dir = std::env::temp_dir().join("v2-dag-target-src");
+    let _ = std::fs::remove_dir_all(&source_dir);
+    std::fs::create_dir_all(&source_dir).unwrap();
+    std::fs::write(
+        source_dir.join("dag_target.dag"),
+        "module dag_target\n\nfn main() -> Int { 0 }\n",
+    )
+    .unwrap();
+
+    let out_dir = std::env::temp_dir().join("v2-dag-target-out");
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    let output = std::process::Command::new(&stage0_bin)
+        .arg("compile")
+        .arg("--source-dir")
+        .arg(&source_dir)
+        .arg("--output-dir")
+        .arg(&out_dir)
+        .arg("--target")
+        .arg("dag")
+        .output()
+        .expect("failed to run stage0 compile");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("stage0 dag compile stderr:\n{}", stderr);
+    assert!(output.status.success(), "stage0 dag compile failed");
+
+    let dag_artifact = out_dir.join("dag-artifact.json");
+    assert!(
+        dag_artifact.exists(),
+        "expected dag artifact at {}",
+        dag_artifact.display()
+    );
+
+    let _ = std::fs::remove_dir_all(&source_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
 // ── 3. bootstrap_stage0_to_stage1 ──────────────────────────────────────
 
 #[test]

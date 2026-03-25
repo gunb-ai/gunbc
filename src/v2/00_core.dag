@@ -728,12 +728,110 @@ fn expr_children(node: Node) -> List<Node> {
   }
 }
 
-// NOTE: map_expr_children (structural tree-map that reconstructs ExprData
-// with transformed children) is blocked by two v1 limitations:
-// (1) v1 interpreter can't evaluate user-defined higher-order functions
-// (2) v1 emitter mishandles Optional wrapping in lambda + match contexts
-// Landing point: Phase 3 (v1 retirement). Design exists; implementation
-// is ~50 lines and tested. See L2 bridge notes in ROADMAP.
+fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
+  Node {
+    name: node.name,
+    span: node.span,
+    children: node.children,
+    connective: node.connective,
+    params: node.params,
+    return_type: node.return_type,
+    return_cardinality: node.return_cardinality,
+    uses: node.uses,
+    body: node.body,
+    transport: node.transport,
+    properties: node.properties,
+    type_annotation: node.type_annotation,
+    config: node.config,
+    is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call,
+    expr_data: expr_data
+  }
+}
+
+fn map_expr_children(expr_node: Node, transform: fn(Node) -> Node) -> Node {
+  match expr_node.expr_data {
+    ExprFieldAccess { base: b, field: f, summary: summary } =>
+      with_expr_data(node: expr_node, expr_data: ExprFieldAccess { base: transform(b), field: f, summary: summary })
+    ExprCall { func: func, args: args, call_semantics: call_semantics } =>
+      with_expr_data(node: expr_node, expr_data: ExprCall {
+        func: func,
+        args: args |> map(arg => NamedArg { name: arg.name, value: transform(arg.value) }),
+        call_semantics: call_semantics
+      })
+    ExprMethodCall { receiver: receiver, method: method, args: args, method_semantics: method_semantics } =>
+      with_expr_data(node: expr_node, expr_data: ExprMethodCall {
+        receiver: transform(receiver),
+        method: method,
+        args: args |> map(arg => NamedArg { name: arg.name, value: transform(arg.value) }),
+        method_semantics: method_semantics
+      })
+    ExprMatch { scrutinee: scrutinee, arms: arms } =>
+      with_expr_data(node: expr_node, expr_data: ExprMatch {
+        scrutinee: transform(scrutinee),
+        arms: arms |> map(arm => MatchArm {
+          pattern: arm.pattern,
+          guard: match arm.guard {
+            Some { value: guard } => Some { value: transform(guard) }
+            None => none
+          },
+          body: transform(arm.body)
+        })
+      })
+    ExprIf { condition: condition, then_branch: then_branch, else_branch: else_branch } =>
+      with_expr_data(node: expr_node, expr_data: ExprIf {
+        condition: transform(condition),
+        then_branch: transform(then_branch),
+        else_branch: match else_branch {
+          Some { value: branch } => Some { value: transform(branch) }
+          None => none
+        }
+      })
+    ExprLet { name: name, value: value, body: body } =>
+      with_expr_data(node: expr_node, expr_data: ExprLet {
+        name: name,
+        value: transform(value),
+        body: match body {
+          Some { value: inner } => Some { value: transform(inner) }
+          None => none
+        }
+      })
+    ExprRecordLit { type_name: type_name, fields: fields, parent_enum: parent_enum } =>
+      with_expr_data(node: expr_node, expr_data: ExprRecordLit {
+        type_name: type_name,
+        fields: fields |> map(field => FieldInit { name: field.name, value: transform(field.value) }),
+        parent_enum: parent_enum
+      })
+    ExprListLit { elements: elements } =>
+      with_expr_data(node: expr_node, expr_data: ExprListLit { elements: elements |> map(el => transform(el)) })
+    ExprBinOp { op: op, left: left, right: right } =>
+      with_expr_data(node: expr_node, expr_data: ExprBinOp { op: op, left: transform(left), right: transform(right) })
+    ExprUnaryOp { op: op, operand: operand } =>
+      with_expr_data(node: expr_node, expr_data: ExprUnaryOp { op: op, operand: transform(operand) })
+    ExprLambda { params: params, body: body, semantics: semantics } =>
+      with_expr_data(node: expr_node, expr_data: ExprLambda { params: params, body: transform(body), semantics: semantics })
+    ExprStringInterp { parts: parts } =>
+      with_expr_data(node: expr_node, expr_data: ExprStringInterp {
+        parts: parts |> map(part => match part {
+          Text { value: value } => Text { value: value }
+          Interpolation { expr: expr } => Interpolation { expr: transform(expr) }
+        })
+      })
+    ExprBlock { stmts: stmts } =>
+      with_expr_data(node: expr_node, expr_data: ExprBlock { stmts: stmts |> map(stmt => transform(stmt)) })
+    ExprCast { expr: expr, target: target } =>
+      with_expr_data(node: expr_node, expr_data: ExprCast { expr: transform(expr), target: transform(target) })
+    ExprForEach { variable: variable, collection: collection, body: body } =>
+      with_expr_data(node: expr_node, expr_data: ExprForEach { variable: variable, collection: transform(collection), body: transform(body) })
+    ExprIndex { base: base, index: index } =>
+      with_expr_data(node: expr_node, expr_data: ExprIndex { base: transform(base), index: transform(index) })
+    ExprSlice { base: base, start: start, end: end } =>
+      with_expr_data(node: expr_node, expr_data: ExprSlice { base: transform(base), start: transform(start), end: transform(end) })
+    ExprReturn { value: value } =>
+      with_expr_data(node: expr_node, expr_data: ExprReturn { value: transform(value) })
+    _ => expr_node
+  }
+}
 
 // =========================================================================
 // Self-call detection -- Node expression walkers
