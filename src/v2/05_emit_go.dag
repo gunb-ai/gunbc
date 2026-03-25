@@ -65,6 +65,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call
 }
 
+import v2.compiler.artifact { RenderTarget, Go }
 import extdeps.languages.go.emit { go_reserved }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
@@ -85,6 +86,7 @@ import v2.compiler.emit {
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   go_keyword, go_container, go_primitive_type,
   go_literal, go_bin_op_symbol, go_map_template,
+  emit_literal, emit_bin_op_symbol, emit_keyword,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -534,7 +536,7 @@ fn emit_go_return_type(return_type: Node) -> String {
 fn emit_go_pattern(pattern: MatchPattern) -> String {
   match pattern {
     Bind { name: n } => go_local_ident(name: n)
-    LitPattern { value: v } => go_literal(value: v)
+    LitPattern { value: v } => emit_literal(value: v, target: Go)
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       emit_go_variant_pattern(name: n, field_bindings: fbs)
     Wildcard => "_"
@@ -561,7 +563,7 @@ fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, regis
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match texpr.expr_data {
-    ExprLiteral { value: v } => concat(prefix, go_literal(value: v))
+    ExprLiteral { value: v } => concat(prefix, emit_literal(value: v, target: Go))
     ExprError { kind: _, message: message } => concat(prefix, "panic(", emit_string_literal(s: message, suffix: ""), ")")
     ExprVar { name: n, binding_kind: _ } => concat(prefix, go_local_ident(name: n))
     ExprFieldAccess { base: b, field: f, summary: summary } =>
@@ -853,7 +855,7 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
     // x ?? y -> Go has no null-coalesce; use a helper func pattern
     concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
   } else {
-    let op_str = go_bin_op_symbol(op: op)
+    let op_str = emit_bin_op_symbol(op: op, target: Go)
     concat("(", l_str, " ", op_str, " ", r_str, ")")
   }
 }
@@ -861,7 +863,7 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
 fn emit_go_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let expr_str = emit_go_typed_expr(texpr: operand, registry: registry, scope: scope, depth: 0)
   match op {
-    Not => concat(go_keyword(key: "not"), expr_str)
+    Not => concat(emit_keyword(key: "not", target: Go), expr_str)
     Neg => concat("-", expr_str)
   }
 }

@@ -52,6 +52,8 @@ import v2.compiler.infer {
   build_emit_graph_info
 }
 
+import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+
 import extdeps.languages.rust.emit {
   rust_type_map, rust_keywords, rust_container_templates
 }
@@ -783,6 +785,70 @@ fn go_bin_op_symbol(op: BinOpKind) -> String {
     Add => "+"  Sub => "-"  Mul => "*"  Div => go_keyword(key: "div")  Mod => "%"
     BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
     BinAnd => go_keyword(key: "and")  BinOr => go_keyword(key: "or")  NullCoalesce => "??"
+  }
+}
+
+// =========================================================================
+// P4.1: Target-dispatched rendering — unified by RenderTarget
+//
+// These functions replace per-target triples (rust_X, go_X, python_X)
+// with a single function dispatched by RenderTarget. Backends should
+// migrate to calling these instead of the per-target versions.
+// =========================================================================
+
+fn emit_keyword(key: String, target: RenderTarget) -> String {
+  match target {
+    Rust => rust_keyword(key: key)
+    Go => go_keyword(key: key)
+    Python => python_keyword(key: key)
+    Dag => key
+  }
+}
+
+fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
+  match value {
+    LitStr { value: s } =>
+      let suffix = match target { Rust => ".to_string()"  _ => "" }
+      emit_string_literal(s: s, suffix: suffix)
+    LitInt { value: i } => to_string(value: i)
+    LitFloat { value: f } => f
+    LitBool { value: b } => if b { emit_keyword(key: "true", target: target) } else { emit_keyword(key: "false", target: target) }
+    LitNull => emit_keyword(key: "null", target: target)
+  }
+}
+
+fn emit_bin_op_symbol(op: BinOpKind, target: RenderTarget) -> String {
+  match op {
+    Add => "+"  Sub => "-"  Mul => "*"  Div => emit_keyword(key: "div", target: target)  Mod => "%"
+    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
+    BinAnd => emit_keyword(key: "and", target: target)  BinOr => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
+  }
+}
+
+fn emit_primitive_type(name: String, target: RenderTarget) -> String {
+  match target {
+    Rust => rust_primitive_type(name: name)
+    Go => go_primitive_type(name: name)
+    Python => python_primitive_type(name: name)
+    Dag => name
+  }
+}
+
+fn emit_container(kind: String, inner: String, target: RenderTarget) -> String {
+  match target {
+    Rust => rust_container(kind: kind, inner: inner)
+    Go => go_container(kind: kind, inner: inner)
+    Python => python_container(kind: kind, inner: inner)
+    Dag => concat(kind, "<", inner, ">")
+  }
+}
+
+fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
+  match target {
+    Rust => apply_type_template2(template: rust_map_template(), arg0: key_type, arg1: val_type)
+    Go => apply_type_template2(template: go_map_template(), arg0: key_type, arg1: val_type)
+    Python => apply_type_template2(template: python_map_template(), arg0: key_type, arg1: val_type)
+    Dag => concat("Map<", key_type, ", ", val_type, ">")
   }
 }
 
