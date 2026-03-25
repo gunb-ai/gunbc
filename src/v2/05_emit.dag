@@ -1066,10 +1066,10 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
-  let item_kind = classify_type_structure(n: item)
-  let kind = if item_kind != TypeLeaf && item.transport == none {
+  let item_has_structure = node_has_structure(n: item)
+  let kind = if item_has_structure && item.transport == none {
     TypedItemTypeDef
-  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
+  } else if item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
     TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
