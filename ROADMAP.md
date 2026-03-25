@@ -538,7 +538,7 @@ Status labels:
 | `rt_node` 3-variant return type | `rt_node` returns `NodeType = Typed \| InferError \| Untyped` instead of `Node?`. 137 callers migrated; `rt_type` convenience helper for emission callers; explicit 3-arm matches where error/absent distinction matters. | tree-green | 2026-03 |
 | `expr_children` structural primitive | Extracts all child expression Nodes from ExprData variants. 4 manual walks rewritten (~210 lines eliminated). `map_expr_children` designed but blocked by v1 interpreter/emitter. | tree-green | 2026-03 |
 | P2.5 resource wiring | `emit_main_service_arg_list` constructs resources (`&Network`) instead of `compile_error!()`. Resource module imports added to main.rs via `find_resource_module`. | tree-green | 2026-03 |
-| P3.1 fixed-point convergence (partial) | Stage1 cargo check errors reduced 820 → 16 via 5 emitter fixes: Optional type name, Rc match analysis, Optional string comparison, expr_children import, vtoe module-scope priority. | structural | 2026-03 |
+| P3.1 fixed-point convergence | `v2_bootstrap_fixed_point` now passes end-to-end on `cousin-wip`: stage0 builds, stage1 builds, stage2 builds, and the byte-identical compare is green. Final fixes restored explicit authority for bare generic declarations, variant parent resolution, typed intrinsic/runtime-bridge lowering, and underspecified collection refinement. | tree-green | 2026-03 |
 
 ---
 
@@ -551,14 +551,18 @@ Status labels:
 non-ignored). Clippy clean. Gist pipeline passes (`v2_gist_full_pipeline`
 lib target compiles and builds). Stage0 compiles in ~3 s, 91 MB peak RSS.
 
-**P3.1 fixed-point status:** `v2_bootstrap_fixed_point` reduced from
-**820 → 16 stage1 errors**. 5 holistic emitter fixes landed (Optional
-type rendering, Rc match analysis, Optional string comparison,
-expr_children import, vtoe module-scope priority). Remaining 16 errors
-are 5-6 distinct edge cases: 4 Optional double-wrapping (single-field
-product optimization strips variant constructors), 6 lambda type
-annotations in sort/fold, 3 tokenizer Rc/vtoe edge cases, 3 misc.
-**This work can proceed independently on a separate branch.**
+**P3.1 fixed-point status:** `v2_bootstrap_fixed_point` is now **green**
+on `cousin-wip`. The bootstrap path is deterministic again and the full
+stage0 → stage1 → stage2 fixed-point check passes, including the
+byte-identical comparison. The fixes that made the difference were not
+more fallback heuristics; they restored missing authority:
+- explicit non-emitting typed item kind for bare generic declarations
+- contextual variant-parent authority for record literals and expr refs
+- typed lowering for `sort_by`, `fold`, `empty_map`, `to_string`, and `lookup`
+- Rc-wrap preservation on runtime-bridge lookups
+- collection refinement for underspecified `list_push` / fold accumulator flows
+
+This removes the old “fixed-point redesign” blocker from Phase 3.
 
 **L2 bridge status:** `expr_children` primitive landed in `00_core.dag`.
 4 manual ExprData walks rewritten (~210 lines eliminated).
@@ -778,26 +782,22 @@ is Phase 3 (v1 retirement, generics) and cleanup.
 
 ### Parallelizable work streams
 
-These can proceed on separate branches:
+Active branches can proceed independently here:
 
 | Stream | What | Files touched | Depends on |
 |--------|------|---------------|------------|
-| **A: Fixed-point test redesign** | Remaining ~10 errors are vtoe nondeterminism from HashMap iteration order in stage0. Real semantic divergences are fixed (820→~10 via 7 emitter/inference fixes). Fixed-point test needs semantic comparison instead of byte-identical diff. Design: sort emitted output, or compare AST structure, or make emitter iteration-order-insensitive. | `05_emit_rust.dag`, `04_infer.dag`, test harness | Nothing — offloaded, separate branch |
-| **B: P3.6 Generics** | Substitution logic written. Two paths: (1) simplify functions to avoid v1 module loader crash, or (2) wait for v1 retirement. Trying path 1 now. | `03_normalize.dag`, `04_infer.dag` | Path 1: nothing. Path 2: blocked by A |
+| **A: Fixed-point convergence** | **Done on `cousin-wip`.** Deterministic bootstrap output landed, semantic/codegen gaps closed, and `v2_bootstrap_fixed_point` now passes end-to-end. Keep the test green; no redesign branch is required. | `05_emit_rust.dag`, `04_infer.dag`, test harness | None |
+| **B: P3.6 Generics** | Substitution logic written. Two paths: (1) simplify functions to avoid v1 module loader crash, or (2) wait for v1 retirement. Trying path 1 now. | `03_normalize.dag`, `04_infer.dag` | Path 1: nothing. Path 2: blocked by v1 retirement |
 | **C: P2.6 File decomposition** | Extract type resolution, func sigs from `04_infer.dag` | `04_infer.dag` + new split modules | Blocked by `map_expr_children` (v1 retirement) for full effect; mechanical extractions possible now |
 
-**Stream A status:** All real semantic divergences between v1 and stage0
-emission are fixed. Remaining ~10 fixed-point errors are from HashMap
-iteration order affecting vtoe variant-to-enum resolution. The vtoe is
-now marked `__ambiguous__` for shared variants, and the module-level
-override corrects per-module — but the byte-identical comparison still
-fails because HashMap iteration order differs between runs. This is a
-test design issue, not a compiler correctness issue. Offloaded.
+**Stream A status:** Closed on `cousin-wip`. The deterministic bootstrap
+change landed, the residual stage1/stage2 type/codegen gaps were fixed,
+and the byte-identical fixed-point test is now green again.
 
 **Stream B is now active.** Trying to get generics working by
 simplifying the normalize substitution functions to avoid v1 crashes.
 
-Once A's test redesign completes and v1 retires:
+With A back to green, the remaining sequencing is:
 - B: substitution code is already written and tested — just wire it in
 - C: `map_expr_children` lands, `resolve_expr_types` collapses, file
   boundaries stabilize
@@ -816,12 +816,12 @@ Once A's test redesign completes and v1 retires:
 ### Sequential dependencies (updated)
 
 ```
-A (fixed-point 16 errors) → v1 retirement
+A (fixed-point green) → v1 retirement
   → B (wire generics substitution) → P3.7 (delete arity bridge)
   → map_expr_children → C (full decomposition)
 ```
 
-All three streams converge through v1 retirement.
+The remaining active streams converge through v1 retirement.
 
 **D. P4.1/P4.2: Shared emit / adapter contract.**
 
@@ -907,7 +907,7 @@ exists (source-pattern grep, not the emitted-bundle gate — see P1.21).
 Scrambled-name tests are *smoke* (compare counts, not inferred
 structure — see P1.16). P1.4 (Optional dissolution) complete.
 P1.9 (InferredNode) complete. P1.14/P1.17 (normalization/arity) complete.
-P1.21 (testgen gate) complete. Fixed point holds on prior branch.
+P1.21 (testgen gate) complete. Fixed point holds on `cousin-wip`.
 
 **After Phase 2 — "One real program works"**
 ```
@@ -1381,7 +1381,7 @@ R9.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P3.1 | Verify parity with remaining v1 paths | **820 → 16 errors** | 5 holistic emitter fixes landed. Remaining 16 are edge cases (Optional double-wrapping, lambda type annotations, tokenizer Rc/vtoe). **Parallelizable** — separate branch, touches only `05_emit_rust.dag`. |
+| P3.1 | Verify parity with remaining v1 paths | **Done on `cousin-wip`** | `v2_bootstrap_fixed_point` passes again end-to-end. Deterministic bootstrap output landed, bare generic type declarations have an explicit non-emitting item kind, variant-parent authority is contextual, runtime bridge lookups preserve Rc wrapping, and typed intrinsic lowering now covers `sort_by` / `fold` / `empty_map` / `to_string`. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
 | P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |

@@ -81,7 +81,7 @@ import v2.compiler.infer {
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart,
-  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemFunction,
+  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   go_keyword, go_container, go_primitive_type,
@@ -249,6 +249,8 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     emit_go_type_def_from_connective(item: item)
   } else if (kind == TypedItemTypeAlias) {
     emit_go_type_alias(name: item.name, base: rt_type(n: item))
+  } else if (kind == TypedItemTypeDecl) {
+    ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
       emit_go_func_def(name: item.name, params: item.params, return_type: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)

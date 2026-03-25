@@ -1595,6 +1595,15 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
       Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
       None => fallback
     }
+  } else if method_name == "list_push" && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
+    match typed_args |> first {
+      Some { value: item_arg } => match rt_node(n: item_arg.value) {
+        Typed { node: rt } => container_node(kind_name: "List", element: rt)
+        InferError { message: _, span: _ } => fallback
+        Untyped => fallback
+      }
+      None => fallback
+    }
   } else if method_name == "map_insert" && receiver_type.children |> count == 0 && node_is_map(n: receiver_type) && typed_args |> count >= 2 {
     let key_type = match typed_args |> first {
       Some { value: key_arg } => match rt_node(n: key_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
@@ -1849,7 +1858,22 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           }
         } else if infer_builtin_call_type(name: func_name) != none {
           // Tier 2b: runtime built-in functions
-          let bt = resolve_builtin_call_type(name: func_name)
+          let bt = if func_name == "lookup" || func_name == "map_get" {
+            match typed_args |> first {
+              Some { value: receiver_arg } =>
+                match rt_node(n: receiver_arg.value) {
+                  Typed { node: receiver_type } =>
+                    match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
+                      Some { value: value_type } => with_optional_cardinality(n: value_type)
+                      None => resolve_builtin_call_type(name: func_name)
+                    }
+                  _ => resolve_builtin_call_type(name: func_name)
+                }
+              None => resolve_builtin_call_type(name: func_name)
+            }
+          } else {
+            resolve_builtin_call_type(name: func_name)
+          }
           let call_semantics = if func_name == "lookup" {
             Some { value: LookupCallSemantics }
           } else {
@@ -3568,21 +3592,24 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
   }
 }
 
+fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(items, init: init, f: (acc, item) =>
+    if node_is_coproduct(n: item) {
+      fold(item.children, init: acc, f: (vacc, child) =>
+        map_insert(vacc, child.name, TypeBinding {
+          name: child.name,
+          resolved: leaf_node(name: item.name)
+        })
+      )
+    } else { acc }
+  )
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
     module_name: String) -> ModuleContext {
-  let env_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
-    if node_is_coproduct(n: binding.resolved) {
-      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-        map_insert(vacc, child.name, TypeBinding {
-          name: child.name,
-          resolved: leaf_node(name: binding.name)
-        })
-      )
-    } else { acc }
-  )
   let local = fold_module_contributions(
     remaining: contributions,
     resolved_items: [],
@@ -3592,6 +3619,17 @@ fn build_module_context(contributions: List<ItemContribution>,
     item_registry: empty_map(),
     diag_chunks: []
   )
+  let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
+    if node_is_coproduct(n: binding.resolved) {
+      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+        map_insert(vacc, child.name, TypeBinding {
+          name: child.name,
+          resolved: leaf_node(name: binding.name)
+        })
+      )
+    } else { acc }
+  )
+  let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals)
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,

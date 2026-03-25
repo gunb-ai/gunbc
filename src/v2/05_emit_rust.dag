@@ -94,9 +94,8 @@ import v2.compiler.infer {
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart,
-  TypedItemKind, TypedItemTypeDef, TypedItemFunction, TypedItemDataDef,
-  TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
-  TypedItemTypeAlias,
+  TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
+  TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
@@ -583,6 +582,8 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
     emit_type_def_from_connective(item: item, recursive_types: scope.type_env.recursive_type_set, rc_types: rc_types)
   } else if (kind == TypedItemTypeAlias) {
     concat("pub type ", item.name, " = ", emit_rust_node_type(n: rt_type(n: item), rc_types: rc_types), ";")
+  } else if (kind == TypedItemTypeDecl) {
+    ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
       emit_func_def(name: item.name, params: item.params, return_type: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -1533,11 +1534,23 @@ fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
   }
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, vtoe: Map<String, String>, rc_types: Map<String, Bool>, registry: Map<String, ItemInfo>) -> String {
+fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String? {
+  match resolved_type {
+    Some { value: Resolved { node: rt } } =>
+      if rt.name != "" && rt.name != name && variant_belongs_to_enum(variant_name: name, enum_name: rt.name, emit_info: emit_info) {
+        Some { value: rt.name }
+      } else {
+        variant_parent_from_binding_kind(binding_kind: binding_kind)
+      }
+    _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
+  }
+}
+
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, vtoe: Map<String, String>, rc_types: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
   if name == "none" || name == "None" { "None" }
   else if name == "true" || name == "false" { name }
   else {
-    let variant_parent = variant_parent_from_binding_kind(binding_kind: binding_kind)
+    let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info)
     let ref_str = match variant_parent {
       Some { value: enum_name } =>
         let qualified = concat(enum_name, "::", name)
@@ -1586,7 +1599,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
       if n == "none" || n == "None" { "None" }
       else if n == "true" || n == "false" { n }
       else {
-        let variant_parent = variant_parent_from_binding_kind(binding_kind: binding_kind)
+        let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.return_type, emit_info: emit_info)
         match variant_parent {
           Some { value: enum_name } =>
             let qualified = concat(enum_name, "::", n)
@@ -1721,7 +1734,7 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 }
 
 fn rust_runtime_bridge_wraps_result_in_rc(function_name: String, receiver: Node, scope: InferScope) -> Bool {
-  function_name == "map_get" && rust_lookup_receiver_needs_rc_wrap(receiver: receiver, scope: scope)
+  (function_name == "map_get" || function_name == "lookup") && rust_lookup_receiver_needs_rc_wrap(receiver: receiver, scope: scope)
 }
 
 fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -1730,7 +1743,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     ExprError { kind: _, message: message } =>
       concat("compile_error!(", emit_string_literal(s: message, suffix: ""), ")")
     ExprVar { name: n, binding_kind: binding_kind } =>
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: texpr.return_type, vtoe: vtoe, rc_types: rc_types, registry: registry)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: texpr.return_type, vtoe: vtoe, rc_types: rc_types, registry: registry, emit_info: emit_info)
     ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
         match extract_typed_service_name(receiver: texpr) {
@@ -1741,7 +1754,21 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
         emit_typed_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       }
     ExprCall { func: f, args: a, call_semantics: call_semantics } =>
-      let call_str = emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      let call_str = if f == "empty_map" {
+        match texpr.return_type {
+          Some { value: Resolved { node: ret_type } } =>
+            let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
+            let type_str = emit_rust_node_type(n: resolved_ret, rc_types: rc_types)
+            if type_str != "" && type_str != "Dynamic" {
+              concat("<", type_str, ">::new()")
+            } else {
+              "compile_error!(\"empty_map requires a concrete result type\")"
+            }
+          _ => "compile_error!(\"empty_map missing resolved return type\")"
+        }
+      } else {
+        emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      }
       let fallback_lookup_wrap = if f == "lookup" {
         let base_check = match a |> first {
           Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
@@ -1763,7 +1790,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       }
       if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
     ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
-      emit_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_typed_method_call(receiver: r, method: m, args: a, result_type: texpr.return_type, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprMatch { scrutinee: s, arms: arm_list } =>
       emit_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprIf { condition: c, then_branch: t, else_branch: e } =>
@@ -1808,6 +1835,23 @@ fn emit_cloned_arg(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 // Check if a type name is an enum (appears as a value in the vtoe map).
 fn is_enum_type_name(type_name: String, vtoe: Map<String, String>) -> Bool {
   map_values(vtoe) |> any(v => v == type_name)
+}
+
+fn variant_belongs_to_enum(variant_name: String, enum_name: String, emit_info: EmitGraphInfo) -> Bool {
+  emit_map_has(m: emit_info.enum_variant_membership, key: concat(enum_name, "|", variant_name))
+}
+
+fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolved_type: Node, emit_info: EmitGraphInfo) -> String? {
+  match parent_enum {
+    Some { value: explicit_parent } =>
+      if variant_belongs_to_enum(variant_name: variant_name, enum_name: explicit_parent, emit_info: emit_info) {
+        Some { value: explicit_parent }
+      } else { none }
+    None =>
+      if resolved_type.name != "" && resolved_type.name != variant_name && variant_belongs_to_enum(variant_name: variant_name, enum_name: resolved_type.name, emit_info: emit_info) {
+        Some { value: resolved_type.name }
+      } else { none }
+  }
 }
 
 fn is_map_typed_expr(texpr: Node) -> Bool {
@@ -1859,6 +1903,14 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
     if needs_rc { return concat("Rc::new(", raw, ")") }
     else { return raw }
+  }
+  if func == "to_string" {
+    let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
+    match to_string_args |> first {
+      Some { value: value_arg } =>
+        return concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
+      None => return "compile_error!(\"to_string call missing value argument\")"
+    }
   }
   // For collection functions (map, filter, flat_map, fold), extend scope with the
   // lambda parameter bound to the collection element type. This enables Optional
@@ -2095,7 +2147,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
   }
 }
 
-fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator_type: Node?, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.return_type, rc_types: rc_types)
@@ -2209,23 +2261,48 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
     MethodSkip => concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
     MethodTake => concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
     MethodFold => {
-      let init_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      let fold_fn = match args |> skip(1) |> first {
-        Some { value: a } =>
-          let acc_type_str = match fold_accumulator_type {
-            Some { value: acc_type } => emit_rust_node_type(n: acc_type, rc_types: rc_types)
+      let contextual_acc_type = match result_type {
+        Some { value: Resolved { node: method_result_type } } => Some { value: method_result_type }
+        _ => none
+      }
+      let acc_type_node = match fold_accumulator_type {
+        Some { value: acc_type } =>
+          if node_is_map(n: acc_type) && acc_type.children |> count == 0 {
+            match contextual_acc_type {
+              Some { value: concrete_type } => concrete_type
+              None => acc_type
+            }
+          } else { acc_type }
+        None =>
+          match contextual_acc_type {
+            Some { value: concrete_type } => concrete_type
             None =>
               // Fallback: infer accumulator type from init expression's return type
               match args |> first {
                 Some { value: init_arg } =>
                   if init_arg.value.return_type != none {
-                    let init_rt = rt_type(n: init_arg.value)
-                    let init_type = emit_rust_node_type(n: init_rt, rc_types: rc_types)
-                    if init_type != "" && init_type != "Dynamic" { init_type } else { "_" }
-                  } else { "_" }
-                None => "_"
+                    rt_type(n: init_arg.value)
+                  } else { leaf_node(name: "Dynamic") }
+                None => leaf_node(name: "Dynamic")
               }
           }
+      }
+      let acc_type_str = emit_rust_node_type(n: acc_type_node, rc_types: rc_types)
+      let init_str = match args |> first {
+        Some { value: init_arg } =>
+          match init_arg.value.expr_data {
+            ExprCall { func: init_func, args: _, call_semantics: _ } =>
+              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" {
+                concat("<", acc_type_str, ">::new()")
+              } else {
+                emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+              }
+            _ => emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          }
+        None => "compile_error!(\"missing fold init argument\")"
+      }
+      let fold_fn = match args |> skip(1) |> first {
+        Some { value: a } =>
           emit_typed_fold_lambda(lambda_expr: a.value, acc_type_str: acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         None => "compile_error!(\"missing fold function argument\")"
       }
@@ -2242,7 +2319,12 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           } else { "_" }
         _ => "_"
       }
-      concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", first_arg_str, ")(a.clone()); let __kb = (", first_arg_str, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
+      let sort_key_fn = match args |> first {
+        Some { value: a } =>
+          emit_typed_collection_lambda(lambda_expr: a.value, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        None => "compile_error!(\"missing sort_by key function argument\")"
+      }
+      concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
     MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
   }
 }
@@ -2320,14 +2402,14 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
     let all_strs = concat([recv_str], arg_strs)
     concat("v2_rt::", rust_ident(name: function_name), "(", all_strs |> join(separator: ", "), ")")
   }
-  if method == BridgeMapGet && rust_lookup_receiver_needs_rc_wrap(receiver: receiver, scope: scope) {
+  if rust_runtime_bridge_wraps_result_in_rc(function_name: function_name, receiver: receiver, scope: scope) {
     concat(lowered, ".map(Rc::new)")
   } else {
     lowered
   }
 }
 
-fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   if method_semantics != none { match method_semantics.value {
     ServiceMethodSemantics { service_name: svc_name, op_params: op_params } => {
       let var_name = service_var_name(service_name: svc_name)
@@ -2337,7 +2419,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
       concat(var_name, ".", rust_ident(name: method), "(", args_str, ").await?")
     }
     IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } => {
-      let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       lowered
     }
     RuntimeBridgeSemantics { method: bridge_method } =>
@@ -2370,7 +2452,11 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
     _ => ""
   }
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
-  let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type))
+  let match_result_type = match arms |> first {
+    Some { value: first_arm } => rt_type(n: first_arm.body)
+    None => leaf_node(name: "Dynamic")
+  }
+  let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type))
   let arms_str = arm_strs |> join(separator: "\n")
   // RC5: If scrutinee is Option<Rc<T>>, use .as_deref().cloned() to get Option<T>.
   // If scrutinee is Rc<T>, use (*s).clone() to get owned T.
@@ -2388,7 +2474,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
   }
 }
 
-fn emit_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, scrut_type: String) -> String {
+fn emit_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node) -> String {
   let rc_analysis = analyze_rc_pattern(pattern: arm.pattern, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   let pat_str = if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm.pattern, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
@@ -2409,7 +2495,15 @@ fn emit_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: I
   } else if arm_guard != "" {
     concat(" if ", arm_guard)
   } else { "" }
-  let body_str = emit_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let body_str = match arm.body.expr_data {
+    ExprVar { name: body_name, binding_kind: body_binding_kind } =>
+      if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Some { value: Resolved { node: match_result_type } }, vtoe: vtoe, rc_types: rc_types, registry: registry, emit_info: emit_info)
+      } else {
+        emit_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      }
+    _ => emit_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  }
   if rc_analysis.needs_rc_pattern {
     let prelude = rc_pattern_preludes(pattern: arm.pattern, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
@@ -2642,23 +2736,25 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
       // RC1: Qualify variant names with parent enum to avoid name collisions
       // (e.g. LitFloat exists in both TokenKind and LiteralValue).
       // Resolution order:
-      // 1. vtoe map (module-scope-corrected, deterministic by import analysis)
-      // 2. resolved_type.name from return type inference (global, not module-scoped)
-      // 3. parent_enum from inference annotation (nondeterministic for ambiguous variants)
-      // vtoe is preferred because it's corrected per-module based on imports.
-      // resolved_type.name is global and may point to the wrong parent for
-      // ambiguous variants (e.g., LitStr in LiteralValue vs TokenKind).
+      // 1. contextual enum authority (explicit parent_enum / resolved_type membership)
+      // 2. module-corrected vtoe map
+      // 3. legacy resolved_type / parent_enum fallback
+      let context_lookup = contextual_variant_parent(variant_name: tn, parent_enum: parent_enum, resolved_type: resolved_type, emit_info: emit_info)
       let vtoe_lookup = match map_get(vtoe, tn) {
         Some { value: vp } => Some { value: vp }
         None => none
       }
-      let effective_parent = match vtoe_lookup {
-        Some { value: vtoe_parent } => Some { value: vtoe_parent }
+      let effective_parent = match context_lookup {
+        Some { value: context_parent } => Some { value: context_parent }
         None =>
-          if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
-            Some { value: resolved_type.name }
-          } else {
-            parent_enum
+          match vtoe_lookup {
+            Some { value: vtoe_parent } => Some { value: vtoe_parent }
+            None =>
+              if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
+                Some { value: resolved_type.name }
+              } else {
+                parent_enum
+              }
           }
       }
       let display_tn = if tn == "Some" || tn == "None" { tn }

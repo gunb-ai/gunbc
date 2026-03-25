@@ -83,6 +83,7 @@ type BlockEmitState {
 type TypedItemKind
   = TypedItemTypeDef
   | TypedItemTypeAlias
+  | TypedItemTypeDecl
   | TypedItemFunction
   | TypedItemDataDef
   | TypedItemServiceDef
@@ -973,7 +974,7 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 // =========================================================================
 
 // Classify a typed item into one of the structural categories.
-// Returns: "type_def", "type_alias", "function", "data_def",
+// Returns: "type_def", "type_alias", "type_decl", "function", "data_def",
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
@@ -994,9 +995,8 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     TypedItemResourceDef
   } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
     // Bare parameterized type declaration (e.g., type List<element>).
-    // These are type-system declarations — not emitted as code.
-    // Classified as Unhandled so the emitter skips them.
-    TypedItemUnhandled
+    // These are type-system declarations and intentionally emit no runtime code.
+    TypedItemTypeDecl
   } else if item.params |> count > 0 {
     TypedItemExternFunc
   } else {
