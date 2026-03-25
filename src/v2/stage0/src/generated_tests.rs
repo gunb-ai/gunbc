@@ -11547,14 +11547,14 @@ import v2.compiler.infer_types {
   node_is_optional, node_is_map,
   node_is_product, node_is_coproduct, node_has_structure,
   normalize_access_type_node, normalize_type_name,
-  rt_type, rt_node
+  rt_type, rt_node,
+  emit_map_has
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type
 }
 import v2.compiler.infer_emit_info {
-  emit_map_has,
   build_struct_field_summaries, build_enum_field_summaries
 }
 import v2.compiler.infer_method {
@@ -12015,14 +12015,14 @@ import v2.compiler.infer_types {
   child_return_type_or_name,
   leaf_node,
   error_type_node,
-  node_is_optional, node_is_coproduct, node_has_structure,
-  extract_optional_inner_node
+  node_is_optional, node_is_coproduct, node_has_structure, with_optional_cardinality,
+  extract_optional_inner_node,
+  emit_map_has
 }
 import v2.compiler.infer_env {
   TypeEnv,
   lookup_type
 }
-import v2.compiler.infer_emit_info { emit_map_has }
 
 // =========================================================================
 // Types
@@ -12149,7 +12149,10 @@ fn check_match_exhaustiveness(
   module_name: String
 ) -> List<Diagnostic> {
   // Resolve the scrutinee type -- if it's a leaf name, look up its definition.
-  let resolved = if node_has_structure(n: scrutinee_type) {
+  // Preserve Optional cardinality: lookup returns the type definition which
+  // has Required cardinality, but the scrutinee may be T? (CardOptional).
+  let scrut_is_optional = node_is_optional(n: scrutinee_type)
+  let resolved_raw = if node_has_structure(n: scrutinee_type) {
     scrutinee_type
   } else {
     match lookup_type(env: env, name: scrutinee_type.name) {
@@ -12157,6 +12160,7 @@ fn check_match_exhaustiveness(
       None => scrutinee_type
     }
   }
+  let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
   if node_is_coproduct(n: resolved) {
     // Optional is represented as [inner_type, None] — the first child
@@ -13006,9 +13010,9 @@ import v2.std.core {
   expr_children
 }
 import v2.compiler.infer_types {
-  leaf_node, no_span, node_has_structure
+  leaf_node, no_span, node_has_structure,
+  emit_map_has
 }
-import v2.compiler.infer_emit_info { emit_map_has }
 import v2.compiler.infer_items {
   ItemInfo, ItemKind, FuncItem, TypedModule,
   return_type_to_outputs
@@ -22361,13 +22365,9 @@ fn json_optional_node(value: Node?) -> String {
 }
 
 fn json_optional_inferred_node(value: InferredNode?) -> String {
-  // Use if/else instead of match to unwrap the Optional.  The self-compile
-  // exhaustiveness checker resolves InferredNode? to InferredNode (losing
-  // Optional cardinality), causing a false-positive on Some/None arms.
-  if value != none {
-    serialize_inferred_node(inferred: value.value)
-  } else {
-    "null"
+  match value {
+    Some { value: inner } => serialize_inferred_node(inferred: inner)
+    None => "null"
   }
 }
 
@@ -22599,35 +22599,24 @@ fn serialize_lambda_semantics(value: LambdaSemantics?) -> String {
 }
 
 fn serialize_method_semantics(value: MethodSemantics?) -> String {
-  // Use if/else instead of match to unwrap the Optional.  The self-compile
-  // exhaustiveness checker resolves MethodSemantics? to MethodSemantics
-  // (losing Optional cardinality), which causes a false-positive on
-  // any match with Some/None arms.
-  if value != none {
-    serialize_method_semantics_inner(value: value.value)
-  } else {
-    "null"
-  }
-}
-
-fn serialize_method_semantics_inner(value: MethodSemantics) -> String {
   match value {
-    PlainMethodSemantics =>
+    Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } =>
+    Some { value: IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } } =>
       concat(
         "{\"kind\": \"IntrinsicMethodSemantics\", \"fold_accumulator_type\": ",
         json_optional_node(value: fold_accumulator_type),
         "}")
-    RuntimeBridgeSemantics { method: _ } =>
+    Some { value: RuntimeBridgeSemantics { method: _ } } =>
       "{\"kind\": \"RuntimeBridgeSemantics\"}"
-    ServiceMethodSemantics { service_name: service_name, op_params: op_params } =>
+    Some { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
         json_quote(s: service_name),
         ", \"op_params\": ",
         json_list(items: op_params |> map(p => serialize_param(param: p))),
         "}")
+    None => "null"
   }
 }
 
@@ -26251,7 +26240,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer::TypedModule>>::new();
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer_items::TypedModule>>::new();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();

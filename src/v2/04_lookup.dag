@@ -28,14 +28,14 @@ import v2.compiler.infer_types {
   node_is_optional, node_is_map,
   node_is_product, node_is_coproduct, node_has_structure,
   normalize_access_type_node, normalize_type_name,
-  rt_type, rt_node
+  rt_type, rt_node,
+  emit_map_has
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type
 }
 import v2.compiler.infer_emit_info {
-  emit_map_has,
   build_struct_field_summaries, build_enum_field_summaries
 }
 import v2.compiler.infer_method {

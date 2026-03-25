@@ -155,13 +155,9 @@ fn json_optional_node(value: Node?) -> String {
 }
 
 fn json_optional_inferred_node(value: InferredNode?) -> String {
-  // Use if/else instead of match to unwrap the Optional.  The self-compile
-  // exhaustiveness checker resolves InferredNode? to InferredNode (losing
-  // Optional cardinality), causing a false-positive on Some/None arms.
-  if value != none {
-    serialize_inferred_node(inferred: value.value)
-  } else {
-    "null"
+  match value {
+    Some { value: inner } => serialize_inferred_node(inferred: inner)
+    None => "null"
   }
 }
 
@@ -393,35 +389,24 @@ fn serialize_lambda_semantics(value: LambdaSemantics?) -> String {
 }
 
 fn serialize_method_semantics(value: MethodSemantics?) -> String {
-  // Use if/else instead of match to unwrap the Optional.  The self-compile
-  // exhaustiveness checker resolves MethodSemantics? to MethodSemantics
-  // (losing Optional cardinality), which causes a false-positive on
-  // any match with Some/None arms.
-  if value != none {
-    serialize_method_semantics_inner(value: value.value)
-  } else {
-    "null"
-  }
-}
-
-fn serialize_method_semantics_inner(value: MethodSemantics) -> String {
   match value {
-    PlainMethodSemantics =>
+    Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } =>
+    Some { value: IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } } =>
       concat(
         "{\"kind\": \"IntrinsicMethodSemantics\", \"fold_accumulator_type\": ",
         json_optional_node(value: fold_accumulator_type),
         "}")
-    RuntimeBridgeSemantics { method: _ } =>
+    Some { value: RuntimeBridgeSemantics { method: _ } } =>
       "{\"kind\": \"RuntimeBridgeSemantics\"}"
-    ServiceMethodSemantics { service_name: service_name, op_params: op_params } =>
+    Some { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
         json_quote(s: service_name),
         ", \"op_params\": ",
         json_list(items: op_params |> map(p => serialize_param(param: p))),
         "}")
+    None => "null"
   }
 }
 

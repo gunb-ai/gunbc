@@ -1,6 +1,5 @@
 use crate::v2_core::*;
 use crate::infer_types::*;
-use crate::infer_emit_info::*;
 use crate::infer_items::*;
 use crate::v2_rt;
 use std::collections::HashMap;

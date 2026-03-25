@@ -22,14 +22,14 @@ import v2.compiler.infer_types {
   child_return_type_or_name,
   leaf_node,
   error_type_node,
-  node_is_optional, node_is_coproduct, node_has_structure,
-  extract_optional_inner_node
+  node_is_optional, node_is_coproduct, node_has_structure, with_optional_cardinality,
+  extract_optional_inner_node,
+  emit_map_has
 }
 import v2.compiler.infer_env {
   TypeEnv,
   lookup_type
 }
-import v2.compiler.infer_emit_info { emit_map_has }
 
 // =========================================================================
 // Types
@@ -156,7 +156,10 @@ fn check_match_exhaustiveness(
   module_name: String
 ) -> List<Diagnostic> {
   // Resolve the scrutinee type -- if it's a leaf name, look up its definition.
-  let resolved = if node_has_structure(n: scrutinee_type) {
+  // Preserve Optional cardinality: lookup returns the type definition which
+  // has Required cardinality, but the scrutinee may be T? (CardOptional).
+  let scrut_is_optional = node_is_optional(n: scrutinee_type)
+  let resolved_raw = if node_has_structure(n: scrutinee_type) {
     scrutinee_type
   } else {
     match lookup_type(env: env, name: scrutinee_type.name) {
@@ -164,6 +167,7 @@ fn check_match_exhaustiveness(
       None => scrutinee_type
     }
   }
+  let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
   if node_is_coproduct(n: resolved) {
     // Optional is represented as [inner_type, None] — the first child

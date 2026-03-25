@@ -190,10 +190,14 @@ pub fn json_optional_node(value: Option<Rc<Node>>) -> String {
 
 pub fn json_optional_inferred_node(value: Option<Rc<InferredNode>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if value.clone().is_some() {
-    serialize_inferred_node(value.clone().unwrap())
-} else {
-    "null".to_string()
+        match value.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(inner) => {
+        let inner = Rc::new(inner.clone());
+        serialize_inferred_node(inner.clone())
+    }
+    None => {
+        "null".to_string()
+    }
 }
     })
 }
@@ -548,27 +552,17 @@ pub fn serialize_lambda_semantics(value: Option<Rc<LambdaSemantics>>) -> String 
 
 pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if value.clone().is_some() {
-    serialize_method_semantics_inner(value.clone().unwrap())
-} else {
-    "null".to_string()
-}
-    })
-}
-
-pub fn serialize_method_semantics_inner(value: Rc<MethodSemantics>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match value.as_ref() {
-    MethodSemantics::PlainMethodSemantics => {
+        match value.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(MethodSemantics::PlainMethodSemantics) => {
         "{\"kind\": \"PlainMethodSemantics\"}".to_string()
     }
-    MethodSemantics::IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type, .. } => {
+    Some(MethodSemantics::IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type, .. }) => {
         v2_rt::concat(v2_rt::concat("{\"kind\": \"IntrinsicMethodSemantics\", \"fold_accumulator_type\": ".to_string(), json_optional_node(fold_accumulator_type.clone())), "}".to_string())
     }
-    MethodSemantics::RuntimeBridgeSemantics { method: _, .. } => {
+    Some(MethodSemantics::RuntimeBridgeSemantics { method: _, .. }) => {
         "{\"kind\": \"RuntimeBridgeSemantics\"}".to_string()
     }
-    MethodSemantics::ServiceMethodSemantics { service_name, op_params, .. } => {
+    Some(MethodSemantics::ServiceMethodSemantics { service_name, op_params, .. }) => {
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(&service_name)), ", \"op_params\": ".to_string()), json_list({
     let mut __mapped_2 = Vec::new();
     for __elem_3 in op_params.iter().cloned() {
@@ -576,6 +570,9 @@ pub fn serialize_method_semantics_inner(value: Rc<MethodSemantics>) -> String {
     }
     Rc::new(__mapped_2)
 })), "}".to_string())
+    }
+    None => {
+        "null".to_string()
     }
 }
     })

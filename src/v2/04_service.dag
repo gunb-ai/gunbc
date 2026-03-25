@@ -19,9 +19,9 @@ import v2.std.core {
   expr_children
 }
 import v2.compiler.infer_types {
-  leaf_node, no_span, node_has_structure
+  leaf_node, no_span, node_has_structure,
+  emit_map_has
 }
-import v2.compiler.infer_emit_info { emit_map_has }
 import v2.compiler.infer_items {
   ItemInfo, ItemKind, FuncItem, TypedModule,
   return_type_to_outputs

@@ -1,7 +1,6 @@
 use crate::v2_core::*;
 use crate::infer_types::*;
 use crate::infer_env::*;
-use crate::infer_emit_info::*;
 use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -101,7 +100,8 @@ pub fn lookup_field_in_variant(variant: Rc<Node>, field_name: &str, module_name:
 }
 
 pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<MatchArm>>>, env: Rc<TypeEnv>, span: SourceSpan, module_name: &str) -> Rc<Vec<Rc<Diagnostic>>> {
-    let resolved = if node_has_structure(scrutinee_type.clone()) {
+    let scrut_is_optional = node_is_optional(scrutinee_type.clone());
+    let resolved_raw = if node_has_structure(scrutinee_type.clone()) {
     scrutinee_type.clone()
 } else {
     match lookup_type(env.clone(), &scrutinee_type.name) {
@@ -112,6 +112,11 @@ pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Matc
         scrutinee_type.clone()
     }
 }
+};
+    let resolved = if scrut_is_optional {
+    with_optional_cardinality(resolved_raw.clone())
+} else {
+    resolved_raw.clone()
 };
     if node_is_coproduct(resolved.clone()) {
     let variant_names = if node_is_optional(resolved.clone()) {
