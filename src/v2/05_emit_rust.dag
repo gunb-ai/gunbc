@@ -1623,41 +1623,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
         emit_typed_field_access(base: b, field: f, summary: summary, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       }
     ExprCall { func: f, args: a, call_semantics: call_semantics } =>
-      let call_str = if f == "empty_map" {
-        match texpr.return_type {
-          Some { value: Resolved { node: ret_type } } =>
-            let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
-            let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-            if type_str != "" && type_str != "Dynamic" {
-              concat("<", type_str, ">::new()")
-            } else {
-              "compile_error!(\"empty_map requires a concrete result type\")"
-            }
-          _ => "compile_error!(\"empty_map missing resolved return type\")"
-        }
-      } else {
-        emit_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      }
-      let fallback_lookup_wrap = if f == "lookup" {
-        let base_check = match a |> first {
-          Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
-          None => false
-        }
-        if base_check { true }
-        else {
-          match texpr.return_type {
-            Some { value: Resolved { node: ret_type } } =>
-              let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
-              if node_is_optional(n: resolved_ret) {
-                type_needs_rc(env: scope.type_env, type_node: with_required_cardinality(n: resolved_ret))
-              } else { false }
-            _ => false
-          }
-        }
-      } else {
-        false
-      }
-      if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
+      emit_typed_call_expr(func: f, args: a, return_type: texpr.return_type, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
       emit_typed_method_call(receiver: r, method: m, args: a, result_type: texpr.return_type, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprMatch { scrutinee: s, arms: arm_list } =>
@@ -1728,6 +1694,44 @@ fn is_map_typed_expr(texpr: Node) -> Bool {
     Some { value: Resolved { node: n } } => node_is_map(n: n)
     _ => false
   }
+}
+
+fn emit_typed_call_expr(func: String, args: List<NamedArg>, return_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let call_str = if func == "empty_map" {
+    match return_type {
+      Some { value: Resolved { node: ret_type } } =>
+        let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
+        let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
+        if type_str != "" && type_str != "Dynamic" {
+          concat("<", type_str, ">::new()")
+        } else {
+          "compile_error!(\"empty_map requires a concrete result type\")"
+        }
+      _ => "compile_error!(\"empty_map missing resolved return type\")"
+    }
+  } else {
+    emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  }
+  let fallback_lookup_wrap = if func == "lookup" {
+    let base_check = match args |> first {
+      Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: receiver_arg.value, scope: scope)
+      None => false
+    }
+    if base_check { true }
+    else {
+      match return_type {
+        Some { value: Resolved { node: ret_type } } =>
+          let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
+          if node_is_optional(n: resolved_ret) {
+            type_needs_rc(env: scope.type_env, type_node: with_required_cardinality(n: resolved_ret))
+          } else { false }
+        _ => false
+      }
+    }
+  } else {
+    false
+  }
+  if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
 }
 
 fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
