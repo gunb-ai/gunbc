@@ -1890,6 +1890,28 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             diagnostics: arg_diags
           }
         } else {
+          // Tier 2c: callable-typed local (e.g. parameter `recurse: fn(Node) -> String`)
+          let callable_local = match map_get(scope.locals, func_name) {
+            Some { value: binding } =>
+              if binding.resolved.name == "Callable" { Some { value: binding.resolved } }
+              else { none }
+            None => none
+          }
+          if callable_local != none {
+            let callable_type = match callable_local {
+              Some { value: ct } => ct
+              None => error_type_node()
+            }
+            let resolved_type = callable_return_type(n: callable_type)
+            InferResult {
+              typed: make_expr_node(
+                expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: Some { value: PlainCallSemantics } },
+                return_type: Some { value: Resolved { node: resolved_type } },
+                span: span
+              ),
+              diagnostics: arg_diags
+            }
+          } else {
           // Tier 3: type constructor or unknown
           let type_match = lookup_type(env: scope.type_env, name: func_name)
           let resolved_type = match type_match {
@@ -1912,6 +1934,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             ),
             diagnostics: concat(arg_diags, call_diags)
           }
+        }
         }
       }
 

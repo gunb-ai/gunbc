@@ -58,7 +58,7 @@ import v2.std.core {
   SourceSpan
 }
 
-import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality }
+import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality, callable_node }
 
 // =========================================================================
 // Parser state types
@@ -1064,6 +1064,12 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
       let te = Node { name: "", span: span, children: map(r.fields, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       TypeResult { type_expr: te, state: r2.state, err: none }
     }
+    // Callable type: fn(T1, T2) -> R
+    Some { value: KwFn } => {
+      let adv = advance(tokens: tokens, state: s)
+      let start_span = current_span(tokens: tokens, state: s)
+      parse_callable_type_expr(tokens: tokens, state: adv.state, start_span: start_span)
+    }
     // Named type
     Some { value: Ident { name: n } } => {
       let adv = advance(tokens: tokens, state: s)
@@ -1071,6 +1077,64 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
       finish_type_expr_from_name(tokens: tokens, state: adv.state, type_name: n, start_span: span)
     }
     _ => TypeResult { type_expr: leaf_type_node(name: "", span: current_span(tokens: tokens, state: s)), state: s, err: Some { value: parse_error(msg: "expected type expression", span: current_span(tokens: tokens, state: s)) } }
+  }
+}
+
+// Parse callable type: fn(T1, T2) -> R
+// Called after 'fn' keyword has been consumed.
+fn parse_callable_type_expr(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> TypeResult {
+  let dummy_te = leaf_type_node(name: "Callable", span: start_span)
+  // Expect opening paren
+  let r = expect(tokens: tokens, state: state, tag: "LParen")
+  if has_err(err: r.err) { return TypeResult { type_expr: dummy_te, state: r.state, err: r.err } }
+  let s = skip_newlines(tokens: tokens, state: r.state)
+
+  // Parse parameter types (unnamed type expressions)
+  let params_result = if check(tokens: tokens, state: s, tag: "RParen") {
+    ParamsResult { params: [], state: s, err: none }
+  } else {
+    parse_callable_param_types(tokens: tokens, state: s, acc: [])
+  }
+  if has_err(err: params_result.err) { return TypeResult { type_expr: dummy_te, state: params_result.state, err: params_result.err } }
+
+  // Expect closing paren
+  let s2 = skip_newlines(tokens: tokens, state: params_result.state)
+  let r2 = expect(tokens: tokens, state: s2, tag: "RParen")
+  if has_err(err: r2.err) { return TypeResult { type_expr: dummy_te, state: r2.state, err: r2.err } }
+
+  // Expect arrow ->
+  let r3 = expect(tokens: tokens, state: r2.state, tag: "Arrow")
+  if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
+
+  // Parse return type
+  let ret = parse_type_expr(tokens: tokens, state: r3.state)
+  if has_err(err: ret.err) { return TypeResult { type_expr: dummy_te, state: ret.state, err: ret.err } }
+
+  let te = callable_node(func_params: params_result.params, ret: ret.type_expr)
+  // Set span from source location
+  let te_span = Node { name: te.name, span: start_span, children: te.children, connective: te.connective, params: te.params, return_type: te.return_type, return_cardinality: te.return_cardinality, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, config: te.config, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, expr_data: te.expr_data }
+  maybe_optional(tokens: tokens, state: ret.state, te: te_span, start_span: start_span)
+}
+
+// Parse comma-separated type expressions for callable parameter types.
+// Each type expression is wrapped in a Param with empty name (positional).
+fn parse_callable_param_types(tokens: List<Token>, state: ParserState, acc: List<Param>) -> ParamsResult {
+  let r = parse_type_expr(tokens: tokens, state: state)
+  if has_err(err: r.err) { return ParamsResult { params: [], state: r.state, err: r.err } }
+  let param = Param { name: "", type_expr: r.type_expr, default_value: none, span: r.type_expr.span }
+  let acc = list_push(acc, param)
+
+  let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+  if e.consumed {
+    let s = skip_newlines(tokens: tokens, state: e.state)
+    if check(tokens: tokens, state: s, tag: "RParen") {
+      // Trailing comma
+      ParamsResult { params: acc, state: s, err: none }
+    } else {
+      parse_callable_param_types(tokens: tokens, state: s, acc: acc)
+    }
+  } else {
+    ParamsResult { params: acc, state: r.state, err: none }
   }
 }
 
