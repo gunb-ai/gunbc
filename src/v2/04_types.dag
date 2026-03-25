@@ -58,12 +58,8 @@ fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, return_type: n.return_type, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
-fn container_property(kind_name: String) -> FieldInit {
-  FieldInit { name: "container_kind", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: kind_name } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
-}
-
 fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [container_property(kind_name: kind_name)], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
@@ -74,11 +70,11 @@ fn tuple_node(first: Node, second: Node) -> Node {
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [FieldInit { name: "map_type", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
@@ -92,8 +88,8 @@ fn callable_return_type(n: Node) -> Node {
   if n.name == "Callable" {
     match n.return_type {
       Some { value: Resolved { node: ret } } => ret
-      None => leaf_node(name: "Dynamic")
-      _ => leaf_node(name: "Dynamic")
+      None => error_type_node()
+      _ => error_type_node()
     }
   } else { n }
 }
@@ -119,7 +115,7 @@ fn node_has_structure(n: Node) -> Bool {
 }
 
 fn node_is_container(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "container_kind")
+  n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet"
 }
 
 fn node_is_optional(n: Node) -> Bool {
@@ -130,7 +126,7 @@ fn node_is_optional(n: Node) -> Bool {
 }
 
 fn node_is_map(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "map_type")
+  n.name == "Map"
 }
 
 fn node_is_leaf(n: Node) -> Bool {
@@ -212,9 +208,10 @@ fn node_type_shape(n: Node) -> String {
 }
 
 fn node_type_compatible(left: Node, right: Node) -> Bool {
-  // Bridge: Error/Dynamic sentinels still enter the graph via ~14 Dynamic
-  // fabrications in infer and resolve_optional_node's Error fallback.
-  // Delete when those fabrication sites are replaced with CompilerError (L1 continuation).
+  // Error rule: suppresses cascading diagnostics from ~12 error_type_node() sites
+  // in infer. Removal requires converting those to CompilerError (L1/Phase 5).
+  // Dynamic rule: supports 15 polymorphic placeholder sites (lambda params,
+  // method returns, kernel stubs). Removal requires type variable infrastructure (L1/Phase 5).
   let left_opt = node_is_optional(n: left)
   let right_opt = node_is_optional(n: right)
   if left.name == "Error" || right.name == "Error" { true }
@@ -269,9 +266,9 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
 }
 
 fn node_type_equals(left: Node, right: Node) -> Bool {
-  // Bridge: Error/Dynamic sentinels still enter the graph via ~14 Dynamic
-  // fabrications in infer and resolve_optional_node's Error fallback.
-  // Delete when those fabrication sites are replaced with CompilerError (L1 continuation).
+  // Error rule: suppresses cascading diagnostics from ~12 error_type_node() sites
+  // in infer. Removal requires converting those to CompilerError (L1/Phase 5).
+  // Dynamic rule: Dynamic==Dynamic is true (self-equal); Dynamic!=concrete is false.
   let left_opt = node_is_optional(n: left)
   let right_opt = node_is_optional(n: right)
   let left_leaf = node_is_leaf(n: left)

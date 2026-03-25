@@ -815,7 +815,7 @@ and extract type resolution, func sigs, and expression inference into
 separate files. Target: `04_infer.dag` under 1500 lines.
 
 **What V1 retirement unblocked:**
-- P3.8 recursive generics (v1 Rust stack overflow gone)
+- P3.8 recursive generics (v1 Rust stack overflow gone — done in PR #206)
 - `map_expr_children` (stage0 handles HOFs natively)
 - Full callback `emit_shared_expr` (stage0→stage1 path)
 - `resolve_expr_types` collapse (~160 → ~10 lines)
@@ -1072,13 +1072,15 @@ Mechanical checklist:
 - [x] Delete `node_is_dynamic(n)` — same (Dynamic = CompilerError)
 - [x] Stop `rt_node` fabricating `Node{name:"Error"}` and `Node{name:"Unit"}`
       sentinel nodes — `rt_node` returns `Node?`; callers handle `None`
-- [x] Delete `node_type_equals` Error==anything rule
-- [x] Delete `node_type_compatible` Error/Dynamic==anything rules
+- [ ] Delete `node_type_equals` Error==anything rule (blocked: ~12 error_type_node() cascade sites produce Error nodes that flow through type comparison; converting to CompilerError is L1/Phase 5 scope)
+- [ ] Delete `node_type_compatible` Error/Dynamic==anything rules (Error: same blocker as above; Dynamic: supports 15 audited polymorphic placeholder sites — removal requires type variable infrastructure, L1/Phase 5)
 - [x] Delete ~9 emit sites checking `"Error"`/`"Dynamic"` by name
 - [x] Delete `"_"` type placeholders that compensate for error-typed nodes
 - [x] Add `return_cardinality: Cardinality` to `Node` (blocks P1.4 completion)
-- [ ] Replace ~15 `leaf_node(name: "Dynamic")` fabrications in infer with
-      `CompilerError` (remaining L1 work)
+- [x] Replace Dynamic error sentinels with `error_type_node()` (8 sites in
+      `callable_return_type`, `lambda_param_types_from_scope`, fold init, method
+      result_type); 15 remaining Dynamic sites audited as correct polymorphic
+      placeholders (lambda params, method returns, kernel stubs, emit fallbacks)
 - [x] Stop `resolve_optional_node` silently swallowing `CompilerError` —
       now surfaces error as diagnostic; `leaf_node("Error")` sentinel persists
       due to `NodeResolveResult` structural constraint (Phase 5 migration)
@@ -1101,8 +1103,8 @@ infer (Dynamic fabrications) and resolution (error re-entry into node graph):
 | `00_core.dag` | `rt_node(n:)` | **Done** — returns `Node?`, no sentinel fabrication |
 | `00_core.dag` | `Node` | **Done** — `return_cardinality: Cardinality` field added |
 | `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | **Done** — deleted |
-| `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Done** — Error/Dynamic special cases removed |
-| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | **Remaining** — some Dynamic fabrications persist for unresolved inference |
+| `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Remaining** — Error/Dynamic permissive rules serve error cascade (~12 sites) and polymorphic placeholders (15 sites); removal is L1/Phase 5 |
+| `04_infer.dag` | ~23 sites fabricating `leaf_node(name: "Dynamic")` | **Done** — 8 error sentinels converted to `error_type_node()`; 15 polymorphic placeholders audited correct with `// Dynamic audit:` comments |
 | `04_infer.dag` | `resolve_optional_node` | **Done** — surfaces `CompilerError` as diagnostic; sentinel `leaf_node("Error")` persists due to `NodeResolveResult.resolved: Node` constraint |
 | `04_infer.dag` | `rt_node(...)` callers | **Remaining** — some collapse `None` into `Unit` instead of propagating failure |
 | `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Largely resolved by upstream InferredNode gating |
@@ -1379,10 +1381,10 @@ R9.
 | P3.1 | Verify parity with remaining v1 paths | **Done on `cousin-wip`** | `v2_bootstrap_fixed_point` passes again end-to-end. Deterministic bootstrap output landed, bare generic type declarations have an explicit non-emitting item kind, variant-parent authority is contextual, runtime bridge lookups preserve Rc wrapping, and typed intrinsic lowering now covers `sort_by` / `fold` / `empty_map` / `to_string`. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
-| P3.4 | Runtime shim dissolution | **Done** | `runtime_rust.dag` (220 lines) IS the `.dag` runtime template. `v2_runtime_shim.rs` deleted (PR #200). **Remaining:** (1) If Go/Python backends need runtime intrinsics, add `runtime_go.dag` / `runtime_python.dag`. (2) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
+| P3.4 | Runtime shim dissolution | **Done** | `runtime_rust.dag` is the authoritative runtime template. v1 legacy `v2_runtime_shim.rs` (336 lines) deleted — v1 retirement (Stream D, PR #200) made it dead code. Future: Go/Python backends may add `runtime_go.dag` / `runtime_python.dag` following the same pattern. |
 | P3.5 | Feature-gate v1 | **Done (superseded)** | v1 crates gated behind `v1-bootstrap` feature. PR #200 went further: `v1-bootstrap` removed from default features entirely. Tests call stage0 directly. |
-| P3.6 | Generics (parameterized type declarations) | **Done (non-recursive)** | Pair<A,B>, Box<T>, nested Pair<List<Int>, String> all work. Substitution in `resolve_node_bounded`. Arity bridge deleted (P3.7). **Recursive generics** see P3.8 (now unblocked). |
-| P3.8 | Recursive generics | **Unblocked** | `type MyList<T> = Nil \| Cons { head: T, tail: MyList<T> }` — was blocked by v1 interpreter Rust stack overflow. V1 retirement (PR #200) removes this constraint: stage0 runs as compiled Rust with a full-size stack. **Fix path:** add explicit generic-expansion memoization to `resolve_node_bounded`, regenerate stage0 via stage0→stage1 bootstrap. Test: `v2_generic_recursive_type` (`#[ignore]`). |
+| P3.6 | Generics (parameterized type declarations) | **Done** | Pair<A,B>, Box<T>, nested Pair<List<Int>, String> all work. Substitution in `resolve_node_bounded`. Arity bridge deleted (P3.7). Recursive generics (MyList<T> = Nil \| Cons) also work — see P3.8. |
+| P3.8 | Recursive generics | **Done** | `type MyList<T> = Nil \| Cons { head: T, tail: MyList<T> }` compiles with 0 diagnostics. Cycle detection via Kahn's algorithm in `04_cycle.dag` precomputes `recursive_type_set` on `TypeEnv`. `resolve_node_bounded` skips self-referencing fields in recursive types. v1 stack overflow blocker removed by Stream D v1 retirement (PR #200). Test: `generic_recursive_type` (active, not ignored). |
 | P3.7 | Delete arity bridge | **Done** | `parameterized_type_arity` and `is_parameterized_type` deleted from `00_core.dag` and `04_types.dag`. Compiler reads arity from `.dag` declarations (bare `type List<element>`, `type Map<key, value>`, `type Set<element>` in `dsl/std/types.dag`). Arity validation added to `resolve_node_bounded` (TypeMismatch diagnostic on wrong arg count). |
 
 ### P3.6 Design: Generics as Compositional DAG Slots
@@ -1543,7 +1545,11 @@ of the normalization pass naturally (post-order traversal).
   `Optional` is not a type declaration — it was dissolved into cardinality
   on binding sites in Phase 1 (P1.4) — **MET**
 - Arity bridge (P1.17) is deleted — compiler reads arity from declarations — **MET** (P3.7)
-- No short-term bridges remain from Phase 1 — **MET**
+- No short-term bridges remain from Phase 1 — **MET** (container properties deleted,
+  Dynamic error sentinels converted to `error_type_node()`; remaining
+  Error/Dynamic permissive rules serve permanent compiler functions —
+  error cascade recovery and polymorphic placeholders — documented
+  with audit comments, removal is L1/Phase 5 scope)
 
 ---
 

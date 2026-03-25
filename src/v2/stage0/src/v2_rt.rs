@@ -1,11 +1,4 @@
-//! LEGACY (bootstrap-only): Rust source text for the `v2_rt` runtime shim.
-//!
-//! The authoritative runtime template is now in `src/v2/runtime_rust.dag`.
-//! This file is only used by the v1 bootstrap path (`v2_crate_emit.rs`).
-//! Once v1 is retired, this file should be deleted.
-
-/// The Rust source code for the v2 runtime shim module.
-pub const V2_RUNTIME_SOURCE: &str = r#"//! Runtime shims for v2 compiler intrinsic operations.
+//! Runtime shims for v2 compiler intrinsic operations.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -315,22 +308,4 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
-}
-"#;
-
-#[cfg(test)]
-mod tests {
-    use super::V2_RUNTIME_SOURCE;
-
-    #[test]
-    fn substring_clamps_bounds() {
-        assert!(
-            V2_RUNTIME_SOURCE.contains("if end <= start {")
-                && V2_RUNTIME_SOURCE.contains("return String::new();")
-                && V2_RUNTIME_SOURCE.contains("let start = start.min(len);")
-                && V2_RUNTIME_SOURCE.contains("let end = end.min(len);")
-                && V2_RUNTIME_SOURCE.contains("s[start..end].to_string()"),
-            "runtime shim should clamp substring bounds and return empty when the clamped range is invalid"
-        );
-    }
 }

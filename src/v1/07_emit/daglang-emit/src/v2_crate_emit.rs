@@ -11,8 +11,7 @@
 //! Given parsed v2 module ASTs, this module:
 //! 1. Emits types with recursive field boxing (Phase 4)
 //! 2. Emits functions via fn_codegen
-//! 3. Writes runtime shims (v2_rt module)
-//! 4. Assembles a complete crate with Cargo.toml and lib.rs
+//! 3. Assembles a complete crate with Cargo.toml and lib.rs
 //!
 //! The emitted crate is written to `target/v2-compiler/`.
 
@@ -22,7 +21,6 @@ use std::path::{Path, PathBuf};
 use crate::fn_codegen;
 use crate::render_rust;
 use crate::type_codegen;
-use crate::v2_runtime_shim;
 use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use gunbc_ir::code_ir;
@@ -688,13 +686,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         content: lib_content,
     });
 
-    // 7. Emit v2_rt.rs runtime shims
-    files.push(GeneratedFile {
-        rel_path: "src/v2_rt.rs".to_string(),
-        content: v2_runtime_shim::V2_RUNTIME_SOURCE.to_string(),
-    });
-
-    // 8. Emit generated test module from the workspace source tree and import
+    // 7. Emit generated test module from the workspace source tree and import
     //    closure so the generated crate embeds a single, structural source set.
     let dag_sources = collect_embedded_dag_sources();
     files.push(GeneratedFile {
@@ -839,7 +831,7 @@ fn main() {
                 }));
             }
 
-            eprintln!("compiling {} .dag files from {}", sources.len(), source_dir);
+            eprintln!("compiling {} .dag files from {} (target: {})", sources.len(), source_dir, target);
 
             let render_target = match target.as_str() {
                 "rust" => artifact::RenderTarget::Rust,

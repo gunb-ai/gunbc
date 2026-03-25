@@ -541,6 +541,26 @@ fn has_cost_sum(expr: CostExpr) -> Bool {
   }
 }
 
+// Count maximum CostSum nesting depth (loop nesting).
+fn cost_sum_depth(expr: CostExpr) -> Int {
+  match expr {
+    CostSum { binder: _, upper: _, body: b } => 1 + cost_sum_depth(expr: b)
+    CostAdd { left: l, right: r } =>
+      let ld = cost_sum_depth(expr: l)
+      let rd = cost_sum_depth(expr: r)
+      if rd > ld { rd } else { ld }
+    CostMul { left: l, right: r } =>
+      let ld = cost_sum_depth(expr: l)
+      let rd = cost_sum_depth(expr: r)
+      if rd > ld { rd } else { ld }
+    CostMax { left: l, right: r } =>
+      let ld = cost_sum_depth(expr: l)
+      let rd = cost_sum_depth(expr: r)
+      if rd > ld { rd } else { ld }
+    _ => 0
+  }
+}
+
 fn classify_complexity(expr: CostExpr) -> String {
   let s = simplify_cost(expr: expr)
   match s {
@@ -557,8 +577,10 @@ fn classify_complexity(expr: CostExpr) -> String {
     CostAdd { left: l, right: r } =>
       let lc = classify_complexity(expr: l)
       let rc = classify_complexity(expr: r)
+      // Sequential composition: dominant cost is the higher-cost operand.
+      // When both have loops, pick the deeper-nested one structurally.
       let dominant = if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
-        lc
+        if cost_sum_depth(expr: r) > cost_sum_depth(expr: l) { rc } else { lc }
       } else if has_cost_sum(expr: l) {
         lc
       } else if has_cost_sum(expr: r) {

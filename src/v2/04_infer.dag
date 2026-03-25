@@ -78,7 +78,7 @@ import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_return_type_or_name,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  container_property, container_node,
+  container_node,
   map_node, bare_map_node,
   tuple_node, callable_node, callable_return_type,
   error_type_node,
@@ -1159,7 +1159,7 @@ fn lambda_param_types_from_scope(scope: InferScope, params: List<String>) -> Lis
   params |> map(param_name =>
     match map_get(scope.locals, param_name) {
       Some { value: binding } => binding.resolved
-      None => leaf_node(name: "Dynamic")
+      None => error_type_node()
     }
   )
 }
@@ -1266,6 +1266,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node) -> InferScope {
 
 // Extend scope with lambda parameter names.
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
+  // Dynamic audit: correct — lambda params start as Dynamic; refined during body inference
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, p, TypeBinding { name: p, resolved: leaf_node(name: "Dynamic") })
   )
@@ -1478,6 +1479,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         } else if pair.first == param_count - 1 {
           elem_type
         } else {
+          // Dynamic audit: correct — fold middle params are structurally unknown
           leaf_node(name: "Dynamic")
         }
       )
@@ -1487,6 +1489,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         } else if pair.first == param_count - 1 {
           map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: elem_type })
         } else {
+          // Dynamic audit: correct — fold middle params are structurally unknown
           map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: leaf_node(name: "Dynamic") })
         }
       )
@@ -1533,6 +1536,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
           if pair.first == (lam_params |> count) - 1 {
             element_type
           } else {
+            // Dynamic audit: correct — multi-param lambda non-last params are unknown
             leaf_node(name: "Dynamic")
           }
         )
@@ -1548,6 +1552,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
           if pair.first == (lam_params |> count) - 1 {
             extend_scope(scope: acc, name: pair.second, resolved: element_type)
           } else {
+            // Dynamic audit: correct — multi-param lambda non-last params are unknown
             extend_scope(scope: acc, name: pair.second, resolved: leaf_node(name: "Dynamic"))
           }
         )
@@ -1762,7 +1767,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             diagnostics: base_diags
           }
         None =>
-          // Dynamic bases: field access is always permitted (type unknown).
+          // Dynamic audit: correct — field access on Dynamic base; type is genuinely unknown
           if resolved_base.name == "Dynamic" {
             let fa_texpr = make_expr_node(
               expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
@@ -1817,8 +1822,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let call_method_args = call_args |> skip(1)
       let call_fold_info = extract_fold_init_info(method_name: func_name, method_args: call_method_args, min_args: 2, scope: scope)
       let call_fold_acc_type = match call_fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_node(name: "Dynamic")  Untyped => leaf_node(name: "Dynamic") }
-        None => leaf_node(name: "Dynamic")
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => error_type_node() }
+        None => error_type_node()
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
         // Collection method bridge path (no known sig — bridge to method call)
@@ -1893,7 +1898,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let remaining = typed_args |> skip(1)
           let base_result_type = match method_resolution.result_type {
             Some { value: mt } => mt
-            None => leaf_node(name: "Dynamic")
+            None => error_type_node()
           }
           let bridge_result_type = refine_collection_result_type(method_name: func_name, typed_args: remaining, receiver_type: first_arg_type, fallback: base_result_type)
           InferResult {
@@ -2005,8 +2010,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       let fold_info = extract_fold_init_info(method_name: method_name, method_args: mc_args, min_args: 2, scope: scope)
       let fold_acc_type = match fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => leaf_node(name: "Dynamic")  Untyped => leaf_node(name: "Dynamic") }
-        None => leaf_node(name: "Dynamic")
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => error_type_node() }
+        None => error_type_node()
       }
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
@@ -2700,6 +2705,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // The real Optional is parametric (Optional<T>), but the kernel provides
   // the structural skeleton (Disj with Some/None variants) so that
   // RecordLit and pattern matching resolve variant constructors correctly.
+  // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -2828,6 +2834,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: leaf_node(name: name) })
   )
+  // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
