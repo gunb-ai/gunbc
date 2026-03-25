@@ -17,6 +17,8 @@ members = [
     # v1 emit -- used by bootstrap tests to assemble stage0
     "src/v1/06_artifacts/daglang-derive",
     "src/v1/07_emit/daglang-emit",
+    # v2 stage0 — bootstrap seed (generated from .dag by v1 emitter)
+    "src/v2/stage0",
     # v2 self-hosted compiler tests
     "src/v2/tests",
 ]

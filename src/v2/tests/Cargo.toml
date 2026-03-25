@@ -16,6 +16,7 @@ v1-bootstrap = [
 ]
 
 [dependencies]
+v2-compiler = { path = "../stage0" }
 daglang-eval = { path = "../../v1/05_graph/daglang-eval", optional = true }
 daglang-emit = { path = "../../v1/07_emit/daglang-emit", optional = true }
 daglang-syntax = { path = "../../v1/03_source/daglang-syntax", optional = true }
