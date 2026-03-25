@@ -24953,7 +24953,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         // Prevent silent type size regressions in generated v2 types.
         // These bounds assume Node.transport and Node.config are boxed (R2).
         let node_size = std::mem::size_of::<crate::v2_core::Node>();
-        let expr_size = std::mem::size_of::<crate::v2_core::Expr>();
+        let expr_size = std::mem::size_of::<crate::v2_core::ExprData>();
         assert!(
             node_size <= 176,
             "Node size regression: {} bytes (limit: 176). Check for unboxed rare fields.",
@@ -25193,7 +25193,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
-                let typed = crate::reconcile::reconcile(graph);
+                let typed = crate::infer::reconcile(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
                     .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
@@ -25308,7 +25308,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::reconcile::TypedModule>>::new();
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer::TypedModule>>::new();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -25322,7 +25322,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
-                    let _unres = crate::reconcile::build_type_env_unresolved(
+                    let _unres = crate::infer::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -25339,7 +25339,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
-                    let env_result = crate::reconcile::build_type_env(
+                    let env_result = crate::infer::build_type_env(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -25363,7 +25363,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 2: full typecheck_module
                     let t_full = Instant::now();
-                    let tc_result = crate::reconcile::typecheck_module(
+                    let tc_result = crate::infer::typecheck_module(
                         resolved.clone(),
                         module_index
                     );
