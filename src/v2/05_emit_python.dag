@@ -80,7 +80,7 @@ import v2.compiler.emit {
   python_literal, python_bin_op_symbol, python_map_template,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding,
-  emit_unary_op, emit_lambda, emit_lambda_params,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr,
   emit_string_literal,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -94,7 +94,7 @@ import v2.compiler.emit {
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name,
   apply_type_template1, apply_type_template2,
-  is_null_coalesce, is_type_alias_return_node,
+  is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   classify_typed_item, classify_type_structure,
   bridge_method_base_name,
@@ -471,7 +471,7 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
 fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match texpr.expr_data {
     ExprLiteral { value: v } => emit_literal(value: v, target: Python)
-    ExprError { kind: _, message: message } => concat("raise RuntimeError(", emit_string_literal(s: message, suffix: ""), ")")
+    ExprError { kind: _, message: message } => emit_error_expr(message: message, target: Python)
     ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: Python)
     ExprFieldAccess { base: b, field: f, summary: summary } =>
       if is_typed_service_call_receiver(receiver: texpr) {
@@ -515,7 +515,7 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprSlice { base: b, start: s, end: e } =>
       emit_py_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth)
     ExprReturn { value: v } =>
-      concat("return ", emit_py_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth))
+      emit_return(value: emit_py_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth), target: Python)
     NoExprData => ""
   }
 }
@@ -719,20 +719,15 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<FieldInit>, registr
 }
 
 fn emit_py_typed_list_lit(elements: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  if elements |> count == 0 {
-    "[]"
-  } else {
-    let el_strs = elements |> map(e => emit_py_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth))
-    let els_str = el_strs |> join(separator: ", ")
-    concat("[", els_str, "]")
-  }
+  let el_strs = elements |> map(e => emit_py_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth))
+  emit_list_lit_expr(element_strs: el_strs, target: Python)
 }
 
 fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let l_str = emit_py_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth)
   let r_str = emit_py_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth)
   if is_null_coalesce(op: op) {
-    concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
+    emit_null_coalesce(l_str: l_str, r_str: r_str, target: Python)
   } else {
     let op_str = emit_bin_op_symbol(op: op, target: Python)
     concat("(", l_str, " ", op_str, " ", r_str, ")")
