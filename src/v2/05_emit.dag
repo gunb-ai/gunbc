@@ -874,9 +874,11 @@ fn emit_node_type(n: Node, target: RenderTarget) -> String {
     emit_container(kind: "optional", inner: emit_node_type(n: with_required_cardinality(n: n), target: target), target: target)
   } else {
     let kind = classify_type_structure(n: n)
-    if kind == TypeLeaf {
+    let is_leaf = kind == TypeLeaf
+    let is_conj = kind == TypeConj
+    if is_leaf {
       emit_node_type_leaf(n: n, target: target)
-    } else if kind == TypeConj {
+    } else if is_conj {
       emit_node_type_conj(n: n, target: target)
     } else {
       emit_node_type_disj(n: n, target: target)
