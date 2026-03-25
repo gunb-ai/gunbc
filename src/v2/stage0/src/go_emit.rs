@@ -81,3 +81,9 @@ pub static GO_RESERVED: &[&str] = &[
     "recover"
 ];
 
+pub static GO_RESERVED_ESCAPE_SUFFIX: &str = "_";
+
+pub static GO_SOURCE_EXTENSION: &str = ".go";
+
+pub static GO_MANIFEST_FILE: &str = "go.mod";
+

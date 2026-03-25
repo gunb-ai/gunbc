@@ -480,7 +480,7 @@ fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, regis
 
 fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
-  let shared = emit_shared_expr(texpr: texpr, target: Go)
+  let shared = emit_shared_expr(texpr: texpr, target: Go, recurse: (t, s, d) => emit_go_typed_expr(texpr: t, registry: registry, scope: s, depth: 0), scope: scope, depth: depth)
   match shared {
     Some { value: result } => if result == "" { "" } else { concat(prefix, result) }
     None =>
@@ -507,14 +507,8 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
       emit_go_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: _ } =>
       concat(prefix, emit_go_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope))
-    ExprListLit { elements: els } =>
-      concat(prefix, emit_go_typed_list_lit(elements: els, registry: registry, scope: scope))
     ExprBinOp { op: o, left: l, right: r } =>
       concat(prefix, emit_go_typed_bin_op(op: o, left: l, right: r, registry: registry, scope: scope))
-    ExprUnaryOp { op: o, operand: e } =>
-      concat(prefix, emit_go_typed_unary_op(op: o, operand: e, registry: registry, scope: scope))
-    ExprLambda { params: ps, body: bd, semantics: _ } =>
-      concat(prefix, emit_go_typed_lambda(params: ps, body: bd, registry: registry, scope: scope))
     ExprStringInterp { parts: ps } =>
       concat(prefix, emit_go_typed_string_interp(parts: ps, registry: registry, scope: scope))
     ExprBlock { stmts: ss } =>
@@ -527,9 +521,7 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
       concat(prefix, emit_go_typed_index(base: b, index: i, registry: registry, scope: scope))
     ExprSlice { base: b, start: s, end: e } =>
       concat(prefix, emit_go_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope))
-    ExprReturn { value: v } =>
-      concat(prefix, emit_return(value: emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0), target: Go))
-    // ExprLiteral, ExprError, NoExprData handled by emit_shared_expr
+    // ExprLiteral, ExprError, NoExprData, ExprUnaryOp, ExprLambda, ExprListLit, ExprReturn handled by emit_shared_expr
     _ =>
       concat(prefix, "/* unhandled expr */")
   }
@@ -735,10 +727,6 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<FieldInit>, registr
   }
 }
 
-fn emit_go_typed_list_lit(elements: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let el_strs = elements |> map(e => emit_go_typed_expr(texpr: e, registry: registry, scope: scope, depth: 0))
-  emit_list_lit_expr(element_strs: el_strs, target: Go)
-}
 
 fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let l_str = emit_go_typed_expr(texpr: left, registry: registry, scope: scope, depth: 0)
@@ -751,16 +739,6 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
   }
 }
 
-fn emit_go_typed_unary_op(op: UnaryOpKind, operand: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let expr_str = emit_go_typed_expr(texpr: operand, registry: registry, scope: scope, depth: 0)
-  emit_unary_op(op: op, operand_str: expr_str, target: Go)
-}
-
-fn emit_go_typed_lambda(params: List<String>, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let params_str = emit_lambda_params(param_names: params, target: Go)
-  let body_str = emit_go_typed_expr(texpr: body, registry: registry, scope: scope, depth: 0)
-  emit_lambda(params_str: params_str, body_str: body_str, target: Go)
-}
 
 fn emit_go_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let fmt_parts = parts |> map(p => go_typed_interp_segment(part: p, registry: registry, scope: scope))

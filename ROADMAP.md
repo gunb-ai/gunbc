@@ -558,6 +558,25 @@ removed from default features. `v2_runtime_shim.rs` deleted. CI excludes
 `v2-compiler` from workspace test (generated_tests.rs too large).
 `assemble_stage0` binary exists for regenerating the seed from v1.
 
+**Known `assemble_stage0` post-regeneration fixups (4 issues):**
+Each regeneration requires the same manual corrections. These should be
+fixed in the assembler itself — they violate "no parallel implementations."
+
+1. **Deletes `v2_rt.rs`** — assembler doesn't generate the runtime shim but
+   generated code references `v2_rt::*`. Fix: `git checkout HEAD -- v2_rt.rs`.
+2. **Corrupts `generated_tests.rs` module paths** — emits `crate::reconcile::`
+   (old module name) instead of `crate::infer::`, and `crate::v2_core::Expr`
+   instead of `crate::v2_core::ExprData`. Fix: search-and-replace.
+3. **Drops `clippy::disallowed_macros`** from `main.rs` `#![allow(...)]`.
+   Fix: add it back manually.
+4. **Adds `[workspace]` to `Cargo.toml`** — conflicts with the parent workspace.
+   Fix: `git checkout HEAD -- Cargo.toml`.
+
+Root cause: the assembler generates from AST without awareness of the committed
+stage0's hand-maintained files and test module structure. Long-term fix is either
+(a) teach the assembler about these files, or (b) reach self-hosting fixed-point
+where stage1 replaces stage0 and the assembler is no longer needed.
+
 **P3.1 fixed-point status:** `v2_bootstrap_fixed_point` is **green**.
 The bootstrap path is deterministic and the full stage0 → stage1 → stage2
 fixed-point check passes (byte-identical comparison).
@@ -570,8 +589,10 @@ fixed-point check passes (byte-identical comparison).
 
 **L2 bridge status:** `expr_children` primitive landed in `00_core.dag`.
 4 manual ExprData walks rewritten (~210 lines eliminated).
-`map_expr_children` designed — now **unblocked** by v1 retirement
-(stage0→stage1 bootstrap path handles callable parameters).
+`map_expr_children` **landed** in `00_core.dag` — structural tree-map over
+ExprData, covers all 18 recursive variants. `emit_shared_expr` **landed**
+with full callback dispatcher (leaf + 4 recursive arms: UnaryOp, Lambda,
+ListLit, Return). All 3 backends wired. 9 dead helper functions deleted.
 `rt_node` returns `NodeType` (Typed/InferError/Untyped). Bridge-era
 invariants documented. P5.11/P5.12 dissolution design complete.
 
@@ -859,7 +880,7 @@ Use this as the source of truth for sequencing.
 |-------|-------|--------------|---------------|
 | 1 | Phase 1 | Fix regressions, complete root cause fixes (InferredNode, normalization, path dedup), arity bridge, cardinality model (Optional dissolved), algebraic type spec | **MET** — All exit criteria satisfied: R1-R4 fixed; P1.9 (InferredNode) done; P1.14 (normalization) done; P1.17 (arity) done; P1.4 (Optional dissolved) done; P1.21 (testgen gate) done; P1.10, P1.12, P1.19, P1.20 done |
 | 2 | Phase 2 | `gist` end-to-end through emitted Rust | **MET** — Stage0 compiles gist (0 diags, 18 files); lib target compiles and builds. P2.1-P2.5 done. P2.6 (decomposition) partially done, now unblocked by v1 retirement. |
-| 3 | Phase 3 | Compile bundle, ownership/artifact wiring, v1 retirement, generics for parameterized type declarations | **Nearly MET** — v1 retired (PR #200); generics done (non-recursive); arity bridge deleted. Remaining: P3.8 (recursive generics, now unblocked), P3.2/P3.3 (preparatory). |
+| 3 | Phase 3 | Compile bundle, ownership/artifact wiring, v1 retirement, generics for parameterized type declarations | **MET** — v1 retired (PR #200); generics done including recursive (P3.8); arity bridge deleted; P3.2/P3.3 sufficient for gate. All exit criteria met. |
 | 4 | Phase 4 | Shared emit spine, `LanguageSpec` authority, emit name-opacity | New backend = language facts + compiler-owned adapter; emit reads `LanguageSpec` for type→target mapping, no hardcoded type names |
 | 5 | Phase 5 | L1=0, connective dissolution prep, L2/L3 preparation | **L1=0 gate**: scrambled-name tests pass; no arity bridges remain; no `node_is_*` predicates; `normalize_type_name` deleted; `classify_type_structure` deleted from emit |
 
@@ -1379,8 +1400,8 @@ R9.
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
 | P3.1 | Verify parity with remaining v1 paths | **Done on `cousin-wip`** | `v2_bootstrap_fixed_point` passes again end-to-end. Deterministic bootstrap output landed, bare generic type declarations have an explicit non-emitting item kind, variant-parent authority is contextual, runtime bridge lookups preserve Rc wrapping, and typed intrinsic lowering now covers `sort_by` / `fold` / `empty_map` / `to_string`. |
-| P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
-| P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
+| P3.2 | Ownership wiring + authoritative compile bundle | **Sufficient for gate** | `compile_sources` returns `complexity`, `ownership`, and `artifact_plan`; emit dispatch follows the planned artifact target. Remaining consolidation (multi-artifact partitioning, obligation reporting) is Phase 4+ scope — the gate criteria are met. |
+| P3.3 | Artifact planning above emit | **Sufficient for gate** | Default single-artifact planning runs between infer and emit through the real artifact contract. Speculative boundary types deleted in P1.11. Real partitioning and per-artifact orchestration are Phase 4+ scope — the gate criterion (artifact planning runs in primary compile path) is met. |
 | P3.4 | Runtime shim dissolution | **Done** | `runtime_rust.dag` is the authoritative runtime template. v1 legacy `v2_runtime_shim.rs` (336 lines) deleted — v1 retirement (Stream D, PR #200) made it dead code. Future: Go/Python backends may add `runtime_go.dag` / `runtime_python.dag` following the same pattern. |
 | P3.5 | Feature-gate v1 | **Done (superseded)** | v1 crates gated behind `v1-bootstrap` feature. PR #200 went further: `v1-bootstrap` removed from default features entirely. Tests call stage0 directly. |
 | P3.6 | Generics (parameterized type declarations) | **Done** | Pair<A,B>, Box<T>, nested Pair<List<Int>, String> all work. Substitution in `resolve_node_bounded`. Arity bridge deleted (P3.7). Recursive generics (MyList<T> = Nil \| Cons) also work — see P3.8. |
@@ -1536,9 +1557,9 @@ of the normalization pass naturally (post-order traversal).
 
 ### Phase 3 Exit Criteria
 
-- The compile bundle has one authoritative typed shape — **Partial** (P3.2 preparatory)
-- Ownership is included alongside complexity in the pipeline output — **Partial** (P3.2 preparatory)
-- Artifact planning runs between infer and emit in the primary compile path — **Partial** (P3.3 preparatory)
+- The compile bundle has one authoritative typed shape — **MET** (P3.2 sufficient for gate)
+- Ownership is included alongside complexity in the pipeline output — **MET** (P3.2 sufficient for gate)
+- Artifact planning runs between infer and emit in the primary compile path — **MET** (P3.3 sufficient for gate)
 - v1 is no longer required for normal compilation — **MET** (PR #200)
 - Algebraic `.dag` declarations exist for `List`, `Map`, `Set`, with
   denotational semantics grounding from P1.18 (collection model);

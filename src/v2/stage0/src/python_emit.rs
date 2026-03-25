@@ -55,3 +55,13 @@ pub static PYTHON_RESERVED: &[&str] = &[
     "case"
 ];
 
+pub static PYTHON_RESERVED_ESCAPE_SUFFIX: &str = "_";
+
+pub static PYTHON_DERIVE_ATTRIBUTE: &str = "@dataclass";
+
+pub static PYTHON_DEFAULT_VALUE: &str = "None";
+
+pub static PYTHON_SOURCE_EXTENSION: &str = ".py";
+
+pub static PYTHON_MODULE_INIT: &str = "__init__.py";
+
