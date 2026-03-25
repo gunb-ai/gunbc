@@ -7942,287 +7942,6 @@ fn detect_type_cycles_kahn(
   result
 }
 "##;
-    const SRC_V2_04_EMIT_INFO_DAG_SOURCE: &str = r##"// Emit graph info: type summaries, variant-to-enum maps, and field metadata
-// used by the emission phase. These are pure functions over Node trees —
-// no dependency on TypedModule or InferScope.
-//
-// Dependency chain:
-//   v2.compiler.infer_types (type predicates, normalization)
-//     -> v2.compiler.infer_emit_info (type summaries, field summaries)
-//       -> v2.compiler.infer (build_emit_graph_info, typecheck pipeline)
-//         -> v2.compiler.emit (consume EmitGraphInfo)
-
-module v2.compiler.infer_emit_info
-
-import v2.std.core {
-  Node,
-  InferredNode, Resolved,
-  FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
-  FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary
-}
-import v2.compiler.infer_types {
-  node_has_structure, node_is_product, node_is_optional,
-  with_required_cardinality,
-  normalize_type_name, normalize_access_type_node,
-  rt_type, child_return_type_or_name, node_type_equals
-}
-
-// =========================================================================
-// Types
-// =========================================================================
-
-type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
-
-type TypeSummary {
-  name: String
-  repr: TypeRepr
-  field_summaries: Map<String, FieldSummary>
-}
-
-type EmitGraphInfo {
-  type_summaries: Map<String, TypeSummary>
-  variant_to_enum: Map<String, String>
-  enum_variant_membership: Map<String, Bool>
-  field_type_names: Map<String, String>
-}
-
-type EmitInfoBuildState {
-  type_summaries: Map<String, TypeSummary>
-  variant_to_enum: Map<String, String>
-  enum_variant_membership: Map<String, Bool>
-  field_type_names: Map<String, String>
-}
-
-// =========================================================================
-// Constructors and lookups
-// =========================================================================
-
-fn empty_emit_graph_info() -> EmitGraphInfo {
-  EmitGraphInfo {
-    type_summaries: empty_map(),
-    variant_to_enum: empty_map(),
-    enum_variant_membership: empty_map(),
-    field_type_names: empty_map()
-  }
-}
-
-fn normalize_emit_type_name(type_name: String) -> String {
-  normalize_type_name(name: type_name)
-}
-
-fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
-}
-
-// =========================================================================
-// Field summary helpers
-// =========================================================================
-
-fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
-  let normed = normalize_access_type_node(n: type_node)
-  if node_is_optional(n: normed) { OptionalValue }
-  else { PlainValue }
-}
-
-fn is_pair_children(children: List<Node>) -> Bool {
-  if children |> count != 2 { false }
-  else {
-    match children |> first {
-      Some { value: c0 } =>
-        match children |> skip(1) |> first {
-          Some { value: c1 } => c0.name == "first" && c1.name == "second"
-          None => false
-        }
-      None => false
-    }
-  }
-}
-
-fn pair_access_style(field_name: String) -> FieldAccessStyle {
-  if field_name == "first" { TupleFirst }
-  else { TupleSecond }
-}
-
-// =========================================================================
-// Struct and enum field summary builders
-// =========================================================================
-
-fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummary> {
-  let is_pair = is_pair_children(children: children)
-  fold(children, init: empty_map(), f: (acc, child) =>
-    if child.return_type == none {
-      acc
-    } else {
-      let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
-      map_insert(acc, child.name, FieldSummary {
-        access_style: style,
-        value_shape: field_value_shape_from_type_node(type_node: rt_type(n: child))
-      })
-    }
-  )
-}
-
-fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node? {
-  match variants |> first {
-    Some { value: variant } =>
-      match variant.children |> filter(f => f.name == field_name) |> first {
-        Some { value: field_child } => Some { value: field_child }
-        None => none
-      }
-    None => none
-  }
-}
-
-fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) -> Bool {
-  variants |> all(variant =>
-    variant.children |> any(field_child => field_child.name == field_name)
-  )
-}
-
-fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
-  variants |> all(variant =>
-    match variant.children |> filter(f => f.name == field_name) |> first {
-      Some { value: field_child } => node_type_equals(left: child_return_type_or_name(ch: field_child), right: expected)
-      None => false
-    }
-  )
-}
-
-fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary> {
-  let first_field_names = match variants |> first {
-    Some { value: first_variant } => first_variant.children |> map(f => f.name)
-    None => []
-  }
-  let shared = first_field_names |> filter(field_name =>
-    enum_field_present_in_all_variants(variants: variants, field_name: field_name)
-  )
-  let consistent = shared |> filter(field_name =>
-    match find_first_enum_field_node(variants: variants, field_name: field_name) {
-      Some { value: first_field } =>
-        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_return_type_or_name(ch: first_field))
-      None => false
-    }
-  )
-  fold(consistent, init: empty_map(), f: (acc, field_name) =>
-    match find_first_enum_field_node(variants: variants, field_name: field_name) {
-      Some { value: first_field } =>
-        map_insert(acc, field_name, FieldSummary {
-          access_style: EnumAccessor,
-          value_shape: field_value_shape_from_type_node(type_node: child_return_type_or_name(ch: first_field))
-        })
-      None => acc
-    }
-  )
-}
-
-// =========================================================================
-// Type summary builders
-// =========================================================================
-
-fn build_type_summary(item: Node) -> TypeSummary? {
-  if node_has_structure(n: item) == false || item.transport != none {
-    return none
-  }
-  if node_is_product(n: item) {
-    Some { value: TypeSummary {
-      name: normalize_emit_type_name(type_name: item.name),
-      repr: StructRepr,
-      field_summaries: build_struct_field_summaries(children: item.children)
-    } }
-  } else {
-    let unit_only = item.children |> all(child => child.children |> count == 0)
-    Some { value: TypeSummary {
-      name: normalize_emit_type_name(type_name: item.name),
-      repr: EnumRepr { unit_only: unit_only },
-      field_summaries: build_enum_field_summaries(variants: item.children)
-    } }
-  }
-}
-
-fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
-  match build_type_summary(item: item) {
-    Some { value: summary } =>
-      // Add per-variant summaries for enums so is_optional_struct_field can look up
-      // individual variant field types (e.g. VariantPattern.parent_enum).
-      let with_variants = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.type_summaries, f: (acc, variant) =>
-            if variant.children |> count > 0 {
-              map_insert(acc, normalize_emit_type_name(type_name: variant.name), TypeSummary {
-                name: normalize_emit_type_name(type_name: variant.name),
-                repr: StructRepr,
-                field_summaries: build_struct_field_summaries(children: variant.children)
-              })
-            } else { acc }
-          )
-        _ => state.type_summaries
-      }
-      let next_summaries = map_insert(with_variants, summary.name, summary)
-      // First-write-wins for variant_to_enum: if a variant name exists in
-      // multiple enums, keep the first registration. The module-level vtoe
-      // override corrects per-module based on imports. This makes vtoe
-      // construction deterministic regardless of Map iteration order.
-      let next_variants = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
-            match map_get(acc, child.name) {
-              Some { value: existing } =>
-                // Ambiguous: variant exists in multiple enums. Mark as
-                // ambiguous so the module-level override is the sole authority.
-                if existing == summary.name { acc }
-                else { map_insert(acc, child.name, "__ambiguous__") }
-              None => map_insert(acc, child.name, summary.name)
-            }
-          )
-        _ => state.variant_to_enum
-      }
-      // Build enum_variant_membership: "EnumName|VariantName" -> true
-      let next_evm = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.enum_variant_membership, f: (acc, child) =>
-            map_insert(acc, concat(summary.name, "|", child.name), true)
-          )
-        _ => state.enum_variant_membership
-      }
-      // Build field_type_names: "TypeName|field_name" -> "FieldTypeName"
-      // For structs: direct field type names. For enums: per-variant field type names.
-      let next_ftn = match summary.repr {
-        StructRepr =>
-          fold(item.children, init: state.field_type_names, f: (acc, child) =>
-            match child.return_type {
-              Some { value: Resolved { node: ft } } =>
-                let resolved_name = normalize_access_type_node(n: ft).name
-                if resolved_name != "" && resolved_name != "Dynamic" {
-                  map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
-                } else { acc }
-              _ => acc
-            }
-          )
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.field_type_names, f: (acc, variant) =>
-            fold(variant.children, init: acc, f: (inner_acc, child) =>
-              match child.return_type {
-                Some { value: Resolved { node: ft } } =>
-                  let resolved_name = normalize_access_type_node(n: ft).name
-                  if resolved_name != "" && resolved_name != "Dynamic" {
-                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
-                  } else { inner_acc }
-                _ => inner_acc
-              }
-            )
-          )
-      }
-      EmitInfoBuildState {
-        type_summaries: next_summaries,
-        variant_to_enum: next_variants,
-        enum_variant_membership: next_evm,
-        field_type_names: next_ftn
-      }
-    None => state
-  }
-}
-"##;
     const SRC_V2_04_ENV_DAG_SOURCE: &str = r##"// v2 type environment -- structural type bindings and lookup.
 //
 // Defines the TypeEnv and TypeBinding types used throughout inference
@@ -8371,8 +8090,7 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  rt_type, no_span,
-  emit_map_has
+  rt_type
 }
 import v2.compiler.infer_method {
   classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
@@ -8384,21 +8102,6 @@ import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, lookup_type, merge_envs
 }
-import v2.compiler.infer_resolve {
-  resolve_node, resolve_item_types,
-  NodeResolveResult, ItemResult
-}
-import v2.compiler.infer_sigs {
-  ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
-  resolve_func_sigs
-}
-import v2.compiler.infer_emit_info {
-  TypeRepr, StructRepr, EnumRepr,
-  TypeSummary, EmitGraphInfo, EmitInfoBuildState,
-  empty_emit_graph_info, normalize_emit_type_name, lookup_emit_type_summary,
-  build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary
-}
 
 // =========================================================================
 // Typecheck output types
@@ -8408,6 +8111,19 @@ type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<Diagnostic>
+}
+
+// ResolvedFuncSig: function signature with concrete return type (never placeholder).
+// Produced by resolve_func_sigs after SCC-aware return type resolution.
+type ResolvedFuncSig {
+  name: String
+  params: List<Param>
+  return_type: Node
+  is_async: Bool
+}
+
+type ResolvedFuncEnv {
+  signatures: Map<String, ResolvedFuncSig>
 }
 
 // ResolvedGraph: the reconcile-to-emit boundary type.
@@ -8427,6 +8143,28 @@ type TypedModule {
   item_registry: Map<String, ItemInfo>
 }
 
+type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
+
+
+type TypeSummary {
+  name: String
+  repr: TypeRepr
+  field_summaries: Map<String, FieldSummary>
+}
+
+type EmitGraphInfo {
+  type_summaries: Map<String, TypeSummary>
+  variant_to_enum: Map<String, String>
+  enum_variant_membership: Map<String, Bool>
+  field_type_names: Map<String, String>
+}
+
+type EmitInfoBuildState {
+  type_summaries: Map<String, TypeSummary>
+  variant_to_enum: Map<String, String>
+  enum_variant_membership: Map<String, Bool>
+  field_type_names: Map<String, String>
+}
 
 // =========================================================================
 // Item registry -- maps item names to their kind and service dependencies.
@@ -8468,6 +8206,14 @@ type ModuleContext {
 type UniqueAccum {
   seen: Map<String, Bool>
   result: List<String>
+}
+
+// Map membership check -- returns true if key is present in the map.
+fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // Typed-receiver versions of service call detection -- for Node expr_data trees.
@@ -8592,6 +8338,11 @@ fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, 
   }
 }
 
+
+type NodeResolveResult {
+  resolved: Node
+  diagnostics: List<Diagnostic>
+}
 
 // =========================================================================
 // Expression inference types
@@ -8739,6 +8490,12 @@ type FieldInferResult {
   diagnostics: List<Diagnostic>
 }
 
+// Internal result type for item-level resolution.
+type ItemResult {
+  item: Node
+  diagnostics: List<Diagnostic>
+}
+
 type BuildTypeEnvResult {
   env: TypeEnv
   diagnostics: List<Diagnostic>
@@ -8749,9 +8506,62 @@ type ParentModulesResult {
   diagnostics: List<Diagnostic>
 }
 
+// Internal result type for field-level resolution.
+type FieldResult {
+  field: Field
+  diagnostics: List<Diagnostic>
+}
+
+type ExprResolveResult {
+  expr: Node
+  diagnostics: List<Diagnostic>
+}
+
+type NamedArgResolveResult {
+  arg: NamedArg
+  diagnostics: List<Diagnostic>
+}
+
+type MatchArmResolveResult {
+  arm: MatchArm
+  diagnostics: List<Diagnostic>
+}
+
+type FieldInitResolveResult {
+  field_init: FieldInit
+  diagnostics: List<Diagnostic>
+}
+
+type StringPartResolveResult {
+  part: StringPart
+  diagnostics: List<Diagnostic>
+}
+
+type TransportResolveResult {
+  transport: Node
+  diagnostics: List<Diagnostic>
+}
+
+type ServiceConfigResolveResult {
+  config: ServiceConfig
+  diagnostics: List<Diagnostic>
+}
+
 // Internal result type for variant-level resolution.
 type VariantResult {
   variant: Variant
+  diagnostics: List<Diagnostic>
+}
+
+// Internal result type for param-level resolution.
+type ParamResult {
+  param: Param
+  diagnostics: List<Diagnostic>
+}
+
+// Internal result type for resource-use resolution.
+type ResourceUseResult {
+  resource_use: ResourceUse
   diagnostics: List<Diagnostic>
 }
 
@@ -8934,6 +8744,13 @@ fn check_service_method_call_node(receiver_type: Node, method: String, scope: In
 // =========================================================================
 
 // -------------------------------------------------------------------------
+// Helper: construct a no-span sentinel for synthesized types
+// -------------------------------------------------------------------------
+
+fn no_span() -> SourceSpan {
+  SourceSpan { start: 0, end: 0 }
+}
+
 // -------------------------------------------------------------------------
 // Helpers for typed expression inference
 // -------------------------------------------------------------------------
@@ -9047,6 +8864,139 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
   map_get(func_env.signatures, name)
 }
 
+// -------------------------------------------------------------------------
+// Index/Slice access helpers
+// -------------------------------------------------------------------------
+
+fn empty_emit_graph_info() -> EmitGraphInfo {
+  EmitGraphInfo {
+    type_summaries: empty_map(),
+    variant_to_enum: empty_map(),
+    enum_variant_membership: empty_map(),
+    field_type_names: empty_map()
+  }
+}
+
+fn normalize_emit_type_name(type_name: String) -> String {
+  normalize_type_name(name: type_name)
+}
+
+fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
+  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
+}
+
+fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
+  let normed = normalize_access_type_node(n: type_node)
+  if node_is_optional(n: normed) { OptionalValue }
+  else { PlainValue }
+}
+
+fn is_pair_children(children: List<Node>) -> Bool {
+  if children |> count != 2 { false }
+  else {
+    match children |> first {
+      Some { value: c0 } =>
+        match children |> skip(1) |> first {
+          Some { value: c1 } => c0.name == "first" && c1.name == "second"
+          None => false
+        }
+      None => false
+    }
+  }
+}
+
+fn pair_access_style(field_name: String) -> FieldAccessStyle {
+  if field_name == "first" { TupleFirst }
+  else { TupleSecond }
+}
+
+fn build_struct_field_summaries(children: List<Node>) -> Map<String, FieldSummary> {
+  let is_pair = is_pair_children(children: children)
+  fold(children, init: empty_map(), f: (acc, child) =>
+    if child.return_type == none {
+      acc
+    } else {
+      let style = if is_pair { pair_access_style(field_name: child.name) } else { StoredField }
+      map_insert(acc, child.name, FieldSummary {
+        access_style: style,
+        value_shape: field_value_shape_from_type_node(type_node: rt_type(n: child))
+      })
+    }
+  )
+}
+
+fn find_first_enum_field_node(variants: List<Node>, field_name: String) -> Node? {
+  match variants |> first {
+    Some { value: variant } =>
+      match variant.children |> filter(f => f.name == field_name) |> first {
+        Some { value: field_child } => Some { value: field_child }
+        None => none
+      }
+    None => none
+  }
+}
+
+fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String) -> Bool {
+  variants |> all(variant =>
+    variant.children |> any(field_child => field_child.name == field_name)
+  )
+}
+
+fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node) -> Bool {
+  variants |> all(variant =>
+    match variant.children |> filter(f => f.name == field_name) |> first {
+      Some { value: field_child } => node_type_equals(left: child_return_type_or_name(ch: field_child), right: expected)
+      None => false
+    }
+  )
+}
+
+fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary> {
+  let first_field_names = match variants |> first {
+    Some { value: first_variant } => first_variant.children |> map(f => f.name)
+    None => []
+  }
+  let shared = first_field_names |> filter(field_name =>
+    enum_field_present_in_all_variants(variants: variants, field_name: field_name)
+  )
+  let consistent = shared |> filter(field_name =>
+    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+      Some { value: first_field } =>
+        enum_field_type_consistent(variants: variants, field_name: field_name, expected: child_return_type_or_name(ch: first_field))
+      None => false
+    }
+  )
+  fold(consistent, init: empty_map(), f: (acc, field_name) =>
+    match find_first_enum_field_node(variants: variants, field_name: field_name) {
+      Some { value: first_field } =>
+        map_insert(acc, field_name, FieldSummary {
+          access_style: EnumAccessor,
+          value_shape: field_value_shape_from_type_node(type_node: child_return_type_or_name(ch: first_field))
+        })
+      None => acc
+    }
+  )
+}
+
+fn build_type_summary(item: Node) -> TypeSummary? {
+  if node_has_structure(n: item) == false || item.transport != none {
+    return none
+  }
+  if node_is_product(n: item) {
+    Some { value: TypeSummary {
+      name: normalize_emit_type_name(type_name: item.name),
+      repr: StructRepr,
+      field_summaries: build_struct_field_summaries(children: item.children)
+    } }
+  } else {
+    let unit_only = item.children |> all(child => child.children |> count == 0)
+    Some { value: TypeSummary {
+      name: normalize_emit_type_name(type_name: item.name),
+      repr: EnumRepr { unit_only: unit_only },
+      field_summaries: build_enum_field_summaries(variants: item.children)
+    } }
+  }
+}
 
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
@@ -10920,883 +10870,6 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
 }
 
-// Type resolution functions moved to 04_resolve.dag (v2.compiler.infer_resolve)
-// (resolve_node, resolve_node_bounded, resolve_optional_node, resolve_field,
-//  resolve_param, resolve_expr_types, resolve_item_types, etc.)
-
-fn item_kind(item: Node) -> ItemKind {
-  let kind = if node_has_structure(n: item) && item.transport == none {
-    TypeItem
-  } else if item.transport != none {
-    ServiceItem
-  } else if item.body != none && item.uses |> count > 0 {
-    FuncItem
-  } else if item.body != none && item.params |> count > 0 {
-    FnItem
-  } else if item.body != none && item.type_annotation != none {
-    DataItem
-  } else if item.body != none {
-    FnItem
-  } else {
-    OtherItem
-  }
-  kind
-}
-
-fn build_item_info(item: Node) -> ItemInfo {
-  let kind = item_kind(item: item)
-  let res_names = item.uses |> map(u => u.name)
-  match kind {
-    FuncItem =>
-      ItemInfo {
-        name: item.name,
-        kind: kind,
-        service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) },
-        resource_names: res_names,
-        params: item.params,
-        is_self_recursive: false,
-        has_non_tail_self_call: false
-      }
-    FnItem =>
-      ItemInfo {
-        name: item.name,
-        kind: kind,
-        service_names: [],
-        resource_names: res_names,
-        params: item.params,
-        is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item.name) },
-        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item.name, in_tail: true) }
-      }
-    _ =>
-      ItemInfo {
-        name: item.name,
-        kind: kind,
-        service_names: [],
-        resource_names: res_names,
-        params: item.params,
-        is_self_recursive: false,
-        has_non_tail_self_call: false
-      }
-  }
-}
-
-fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContribution {
-  let resolved = resolve_item_types(item: item, env: env, module_name: module_name)
-  let ritem = resolved.item
-  // Include both parameterized functions and zero-arg functions (which have
-  // return_type annotation) in func_env. Excludes data declarations (no return_type).
-  let is_func = ritem.params |> count > 0
-  let is_zero_arg_func = ritem.params |> count == 0 && ritem.return_type != none && ritem.body != none
-  let func_sig = if is_func || is_zero_arg_func {
-    let declared_rt = if ritem.return_type != none {
-      Some { value: rt_type(n: ritem) }
-    } else {
-      none
-    }
-    Some { value: DeclaredFuncSig {
-      name: ritem.name,
-      params: ritem.params,
-      return_type: declared_rt,
-      is_async: ritem.uses |> count > 0
-    } }
-  } else {
-    none
-  }
-  let svc_entries = if ritem.transport != none && ritem.children |> count > 0 {
-    ritem.children |> map(c => service_op_entry(child: c))
-  } else {
-    []
-  }
-  let svc_local = if ritem.transport != none && ritem.children |> count > 0 {
-    let root = namespace_root_from_properties(properties: ritem.properties, name: ritem.name)
-    Some { value: TypeBinding { name: root, resolved: leaf_node(name: root) } }
-  } else {
-    none
-  }
-  ItemContribution {
-    resolved_item: ritem,
-    resolve_diagnostics: resolved.diagnostics,
-    func_sig: func_sig,
-    svc_entries: svc_entries,
-    svc_local: svc_local,
-    item_info: build_item_info(item: ritem)
-  }
-}
-
-fn fold_module_contributions(remaining: List<ItemContribution>,
-    resolved_items: List<Node>,
-    func_sigs: Map<String, DeclaredFuncSig>,
-    svc_registry: Map<String, List<OpEntry>>,
-    svc_locals: Map<String, TypeBinding>,
-    item_registry: Map<String, ItemInfo>,
-    diag_chunks: List<List<Diagnostic>>) -> LocalContributionState {
-  match remaining |> first {
-    None =>
-      LocalContributionState {
-        resolved_items: resolved_items,
-        func_sigs: func_sigs,
-        svc_registry: svc_registry,
-        svc_locals: svc_locals,
-        item_registry: item_registry,
-        diag_chunks: diag_chunks
-      }
-    Some { value: contribution } =>
-      let next_func_sigs = match contribution.func_sig {
-        Some { value: sig } => map_insert(func_sigs, sig.name, sig)
-        None => func_sigs
-      }
-      let next_svc_registry = if contribution.svc_entries |> count > 0 {
-        map_insert(svc_registry, contribution.resolved_item.name, contribution.svc_entries)
-      } else {
-        svc_registry
-      }
-      let next_svc_locals = match contribution.svc_local {
-        Some { value: binding } => map_insert(svc_locals, binding.name, binding)
-        None => svc_locals
-      }
-      fold_module_contributions(
-        remaining: remaining |> skip(1),
-        resolved_items: list_push(resolved_items, contribution.resolved_item),
-        func_sigs: next_func_sigs,
-        svc_registry: next_svc_registry,
-        svc_locals: next_svc_locals,
-        item_registry: map_insert(item_registry, contribution.item_info.name, contribution.item_info),
-        diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics)
-      )
-  }
-}
-
-fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
-  fold(items, init: init, f: (acc, item) =>
-    if node_is_coproduct(n: item) {
-      fold(item.children, init: acc, f: (vacc, child) =>
-        map_insert(vacc, child.name, TypeBinding {
-          name: child.name,
-          resolved: leaf_node(name: item.name)
-        })
-      )
-    } else { acc }
-  )
-}
-
-fn build_module_context(contributions: List<ItemContribution>,
-    parent_index: Map<String, TypedModule>,
-    resolved_imports: List<ResolvedImport>,
-    env: TypeEnv,
-    module_name: String) -> ModuleContext {
-  let local = fold_module_contributions(
-    remaining: contributions,
-    resolved_items: [],
-    func_sigs: empty_map(),
-    svc_registry: empty_map(),
-    svc_locals: empty_map(),
-    item_registry: empty_map(),
-    diag_chunks: []
-  )
-  let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
-    if node_is_coproduct(n: binding.resolved) {
-      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-        map_insert(vacc, child.name, TypeBinding {
-          name: child.name,
-          resolved: leaf_node(name: binding.name)
-        })
-      )
-    } else { acc }
-  )
-  let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals)
-  let merged_scope = merge_scope_from_imports(
-    remaining: resolved_imports,
-    parent_index: parent_index,
-    env: env,
-    func_sigs: empty_map(),
-    svc_registry: local.svc_registry,
-    svc_locals: local.svc_locals
-  )
-  let all_declared_sigs = map_merge(merged_scope.func_sigs, local.func_sigs)
-  let resolve_result = resolve_func_sigs(
-    declared_sigs: all_declared_sigs,
-    items: local.resolved_items,
-    module_name: module_name
-  )
-  // Variant locals come from env_variant_locals (computed once from env.bindings,
-  // which already includes all local + imported disjunction types).
-  let optional_locals = map_insert(env_variant_locals, "Some", TypeBinding {
-    name: "Some", resolved: leaf_node(name: "Optional")
-  })
-  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
-    name: "None", resolved: leaf_node(name: "Optional")
-  })
-  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
-    map_insert(acc, binding.name, binding)
-  )
-  ModuleContext {
-    resolved_items: local.resolved_items,
-    func_env: resolve_result.func_env,
-    svc_registry: merged_scope.svc_registry,
-    locals: all_locals,
-    item_registry: local.item_registry,
-    diagnostics: concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics)
-  }
-}
-
-// =========================================================================
-// Typecheck a single module
-//
-// Builds the type environment, then resolves all type expressions in
-// every item. Returns the typed module with its environment.
-// =========================================================================
-
-type TypecheckModuleResult {
-  typed: TypedModule
-  diagnostics: List<Diagnostic>
-}
-
-
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>) -> TypecheckModuleResult {
-  let env_result = build_type_env(module: resolved, parent_index: parent_index)
-  let env = env_result.env
-  let env_diags = env_result.diagnostics
-
-  // Gate: if type environment construction produced errors (unresolved types),
-  // halt before inference. This makes unresolved nodes structurally impossible
-  // downstream -- inference and emit never see them.
-  let env_errors = env_diags |> filter(d => d.severity == Error)
-  if env_errors |> count > 0 {
-    return TypecheckModuleResult {
-      typed: TypedModule {
-        module: resolved.module,
-        items: [],
-        type_env: env,
-        func_env: ResolvedFuncEnv { signatures: empty_map() },
-        item_registry: empty_map()
-      },
-      diagnostics: env_diags
-    }
-  }
-
-  let contributions = map(resolved.module.items, item =>
-    analyze_item(item: item, env: env, module_name: resolved.module.name)
-  )
-  let ctx = build_module_context(
-    contributions: contributions,
-    parent_index: parent_index,
-    resolved_imports: resolved.resolved_imports,
-    env: env,
-    module_name: resolved.module.name
-  )
-
-  // Add data declarations to scope as local variables.
-  // Data items: body != none, params == [], no return_type (have type_annotation instead).
-  let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
-    if item.body != none && item.params |> count == 0 && item.return_type == none && item.type_annotation != none {
-      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: item.type_annotation.value })
-    } else {
-      acc
-    }
-  )
-  let infer_scope = InferScope {
-    type_env: env,
-    func_env: ctx.func_env,
-    locals: data_locals,
-    module_name: resolved.module.name,
-    service_registry: ctx.svc_registry,
-    item_registry: ctx.item_registry
-  }
-  let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
-  let typed_items = map(typed_item_results, tir => tir.item)
-  let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
-  let typed_module = Module {
-    name: resolved.module.name,
-    imports: resolved.module.imports,
-    items: ctx.resolved_items,
-    span: resolved.module.span
-  }
-
-  TypecheckModuleResult {
-    typed: TypedModule {
-      module: typed_module,
-      items: typed_items,
-      type_env: env,
-      func_env: ctx.func_env,
-      item_registry: ctx.item_registry
-    },
-    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags)
-  }
-}
-
-// =========================================================================
-// Resolve all bindings in a TypeEnv
-//
-// After building the initial environment (which may contain Named
-// references within Product/Coproduct fields), resolve every binding
-// so downstream consumers see fully-structural types.
-// =========================================================================
-
-type EnvResolveResult {
-  env: TypeEnv
-  diagnostics: List<Diagnostic>
-}
-
-// Result of resolving a single type binding -- follows the same
-// value+diagnostics pattern as ResolveResult, ItemResult, etc.
-type BindingResult {
-  binding: TypeBinding
-  diagnostics: List<Diagnostic>
-}
-
-// Accumulator for single-pass fold over type bindings:
-// collects resolved bindings and diagnostics together,
-// eliminating duplicate resolve_node calls.
-type BindingsAccum {
-  bindings: Map<String, TypeBinding>
-  diagnostics: List<Diagnostic>
-}
-
-fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<String, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
-  // Resolve local types in topological (dependency) order. Each type is
-  // resolved exactly once, with all its dependencies already resolved in
-  // the environment. This is O(N * avg_fields) instead of O(B^D).
-  // Extract local binding names as a list.
-  let remaining = map(
-    filter(map_values(env.bindings), b => emit_map_has(m: local_names, key: b.name)),
-    b => b.name
-  )
-  topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map)
-}
-
-// Topological resolution loop for type bindings.
-// Resolves types whose dependencies are all already resolved (or primitive/recursive),
-// updates the environment, then recurses with the remaining types.
-// Same pattern as topo_resolve_loop for function signatures (line 3135).
-fn topo_resolve_types(
-    remaining: List<String>,
-    env: TypeEnv,
-    module_name: String,
-    diagnostics: List<Diagnostic>,
-    local_names: Map<String, Bool>,
-    deps_map: Map<String, List<String>>
-) -> EnvResolveResult {
-  if remaining |> count == 0 {
-    return EnvResolveResult { env: env, diagnostics: diagnostics }
-  }
-
-  // A type is ready when all its local dependencies are already resolved
-  // (not in remaining), primitive, or recursive (cycle-breaker).
-  let remaining_set = fold(remaining, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  let ready = filter(remaining, name =>
-    match map_get(deps_map, name) {
-      Some { value: deps } =>
-        all(deps, dep => is_kernel_type(name: dep) || dep == "None" || dep == "" || is_recursive_type(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
-      None => true
-    }
-  )
-
-  if ready |> count == 0 {
-    // Stuck -- remaining types form undetected cycles or have missing deps.
-    // Resolve each as-is against current env to collect diagnostics.
-    // Single fold calls resolve_node once per name, collecting both bindings and diagnostics.
-    let stuck_accum = fold(remaining, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
-      match map_get(env.bindings, name) {
-        Some { value: binding } =>
-          let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
-          BindingsAccum {
-            bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
-            diagnostics: concat(acc.diagnostics, result.diagnostics)
-          }
-        None => acc
-      }
-    )
-    return EnvResolveResult {
-      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
-      diagnostics: concat(diagnostics, stuck_accum.diagnostics)
-    }
-  }
-
-  // Resolve ready types against current env -- single pass calls resolve_node
-  // once per name, collecting both updated bindings and diagnostics.
-  let ready_accum = fold(ready, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
-    match map_get(env.bindings, name) {
-      Some { value: binding } =>
-        let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
-        BindingsAccum {
-          bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
-          diagnostics: concat(acc.diagnostics, result.diagnostics)
-        }
-      None => acc
-    }
-  )
-
-  // Remove resolved from remaining and recurse.
-  let ready_set = fold(ready, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  let next_remaining = filter(remaining, name => emit_map_has(m: ready_set, key: name) == false)
-
-  topo_resolve_types(
-    remaining: next_remaining,
-    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
-    module_name: module_name,
-    diagnostics: concat(diagnostics, ready_accum.diagnostics),
-    local_names: local_names,
-    deps_map: deps_map
-  )
-}
-
-// =========================================================================
-// Collect parent type environments for a module
-//
-// Gathers the TypeEnvs from all modules that this module imports from,
-// by looking up already-typed modules in the completed list.
-// =========================================================================
-
-fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, TypedModule>) -> ParentModulesResult {
-  let modules = flat_map(resolved.resolved_imports, imp =>
-    match map_get(module_index, imp.module_path) {
-      Some { value: typed } => [typed]
-      None => []
-    }
-  )
-  let diagnostics = flat_map(resolved.resolved_imports, imp =>
-    match map_get(module_index, imp.module_path) {
-      Some { value: _ } => []
-      None => [Diagnostic {
-        severity: Error,
-        message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"),
-        span: Some { value: imp.target_module.value.span },
-        module_name: Some { value: resolved.module.name },
-        category: Some { value: UnresolvedName }
-      }]
-    }
-  )
-  ParentModulesResult { modules: modules, diagnostics: diagnostics }
-}
-
-
-fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
-  let init = EmitInfoBuildState {
-    type_summaries: empty_map(),
-    variant_to_enum: empty_map(),
-    enum_variant_membership: empty_map(),
-    field_type_names: empty_map()
-  }
-  let built = modules |> fold(init: init, f: (state, typed_module) =>
-    typed_module.items |> fold(init: state, f: (inner_state, item) =>
-      add_emit_item_summary(state: inner_state, item: item)
-    )
-  )
-  EmitGraphInfo {
-    type_summaries: built.type_summaries,
-    variant_to_enum: built.variant_to_enum,
-    enum_variant_membership: built.enum_variant_membership,
-    field_type_names: built.field_type_names
-  }
-}
-
-// =========================================================================
-// Main entry point: typecheck
-//
-// Processes modules in dependency order (from the resolver's dep_order).
-// Each module sees the type environments of all its dependencies.
-//
-// Invariant: after this function returns, no unresolved Named references
-// survive (except recursive cycle-breakers that are guaranteed to be
-// defined in the graph).
-// =========================================================================
-
-fn typecheck(graph: ModuleGraph) -> TypedGraph {
-  // SG-9: Use explicit recursion with standalone parameters instead of fold
-  // with a struct accumulator. Standalone Rc parameters have refcount 1 in
-  // TCO loops, enabling O(1) list_push/map_insert via Rc::try_unwrap.
-  // A fold accumulator struct forces O(N) clones on every field access.
-  //
-  // Diagnostics use chunked accumulation (List<List<Diagnostic>>) instead of
-  // concat to avoid O(M^2) cloning. Each iteration pushes diagnostic lists;
-  // flat_map flattens once at the end.
-  typecheck_modules(
-    remaining: graph.modules,
-    modules: [],
-    module_index: empty_map(),
-    item_registry: empty_map(),
-    diag_chunks: []
-  )
-}
-
-fn typecheck_modules(
-  remaining: List<ResolvedModule>,
-  modules: List<TypedModule>,
-  module_index: Map<String, TypedModule>,
-  item_registry: Map<String, ItemInfo>,
-  diag_chunks: List<List<Diagnostic>>
-) -> TypedGraph {
-  match remaining |> first {
-    None =>
-      let expanded_registry = expand_transitive_services(modules: modules, registry: item_registry, remaining_passes: 5)
-      TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
-    Some { value: resolved } =>
-      let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
-      let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
-      let typed = tc_result.typed
-      let tc_diags = tc_result.diagnostics
-      typecheck_modules(
-        remaining: remaining |> skip(1),
-        modules: list_push(modules, typed),
-        module_index: map_insert(module_index, typed.module.name, typed),
-        item_registry: map_merge(item_registry, typed.item_registry),
-        diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_diags)
-      )
-  }
-}
-
-// =========================================================================
-// Reconcile namespaces in one call.
-//
-// Returns the reconciled graph with graph-level item metadata attached.
-// Historical note: collect_unresolved_in_expr and the rest of the
-// validate_no_unresolved walk family were removed once the env-error gate
-// made unresolved expression-tree validation redundant downstream.
-// =========================================================================
-
-fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
-  let typed = typecheck(graph: graph)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
-}
-"##;
-    const SRC_V2_04_METHOD_DAG_SOURCE: &str = r##"// v2 method classification -- maps method names to typed method semantics.
-//
-// String-to-enum classification for intrinsic methods, runtime bridge
-// methods, and builtin function calls. Each classifier returns a typed
-// enum variant so downstream code (inference, emit) can match structurally
-// instead of comparing strings.
-//
-// Dependency: v2.compiler.infer_types (Node constructors)
-
-module v2.compiler.infer_method
-
-import v2.std.core {
-  Node,
-  IntrinsicMethod,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  RuntimeBridgeMethod,
-  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
-  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
-  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength,
-  BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower,
-  BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap,
-  BridgeContains, BridgeReverse, BridgeLookup
-}
-import v2.compiler.infer_types {
-  leaf_node, with_optional_cardinality, container_node, tuple_node, error_type_node,
-  bare_map_node,
-  method_receiver_element_node
-}
-
-// =========================================================================
-// Intrinsic method classification
-// =========================================================================
-
-fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
-  if method == "count" { Some { value: MethodCount } }
-  else if method == "join" { Some { value: MethodJoin } }
-  else if method == "split" { Some { value: MethodSplit } }
-  else if method == "last" { Some { value: MethodLast } }
-  else if method == "first" { Some { value: MethodFirst } }
-  else if method == "enumerate" { Some { value: MethodEnumerate } }
-  else if method == "chars" { Some { value: MethodChars } }
-  else if method == "string_contains" { Some { value: MethodStringContains } }
-  else if method == "concat" { Some { value: MethodConcat } }
-  else if method == "map" { Some { value: MethodMap } }
-  else if method == "filter" { Some { value: MethodFilter } }
-  else if method == "any" { Some { value: MethodAny } }
-  else if method == "all" { Some { value: MethodAll } }
-  else if method == "flat_map" { Some { value: MethodFlatMap } }
-  else if method == "skip" { Some { value: MethodSkip } }
-  else if method == "take" { Some { value: MethodTake } }
-  else if method == "fold" { Some { value: MethodFold } }
-  else if method == "sort_by" { Some { value: MethodSortBy } }
-  else if method == "append" { Some { value: MethodAppend } }
-  else { none }
-}
-
-// =========================================================================
-// Runtime bridge method classification
-// =========================================================================
-
-fn classify_runtime_bridge_method(method: String) -> RuntimeBridgeMethod? {
-  if method == "get" { Some { value: BridgeGet } }
-  else if method == "with" { Some { value: BridgeWith } }
-  else if method == "list_push" { Some { value: BridgeListPush } }
-  else if method == "map_insert" { Some { value: BridgeMapInsert } }
-  else if method == "map_merge" { Some { value: BridgeMapMerge } }
-  else if method == "map_get" { Some { value: BridgeMapGet } }
-  else if method == "map_has" { Some { value: BridgeMapHas } }
-  else if method == "emit_map_has" { Some { value: BridgeEmitMapHas } }
-  else if method == "map_values" { Some { value: BridgeMapValues } }
-  else if method == "map_keys" { Some { value: BridgeMapKeys } }
-  else if method == "map_contains_key" { Some { value: BridgeMapContainsKey } }
-  else if method == "char_at" { Some { value: BridgeCharAt } }
-  else if method == "string_at" { Some { value: BridgeStringAt } }
-  else if method == "string_length" { Some { value: BridgeStringLength } }
-  else if method == "length" { Some { value: BridgeLength } }
-  else if method == "starts_with" { Some { value: BridgeStartsWith } }
-  else if method == "ends_with" { Some { value: BridgeEndsWith } }
-  else if method == "to_string" { Some { value: BridgeToString } }
-  else if method == "trim" { Some { value: BridgeTrim } }
-  else if method == "to_lower" { Some { value: BridgeToLower } }
-  else if method == "to_upper" { Some { value: BridgeToUpper } }
-  else if method == "replace" { Some { value: BridgeReplace } }
-  else if method == "substring" { Some { value: BridgeSubstring } }
-  else if method == "to_int" { Some { value: BridgeToInt } }
-  else if method == "empty_map" { Some { value: BridgeEmptyMap } }
-  else if method == "contains" { Some { value: BridgeContains } }
-  else if method == "reverse" { Some { value: BridgeReverse } }
-  else if method == "lookup" { Some { value: BridgeLookup } }
-  else { none }
-}
-
-// =========================================================================
-// Method return type inference
-// =========================================================================
-
-fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMethod, fold_accumulator_type: Node?) -> Node? {
-  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
-  match intrinsic {
-    MethodMap => Some { value: receiver_type }
-    MethodFilter => Some { value: receiver_type }
-    MethodEnumerate => Some { value: container_node(kind_name: "List", element: tuple_node(first: leaf_node(name: "Int"), second: elem_node)) }
-    MethodFirst => Some { value: with_optional_cardinality(n: elem_node) }
-    MethodLast => Some { value: with_optional_cardinality(n: elem_node) }
-    MethodCount => Some { value: leaf_node(name: "Int") }
-    MethodJoin => Some { value: leaf_node(name: "String") }
-    MethodAny => Some { value: leaf_node(name: "Bool") }
-    MethodAll => Some { value: leaf_node(name: "Bool") }
-    MethodSplit => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    MethodChars => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    MethodFlatMap => Some { value: receiver_type }
-    MethodSkip => Some { value: receiver_type }
-    MethodTake => Some { value: receiver_type }
-    MethodFold => fold_accumulator_type
-    MethodSortBy => Some { value: receiver_type }
-    MethodAppend => Some { value: receiver_type }
-    MethodStringContains => Some { value: leaf_node(name: "Bool") }
-    MethodConcat => Some { value: receiver_type }
-  }
-}
-
-fn infer_runtime_bridge_method_type_node(receiver_type: Node, method: RuntimeBridgeMethod) -> Node? {
-  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
-  match method {
-    BridgeGet => Some { value: with_optional_cardinality(n: elem_node) }
-    BridgeWith => Some { value: receiver_type }
-    BridgeListPush => Some { value: receiver_type }
-    BridgeMapInsert => Some { value: receiver_type }
-    BridgeMapMerge => Some { value: receiver_type }
-    BridgeMapGet => Some { value: with_optional_cardinality(n: elem_node) }
-    BridgeMapHas => Some { value: leaf_node(name: "Bool") }
-    BridgeEmitMapHas => Some { value: leaf_node(name: "Bool") }
-    BridgeMapContainsKey => Some { value: leaf_node(name: "Bool") }
-    BridgeContains => Some { value: leaf_node(name: "Bool") }
-    BridgeMapValues => Some { value: container_node(kind_name: "List", element: elem_node) }
-    BridgeMapKeys => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    BridgeCharAt => Some { value: leaf_node(name: "String") }
-    BridgeStringAt => Some { value: leaf_node(name: "String") }
-    BridgeStringLength => Some { value: leaf_node(name: "Int") }
-    BridgeLength => Some { value: leaf_node(name: "Int") }
-    BridgeStartsWith => Some { value: leaf_node(name: "Bool") }
-    BridgeEndsWith => Some { value: leaf_node(name: "Bool") }
-    BridgeToString => Some { value: leaf_node(name: "String") }
-    BridgeTrim => Some { value: leaf_node(name: "String") }
-    BridgeToLower => Some { value: leaf_node(name: "String") }
-    BridgeToUpper => Some { value: leaf_node(name: "String") }
-    BridgeReplace => Some { value: leaf_node(name: "String") }
-    BridgeSubstring => Some { value: leaf_node(name: "String") }
-    BridgeToInt => Some { value: leaf_node(name: "Int") }
-    BridgeEmptyMap => Some { value: bare_map_node() }
-    BridgeLookup => Some { value: with_optional_cardinality(n: elem_node) }
-    BridgeReverse => Some { value: receiver_type }
-  }
-}
-
-// =========================================================================
-// Builtin call type inference
-// =========================================================================
-
-fn infer_builtin_call_type(name: String) -> Node? {
-  if name == "string_length" || name == "code_point" || name == "to_int" {
-    Some { value: leaf_node(name: "Int") }
-  } else if name == "parse_int" {
-    Some { value: with_optional_cardinality(n: leaf_node(name: "Int")) }
-  } else if name == "char_at" || name == "substring" || name == "from_code_point" || name == "to_string" || name == "concat" {
-    Some { value: leaf_node(name: "String") }
-  } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
-    Some { value: leaf_node(name: "Int") }
-  } else if name == "lookup" || name == "map_get" {
-    // Dynamic audit: correct — value type depends on receiver's map type, unknown here
-    Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
-  } else if name == "map_insert" || name == "map_merge" || name == "with" {
-    Some { value: bare_map_node() }
-  } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
-    Some { value: leaf_node(name: "Bool") }
-  } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
-    // Dynamic audit: correct — element type depends on receiver, unknown here
-    Some { value: container_node(kind_name: "List", element: leaf_node(name: "Dynamic")) }
-  } else if name == "Some" {
-    // Dynamic audit: correct — inner type depends on argument, unknown here
-    Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
-  } else {
-    none
-  }
-}
-
-fn resolve_builtin_call_type(name: String) -> Node {
-  match infer_builtin_call_type(name: name) {
-    Some { value: v } => v
-    None => leaf_node(name: "Unit")
-  }
-}
-
-// =========================================================================
-// Intrinsic method index -- single-authority Map for O(1) lookup
-//
-// This is the canonical source of the string→IntrinsicMethod mapping.
-// classify_reconciled_intrinsic_method uses if-else for Optional return;
-// this function builds the Map consumed by emit for index-based lookup.
-// =========================================================================
-
-fn intrinsic_method_index() -> Map<String, IntrinsicMethod> {
-  let m = empty_map()
-  let m = map_insert(m, "count", MethodCount)
-  let m = map_insert(m, "join", MethodJoin)
-  let m = map_insert(m, "split", MethodSplit)
-  let m = map_insert(m, "last", MethodLast)
-  let m = map_insert(m, "first", MethodFirst)
-  let m = map_insert(m, "enumerate", MethodEnumerate)
-  let m = map_insert(m, "chars", MethodChars)
-  let m = map_insert(m, "string_contains", MethodStringContains)
-  let m = map_insert(m, "concat", MethodConcat)
-  let m = map_insert(m, "map", MethodMap)
-  let m = map_insert(m, "filter", MethodFilter)
-  let m = map_insert(m, "any", MethodAny)
-  let m = map_insert(m, "all", MethodAll)
-  let m = map_insert(m, "flat_map", MethodFlatMap)
-  let m = map_insert(m, "skip", MethodSkip)
-  let m = map_insert(m, "take", MethodTake)
-  let m = map_insert(m, "fold", MethodFold)
-  let m = map_insert(m, "sort_by", MethodSortBy)
-  let m = map_insert(m, "append", MethodAppend)
-  m
-}
-"##;
-    const SRC_V2_04_RESOLVE_DAG_SOURCE: &str = r##"// Type resolution walk for the v2 namespace reconciler.
-//
-// Resolves Node type references against the TypeEnv. Walks the Node type
-// tree, replacing leaf Named references with their structural definitions.
-// Also resolves expression trees (structural recursion) and item-level type
-// references (params, return types, uses, transport, etc.).
-//
-// Dependency chain:
-//   v2.compiler.infer_types, v2.compiler.infer_env
-//     -> v2.compiler.infer_resolve (this file)
-//       -> v2.compiler.infer (expression inference)
-
-module v2.compiler.infer_resolve
-
-import std.types { SourceSpan }
-import v2.std.core {
-  Node, Field, Param,
-  InferredNode, Resolved, CompilerError,
-  Diagnostic, Severity, Error,
-  Cardinality, Required, CardOptional,
-  ResourceUse, ServiceConfig,
-  MatchArm, FieldInit, NamedArg, StringPart, Text, Interpolation,
-  ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
-  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
-  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node, make_expr_error_node, map_expr_children,
-  make_transport_node, local_transport_node,
-  is_kernel_type, is_transport_kind,
-  ErrorCategory, UnresolvedName, TypeMismatch, InvalidOperation, CascadeError,
-  TransportKind, LocalTransport
-}
-import v2.compiler.infer_types {
-  leaf_node, with_optional_cardinality, with_required_cardinality,
-  node_has_structure, node_is_product, node_is_optional, node_is_map, node_is_container,
-  rt_type, no_span
-}
-import v2.compiler.infer_env {
-  TypeEnv, lookup_type, is_recursive_type
-}
-
-// =========================================================================
-// Result types for type resolution
-// =========================================================================
-
-type NodeResolveResult {
-  resolved: Node
-  diagnostics: List<Diagnostic>
-}
-
-// Internal result type for item-level resolution.
-type ItemResult {
-  item: Node
-  diagnostics: List<Diagnostic>
-}
-
-// Internal result type for field-level resolution.
-type FieldResult {
-  field: Field
-  diagnostics: List<Diagnostic>
-}
-
-type ExprResolveResult {
-  expr: Node
-  diagnostics: List<Diagnostic>
-}
-
-type NamedArgResolveResult {
-  arg: NamedArg
-  diagnostics: List<Diagnostic>
-}
-
-type MatchArmResolveResult {
-  arm: MatchArm
-  diagnostics: List<Diagnostic>
-}
-
-type FieldInitResolveResult {
-  field_init: FieldInit
-  diagnostics: List<Diagnostic>
-}
-
-type StringPartResolveResult {
-  part: StringPart
-  diagnostics: List<Diagnostic>
-}
-
-type TransportResolveResult {
-  transport: Node
-  diagnostics: List<Diagnostic>
-}
-
-type ServiceConfigResolveResult {
-  config: ServiceConfig
-  diagnostics: List<Diagnostic>
-}
-
-// Internal result type for param-level resolution.
-type ParamResult {
-  param: Param
-  diagnostics: List<Diagnostic>
-}
-
-// Internal result type for resource-use resolution.
-type ResourceUseResult {
-  resource_use: ResourceUse
-  diagnostics: List<Diagnostic>
-}
-
 // =========================================================================
 // Resolve a Node type reference
 //
@@ -12470,47 +11543,250 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
     diagnostics: concat(param_diags, ret_diags, use_diags, body_diags, anno_diags, transport_diags, config_diags, prop_diags, child_diags)
   }
 }
-"##;
-    const SRC_V2_04_SIGS_DAG_SOURCE: &str = r##"// SCC-aware function signature resolution.
+
+fn item_kind(item: Node) -> ItemKind {
+  let kind = if node_has_structure(n: item) && item.transport == none {
+    TypeItem
+  } else if item.transport != none {
+    ServiceItem
+  } else if item.body != none && item.uses |> count > 0 {
+    FuncItem
+  } else if item.body != none && item.params |> count > 0 {
+    FnItem
+  } else if item.body != none && item.type_annotation != none {
+    DataItem
+  } else if item.body != none {
+    FnItem
+  } else {
+    OtherItem
+  }
+  kind
+}
+
+fn build_item_info(item: Node) -> ItemInfo {
+  let kind = item_kind(item: item)
+  let res_names = item.uses |> map(u => u.name)
+  match kind {
+    FuncItem =>
+      ItemInfo {
+        name: item.name,
+        kind: kind,
+        service_names: if item.body == none { [] } else { collect_typed_service_calls(texpr: item.body.value) },
+        resource_names: res_names,
+        params: item.params,
+        is_self_recursive: false,
+        has_non_tail_self_call: false
+      }
+    FnItem =>
+      ItemInfo {
+        name: item.name,
+        kind: kind,
+        service_names: [],
+        resource_names: res_names,
+        params: item.params,
+        is_self_recursive: if item.body == none { false } else { expr_has_self_call(texpr: item.body.value, fn_name: item.name) },
+        has_non_tail_self_call: if item.body == none { false } else { expr_has_non_tail_self_call(texpr: item.body.value, fn_name: item.name, in_tail: true) }
+      }
+    _ =>
+      ItemInfo {
+        name: item.name,
+        kind: kind,
+        service_names: [],
+        resource_names: res_names,
+        params: item.params,
+        is_self_recursive: false,
+        has_non_tail_self_call: false
+      }
+  }
+}
+
+fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContribution {
+  let resolved = resolve_item_types(item: item, env: env, module_name: module_name)
+  let ritem = resolved.item
+  // Include both parameterized functions and zero-arg functions (which have
+  // return_type annotation) in func_env. Excludes data declarations (no return_type).
+  let is_func = ritem.params |> count > 0
+  let is_zero_arg_func = ritem.params |> count == 0 && ritem.return_type != none && ritem.body != none
+  let func_sig = if is_func || is_zero_arg_func {
+    let declared_rt = if ritem.return_type != none {
+      Some { value: rt_type(n: ritem) }
+    } else {
+      none
+    }
+    Some { value: DeclaredFuncSig {
+      name: ritem.name,
+      params: ritem.params,
+      return_type: declared_rt,
+      is_async: ritem.uses |> count > 0
+    } }
+  } else {
+    none
+  }
+  let svc_entries = if ritem.transport != none && ritem.children |> count > 0 {
+    ritem.children |> map(c => service_op_entry(child: c))
+  } else {
+    []
+  }
+  let svc_local = if ritem.transport != none && ritem.children |> count > 0 {
+    let root = namespace_root_from_properties(properties: ritem.properties, name: ritem.name)
+    Some { value: TypeBinding { name: root, resolved: leaf_node(name: root) } }
+  } else {
+    none
+  }
+  ItemContribution {
+    resolved_item: ritem,
+    resolve_diagnostics: resolved.diagnostics,
+    func_sig: func_sig,
+    svc_entries: svc_entries,
+    svc_local: svc_local,
+    item_info: build_item_info(item: ritem)
+  }
+}
+
+fn fold_module_contributions(remaining: List<ItemContribution>,
+    resolved_items: List<Node>,
+    func_sigs: Map<String, DeclaredFuncSig>,
+    svc_registry: Map<String, List<OpEntry>>,
+    svc_locals: Map<String, TypeBinding>,
+    item_registry: Map<String, ItemInfo>,
+    diag_chunks: List<List<Diagnostic>>) -> LocalContributionState {
+  match remaining |> first {
+    None =>
+      LocalContributionState {
+        resolved_items: resolved_items,
+        func_sigs: func_sigs,
+        svc_registry: svc_registry,
+        svc_locals: svc_locals,
+        item_registry: item_registry,
+        diag_chunks: diag_chunks
+      }
+    Some { value: contribution } =>
+      let next_func_sigs = match contribution.func_sig {
+        Some { value: sig } => map_insert(func_sigs, sig.name, sig)
+        None => func_sigs
+      }
+      let next_svc_registry = if contribution.svc_entries |> count > 0 {
+        map_insert(svc_registry, contribution.resolved_item.name, contribution.svc_entries)
+      } else {
+        svc_registry
+      }
+      let next_svc_locals = match contribution.svc_local {
+        Some { value: binding } => map_insert(svc_locals, binding.name, binding)
+        None => svc_locals
+      }
+      fold_module_contributions(
+        remaining: remaining |> skip(1),
+        resolved_items: list_push(resolved_items, contribution.resolved_item),
+        func_sigs: next_func_sigs,
+        svc_registry: next_svc_registry,
+        svc_locals: next_svc_locals,
+        item_registry: map_insert(item_registry, contribution.item_info.name, contribution.item_info),
+        diag_chunks: list_push(diag_chunks, contribution.resolve_diagnostics)
+      )
+  }
+}
+
+fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(items, init: init, f: (acc, item) =>
+    if node_is_coproduct(n: item) {
+      fold(item.children, init: acc, f: (vacc, child) =>
+        map_insert(vacc, child.name, TypeBinding {
+          name: child.name,
+          resolved: leaf_node(name: item.name)
+        })
+      )
+    } else { acc }
+  )
+}
+
+fn build_module_context(contributions: List<ItemContribution>,
+    parent_index: Map<String, TypedModule>,
+    resolved_imports: List<ResolvedImport>,
+    env: TypeEnv,
+    module_name: String) -> ModuleContext {
+  let local = fold_module_contributions(
+    remaining: contributions,
+    resolved_items: [],
+    func_sigs: empty_map(),
+    svc_registry: empty_map(),
+    svc_locals: empty_map(),
+    item_registry: empty_map(),
+    diag_chunks: []
+  )
+  let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
+    if node_is_coproduct(n: binding.resolved) {
+      fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+        map_insert(vacc, child.name, TypeBinding {
+          name: child.name,
+          resolved: leaf_node(name: binding.name)
+        })
+      )
+    } else { acc }
+  )
+  let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals)
+  let merged_scope = merge_scope_from_imports(
+    remaining: resolved_imports,
+    parent_index: parent_index,
+    env: env,
+    func_sigs: empty_map(),
+    svc_registry: local.svc_registry,
+    svc_locals: local.svc_locals
+  )
+  let all_declared_sigs = map_merge(merged_scope.func_sigs, local.func_sigs)
+  let resolve_result = resolve_func_sigs(
+    declared_sigs: all_declared_sigs,
+    items: local.resolved_items,
+    module_name: module_name
+  )
+  // Variant locals come from env_variant_locals (computed once from env.bindings,
+  // which already includes all local + imported disjunction types).
+  let optional_locals = map_insert(env_variant_locals, "Some", TypeBinding {
+    name: "Some", resolved: leaf_node(name: "Optional")
+  })
+  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
+    name: "None", resolved: leaf_node(name: "Optional")
+  })
+  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
+    map_insert(acc, binding.name, binding)
+  )
+  ModuleContext {
+    resolved_items: local.resolved_items,
+    func_env: resolve_result.func_env,
+    svc_registry: merged_scope.svc_registry,
+    locals: all_locals,
+    item_registry: local.item_registry,
+    diagnostics: concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics)
+  }
+}
+
+// =========================================================================
+// Typecheck a single module
+//
+// Builds the type environment, then resolves all type expressions in
+// every item. Returns the typed module with its environment.
+// =========================================================================
+
+type TypecheckModuleResult {
+  typed: TypedModule
+  diagnostics: List<Diagnostic>
+}
+
+// =========================================================================
+// SCC-aware function signature resolution (Contract 2)
 //
 // Converts DeclaredFuncSig (optional return_type) to ResolvedFuncSig
 // (concrete return_type) using topological ordering of the call graph.
-// Self-/mutual-recursive functions without annotations produce diagnostics.
 //
-// Dependency chain:
-//   v2.std.core (DeclaredFuncSig, Node, ExprCall, expr_children)
-//     -> v2.compiler.infer_types (emit_map_has)
-//       -> v2.compiler.infer_sigs (resolve_func_sigs, ResolvedFuncSig, ResolvedFuncEnv)
-//         -> v2.compiler.infer (typecheck pipeline)
-
-module v2.compiler.infer_sigs
-
-import v2.std.core {
-  Node, Param,
-  ExprData, ExprCall,
-  expr_children,
-  Diagnostic, Severity, Error,
-  ErrorCategory, TypeMismatch,
-  DeclaredFuncSig
-}
-import v2.compiler.infer_types { emit_map_has }
-
+// 1. Collect call edges between local functions from body ASTs.
+// 2. Process functions in topological order: each function's callees
+//    are resolved before the function itself.
+// 3. Annotated functions: return_type unwrapped from Some.
+// 4. Unannotated + non-recursive: infer from body (callees resolved).
+// 5. Unannotated + recursive (self or mutual): compile error.
+//
+// All 686 current functions have annotations, so paths 4-5 are future-
+// proofing. The structural contract ensures no fabrication reaches emit.
 // =========================================================================
-// Types
-// =========================================================================
-
-// ResolvedFuncSig: function signature with concrete return type (never placeholder).
-// Produced by resolve_func_sigs after SCC-aware return type resolution.
-type ResolvedFuncSig {
-  name: String
-  params: List<Param>
-  return_type: Node
-  is_async: Bool
-}
-
-type ResolvedFuncEnv {
-  signatures: Map<String, ResolvedFuncSig>
-}
 
 type ResolveFuncSigsResult {
   func_env: ResolvedFuncEnv
@@ -12529,10 +11805,6 @@ type CallEdge {
   caller: String
   callee: String
 }
-
-// =========================================================================
-// Call graph construction
-// =========================================================================
 
 // Collect call edges from function body ASTs.
 // Only includes edges where the callee is a local function (in local_func_set).
@@ -12575,10 +11847,6 @@ fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, 
     )
   }
 }
-
-// =========================================================================
-// Signature resolution
-// =========================================================================
 
 // Convert a single DeclaredFuncSig with return_type: Some to ResolvedFuncSig.
 // Caller must ensure return_type is not None.
@@ -12729,6 +11997,623 @@ fn resolve_func_sigs(
     diagnostics: []
   )
 }
+
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>) -> TypecheckModuleResult {
+  let env_result = build_type_env(module: resolved, parent_index: parent_index)
+  let env = env_result.env
+  let env_diags = env_result.diagnostics
+
+  // Gate: if type environment construction produced errors (unresolved types),
+  // halt before inference. This makes unresolved nodes structurally impossible
+  // downstream -- inference and emit never see them.
+  let env_errors = env_diags |> filter(d => d.severity == Error)
+  if env_errors |> count > 0 {
+    return TypecheckModuleResult {
+      typed: TypedModule {
+        module: resolved.module,
+        items: [],
+        type_env: env,
+        func_env: ResolvedFuncEnv { signatures: empty_map() },
+        item_registry: empty_map()
+      },
+      diagnostics: env_diags
+    }
+  }
+
+  let contributions = map(resolved.module.items, item =>
+    analyze_item(item: item, env: env, module_name: resolved.module.name)
+  )
+  let ctx = build_module_context(
+    contributions: contributions,
+    parent_index: parent_index,
+    resolved_imports: resolved.resolved_imports,
+    env: env,
+    module_name: resolved.module.name
+  )
+
+  // Add data declarations to scope as local variables.
+  // Data items: body != none, params == [], no return_type (have type_annotation instead).
+  let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
+    if item.body != none && item.params |> count == 0 && item.return_type == none && item.type_annotation != none {
+      map_insert(acc, item.name, TypeBinding { name: item.name, resolved: item.type_annotation.value })
+    } else {
+      acc
+    }
+  )
+  let infer_scope = InferScope {
+    type_env: env,
+    func_env: ctx.func_env,
+    locals: data_locals,
+    module_name: resolved.module.name,
+    service_registry: ctx.svc_registry,
+    item_registry: ctx.item_registry
+  }
+  let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
+  let typed_items = map(typed_item_results, tir => tir.item)
+  let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
+  let typed_module = Module {
+    name: resolved.module.name,
+    imports: resolved.module.imports,
+    items: ctx.resolved_items,
+    span: resolved.module.span
+  }
+
+  TypecheckModuleResult {
+    typed: TypedModule {
+      module: typed_module,
+      items: typed_items,
+      type_env: env,
+      func_env: ctx.func_env,
+      item_registry: ctx.item_registry
+    },
+    diagnostics: concat(env_diags, ctx.diagnostics, infer_diags)
+  }
+}
+
+// =========================================================================
+// Resolve all bindings in a TypeEnv
+//
+// After building the initial environment (which may contain Named
+// references within Product/Coproduct fields), resolve every binding
+// so downstream consumers see fully-structural types.
+// =========================================================================
+
+type EnvResolveResult {
+  env: TypeEnv
+  diagnostics: List<Diagnostic>
+}
+
+// Result of resolving a single type binding -- follows the same
+// value+diagnostics pattern as ResolveResult, ItemResult, etc.
+type BindingResult {
+  binding: TypeBinding
+  diagnostics: List<Diagnostic>
+}
+
+// Accumulator for single-pass fold over type bindings:
+// collects resolved bindings and diagnostics together,
+// eliminating duplicate resolve_node calls.
+type BindingsAccum {
+  bindings: Map<String, TypeBinding>
+  diagnostics: List<Diagnostic>
+}
+
+fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<String, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
+  // Resolve local types in topological (dependency) order. Each type is
+  // resolved exactly once, with all its dependencies already resolved in
+  // the environment. This is O(N * avg_fields) instead of O(B^D).
+  // Extract local binding names as a list.
+  let remaining = map(
+    filter(map_values(env.bindings), b => emit_map_has(m: local_names, key: b.name)),
+    b => b.name
+  )
+  topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map)
+}
+
+// Topological resolution loop for type bindings.
+// Resolves types whose dependencies are all already resolved (or primitive/recursive),
+// updates the environment, then recurses with the remaining types.
+// Same pattern as topo_resolve_loop for function signatures (line 3135).
+fn topo_resolve_types(
+    remaining: List<String>,
+    env: TypeEnv,
+    module_name: String,
+    diagnostics: List<Diagnostic>,
+    local_names: Map<String, Bool>,
+    deps_map: Map<String, List<String>>
+) -> EnvResolveResult {
+  if remaining |> count == 0 {
+    return EnvResolveResult { env: env, diagnostics: diagnostics }
+  }
+
+  // A type is ready when all its local dependencies are already resolved
+  // (not in remaining), primitive, or recursive (cycle-breaker).
+  let remaining_set = fold(remaining, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let ready = filter(remaining, name =>
+    match map_get(deps_map, name) {
+      Some { value: deps } =>
+        all(deps, dep => is_kernel_type(name: dep) || dep == "None" || dep == "" || is_recursive_type(env: env, name: dep) || emit_map_has(m: remaining_set, key: dep) == false)
+      None => true
+    }
+  )
+
+  if ready |> count == 0 {
+    // Stuck -- remaining types form undetected cycles or have missing deps.
+    // Resolve each as-is against current env to collect diagnostics.
+    // Single fold calls resolve_node once per name, collecting both bindings and diagnostics.
+    let stuck_accum = fold(remaining, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
+      match map_get(env.bindings, name) {
+        Some { value: binding } =>
+          let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+          BindingsAccum {
+            bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
+            diagnostics: concat(acc.diagnostics, result.diagnostics)
+          }
+        None => acc
+      }
+    )
+    return EnvResolveResult {
+      env: TypeEnv { bindings: stuck_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
+      diagnostics: concat(diagnostics, stuck_accum.diagnostics)
+    }
+  }
+
+  // Resolve ready types against current env -- single pass calls resolve_node
+  // once per name, collecting both updated bindings and diagnostics.
+  let ready_accum = fold(ready, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
+    match map_get(env.bindings, name) {
+      Some { value: binding } =>
+        let result = resolve_node(n: binding.resolved, env: env, module_name: module_name)
+        BindingsAccum {
+          bindings: map_insert(acc.bindings, name, TypeBinding { name: name, resolved: result.resolved }),
+          diagnostics: concat(acc.diagnostics, result.diagnostics)
+        }
+      None => acc
+    }
+  )
+
+  // Remove resolved from remaining and recurse.
+  let ready_set = fold(ready, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  let next_remaining = filter(remaining, name => emit_map_has(m: ready_set, key: name) == false)
+
+  topo_resolve_types(
+    remaining: next_remaining,
+    env: TypeEnv { bindings: ready_accum.bindings, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set },
+    module_name: module_name,
+    diagnostics: concat(diagnostics, ready_accum.diagnostics),
+    local_names: local_names,
+    deps_map: deps_map
+  )
+}
+
+// =========================================================================
+// Collect parent type environments for a module
+//
+// Gathers the TypeEnvs from all modules that this module imports from,
+// by looking up already-typed modules in the completed list.
+// =========================================================================
+
+fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, TypedModule>) -> ParentModulesResult {
+  let modules = flat_map(resolved.resolved_imports, imp =>
+    match map_get(module_index, imp.module_path) {
+      Some { value: typed } => [typed]
+      None => []
+    }
+  )
+  let diagnostics = flat_map(resolved.resolved_imports, imp =>
+    match map_get(module_index, imp.module_path) {
+      Some { value: _ } => []
+      None => [Diagnostic {
+        severity: Error,
+        message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"),
+        span: Some { value: imp.target_module.value.span },
+        module_name: Some { value: resolved.module.name },
+        category: Some { value: UnresolvedName }
+      }]
+    }
+  )
+  ParentModulesResult { modules: modules, diagnostics: diagnostics }
+}
+
+fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
+  match build_type_summary(item: item) {
+    Some { value: summary } =>
+      // Add per-variant summaries for enums so is_optional_struct_field can look up
+      // individual variant field types (e.g. VariantPattern.parent_enum).
+      let with_variants = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.type_summaries, f: (acc, variant) =>
+            if variant.children |> count > 0 {
+              map_insert(acc, normalize_emit_type_name(type_name: variant.name), TypeSummary {
+                name: normalize_emit_type_name(type_name: variant.name),
+                repr: StructRepr,
+                field_summaries: build_struct_field_summaries(children: variant.children)
+              })
+            } else { acc }
+          )
+        _ => state.type_summaries
+      }
+      let next_summaries = map_insert(with_variants, summary.name, summary)
+      // First-write-wins for variant_to_enum: if a variant name exists in
+      // multiple enums, keep the first registration. The module-level vtoe
+      // override corrects per-module based on imports. This makes vtoe
+      // construction deterministic regardless of Map iteration order.
+      let next_variants = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
+            match map_get(acc, child.name) {
+              Some { value: existing } =>
+                // Ambiguous: variant exists in multiple enums. Mark as
+                // ambiguous so the module-level override is the sole authority.
+                if existing == summary.name { acc }
+                else { map_insert(acc, child.name, "__ambiguous__") }
+              None => map_insert(acc, child.name, summary.name)
+            }
+          )
+        _ => state.variant_to_enum
+      }
+      // Build enum_variant_membership: "EnumName|VariantName" -> true
+      let next_evm = match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.enum_variant_membership, f: (acc, child) =>
+            map_insert(acc, concat(summary.name, "|", child.name), true)
+          )
+        _ => state.enum_variant_membership
+      }
+      // Build field_type_names: "TypeName|field_name" -> "FieldTypeName"
+      // For structs: direct field type names. For enums: per-variant field type names.
+      let next_ftn = match summary.repr {
+        StructRepr =>
+          fold(item.children, init: state.field_type_names, f: (acc, child) =>
+            match child.return_type {
+              Some { value: Resolved { node: ft } } =>
+                let resolved_name = normalize_access_type_node(n: ft).name
+                if resolved_name != "" && resolved_name != "Dynamic" {
+                  map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
+                } else { acc }
+              _ => acc
+            }
+          )
+        EnumRepr { unit_only: _ } =>
+          fold(item.children, init: state.field_type_names, f: (acc, variant) =>
+            fold(variant.children, init: acc, f: (inner_acc, child) =>
+              match child.return_type {
+                Some { value: Resolved { node: ft } } =>
+                  let resolved_name = normalize_access_type_node(n: ft).name
+                  if resolved_name != "" && resolved_name != "Dynamic" {
+                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
+                  } else { inner_acc }
+                _ => inner_acc
+              }
+            )
+          )
+      }
+      EmitInfoBuildState {
+        type_summaries: next_summaries,
+        variant_to_enum: next_variants,
+        enum_variant_membership: next_evm,
+        field_type_names: next_ftn
+      }
+    None => state
+  }
+}
+
+fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
+  let init = EmitInfoBuildState {
+    type_summaries: empty_map(),
+    variant_to_enum: empty_map(),
+    enum_variant_membership: empty_map(),
+    field_type_names: empty_map()
+  }
+  let built = modules |> fold(init: init, f: (state, typed_module) =>
+    typed_module.items |> fold(init: state, f: (inner_state, item) =>
+      add_emit_item_summary(state: inner_state, item: item)
+    )
+  )
+  EmitGraphInfo {
+    type_summaries: built.type_summaries,
+    variant_to_enum: built.variant_to_enum,
+    enum_variant_membership: built.enum_variant_membership,
+    field_type_names: built.field_type_names
+  }
+}
+
+// =========================================================================
+// Main entry point: typecheck
+//
+// Processes modules in dependency order (from the resolver's dep_order).
+// Each module sees the type environments of all its dependencies.
+//
+// Invariant: after this function returns, no unresolved Named references
+// survive (except recursive cycle-breakers that are guaranteed to be
+// defined in the graph).
+// =========================================================================
+
+fn typecheck(graph: ModuleGraph) -> TypedGraph {
+  // SG-9: Use explicit recursion with standalone parameters instead of fold
+  // with a struct accumulator. Standalone Rc parameters have refcount 1 in
+  // TCO loops, enabling O(1) list_push/map_insert via Rc::try_unwrap.
+  // A fold accumulator struct forces O(N) clones on every field access.
+  //
+  // Diagnostics use chunked accumulation (List<List<Diagnostic>>) instead of
+  // concat to avoid O(M^2) cloning. Each iteration pushes diagnostic lists;
+  // flat_map flattens once at the end.
+  typecheck_modules(
+    remaining: graph.modules,
+    modules: [],
+    module_index: empty_map(),
+    item_registry: empty_map(),
+    diag_chunks: []
+  )
+}
+
+fn typecheck_modules(
+  remaining: List<ResolvedModule>,
+  modules: List<TypedModule>,
+  module_index: Map<String, TypedModule>,
+  item_registry: Map<String, ItemInfo>,
+  diag_chunks: List<List<Diagnostic>>
+) -> TypedGraph {
+  match remaining |> first {
+    None =>
+      let expanded_registry = expand_transitive_services(modules: modules, registry: item_registry, remaining_passes: 5)
+      TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
+    Some { value: resolved } =>
+      let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index)
+      let tc_result = typecheck_module(resolved: resolved, parent_index: module_index)
+      let typed = tc_result.typed
+      let tc_diags = tc_result.diagnostics
+      typecheck_modules(
+        remaining: remaining |> skip(1),
+        modules: list_push(modules, typed),
+        module_index: map_insert(module_index, typed.module.name, typed),
+        item_registry: map_merge(item_registry, typed.item_registry),
+        diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_diags)
+      )
+  }
+}
+
+// =========================================================================
+// Reconcile namespaces in one call.
+//
+// Returns the reconciled graph with graph-level item metadata attached.
+// Historical note: collect_unresolved_in_expr and the rest of the
+// validate_no_unresolved walk family were removed once the env-error gate
+// made unresolved expression-tree validation redundant downstream.
+// =========================================================================
+
+fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
+  let typed = typecheck(graph: graph)
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
+}
+"##;
+    const SRC_V2_04_METHOD_DAG_SOURCE: &str = r##"// v2 method classification -- maps method names to typed method semantics.
+//
+// String-to-enum classification for intrinsic methods, runtime bridge
+// methods, and builtin function calls. Each classifier returns a typed
+// enum variant so downstream code (inference, emit) can match structurally
+// instead of comparing strings.
+//
+// Dependency: v2.compiler.infer_types (Node constructors)
+
+module v2.compiler.infer_method
+
+import v2.std.core {
+  Node,
+  IntrinsicMethod,
+  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
+  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
+  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
+  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
+  RuntimeBridgeMethod,
+  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
+  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
+  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength,
+  BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower,
+  BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap,
+  BridgeContains, BridgeReverse, BridgeLookup
+}
+import v2.compiler.infer_types {
+  leaf_node, with_optional_cardinality, container_node, tuple_node, error_type_node,
+  bare_map_node,
+  method_receiver_element_node
+}
+
+// =========================================================================
+// Intrinsic method classification
+// =========================================================================
+
+fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
+  if method == "count" { Some { value: MethodCount } }
+  else if method == "join" { Some { value: MethodJoin } }
+  else if method == "split" { Some { value: MethodSplit } }
+  else if method == "last" { Some { value: MethodLast } }
+  else if method == "first" { Some { value: MethodFirst } }
+  else if method == "enumerate" { Some { value: MethodEnumerate } }
+  else if method == "chars" { Some { value: MethodChars } }
+  else if method == "string_contains" { Some { value: MethodStringContains } }
+  else if method == "concat" { Some { value: MethodConcat } }
+  else if method == "map" { Some { value: MethodMap } }
+  else if method == "filter" { Some { value: MethodFilter } }
+  else if method == "any" { Some { value: MethodAny } }
+  else if method == "all" { Some { value: MethodAll } }
+  else if method == "flat_map" { Some { value: MethodFlatMap } }
+  else if method == "skip" { Some { value: MethodSkip } }
+  else if method == "take" { Some { value: MethodTake } }
+  else if method == "fold" { Some { value: MethodFold } }
+  else if method == "sort_by" { Some { value: MethodSortBy } }
+  else if method == "append" { Some { value: MethodAppend } }
+  else { none }
+}
+
+// =========================================================================
+// Runtime bridge method classification
+// =========================================================================
+
+fn classify_runtime_bridge_method(method: String) -> RuntimeBridgeMethod? {
+  if method == "get" { Some { value: BridgeGet } }
+  else if method == "with" { Some { value: BridgeWith } }
+  else if method == "list_push" { Some { value: BridgeListPush } }
+  else if method == "map_insert" { Some { value: BridgeMapInsert } }
+  else if method == "map_merge" { Some { value: BridgeMapMerge } }
+  else if method == "map_get" { Some { value: BridgeMapGet } }
+  else if method == "map_has" { Some { value: BridgeMapHas } }
+  else if method == "emit_map_has" { Some { value: BridgeEmitMapHas } }
+  else if method == "map_values" { Some { value: BridgeMapValues } }
+  else if method == "map_keys" { Some { value: BridgeMapKeys } }
+  else if method == "map_contains_key" { Some { value: BridgeMapContainsKey } }
+  else if method == "char_at" { Some { value: BridgeCharAt } }
+  else if method == "string_at" { Some { value: BridgeStringAt } }
+  else if method == "string_length" { Some { value: BridgeStringLength } }
+  else if method == "length" { Some { value: BridgeLength } }
+  else if method == "starts_with" { Some { value: BridgeStartsWith } }
+  else if method == "ends_with" { Some { value: BridgeEndsWith } }
+  else if method == "to_string" { Some { value: BridgeToString } }
+  else if method == "trim" { Some { value: BridgeTrim } }
+  else if method == "to_lower" { Some { value: BridgeToLower } }
+  else if method == "to_upper" { Some { value: BridgeToUpper } }
+  else if method == "replace" { Some { value: BridgeReplace } }
+  else if method == "substring" { Some { value: BridgeSubstring } }
+  else if method == "to_int" { Some { value: BridgeToInt } }
+  else if method == "empty_map" { Some { value: BridgeEmptyMap } }
+  else if method == "contains" { Some { value: BridgeContains } }
+  else if method == "reverse" { Some { value: BridgeReverse } }
+  else if method == "lookup" { Some { value: BridgeLookup } }
+  else { none }
+}
+
+// =========================================================================
+// Method return type inference
+// =========================================================================
+
+fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMethod, fold_accumulator_type: Node?) -> Node? {
+  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
+  match intrinsic {
+    MethodMap => Some { value: receiver_type }
+    MethodFilter => Some { value: receiver_type }
+    MethodEnumerate => Some { value: container_node(kind_name: "List", element: tuple_node(first: leaf_node(name: "Int"), second: elem_node)) }
+    MethodFirst => Some { value: with_optional_cardinality(n: elem_node) }
+    MethodLast => Some { value: with_optional_cardinality(n: elem_node) }
+    MethodCount => Some { value: leaf_node(name: "Int") }
+    MethodJoin => Some { value: leaf_node(name: "String") }
+    MethodAny => Some { value: leaf_node(name: "Bool") }
+    MethodAll => Some { value: leaf_node(name: "Bool") }
+    MethodSplit => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+    MethodChars => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+    MethodFlatMap => Some { value: receiver_type }
+    MethodSkip => Some { value: receiver_type }
+    MethodTake => Some { value: receiver_type }
+    MethodFold => fold_accumulator_type
+    MethodSortBy => Some { value: receiver_type }
+    MethodAppend => Some { value: receiver_type }
+    MethodStringContains => Some { value: leaf_node(name: "Bool") }
+    MethodConcat => Some { value: receiver_type }
+  }
+}
+
+fn infer_runtime_bridge_method_type_node(receiver_type: Node, method: RuntimeBridgeMethod) -> Node? {
+  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
+  match method {
+    BridgeGet => Some { value: with_optional_cardinality(n: elem_node) }
+    BridgeWith => Some { value: receiver_type }
+    BridgeListPush => Some { value: receiver_type }
+    BridgeMapInsert => Some { value: receiver_type }
+    BridgeMapMerge => Some { value: receiver_type }
+    BridgeMapGet => Some { value: with_optional_cardinality(n: elem_node) }
+    BridgeMapHas => Some { value: leaf_node(name: "Bool") }
+    BridgeEmitMapHas => Some { value: leaf_node(name: "Bool") }
+    BridgeMapContainsKey => Some { value: leaf_node(name: "Bool") }
+    BridgeContains => Some { value: leaf_node(name: "Bool") }
+    BridgeMapValues => Some { value: container_node(kind_name: "List", element: elem_node) }
+    BridgeMapKeys => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+    BridgeCharAt => Some { value: leaf_node(name: "String") }
+    BridgeStringAt => Some { value: leaf_node(name: "String") }
+    BridgeStringLength => Some { value: leaf_node(name: "Int") }
+    BridgeLength => Some { value: leaf_node(name: "Int") }
+    BridgeStartsWith => Some { value: leaf_node(name: "Bool") }
+    BridgeEndsWith => Some { value: leaf_node(name: "Bool") }
+    BridgeToString => Some { value: leaf_node(name: "String") }
+    BridgeTrim => Some { value: leaf_node(name: "String") }
+    BridgeToLower => Some { value: leaf_node(name: "String") }
+    BridgeToUpper => Some { value: leaf_node(name: "String") }
+    BridgeReplace => Some { value: leaf_node(name: "String") }
+    BridgeSubstring => Some { value: leaf_node(name: "String") }
+    BridgeToInt => Some { value: leaf_node(name: "Int") }
+    BridgeEmptyMap => Some { value: bare_map_node() }
+    BridgeLookup => Some { value: with_optional_cardinality(n: elem_node) }
+    BridgeReverse => Some { value: receiver_type }
+  }
+}
+
+// =========================================================================
+// Builtin call type inference
+// =========================================================================
+
+fn infer_builtin_call_type(name: String) -> Node? {
+  if name == "string_length" || name == "code_point" || name == "to_int" {
+    Some { value: leaf_node(name: "Int") }
+  } else if name == "parse_int" {
+    Some { value: with_optional_cardinality(n: leaf_node(name: "Int")) }
+  } else if name == "char_at" || name == "substring" || name == "from_code_point" || name == "to_string" || name == "concat" {
+    Some { value: leaf_node(name: "String") }
+  } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
+    Some { value: leaf_node(name: "Int") }
+  } else if name == "lookup" || name == "map_get" {
+    // Dynamic audit: correct — value type depends on receiver's map type, unknown here
+    Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
+  } else if name == "map_insert" || name == "map_merge" || name == "with" {
+    Some { value: bare_map_node() }
+  } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
+    Some { value: leaf_node(name: "Bool") }
+  } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
+    // Dynamic audit: correct — element type depends on receiver, unknown here
+    Some { value: container_node(kind_name: "List", element: leaf_node(name: "Dynamic")) }
+  } else if name == "Some" {
+    // Dynamic audit: correct — inner type depends on argument, unknown here
+    Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
+  } else {
+    none
+  }
+}
+
+fn resolve_builtin_call_type(name: String) -> Node {
+  match infer_builtin_call_type(name: name) {
+    Some { value: v } => v
+    None => leaf_node(name: "Unit")
+  }
+}
+
+// =========================================================================
+// Intrinsic method index -- single-authority Map for O(1) lookup
+//
+// This is the canonical source of the string→IntrinsicMethod mapping.
+// classify_reconciled_intrinsic_method uses if-else for Optional return;
+// this function builds the Map consumed by emit for index-based lookup.
+// =========================================================================
+
+fn intrinsic_method_index() -> Map<String, IntrinsicMethod> {
+  let m = empty_map()
+  let m = map_insert(m, "count", MethodCount)
+  let m = map_insert(m, "join", MethodJoin)
+  let m = map_insert(m, "split", MethodSplit)
+  let m = map_insert(m, "last", MethodLast)
+  let m = map_insert(m, "first", MethodFirst)
+  let m = map_insert(m, "enumerate", MethodEnumerate)
+  let m = map_insert(m, "chars", MethodChars)
+  let m = map_insert(m, "string_contains", MethodStringContains)
+  let m = map_insert(m, "concat", MethodConcat)
+  let m = map_insert(m, "map", MethodMap)
+  let m = map_insert(m, "filter", MethodFilter)
+  let m = map_insert(m, "any", MethodAny)
+  let m = map_insert(m, "all", MethodAll)
+  let m = map_insert(m, "flat_map", MethodFlatMap)
+  let m = map_insert(m, "skip", MethodSkip)
+  let m = map_insert(m, "take", MethodTake)
+  let m = map_insert(m, "fold", MethodFold)
+  let m = map_insert(m, "sort_by", MethodSortBy)
+  let m = map_insert(m, "append", MethodAppend)
+  m
+}
 "##;
     const SRC_V2_04_TYPES_DAG_SOURCE: &str = r##"// v2 type predicates, constructors, and comparisons.
 //
@@ -12828,10 +12713,6 @@ fn callable_return_type(n: Node) -> Node {
 
 fn error_type_node() -> Node {
   leaf_node(name: "Error")
-}
-
-fn no_span() -> SourceSpan {
-  SourceSpan { start: 0, end: 0 }
 }
 
 // =========================================================================
@@ -13216,14 +13097,6 @@ fn for_each_element_type_node(n: Node) -> Node {
       else { normed }
   }
 }
-
-// Map-contains-key check for Bool-valued maps (used as sets).
-fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
-  match map_get(m, key) {
-    Some { value: _ } => true
-    None => false
-  }
-}
 "##;
     const SRC_V2_05_EMIT_DAG_SOURCE: &str = r##"// v2 emitter core -- target-agnostic dispatch and shared helpers.
 //
@@ -13280,15 +13153,14 @@ import v2.std.core {
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type, emit_map_has }
-import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
+import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
+  ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
-  ItemInfo, UniqueAccum
+  ItemInfo, UniqueAccum, emit_map_has
 }
-import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
 
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
@@ -14797,9 +14669,9 @@ import v2.compiler.languages {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
-import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
+  ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   expr_span,
@@ -16129,9 +16001,9 @@ import v2.compiler.languages {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
-import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
+  ResolvedFuncSig, ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   expr_span,
@@ -17452,23 +17324,22 @@ import v2.compiler.infer_types {
   node_is_optional, node_is_map, node_is_container, node_has_structure,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   leaf_node, with_required_cardinality,
-  rt_type, emit_map_has
+  rt_type
 }
-import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer {
   ResolvedGraph, TypedModule,
+  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
+  ResolvedFuncEnv,
   InferScope,
   build_params_scope, extend_scope,
   infer_record_lit,
   build_emit_graph_info,
+  lookup_emit_type_summary,
   resolve_scrutinee_type_node,
   expr_span,
   ItemInfo, FuncItem, DataItem,
-  is_typed_service_call_receiver, extract_typed_service_name
-}
-import v2.compiler.infer_emit_info {
-  EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary
+  is_typed_service_call_receiver, extract_typed_service_name,
+  emit_map_has
 }
 
 import v2.compiler.emit {
@@ -24750,12 +24621,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     ("src/v2/03_normalize.dag", SRC_V2_03_NORMALIZE_DAG_SOURCE, "v2.compiler.normalize"),
                     ("src/v2/03_resolve.dag", SRC_V2_03_RESOLVE_DAG_SOURCE, "v2.compiler.resolve"),
                     ("src/v2/04_cycle.dag", SRC_V2_04_CYCLE_DAG_SOURCE, "v2.compiler.infer_cycle"),
-                    ("src/v2/04_emit_info.dag", SRC_V2_04_EMIT_INFO_DAG_SOURCE, "v2.compiler.infer_emit_info"),
                     ("src/v2/04_env.dag", SRC_V2_04_ENV_DAG_SOURCE, "v2.compiler.infer_env"),
                     ("src/v2/04_infer.dag", SRC_V2_04_INFER_DAG_SOURCE, "v2.compiler.infer"),
                     ("src/v2/04_method.dag", SRC_V2_04_METHOD_DAG_SOURCE, "v2.compiler.infer_method"),
-                    ("src/v2/04_resolve.dag", SRC_V2_04_RESOLVE_DAG_SOURCE, "v2.compiler.infer_resolve"),
-                    ("src/v2/04_sigs.dag", SRC_V2_04_SIGS_DAG_SOURCE, "v2.compiler.infer_sigs"),
                     ("src/v2/04_types.dag", SRC_V2_04_TYPES_DAG_SOURCE, "v2.compiler.infer_types"),
                     ("src/v2/05_emit.dag", SRC_V2_05_EMIT_DAG_SOURCE, "v2.compiler.emit"),
                     ("src/v2/05_emit_go.dag", SRC_V2_05_EMIT_GO_DAG_SOURCE, "v2.compiler.emit_go"),
@@ -24816,12 +24684,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
@@ -24903,12 +24768,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
@@ -25091,7 +24953,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         // Prevent silent type size regressions in generated v2 types.
         // These bounds assume Node.transport and Node.config are boxed (R2).
         let node_size = std::mem::size_of::<crate::v2_core::Node>();
-        let expr_size = std::mem::size_of::<crate::v2_core::ExprData>();
+        let expr_size = std::mem::size_of::<crate::v2_core::Expr>();
         assert!(
             node_size <= 176,
             "Node size regression: {} bytes (limit: 176). Check for unboxed rare fields.",
@@ -25256,12 +25118,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
@@ -25334,7 +25193,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
-                let typed = crate::infer::reconcile(graph);
+                let typed = crate::reconcile::reconcile(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
                     .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
@@ -25409,12 +25268,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
                     std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
@@ -25452,7 +25308,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer::TypedModule>>::new();
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::reconcile::TypedModule>>::new();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -25466,7 +25322,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
-                    let _unres = crate::infer::build_type_env_unresolved(
+                    let _unres = crate::reconcile::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -25483,7 +25339,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
-                    let env_result = crate::infer::build_type_env(
+                    let env_result = crate::reconcile::build_type_env(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -25507,7 +25363,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 2: full typecheck_module
                     let t_full = Instant::now();
-                    let tc_result = crate::infer::typecheck_module(
+                    let tc_result = crate::reconcile::typecheck_module(
                         resolved.clone(),
                         module_index
                     );
