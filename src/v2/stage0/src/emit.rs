@@ -1,14 +1,11 @@
 use crate::v2_core::*;
 use crate::infer_env::*;
-use crate::infer_method::*;
 use crate::infer_types::*;
 use crate::infer_sigs::*;
 use crate::infer::*;
 use crate::infer_emit_info::*;
 use crate::artifact::*;
-use crate::rust_emit::*;
-use crate::python_emit::*;
-use crate::go_emit::*;
+use crate::languages::*;
 use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -23,6 +20,20 @@ pub struct EmitResult {
 pub struct BlockEmitState {
     pub text: Rc<Vec<String>>,
     pub scope: Rc<InferScope>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TcoFrame {
+    pub expr: Rc<Node>,
+    pub scope: Rc<InferScope>,
+    pub depth: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TcoReassignInput {
+    pub args: Rc<Vec<Rc<NamedArg>>>,
+    pub scope: Rc<InferScope>,
+    pub depth: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
@@ -65,8 +76,11 @@ pub struct BackendInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TestProjection {
+    pub module_name: String,
     pub service_name: String,
     pub operation_name: String,
+    pub return_type: Rc<Node>,
+    pub params: Rc<Vec<Rc<Param>>>,
     pub mock_field_inits: Rc<Vec<Rc<FieldInit>>>,
 }
 
@@ -116,7 +130,7 @@ if __cond {
     }
     Rc::new(__filtered_6)
 }).iter().cloned() {
-        __mapped_10.push(Rc::new(TestProjection { service_name: __elem_5.name.clone(), operation_name: __elem_11.name.clone(), mock_field_inits: {
+        __mapped_10.push(Rc::new(TestProjection { module_name: __elem_1.module.name.clone(), service_name: __elem_5.name.clone(), operation_name: __elem_11.name.clone(), return_type: rt_type(__elem_11.clone()), params: __elem_11.params.clone(), mock_field_inits: {
     let mut __filtered_12 = Vec::new();
     for __elem_13 in __elem_11.properties.iter().cloned() {
         if has_mock_prefix(&__elem_13.name) {
@@ -142,13 +156,294 @@ pub struct InterpPart {
     pub arg_expr: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct EmitContext {
-    pub field_access_index: Rc<HashMap<String, Rc<FieldSummary>>>,
-    pub intrinsic_index: Rc<HashMap<String, IntrinsicMethod>>,
-    pub bridge_index: Rc<HashMap<String, bool>>,
-    pub vtoe_index: Rc<HashMap<String, String>>,
-    pub primitive_set: Rc<HashMap<String, bool>>,
+pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match expr.expr_data.as_ref() {
+    ExprData::ExprLiteral { value: v, .. } => {
+        emit_literal(v.clone(), target.clone())
+    }
+    ExprData::ExprError { kind: _, message, .. } => {
+        emit_error_expr(&message, target.clone())
+    }
+    ExprData::ExprVar { name: n, binding_kind: _, .. } => {
+        emit_ident(&n, target.clone())
+    }
+    ExprData::ExprFieldAccess { base: b, field: f, summary: _, .. } => {
+        if is_typed_service_call_receiver(expr.clone()) {
+    match extract_typed_service_name(expr.clone()) {
+    Some(svc_name) => {
+        service_var_name(&svc_name)
+    }
+    None => {
+        v2_rt::concat(v2_rt::concat(emit_simple_expr(b.clone(), target.clone()), ".".to_string()), emit_ident(&f, target.clone()))
+    }
+}
+} else {
+    v2_rt::concat(v2_rt::concat(emit_simple_expr(b.clone(), target.clone()), ".".to_string()), emit_ident(&f, target.clone()))
+}
+    }
+    ExprData::ExprStringInterp { parts: ps, .. } => {
+        emit_simple_string_interp(ps.clone(), target.clone())
+    }
+    _ => {
+        emit_error_expr("unsupported simple expr in test/mock binding", target.clone())
+    }
+}
+    })
+}
+
+pub fn emit_simple_string_interp(parts: Rc<Vec<Rc<StringPart>>>, target: RenderTarget) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match target.clone() {
+    RenderTarget::Rust => {
+        {
+    let fmt_parts = {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in parts.iter().cloned() {
+        __mapped_0.push(match __elem_1.as_ref() {
+    StringPart::Text { value: v, .. } => {
+        {
+    let escaped = {
+    let mut __joined_4 = String::new();
+    let mut __first_6 = true;
+    for __elem_5 in ({
+    let mut __split_parts_2 = Vec::new();
+    for __part_3 in v.clone().split("{".to_string().as_str()) {
+        __split_parts_2.push(__part_3.to_string());
+    }
+    __split_parts_2
+}).iter().cloned() {
+        if !__first_6 {
+    __joined_4.push_str(&"{{".to_string());
+};
+        __first_6 = false;
+        __joined_4.push_str(&__elem_5);
+    }
+    __joined_4
+};
+    let escaped2 = {
+    let mut __joined_9 = String::new();
+    let mut __first_11 = true;
+    for __elem_10 in ({
+    let mut __split_parts_7 = Vec::new();
+    for __part_8 in escaped.clone().split("}".to_string().as_str()) {
+        __split_parts_7.push(__part_8.to_string());
+    }
+    __split_parts_7
+}).iter().cloned() {
+        if !__first_11 {
+    __joined_9.push_str(&"}}".to_string());
+};
+        __first_11 = false;
+        __joined_9.push_str(&__elem_10);
+    }
+    __joined_9
+};
+    Rc::new(InterpPart { format_segment: escaped2.clone(), arg_expr: "".to_string() })
+}
+    }
+    StringPart::Interpolation { expr: e, .. } => {
+        Rc::new(InterpPart { format_segment: "{}".to_string(), arg_expr: emit_simple_expr(e.clone(), target.clone()) })
+    }
+});
+    }
+    Rc::new(__mapped_0)
+};
+    let fmt_str = {
+    let mut __joined_14 = String::new();
+    let mut __first_16 = true;
+    for __elem_15 in ({
+    let mut __mapped_12 = Vec::new();
+    for __elem_13 in fmt_parts.iter().cloned() {
+        __mapped_12.push(__elem_13.format_segment.clone());
+    }
+    Rc::new(__mapped_12)
+}).iter().cloned() {
+        if !__first_16 {
+    __joined_14.push_str(&"".to_string());
+};
+        __first_16 = false;
+        __joined_14.push_str(&__elem_15);
+    }
+    __joined_14
+};
+    let args = {
+    let mut __filtered_19 = Vec::new();
+    for __elem_20 in ({
+    let mut __mapped_17 = Vec::new();
+    for __elem_18 in fmt_parts.iter().cloned() {
+        __mapped_17.push(__elem_18.arg_expr.clone());
+    }
+    Rc::new(__mapped_17)
+}).iter().cloned() {
+        if __elem_20.clone() != "" {
+    __filtered_19.push(__elem_20);
+};
+    }
+    Rc::new(__filtered_19)
+};
+    if ({
+    let __len_24 = args.clone().len();
+    __len_24 as i64
+}) == 0_i64 {
+    v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str.clone()), "\".to_string()".to_string())
+} else {
+    let args_str = {
+    let mut __joined_21 = String::new();
+    let mut __first_23 = true;
+    for __elem_22 in args.iter().cloned() {
+        if !__first_23 {
+    __joined_21.push_str(&", ".to_string());
+};
+        __first_23 = false;
+        __joined_21.push_str(&__elem_22);
+    }
+    __joined_21
+};
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("format!(\"".to_string(), fmt_str.clone()), "\", ".to_string()), args_str.clone()), ")".to_string())
+}
+}
+    }
+    RenderTarget::Go => {
+        {
+    let fmt_parts = {
+    let mut __mapped_25 = Vec::new();
+    for __elem_26 in parts.iter().cloned() {
+        __mapped_25.push(match __elem_26.as_ref() {
+    StringPart::Text { value: v, .. } => {
+        Rc::new(InterpPart { format_segment: v.clone(), arg_expr: "".to_string() })
+    }
+    StringPart::Interpolation { expr: e, .. } => {
+        Rc::new(InterpPart { format_segment: "%v".to_string(), arg_expr: emit_simple_expr(e.clone(), target.clone()) })
+    }
+});
+    }
+    Rc::new(__mapped_25)
+};
+    let fmt_str = {
+    let mut __joined_29 = String::new();
+    let mut __first_31 = true;
+    for __elem_30 in ({
+    let mut __mapped_27 = Vec::new();
+    for __elem_28 in fmt_parts.iter().cloned() {
+        __mapped_27.push(__elem_28.format_segment.clone());
+    }
+    Rc::new(__mapped_27)
+}).iter().cloned() {
+        if !__first_31 {
+    __joined_29.push_str(&"".to_string());
+};
+        __first_31 = false;
+        __joined_29.push_str(&__elem_30);
+    }
+    __joined_29
+};
+    let args = {
+    let mut __filtered_34 = Vec::new();
+    for __elem_35 in ({
+    let mut __mapped_32 = Vec::new();
+    for __elem_33 in fmt_parts.iter().cloned() {
+        __mapped_32.push(__elem_33.arg_expr.clone());
+    }
+    Rc::new(__mapped_32)
+}).iter().cloned() {
+        if __elem_35.clone() != "" {
+    __filtered_34.push(__elem_35);
+};
+    }
+    Rc::new(__filtered_34)
+};
+    if ({
+    let __len_39 = args.clone().len();
+    __len_39 as i64
+}) == 0_i64 {
+    v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str.clone()), "\"".to_string())
+} else {
+    let args_str = {
+    let mut __joined_36 = String::new();
+    let mut __first_38 = true;
+    for __elem_37 in args.iter().cloned() {
+        if !__first_38 {
+    __joined_36.push_str(&", ".to_string());
+};
+        __first_38 = false;
+        __joined_36.push_str(&__elem_37);
+    }
+    __joined_36
+};
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fmt.Sprintf(\"".to_string(), fmt_str.clone()), "\", ".to_string()), args_str.clone()), ")".to_string())
+}
+}
+    }
+    RenderTarget::Python => {
+        {
+    let segments = {
+    let mut __mapped_40 = Vec::new();
+    for __elem_41 in parts.iter().cloned() {
+        __mapped_40.push(match __elem_41.as_ref() {
+    StringPart::Text { value: v, .. } => {
+        {
+    let mut __joined_49 = String::new();
+    let mut __first_51 = true;
+    for __elem_50 in ({
+    let mut __split_parts_47 = Vec::new();
+    for __part_48 in ({
+    let mut __joined_44 = String::new();
+    let mut __first_46 = true;
+    for __elem_45 in ({
+    let mut __split_parts_42 = Vec::new();
+    for __part_43 in v.clone().split("{".to_string().as_str()) {
+        __split_parts_42.push(__part_43.to_string());
+    }
+    __split_parts_42
+}).iter().cloned() {
+        if !__first_46 {
+    __joined_44.push_str(&"{{".to_string());
+};
+        __first_46 = false;
+        __joined_44.push_str(&__elem_45);
+    }
+    __joined_44
+}).split("}".to_string().as_str()) {
+        __split_parts_47.push(__part_48.to_string());
+    }
+    __split_parts_47
+}).iter().cloned() {
+        if !__first_51 {
+    __joined_49.push_str(&"}}".to_string());
+};
+        __first_51 = false;
+        __joined_49.push_str(&__elem_50);
+    }
+    __joined_49
+}
+    }
+    StringPart::Interpolation { expr: e, .. } => {
+        v2_rt::concat(v2_rt::concat("{".to_string(), emit_simple_expr(e.clone(), target.clone())), "}".to_string())
+    }
+});
+    }
+    Rc::new(__mapped_40)
+};
+    v2_rt::concat(v2_rt::concat("f\"".to_string(), {
+    let mut __joined_52 = String::new();
+    let mut __first_54 = true;
+    for __elem_53 in segments.iter().cloned() {
+        if !__first_54 {
+    __joined_52.push_str(&"".to_string());
+};
+        __first_54 = false;
+        __joined_52.push_str(&__elem_53);
+    }
+    __joined_52
+}), "\"".to_string())
+}
+    }
+    _ => {
+        emit_error_expr("unsupported simple string interpolation target", target.clone())
+    }
+}
+    })
 }
 
 pub fn empty_emit_scope() -> Rc<InferScope> {
@@ -295,64 +590,6 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     __acc_0
 };
     result.result.clone()
-}
-
-pub fn build_emit_context(graph: Rc<ResolvedGraph>) -> Rc<EmitContext> {
-    let info = build_emit_graph_info(graph.modules.clone());
-    let field_idx = {
-    let mut __acc_4 = Rc::new(std::collections::HashMap::new());
-    for __elem_5 in ({
-    let __rc_0 = info.type_summaries.clone();
-    let __map_unwrapped_1 = Rc::try_unwrap(__rc_0).unwrap_or_else(|rc| (*rc).clone());
-    let mut __entries_2 = __map_unwrapped_1.into_iter().collect::<Vec<_>>();
-    __entries_2.sort_by(|a, b| a.0.cmp(&b.0));
-    let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
-    Rc::new(__values_3)
-}).iter().cloned() {
-        __acc_4 = {
-    let mut __acc_9 = __acc_4.clone();
-    for __elem_10 in ({
-    let __rc_6 = __elem_5.field_summaries.clone();
-    let __map_unwrapped_7 = Rc::try_unwrap(__rc_6).unwrap_or_else(|rc| (*rc).clone());
-    let mut __keys_8 = __map_unwrapped_7.into_keys().collect::<Vec<_>>();
-    __keys_8.sort();
-    Rc::new(__keys_8)
-}).iter().cloned() {
-        __acc_9 = match __elem_5.field_summaries.clone().get(&__elem_10.clone()).cloned() {
-    Some(fs) => {
-        {
-    let __rc_12 = __acc_9;
-    let mut __map_ins_11 = Rc::try_unwrap(__rc_12).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_11.insert(v2_rt::concat(v2_rt::concat(__elem_5.name.clone(), "::".to_string()), __elem_10.clone()), fs.clone());
-    Rc::new(__map_ins_11)
-}
-    }
-    None => {
-        __acc_9.clone()
-    }
-};
-    }
-    __acc_9
-};
-    }
-    __acc_4
-};
-    let intrinsic_idx = intrinsic_method_index();
-    let bridge_idx = Rc::new(std::collections::HashMap::new());
-    let vtoe_idx = info.variant_to_enum.clone();
-    let prim_set = {
-    let mut __acc_13 = Rc::new(std::collections::HashMap::new());
-    for __elem_14 in Rc::new(KERNEL_TYPES.iter().map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() {
-        __acc_13 = {
-    let __rc_16 = __acc_13;
-    let mut __map_ins_15 = Rc::try_unwrap(__rc_16).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_15.insert(__elem_14.clone(), true);
-    Rc::new(__map_ins_15)
-};
-    }
-    __acc_13
-};
-    Rc::new(EmitContext { field_access_index: field_idx.clone(), intrinsic_index: intrinsic_idx.clone(), bridge_index: bridge_idx.clone(), vtoe_index: vtoe_idx.clone(), primitive_set: prim_set.clone() })
 }
 
 pub fn has_nested_records_node(n: Rc<Node>) -> bool {
@@ -851,8 +1088,51 @@ pub fn capitalize_first(s: &str) -> String {
 }
 }
 
+pub fn to_pascal(name: &str) -> String {
+    let snake = to_snake(&name);
+    let parts = {
+    let mut __split_parts_0 = Vec::new();
+    for __part_1 in snake.split("_".to_string().as_str()) {
+        __split_parts_0.push(__part_1.to_string());
+    }
+    __split_parts_0
+};
+    let pascal_parts = {
+    let mut __mapped_2 = Vec::new();
+    for __elem_3 in parts.iter().cloned() {
+        __mapped_2.push(capitalize_first(&__elem_3));
+    }
+    Rc::new(__mapped_2)
+};
+    {
+    let mut __joined_4 = String::new();
+    let mut __first_6 = true;
+    for __elem_5 in pascal_parts.iter().cloned() {
+        if !__first_6 {
+    __joined_4.push_str(&"".to_string());
+};
+        __first_6 = false;
+        __joined_4.push_str(&__elem_5);
+    }
+    __joined_4
+}
+}
+
 pub fn service_var_name(service_name: &str) -> String {
     to_snake(&sanitize_service_name(&service_name))
+}
+
+pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
+    let conventions = test_conventions_for_target(target);
+    let formatted = match conventions.name_style.clone() {
+    TestNameStyle::SnakeCaseTestNames => {
+        v2_rt::concat(v2_rt::concat(to_snake(&sanitize_service_name(&projection.service_name)), "_".to_string()), to_snake(&projection.operation_name))
+    }
+    TestNameStyle::PascalCaseTestNames => {
+        v2_rt::concat(to_pascal(&sanitize_service_name(&projection.service_name)), to_pascal(&projection.operation_name))
+    }
+};
+    v2_rt::concat(conventions.function_prefix.clone(), formatted.clone())
 }
 
 pub fn apply_type_template1(template: &str, arg0: &str) -> String {
@@ -914,6 +1194,32 @@ pub fn apply_type_template2(template: &str, arg0: &str, arg1: &str) -> String {
 }
 }
 
+pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
+    language_spec_for_target(target)
+}
+
+pub fn reserved_prefix(target: RenderTarget) -> String {
+    match language_spec(target).reserved_words.strategy.as_ref() {
+    ReservedWordStrategy::PrefixEscape { prefix, .. } => {
+        prefix.clone()
+    }
+    _ => {
+        "".to_string()
+    }
+}
+}
+
+pub fn reserved_suffix(target: RenderTarget) -> String {
+    match language_spec(target).reserved_words.strategy.as_ref() {
+    ReservedWordStrategy::SuffixEscape { suffix, .. } => {
+        suffix.clone()
+    }
+    _ => {
+        "".to_string()
+    }
+}
+}
+
 pub fn emit_string_literal(s: &str, suffix: &str) -> String {
     let escaped = {
     let mut __joined_2 = String::new();
@@ -965,162 +1271,6 @@ pub fn is_null_coalesce(op: BinOpKind) -> bool {
 }
 }
 
-pub fn rust_keyword(key: &str) -> String {
-    match v2_rt::lookup(&RUST_KEYWORDS, key.to_string()) {
-    Some(kw) => {
-        kw.clone()
-    }
-    None => {
-        key.to_string()
-    }
-}
-}
-
-pub fn python_keyword(key: &str) -> String {
-    match v2_rt::lookup(&PYTHON_KEYWORDS, key.to_string()) {
-    Some(kw) => {
-        kw.clone()
-    }
-    None => {
-        key.to_string()
-    }
-}
-}
-
-pub fn go_keyword(key: &str) -> String {
-    match v2_rt::lookup(&GO_KEYWORDS, key.to_string()) {
-    Some(kw) => {
-        kw.clone()
-    }
-    None => {
-        key.to_string()
-    }
-}
-}
-
-pub fn rust_container(kind: &str, inner: &str) -> String {
-    match v2_rt::lookup(&RUST_CONTAINER_TEMPLATES, kind.to_string()) {
-    Some(tmpl) => {
-        apply_type_template1(&tmpl, &inner)
-    }
-    None => {
-        v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.to_string(), "<".to_string()), inner.to_string()), ">".to_string())
-    }
-}
-}
-
-pub fn python_container(kind: &str, inner: &str) -> String {
-    match v2_rt::lookup(&PYTHON_CONTAINER_TEMPLATES, kind.to_string()) {
-    Some(tmpl) => {
-        apply_type_template1(&tmpl, &inner)
-    }
-    None => {
-        v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.to_string(), "[".to_string()), inner.to_string()), "]".to_string())
-    }
-}
-}
-
-pub fn go_container(kind: &str, inner: &str) -> String {
-    match v2_rt::lookup(&GO_CONTAINER_TEMPLATES, kind.to_string()) {
-    Some(tmpl) => {
-        apply_type_template1(&tmpl, &inner)
-    }
-    None => {
-        v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.to_string(), "[".to_string()), inner.to_string()), "]".to_string())
-    }
-}
-}
-
-pub fn rust_primitive_type(name: &str) -> String {
-    match v2_rt::lookup(&RUST_TYPE_MAP, name.to_string()) {
-    Some(m) => {
-        m.clone()
-    }
-    None => {
-        name.to_string()
-    }
-}
-}
-
-pub fn python_primitive_type(name: &str) -> String {
-    match v2_rt::lookup(&PYTHON_TYPE_MAP, name.to_string()) {
-    Some(m) => {
-        m.clone()
-    }
-    None => {
-        name.to_string()
-    }
-}
-}
-
-pub fn go_primitive_type(name: &str) -> String {
-    match v2_rt::lookup(&GO_TYPE_MAP, name.to_string()) {
-    Some(m) => {
-        m.clone()
-    }
-    None => {
-        name.to_string()
-    }
-}
-}
-
-pub fn rust_map_template() -> String {
-    match v2_rt::lookup(&RUST_CONTAINER_TEMPLATES, "map".to_string()) {
-    Some(tmpl) => {
-        tmpl.clone()
-    }
-    None => {
-        "BTreeMap<{0}, {1}>".to_string()
-    }
-}
-}
-
-pub fn python_map_template() -> String {
-    match v2_rt::lookup(&PYTHON_CONTAINER_TEMPLATES, "map".to_string()) {
-    Some(tmpl) => {
-        tmpl.clone()
-    }
-    None => {
-        "dict[{0}, {1}]".to_string()
-    }
-}
-}
-
-pub fn go_map_template() -> String {
-    match v2_rt::lookup(&GO_CONTAINER_TEMPLATES, "map".to_string()) {
-    Some(tmpl) => {
-        tmpl.clone()
-    }
-    None => {
-        "map[{0}]{1}".to_string()
-    }
-}
-}
-
-pub fn rust_literal(value: Rc<LiteralValue>) -> String {
-    match value.as_ref() {
-    LiteralValue::LitStr { value: s, .. } => {
-        emit_string_literal(&s, ".to_string()")
-    }
-    LiteralValue::LitInt { value: i, .. } => {
-        v2_rt::to_string(i.clone())
-    }
-    LiteralValue::LitFloat { value: f, .. } => {
-        f.clone()
-    }
-    LiteralValue::LitBool { value: b, .. } => {
-        if b.clone() {
-    rust_keyword("true")
-} else {
-    rust_keyword("false")
-}
-    }
-    LiteralValue::LitNull => {
-        rust_keyword("null")
-    }
-}
-}
-
 pub fn rust_literal_for_pattern(value: Rc<LiteralValue>) -> String {
     match value.as_ref() {
     LiteralValue::LitStr { value: s, .. } => {
@@ -1134,221 +1284,19 @@ pub fn rust_literal_for_pattern(value: Rc<LiteralValue>) -> String {
     }
     LiteralValue::LitBool { value: b, .. } => {
         if b.clone() {
-    rust_keyword("true")
+    emit_keyword("true", RenderTarget::Rust)
 } else {
-    rust_keyword("false")
+    emit_keyword("false", RenderTarget::Rust)
 }
     }
     LiteralValue::LitNull => {
-        rust_keyword("null")
-    }
-}
-}
-
-pub fn python_literal(value: Rc<LiteralValue>) -> String {
-    match value.as_ref() {
-    LiteralValue::LitStr { value: s, .. } => {
-        emit_string_literal(&s, "")
-    }
-    LiteralValue::LitInt { value: i, .. } => {
-        v2_rt::to_string(i.clone())
-    }
-    LiteralValue::LitFloat { value: f, .. } => {
-        f.clone()
-    }
-    LiteralValue::LitBool { value: b, .. } => {
-        if b.clone() {
-    python_keyword("true")
-} else {
-    python_keyword("false")
-}
-    }
-    LiteralValue::LitNull => {
-        python_keyword("null")
-    }
-}
-}
-
-pub fn go_literal(value: Rc<LiteralValue>) -> String {
-    match value.as_ref() {
-    LiteralValue::LitStr { value: s, .. } => {
-        emit_string_literal(&s, "")
-    }
-    LiteralValue::LitInt { value: i, .. } => {
-        v2_rt::to_string(i.clone())
-    }
-    LiteralValue::LitFloat { value: f, .. } => {
-        f.clone()
-    }
-    LiteralValue::LitBool { value: b, .. } => {
-        if b.clone() {
-    go_keyword("true")
-} else {
-    go_keyword("false")
-}
-    }
-    LiteralValue::LitNull => {
-        go_keyword("null")
-    }
-}
-}
-
-pub fn rust_bin_op_symbol(op: BinOpKind) -> String {
-    match op {
-    BinOpKind::Add => {
-        "+".to_string()
-    }
-    BinOpKind::Sub => {
-        "-".to_string()
-    }
-    BinOpKind::Mul => {
-        "*".to_string()
-    }
-    BinOpKind::Div => {
-        rust_keyword("div")
-    }
-    BinOpKind::Mod => {
-        "%".to_string()
-    }
-    BinOpKind::BinEq => {
-        "==".to_string()
-    }
-    BinOpKind::BinNe => {
-        "!=".to_string()
-    }
-    BinOpKind::BinLt => {
-        "<".to_string()
-    }
-    BinOpKind::BinGt => {
-        ">".to_string()
-    }
-    BinOpKind::BinLe => {
-        "<=".to_string()
-    }
-    BinOpKind::BinGe => {
-        ">=".to_string()
-    }
-    BinOpKind::BinAnd => {
-        rust_keyword("and")
-    }
-    BinOpKind::BinOr => {
-        rust_keyword("or")
-    }
-    BinOpKind::NullCoalesce => {
-        "??".to_string()
-    }
-}
-}
-
-pub fn python_bin_op_symbol(op: BinOpKind) -> String {
-    match op {
-    BinOpKind::Add => {
-        "+".to_string()
-    }
-    BinOpKind::Sub => {
-        "-".to_string()
-    }
-    BinOpKind::Mul => {
-        "*".to_string()
-    }
-    BinOpKind::Div => {
-        python_keyword("div")
-    }
-    BinOpKind::Mod => {
-        "%".to_string()
-    }
-    BinOpKind::BinEq => {
-        "==".to_string()
-    }
-    BinOpKind::BinNe => {
-        "!=".to_string()
-    }
-    BinOpKind::BinLt => {
-        "<".to_string()
-    }
-    BinOpKind::BinGt => {
-        ">".to_string()
-    }
-    BinOpKind::BinLe => {
-        "<=".to_string()
-    }
-    BinOpKind::BinGe => {
-        ">=".to_string()
-    }
-    BinOpKind::BinAnd => {
-        python_keyword("and")
-    }
-    BinOpKind::BinOr => {
-        python_keyword("or")
-    }
-    BinOpKind::NullCoalesce => {
-        "??".to_string()
-    }
-}
-}
-
-pub fn go_bin_op_symbol(op: BinOpKind) -> String {
-    match op {
-    BinOpKind::Add => {
-        "+".to_string()
-    }
-    BinOpKind::Sub => {
-        "-".to_string()
-    }
-    BinOpKind::Mul => {
-        "*".to_string()
-    }
-    BinOpKind::Div => {
-        go_keyword("div")
-    }
-    BinOpKind::Mod => {
-        "%".to_string()
-    }
-    BinOpKind::BinEq => {
-        "==".to_string()
-    }
-    BinOpKind::BinNe => {
-        "!=".to_string()
-    }
-    BinOpKind::BinLt => {
-        "<".to_string()
-    }
-    BinOpKind::BinGt => {
-        ">".to_string()
-    }
-    BinOpKind::BinLe => {
-        "<=".to_string()
-    }
-    BinOpKind::BinGe => {
-        ">=".to_string()
-    }
-    BinOpKind::BinAnd => {
-        go_keyword("and")
-    }
-    BinOpKind::BinOr => {
-        go_keyword("or")
-    }
-    BinOpKind::NullCoalesce => {
-        "??".to_string()
+        emit_keyword("null", RenderTarget::Rust)
     }
 }
 }
 
 pub fn emit_keyword(key: &str, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => {
-        rust_keyword(&key)
-    }
-    RenderTarget::Go => {
-        go_keyword(&key)
-    }
-    RenderTarget::Python => {
-        python_keyword(&key)
-    }
-    RenderTarget::Dag => {
-        key.to_string()
-    }
-}
+    target_keyword(target, &key)
 }
 
 pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
@@ -1433,51 +1381,33 @@ pub fn emit_bin_op_symbol(op: BinOpKind, target: RenderTarget) -> String {
 }
 
 pub fn emit_primitive_type(name: &str, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => {
-        rust_primitive_type(&name)
-    }
-    RenderTarget::Go => {
-        go_primitive_type(&name)
-    }
-    RenderTarget::Python => {
-        python_primitive_type(&name)
-    }
-    RenderTarget::Dag => {
-        name.to_string()
-    }
-}
+    target_primitive_type(target, &name)
 }
 
 pub fn emit_container(kind: &str, inner: &str, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => {
-        rust_container(&kind, &inner)
+    match target_container_template(target, &kind) {
+    Some(template) => {
+        apply_type_template1(&template, &inner)
     }
-    RenderTarget::Go => {
-        go_container(&kind, &inner)
-    }
+    None => {
+        match target {
     RenderTarget::Python => {
-        python_container(&kind, &inner)
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.to_string(), "[".to_string()), inner.to_string()), "]".to_string())
     }
-    RenderTarget::Dag => {
+    _ => {
         v2_rt::concat(v2_rt::concat(v2_rt::concat(kind.to_string(), "<".to_string()), inner.to_string()), ">".to_string())
+    }
+}
     }
 }
 }
 
 pub fn emit_map_type(key_type: &str, val_type: &str, target: RenderTarget) -> String {
-    match target {
-    RenderTarget::Rust => {
-        apply_type_template2(&rust_map_template(), &key_type, &val_type)
+    match target_container_template(target, "map") {
+    Some(template) => {
+        apply_type_template2(&template, &key_type, &val_type)
     }
-    RenderTarget::Go => {
-        apply_type_template2(&go_map_template(), &key_type, &val_type)
-    }
-    RenderTarget::Python => {
-        apply_type_template2(&python_map_template(), &key_type, &val_type)
-    }
-    RenderTarget::Dag => {
+    None => {
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Map<".to_string(), key_type.to_string()), ", ".to_string()), val_type.to_string()), ">".to_string())
     }
 }
@@ -1560,7 +1490,7 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Callable[[".to_string(), param_str.clone()), "], ".to_string()), ret_str.clone()), "]".to_string())
     }
     RenderTarget::Rust => {
-        v2_rt::concat(v2_rt::concat(v2_rt::concat("impl Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone())
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Rc<dyn Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone()), ">".to_string())
     }
     _ => {
         v2_rt::concat(v2_rt::concat(v2_rt::concat("Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone())
@@ -2227,6 +2157,33 @@ pub fn tco_reassign_core(ordered_args: Rc<Vec<String>>, param_names: Rc<Vec<Stri
     v2_rt::concat(v2_rt::concat(temp_lets.clone(), assigns.clone()), Rc::new(vec!(v2_rt::concat(line_prefix.to_string(), continue_str.to_string()))))
 }
 
+pub fn emit_shared_tco_expr(frame: Rc<TcoFrame>, fn_name: &str, emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String, emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String, emit_if: impl Fn(Rc<TcoFrame>) -> String, emit_match: impl Fn(Rc<TcoFrame>) -> String, emit_let: impl Fn(Rc<TcoFrame>) -> String, emit_block: impl Fn(Rc<TcoFrame>) -> String, emit_default_return: impl Fn(Rc<TcoFrame>) -> String) -> String {
+    match frame.expr.expr_data.as_ref() {
+    ExprData::ExprCall { func: f, args: a, call_semantics: _, .. } => {
+        if f.clone() == fn_name {
+    emit_self_call_reassign(Rc::new(TcoReassignInput { args: a.clone(), scope: frame.scope.clone(), depth: frame.depth.clone() }))
+} else {
+    emit_non_self_call(frame.clone())
+}
+    }
+    ExprData::ExprIf { condition: _, then_branch: _, else_branch: _, .. } => {
+        emit_if(frame.clone())
+    }
+    ExprData::ExprMatch { scrutinee: _, arms: _, .. } => {
+        emit_match(frame.clone())
+    }
+    ExprData::ExprLet { name: _, value: _, body: _, .. } => {
+        emit_let(frame.clone())
+    }
+    ExprData::ExprBlock { stmts: _, .. } => {
+        emit_block(frame.clone())
+    }
+    _ => {
+        emit_default_return(frame.clone())
+    }
+}
+}
+
 pub fn is_tco_candidate(texpr: Rc<Node>, func_name: &str) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match texpr.expr_data.as_ref() {
@@ -2301,7 +2258,7 @@ pub fn emit_ident(name: &str, target: RenderTarget) -> String {
     {
 let __cond = {
     let mut __any_0 = false;
-    for __elem_1 in Rc::new(RUST_RESERVED.iter().map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() {
+    for __elem_1 in language_spec(RenderTarget::Rust).reserved_words.keywords.iter().cloned() {
         if __elem_1.clone() == snake.clone() {
     __any_0 = true;
     break;
@@ -2310,7 +2267,7 @@ let __cond = {
     __any_0
 };
 if __cond {
-    v2_rt::concat(RUST_RESERVED_ESCAPE_PREFIX.to_string(), snake.clone())
+    v2_rt::concat(reserved_prefix(RenderTarget::Rust), snake.clone())
 } else {
     snake.clone()
 }
@@ -2399,7 +2356,7 @@ if __cond {
     {
 let __cond = {
     let mut __any_21 = false;
-    for __elem_22 in Rc::new(GO_RESERVED.iter().map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() {
+    for __elem_22 in language_spec(RenderTarget::Go).reserved_words.keywords.iter().cloned() {
         if __elem_22.clone() == camel.clone() {
     __any_21 = true;
     break;
@@ -2408,7 +2365,7 @@ let __cond = {
     __any_21
 };
 if __cond {
-    v2_rt::concat(camel.clone(), GO_RESERVED_ESCAPE_SUFFIX.to_string())
+    v2_rt::concat(camel.clone(), reserved_suffix(RenderTarget::Go))
 } else {
     camel.clone()
 }
@@ -2422,7 +2379,7 @@ if __cond {
     {
 let __cond = {
     let mut __any_24 = false;
-    for __elem_25 in Rc::new(PYTHON_RESERVED.iter().map(|s| s.to_string()).collect::<Vec<_>>()).iter().cloned() {
+    for __elem_25 in language_spec(RenderTarget::Python).reserved_words.keywords.iter().cloned() {
         if __elem_25.clone() == snake.clone() {
     __any_24 = true;
     break;
@@ -2431,7 +2388,7 @@ let __cond = {
     __any_24
 };
 if __cond {
-    v2_rt::concat(snake.clone(), PYTHON_RESERVED_ESCAPE_SUFFIX.to_string())
+    v2_rt::concat(snake.clone(), reserved_suffix(RenderTarget::Python))
 } else {
     snake.clone()
 }
@@ -2625,37 +2582,88 @@ pub fn emit_null_coalesce(l_str: &str, r_str: &str, target: RenderTarget) -> Str
 }
 }
 
-pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String, scope: Rc<InferScope>, depth: i64) -> Option<String> {
+pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, wrap_result: impl Fn(String) -> String, recurse: impl Fn(Rc<Node>) -> String, emit_var: impl Fn(Rc<Node>) -> String, emit_field_access: impl Fn(Rc<Node>) -> String, emit_call: impl Fn(Rc<Node>) -> String, emit_method_call: impl Fn(Rc<Node>) -> String, emit_match: impl Fn(Rc<Node>) -> String, emit_if: impl Fn(Rc<Node>) -> String, emit_let: impl Fn(Rc<Node>) -> String, emit_record_lit: impl Fn(Rc<Node>) -> String, emit_string_interp: impl Fn(Rc<Node>) -> String, emit_block: impl Fn(Rc<Node>) -> String, emit_cast: impl Fn(Rc<Node>) -> String, emit_for_each: impl Fn(Rc<Node>) -> String, emit_index: impl Fn(Rc<Node>) -> String, emit_slice: impl Fn(Rc<Node>) -> String) -> String {
     match texpr.expr_data.as_ref() {
     ExprData::ExprLiteral { value: v, .. } => {
-        Some(emit_literal(v.clone(), target.clone()))
+        wrap_result(emit_literal(v.clone(), target.clone()))
     }
     ExprData::ExprError { kind: _, message, .. } => {
-        Some(emit_error_expr(&message, target.clone()))
+        wrap_result(emit_error_expr(&message, target.clone()))
     }
-    ExprData::NoExprData => {
-        Some("".to_string())
+    ExprData::ExprVar { name: _, binding_kind: _, .. } => {
+        emit_var(texpr.clone())
     }
-    ExprData::ExprUnaryOp { op: o, operand: e, .. } => {
-        Some(emit_unary_op(o.clone(), &recurse(e.clone(), scope.clone(), depth.clone()), target.clone()))
+    ExprData::ExprFieldAccess { base: _, field: _, summary: _, .. } => {
+        emit_field_access(texpr.clone())
     }
-    ExprData::ExprLambda { params: ps, body: bd, semantics: _, .. } => {
-        Some(emit_lambda(&emit_lambda_params(ps.clone(), target.clone()), &recurse(bd.clone(), scope.clone(), depth.clone()), target.clone()))
+    ExprData::ExprCall { func: _, args: _, call_semantics: _, .. } => {
+        emit_call(texpr.clone())
     }
-    ExprData::ExprListLit { elements: els, .. } => {
-        Some(emit_list_lit_expr({
-    let mut __mapped_2 = Vec::new();
-    for __elem_3 in els.iter().cloned() {
-        __mapped_2.push(recurse(__elem_3.clone(), scope.clone(), depth.clone()));
+    ExprData::ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _, .. } => {
+        emit_method_call(texpr.clone())
     }
-    Rc::new(__mapped_2)
+    ExprData::ExprMatch { scrutinee: _, arms: _, .. } => {
+        emit_match(texpr.clone())
+    }
+    ExprData::ExprIf { condition: _, then_branch: _, else_branch: _, .. } => {
+        emit_if(texpr.clone())
+    }
+    ExprData::ExprLet { name: _, value: _, body: _, .. } => {
+        emit_let(texpr.clone())
+    }
+    ExprData::ExprRecordLit { type_name: _, fields: _, parent_enum: _, .. } => {
+        emit_record_lit(texpr.clone())
+    }
+    ExprData::ExprBinOp { op, left, right, .. } => {
+        {
+    let left_str = recurse(left.clone());
+    let right_str = recurse(right.clone());
+    if is_null_coalesce(op.clone()) {
+    wrap_result(emit_null_coalesce(&left_str, &right_str, target.clone()))
+} else {
+    let op_str = emit_bin_op_symbol(op.clone(), target.clone());
+    wrap_result(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), left_str.clone()), " ".to_string()), op_str), " ".to_string()), right_str.clone()), ")".to_string()))
+}
+}
+    }
+    ExprData::ExprUnaryOp { op, operand, .. } => {
+        wrap_result(emit_unary_op(op.clone(), &recurse(operand.clone()), target.clone()))
+    }
+    ExprData::ExprLambda { params, body, semantics: _, .. } => {
+        wrap_result(emit_lambda(&emit_lambda_params(params.clone(), target.clone()), &recurse(body.clone()), target.clone()))
+    }
+    ExprData::ExprStringInterp { parts: _, .. } => {
+        emit_string_interp(texpr.clone())
+    }
+    ExprData::ExprBlock { stmts: _, .. } => {
+        emit_block(texpr.clone())
+    }
+    ExprData::ExprCast { expr: _, target: _, .. } => {
+        emit_cast(texpr.clone())
+    }
+    ExprData::ExprForEach { variable: _, collection: _, body: _, .. } => {
+        emit_for_each(texpr.clone())
+    }
+    ExprData::ExprIndex { base: _, index: _, .. } => {
+        emit_index(texpr.clone())
+    }
+    ExprData::ExprSlice { base: _, start: _, end: _, .. } => {
+        emit_slice(texpr.clone())
+    }
+    ExprData::ExprListLit { elements, .. } => {
+        wrap_result(emit_list_lit_expr({
+    let mut __mapped_6 = Vec::new();
+    for __elem_7 in elements.iter().cloned() {
+        __mapped_6.push(recurse(__elem_7.clone()));
+    }
+    Rc::new(__mapped_6)
 }, target.clone()))
     }
-    ExprData::ExprReturn { value: v, .. } => {
-        Some(emit_return(&recurse(v.clone(), scope.clone(), depth.clone()), target.clone()))
+    ExprData::ExprReturn { value, .. } => {
+        wrap_result(emit_return(&recurse(value.clone()), target.clone()))
     }
-    _ => {
-        None
+    ExprData::NoExprData => {
+        wrap_result("".to_string())
     }
 }
 }

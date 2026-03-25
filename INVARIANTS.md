@@ -252,6 +252,12 @@ changes:
   order internal steps execute in, or how many times an internal helper
   runs.
 
+- **Source-audit tests are a narrow exception.** When a test
+  intentionally reads source text as an architectural ratchet, it must
+  anchor on live syntax or declarations and ignore comments or
+  historical notes. A comment match is not evidence that a boundary or
+  implementation still exists.
+
 - **Hermetic unit tests only.** Tests must not touch the filesystem,
   network, or environment. All external dependencies are injected or
   mocked. A test that passes on one machine must pass on every machine.

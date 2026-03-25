@@ -67,6 +67,45 @@ fn go_pipeline_smoke() {
 }
 
 #[test]
+fn rust_emit_generates_mock_test_file() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "tests/mock_smoke_test.rs");
+    assert!(content.contains("test_demo_api_ping"), "Rust test file should contain the generated test function");
+    assert!(content.contains("// Signature:"), "Rust test file should contain the projection signature comment");
+}
+
+#[test]
+fn python_emit_generates_mock_test_file() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Python);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "tests/test_mock_smoke.py");
+    assert!(content.contains("def test_demo_api_ping()"), "Python test file should contain the generated test function");
+    assert!(content.contains("# Signature:"), "Python test file should contain the projection signature comment");
+}
+
+#[test]
+fn go_emit_generates_mock_test_file() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_smoke_test.go");
+    assert!(content.contains("func TestDemoApiPing("), "Go test file should contain a PascalCase generated test function");
+    assert!(content.contains("// Signature:"), "Go test file should contain the projection signature comment");
+}
+
+#[test]
+fn go_emit_mock_test_file_imports_fmt_for_string_interp() {
+    let source = "module mock_interp\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong {-1}\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_interp_test.go");
+    assert!(content.contains("\"fmt\""), "Go test file should import fmt when mock interpolation renders fmt.Sprintf");
+    assert!(content.contains("fmt.Sprintf("), "Go test file should render fmt.Sprintf for interpolated mock strings");
+}
+#[test]
 fn dag_pipeline_smoke() {
     let source = "module dag_smoke\n\ntype Point { x: Int  y: Int }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n";
     let result = compile_dag_named("dag_smoke.dag", source, RenderTarget::Dag);
@@ -76,6 +115,12 @@ fn dag_pipeline_smoke() {
     assert!(content.contains("\"version\": \"0.1.0\""), "dag artifact should contain version");
     assert!(content.contains("\"modules\""), "dag artifact should contain modules");
     assert!(content.contains("dag_smoke"), "dag artifact should reference dag_smoke");
+    assert!(content.contains("\"module\""), "dag artifact should include serialized module objects");
+    assert!(content.contains("\"items\""), "dag artifact should include serialized items");
+    assert!(content.contains("\"diagnostics\": ["), "dag artifact should include diagnostics");
+    assert!(content.contains("\"item_registry_keys\""), "dag artifact should include item registry keys");
+    assert!(content.contains("\"expr_data\""), "dag artifact should include serialized expression data");
+    assert!(content.contains("\"kind\": \"ExprRecordLit\""), "dag artifact should capture expression variants");
 }
 
 // ── Multi-module tests ──────────────────────────────────────────────────
@@ -387,6 +432,22 @@ fn emit_field_access_with_types() {
     let source = "module test\ntype Point { x: Int  y: Int }\nfn distance_squared(p: Point) -> Int {\n  p.x * p.x + p.y * p.y\n}\nfn origin() -> Point { Point { x: 0, y: 0 } }\nfn translate_x(p: Point, dx: Int) -> Point { Point { x: p.x + dx, y: p.y } }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
+}
+
+#[test]
+fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
+    let source = "module callable_sig\n\ntype Mapper = fn(Int) -> Int\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/callable_sig.rs");
+    assert!(
+        content.contains("type Mapper = Rc<dyn Fn(i64) -> i64>;"),
+        "callable aliases should stay in type-position-safe Rc<dyn Fn> form: {content}"
+    );
+    assert!(
+        content.contains("fn apply(f: impl Fn(i64) -> i64, x: i64) -> i64"),
+        "callable params should use impl Fn in Rust signatures: {content}"
+    );
 }
 
 // ── Python emission tests ───────────────────────────────────────────────

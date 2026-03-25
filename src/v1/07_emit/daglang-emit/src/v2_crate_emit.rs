@@ -128,6 +128,12 @@ fn load_dag_source(workspace_root: &Path, rel_path: &str) -> LoadedDagSource {
     }
 }
 
+fn load_stage0_runtime_source(workspace_root: &Path) -> String {
+    let runtime_path = workspace_root.join("src/v2/stage0/src/v2_rt.rs");
+    std::fs::read_to_string(&runtime_path)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", runtime_path.display(), e))
+}
+
 fn load_dag_source_cached(
     workspace_root: &Path,
     rel_path: &str,
@@ -293,6 +299,7 @@ fn rust_mod_for_source_file(sf: &SourceFile) -> Option<String> {
 /// imports and items.
 pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> {
     let mut files = Vec::new();
+    let workspace_root = workspace_root_from_manifest_dir();
 
     // 1. Collect all type definitions across modules for recursive field analysis
     let all_type_defs: Vec<&TypeDef> = modules
@@ -700,10 +707,15 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         content: emit_v2_main_rs(),
     });
 
-    // 10. Emit Cargo.toml (standalone — not part of any workspace)
+    // 10. Emit the runtime shim used by generated compiler sources.
+    files.push(GeneratedFile {
+        rel_path: "src/v2_rt.rs".to_string(),
+        content: load_stage0_runtime_source(&workspace_root),
+    });
+
+    // 11. Emit Cargo.toml for the root workspace member.
     let mut cargo_toml = render_rust::render_cargo_toml("v2-compiler", &[("stacker", "0.1")]);
     cargo_toml.push_str("clap = { version = \"4\", features = [\"derive\"] }\n");
-    cargo_toml.push_str("\n[workspace]\n");
     files.push(GeneratedFile {
         rel_path: "Cargo.toml".to_string(),
         content: cargo_toml,
@@ -798,6 +810,7 @@ enum Commands {
     },
 }
 
+#[allow(clippy::disallowed_macros)]
 fn main() {
     let cli = Cli::parse();
     match cli.command {
