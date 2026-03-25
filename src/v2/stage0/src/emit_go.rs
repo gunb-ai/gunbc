@@ -5,6 +5,8 @@ use crate::languages::*;
 use crate::infer_env::*;
 use crate::infer_types::*;
 use crate::infer_sigs::*;
+use crate::infer_items::*;
+use crate::infer_service::*;
 use crate::infer::*;
 use crate::emit::*;
 use crate::v2_rt;

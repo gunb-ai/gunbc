@@ -3,6 +3,7 @@ use crate::tokenize::*;
 use crate::parse::*;
 use crate::resolve::*;
 use crate::normalize::*;
+use crate::infer_items::*;
 use crate::infer::*;
 use crate::emit::*;
 use crate::emit_rust::*;
