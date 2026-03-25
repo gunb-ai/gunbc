@@ -99,7 +99,7 @@ import v2.compiler.emit {
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_keyword, rust_container, rust_primitive_type,
   rust_literal, rust_literal_for_pattern, rust_bin_op_symbol, rust_map_template,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_ident,
+  emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_ident, emit_let_binding, emit_return,
   emit_string_literal,
   module_emit_scope,
   scope_after_expr,
@@ -973,7 +973,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
   match body.expr_data {
     ExprLet { name: n, value: v, body: inner } => {
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      let let_line = concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";")
+      let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
       match inner {
         Some { value: bd } =>
@@ -1798,7 +1798,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     ExprSlice { base: b, start: s, end: e } =>
       emit_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     ExprReturn { value: v } =>
-      concat("return ", emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+      emit_return(value: emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), target: Rust)
     NoExprData => ""
   }
 }
@@ -2508,7 +2508,7 @@ fn emit_typed_if(condition: Node, then_branch: Node, else_branch: Node?, registr
 
 fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let let_line = concat("let ", emit_ident(name: name, target: Rust), " = ", val_str, ";")
+  let let_line = emit_let_binding(name: name, value: val_str, target: Rust)
   match body {
     Some { value: bd } =>
       let next_scope = extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
@@ -2940,7 +2940,7 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Param>, registry: Map<String, Ite
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
-      else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
+      else { emit_let_binding(name: n, value: val_str, target: Rust) }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   }
 }
