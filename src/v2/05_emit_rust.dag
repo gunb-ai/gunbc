@@ -116,7 +116,8 @@ import v2.compiler.emit {
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
   classify_typed_item, classify_type_structure,
-  has_mock_prefix
+  has_mock_prefix,
+  bridge_method_base_name
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -2198,36 +2199,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
 }
 
 fn rust_bridge_fn_name(method: RuntimeBridgeMethod) -> String {
-  match method {
-    BridgeGet => "get"
-    BridgeWith => "with"
-    BridgeListPush => "list_push"
-    BridgeMapInsert => "map_insert"
-    BridgeMapMerge => "map_merge"
-    BridgeMapGet => "map_get"
-    BridgeMapHas => "map_has"
-    BridgeEmitMapHas => "emit_map_has"
-    BridgeMapValues => "map_values"
-    BridgeMapKeys => "map_keys"
-    BridgeMapContainsKey => "map_contains_key"
-    BridgeCharAt => "char_at"
-    BridgeStringAt => "string_at"
-    BridgeStringLength => "string_length"
-    BridgeLength => "length"
-    BridgeStartsWith => "starts_with"
-    BridgeEndsWith => "ends_with"
-    BridgeToString => "to_string"
-    BridgeTrim => "trim"
-    BridgeToLower => "to_lower"
-    BridgeToUpper => "to_upper"
-    BridgeReplace => "replace"
-    BridgeSubstring => "substring"
-    BridgeToInt => "to_int"
-    BridgeEmptyMap => "empty_map"
-    BridgeContains => "contains"
-    BridgeReverse => "reverse"
-    BridgeLookup => "lookup"
-  }
+  bridge_method_base_name(method: method)
 }
 
 fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {

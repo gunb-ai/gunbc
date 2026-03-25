@@ -104,7 +104,8 @@ import v2.compiler.emit {
   has_nested_records_node,
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item, classify_type_structure
+  classify_typed_item, classify_type_structure,
+  bridge_method_base_name
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
@@ -600,36 +601,11 @@ fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, arg
 }
 
 fn go_bridge_method_name(method: RuntimeBridgeMethod) -> String {
-  match method {
-    BridgeGet => "Get"
-    BridgeWith => "With"
-    BridgeListPush => "ListPush"
-    BridgeMapInsert => "MapInsert"
-    BridgeMapMerge => "MapMerge"
-    BridgeMapGet => "MapGet"
-    BridgeMapHas => "MapHas"
-    BridgeEmitMapHas => "EmitMapHas"
-    BridgeMapValues => "MapValues"
-    BridgeMapKeys => "MapKeys"
-    BridgeMapContainsKey => "MapContainsKey"
-    BridgeCharAt => "CharAt"
-    BridgeStringAt => "StringAt"
-    BridgeStringLength => "StringLength"
-    BridgeLength => "Length"
-    BridgeStartsWith => "StartsWith"
-    BridgeEndsWith => "EndsWith"
-    BridgeToString => "ToString"
-    BridgeTrim => "Trim"
-    BridgeToLower => "ToLower"
-    BridgeToUpper => "ToUpper"
-    BridgeReplace => "Replace"
-    BridgeSubstring => "Substring"
-    BridgeToInt => "ToInt"
-    BridgeEmptyMap => "EmptyMap"
-    BridgeContains => "Contains"
-    BridgeReverse => "Reverse"
-    BridgeLookup => "Lookup"
-  }
+  // Derive PascalCase from the canonical snake_case base name.
+  let base = bridge_method_base_name(method: method)
+  let parts = base |> split(delimiter: "_")
+  let pascal_parts = parts |> map(p => capitalize_first(s: p))
+  pascal_parts |> join(separator: "")
 }
 
 fn emit_go_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
