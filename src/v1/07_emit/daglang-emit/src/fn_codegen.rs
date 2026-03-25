@@ -357,6 +357,9 @@ pub struct CompileContext {
     /// Names of `data` definitions that are List<String> (emitted as &[&str],
     /// need Rc<Vec<String>> wrapping at use sites).
     pub data_string_list_names: HashSet<String>,
+    /// Names of `data` definitions that are String (emitted as &str,
+    /// need `.to_string()` wrapping at use sites).
+    pub data_string_names: HashSet<String>,
     /// Map from struct name → set of field names that are `Option<T>`.
     pub optional_fields: std::collections::HashMap<String, HashSet<String>>,
     /// Map from bare variant name → parent enum name (e.g. "ZeroWidth" → "DisplayWidth").
@@ -791,6 +794,7 @@ impl CompileContext {
             data_ir_types: HashMap::new(),
             data_map_names: HashSet::new(),
             data_string_list_names: HashSet::new(),
+            data_string_names: HashSet::new(),
             optional_fields: std::collections::HashMap::new(),
             variant_to_enum: std::collections::HashMap::new(),
             struct_field_types: std::collections::HashMap::new(),
@@ -2417,6 +2421,13 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
                 to_screaming_snake(name)
             ))],
             obligation: None,
+        }
+    } else if ctx.data_string_names.contains(name) {
+        // String data: emitted as &str static, convert to String at use.
+        code_ir::Expr::MethodCall {
+            receiver: Box::new(code_ir::Expr::Var(to_screaming_snake(name))),
+            method: "to_string".to_string(),
+            args: vec![],
         }
     } else if ctx.data_names.contains(name) {
         // Non-map data tables (arrays, etc.) — clone the value.

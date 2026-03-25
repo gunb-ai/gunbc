@@ -10,7 +10,7 @@ fn strict_pipeline_smoke() {
     let source = "module smoke\n\ntype Point { x: Int  y: Int }\ntype Label { name: String  origin: Point }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n\nfn describe(lb: Label) -> String {\n  lb.name\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    assert!(result.files.len() >= 1, "expected at least 1 emitted file");
+    assert!(!result.files.is_empty(), "expected at least 1 emitted file");
     let content = find_file(&result, "src/smoke.rs");
     assert!(content.contains("struct Point"), "emitted file should contain struct Point");
     assert!(content.contains("struct Label"), "emitted file should contain struct Label");
@@ -24,7 +24,6 @@ fn generic_type_declaration_smoke() {
 }
 
 #[test]
-#[ignore] // known to need cycle detection
 fn generic_recursive_type() {
     let source = "module recursive_gen\n\ntype MyList<T> = Nil | Cons { head: T, tail: MyList<T> }\n\nfn empty() -> MyList<Int> { Nil }\n";
     let result = compile_dag(source);
@@ -113,7 +112,7 @@ fn compile_sources_filters_none_parse_diagnostics() {
     ];
     let result = compile_multi(files);
     let msgs = diagnostic_messages(&result);
-    assert!(msgs.len() >= 1, "bad.dag (no module) should produce at least 1 diagnostic");
+    assert!(!msgs.is_empty(), "bad.dag (no module) should produce at least 1 diagnostic");
 }
 
 // ── Semantic / typecheck tests ──────────────────────────────────────────
@@ -290,7 +289,7 @@ fn complexity_report_formatted() {
 fn compile_sources_returns_ownership_proofs() {
     let source = "module own\nfn identity(x: Int) -> Int { x }\nfn sum_twice(x: Int) -> Int { x + x }\n";
     let result = compile_dag(source);
-    assert!(result.ownership.len() >= 1, "ownership proofs should be non-empty");
+    assert!(!result.ownership.is_empty(), "ownership proofs should be non-empty");
 }
 
 #[test]
@@ -364,7 +363,7 @@ fn scrambled_name_inference_containers() {
 fn gist_service_pipeline_smoke() {
     let source = "module gist\n\ntype GistFile {\n  filename: String\n  content: String\n}\n\ntype GistResult {\n  id: String\n  files: List<GistFile>\n}\n\nfn empty_result() -> GistResult {\n  GistResult { id: \"\", files: [] }\n}\n\nfn file_count(result: GistResult) -> Int {\n  result.files |> count\n}\n";
     let result = compile_dag(source);
-    assert!(result.files.len() >= 1, "gist pipeline should emit at least 1 file");
+    assert!(!result.files.is_empty(), "gist pipeline should emit at least 1 file");
 }
 
 // ── Resolve diamond dedup ───────────────────────────────────────────────
@@ -397,7 +396,7 @@ fn python_emit_produces_valid_syntax() {
     let source = "module pymod\ntype Rec { x: Int  y: String }\nfn make(a: Int) -> Rec { Rec { x: a, y: \"hi\" } }\n";
     let result = compile_dag_target(source, RenderTarget::Python);
     assert_no_diagnostics(&result);
-    assert!(result.files.len() >= 1, "Python target should emit at least 1 file");
+    assert!(!result.files.is_empty(), "Python target should emit at least 1 file");
     let py_file = result.files.iter().find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"));
     assert!(py_file.is_some(), "Python target should emit a .py file");
     assert!(!py_file.unwrap().content.is_empty(), "Python .py file should not be empty");

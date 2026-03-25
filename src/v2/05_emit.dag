@@ -37,10 +37,24 @@ import v2.std.core {
   ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
-  kernel_types
+  RuntimeBridgeMethod,
+  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
+  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
+  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
+  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
+  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
+  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
+  kernel_types,
+  expr_has_self_call, expr_has_non_tail_self_call,
+  local_transport_node,
+  TransportKind, RestTransport, ShellTransport, FileTransport,
+  is_transport_kind,
+  transport_has_auth,
+  field_init_operation_modifier, operation_modifier_name
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
+import v2.compiler.infer_method { intrinsic_method_index }
 import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type }
 import v2.compiler.infer {
   TypedModule, ResolvedGraph,
@@ -55,15 +69,18 @@ import v2.compiler.infer {
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
 import extdeps.languages.rust.emit {
-  rust_type_map, rust_keywords, rust_container_templates, rust_reserved
+  rust_type_map, rust_keywords, rust_container_templates, rust_reserved,
+  rust_reserved_escape_prefix
 }
 
 import extdeps.languages.python.emit {
-  python_type_map, python_keywords, python_container_templates, python_reserved
+  python_type_map, python_keywords, python_container_templates, python_reserved,
+  python_reserved_escape_suffix
 }
 
 import extdeps.languages.go.emit {
-  go_type_map, go_keywords, go_container_templates, go_reserved
+  go_type_map, go_keywords, go_container_templates, go_reserved,
+  go_reserved_escape_suffix
 }
 
 // =========================================================================
@@ -286,8 +303,8 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
       }
     })
   })
-  // A-2: intrinsic index -- static, built from the known method list
-  let intrinsic_idx = build_intrinsic_index()
+  // A-2: intrinsic index -- from single-authority source in infer_method
+  let intrinsic_idx = intrinsic_method_index()
   // A-3: bridge index -- empty by default, populated by target-specific emitters
   let bridge_idx = empty_map()
   // A-7: vtoe index -- from variant_to_enum
@@ -303,30 +320,6 @@ fn build_emit_context(graph: ResolvedGraph) -> EmitContext {
     vtoe_index: vtoe_idx,
     primitive_set: prim_set
   }
-}
-
-fn build_intrinsic_index() -> Map<String, IntrinsicMethod> {
-  let m = empty_map()
-  let m = map_insert(m, "count", MethodCount)
-  let m = map_insert(m, "join", MethodJoin)
-  let m = map_insert(m, "split", MethodSplit)
-  let m = map_insert(m, "last", MethodLast)
-  let m = map_insert(m, "first", MethodFirst)
-  let m = map_insert(m, "enumerate", MethodEnumerate)
-  let m = map_insert(m, "chars", MethodChars)
-  let m = map_insert(m, "string_contains", MethodStringContains)
-  let m = map_insert(m, "concat", MethodConcat)
-  let m = map_insert(m, "map", MethodMap)
-  let m = map_insert(m, "filter", MethodFilter)
-  let m = map_insert(m, "any", MethodAny)
-  let m = map_insert(m, "all", MethodAll)
-  let m = map_insert(m, "flat_map", MethodFlatMap)
-  let m = map_insert(m, "skip", MethodSkip)
-  let m = map_insert(m, "take", MethodTake)
-  let m = map_insert(m, "fold", MethodFold)
-  let m = map_insert(m, "sort_by", MethodSortBy)
-  let m = map_insert(m, "append", MethodAppend)
-  m
 }
 
 // Lookup helpers for EmitContext
@@ -830,84 +823,119 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 }
 
 // =========================================================================
-// P4.1: Shared type rendering -- unified for Go/Python (Rust has Rc logic)
+// P4.1a: Unified type rendering -- all targets including Rust Rc wrapping.
+// emit_node_type is the public API for Go/Python (no Rc).
+// emit_node_type_rc is the Rc-aware API for Rust callers.
 // =========================================================================
 
 fn emit_node_type(n: Node, target: RenderTarget) -> String {
+  emit_node_type_rc(n: n, target: target, rc_types: empty_map())
+}
+
+fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
+  // Dynamic/Error: inference failures that leaked to emit.
+  let is_rust = match target { Rust => true  _ => false }
+  if (n.name == "Dynamic" || n.name == "Error") && n.children |> count == 0 {
+    if is_rust {
+      return concat("compile_error!(\"unresolved ", n.name, " type reached emit\")")
+    } else {
+      return concat("__EMIT_BUG_UNRESOLVED_", n.name, "__")
+    }
+  }
+  // Callable: function type rendering
   if n.name == "Callable" && n.params |> count > 0 {
-    let param_types = n.params |> map(p => emit_node_type(n: p.type_expr, target: target))
+    let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.return_type {
-      Some { value: Resolved { node: rt } } => emit_node_type(n: rt, target: target)
+      Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: target, rc_types: rc_types)
       _ => match target { Go => ""  Python => "None"  _ => "()" }
     }
     match target {
       Go => concat("func(", param_str, ")", if ret_str != "" { concat(" ", ret_str) } else { "" })
       Python => concat("Callable[[", param_str, "], ", ret_str, "]")
+      Rust => concat("impl Fn(", param_str, ") -> ", ret_str)
       _ => concat("Fn(", param_str, ") -> ", ret_str)
     }
   } else if node_is_optional(n: n) {
-    emit_container(kind: "optional", inner: emit_node_type(n: with_required_cardinality(n: n), target: target), target: target)
+    emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
   } else {
     let kind = classify_type_structure(n: n)
     let is_leaf = kind == TypeLeaf
     let is_conj = kind == TypeConj
     if is_leaf {
-      emit_node_type_leaf(n: n, target: target)
+      emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
     } else if is_conj {
-      emit_node_type_conj(n: n, target: target)
+      emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
     } else {
-      emit_node_type_disj(n: n, target: target)
+      emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
     }
   }
 }
 
-fn emit_node_type_leaf(n: Node, target: RenderTarget) -> String {
+fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
-    emit_primitive_type(name: n.name, target: target)
+    let base = emit_primitive_type(name: n.name, target: target)
+    // Rc wrapping for Rust named types
+    if emit_map_has(m: rc_types, key: n.name) {
+      concat("Rc<", base, ">")
+    } else {
+      base
+    }
   } else if node_is_map(n: n) {
     // After resolution, Map nodes always have 2 children (key + value).
     // None branches are structurally required by match but unreachable.
     let k = match n.children |> first {
-      Some { value: kn } => emit_node_type(n: kn, target: target)
+      Some { value: kn } => emit_node_type_rc(n: kn, target: target, rc_types: rc_types)
       None => "__EMIT_BUG_MISSING_MAP_KEY__"
     }
     let v = match skip(n.children, 1) |> first {
-      Some { value: vn } => emit_node_type(n: vn, target: target)
+      Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
       None => "__EMIT_BUG_MISSING_MAP_VALUE__"
     }
     emit_map_type(key_type: k, val_type: v, target: target)
   } else if n.children |> count == 1 {
     // Single-child container. count == 1 guarantees first succeeds.
     let inner = match n.children |> first {
-      Some { value: child } => emit_node_type(n: child, target: target)
+      Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
       None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
     }
-    // NonEmpty variants map to same container as their base type
-    let container_kind = if n.name == "NonEmptyList" { "list" }
-      else if n.name == "NonEmptySet" { "set" }
-      else { to_snake(name: n.name) }
+    // NonEmpty variants: Rust uses distinct types, others map to base container
+    let is_rust = match target { Rust => true  _ => false }
+    let container_kind = if n.name == "NonEmptyList" {
+      if is_rust { "non_empty_list" } else { "list" }
+    } else if n.name == "NonEmptySet" {
+      if is_rust { "non_empty_set" } else { "set" }
+    } else { to_snake(name: n.name) }
     emit_container(kind: container_kind, inner: inner, target: target)
   } else {
     n.name
   }
 }
 
-fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
+fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name == "Refined" {
     match n.children |> first {
-      Some { value: base } => emit_node_type(n: base, target: target)
+      Some { value: base } => emit_node_type_rc(n: base, target: target, rc_types: rc_types)
       None => n.name
     }
   } else if n.name == "Tuple" {
-    // Tuple nodes always have children after resolution.
-    // None branches are structurally required by match but unreachable.
+    // Tuple children may have return_type set — unwrap to get the actual type.
     let first_str = match n.children |> first {
-      Some { value: c } => emit_node_type(n: c, target: target)
+      Some { value: c } =>
+        if c.return_type != none {
+          emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
+        } else {
+          emit_node_type_rc(n: c, target: target, rc_types: rc_types)
+        }
       None => "__EMIT_BUG_MISSING_TUPLE_FIRST__"
     }
     let second_str = match skip(n.children, 1) |> first {
-      Some { value: c } => emit_node_type(n: c, target: target)
+      Some { value: c } =>
+        if c.return_type != none {
+          emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
+        } else {
+          emit_node_type_rc(n: c, target: target, rc_types: rc_types)
+        }
       None => "__EMIT_BUG_MISSING_TUPLE_SECOND__"
     }
     match target {
@@ -916,21 +944,59 @@ fn emit_node_type_conj(n: Node, target: RenderTarget) -> String {
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    n.name
+    // Named product type — Rc wrapping for Rust
+    if emit_map_has(m: rc_types, key: n.name) {
+      concat("Rc<", n.name, ">")
+    } else {
+      n.name
+    }
   } else {
-    // Anonymous product type with no name. This is a bug — all conj nodes
-    // should have names after resolution.
-    "__EMIT_BUG_ANONYMOUS_CONJ__"
+    // Anonymous product: Rust renders as tuple, others as error marker.
+    let is_rust = match target { Rust => true  _ => false }
+    if is_rust {
+      if n.children |> count == 1 {
+        // Single-field anonymous product — unwrap the field type.
+        match n.children |> first {
+          Some { value: field_node } =>
+            if field_node.return_type != none {
+              emit_node_type_rc(n: rt_type(n: field_node), target: target, rc_types: rc_types)
+            } else {
+              "compile_error!(\"anonymous product field missing return_type\")"
+            }
+          None => "compile_error!(\"anonymous product reached Node emitter\")"
+        }
+      } else {
+        // Multi-field anonymous product → Rust tuple type.
+        let field_types = n.children |> map(child =>
+          if child.return_type != none {
+            emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
+          } else { "String" }
+        )
+        let result = concat("(", field_types |> join(separator: ", "), ")")
+        result
+      }
+    } else {
+      "__EMIT_BUG_ANONYMOUS_CONJ__"
+    }
   }
 }
 
-fn emit_node_type_disj(n: Node, target: RenderTarget) -> String {
+fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name != "" {
-    n.name
+    // Named coproduct type — Rc wrapping for Rust
+    if emit_map_has(m: rc_types, key: n.name) {
+      concat("Rc<", n.name, ">")
+    } else {
+      n.name
+    }
   } else {
-    // Anonymous coproduct type with no name. This is a bug — all disj nodes
-    // should have names after resolution.
-    "__EMIT_BUG_ANONYMOUS_DISJ__"
+    // Anonymous coproduct — error in all targets.
+    let is_rust = match target { Rust => true  _ => false }
+    if is_rust {
+      "compile_error!(\"anonymous coproduct reached Node emitter\")"
+    } else {
+      "__EMIT_BUG_ANONYMOUS_DISJ__"
+    }
   }
 }
 
@@ -956,6 +1022,65 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 }
 
 // =========================================================================
+// Shared service/transport graph queries -- target-agnostic facts about
+// service definitions that all backends need.
+//
+// These are graph queries, not rendering decisions. They inspect the
+// service node structure to determine which transports and features are
+// used, so backends can make informed rendering decisions without
+// reimplementing the same graph walks.
+// =========================================================================
+
+// Resolve the fallback transport for a service item. If the service
+// declares no transport, default to a local transport node.
+fn service_fallback_transport(item: Node) -> Node {
+  if item.transport == none { local_transport_node(span: item.span) } else { item.transport.value }
+}
+
+// Resolve the effective transport for an operation: use the per-operation
+// override if present, otherwise fall back to the service-level transport.
+fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
+  match op_node.transport {
+    Some { value: op_transport } => op_transport
+    None => fallback
+  }
+}
+
+// Check if any operation in the service (or the service-level fallback)
+// uses a given transport kind.
+fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind: TransportKind) -> Bool {
+  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+// Check if any REST operation (or the service-level fallback) has auth.
+fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = if is_transport_kind(t: fallback_transport, kind: RestTransport) {
+    transport_has_auth(t: fallback_transport)
+  } else { false }
+  let from_ops = op_children |> any(op =>
+    if op.transport != none {
+      let t = op.transport.value
+      if is_transport_kind(t: t, kind: RestTransport) { transport_has_auth(t: t) } else { false }
+    } else { false }
+  )
+  from_fallback || from_ops
+}
+
+// Extract operation modifier names from a list of property field inits.
+fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
+  properties |> flat_map(p =>
+    match field_init_operation_modifier(field_init: p) {
+      Some { value: modifier } => [operation_modifier_name(modifier: modifier)]
+      None => []
+    }
+  )
+}
+
+// =========================================================================
 // Shared classification functions -- target-agnostic item/type/transport
 // dispatch. Each backend calls these to determine WHAT kind of thing it's
 // looking at, then applies its own rendering for HOW to emit it.
@@ -969,10 +1094,10 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
-  let item_kind = classify_type_structure(n: item)
-  let kind = if item_kind != TypeLeaf && item.transport == none {
+  let item_has_structure = node_has_structure(n: item)
+  let kind = if item_has_structure && item.transport == none {
     TypedItemTypeDef
-  } else if item_kind == TypeLeaf && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
+  } else if item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
     TypedItemTypeAlias
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
@@ -1096,6 +1221,66 @@ fn block_stmts_init(stmts: List<Node>) -> List<Node> {
   else { stmts |> take(n: (stmts |> count) - 1) }
 }
 
+// =========================================================================
+// Shared TCO eligibility check -- identical across all backends.
+//
+// A function is TCO-eligible when it is self-recursive AND every
+// self-call is in tail position. This was duplicated in emit_fn_def,
+// emit_go_fn_def, and emit_py_fn_def.
+// =========================================================================
+
+fn is_tco_eligible(name: String, body: Node, registry: Map<String, ItemInfo>) -> Bool {
+  match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
+    None => {
+      expr_has_self_call(texpr: body, fn_name: name)
+        && expr_has_non_tail_self_call(texpr: body, fn_name: name, in_tail: true) == false
+    }
+  }
+}
+
+// is_self_recursive check -- used by Rust stacker wrapping.
+fn is_self_recursive(name: String, body: Node, registry: Map<String, ItemInfo>) -> Bool {
+  match lookup_item(registry: registry, name: name) {
+    Some { value: info } => info.is_self_recursive
+    None => expr_has_self_call(texpr: body, fn_name: name)
+  }
+}
+
+// =========================================================================
+// Shared TCO reassignment core -- build temp-then-assign lines.
+//
+// The reassignment pattern is identical across all backends:
+//   1. Evaluate each arg (done by caller, passed as ordered_args)
+//   2. Assign each arg to a temp variable: temp_prefix + idx + assign_op + arg
+//   3. Assign each temp back to its parameter: param_name + " = " + temp_prefix + idx
+//   4. Append a continue line
+//
+// Target-specific tokens:
+//   - temp_prefix: "__tco_" (Rust, Python) or "tco" (Go)
+//   - temp_assign_op: " = " (Rust, Python) or " := " (Go)
+//   - stmt_terminator: ";" (Rust) or "" (Python, Go)
+//   - continue_str: "continue;" (Rust) or "continue" (Python, Go)
+//   - line_prefix: "" (Rust, Python) or indentation (Go)
+// =========================================================================
+
+fn tco_reassign_core(
+  ordered_args: List<String>,
+  param_names: List<String>,
+  temp_var_prefix: String,
+  temp_decl_prefix: String,
+  temp_assign_op: String,
+  stmt_terminator: String,
+  continue_str: String,
+  line_prefix: String
+) -> List<String> {
+  let temp_lets = ordered_args |> enumerate |> map(pair =>
+    concat(line_prefix, temp_decl_prefix, temp_var_prefix, to_string(value: pair.first), temp_assign_op, pair.second, stmt_terminator))
+  let assigns = param_names |> enumerate |> map(pair =>
+    concat(line_prefix, pair.second, " = ", temp_var_prefix, to_string(value: pair.first), stmt_terminator))
+  concat(temp_lets, assigns, [concat(line_prefix, continue_str)])
+}
+
 fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
   match texpr.expr_data {
     ExprCall { func: f, args: _, call_semantics: _ } => f == func_name
@@ -1124,7 +1309,7 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
   match target {
     Rust =>
       let snake = to_snake(name: name)
-      if rust_reserved |> any(r => r == snake) { concat("r#", snake) }
+      if rust_reserved |> any(r => r == snake) { concat(rust_reserved_escape_prefix, snake) }
       else { snake }
     Go =>
       let parts = name |> split(delimiter: "_")
@@ -1138,12 +1323,12 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
           |> filter(pair => pair.first > 0)
           |> map(pair => capitalize_first(s: pair.second))
         let camel = concat(first_part, rest_parts |> join(separator: ""))
-        if go_reserved |> any(r => r == camel) { concat(camel, "_") }
+        if go_reserved |> any(r => r == camel) { concat(camel, go_reserved_escape_suffix) }
         else { camel }
       }
     Python =>
       let snake = to_snake(name: name)
-      if python_reserved |> any(r => r == snake) { concat(snake, "_") }
+      if python_reserved |> any(r => r == snake) { concat(snake, python_reserved_escape_suffix) }
       else { snake }
     Dag => name
   }
@@ -1164,5 +1349,114 @@ fn emit_return(value: String, target: RenderTarget) -> String {
     Go => concat("return ", value)
     Python => concat("return ", value)
     Dag => concat("return ", value)
+  }
+}
+
+// =========================================================================
+// P4.2: Shared per-variant expression renderers.
+// Pattern: backend dispatches ExprData, recurses on subexpressions,
+// passes pre-rendered strings to shared renderer for target syntax.
+// =========================================================================
+
+fn emit_unary_op(op: UnaryOpKind, operand_str: String, target: RenderTarget) -> String {
+  match op {
+    Not => concat(emit_keyword(key: "not", target: target), operand_str)
+    Neg => concat("-", operand_str)
+  }
+}
+
+fn emit_lambda(params_str: String, body_str: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat("|", params_str, "| ", body_str)
+    Go => concat("func(", params_str, ") interface{} { return ", body_str, " }")
+    Python => concat("lambda ", params_str, ": ", body_str)
+    Dag => concat("(", params_str, ") => ", body_str)
+  }
+}
+
+fn emit_error_expr(message: String, target: RenderTarget) -> String {
+  let msg = emit_string_literal(s: message, suffix: "")
+  match target {
+    Rust => concat("compile_error!(", msg, ")")
+    Go => concat("panic(", msg, ")")
+    Python => concat("raise RuntimeError(", msg, ")")
+    Dag => concat("error(", msg, ")")
+  }
+}
+
+fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String {
+  let param_strs = match target {
+    Go => param_names |> map(p => concat(emit_ident(name: p, target: Go), " interface{}"))
+    _ => param_names |> map(p => emit_ident(name: p, target: target))
+  }
+  param_strs |> join(separator: ", ")
+}
+
+fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> String {
+  if element_strs |> count == 0 {
+    match target {
+      Rust => "vec![]"
+      Python => "[]"
+      Go => "[]interface{}{}"
+      Dag => "[]"
+    }
+  } else {
+    let els_str = element_strs |> join(separator: ", ")
+    match target {
+      Rust => concat("vec![", els_str, "]")
+      Python => concat("[", els_str, "]")
+      Go => concat("[]interface{}{", els_str, "}")
+      Dag => concat("[", els_str, "]")
+    }
+  }
+}
+
+fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> String {
+  match target {
+    Rust => concat(l_str, ".unwrap_or_else(|| ", r_str, ")")
+    Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
+    Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
+    Dag => concat(l_str, " ?? ", r_str)
+  }
+}
+
+// =========================================================================
+// bridge_method_base_name — canonical snake_case name for each bridge method.
+//
+// Single authority for the Bridge* → snake_case mapping. Each backend
+// either uses this directly (Rust) or derives its target convention from
+// it (Python overrides BridgeWith; Go capitalizes segments to PascalCase).
+// =========================================================================
+
+fn bridge_method_base_name(method: RuntimeBridgeMethod) -> String {
+  match method {
+    BridgeGet => "get"
+    BridgeWith => "with"
+    BridgeListPush => "list_push"
+    BridgeMapInsert => "map_insert"
+    BridgeMapMerge => "map_merge"
+    BridgeMapGet => "map_get"
+    BridgeMapHas => "map_has"
+    BridgeEmitMapHas => "emit_map_has"
+    BridgeMapValues => "map_values"
+    BridgeMapKeys => "map_keys"
+    BridgeMapContainsKey => "map_contains_key"
+    BridgeCharAt => "char_at"
+    BridgeStringAt => "string_at"
+    BridgeStringLength => "string_length"
+    BridgeLength => "length"
+    BridgeStartsWith => "starts_with"
+    BridgeEndsWith => "ends_with"
+    BridgeToString => "to_string"
+    BridgeTrim => "trim"
+    BridgeToLower => "to_lower"
+    BridgeToUpper => "to_upper"
+    BridgeReplace => "replace"
+    BridgeSubstring => "substring"
+    BridgeToInt => "to_int"
+    BridgeEmptyMap => "empty_map"
+    BridgeContains => "contains"
+    BridgeReverse => "reverse"
+    BridgeLookup => "lookup"
   }
 }

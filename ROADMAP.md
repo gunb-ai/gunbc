@@ -731,18 +731,18 @@ standard `cargo test` did not catch the regression window.
 
 Scripted audit via `scripts/l1-ratchet.sh`. The script and this table
 measure the same categories. Run `scripts/l1-ratchet.sh --check` to
-verify the ratchet (current cap: 470).
+verify the ratchet (current cap: 373).
 
 | Category | Script variable | Count | What the compiler still "knows" |
 |----------|----------------|------:|----------------------------------|
 | `.connective` direct access | `connective_field_count` | 19 | Product vs coproduct read from Node field |
 | `Conj` / `Disj` references | `conj_disj_count` | 44 | Connective shape matching (includes parse, which must produce them) |
-| Type constructors | `constructor_count` | 229 | `leaf_node`, `container_node`, `tuple_node`, etc. |
+| Type constructors | `constructor_count` | 142 | `leaf_node`, `container_node`, `tuple_node`, etc. |
 | Type-name comparisons | `typename_count` | 48 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `node_is_*` predicate calls | `predicate_count` | 105 | Centralized type-specific dispatch helpers |
-| `classify_type_structure` calls | `classify_count` | 25 | Structural classification (replaces raw `.connective` reads in emit) |
+| `node_is_*` predicate calls | `predicate_count` | 101 | Centralized type-specific dispatch helpers |
+| `classify_type_structure` calls | `classify_count` | 19 | Structural classification (replaces raw `.connective` reads in emit) |
 | `builtin_type_kind()` calls | `builtin_count` | 0 | **Deleted** |
-| **Total** | | **470** | |
+| **Total** | | **373** | |
 
 Progress since initial baseline (~373): `BuiltinTypeKind` enum and
 `builtin_type_kind()` are fully deleted. `classify_type_structure()`
@@ -822,7 +822,7 @@ subprocess pattern. Five tiers:
    `04_infer.dag` under 1500 lines.
 
 **Key files:** test harness (`src/v2/tests/src/lib.rs`), test Cargo.toml,
-`v2_crate_emit.rs` (stage0 assembly), `v2_runtime_shim.rs` (deletable).
+`v2_crate_emit.rs` (stage0 assembly).
 
 **What V1 retirement unblocks (tiers 1-4 → tier 5):**
 - P3.8 recursive generics (v1 Rust stack overflow goes away)
@@ -901,7 +901,7 @@ cargo test --workspace --exclude v2-compiler-tests          # green
 cargo clippy --all-targets -- -D warnings                   # green
 cargo test -p v2-compiler-tests --features v1-bootstrap     # green
 cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust # green
-scripts/l1-ratchet.sh --check                               # total <= ratchet (470)
+scripts/l1-ratchet.sh --check                               # total <= ratchet (373)
 ```
 State: 0 diagnostic regressions. Algebraic type spec written. Ownership
 branch-merge fix landed. Emit catch-all fail-closed. Testgen fabrication
@@ -1076,13 +1076,15 @@ Mechanical checklist:
 - [x] Delete `node_is_dynamic(n)` — same (Dynamic = CompilerError)
 - [x] Stop `rt_node` fabricating `Node{name:"Error"}` and `Node{name:"Unit"}`
       sentinel nodes — `rt_node` returns `Node?`; callers handle `None`
-- [x] Delete `node_type_equals` Error==anything rule
-- [x] Delete `node_type_compatible` Error/Dynamic==anything rules
+- [ ] Delete `node_type_equals` Error==anything rule (blocked: ~12 error_type_node() cascade sites produce Error nodes that flow through type comparison; converting to CompilerError is L1/Phase 5 scope)
+- [ ] Delete `node_type_compatible` Error/Dynamic==anything rules (Error: same blocker as above; Dynamic: supports 15 audited polymorphic placeholder sites — removal requires type variable infrastructure, L1/Phase 5)
 - [x] Delete ~9 emit sites checking `"Error"`/`"Dynamic"` by name
 - [x] Delete `"_"` type placeholders that compensate for error-typed nodes
 - [x] Add `return_cardinality: Cardinality` to `Node` (blocks P1.4 completion)
-- [ ] Replace ~15 `leaf_node(name: "Dynamic")` fabrications in infer with
-      `CompilerError` (remaining L1 work)
+- [x] Replace Dynamic error sentinels with `error_type_node()` (8 sites in
+      `callable_return_type`, `lambda_param_types_from_scope`, fold init, method
+      result_type); 15 remaining Dynamic sites audited as correct polymorphic
+      placeholders (lambda params, method returns, kernel stubs, emit fallbacks)
 - [x] Stop `resolve_optional_node` silently swallowing `CompilerError` —
       now surfaces error as diagnostic; `leaf_node("Error")` sentinel persists
       due to `NodeResolveResult` structural constraint (Phase 5 migration)
@@ -1105,8 +1107,8 @@ infer (Dynamic fabrications) and resolution (error re-entry into node graph):
 | `00_core.dag` | `rt_node(n:)` | **Done** — returns `Node?`, no sentinel fabrication |
 | `00_core.dag` | `Node` | **Done** — `return_cardinality: Cardinality` field added |
 | `04_types.dag` | `node_is_error_type(n)`, `node_is_dynamic(n)` | **Done** — deleted |
-| `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Done** — Error/Dynamic special cases removed |
-| `04_infer.dag` | ~15 sites fabricating `leaf_node(name: "Dynamic")` | **Remaining** — some Dynamic fabrications persist for unresolved inference |
+| `04_types.dag` | `node_type_equals`, `node_type_compatible` | **Remaining** — Error/Dynamic permissive rules serve error cascade (~12 sites) and polymorphic placeholders (15 sites); removal is L1/Phase 5 |
+| `04_infer.dag` | ~23 sites fabricating `leaf_node(name: "Dynamic")` | **Done** — 8 error sentinels converted to `error_type_node()`; 15 polymorphic placeholders audited correct with `// Dynamic audit:` comments |
 | `04_infer.dag` | `resolve_optional_node` | **Done** — surfaces `CompilerError` as diagnostic; sentinel `leaf_node("Error")` persists due to `NodeResolveResult.resolved: Node` constraint |
 | `04_infer.dag` | `rt_node(...)` callers | **Remaining** — some collapse `None` into `Unit` instead of propagating failure |
 | `05_emit_rust.dag` | ~9 sites checking `"Error"`/`"Dynamic"` by name | Largely resolved by upstream InferredNode gating |
@@ -1391,10 +1393,10 @@ R9.
 | P3.1 | Verify parity with remaining v1 paths | **Done on `cousin-wip`** | `v2_bootstrap_fixed_point` passes again end-to-end. Deterministic bootstrap output landed, bare generic type declarations have an explicit non-emitting item kind, variant-parent authority is contextual, runtime bridge lookups preserve Rc wrapping, and typed intrinsic lowering now covers `sort_by` / `fold` / `empty_map` / `to_string`. |
 | P3.2 | Ownership wiring + authoritative compile bundle | Preparatory (ahead of Phase 3 gate) | `compile_sources` now returns `complexity`, `ownership`, and `artifact_plan`, and emit dispatch follows the planned artifact target; unsupported obligations/reporting still need consolidation |
 | P3.3 | Artifact planning above emit | Preparatory (ahead of Phase 3 gate) | Default single-artifact planning now runs between infer and emit through the real artifact contract. Speculative boundary types (`BoundaryContract`, `verify_boundaries`, `ArtifactReport`) deleted in P1.11; re-add only when a real consumer lands end-to-end. Real partitioning and per-artifact orchestration remain. |
-| P3.4 | Runtime shim dissolution | Mostly done | `runtime_rust.dag` (220 lines) already IS the `.dag` runtime template — the emitter calls `rust_runtime_source()` and writes `v2_rt.rs`. **Remaining:** (1) Delete the v1 legacy `v2_runtime_shim.rs` (336 lines, bootstrap-only) once v1 retires. (2) If Go/Python backends need runtime intrinsics (equivalent of `v2_rt`), add `runtime_go.dag` / `runtime_python.dag` following the same pattern. (3) Verify no `todo!()` stubs remain in `runtime_rust.dag` for functions the emitted crate actually calls. |
+| P3.4 | Runtime shim dissolution | **Done** | `runtime_rust.dag` is the authoritative runtime template. v1 legacy `v2_runtime_shim.rs` (336 lines) deleted — v1 retirement (Stream D, PR #200) made it dead code. Future: Go/Python backends may add `runtime_go.dag` / `runtime_python.dag` following the same pattern. |
 | P3.5 | Feature-gate v1 | **Done** | v1 crates gated behind `v1-bootstrap` feature; `cargo test -p v2-compiler-tests` runs 0 tests without feature |
-| P3.6 | Generics (parameterized type declarations) | **Done (non-recursive)** | Pair<A,B>, Box<T>, nested Pair<List<Int>, String> all work. Substitution in `resolve_node_bounded`. Arity bridge deleted (P3.7). **Recursive generics** (MyList<T> = Nil \| Cons) crash v1 interpreter (Rust stack overflow during type resolution). See P3.8. |
-| P3.8 | Recursive generics | **Blocked by v1** | `type MyList<T> = Nil \| Cons { head: T, tail: MyList<T> }` — infinite recursion in v1 interpreter. Root cause: `resolve_node_bounded` re-enters generic substitution for self-referencing fields. Cycle detection sees MyList as recursive (node_type_deps fixed) but the v1 Rust stack overflows before the .dag depth guard fires. **Fix path:** after v1 retirement, the depth guard works in native Rust (larger stack). Or: add explicit generic-expansion memoization to `resolve_node_bounded` (avoid re-expanding the same `MyList<Int>` twice). Test: `v2_generic_recursive_type` (`#[ignore]`). |
+| P3.6 | Generics (parameterized type declarations) | **Done** | Pair<A,B>, Box<T>, nested Pair<List<Int>, String> all work. Substitution in `resolve_node_bounded`. Arity bridge deleted (P3.7). Recursive generics (MyList<T> = Nil \| Cons) also work — see P3.8. |
+| P3.8 | Recursive generics | **Done** | `type MyList<T> = Nil \| Cons { head: T, tail: MyList<T> }` compiles with 0 diagnostics. Cycle detection via Kahn's algorithm in `04_cycle.dag` precomputes `recursive_type_set` on `TypeEnv`. `resolve_node_bounded` skips self-referencing fields in recursive types. v1 stack overflow blocker removed by Stream D v1 retirement (PR #200). Test: `generic_recursive_type` (active, not ignored). |
 | P3.7 | Delete arity bridge | **Done** | `parameterized_type_arity` and `is_parameterized_type` deleted from `00_core.dag` and `04_types.dag`. Compiler reads arity from `.dag` declarations (bare `type List<element>`, `type Map<key, value>`, `type Set<element>` in `dsl/std/types.dag`). Arity validation added to `resolve_node_bounded` (TypeMismatch diagnostic on wrong arg count). |
 
 ### P3.6 Design: Generics as Compositional DAG Slots
@@ -1555,7 +1557,11 @@ of the normalization pass naturally (post-order traversal).
   `Optional` is not a type declaration — it was dissolved into cardinality
   on binding sites in Phase 1 (P1.4)
 - Arity bridge (P1.17) is deleted — compiler reads arity from declarations
-- No short-term bridges remain from Phase 1
+- No short-term bridges remain from Phase 1 (container properties deleted,
+  Dynamic error sentinels converted to `error_type_node()`; remaining
+  Error/Dynamic permissive rules in type comparison serve permanent compiler
+  functions — error cascade recovery and polymorphic placeholders — documented
+  with audit comments, removal is L1/Phase 5 scope)
 
 ---
 
@@ -1579,10 +1585,10 @@ contract is real.
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| P4.1 | `LanguageSpec` becomes the single authority | **Done (review cleanup complete)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`. Go and Python fully migrated for leaf rendering (literals, keywords, operators, types, containers, maps) and type rendering (~175 lines deleted per backend). Rust leaf rendering migrated; Rust type rendering stays separate pending P4.1a. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. `param_bindings` scoped to recognized type declarations. Generic arity validation emits `TypeMismatch` diagnostic. LanguageSpec has 65+ template fields but only ~22 are wired — remaining wiring is incremental. |
-| P4.1a | Unify Rust type walker into shared emit | **Next** | `emit_rust_node_type` is a parallel implementation of `emit_node_type` — same traversal structure, identical leaf/conj/disj dispatch, but threads `rc_types: Map<String, Bool>` for Rc wrapping at 3 named-type sites (~6 lines of Rc logic). **Fix:** add `rc_types` parameter to shared `emit_node_type`; Go/Python pass `empty_map()`; Rust passes real map. Delete `emit_rust_node_type`, `emit_rust_node_type_leaf/conj/disj`. Two-pass (string → Rc post-process) was tried and failed — Rc must be applied during recursion, not on flattened strings. |
-| P4.2 | Shared emit fold + target adapters | Planned | Prereqs: P4.1 complete. Circular import blocker: `05_emit.dag` can't import from backends. Resolved by P4.1's data-driven approach — shared dispatcher reads LanguageSpec, no backend imports needed. |
-| P4.3 | Generated tests as first-class projection | Planned | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). |
+| P4.1 | `LanguageSpec` becomes the single authority | **Done (review cleanup complete)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`. Go and Python fully migrated for leaf rendering (literals, keywords, operators, types, containers, maps) and type rendering (~175 lines deleted per backend). Rust leaf rendering migrated. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. `param_bindings` scoped to recognized type declarations. Generic arity validation emits `TypeMismatch` diagnostic. LanguageSpec has 65+ template fields but only ~22 are wired — remaining wiring is incremental. |
+| P4.1a | Rust type rendering via shared `emit_node_type` | **Done** | Rust type rendering migrated to shared `emit_node_type` + Rc wrapping layer. `emit_rust_node_type` deleted. Commit `22063fe3`. |
+| P4.2 | Shared emit fold + target adapters | Planned | Highest-risk refactor. **Prereqs: P1.4, P1.9, P1.21 completed; P4.1/P4.1a complete.** Circular import blocker resolved by P4.1's data-driven approach — shared dispatcher reads LanguageSpec, no backend imports needed. See P4.2 design below. |
+| P4.3 | Generated tests as first-class projection | Planned (analysis complete) | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). See P4.3 analysis below. |
 | P4.4 | DAG backend/runtime boundary | Stub landed | `Dag` variant added to `RenderTarget`; `emit_dag_artifact` emits a JSON envelope with version and module names. Stub is tested (`v2_dag_pipeline_smoke`). **Remaining:** real schema definition, full `ResolvedGraph` serialization, and runtime design. |
 | P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go \| Dag` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
@@ -1705,6 +1711,42 @@ single authority).
   plus per-backend terminal rendering, not three independent walkers
 - Parser/stage0/gist pipeline tests green
 - Fixed point holds
+
+### P4.3 Analysis: TestProjection Gaps (2026-03-25)
+
+**Current TestProjection struct** (05_emit.dag):
+```
+type TestProjection { service_name: String, operation_name: String, mock_field_inits: List<FieldInit> }
+```
+
+**Current state:**
+- `extract_test_projections()` defined in 05_emit.dag but never called
+- Only Rust emits tests (emit_test_file, line 3288 in 05_emit_rust.dag)
+- Python and Go have zero test infrastructure
+- Rust hardcodes `#[tokio::test]`, mock setup, service var construction
+
+**TestProjection gaps — fields needed for cross-backend emission:**
+1. `module_name: String` — test file placement requires module context
+2. `operation_return_type: Node` — mock response assertions need output type
+3. `operation_params: List<Param>` — test setup needs input structure
+
+**Shared vs backend-specific decomposition:**
+- **Shared:** test projection extraction (graph walk), mock field filtering
+  (`has_mock_prefix`), test name generation (service + operation → snake/camel)
+- **Backend-specific:** test framework decorator (`#[tokio::test]` / `pytest` /
+  `func Test*`), expression rendering, file naming convention, async patterns
+
+**Blockers for P4.3 extraction (ordered):**
+1. Extend TestProjection with module_name, return_type, params
+2. Make `extract_test_projections()` the single entry point (all backends call it)
+3. Extract `emit_simple_expr` to shared emit with target parameter
+4. Add LanguageSpec fields for test conventions (decorator, naming pattern)
+5. Each backend renders its dialect from the shared projection
+
+**Key insight:** `emit_simple_expr` (05_emit_rust.dag:992) is nearly
+target-agnostic — it pattern-matches ExprData variants for literals, vars,
+field access, string interpolation. Parametrizing it on target is the
+highest-leverage extraction for P4.3.
 
 ### Current Phase 4 Risks
 

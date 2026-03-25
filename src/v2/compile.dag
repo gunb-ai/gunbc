@@ -4,7 +4,7 @@
 // files. No DAG IR, no interpreter, no executor. Each stage is a pure
 // function.
 //
-// Pipeline: tokenize -> parse -> resolve -> infer -> complexity -> ownership -> artifact-plan -> emit
+// Pipeline: tokenize -> parse -> resolve -> normalize -> infer -> complexity -> ownership -> artifact-plan -> emit
 // Each stage is a pure function. The pipeline wires them together.
 //
 // The emit stage dispatches to per-target renderers based on

@@ -115,7 +115,7 @@ fn strict_compile_diagnostic_count() {
         .and_then(|l| {
             l.split("diagnostics")
                 .next()
-                .and_then(|prefix| prefix.split(',').last())
+                .and_then(|prefix| prefix.split(',').next_back())
                 .and_then(|s| s.trim().parse::<usize>().ok())
         })
         .unwrap_or(usize::MAX);

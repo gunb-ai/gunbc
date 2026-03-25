@@ -613,6 +613,12 @@ pub fn datadef_to_code_ir_with(dd: &DataDef, struct_defs: &[&TypeDef]) -> Vec<co
                 "pub static {rust_name}: std::sync::LazyLock<std::collections::HashMap<{key_type}, {val_type}>> = std::sync::LazyLock::new(|| {{\n    {value}\n}});"
             ))];
         }
+        // String data: in static context, string literals are &str, not String.
+        // Emit as `pub static NAME: &str = "value";` for valid Rust.
+        TypeExpr::Named(name) if name == "String" => {
+            let value = render_expr_to_rust(&dd.value, "String", STATIC_OPTS);
+            ("&str".to_string(), value)
+        }
         _ => {
             let rust_ty = type_expr_to_rust(&dd.ty);
             let value = render_expr_to_rust(&dd.value, &rust_ty, STATIC_OPTS);
@@ -1271,6 +1277,7 @@ pub fn typedefs_to_source_file(
         data_names,
         data_map_names: std::collections::HashSet::new(),
         data_string_list_names: std::collections::HashSet::new(),
+        data_string_names: std::collections::HashSet::new(),
         optional_fields,
         variant_to_enum,
         struct_field_types,
@@ -1430,7 +1437,8 @@ pub fn generate_types_for_modules(
             data_names: fn_data_names,
             data_ir_types,
             data_map_names: std::collections::HashSet::new(),
-        data_string_list_names: std::collections::HashSet::new(),
+            data_string_list_names: std::collections::HashSet::new(),
+            data_string_names: std::collections::HashSet::new(),
             optional_fields: opt_fields,
             variant_to_enum: v2e,
             struct_field_types: sft,
@@ -2009,6 +2017,7 @@ mod tests {
                 data_ir_types: collect_data_ir_types(data_defs.iter().copied()),
                 data_map_names: HashSet::new(),
                 data_string_list_names: HashSet::new(),
+                data_string_names: HashSet::new(),
                 optional_fields,
                 variant_to_enum,
                 struct_field_types,

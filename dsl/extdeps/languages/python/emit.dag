@@ -46,3 +46,24 @@ data python_reserved: List<String> = [
   "return", "try", "while", "with", "yield",
   "type", "match", "case"
 ]
+
+// -- Reserved word escape ------------------------------------------------
+// Ref: PEP 8 -- trailing underscore convention for keyword conflicts.
+// Mirrors python_reserved_words.strategy.suffix from std.languages.
+data python_reserved_escape_suffix: String = "_"
+
+// -- Type definitions ----------------------------------------------------
+// Ref: PEP 557 "Data Classes", PEP 484 "Type Hints"
+// Mirrors python_type_defs.derive_attribute from std.languages.
+data python_derive_attribute: String = "@dataclass"
+
+// -- Serialization -------------------------------------------------------
+// Ref: Python builtins
+// Mirrors python_serialization.default_value from std.languages.
+data python_default_value: String = "None"
+
+// -- Project scaffold ----------------------------------------------------
+// Ref: Python packaging conventions
+// Mirrors python_scaffold from std.languages.
+data python_source_extension: String = ".py"
+data python_module_init: String = "__init__.py"

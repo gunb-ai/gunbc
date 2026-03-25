@@ -76,9 +76,8 @@ pub mod fn_codegen;
 // Wave 10: Data-only .dag artifact emitter (FC-P7-b).
 pub mod dag_emit;
 
-// v2 compiler support: runtime shim source and crate assembly.
+// v2 compiler support: crate assembly.
 pub mod v2_crate_emit;
-pub mod v2_runtime_shim;
 
 #[cfg(test)]
 mod backend_harness;

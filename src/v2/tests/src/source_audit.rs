@@ -196,8 +196,8 @@ fn typecheck_resolves_and_validates_expression_tree_types() {
 fn emit_preserves_field_provenance_and_named_arg_ordering() {
     let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
     assert!(
-        rust_source.contains("serde(rename = "),
-        "05_emit_rust.dag should contain 'serde(rename = '"
+        rust_source.contains("serde_rename_template"),
+        "05_emit_rust.dag should reference serde_rename_template from LanguageSpec"
     );
 
     let emit_source = read_v2_file("src/v2/05_emit.dag");

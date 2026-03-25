@@ -11,8 +11,7 @@
 //! Given parsed v2 module ASTs, this module:
 //! 1. Emits types with recursive field boxing (Phase 4)
 //! 2. Emits functions via fn_codegen
-//! 3. Writes runtime shims (v2_rt module)
-//! 4. Assembles a complete crate with Cargo.toml and lib.rs
+//! 3. Assembles a complete crate with Cargo.toml and lib.rs
 //!
 //! The emitted crate is written to `target/v2-compiler/`.
 
@@ -22,7 +21,6 @@ use std::path::{Path, PathBuf};
 use crate::fn_codegen;
 use crate::render_rust;
 use crate::type_codegen;
-use crate::v2_runtime_shim;
 use daglang_syntax::ast::{Item, SourceFile, TypeBody, TypeDef};
 use daglang_syntax::ast_utils::type_expr_to_string;
 use gunbc_ir::code_ir;
@@ -576,6 +574,21 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             })
         })
         .collect();
+    let global_data_string_names: HashSet<String> = modules
+        .iter()
+        .flat_map(|(_, sf)| {
+            sf.items.iter().filter_map(|item| match &item.node {
+                Item::DataDef(dd) => {
+                    if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Named(n) if n == "String") {
+                        Some(dd.name.clone())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+        })
+        .collect();
 
     // 5. Emit each module, tracking type definitions to suppress exact duplicates
     // TEMPORARY bootstrap scaffolding (S81): downstream modules that re-declare
@@ -644,6 +657,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
             &global_data_names,
             &global_data_map_names,
             &global_data_string_list_names,
+            &global_data_string_names,
         );
         // Track which types this module defines with their structural signature.
         for item in items.iter() {
@@ -672,13 +686,7 @@ pub fn assemble_v2_crate(modules: &[(&str, &SourceFile)]) -> Vec<GeneratedFile> 
         content: lib_content,
     });
 
-    // 7. Emit v2_rt.rs runtime shims
-    files.push(GeneratedFile {
-        rel_path: "src/v2_rt.rs".to_string(),
-        content: v2_runtime_shim::V2_RUNTIME_SOURCE.to_string(),
-    });
-
-    // 8. Emit generated test module from the workspace source tree and import
+    // 7. Emit generated test module from the workspace source tree and import
     //    closure so the generated crate embeds a single, structural source set.
     let dag_sources = collect_embedded_dag_sources();
     files.push(GeneratedFile {
@@ -778,13 +786,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compile .dag source files to a target language
+    /// Compile .dag source files
     Compile {
         #[arg(long)]
         source_dir: String,
         #[arg(long)]
         output_dir: String,
-        /// Target language: rust, python, go
+        /// Target language: rust, python, go, dag
         #[arg(long, default_value = "rust")]
         target: String,
     },
@@ -794,15 +802,6 @@ fn main() {
     let cli = Cli::parse();
     match cli.command {
         Commands::Compile { source_dir, output_dir, target } => {
-            let render_target = match target.as_str() {
-                "rust" => artifact::RenderTarget::Rust,
-                "python" => artifact::RenderTarget::Python,
-                "go" => artifact::RenderTarget::Go,
-                other => {
-                    eprintln!("unknown target: {}. supported: rust, python, go", other);
-                    std::process::exit(1);
-                }
-            };
             // Read all .dag files from source directory (recursive)
             let mut sources: Vec<Rc<compile::SourceFile>> = Vec::new();
             fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
@@ -833,6 +832,17 @@ fn main() {
             }
 
             eprintln!("compiling {} .dag files from {} (target: {})", sources.len(), source_dir, target);
+
+            let render_target = match target.as_str() {
+                "rust" => artifact::RenderTarget::Rust,
+                "python" => artifact::RenderTarget::Python,
+                "go" => artifact::RenderTarget::Go,
+                "dag" => artifact::RenderTarget::Dag,
+                other => {
+                    eprintln!("error: unknown target '{}', expected rust|python|go|dag", other);
+                    std::process::exit(1);
+                }
+            };
 
             // Run the pipeline. Stage0 (this code, v1-emitted) wraps the sources
             // list in Rc::new() because v1 renders List<T> as Rc<Vec<Rc<T>>>.
@@ -970,6 +980,7 @@ fn emit_module(
     global_data_names: &HashSet<String>,
     global_data_map_names: &HashSet<String>,
     global_data_string_list_names: &HashSet<String>,
+    global_data_string_names: &HashSet<String>,
 ) -> code_ir::SourceFile {
     let mut ir_items: Vec<code_ir::Item> = Vec::new();
 
@@ -1008,6 +1019,19 @@ fn emit_module(
         _ => None,
     }));
 
+    // Collect data names that are String (emitted as &str, need .to_string() at use)
+    let mut data_string_names: HashSet<String> = global_data_string_names.clone();
+    data_string_names.extend(items.iter().filter_map(|item| match &item.node {
+        Item::DataDef(dd) => {
+            if matches!(&dd.ty, daglang_syntax::ast::TypeExpr::Named(n) if n == "String") {
+                Some(dd.name.clone())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }));
+
     // Use cross-module enum_variants for correct variant resolution
     let enum_variants_map = all_enum_variants.clone();
 
@@ -1024,6 +1048,7 @@ fn emit_module(
             .collect(),
         data_map_names,
         data_string_list_names,
+        data_string_names,
         optional_fields: optional_fields.clone(),
         variant_to_enum: variant_to_enum.clone(),
         struct_field_types: struct_field_types.clone(),
