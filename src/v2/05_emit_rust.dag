@@ -331,14 +331,22 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let __local_enums = __local_type_names |> filter(n =>
     is_enum_type_name(type_name: n, vtoe: vtoe)
   )
-  let __imported_enums = concat(__import_enums, __local_enums)
-  let module_vtoe = fold(__all_imported, init: vtoe, f: (vtoe_acc, name) =>
+  let __local_variant_names = typed_module.items |> flat_map(item =>
+    if __local_enums |> any(enum_name => enum_name == item.name) {
+      item.children |> map(child => child.name)
+    } else {
+      []
+    }
+  )
+  let __module_enums = concat(__local_enums, __import_enums)
+  let __candidate_variant_names = unique_strings(items: concat(__all_imported, __local_variant_names))
+  let module_vtoe = fold(__candidate_variant_names, init: vtoe, f: (vtoe_acc, name) =>
     match map_get(vtoe_acc, name) {
       Some { value: current_parent } =>
-        let parent_ok = __imported_enums |> any(e => e == current_parent)
+        let parent_ok = __module_enums |> any(e => e == current_parent)
         if parent_ok { vtoe_acc }
         else {
-          let correct = __imported_enums |> filter(enum_name =>
+          let correct = __module_enums |> filter(enum_name =>
             emit_map_has(m: emit_info.enum_variant_membership, key: concat(enum_name, "|", name))
           ) |> first
           match correct {
