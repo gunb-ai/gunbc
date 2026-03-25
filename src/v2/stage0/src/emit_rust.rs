@@ -1654,7 +1654,7 @@ pub fn emit_tco_params(params: Rc<Vec<Rc<Param>>>, rc_types: Rc<HashMap<String, 
 
 pub fn emit_tco_param(param: Rc<Param>, rc_types: Rc<HashMap<String, bool>>) -> String {
     let n = param.type_expr.clone();
-    let ty = emit_node_type_rc(n.clone(), RenderTarget::Rust, rc_types.clone());
+    let ty = emit_rust_param_type(n.clone(), rc_types.clone());
     v2_rt::concat(v2_rt::concat(v2_rt::concat("mut ".to_string(), emit_ident(&param.name, RenderTarget::Rust)), ": ".to_string()), ty)
 }
 
@@ -1721,9 +1721,47 @@ pub fn emit_params(params: Rc<Vec<Rc<Param>>>, rc_types: Rc<HashMap<String, bool
 }
 }
 
+pub fn emit_rust_param_type(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> String {
+    if (n.name.clone() == "Callable") && (({
+    let __len_5 = n.params.clone().len();
+    __len_5 as i64
+}) > 0_i64) {
+    let param_types = {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in n.params.iter().cloned() {
+        __mapped_0.push(emit_node_type_rc(__elem_1.type_expr.clone(), RenderTarget::Rust, rc_types.clone()));
+    }
+    Rc::new(__mapped_0)
+};
+    let param_str = {
+    let mut __joined_2 = String::new();
+    let mut __first_4 = true;
+    for __elem_3 in param_types.iter().cloned() {
+        if !__first_4 {
+    __joined_2.push_str(&", ".to_string());
+};
+        __first_4 = false;
+        __joined_2.push_str(&__elem_3);
+    }
+    __joined_2
+};
+    let ret_str = match n.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(InferredNode::Resolved { node: rt, .. }) => {
+        emit_node_type_rc(rt.clone(), RenderTarget::Rust, rc_types.clone())
+    }
+    _ => {
+        "()".to_string()
+    }
+};
+    v2_rt::concat(v2_rt::concat(v2_rt::concat("impl Fn(".to_string(), param_str.clone()), ") -> ".to_string()), ret_str.clone())
+} else {
+    emit_node_type_rc(n.clone(), RenderTarget::Rust, rc_types.clone())
+}
+}
+
 pub fn emit_param(param: Rc<Param>, rc_types: Rc<HashMap<String, bool>>) -> String {
     let n = param.type_expr.clone();
-    let ty = emit_node_type_rc(n.clone(), RenderTarget::Rust, rc_types.clone());
+    let ty = emit_rust_param_type(n.clone(), rc_types.clone());
     v2_rt::concat(v2_rt::concat(emit_ident(&param.name, RenderTarget::Rust), ": ".to_string()), ty)
 }
 
@@ -5670,7 +5708,7 @@ pub fn emit_operation_method(service_name: &str, transport: Rc<Node>, op_node: R
     let input_params = {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in op_node.params.iter().cloned() {
-        __mapped_0.push(v2_rt::concat(v2_rt::concat(emit_ident(&__elem_1.name, RenderTarget::Rust), ": ".to_string()), emit_node_type_rc(__elem_1.type_expr.clone(), RenderTarget::Rust, Rc::new(std::collections::HashMap::new()))));
+        __mapped_0.push(v2_rt::concat(v2_rt::concat(emit_ident(&__elem_1.name, RenderTarget::Rust), ": ".to_string()), emit_rust_param_type(__elem_1.type_expr.clone(), Rc::new(std::collections::HashMap::new()))));
     }
     Rc::new(__mapped_0)
 };
@@ -5922,7 +5960,7 @@ pub fn emit_capability_method(cap_node: Rc<Node>) -> String {
     let input_params = {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in cap_node.params.iter().cloned() {
-        __mapped_0.push(v2_rt::concat(v2_rt::concat(emit_ident(&__elem_1.name, RenderTarget::Rust), ": ".to_string()), emit_node_type_rc(__elem_1.type_expr.clone(), RenderTarget::Rust, Rc::new(std::collections::HashMap::new()))));
+        __mapped_0.push(v2_rt::concat(v2_rt::concat(emit_ident(&__elem_1.name, RenderTarget::Rust), ": ".to_string()), emit_rust_param_type(__elem_1.type_expr.clone(), Rc::new(std::collections::HashMap::new()))));
     }
     Rc::new(__mapped_0)
 };
@@ -6046,7 +6084,7 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
     for __elem_3 in ({
     let mut __mapped_0 = Vec::new();
     for __elem_1 in projection.params.iter().cloned() {
-        __mapped_0.push(v2_rt::concat(v2_rt::concat(__elem_1.name.clone(), ": ".to_string()), emit_node_type(__elem_1.type_expr.clone(), RenderTarget::Rust)));
+        __mapped_0.push(v2_rt::concat(v2_rt::concat(__elem_1.name.clone(), ": ".to_string()), emit_rust_param_type(__elem_1.type_expr.clone(), Rc::new(std::collections::HashMap::new()))));
     }
     Rc::new(__mapped_0)
 }).iter().cloned() {

@@ -434,6 +434,22 @@ fn emit_field_access_with_types() {
     assert_no_diagnostics(&result);
 }
 
+#[test]
+fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
+    let source = "module callable_sig\n\ntype Mapper = fn(Int) -> Int\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/callable_sig.rs");
+    assert!(
+        content.contains("type Mapper = Rc<dyn Fn(i64) -> i64>;"),
+        "callable aliases should stay in type-position-safe Rc<dyn Fn> form: {content}"
+    );
+    assert!(
+        content.contains("fn apply(f: impl Fn(i64) -> i64, x: i64) -> i64"),
+        "callable params should use impl Fn in Rust signatures: {content}"
+    );
+}
+
 // ── Python emission tests ───────────────────────────────────────────────
 
 #[test]

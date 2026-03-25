@@ -18251,7 +18251,7 @@ fn emit_tco_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
 
 fn emit_tco_param(param: Param, rc_types: Map<String, Bool>) -> String {
   let n = param.type_expr
-  let ty = emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
+  let ty = emit_rust_param_type(n: n, rc_types: rc_types)
   concat("mut ", emit_ident(name: param.name, target: Rust), ": ", ty)
 }
 
@@ -18280,9 +18280,23 @@ fn emit_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
   strs |> join(separator: ", ")
 }
 
+fn emit_rust_param_type(n: Node, rc_types: Map<String, Bool>) -> String {
+  if n.name == "Callable" && n.params |> count > 0 {
+    let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: rc_types))
+    let param_str = param_types |> join(separator: ", ")
+    let ret_str = match n.return_type {
+      Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: Rust, rc_types: rc_types)
+      _ => "()"
+    }
+    concat("impl Fn(", param_str, ") -> ", ret_str)
+  } else {
+    emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
+  }
+}
+
 fn emit_param(param: Param, rc_types: Map<String, Bool>) -> String {
   let n = param.type_expr
-  let ty = emit_node_type_rc(n: n, target: Rust, rc_types: rc_types)
+  let ty = emit_rust_param_type(n: n, rc_types: rc_types)
   // All params are owned -- Rc-wrapped types are cheap to clone, and
   // the .clone() pattern in function bodies produces owned values.
   // Adding & to params creates reference/owned mismatches.
@@ -20418,7 +20432,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -20589,7 +20603,7 @@ fn emit_resource_def(item: Node) -> String {
 
 fn emit_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -20689,7 +20703,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(p.name, ": ", emit_node_type(n: p.type_expr, target: Rust)))
+    |> map(p => concat(p.name, ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map())))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
