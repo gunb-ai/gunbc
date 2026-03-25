@@ -1582,7 +1582,7 @@ contract is real.
 | P4.1 | `LanguageSpec` becomes the single authority | **Done (review cleanup complete)** | Unified `RenderTarget` dispatch layer landed in `05_emit.dag`. Go and Python fully migrated for leaf rendering (literals, keywords, operators, types, containers, maps) and type rendering (~175 lines deleted per backend). Rust leaf rendering migrated. Fabricating fallbacks replaced with `__EMIT_BUG_*` error markers. `param_bindings` scoped to recognized type declarations. Generic arity validation emits `TypeMismatch` diagnostic. LanguageSpec has 65+ template fields but only ~22 are wired — remaining wiring is incremental. |
 | P4.1a | Rust type rendering via shared `emit_node_type` | **Done** | Rust type rendering migrated to shared `emit_node_type` + Rc wrapping layer. `emit_rust_node_type` deleted. Commit `22063fe3`. |
 | P4.2 | Shared emit fold + target adapters | Planned | Highest-risk refactor. **Prereqs: P1.4, P1.9, P1.21 completed; P4.1/P4.1a complete.** Circular import blocker resolved by P4.1's data-driven approach — shared dispatcher reads LanguageSpec, no backend imports needed. See P4.2 design below. |
-| P4.3 | Generated tests as first-class projection | Planned | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). |
+| P4.3 | Generated tests as first-class projection | Planned (analysis complete) | **Prereqs: P1.19, P1.20, P1.21.** All emitters consume `TestProjection` from shared emit. Each backend owns only the test-syntax rendering (Rust `#[tokio::test]`, Go `func Test*`, Python `def test_*`). No backend owns mock extraction. Go/Python test generation is new work gated on shared emit fold (P4.2). See P4.3 analysis below. |
 | P4.4 | DAG backend/runtime boundary | Stub landed | `Dag` variant added to `RenderTarget`; `emit_dag_artifact` emits a JSON envelope with version and module names. Stub is tested (`v2_dag_pipeline_smoke`). **Remaining:** real schema definition, full `ResolvedGraph` serialization, and runtime design. |
 | P4.5 | Typed backend plumbing and CLI surface | Mostly done | Backend selection is already typed: `RenderTarget = Rust \| Python \| Go \| Dag` (closed enum in `artifact.dag`), `compile_sources` takes `target: RenderTarget`, `emit_artifact` matches exhaustively. **Remaining:** CLI surface for the v2 compiler binary itself (not the emitted program) should parse `--target rust\|python\|go\|dag` and produce the typed `RenderTarget` — straightforward. |
 | P4.6 | Equivalence validation | Planned | Self-compile and gist must still converge after shared emit lands |
@@ -1705,6 +1705,42 @@ single authority).
   plus per-backend terminal rendering, not three independent walkers
 - Parser/stage0/gist pipeline tests green
 - Fixed point holds
+
+### P4.3 Analysis: TestProjection Gaps (2026-03-25)
+
+**Current TestProjection struct** (05_emit.dag):
+```
+type TestProjection { service_name: String, operation_name: String, mock_field_inits: List<FieldInit> }
+```
+
+**Current state:**
+- `extract_test_projections()` defined in 05_emit.dag but never called
+- Only Rust emits tests (emit_test_file, line 3288 in 05_emit_rust.dag)
+- Python and Go have zero test infrastructure
+- Rust hardcodes `#[tokio::test]`, mock setup, service var construction
+
+**TestProjection gaps — fields needed for cross-backend emission:**
+1. `module_name: String` — test file placement requires module context
+2. `operation_return_type: Node` — mock response assertions need output type
+3. `operation_params: List<Param>` — test setup needs input structure
+
+**Shared vs backend-specific decomposition:**
+- **Shared:** test projection extraction (graph walk), mock field filtering
+  (`has_mock_prefix`), test name generation (service + operation → snake/camel)
+- **Backend-specific:** test framework decorator (`#[tokio::test]` / `pytest` /
+  `func Test*`), expression rendering, file naming convention, async patterns
+
+**Blockers for P4.3 extraction (ordered):**
+1. Extend TestProjection with module_name, return_type, params
+2. Make `extract_test_projections()` the single entry point (all backends call it)
+3. Extract `emit_simple_expr` to shared emit with target parameter
+4. Add LanguageSpec fields for test conventions (decorator, naming pattern)
+5. Each backend renders its dialect from the shared projection
+
+**Key insight:** `emit_simple_expr` (05_emit_rust.dag:992) is nearly
+target-agnostic — it pattern-matches ExprData variants for literals, vars,
+field access, string interpolation. Parametrizing it on target is the
+highest-leverage extraction for P4.3.
 
 ### Current Phase 4 Risks
 
