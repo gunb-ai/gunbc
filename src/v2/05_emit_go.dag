@@ -644,7 +644,7 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<NamedArg
             let arg_strs = args |> map(a => emit_go_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: 0))
             let args_str = arg_strs |> join(separator: ", ")
             concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
-          None => "panic(\"unsupported service receiver\")"
+          None => emit_error_expr(message: "unsupported service receiver", target: Go)
         }
       } else {
         emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)

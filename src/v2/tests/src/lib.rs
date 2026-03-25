@@ -5821,8 +5821,8 @@ fn use_concat(a: String, b: String) -> String { concat(a, b) }
             "emit_simple_expr should use compile_error!(), not todo!()"
         );
         assert!(
-            emit_rust.contains("compile_error!(\\\"unsupported simple expr") || emit_rust.contains("compile_error!(\"unsupported simple expr"),
-            "emit_simple_expr wildcard should emit compile_error!()"
+            emit_rust.contains("emit_error_expr(message: \"unsupported simple expr"),
+            "emit_simple_expr wildcard should use emit_error_expr"
         );
         assert!(
             !emit_rust.contains("Ok(Default::default())"),

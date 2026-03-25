@@ -1006,7 +1006,7 @@ fn emit_simple_expr(expr: Node) -> String {
       }
     ExprStringInterp { parts: ps } =>
       emit_simple_string_interp(parts: ps)
-    _ => concat("compile_error!(\"unsupported simple expr in transport binding\")")
+    _ => emit_error_expr(message: "unsupported simple expr in transport binding", target: Rust)
   }
 }
 
