@@ -3,6 +3,86 @@ use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
+pub enum TokenShape {
+    #[default]
+    ShapeKwModule,
+    ShapeKwImport,
+    ShapeKwType,
+    ShapeKwFn,
+    ShapeKwFunc,
+    ShapeKwService,
+    ShapeKwResource,
+    ShapeKwData,
+    ShapeKwExtern,
+    ShapeKwInterface,
+    ShapeKwPipeline,
+    ShapeKwProfile,
+    ShapeKwPattern,
+    ShapeKwLet,
+    ShapeKwReturn,
+    ShapeKwMatch,
+    ShapeKwIf,
+    ShapeKwElse,
+    ShapeKwFor,
+    ShapeKwIn,
+    ShapeKwWhere,
+    ShapeKwWith,
+    ShapeKwTrue,
+    ShapeKwFalse,
+    ShapeKwNone,
+    ShapeKwAcquire,
+    ShapeKwRelease,
+    ShapeKwCapability,
+    ShapeKwOperation,
+    ShapeKwInput,
+    ShapeKwOutput,
+    ShapeKwIdempotent,
+    ShapeKwReadonly,
+    ShapeKwHermetic,
+    ShapeLBrace,
+    ShapeRBrace,
+    ShapeLParen,
+    ShapeRParen,
+    ShapeLBracket,
+    ShapeRBracket,
+    ShapeLt,
+    ShapeGt,
+    ShapeLe,
+    ShapeGe,
+    ShapeFatArrow,
+    ShapeArrow,
+    ShapeColon,
+    ShapeComma,
+    ShapeDot,
+    ShapeDotDot,
+    ShapeEq,
+    ShapeEqEq,
+    ShapeNe,
+    ShapePlus,
+    ShapeMinus,
+    ShapeStar,
+    ShapeSlash,
+    ShapePercent,
+    ShapeBang,
+    ShapeAnd,
+    ShapeOr,
+    ShapeQuestion,
+    ShapeNullCoalesce,
+    ShapePipe,
+    ShapePipeArrow,
+    ShapeIdent,
+    ShapeLitStr,
+    ShapeLitInt,
+    ShapeLitFloat,
+    ShapeStrBegin,
+    ShapeStrMid,
+    ShapeStrEnd,
+    ShapeNewline,
+    ShapeEof,
+    ShapeUnknown,
+}
+
 pub static KEYWORDS: std::sync::LazyLock<std::collections::HashMap<String, TokenKind>> = std::sync::LazyLock::new(|| {
     HashMap::from([("module".to_string(), TokenKind::KwModule), ("import".to_string(), TokenKind::KwImport), ("type".to_string(), TokenKind::KwType), ("fn".to_string(), TokenKind::KwFn), ("func".to_string(), TokenKind::KwFunc), ("service".to_string(), TokenKind::KwService), ("resource".to_string(), TokenKind::KwResource), ("data".to_string(), TokenKind::KwData), ("extern".to_string(), TokenKind::KwExtern), ("interface".to_string(), TokenKind::KwInterface), ("pipeline".to_string(), TokenKind::KwPipeline), ("profile".to_string(), TokenKind::KwProfile), ("pattern".to_string(), TokenKind::KwPattern), ("let".to_string(), TokenKind::KwLet), ("return".to_string(), TokenKind::KwReturn), ("match".to_string(), TokenKind::KwMatch), ("if".to_string(), TokenKind::KwIf), ("else".to_string(), TokenKind::KwElse), ("for".to_string(), TokenKind::KwFor), ("in".to_string(), TokenKind::KwIn), ("where".to_string(), TokenKind::KwWhere), ("with".to_string(), TokenKind::KwWith), ("true".to_string(), TokenKind::KwTrue), ("false".to_string(), TokenKind::KwFalse), ("none".to_string(), TokenKind::KwNone), ("null".to_string(), TokenKind::KwNone), ("acquire".to_string(), TokenKind::KwAcquire), ("release".to_string(), TokenKind::KwRelease), ("capability".to_string(), TokenKind::KwCapability), ("operation".to_string(), TokenKind::KwOperation), ("input".to_string(), TokenKind::KwInput), ("output".to_string(), TokenKind::KwOutput), ("idempotent".to_string(), TokenKind::KwIdempotent), ("readonly".to_string(), TokenKind::KwReadonly), ("hermetic".to_string(), TokenKind::KwHermetic)])
 });
@@ -47,6 +127,470 @@ pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
     __appended_0.push(Rc::new(Token { kind: Rc::new(TokenKind::Eof), span: eof_span }));
     Rc::new(__appended_0)
 }
+}
+
+pub fn token_shape(kind: Rc<TokenKind>) -> TokenShape {
+    match kind.as_ref() {
+    TokenKind::KwModule => {
+        TokenShape::ShapeKwModule
+    }
+    TokenKind::KwImport => {
+        TokenShape::ShapeKwImport
+    }
+    TokenKind::KwType => {
+        TokenShape::ShapeKwType
+    }
+    TokenKind::KwFn => {
+        TokenShape::ShapeKwFn
+    }
+    TokenKind::KwFunc => {
+        TokenShape::ShapeKwFunc
+    }
+    TokenKind::KwService => {
+        TokenShape::ShapeKwService
+    }
+    TokenKind::KwResource => {
+        TokenShape::ShapeKwResource
+    }
+    TokenKind::KwData => {
+        TokenShape::ShapeKwData
+    }
+    TokenKind::KwExtern => {
+        TokenShape::ShapeKwExtern
+    }
+    TokenKind::KwInterface => {
+        TokenShape::ShapeKwInterface
+    }
+    TokenKind::KwPipeline => {
+        TokenShape::ShapeKwPipeline
+    }
+    TokenKind::KwProfile => {
+        TokenShape::ShapeKwProfile
+    }
+    TokenKind::KwPattern => {
+        TokenShape::ShapeKwPattern
+    }
+    TokenKind::KwLet => {
+        TokenShape::ShapeKwLet
+    }
+    TokenKind::KwReturn => {
+        TokenShape::ShapeKwReturn
+    }
+    TokenKind::KwMatch => {
+        TokenShape::ShapeKwMatch
+    }
+    TokenKind::KwIf => {
+        TokenShape::ShapeKwIf
+    }
+    TokenKind::KwElse => {
+        TokenShape::ShapeKwElse
+    }
+    TokenKind::KwFor => {
+        TokenShape::ShapeKwFor
+    }
+    TokenKind::KwIn => {
+        TokenShape::ShapeKwIn
+    }
+    TokenKind::KwWhere => {
+        TokenShape::ShapeKwWhere
+    }
+    TokenKind::KwWith => {
+        TokenShape::ShapeKwWith
+    }
+    TokenKind::KwTrue => {
+        TokenShape::ShapeKwTrue
+    }
+    TokenKind::KwFalse => {
+        TokenShape::ShapeKwFalse
+    }
+    TokenKind::KwNone => {
+        TokenShape::ShapeKwNone
+    }
+    TokenKind::KwAcquire => {
+        TokenShape::ShapeKwAcquire
+    }
+    TokenKind::KwRelease => {
+        TokenShape::ShapeKwRelease
+    }
+    TokenKind::KwCapability => {
+        TokenShape::ShapeKwCapability
+    }
+    TokenKind::KwOperation => {
+        TokenShape::ShapeKwOperation
+    }
+    TokenKind::KwInput => {
+        TokenShape::ShapeKwInput
+    }
+    TokenKind::KwOutput => {
+        TokenShape::ShapeKwOutput
+    }
+    TokenKind::KwIdempotent => {
+        TokenShape::ShapeKwIdempotent
+    }
+    TokenKind::KwReadonly => {
+        TokenShape::ShapeKwReadonly
+    }
+    TokenKind::KwHermetic => {
+        TokenShape::ShapeKwHermetic
+    }
+    TokenKind::LBrace => {
+        TokenShape::ShapeLBrace
+    }
+    TokenKind::RBrace => {
+        TokenShape::ShapeRBrace
+    }
+    TokenKind::LParen => {
+        TokenShape::ShapeLParen
+    }
+    TokenKind::RParen => {
+        TokenShape::ShapeRParen
+    }
+    TokenKind::LBracket => {
+        TokenShape::ShapeLBracket
+    }
+    TokenKind::RBracket => {
+        TokenShape::ShapeRBracket
+    }
+    TokenKind::Lt => {
+        TokenShape::ShapeLt
+    }
+    TokenKind::Gt => {
+        TokenShape::ShapeGt
+    }
+    TokenKind::Le => {
+        TokenShape::ShapeLe
+    }
+    TokenKind::Ge => {
+        TokenShape::ShapeGe
+    }
+    TokenKind::FatArrow => {
+        TokenShape::ShapeFatArrow
+    }
+    TokenKind::Arrow => {
+        TokenShape::ShapeArrow
+    }
+    TokenKind::Colon => {
+        TokenShape::ShapeColon
+    }
+    TokenKind::Comma => {
+        TokenShape::ShapeComma
+    }
+    TokenKind::Dot => {
+        TokenShape::ShapeDot
+    }
+    TokenKind::DotDot => {
+        TokenShape::ShapeDotDot
+    }
+    TokenKind::Eq => {
+        TokenShape::ShapeEq
+    }
+    TokenKind::EqEq => {
+        TokenShape::ShapeEqEq
+    }
+    TokenKind::Ne => {
+        TokenShape::ShapeNe
+    }
+    TokenKind::Plus => {
+        TokenShape::ShapePlus
+    }
+    TokenKind::Minus => {
+        TokenShape::ShapeMinus
+    }
+    TokenKind::Star => {
+        TokenShape::ShapeStar
+    }
+    TokenKind::Slash => {
+        TokenShape::ShapeSlash
+    }
+    TokenKind::Percent => {
+        TokenShape::ShapePercent
+    }
+    TokenKind::Bang => {
+        TokenShape::ShapeBang
+    }
+    TokenKind::And => {
+        TokenShape::ShapeAnd
+    }
+    TokenKind::Or => {
+        TokenShape::ShapeOr
+    }
+    TokenKind::Question => {
+        TokenShape::ShapeQuestion
+    }
+    TokenKind::NullCoalesce => {
+        TokenShape::ShapeNullCoalesce
+    }
+    TokenKind::Pipe => {
+        TokenShape::ShapePipe
+    }
+    TokenKind::PipeArrow => {
+        TokenShape::ShapePipeArrow
+    }
+    TokenKind::LitStr { value: _, .. } => {
+        TokenShape::ShapeLitStr
+    }
+    TokenKind::LitInt { value: _, .. } => {
+        TokenShape::ShapeLitInt
+    }
+    TokenKind::LitFloat { value: _, .. } => {
+        TokenShape::ShapeLitFloat
+    }
+    TokenKind::Ident { name: _, .. } => {
+        TokenShape::ShapeIdent
+    }
+    TokenKind::StrBegin { value: _, .. } => {
+        TokenShape::ShapeStrBegin
+    }
+    TokenKind::StrMid { value: _, .. } => {
+        TokenShape::ShapeStrMid
+    }
+    TokenKind::StrEnd { value: _, .. } => {
+        TokenShape::ShapeStrEnd
+    }
+    TokenKind::Newline => {
+        TokenShape::ShapeNewline
+    }
+    TokenKind::Eof => {
+        TokenShape::ShapeEof
+    }
+    TokenKind::Unknown { char: _, .. } => {
+        TokenShape::ShapeUnknown
+    }
+}
+}
+
+pub fn token_shape_display_name(shape: TokenShape) -> String {
+    match shape {
+    TokenShape::ShapeKwModule => {
+        "KwModule".to_string()
+    }
+    TokenShape::ShapeKwImport => {
+        "KwImport".to_string()
+    }
+    TokenShape::ShapeKwType => {
+        "KwType".to_string()
+    }
+    TokenShape::ShapeKwFn => {
+        "KwFn".to_string()
+    }
+    TokenShape::ShapeKwFunc => {
+        "KwFunc".to_string()
+    }
+    TokenShape::ShapeKwService => {
+        "KwService".to_string()
+    }
+    TokenShape::ShapeKwResource => {
+        "KwResource".to_string()
+    }
+    TokenShape::ShapeKwData => {
+        "KwData".to_string()
+    }
+    TokenShape::ShapeKwExtern => {
+        "KwExtern".to_string()
+    }
+    TokenShape::ShapeKwInterface => {
+        "KwInterface".to_string()
+    }
+    TokenShape::ShapeKwPipeline => {
+        "KwPipeline".to_string()
+    }
+    TokenShape::ShapeKwProfile => {
+        "KwProfile".to_string()
+    }
+    TokenShape::ShapeKwPattern => {
+        "KwPattern".to_string()
+    }
+    TokenShape::ShapeKwLet => {
+        "KwLet".to_string()
+    }
+    TokenShape::ShapeKwReturn => {
+        "KwReturn".to_string()
+    }
+    TokenShape::ShapeKwMatch => {
+        "KwMatch".to_string()
+    }
+    TokenShape::ShapeKwIf => {
+        "KwIf".to_string()
+    }
+    TokenShape::ShapeKwElse => {
+        "KwElse".to_string()
+    }
+    TokenShape::ShapeKwFor => {
+        "KwFor".to_string()
+    }
+    TokenShape::ShapeKwIn => {
+        "KwIn".to_string()
+    }
+    TokenShape::ShapeKwWhere => {
+        "KwWhere".to_string()
+    }
+    TokenShape::ShapeKwWith => {
+        "KwWith".to_string()
+    }
+    TokenShape::ShapeKwTrue => {
+        "KwTrue".to_string()
+    }
+    TokenShape::ShapeKwFalse => {
+        "KwFalse".to_string()
+    }
+    TokenShape::ShapeKwNone => {
+        "KwNone".to_string()
+    }
+    TokenShape::ShapeKwAcquire => {
+        "KwAcquire".to_string()
+    }
+    TokenShape::ShapeKwRelease => {
+        "KwRelease".to_string()
+    }
+    TokenShape::ShapeKwCapability => {
+        "KwCapability".to_string()
+    }
+    TokenShape::ShapeKwOperation => {
+        "KwOperation".to_string()
+    }
+    TokenShape::ShapeKwInput => {
+        "KwInput".to_string()
+    }
+    TokenShape::ShapeKwOutput => {
+        "KwOutput".to_string()
+    }
+    TokenShape::ShapeKwIdempotent => {
+        "KwIdempotent".to_string()
+    }
+    TokenShape::ShapeKwReadonly => {
+        "KwReadonly".to_string()
+    }
+    TokenShape::ShapeKwHermetic => {
+        "KwHermetic".to_string()
+    }
+    TokenShape::ShapeLBrace => {
+        "LBrace".to_string()
+    }
+    TokenShape::ShapeRBrace => {
+        "RBrace".to_string()
+    }
+    TokenShape::ShapeLParen => {
+        "LParen".to_string()
+    }
+    TokenShape::ShapeRParen => {
+        "RParen".to_string()
+    }
+    TokenShape::ShapeLBracket => {
+        "LBracket".to_string()
+    }
+    TokenShape::ShapeRBracket => {
+        "RBracket".to_string()
+    }
+    TokenShape::ShapeLt => {
+        "Lt".to_string()
+    }
+    TokenShape::ShapeGt => {
+        "Gt".to_string()
+    }
+    TokenShape::ShapeLe => {
+        "Le".to_string()
+    }
+    TokenShape::ShapeGe => {
+        "Ge".to_string()
+    }
+    TokenShape::ShapeFatArrow => {
+        "FatArrow".to_string()
+    }
+    TokenShape::ShapeArrow => {
+        "Arrow".to_string()
+    }
+    TokenShape::ShapeColon => {
+        "Colon".to_string()
+    }
+    TokenShape::ShapeComma => {
+        "Comma".to_string()
+    }
+    TokenShape::ShapeDot => {
+        "Dot".to_string()
+    }
+    TokenShape::ShapeDotDot => {
+        "DotDot".to_string()
+    }
+    TokenShape::ShapeEq => {
+        "Eq".to_string()
+    }
+    TokenShape::ShapeEqEq => {
+        "EqEq".to_string()
+    }
+    TokenShape::ShapeNe => {
+        "Ne".to_string()
+    }
+    TokenShape::ShapePlus => {
+        "Plus".to_string()
+    }
+    TokenShape::ShapeMinus => {
+        "Minus".to_string()
+    }
+    TokenShape::ShapeStar => {
+        "Star".to_string()
+    }
+    TokenShape::ShapeSlash => {
+        "Slash".to_string()
+    }
+    TokenShape::ShapePercent => {
+        "Percent".to_string()
+    }
+    TokenShape::ShapeBang => {
+        "Bang".to_string()
+    }
+    TokenShape::ShapeAnd => {
+        "And".to_string()
+    }
+    TokenShape::ShapeOr => {
+        "Or".to_string()
+    }
+    TokenShape::ShapeQuestion => {
+        "Question".to_string()
+    }
+    TokenShape::ShapeNullCoalesce => {
+        "NullCoalesce".to_string()
+    }
+    TokenShape::ShapePipe => {
+        "Pipe".to_string()
+    }
+    TokenShape::ShapePipeArrow => {
+        "PipeArrow".to_string()
+    }
+    TokenShape::ShapeIdent => {
+        "Ident".to_string()
+    }
+    TokenShape::ShapeLitStr => {
+        "LitStr".to_string()
+    }
+    TokenShape::ShapeLitInt => {
+        "LitInt".to_string()
+    }
+    TokenShape::ShapeLitFloat => {
+        "LitFloat".to_string()
+    }
+    TokenShape::ShapeStrBegin => {
+        "StrBegin".to_string()
+    }
+    TokenShape::ShapeStrMid => {
+        "StrMid".to_string()
+    }
+    TokenShape::ShapeStrEnd => {
+        "StrEnd".to_string()
+    }
+    TokenShape::ShapeNewline => {
+        "Newline".to_string()
+    }
+    TokenShape::ShapeEof => {
+        "Eof".to_string()
+    }
+    TokenShape::ShapeUnknown => {
+        "Unknown".to_string()
+    }
+}
+}
+
+pub fn kind_display_name(kind: Rc<TokenKind>) -> String {
+    token_shape_display_name(token_shape(kind.clone()))
 }
 
 pub fn tokenize_loop(source: Rc<SourceRef>, tokens: Rc<Vec<Rc<Token>>>, pos: Rc<TokPos>) -> Rc<TokenizerState> {

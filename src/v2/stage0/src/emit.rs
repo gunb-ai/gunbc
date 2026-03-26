@@ -53,14 +53,6 @@ pub enum TypedItemKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
-pub enum TypeStructureKind {
-    #[default]
-    TypeLeaf,
-    TypeConj,
-    TypeDisj,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
 pub enum BackendCapability {
     #[default]
     CapServiceEmit,
@@ -599,11 +591,10 @@ pub fn has_nested_records_node(n: Rc<Node>) -> bool {
         let mut __tco_p_n = n;
         loop {
             let n = __tco_p_n;
-            let n_kind = classify_type_structure(n.clone());
-            if n_kind.clone() == TypeStructureKind::TypeConj {
+            if node_is_product(n.clone()) {
     break true;
 } else {
-    if n_kind.clone() == TypeStructureKind::TypeDisj {
+    if node_is_coproduct(n.clone()) {
     if node_is_optional(n.clone()) {
      {
         let __tco_0 = with_required_cardinality(n.clone());
@@ -1502,16 +1493,13 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
     if node_is_optional(n.clone()) {
     emit_container("optional", &emit_node_type_rc(with_required_cardinality(n.clone()), target.clone(), rc_types.clone()), target.clone())
 } else {
-    let kind = classify_type_structure(n.clone());
-    let is_leaf = kind.clone() == TypeStructureKind::TypeLeaf;
-    let is_conj = kind.clone() == TypeStructureKind::TypeConj;
-    if is_leaf.clone() {
-    emit_node_type_leaf_rc(n.clone(), target.clone(), rc_types.clone())
-} else {
-    if is_conj.clone() {
+    if node_is_product(n.clone()) {
     emit_node_type_conj_rc(n.clone(), target.clone(), rc_types.clone())
 } else {
+    if node_is_coproduct(n.clone()) {
     emit_node_type_disj_rc(n.clone(), target.clone(), rc_types.clone())
+} else {
+    emit_node_type_leaf_rc(n.clone(), target.clone(), rc_types.clone())
 }
 }
 }
@@ -1928,18 +1916,6 @@ pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
 }
 };
     kind.clone()
-}
-
-pub fn classify_type_structure(n: Rc<Node>) -> TypeStructureKind {
-    if node_is_product(n.clone()) {
-    TypeStructureKind::TypeConj
-} else {
-    if node_is_coproduct(n.clone()) {
-    TypeStructureKind::TypeDisj
-} else {
-    TypeStructureKind::TypeLeaf
-}
-}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]

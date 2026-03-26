@@ -57,21 +57,47 @@ fn parse_supports_null_coalesce() {
 
 #[test]
 fn parser_uses_expected_token_api_for_control_flow() {
-    let source = read_v2_file("src/v2/02_parse.dag");
+    let parse_source = read_v2_file("src/v2/02_parse.dag");
+    let tokenize_source = read_v2_file("src/v2/01_tokenize.dag");
     assert_live_contains(
-        &source,
+        &tokenize_source,
+        "type TokenShape",
+        "01_tokenize.dag should define a payload-insensitive TokenShape API",
+    );
+    assert_live_contains(
+        &tokenize_source,
+        "fn token_shape(",
+        "01_tokenize.dag should export token_shape for parser control flow",
+    );
+    assert_live_contains(
+        &tokenize_source,
+        "fn kind_display_name(",
+        "01_tokenize.dag should keep diagnostics-only token display names",
+    );
+    assert_live_contains(
+        &parse_source,
         "type ExpectedToken",
         "02_parse.dag should define a typed ExpectedToken API",
     );
     assert_live_contains(
-        &source,
+        &parse_source,
+        "fn expected_token_shape(",
+        "02_parse.dag should map ExpectedToken through TokenShape",
+    );
+    assert_live_contains(
+        &parse_source,
+        "fn expect_shape(",
+        "02_parse.dag should route parser expectations through TokenShape",
+    );
+    assert_live_contains(
+        &parse_source,
         "fn kind_matches_expected(",
         "02_parse.dag should match parser control flow on ExpectedToken",
     );
     assert_live_not_contains(
-        &source,
-        "fn kind_matches_tag(",
-        "02_parse.dag should no longer route parser control flow through string tag dispatch",
+        &parse_source,
+        "fn kind_tag(",
+        "02_parse.dag should no longer define string-tag parser helpers",
     );
 }
 

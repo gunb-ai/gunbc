@@ -1,4 +1,5 @@
 use crate::v2_core::*;
+use crate::tokenize::*;
 use crate::infer_types::*;
 use crate::v2_rt;
 use std::collections::HashMap;
@@ -487,6 +488,17 @@ pub fn peek_kind(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Option<R
     }
     None => {
         None
+    }
+}
+}
+
+pub fn peek_shape(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> TokenShape {
+    match peek_kind(tokens.clone(), state.clone()) {
+    Some(kind) => {
+        token_shape(kind.clone())
+    }
+    None => {
+        token_shape(Rc::new(TokenKind::Eof))
     }
 }
 }
@@ -1953,489 +1965,149 @@ pub fn peek_is_kw_output(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 }
 }
 
-pub fn kind_tag(kind: Rc<TokenKind>) -> String {
-    match kind.as_ref() {
-    TokenKind::KwModule => {
-        "KwModule".to_string()
-    }
-    TokenKind::KwImport => {
-        "KwImport".to_string()
-    }
-    TokenKind::KwType => {
-        "KwType".to_string()
-    }
-    TokenKind::KwFn => {
-        "KwFn".to_string()
-    }
-    TokenKind::KwFunc => {
-        "KwFunc".to_string()
-    }
-    TokenKind::KwService => {
-        "KwService".to_string()
-    }
-    TokenKind::KwResource => {
-        "KwResource".to_string()
-    }
-    TokenKind::KwData => {
-        "KwData".to_string()
-    }
-    TokenKind::KwExtern => {
-        "KwExtern".to_string()
-    }
-    TokenKind::KwInterface => {
-        "KwInterface".to_string()
-    }
-    TokenKind::KwPipeline => {
-        "KwPipeline".to_string()
-    }
-    TokenKind::KwProfile => {
-        "KwProfile".to_string()
-    }
-    TokenKind::KwPattern => {
-        "KwPattern".to_string()
-    }
-    TokenKind::KwLet => {
-        "KwLet".to_string()
-    }
-    TokenKind::KwReturn => {
-        "KwReturn".to_string()
-    }
-    TokenKind::KwMatch => {
-        "KwMatch".to_string()
-    }
-    TokenKind::KwIf => {
-        "KwIf".to_string()
-    }
-    TokenKind::KwElse => {
-        "KwElse".to_string()
-    }
-    TokenKind::KwFor => {
-        "KwFor".to_string()
-    }
-    TokenKind::KwIn => {
-        "KwIn".to_string()
-    }
-    TokenKind::KwWhere => {
-        "KwWhere".to_string()
-    }
-    TokenKind::KwWith => {
-        "KwWith".to_string()
-    }
-    TokenKind::KwTrue => {
-        "KwTrue".to_string()
-    }
-    TokenKind::KwFalse => {
-        "KwFalse".to_string()
-    }
-    TokenKind::KwNone => {
-        "KwNone".to_string()
-    }
-    TokenKind::KwAcquire => {
-        "KwAcquire".to_string()
-    }
-    TokenKind::KwRelease => {
-        "KwRelease".to_string()
-    }
-    TokenKind::KwCapability => {
-        "KwCapability".to_string()
-    }
-    TokenKind::KwOperation => {
-        "KwOperation".to_string()
-    }
-    TokenKind::KwInput => {
-        "KwInput".to_string()
-    }
-    TokenKind::KwOutput => {
-        "KwOutput".to_string()
-    }
-    TokenKind::KwIdempotent => {
-        "KwIdempotent".to_string()
-    }
-    TokenKind::KwReadonly => {
-        "KwReadonly".to_string()
-    }
-    TokenKind::KwHermetic => {
-        "KwHermetic".to_string()
-    }
-    TokenKind::LBrace => {
-        "LBrace".to_string()
-    }
-    TokenKind::RBrace => {
-        "RBrace".to_string()
-    }
-    TokenKind::LParen => {
-        "LParen".to_string()
-    }
-    TokenKind::RParen => {
-        "RParen".to_string()
-    }
-    TokenKind::LBracket => {
-        "LBracket".to_string()
-    }
-    TokenKind::RBracket => {
-        "RBracket".to_string()
-    }
-    TokenKind::Lt => {
-        "Lt".to_string()
-    }
-    TokenKind::Gt => {
-        "Gt".to_string()
-    }
-    TokenKind::Le => {
-        "Le".to_string()
-    }
-    TokenKind::Ge => {
-        "Ge".to_string()
-    }
-    TokenKind::FatArrow => {
-        "FatArrow".to_string()
-    }
-    TokenKind::Arrow => {
-        "Arrow".to_string()
-    }
-    TokenKind::Colon => {
-        "Colon".to_string()
-    }
-    TokenKind::Comma => {
-        "Comma".to_string()
-    }
-    TokenKind::Dot => {
-        "Dot".to_string()
-    }
-    TokenKind::DotDot => {
-        "DotDot".to_string()
-    }
-    TokenKind::Eq => {
-        "Eq".to_string()
-    }
-    TokenKind::EqEq => {
-        "EqEq".to_string()
-    }
-    TokenKind::Ne => {
-        "Ne".to_string()
-    }
-    TokenKind::Plus => {
-        "Plus".to_string()
-    }
-    TokenKind::Minus => {
-        "Minus".to_string()
-    }
-    TokenKind::Star => {
-        "Star".to_string()
-    }
-    TokenKind::Slash => {
-        "Slash".to_string()
-    }
-    TokenKind::Percent => {
-        "Percent".to_string()
-    }
-    TokenKind::Bang => {
-        "Bang".to_string()
-    }
-    TokenKind::And => {
-        "And".to_string()
-    }
-    TokenKind::Or => {
-        "Or".to_string()
-    }
-    TokenKind::Question => {
-        "Question".to_string()
-    }
-    TokenKind::NullCoalesce => {
-        "NullCoalesce".to_string()
-    }
-    TokenKind::Pipe => {
-        "Pipe".to_string()
-    }
-    TokenKind::PipeArrow => {
-        "PipeArrow".to_string()
-    }
-    TokenKind::LitStr { value: _, .. } => {
-        "LitStr".to_string()
-    }
-    TokenKind::LitInt { value: _, .. } => {
-        "LitInt".to_string()
-    }
-    TokenKind::LitFloat { value: _, .. } => {
-        "LitFloat".to_string()
-    }
-    TokenKind::Ident { name: _, .. } => {
-        "Ident".to_string()
-    }
-    TokenKind::StrBegin { value: _, .. } => {
-        "StrBegin".to_string()
-    }
-    TokenKind::StrMid { value: _, .. } => {
-        "StrMid".to_string()
-    }
-    TokenKind::StrEnd { value: _, .. } => {
-        "StrEnd".to_string()
-    }
-    TokenKind::Newline => {
-        "Newline".to_string()
-    }
-    TokenKind::Eof => {
-        "Eof".to_string()
-    }
-    TokenKind::Unknown { char: _, .. } => {
-        "Unknown".to_string()
-    }
-}
-}
-
-pub fn expected_token_name(expected: ExpectedToken) -> String {
+pub fn expected_token_shape(expected: ExpectedToken) -> TokenShape {
     match expected {
     ExpectedToken::ExpectKwModule => {
-        "KwModule".to_string()
+        token_shape(Rc::new(TokenKind::KwModule))
     }
     ExpectedToken::ExpectKwImport => {
-        "KwImport".to_string()
+        token_shape(Rc::new(TokenKind::KwImport))
     }
     ExpectedToken::ExpectKwType => {
-        "KwType".to_string()
+        token_shape(Rc::new(TokenKind::KwType))
     }
     ExpectedToken::ExpectKwFn => {
-        "KwFn".to_string()
+        token_shape(Rc::new(TokenKind::KwFn))
     }
     ExpectedToken::ExpectKwFunc => {
-        "KwFunc".to_string()
+        token_shape(Rc::new(TokenKind::KwFunc))
     }
     ExpectedToken::ExpectKwService => {
-        "KwService".to_string()
+        token_shape(Rc::new(TokenKind::KwService))
     }
     ExpectedToken::ExpectKwResource => {
-        "KwResource".to_string()
+        token_shape(Rc::new(TokenKind::KwResource))
     }
     ExpectedToken::ExpectKwData => {
-        "KwData".to_string()
+        token_shape(Rc::new(TokenKind::KwData))
     }
     ExpectedToken::ExpectKwExtern => {
-        "KwExtern".to_string()
+        token_shape(Rc::new(TokenKind::KwExtern))
     }
     ExpectedToken::ExpectKwInterface => {
-        "KwInterface".to_string()
+        token_shape(Rc::new(TokenKind::KwInterface))
     }
     ExpectedToken::ExpectKwPattern => {
-        "KwPattern".to_string()
+        token_shape(Rc::new(TokenKind::KwPattern))
     }
     ExpectedToken::ExpectKwLet => {
-        "KwLet".to_string()
+        token_shape(Rc::new(TokenKind::KwLet))
     }
     ExpectedToken::ExpectKwReturn => {
-        "KwReturn".to_string()
+        token_shape(Rc::new(TokenKind::KwReturn))
     }
     ExpectedToken::ExpectKwMatch => {
-        "KwMatch".to_string()
+        token_shape(Rc::new(TokenKind::KwMatch))
     }
     ExpectedToken::ExpectKwIf => {
-        "KwIf".to_string()
+        token_shape(Rc::new(TokenKind::KwIf))
     }
     ExpectedToken::ExpectKwElse => {
-        "KwElse".to_string()
+        token_shape(Rc::new(TokenKind::KwElse))
     }
     ExpectedToken::ExpectKwFor => {
-        "KwFor".to_string()
+        token_shape(Rc::new(TokenKind::KwFor))
     }
     ExpectedToken::ExpectKwIn => {
-        "KwIn".to_string()
+        token_shape(Rc::new(TokenKind::KwIn))
     }
     ExpectedToken::ExpectKwCapability => {
-        "KwCapability".to_string()
+        token_shape(Rc::new(TokenKind::KwCapability))
     }
     ExpectedToken::ExpectKwOperation => {
-        "KwOperation".to_string()
+        token_shape(Rc::new(TokenKind::KwOperation))
     }
     ExpectedToken::ExpectLBrace => {
-        "LBrace".to_string()
+        token_shape(Rc::new(TokenKind::LBrace))
     }
     ExpectedToken::ExpectRBrace => {
-        "RBrace".to_string()
+        token_shape(Rc::new(TokenKind::RBrace))
     }
     ExpectedToken::ExpectLParen => {
-        "LParen".to_string()
+        token_shape(Rc::new(TokenKind::LParen))
     }
     ExpectedToken::ExpectRParen => {
-        "RParen".to_string()
+        token_shape(Rc::new(TokenKind::RParen))
     }
     ExpectedToken::ExpectLBracket => {
-        "LBracket".to_string()
+        token_shape(Rc::new(TokenKind::LBracket))
     }
     ExpectedToken::ExpectRBracket => {
-        "RBracket".to_string()
+        token_shape(Rc::new(TokenKind::RBracket))
     }
     ExpectedToken::ExpectLt => {
-        "Lt".to_string()
+        token_shape(Rc::new(TokenKind::Lt))
     }
     ExpectedToken::ExpectGt => {
-        "Gt".to_string()
+        token_shape(Rc::new(TokenKind::Gt))
     }
     ExpectedToken::ExpectFatArrow => {
-        "FatArrow".to_string()
+        token_shape(Rc::new(TokenKind::FatArrow))
     }
     ExpectedToken::ExpectArrow => {
-        "Arrow".to_string()
+        token_shape(Rc::new(TokenKind::Arrow))
     }
     ExpectedToken::ExpectColon => {
-        "Colon".to_string()
+        token_shape(Rc::new(TokenKind::Colon))
     }
     ExpectedToken::ExpectComma => {
-        "Comma".to_string()
+        token_shape(Rc::new(TokenKind::Comma))
     }
     ExpectedToken::ExpectDot => {
-        "Dot".to_string()
+        token_shape(Rc::new(TokenKind::Dot))
     }
     ExpectedToken::ExpectEq => {
-        "Eq".to_string()
+        token_shape(Rc::new(TokenKind::Eq))
     }
     ExpectedToken::ExpectQuestion => {
-        "Question".to_string()
+        token_shape(Rc::new(TokenKind::Question))
     }
     ExpectedToken::ExpectPipe => {
-        "Pipe".to_string()
+        token_shape(Rc::new(TokenKind::Pipe))
     }
 }
 }
 
 pub fn kind_matches_expected(kind: Rc<TokenKind>, expected: ExpectedToken) -> bool {
-    match expected {
-    ExpectedToken::ExpectKwModule => {
-        is_kw_module_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwImport => {
-        is_kw_import_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwType => {
-        is_kw_type_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwFn => {
-        is_kw_fn_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwFunc => {
-        is_kw_func_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwService => {
-        is_kw_service_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwResource => {
-        is_kw_resource_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwData => {
-        is_kw_data_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwExtern => {
-        is_kw_extern_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwInterface => {
-        is_kw_interface_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwPattern => {
-        is_kw_pattern_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwLet => {
-        is_kw_let_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwReturn => {
-        is_kw_return_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwMatch => {
-        is_kw_match_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwIf => {
-        is_kw_if_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwElse => {
-        is_kw_else_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwFor => {
-        is_kw_for_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwIn => {
-        is_kw_in_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwCapability => {
-        is_kw_capability_kind(kind.clone())
-    }
-    ExpectedToken::ExpectKwOperation => {
-        is_kw_operation_kind(kind.clone())
-    }
-    ExpectedToken::ExpectLBrace => {
-        is_lbrace_kind(kind.clone())
-    }
-    ExpectedToken::ExpectRBrace => {
-        is_rbrace_kind(kind.clone())
-    }
-    ExpectedToken::ExpectLParen => {
-        is_lparen_kind(kind.clone())
-    }
-    ExpectedToken::ExpectRParen => {
-        is_rparen_kind(kind.clone())
-    }
-    ExpectedToken::ExpectLBracket => {
-        is_lbracket_kind(kind.clone())
-    }
-    ExpectedToken::ExpectRBracket => {
-        is_rbracket_kind(kind.clone())
-    }
-    ExpectedToken::ExpectLt => {
-        is_lt_kind(kind.clone())
-    }
-    ExpectedToken::ExpectGt => {
-        is_gt_kind(kind.clone())
-    }
-    ExpectedToken::ExpectFatArrow => {
-        is_fat_arrow_kind(kind.clone())
-    }
-    ExpectedToken::ExpectArrow => {
-        is_arrow_kind(kind.clone())
-    }
-    ExpectedToken::ExpectColon => {
-        is_colon_kind(kind.clone())
-    }
-    ExpectedToken::ExpectComma => {
-        is_comma_kind(kind.clone())
-    }
-    ExpectedToken::ExpectDot => {
-        is_dot_kind(kind.clone())
-    }
-    ExpectedToken::ExpectEq => {
-        is_eq_kind(kind.clone())
-    }
-    ExpectedToken::ExpectQuestion => {
-        is_question_kind(kind.clone())
-    }
-    ExpectedToken::ExpectPipe => {
-        is_pipe_kind(kind.clone())
-    }
-}
+    token_shape(kind.clone()) == expected_token_shape(expected)
 }
 
-pub fn expect(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: ExpectedToken) -> Rc<TokenResult> {
-    let k = peek_kind(tokens.clone(), state.clone());
-    let matches = match k.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(kind) => {
-        let kind = Rc::new(kind.clone());
-        kind_matches_expected(kind.clone(), expected.clone())
-    }
-    None => {
-        false
-    }
-};
-    if matches.clone() {
+pub fn check_shape(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: TokenShape) -> bool {
+    peek_shape(tokens.clone(), state.clone()) == expected
+}
+
+pub fn expect_shape(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: TokenShape) -> Rc<TokenResult> {
+    if check_shape(tokens.clone(), state.clone(), expected.clone()) {
     let adv = advance(tokens.clone(), state.clone());
     Rc::new(TokenResult { token: adv.token.clone(), state: adv.state.clone(), err: None })
 } else {
+    let k = peek_kind(tokens.clone(), state.clone());
     let found = match k.as_ref().map(|__rc| __rc.as_ref()) {
     Some(kind) => {
         let kind = Rc::new(kind.clone());
-        kind_tag(kind.clone())
+        kind_display_name(kind.clone())
     }
     None => {
         "EOF".to_string()
     }
 };
-    let wanted = expected_token_name(expected.clone());
+    let wanted = token_shape_display_name(expected.clone());
     Rc::new(TokenResult { token: Rc::new(Token { kind: Rc::new(TokenKind::Eof), span: SourceSpan { start: 0_i64, end: 0_i64 } }), state: state.clone(), err: Some(parse_error(&format!("expected {}, found {}", wanted, found.clone()), current_span(tokens.clone(), state.clone()))) })
 }
+}
+
+pub fn expect(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: ExpectedToken) -> Rc<TokenResult> {
+    expect_shape(tokens.clone(), state.clone(), expected_token_shape(expected))
 }
 
 pub fn expect_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<NameResult> {
@@ -2452,7 +2124,7 @@ pub fn expect_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Na
     let found = match k.as_ref().map(|__rc| __rc.as_ref()) {
     Some(kind) => {
         let kind = Rc::new(kind.clone());
-        kind_tag(kind.clone())
+        kind_display_name(kind.clone())
     }
     None => {
         "EOF".to_string()
@@ -2488,7 +2160,7 @@ pub fn expect_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Nam
     let found = match k.as_ref().map(|__rc| __rc.as_ref()) {
     Some(kind) => {
         let kind = Rc::new(kind.clone());
-        kind_tag(kind.clone())
+        kind_display_name(kind.clone())
     }
     None => {
         "EOF".to_string()
@@ -2680,23 +2352,17 @@ pub fn skip_continuation_newlines(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
 }
 }
 
-pub fn eat(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: ExpectedToken) -> Rc<EatResult> {
-    let k = peek_kind(tokens.clone(), state.clone());
-    let matches = match k.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(kind) => {
-        let kind = Rc::new(kind.clone());
-        kind_matches_expected(kind.clone(), expected)
-    }
-    None => {
-        false
-    }
-};
-    if matches.clone() {
+pub fn eat_shape(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: TokenShape) -> Rc<EatResult> {
+    if check_shape(tokens.clone(), state.clone(), expected) {
     let adv = advance(tokens.clone(), state.clone());
     Rc::new(EatResult { consumed: true, state: adv.state.clone(), token: Some(adv.token.clone()) })
 } else {
     Rc::new(EatResult { consumed: false, state: state.clone(), token: None })
 }
+}
+
+pub fn eat(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: ExpectedToken) -> Rc<EatResult> {
+    eat_shape(tokens.clone(), state.clone(), expected_token_shape(expected))
 }
 
 pub fn is_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
@@ -6898,7 +6564,7 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<E
     let tag = match k.as_ref().map(|__rc| __rc.as_ref()) {
     Some(kind) => {
         let kind = Rc::new(kind.clone());
-        kind_tag(kind.clone())
+        kind_display_name(kind.clone())
     }
     None => {
         "EOF".to_string()

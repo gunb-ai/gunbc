@@ -2829,6 +2829,29 @@ import v2.std.core {
   Newline, Eof, Unknown
 }
 
+// Payload-insensitive token classifier used by parser control flow.
+// This keeps parse decisions structural while preserving payload-bearing
+// TokenKind variants for later extraction.
+type TokenShape
+  = ShapeKwModule | ShapeKwImport | ShapeKwType | ShapeKwFn | ShapeKwFunc
+  | ShapeKwService | ShapeKwResource | ShapeKwData | ShapeKwExtern
+  | ShapeKwInterface | ShapeKwPipeline | ShapeKwProfile | ShapeKwPattern
+  | ShapeKwLet | ShapeKwReturn | ShapeKwMatch | ShapeKwIf | ShapeKwElse
+  | ShapeKwFor | ShapeKwIn | ShapeKwWhere | ShapeKwWith | ShapeKwTrue
+  | ShapeKwFalse | ShapeKwNone | ShapeKwAcquire | ShapeKwRelease
+  | ShapeKwCapability | ShapeKwOperation | ShapeKwInput | ShapeKwOutput
+  | ShapeKwIdempotent | ShapeKwReadonly | ShapeKwHermetic
+  | ShapeLBrace | ShapeRBrace | ShapeLParen | ShapeRParen | ShapeLBracket
+  | ShapeRBracket | ShapeLt | ShapeGt | ShapeLe | ShapeGe
+  | ShapeFatArrow | ShapeArrow | ShapeColon | ShapeComma | ShapeDot
+  | ShapeDotDot | ShapeEq | ShapeEqEq | ShapeNe | ShapePlus
+  | ShapeMinus | ShapeStar | ShapeSlash | ShapePercent | ShapeBang
+  | ShapeAnd | ShapeOr | ShapeQuestion | ShapeNullCoalesce
+  | ShapePipe | ShapePipeArrow
+  | ShapeIdent | ShapeLitStr | ShapeLitInt | ShapeLitFloat
+  | ShapeStrBegin | ShapeStrMid | ShapeStrEnd
+  | ShapeNewline | ShapeEof | ShapeUnknown
+
 // === Keyword table ===
 //
 // Data declaration, not match arms. Adding a keyword = one entry here.
@@ -2916,6 +2939,170 @@ fn tokenize(source: String) -> List<Token> {
   let final_state = tokenize_loop(source: src, tokens: [], pos: initial)
   let eof_span = SourceSpan { start: final_state.pos, end: final_state.pos }
   list_push(final_state.tokens, Token { kind: Eof, span: eof_span })
+}
+
+fn token_shape(kind: TokenKind) -> TokenShape {
+  match kind {
+    KwModule => ShapeKwModule
+    KwImport => ShapeKwImport
+    KwType => ShapeKwType
+    KwFn => ShapeKwFn
+    KwFunc => ShapeKwFunc
+    KwService => ShapeKwService
+    KwResource => ShapeKwResource
+    KwData => ShapeKwData
+    KwExtern => ShapeKwExtern
+    KwInterface => ShapeKwInterface
+    KwPipeline => ShapeKwPipeline
+    KwProfile => ShapeKwProfile
+    KwPattern => ShapeKwPattern
+    KwLet => ShapeKwLet
+    KwReturn => ShapeKwReturn
+    KwMatch => ShapeKwMatch
+    KwIf => ShapeKwIf
+    KwElse => ShapeKwElse
+    KwFor => ShapeKwFor
+    KwIn => ShapeKwIn
+    KwWhere => ShapeKwWhere
+    KwWith => ShapeKwWith
+    KwTrue => ShapeKwTrue
+    KwFalse => ShapeKwFalse
+    KwNone => ShapeKwNone
+    KwAcquire => ShapeKwAcquire
+    KwRelease => ShapeKwRelease
+    KwCapability => ShapeKwCapability
+    KwOperation => ShapeKwOperation
+    KwInput => ShapeKwInput
+    KwOutput => ShapeKwOutput
+    KwIdempotent => ShapeKwIdempotent
+    KwReadonly => ShapeKwReadonly
+    KwHermetic => ShapeKwHermetic
+    LBrace => ShapeLBrace
+    RBrace => ShapeRBrace
+    LParen => ShapeLParen
+    RParen => ShapeRParen
+    LBracket => ShapeLBracket
+    RBracket => ShapeRBracket
+    Lt => ShapeLt
+    Gt => ShapeGt
+    Le => ShapeLe
+    Ge => ShapeGe
+    FatArrow => ShapeFatArrow
+    Arrow => ShapeArrow
+    Colon => ShapeColon
+    Comma => ShapeComma
+    Dot => ShapeDot
+    DotDot => ShapeDotDot
+    Eq => ShapeEq
+    EqEq => ShapeEqEq
+    Ne => ShapeNe
+    Plus => ShapePlus
+    Minus => ShapeMinus
+    Star => ShapeStar
+    Slash => ShapeSlash
+    Percent => ShapePercent
+    Bang => ShapeBang
+    And => ShapeAnd
+    Or => ShapeOr
+    Question => ShapeQuestion
+    NullCoalesce => ShapeNullCoalesce
+    Pipe => ShapePipe
+    PipeArrow => ShapePipeArrow
+    LitStr { value: _ } => ShapeLitStr
+    LitInt { value: _ } => ShapeLitInt
+    LitFloat { value: _ } => ShapeLitFloat
+    Ident { name: _ } => ShapeIdent
+    StrBegin { value: _ } => ShapeStrBegin
+    StrMid { value: _ } => ShapeStrMid
+    StrEnd { value: _ } => ShapeStrEnd
+    Newline => ShapeNewline
+    Eof => ShapeEof
+    Unknown { char: _ } => ShapeUnknown
+  }
+}
+
+fn token_shape_display_name(shape: TokenShape) -> String {
+  match shape {
+    ShapeKwModule => "KwModule"
+    ShapeKwImport => "KwImport"
+    ShapeKwType => "KwType"
+    ShapeKwFn => "KwFn"
+    ShapeKwFunc => "KwFunc"
+    ShapeKwService => "KwService"
+    ShapeKwResource => "KwResource"
+    ShapeKwData => "KwData"
+    ShapeKwExtern => "KwExtern"
+    ShapeKwInterface => "KwInterface"
+    ShapeKwPipeline => "KwPipeline"
+    ShapeKwProfile => "KwProfile"
+    ShapeKwPattern => "KwPattern"
+    ShapeKwLet => "KwLet"
+    ShapeKwReturn => "KwReturn"
+    ShapeKwMatch => "KwMatch"
+    ShapeKwIf => "KwIf"
+    ShapeKwElse => "KwElse"
+    ShapeKwFor => "KwFor"
+    ShapeKwIn => "KwIn"
+    ShapeKwWhere => "KwWhere"
+    ShapeKwWith => "KwWith"
+    ShapeKwTrue => "KwTrue"
+    ShapeKwFalse => "KwFalse"
+    ShapeKwNone => "KwNone"
+    ShapeKwAcquire => "KwAcquire"
+    ShapeKwRelease => "KwRelease"
+    ShapeKwCapability => "KwCapability"
+    ShapeKwOperation => "KwOperation"
+    ShapeKwInput => "KwInput"
+    ShapeKwOutput => "KwOutput"
+    ShapeKwIdempotent => "KwIdempotent"
+    ShapeKwReadonly => "KwReadonly"
+    ShapeKwHermetic => "KwHermetic"
+    ShapeLBrace => "LBrace"
+    ShapeRBrace => "RBrace"
+    ShapeLParen => "LParen"
+    ShapeRParen => "RParen"
+    ShapeLBracket => "LBracket"
+    ShapeRBracket => "RBracket"
+    ShapeLt => "Lt"
+    ShapeGt => "Gt"
+    ShapeLe => "Le"
+    ShapeGe => "Ge"
+    ShapeFatArrow => "FatArrow"
+    ShapeArrow => "Arrow"
+    ShapeColon => "Colon"
+    ShapeComma => "Comma"
+    ShapeDot => "Dot"
+    ShapeDotDot => "DotDot"
+    ShapeEq => "Eq"
+    ShapeEqEq => "EqEq"
+    ShapeNe => "Ne"
+    ShapePlus => "Plus"
+    ShapeMinus => "Minus"
+    ShapeStar => "Star"
+    ShapeSlash => "Slash"
+    ShapePercent => "Percent"
+    ShapeBang => "Bang"
+    ShapeAnd => "And"
+    ShapeOr => "Or"
+    ShapeQuestion => "Question"
+    ShapeNullCoalesce => "NullCoalesce"
+    ShapePipe => "Pipe"
+    ShapePipeArrow => "PipeArrow"
+    ShapeIdent => "Ident"
+    ShapeLitStr => "LitStr"
+    ShapeLitInt => "LitInt"
+    ShapeLitFloat => "LitFloat"
+    ShapeStrBegin => "StrBegin"
+    ShapeStrMid => "StrMid"
+    ShapeStrEnd => "StrEnd"
+    ShapeNewline => "Newline"
+    ShapeEof => "Eof"
+    ShapeUnknown => "Unknown"
+  }
+}
+
+fn kind_display_name(kind: TokenKind) -> String {
+  token_shape_display_name(shape: token_shape(kind: kind))
 }
 
 // === Main loop ===
@@ -3364,6 +3551,7 @@ import v2.std.core {
   SourceSpan
 }
 
+import v2.compiler.tokenize { TokenShape, token_shape, token_shape_display_name, kind_display_name }
 import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality, callable_node }
 
 // =========================================================================
@@ -3522,6 +3710,13 @@ fn peek_kind(tokens: List<Token>, state: ParserState) -> TokenKind? {
   match tok {
     Some { value: t } => Some { value: t.kind }
     None => none
+  }
+}
+
+fn peek_shape(tokens: List<Token>, state: ParserState) -> TokenShape {
+  match peek_kind(tokens: tokens, state: state) {
+    Some { value: kind } => token_shape(kind: kind)
+    None => token_shape(kind: Eof)
   }
 }
 
@@ -4032,187 +4227,72 @@ fn peek_is_kw_output(tokens: List<Token>, state: ParserState) -> Bool {
   }
 }
 
-// kind_tag -- kept for human-readable error messages ONLY.
-// All control flow uses structural predicates above.
-fn kind_tag(kind: TokenKind) -> String {
-  match kind {
-    KwModule => "KwModule"
-    KwImport => "KwImport"
-    KwType => "KwType"
-    KwFn => "KwFn"
-    KwFunc => "KwFunc"
-    KwService => "KwService"
-    KwResource => "KwResource"
-    KwData => "KwData"
-    KwExtern => "KwExtern"
-    KwInterface => "KwInterface"
-    KwPipeline => "KwPipeline"
-    KwProfile => "KwProfile"
-    KwPattern => "KwPattern"
-    KwLet => "KwLet"
-    KwReturn => "KwReturn"
-    KwMatch => "KwMatch"
-    KwIf => "KwIf"
-    KwElse => "KwElse"
-    KwFor => "KwFor"
-    KwIn => "KwIn"
-    KwWhere => "KwWhere"
-    KwWith => "KwWith"
-    KwTrue => "KwTrue"
-    KwFalse => "KwFalse"
-    KwNone => "KwNone"
-    KwAcquire => "KwAcquire"
-    KwRelease => "KwRelease"
-    KwCapability => "KwCapability"
-    KwOperation => "KwOperation"
-    KwInput => "KwInput"
-    KwOutput => "KwOutput"
-    KwIdempotent => "KwIdempotent"
-    KwReadonly => "KwReadonly"
-    KwHermetic => "KwHermetic"
-    LBrace => "LBrace"
-    RBrace => "RBrace"
-    LParen => "LParen"
-    RParen => "RParen"
-    LBracket => "LBracket"
-    RBracket => "RBracket"
-    Lt => "Lt"
-    Gt => "Gt"
-    Le => "Le"
-    Ge => "Ge"
-    FatArrow => "FatArrow"
-    Arrow => "Arrow"
-    Colon => "Colon"
-    Comma => "Comma"
-    Dot => "Dot"
-    DotDot => "DotDot"
-    Eq => "Eq"
-    EqEq => "EqEq"
-    Ne => "Ne"
-    Plus => "Plus"
-    Minus => "Minus"
-    Star => "Star"
-    Slash => "Slash"
-    Percent => "Percent"
-    Bang => "Bang"
-    And => "And"
-    Or => "Or"
-    Question => "Question"
-    NullCoalesce => "NullCoalesce"
-    Pipe => "Pipe"
-    PipeArrow => "PipeArrow"
-    LitStr { value: _ } => "LitStr"
-    LitInt { value: _ } => "LitInt"
-    LitFloat { value: _ } => "LitFloat"
-    Ident { name: _ } => "Ident"
-    StrBegin { value: _ } => "StrBegin"
-    StrMid { value: _ } => "StrMid"
-    StrEnd { value: _ } => "StrEnd"
-    Newline => "Newline"
-    Eof => "Eof"
-    Unknown { char: _ } => "Unknown"
-  }
-}
-
-fn expected_token_name(expected: ExpectedToken) -> String {
+fn expected_token_shape(expected: ExpectedToken) -> TokenShape {
   match expected {
-    ExpectKwModule => "KwModule"
-    ExpectKwImport => "KwImport"
-    ExpectKwType => "KwType"
-    ExpectKwFn => "KwFn"
-    ExpectKwFunc => "KwFunc"
-    ExpectKwService => "KwService"
-    ExpectKwResource => "KwResource"
-    ExpectKwData => "KwData"
-    ExpectKwExtern => "KwExtern"
-    ExpectKwInterface => "KwInterface"
-    ExpectKwPattern => "KwPattern"
-    ExpectKwLet => "KwLet"
-    ExpectKwReturn => "KwReturn"
-    ExpectKwMatch => "KwMatch"
-    ExpectKwIf => "KwIf"
-    ExpectKwElse => "KwElse"
-    ExpectKwFor => "KwFor"
-    ExpectKwIn => "KwIn"
-    ExpectKwCapability => "KwCapability"
-    ExpectKwOperation => "KwOperation"
-    ExpectLBrace => "LBrace"
-    ExpectRBrace => "RBrace"
-    ExpectLParen => "LParen"
-    ExpectRParen => "RParen"
-    ExpectLBracket => "LBracket"
-    ExpectRBracket => "RBracket"
-    ExpectLt => "Lt"
-    ExpectGt => "Gt"
-    ExpectFatArrow => "FatArrow"
-    ExpectArrow => "Arrow"
-    ExpectColon => "Colon"
-    ExpectComma => "Comma"
-    ExpectDot => "Dot"
-    ExpectEq => "Eq"
-    ExpectQuestion => "Question"
-    ExpectPipe => "Pipe"
+    ExpectKwModule => token_shape(kind: KwModule)
+    ExpectKwImport => token_shape(kind: KwImport)
+    ExpectKwType => token_shape(kind: KwType)
+    ExpectKwFn => token_shape(kind: KwFn)
+    ExpectKwFunc => token_shape(kind: KwFunc)
+    ExpectKwService => token_shape(kind: KwService)
+    ExpectKwResource => token_shape(kind: KwResource)
+    ExpectKwData => token_shape(kind: KwData)
+    ExpectKwExtern => token_shape(kind: KwExtern)
+    ExpectKwInterface => token_shape(kind: KwInterface)
+    ExpectKwPattern => token_shape(kind: KwPattern)
+    ExpectKwLet => token_shape(kind: KwLet)
+    ExpectKwReturn => token_shape(kind: KwReturn)
+    ExpectKwMatch => token_shape(kind: KwMatch)
+    ExpectKwIf => token_shape(kind: KwIf)
+    ExpectKwElse => token_shape(kind: KwElse)
+    ExpectKwFor => token_shape(kind: KwFor)
+    ExpectKwIn => token_shape(kind: KwIn)
+    ExpectKwCapability => token_shape(kind: KwCapability)
+    ExpectKwOperation => token_shape(kind: KwOperation)
+    ExpectLBrace => token_shape(kind: LBrace)
+    ExpectRBrace => token_shape(kind: RBrace)
+    ExpectLParen => token_shape(kind: LParen)
+    ExpectRParen => token_shape(kind: RParen)
+    ExpectLBracket => token_shape(kind: LBracket)
+    ExpectRBracket => token_shape(kind: RBracket)
+    ExpectLt => token_shape(kind: Lt)
+    ExpectGt => token_shape(kind: Gt)
+    ExpectFatArrow => token_shape(kind: FatArrow)
+    ExpectArrow => token_shape(kind: Arrow)
+    ExpectColon => token_shape(kind: Colon)
+    ExpectComma => token_shape(kind: Comma)
+    ExpectDot => token_shape(kind: Dot)
+    ExpectEq => token_shape(kind: Eq)
+    ExpectQuestion => token_shape(kind: Question)
+    ExpectPipe => token_shape(kind: Pipe)
   }
 }
 
 fn kind_matches_expected(kind: TokenKind, expected: ExpectedToken) -> Bool {
-  match expected {
-    ExpectKwModule => is_kw_module_kind(kind: kind)
-    ExpectKwImport => is_kw_import_kind(kind: kind)
-    ExpectKwType => is_kw_type_kind(kind: kind)
-    ExpectKwFn => is_kw_fn_kind(kind: kind)
-    ExpectKwFunc => is_kw_func_kind(kind: kind)
-    ExpectKwService => is_kw_service_kind(kind: kind)
-    ExpectKwResource => is_kw_resource_kind(kind: kind)
-    ExpectKwData => is_kw_data_kind(kind: kind)
-    ExpectKwExtern => is_kw_extern_kind(kind: kind)
-    ExpectKwInterface => is_kw_interface_kind(kind: kind)
-    ExpectKwPattern => is_kw_pattern_kind(kind: kind)
-    ExpectKwLet => is_kw_let_kind(kind: kind)
-    ExpectKwReturn => is_kw_return_kind(kind: kind)
-    ExpectKwMatch => is_kw_match_kind(kind: kind)
-    ExpectKwIf => is_kw_if_kind(kind: kind)
-    ExpectKwElse => is_kw_else_kind(kind: kind)
-    ExpectKwFor => is_kw_for_kind(kind: kind)
-    ExpectKwIn => is_kw_in_kind(kind: kind)
-    ExpectKwCapability => is_kw_capability_kind(kind: kind)
-    ExpectKwOperation => is_kw_operation_kind(kind: kind)
-    ExpectLBrace => is_lbrace_kind(kind: kind)
-    ExpectRBrace => is_rbrace_kind(kind: kind)
-    ExpectLParen => is_lparen_kind(kind: kind)
-    ExpectRParen => is_rparen_kind(kind: kind)
-    ExpectLBracket => is_lbracket_kind(kind: kind)
-    ExpectRBracket => is_rbracket_kind(kind: kind)
-    ExpectLt => is_lt_kind(kind: kind)
-    ExpectGt => is_gt_kind(kind: kind)
-    ExpectFatArrow => is_fat_arrow_kind(kind: kind)
-    ExpectArrow => is_arrow_kind(kind: kind)
-    ExpectColon => is_colon_kind(kind: kind)
-    ExpectComma => is_comma_kind(kind: kind)
-    ExpectDot => is_dot_kind(kind: kind)
-    ExpectEq => is_eq_kind(kind: kind)
-    ExpectQuestion => is_question_kind(kind: kind)
-    ExpectPipe => is_pipe_kind(kind: kind)
+  token_shape(kind: kind) == expected_token_shape(expected: expected)
+}
+
+fn check_shape(tokens: List<Token>, state: ParserState, expected: TokenShape) -> Bool {
+  peek_shape(tokens: tokens, state: state) == expected
+}
+
+fn expect_shape(tokens: List<Token>, state: ParserState, expected: TokenShape) -> TokenResult {
+  if check_shape(tokens: tokens, state: state, expected: expected) {
+    let adv = advance(tokens: tokens, state: state)
+    TokenResult { token: adv.token, state: adv.state, err: none }
+  } else {
+    let k = peek_kind(tokens: tokens, state: state)
+    let found = match k {
+      Some { value: kind } => kind_display_name(kind: kind)
+      None => "EOF"
+    }
+    let wanted = token_shape_display_name(shape: expected)
+    TokenResult { token: Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
 fn expect(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> TokenResult {
-  let k = peek_kind(tokens: tokens, state: state)
-  let matches = match k {
-    Some { value: kind } => kind_matches_expected(kind: kind, expected: expected)
-    None => false
-  }
-  if matches {
-    let adv = advance(tokens: tokens, state: state)
-    TokenResult { token: adv.token, state: adv.state, err: none }
-  } else {
-    let found = match k {
-      Some { value: kind } => kind_tag(kind: kind)
-      None => "EOF"
-    }
-    let wanted = expected_token_name(expected: expected)
-    TokenResult { token: Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
-  }
+  expect_shape(tokens: tokens, state: state, expected: expected_token_shape(expected: expected))
 }
 
 fn expect_ident(tokens: List<Token>, state: ParserState) -> NameResult {
@@ -4224,7 +4304,7 @@ fn expect_ident(tokens: List<Token>, state: ParserState) -> NameResult {
     }
     _ => {
       let found = match k {
-        Some { value: kind } => kind_tag(kind: kind)
+        Some { value: kind } => kind_display_name(kind: kind)
         None => "EOF"
       }
       NameResult { name: "", state: state, err: Some { value: parse_error(msg: concat("expected identifier, found ", found), span: current_span(tokens: tokens, state: state)) } }
@@ -4252,7 +4332,7 @@ fn expect_name(tokens: List<Token>, state: ParserState) -> NameResult {
         }
         None => {
           let found = match k {
-            Some { value: kind } => kind_tag(kind: kind)
+            Some { value: kind } => kind_display_name(kind: kind)
             None => "EOF"
           }
           NameResult { name: "", state: state, err: Some { value: parse_error(msg: concat("expected name, found ", found), span: current_span(tokens: tokens, state: state)) } }
@@ -4333,18 +4413,17 @@ fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> Parser
 }
 
 // Eat: consume the token if it matches, otherwise leave state unchanged.
-fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatResult {
-  let k = peek_kind(tokens: tokens, state: state)
-  let matches = match k {
-    Some { value: kind } => kind_matches_expected(kind: kind, expected: expected)
-    None => false
-  }
-  if matches {
+fn eat_shape(tokens: List<Token>, state: ParserState, expected: TokenShape) -> EatResult {
+  if check_shape(tokens: tokens, state: state, expected: expected) {
     let adv = advance(tokens: tokens, state: state)
     EatResult { consumed: true, state: adv.state, token: Some { value: adv.token } }
   } else {
     EatResult { consumed: false, state: state, token: none }
   }
+}
+
+fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatResult {
+  eat_shape(tokens: tokens, state: state, expected: expected_token_shape(expected: expected))
 }
 
 // Check if current token is an identifier (has Ident tag)
@@ -6785,7 +6864,7 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
         Some { value: n } => parse_ident_expr(tokens: tokens, state: state, name: n)
         None => {
           let tag = match k {
-            Some { value: kind } => kind_tag(kind: kind)
+            Some { value: kind } => kind_display_name(kind: kind)
             None => "EOF"
           }
           ExprResult {
@@ -14304,7 +14383,6 @@ type TypedItemKind
   | TypedItemExternFunc
   | TypedItemUnhandled
 
-type TypeStructureKind = TypeLeaf | TypeConj | TypeDisj
 
 // =========================================================================
 // Backend capability contract -- what each backend declares it can handle.
@@ -14547,13 +14625,12 @@ fn unique_strings(items: List<String>) -> List<String> {
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
-  let n_kind = classify_type_structure(n: n)
-  if (n_kind == TypeConj) {
+  if node_is_product(n: n) {
     // Any record type in data value position needs serde: both anonymous
     // records (name == "") and named records (name != "") whose literals
     // may not carry the struct name.
     true
-  } else if (n_kind == TypeDisj) {
+  } else if node_is_coproduct(n: n) {
     if node_is_optional(n: n) {
       has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
@@ -14968,15 +15045,12 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
   } else if node_is_optional(n: n) {
     emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
   } else {
-    let kind = classify_type_structure(n: n)
-    let is_leaf = kind == TypeLeaf
-    let is_conj = kind == TypeConj
-    if is_leaf {
-      emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
-    } else if is_conj {
+    if node_is_product(n: n) {
       emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
-    } else {
+    } else if node_is_coproduct(n: n) {
       emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
+    } else {
+      emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
     }
   }
 }
@@ -15238,11 +15312,6 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   kind
 }
 
-fn classify_type_structure(n: Node) -> TypeStructureKind {
-  if node_is_product(n: n) { TypeConj }
-  else if node_is_coproduct(n: n) { TypeDisj }
-  else { TypeLeaf }
-}
 
 // =========================================================================
 // Shared ExprData fold spine -- target-agnostic expression classification
@@ -15782,7 +15851,6 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
-  TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
@@ -15801,7 +15869,7 @@ import v2.compiler.emit {
   has_nested_records_node,
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item, classify_type_structure,
+  classify_typed_item,
   extract_test_projections,
   bridge_method_base_name,
   is_tco_eligible, emit_shared_tco_expr,
@@ -16077,8 +16145,7 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // =========================================================================
 
 fn emit_go_type_def_from_connective(item: Node) -> String {
-  let kind = classify_type_structure(n: item)
-  if (kind == TypeConj) {
+  if node_is_product(n: item) {
     emit_go_struct_from_children(name: item.name, children: item.children)
   } else {
     emit_go_sum_from_children(name: item.name, children: item.children)
@@ -17118,7 +17185,6 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
-  TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
@@ -17137,7 +17203,7 @@ import v2.compiler.emit {
   apply_type_template1, apply_type_template2,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
-  classify_typed_item, classify_type_structure,
+  classify_typed_item,
   extract_test_projections,
   bridge_method_base_name,
   is_tco_eligible, emit_shared_tco_expr,
@@ -17422,8 +17488,7 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // =========================================================================
 
 fn emit_py_type_def_from_connective(item: Node) -> String {
-  let kind = classify_type_structure(n: item)
-  if (kind == TypeConj) {
+  if node_is_product(n: item) {
     emit_py_dataclass_from_children(name: item.name, children: item.children)
   } else {
     emit_py_enum_from_children(name: item.name, children: item.children)
@@ -18456,7 +18521,6 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
-  TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
@@ -18474,7 +18538,7 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item, classify_type_structure,
+  classify_typed_item,
   has_mock_prefix,
   extract_test_projections,
   bridge_method_base_name,
@@ -18828,7 +18892,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && classify_type_structure(n: item) == TypeDisj)
+    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && node_is_coproduct(n: item))
     |> map(item => concat("use ", item.name, "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -19069,8 +19133,7 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
 }
 
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
-  let kind = classify_type_structure(n: item)
-  if (kind == TypeConj) {
+  if node_is_product(n: item) {
     emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   } else {
     emit_enum_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
@@ -19763,12 +19826,11 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
       None => inferred_node
     }
   } else { inferred_node }
-  let n_kind = classify_type_structure(n: n)
   if n.name == "__EmitTypeCacheMiss" { type_name }
     else if n.name == "Error" { type_name }
-    else if (n_kind == TypeConj) {
+    else if node_is_product(n: n) {
       if n.name == "" { type_name } else { Some { value: n.name } }
-    } else if (n_kind == TypeDisj) {
+    } else if node_is_coproduct(n: n) {
       type_name
     } else if n.children |> count == 0 && n.name != "" {
       Some { value: n.name }
@@ -19895,8 +19957,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   // translated to the flattened representation.
   let base_is_anon_record = match base.return_type {
     Some { value: Resolved { node: bt } } =>
-      let kind = classify_type_structure(n: bt)
-      if (kind == TypeConj) && bt.name == "" { true } else { false }
+      if node_is_product(n: bt) && bt.name == "" { true } else { false }
     _ => false
   }
   if base_is_anon_record {
@@ -19938,10 +19999,9 @@ fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
 
 fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
-  let normed_kind = classify_type_structure(n: normed)
-  if (normed_kind == TypeConj) {
+  if node_is_product(n: normed) {
     true
-  } else if (normed_kind == TypeDisj) {
+  } else if node_is_coproduct(n: normed) {
     normed.children |> any(child => child.children |> count > 0)
   } else {
     let canonical = normed.name
@@ -21058,8 +21118,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
   match qualified_name {
     None =>
       // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
-      let kind = classify_type_structure(n: resolved_type)
-      if (kind == TypeConj) && resolved_type.name == "" {
+      if node_is_product(n: resolved_type) && resolved_type.name == "" {
         if fields |> count == 1 {
           match fields |> first {
             Some { value: f } =>
@@ -21649,12 +21708,11 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 
 fn emit_shell_return(return_type: Node) -> String {
   let effective = unwrap_single_field_product(n: return_type)
-  let kind = classify_type_structure(n: effective)
   if effective.name == "Bool" || effective.name == "bool" {
     "Ok(output.status.success())"
   } else if effective.name == "List" || effective.name == "Vec" || node_is_container(n: effective) {
     "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
-  } else if kind == TypeConj && effective.children |> count > 1 {
+  } else if node_is_product(n: effective) && effective.children |> count > 1 {
     concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
   } else {
     "Ok(stdout)"
@@ -21662,8 +21720,7 @@ fn emit_shell_return(return_type: Node) -> String {
 }
 
 fn unwrap_single_field_product(n: Node) -> Node {
-  let kind = classify_type_structure(n: n)
-  if kind == TypeConj && n.name == "" && n.children |> count == 1 {
+  if node_is_product(n: n) && n.name == "" && n.children |> count == 1 {
     match n.children |> first {
       Some { value: field_node } => rt_type(n: field_node)
       None => n
@@ -21673,8 +21730,7 @@ fn unwrap_single_field_product(n: Node) -> Node {
 
 fn emit_file_call(op_name: String, return_type: Node) -> String {
   let effective = unwrap_single_field_product(n: return_type)
-  let kind = classify_type_structure(n: effective)
-  let parse_line = if kind == TypeConj && effective.children |> count > 1 {
+  let parse_line = if node_is_product(n: effective) && effective.children |> count > 1 {
     "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
   } else {
     "Ok(content)"

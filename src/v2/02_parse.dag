@@ -58,6 +58,7 @@ import v2.std.core {
   SourceSpan
 }
 
+import v2.compiler.tokenize { TokenShape, token_shape, token_shape_display_name, kind_display_name }
 import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality, callable_node }
 
 // =========================================================================
@@ -216,6 +217,13 @@ fn peek_kind(tokens: List<Token>, state: ParserState) -> TokenKind? {
   match tok {
     Some { value: t } => Some { value: t.kind }
     None => none
+  }
+}
+
+fn peek_shape(tokens: List<Token>, state: ParserState) -> TokenShape {
+  match peek_kind(tokens: tokens, state: state) {
+    Some { value: kind } => token_shape(kind: kind)
+    None => token_shape(kind: Eof)
   }
 }
 
@@ -726,187 +734,72 @@ fn peek_is_kw_output(tokens: List<Token>, state: ParserState) -> Bool {
   }
 }
 
-// kind_tag -- kept for human-readable error messages ONLY.
-// All control flow uses structural predicates above.
-fn kind_tag(kind: TokenKind) -> String {
-  match kind {
-    KwModule => "KwModule"
-    KwImport => "KwImport"
-    KwType => "KwType"
-    KwFn => "KwFn"
-    KwFunc => "KwFunc"
-    KwService => "KwService"
-    KwResource => "KwResource"
-    KwData => "KwData"
-    KwExtern => "KwExtern"
-    KwInterface => "KwInterface"
-    KwPipeline => "KwPipeline"
-    KwProfile => "KwProfile"
-    KwPattern => "KwPattern"
-    KwLet => "KwLet"
-    KwReturn => "KwReturn"
-    KwMatch => "KwMatch"
-    KwIf => "KwIf"
-    KwElse => "KwElse"
-    KwFor => "KwFor"
-    KwIn => "KwIn"
-    KwWhere => "KwWhere"
-    KwWith => "KwWith"
-    KwTrue => "KwTrue"
-    KwFalse => "KwFalse"
-    KwNone => "KwNone"
-    KwAcquire => "KwAcquire"
-    KwRelease => "KwRelease"
-    KwCapability => "KwCapability"
-    KwOperation => "KwOperation"
-    KwInput => "KwInput"
-    KwOutput => "KwOutput"
-    KwIdempotent => "KwIdempotent"
-    KwReadonly => "KwReadonly"
-    KwHermetic => "KwHermetic"
-    LBrace => "LBrace"
-    RBrace => "RBrace"
-    LParen => "LParen"
-    RParen => "RParen"
-    LBracket => "LBracket"
-    RBracket => "RBracket"
-    Lt => "Lt"
-    Gt => "Gt"
-    Le => "Le"
-    Ge => "Ge"
-    FatArrow => "FatArrow"
-    Arrow => "Arrow"
-    Colon => "Colon"
-    Comma => "Comma"
-    Dot => "Dot"
-    DotDot => "DotDot"
-    Eq => "Eq"
-    EqEq => "EqEq"
-    Ne => "Ne"
-    Plus => "Plus"
-    Minus => "Minus"
-    Star => "Star"
-    Slash => "Slash"
-    Percent => "Percent"
-    Bang => "Bang"
-    And => "And"
-    Or => "Or"
-    Question => "Question"
-    NullCoalesce => "NullCoalesce"
-    Pipe => "Pipe"
-    PipeArrow => "PipeArrow"
-    LitStr { value: _ } => "LitStr"
-    LitInt { value: _ } => "LitInt"
-    LitFloat { value: _ } => "LitFloat"
-    Ident { name: _ } => "Ident"
-    StrBegin { value: _ } => "StrBegin"
-    StrMid { value: _ } => "StrMid"
-    StrEnd { value: _ } => "StrEnd"
-    Newline => "Newline"
-    Eof => "Eof"
-    Unknown { char: _ } => "Unknown"
-  }
-}
-
-fn expected_token_name(expected: ExpectedToken) -> String {
+fn expected_token_shape(expected: ExpectedToken) -> TokenShape {
   match expected {
-    ExpectKwModule => "KwModule"
-    ExpectKwImport => "KwImport"
-    ExpectKwType => "KwType"
-    ExpectKwFn => "KwFn"
-    ExpectKwFunc => "KwFunc"
-    ExpectKwService => "KwService"
-    ExpectKwResource => "KwResource"
-    ExpectKwData => "KwData"
-    ExpectKwExtern => "KwExtern"
-    ExpectKwInterface => "KwInterface"
-    ExpectKwPattern => "KwPattern"
-    ExpectKwLet => "KwLet"
-    ExpectKwReturn => "KwReturn"
-    ExpectKwMatch => "KwMatch"
-    ExpectKwIf => "KwIf"
-    ExpectKwElse => "KwElse"
-    ExpectKwFor => "KwFor"
-    ExpectKwIn => "KwIn"
-    ExpectKwCapability => "KwCapability"
-    ExpectKwOperation => "KwOperation"
-    ExpectLBrace => "LBrace"
-    ExpectRBrace => "RBrace"
-    ExpectLParen => "LParen"
-    ExpectRParen => "RParen"
-    ExpectLBracket => "LBracket"
-    ExpectRBracket => "RBracket"
-    ExpectLt => "Lt"
-    ExpectGt => "Gt"
-    ExpectFatArrow => "FatArrow"
-    ExpectArrow => "Arrow"
-    ExpectColon => "Colon"
-    ExpectComma => "Comma"
-    ExpectDot => "Dot"
-    ExpectEq => "Eq"
-    ExpectQuestion => "Question"
-    ExpectPipe => "Pipe"
+    ExpectKwModule => token_shape(kind: KwModule)
+    ExpectKwImport => token_shape(kind: KwImport)
+    ExpectKwType => token_shape(kind: KwType)
+    ExpectKwFn => token_shape(kind: KwFn)
+    ExpectKwFunc => token_shape(kind: KwFunc)
+    ExpectKwService => token_shape(kind: KwService)
+    ExpectKwResource => token_shape(kind: KwResource)
+    ExpectKwData => token_shape(kind: KwData)
+    ExpectKwExtern => token_shape(kind: KwExtern)
+    ExpectKwInterface => token_shape(kind: KwInterface)
+    ExpectKwPattern => token_shape(kind: KwPattern)
+    ExpectKwLet => token_shape(kind: KwLet)
+    ExpectKwReturn => token_shape(kind: KwReturn)
+    ExpectKwMatch => token_shape(kind: KwMatch)
+    ExpectKwIf => token_shape(kind: KwIf)
+    ExpectKwElse => token_shape(kind: KwElse)
+    ExpectKwFor => token_shape(kind: KwFor)
+    ExpectKwIn => token_shape(kind: KwIn)
+    ExpectKwCapability => token_shape(kind: KwCapability)
+    ExpectKwOperation => token_shape(kind: KwOperation)
+    ExpectLBrace => token_shape(kind: LBrace)
+    ExpectRBrace => token_shape(kind: RBrace)
+    ExpectLParen => token_shape(kind: LParen)
+    ExpectRParen => token_shape(kind: RParen)
+    ExpectLBracket => token_shape(kind: LBracket)
+    ExpectRBracket => token_shape(kind: RBracket)
+    ExpectLt => token_shape(kind: Lt)
+    ExpectGt => token_shape(kind: Gt)
+    ExpectFatArrow => token_shape(kind: FatArrow)
+    ExpectArrow => token_shape(kind: Arrow)
+    ExpectColon => token_shape(kind: Colon)
+    ExpectComma => token_shape(kind: Comma)
+    ExpectDot => token_shape(kind: Dot)
+    ExpectEq => token_shape(kind: Eq)
+    ExpectQuestion => token_shape(kind: Question)
+    ExpectPipe => token_shape(kind: Pipe)
   }
 }
 
 fn kind_matches_expected(kind: TokenKind, expected: ExpectedToken) -> Bool {
-  match expected {
-    ExpectKwModule => is_kw_module_kind(kind: kind)
-    ExpectKwImport => is_kw_import_kind(kind: kind)
-    ExpectKwType => is_kw_type_kind(kind: kind)
-    ExpectKwFn => is_kw_fn_kind(kind: kind)
-    ExpectKwFunc => is_kw_func_kind(kind: kind)
-    ExpectKwService => is_kw_service_kind(kind: kind)
-    ExpectKwResource => is_kw_resource_kind(kind: kind)
-    ExpectKwData => is_kw_data_kind(kind: kind)
-    ExpectKwExtern => is_kw_extern_kind(kind: kind)
-    ExpectKwInterface => is_kw_interface_kind(kind: kind)
-    ExpectKwPattern => is_kw_pattern_kind(kind: kind)
-    ExpectKwLet => is_kw_let_kind(kind: kind)
-    ExpectKwReturn => is_kw_return_kind(kind: kind)
-    ExpectKwMatch => is_kw_match_kind(kind: kind)
-    ExpectKwIf => is_kw_if_kind(kind: kind)
-    ExpectKwElse => is_kw_else_kind(kind: kind)
-    ExpectKwFor => is_kw_for_kind(kind: kind)
-    ExpectKwIn => is_kw_in_kind(kind: kind)
-    ExpectKwCapability => is_kw_capability_kind(kind: kind)
-    ExpectKwOperation => is_kw_operation_kind(kind: kind)
-    ExpectLBrace => is_lbrace_kind(kind: kind)
-    ExpectRBrace => is_rbrace_kind(kind: kind)
-    ExpectLParen => is_lparen_kind(kind: kind)
-    ExpectRParen => is_rparen_kind(kind: kind)
-    ExpectLBracket => is_lbracket_kind(kind: kind)
-    ExpectRBracket => is_rbracket_kind(kind: kind)
-    ExpectLt => is_lt_kind(kind: kind)
-    ExpectGt => is_gt_kind(kind: kind)
-    ExpectFatArrow => is_fat_arrow_kind(kind: kind)
-    ExpectArrow => is_arrow_kind(kind: kind)
-    ExpectColon => is_colon_kind(kind: kind)
-    ExpectComma => is_comma_kind(kind: kind)
-    ExpectDot => is_dot_kind(kind: kind)
-    ExpectEq => is_eq_kind(kind: kind)
-    ExpectQuestion => is_question_kind(kind: kind)
-    ExpectPipe => is_pipe_kind(kind: kind)
+  token_shape(kind: kind) == expected_token_shape(expected: expected)
+}
+
+fn check_shape(tokens: List<Token>, state: ParserState, expected: TokenShape) -> Bool {
+  peek_shape(tokens: tokens, state: state) == expected
+}
+
+fn expect_shape(tokens: List<Token>, state: ParserState, expected: TokenShape) -> TokenResult {
+  if check_shape(tokens: tokens, state: state, expected: expected) {
+    let adv = advance(tokens: tokens, state: state)
+    TokenResult { token: adv.token, state: adv.state, err: none }
+  } else {
+    let k = peek_kind(tokens: tokens, state: state)
+    let found = match k {
+      Some { value: kind } => kind_display_name(kind: kind)
+      None => "EOF"
+    }
+    let wanted = token_shape_display_name(shape: expected)
+    TokenResult { token: Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
 fn expect(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> TokenResult {
-  let k = peek_kind(tokens: tokens, state: state)
-  let matches = match k {
-    Some { value: kind } => kind_matches_expected(kind: kind, expected: expected)
-    None => false
-  }
-  if matches {
-    let adv = advance(tokens: tokens, state: state)
-    TokenResult { token: adv.token, state: adv.state, err: none }
-  } else {
-    let found = match k {
-      Some { value: kind } => kind_tag(kind: kind)
-      None => "EOF"
-    }
-    let wanted = expected_token_name(expected: expected)
-    TokenResult { token: Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
-  }
+  expect_shape(tokens: tokens, state: state, expected: expected_token_shape(expected: expected))
 }
 
 fn expect_ident(tokens: List<Token>, state: ParserState) -> NameResult {
@@ -918,7 +811,7 @@ fn expect_ident(tokens: List<Token>, state: ParserState) -> NameResult {
     }
     _ => {
       let found = match k {
-        Some { value: kind } => kind_tag(kind: kind)
+        Some { value: kind } => kind_display_name(kind: kind)
         None => "EOF"
       }
       NameResult { name: "", state: state, err: Some { value: parse_error(msg: concat("expected identifier, found ", found), span: current_span(tokens: tokens, state: state)) } }
@@ -946,7 +839,7 @@ fn expect_name(tokens: List<Token>, state: ParserState) -> NameResult {
         }
         None => {
           let found = match k {
-            Some { value: kind } => kind_tag(kind: kind)
+            Some { value: kind } => kind_display_name(kind: kind)
             None => "EOF"
           }
           NameResult { name: "", state: state, err: Some { value: parse_error(msg: concat("expected name, found ", found), span: current_span(tokens: tokens, state: state)) } }
@@ -1027,18 +920,17 @@ fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> Parser
 }
 
 // Eat: consume the token if it matches, otherwise leave state unchanged.
-fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatResult {
-  let k = peek_kind(tokens: tokens, state: state)
-  let matches = match k {
-    Some { value: kind } => kind_matches_expected(kind: kind, expected: expected)
-    None => false
-  }
-  if matches {
+fn eat_shape(tokens: List<Token>, state: ParserState, expected: TokenShape) -> EatResult {
+  if check_shape(tokens: tokens, state: state, expected: expected) {
     let adv = advance(tokens: tokens, state: state)
     EatResult { consumed: true, state: adv.state, token: Some { value: adv.token } }
   } else {
     EatResult { consumed: false, state: state, token: none }
   }
+}
+
+fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatResult {
+  eat_shape(tokens: tokens, state: state, expected: expected_token_shape(expected: expected))
 }
 
 // Check if current token is an identifier (has Ident tag)
@@ -3479,7 +3371,7 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
         Some { value: n } => parse_ident_expr(tokens: tokens, state: state, name: n)
         None => {
           let tag = match k {
-            Some { value: kind } => kind_tag(kind: kind)
+            Some { value: kind } => kind_display_name(kind: kind)
             None => "EOF"
           }
           ExprResult {

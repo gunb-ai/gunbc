@@ -697,7 +697,7 @@ if __cond {
     for __elem_39 in ({
     let mut __filtered_36 = Vec::new();
     for __elem_37 in typed_module.items.iter().cloned() {
-        if (classify_typed_item(__elem_37.clone()) == TypedItemKind::TypedItemTypeDef) && (classify_type_structure(__elem_37.clone()) == TypeStructureKind::TypeDisj) {
+        if (classify_typed_item(__elem_37.clone()) == TypedItemKind::TypedItemTypeDef) && node_is_coproduct(__elem_37.clone()) {
     __filtered_36.push(__elem_37);
 };
     }
@@ -1119,8 +1119,7 @@ pub fn needs_box_wrapping(n: Rc<Node>, recursive_types: Rc<HashMap<String, bool>
 }
 
 pub fn emit_type_def_from_connective(item: Rc<Node>, recursive_types: Rc<HashMap<String, bool>>, rc_types: Rc<HashMap<String, bool>>) -> String {
-    let kind = classify_type_structure(item.clone());
-    if kind == TypeStructureKind::TypeConj {
+    if node_is_product(item.clone()) {
     emit_struct_from_children(&item.name, item.children.clone(), recursive_types.clone(), rc_types.clone())
 } else {
     emit_enum_from_children(&item.name, item.children.clone(), recursive_types.clone(), rc_types.clone())
@@ -2398,21 +2397,20 @@ pub fn explicit_record_struct_name(type_name: Option<String>, inferred_node: Rc<
 } else {
     inferred_node.clone()
 };
-    let n_kind = classify_type_structure(n.clone());
     if n.name.clone() == "__EmitTypeCacheMiss" {
     type_name.clone()
 } else {
     if n.name.clone() == "Error" {
     type_name.clone()
 } else {
-    if n_kind.clone() == TypeStructureKind::TypeConj {
+    if node_is_product(n.clone()) {
     if n.name.clone() == "" {
     type_name.clone()
 } else {
     Some(n.name.clone())
 }
 } else {
-    if n_kind.clone() == TypeStructureKind::TypeDisj {
+    if node_is_coproduct(n.clone()) {
     type_name.clone()
 } else {
     if (({
@@ -2588,13 +2586,10 @@ pub fn emit_typed_field_access(base: Rc<Node>, field: &str, summary: Option<Rc<F
         let base_str = emit_typed_expr_base(base.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
         let base_is_anon_record = match base.return_type.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: bt, .. }) => {
-        {
-    let kind = classify_type_structure(bt.clone());
-    if (kind == TypeStructureKind::TypeConj) && (bt.name.clone() == "") {
+        if node_is_product(bt.clone()) && (bt.name.clone() == "") {
     true
 } else {
     false
-}
 }
     }
     _ => {
@@ -2693,11 +2688,10 @@ pub fn type_needs_rc_seen(env: Rc<TypeEnv>, type_node: Rc<Node>, seen: Rc<HashMa
             let type_node = __tco_p_type_node;
             let seen = __tco_p_seen;
             let normed = normalize_access_type_node(type_node);
-            let normed_kind = classify_type_structure(normed.clone());
-            if normed_kind.clone() == TypeStructureKind::TypeConj {
+            if node_is_product(normed.clone()) {
     break true;
 } else {
-    if normed_kind.clone() == TypeStructureKind::TypeDisj {
+    if node_is_coproduct(normed.clone()) {
     {
     let mut __any_0 = false;
     for __elem_1 in normed.children.iter().cloned() {
@@ -4770,9 +4764,7 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<FieldI
 };
         match qualified_name.clone() {
     None => {
-        {
-    let kind = classify_type_structure(resolved_type.clone());
-    if (kind == TypeStructureKind::TypeConj) && (resolved_type.name.clone() == "") {
+        if node_is_product(resolved_type.clone()) && (resolved_type.name.clone() == "") {
     if ({
     let __len_5 = fields.clone().len();
     __len_5 as i64
@@ -4808,7 +4800,6 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<FieldI
 }
 } else {
     "compile_error!(\"cannot resolve anonymous record type in emitter\")".to_string()
-}
 }
     }
     Some(tn) => {
@@ -5873,14 +5864,13 @@ pub fn emit_shell_call(op_name: &str, transport: Rc<Node>, registry: Rc<HashMap<
 
 pub fn emit_shell_return(return_type: Rc<Node>) -> String {
     let effective = unwrap_single_field_product(return_type.clone());
-    let kind = classify_type_structure(effective.clone());
     if (effective.name.clone() == "Bool") || (effective.name.clone() == "bool") {
     "Ok(output.status.success())".to_string()
 } else {
     if ((effective.name.clone() == "List") || (effective.name.clone() == "Vec")) || node_is_container(effective.clone()) {
     "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
 } else {
-    if (kind == TypeStructureKind::TypeConj) && (({
+    if node_is_product(effective.clone()) && (({
     let __len_0 = effective.children.clone().len();
     __len_0 as i64
 }) > 1_i64) {
@@ -5893,8 +5883,7 @@ pub fn emit_shell_return(return_type: Rc<Node>) -> String {
 }
 
 pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    let kind = classify_type_structure(n.clone());
-    if ((kind == TypeStructureKind::TypeConj) && (n.name.clone() == "")) && (({
+    if (node_is_product(n.clone()) && (n.name.clone() == "")) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) == 1_i64) {
@@ -5913,8 +5902,7 @@ pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
 
 pub fn emit_file_call(op_name: &str, return_type: Rc<Node>) -> String {
     let effective = unwrap_single_field_product(return_type.clone());
-    let kind = classify_type_structure(effective.clone());
-    let parse_line = if (kind == TypeStructureKind::TypeConj) && (({
+    let parse_line = if node_is_product(effective.clone()) && (({
     let __len_0 = effective.children.clone().len();
     __len_0 as i64
 }) > 1_i64) {
