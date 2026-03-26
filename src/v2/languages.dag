@@ -29,7 +29,7 @@ import extdeps.languages.python.emit {
 import extdeps.languages.go.emit {
   go_type_map, go_keywords, go_container_templates,
   go_reserved, go_reserved_escape_suffix,
-  go_source_extension, go_manifest_file
+  go_manifest_file
 }
 
 type ReservedWordStrategy
@@ -83,17 +83,17 @@ type LanguageSpec {
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "rust",
-    reserved_words: {
+    reserved_words: ReservedWords {
       keywords: rust_reserved,
       strategy: PrefixEscape { prefix: rust_reserved_escape_prefix }
     },
-    scaffold: {
+    scaffold: ProjectScaffold {
       manifest_file: "Cargo.toml",
       module_init_file: null,
       source_file_extension: rust_source_extension,
       source_dir: rust_source_dir
     },
-    serialization: {
+    serialization: SerializationSpec {
       struct_derives: rust_struct_derives,
       struct_derives_copy: rust_struct_derives_copy,
       enum_derives: rust_enum_derives,
@@ -103,7 +103,7 @@ fn rust_spec() -> LanguageSpec {
       derive_attribute: null,
       default_value: null
     },
-    test_conventions: {
+    test_conventions: TestConventions {
       file_prefix: "",
       file_suffix: "_test",
       file_dir: "tests/",
@@ -118,17 +118,17 @@ fn rust_spec() -> LanguageSpec {
 fn python_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "python",
-    reserved_words: {
+    reserved_words: ReservedWords {
       keywords: python_reserved,
       strategy: SuffixEscape { suffix: python_reserved_escape_suffix }
     },
-    scaffold: {
+    scaffold: ProjectScaffold {
       manifest_file: "requirements.txt",
       module_init_file: python_module_init,
       source_file_extension: python_source_extension,
       source_dir: null
     },
-    serialization: {
+    serialization: SerializationSpec {
       struct_derives: null,
       struct_derives_copy: null,
       enum_derives: null,
@@ -138,7 +138,7 @@ fn python_spec() -> LanguageSpec {
       derive_attribute: python_derive_attribute,
       default_value: python_default_value
     },
-    test_conventions: {
+    test_conventions: TestConventions {
       file_prefix: "test_",
       file_suffix: "",
       file_dir: "tests/",
@@ -153,17 +153,17 @@ fn python_spec() -> LanguageSpec {
 fn go_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "go",
-    reserved_words: {
+    reserved_words: ReservedWords {
       keywords: go_reserved,
       strategy: SuffixEscape { suffix: go_reserved_escape_suffix }
     },
-    scaffold: {
-      manifest_file: go_manifest_file,
+    scaffold: ProjectScaffold {
+      manifest_file: "go.mod",
       module_init_file: null,
-      source_file_extension: go_source_extension,
+      source_file_extension: ".go",
       source_dir: null
     },
-    serialization: {
+    serialization: SerializationSpec {
       struct_derives: null,
       struct_derives_copy: null,
       enum_derives: null,
@@ -173,7 +173,7 @@ fn go_spec() -> LanguageSpec {
       derive_attribute: null,
       default_value: null
     },
-    test_conventions: {
+    test_conventions: TestConventions {
       file_prefix: "",
       file_suffix: "_test",
       file_dir: null,

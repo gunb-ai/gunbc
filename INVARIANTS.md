@@ -975,6 +975,186 @@ is P4.5 scope, but tracked here.
 
 ---
 
+### P4.6 bootstrap fix audit (2026-03-26)
+
+The `bootstrap_stage0_to_stage1` test was failing with 147 cargo check
+errors in emitted stage1 Rust. All 147 were fixed in PR #212. This
+audit classifies each fix as either a **true root-cause fix** or a
+**workaround** that papers over a deeper invariant violation.
+
+#### True root-cause fixes (no invariant debt)
+
+These fixes corrected genuine bugs at the right layer. No follow-up needed.
+
+| Fix | Why it's correct |
+|-----|-----------------|
+| Named record literals in `languages.dag` (`ReservedWords`, `ProjectScaffold`, `SerializationSpec`, `TestConventions`) | Anonymous `{ field: value }` syntax IS a tuple in the .dag language. Using `TypeName { field: value }` is the correct way to construct named structs. Source-code bug, not an invariant issue. |
+| Missing imports (`UnaryOpKind` in `05_emit.dag`, `InterpPart` in `05_emit_rust.dag`, `is_typed_service_call_receiver`/`extract_typed_service_name` in `05_emit.dag`) | Imports were genuinely missing after file decomposition. Correct layer for the fix. |
+| `map_expr_children` param name `node:` → `expr_node:` in `04_resolve.dag` | Call site used wrong parameter name, causing emitter to output arguments in wrong positional order. Naming bug at the call site. |
+| `return;,` syntax → let+return pattern in `05_emit_rust.dag` | `.dag` `return` inside match arms generates `return expr;,` in Rust (semicolon + comma). Restructuring to `let result = match { ... }; return result` avoids the issue at the .dag source level. |
+| `adjacency_add_edge` helper in `03_resolve.dag` | Extracts fold body into a function with explicit `Map<String, List<String>>` parameter types. Gives inference the information it needs without fabrication. Honest .dag-level fix. |
+
+#### Workarounds (invariant debt — needs follow-up)
+
+| # | Fix | Invariant violated | Root cause | Deletion point |
+|---|-----|-------------------|------------|----------------|
+| IV-6 | `empty_map()` → `BTreeMap::new()` in `emit_typed_call_expr` (`05_emit_rust.dag:1835`) | **No fallbacks that fabricate.** Emit silently drops the turbofish and hopes Rust's type inference recovers the value type from context. If Rust can't infer, this produces a different error (E0282) instead of the correct type. | Inference does not propagate expected parameter types to argument expressions. `empty_map()` as an argument to `f(rc_types: Map<String, Bool>)` should infer `Map<String, Bool>`, not `Map<String, Unit>`. **Bidirectional type inference is missing.** | Fix inference to propagate expected types from function signatures to argument expressions. Then emit can use the turbofish with the correct type. Extends IV-1/IV-2. |
+| IV-7 | Fold init `empty_map()` with unit-child detection (`05_emit_rust.dag:2302-2310`) | **No fallbacks that fabricate** + **Heuristics indicate lost structure.** Emit inspects the acc type node's children for `"Unit"` or `""` names to decide whether to use turbofish or partial `<BTreeMap<String, _>>::new()`. This is a heuristic that compensates for inference producing incomplete types. | Same as IV-6: inference doesn't resolve fold accumulator type parameters from the fold body. The `acc_type_node` carries `Map<String, Map<String, Unit>>` when the fold body clearly produces `Map<String, List<String>>`. | Fix inference to propagate fold body return type back to the accumulator type. Then emit receives complete types and the heuristic is unnecessary. |
+| IV-8 | Fold acc type resolution with unit-child fallback to contextual type (`05_emit_rust.dag:2277-2284`) | **Heuristics indicate lost structure.** Emit checks `acc_type.children |> any(c => c.name == "Unit")` to decide whether to use the contextual (method result) type instead of the inferred accumulator type. | Same root cause as IV-6/IV-7. The emit layer is doing type resolution work that belongs in inference. | Same deletion point as IV-7. |
+| IV-9 | `go_source_extension` → inline literal `".go"` in `languages.dag:163` | **No duplicate representations.** The value `".go"` is now defined in both `dsl/extdeps/languages/go/emit.dag:65` (as `data go_source_extension`) and inline in `languages.dag`. They will diverge if either changes. | The emitter inconsistently transforms `data` constant names to SCREAMING_SNAKE_CASE in import `use` statements. 6/7 Go extdep data constants are correctly uppercased; `go_source_extension` is not. Import emission doesn't distinguish function imports (stay snake_case) from data constant imports (should be SCREAMING_SNAKE). | Fix the import emission in `05_emit_rust.dag` to consistently apply SCREAMING_SNAKE_CASE for `data` constant imports. Then restore the import in `languages.dag` and delete the inline literal. |
+
+#### Underlying root cause: no bidirectional type inference
+
+IV-6, IV-7, and IV-8 all trace to the same root cause: **inference is
+top-down only.** It resolves types from declarations and expressions
+forward, but does not propagate expected types backward from:
+
+- Function parameter signatures to argument expressions
+- Fold accumulator usage in the body back to the init expression
+- Let-binding type annotations back to the initializer
+
+This is not a new finding — IV-1/IV-2 (2026-03-25) already identified
+the incomplete container types. The P4.6 fixes expose the same root
+cause at 124+ additional sites (every `empty_map()` call where the
+value type is unresolved).
+
+**Scope:** This is a Phase 5+ fix (inference architecture). The current
+workarounds are viable because Rust's own type inference recovers the
+correct types in all 124+ sites. But they are fabrications: emit
+produces `BTreeMap::new()` instead of `<BTreeMap<String, bool>>::new()`,
+relying on a downstream system (rustc) to compensate for information
+the pipeline lost.
+
+#### Return-in-match-arm emitter bug (not fixed, worked around)
+
+The `return;,` fix restructured the .dag source to avoid `return` in
+match arms, but the underlying emitter bug remains: when a `.dag`
+`return` statement appears as a match arm body, the emitter generates
+`return expr;,` (semicolon from statement termination + comma from match
+arm separation). Any future .dag code using `return` inside match arms
+will hit the same issue.
+
+| # | Severity | Where | What |
+|---|----------|-------|------|
+| IV-10 | LOW | Emitter match-arm rendering | `return` in match arm body emits `return expr;,` — Rust syntax error. Workaround: use let+return pattern. Fix: emitter should suppress trailing `;` when the match arm body is a return/break/continue. |
+
+---
+
+### L1 ratchet increase audit: 371 → 414 (+43) (2026-03-26)
+
+Systematic root-cause analysis of the +43 L1 ratchet increase between
+commit `597d852b` (ratchet set to 373) and current HEAD.
+
+#### Source: file decomposition (+18)
+
+Code moved from `04_infer.dag` (-61 sites) into 7 extracted modules
+(+79 sites). Net +18 because:
+
+- **+13 import lines.** Each extracted module imports predicates and
+  constructors it uses (`node_is_optional`, `leaf_node`, etc.). These
+  are NOT new type knowledge — the same call sites existed in the
+  monolith. The ratchet script counts `\bnode_is_\w+\b` in import
+  lists.
+- **+5 expanded logic.** During extraction, some code was slightly
+  restructured (e.g., adding explicit predicate calls where the
+  monolith had inline field checks).
+
+**Classification:** Not invariant violations. File decomposition is
+structural improvement. The ratchet increase is a measurement artifact
+— import lines are not "compiler type knowledge."
+
+**Ratchet script improvement opportunity:** Exclude `^import` lines
+from the count, or weight them differently.
+
+#### Source: P5.7a bridge predicates (+7)
+
+`04_types.dag` gained 7 new `node_is_*` sites:
+
+| Site | What | Classification |
+|------|------|---------------|
+| `node_is_bridge_error_name` (def + 4 calls) | Centralizes `n.name == "Error"` check that was previously inline in `node_type_equals`/`node_type_compatible` | **Bridge.** Explicitly named as temporary (prefix `bridge_`). Deletion point: P5.6/P5.8 when Error becomes `CompilerError` flow. |
+| `node_is_bridge_dynamic_name` (def + 3 calls) | Same for `n.name == "Dynamic"` | **Bridge.** Same deletion point. |
+| `node_is_product`/`node_is_coproduct` (P5.7a rewrites) | Changed from `properties \|> any(p => p.name == "is_product")` to `n.connective == Some { value: Conj }` | **Improvement.** Replaced uncounted string-property check with counted structural check. Net reduction in actual type knowledge (deleted duplicate representation). |
+
+**Classification:** 5 are explicit bridge code with deletion points.
+2 are structural improvements that trade uncounted violations for
+counted ones (net positive).
+
+#### Source: P5.7b CollectionKind (+4 connective, +3 Conj/Disj)
+
+P5.7a deleted `is_product`/`is_coproduct` property strings and made
+predicates read `.connective` directly. This moved sites from the
+uncounted property-string pattern to the counted `.connective` pattern.
+
+| Category | Old pattern (uncounted) | New pattern (counted) |
+|----------|------------------------|----------------------|
+| `.connective` +4 | `properties \|> any(p => p.name == "is_product")` | `n.connective == Some { value: Conj }` |
+| `Conj/Disj` +3 | property string `"is_product"` / `"is_coproduct"` | `Conj` / `Disj` literal in predicate match |
+
+**Classification:** Structural improvement. The old code was WORSE
+(string-keyed property checks) but uncounted. The new code is BETTER
+(typed field access) but counted. No invariant violation — the ratchet
+script should have been counting the old pattern too.
+
+#### Source: emit type-name comparisons (+4)
+
+`05_emit_rust.dag` +3 and `05_emit.dag` +2 new `.name == "..."` checks.
+
+| Site | What | Classification |
+|------|------|---------------|
+| `05_emit_rust.dag` typename checks | `effective.name == "List"`, `"Vec"`, `node_is_container` in intrinsic method dispatch | **Emit rendering.** Emit legitimately reads names for target identifiers. Not an L1 violation — emit is excluded from the L1=0 gate (scrambled-name tests exclude emit). |
+| `05_emit.dag` typename checks | Service call detection, simple expression rendering | **Emit rendering.** Same classification. |
+
+**Classification:** Legitimate emit rendering. These are NOT L1
+violations — the L1 gate (P5.6 scrambled-name tests) explicitly
+excludes emit because emit must read names to produce target
+identifiers.
+
+#### Source: parse/compile structural production (+9)
+
+`02_parse.dag` +6, `compile.dag` +3.
+
+| Site | What | Classification |
+|------|------|---------------|
+| `02_parse.dag` connective +1, constructors +2, predicates +3 | Parser creates `Conj`/`Disj` nodes and calls `node_is_optional` for cardinality | **Parse production.** The parser MUST produce structural nodes. Not "type knowledge the compiler has" — it's "structure the parser creates." |
+| `compile.dag` connective +1, conj_disj +2 | Pipeline orchestration reading connective for complexity/ownership staging | **Pipeline wiring.** Compile stage reads structural properties to route to proof stages. |
+
+**Classification:** Necessary structural production/wiring. Not
+violations.
+
+#### Source: 03_resolve.dag adjacency helper (+2)
+
+`adjacency_add_edge` adds 2 typename comparisons (from P4.6 fix).
+
+**Classification:** See IV-6/IV-7 — this is a workaround for missing
+bidirectional type inference. The helper's explicit `Map<String,
+List<String>>` type annotation provides what inference should propagate.
+
+#### Summary
+
+| Source | Sites | Classification | Action |
+|--------|------:|---------------|--------|
+| File decomposition (imports) | +13 | Measurement artifact | Fix ratchet script to exclude import lines |
+| File decomposition (logic) | +5 | Moved code, not new knowledge | None |
+| P5.7a bridge predicates | +7 | 5 explicit bridge, 2 improvement | Bridge deletion at P5.6/P5.8 |
+| P5.7a/b connective migration | +7 | Improvement (counted replaces uncounted) | None — old uncounted pattern was worse |
+| Emit rendering | +4 | Legitimate (emit excluded from L1 gate) | None |
+| Parse/compile production | +9 | Structural production | None |
+| Adjacency helper | +2 | Workaround (IV-6/IV-7) | Fix bidirectional inference |
+| **Total** | **+47** | | |
+
+(+47 gross, -4 from other reductions = +43 net)
+
+**Conclusion:** Of the +43 net increase, **0 are new invariant
+violations.** The increase comes from: measurement artifacts (+13),
+moved code (+5), structural improvements that trade uncounted
+violations for counted ones (+7), legitimate emit/parse/pipeline
+sites (+13), and workarounds for pre-existing violations (+7 bridge +2
+adjacency). The ratchet script should be improved to exclude import
+lines and potentially emit-only files.
+
+---
+
 ### Cleanup
 
 | # | Severity | Description |

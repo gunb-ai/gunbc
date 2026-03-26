@@ -647,7 +647,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
     ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
     ExprFieldAccess { base: base, field: field, summary: summary } =>
       let r = resolve_expr_types(texpr: base, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprCall { func: func, args: args, call_semantics: cs } =>
       let ar = map(args, arg => resolve_named_arg(arg: arg, env: env, module_name: module_name))
       ExprResolveResult { expr: make_expr_node(expr_data: ExprCall { func: func, args: map(ar, a => a.arg), call_semantics: cs }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(ar, a => a.diagnostics) }
@@ -680,10 +680,10 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       ExprResolveResult { expr: make_expr_node(expr_data: ExprBinOp { op: op, left: lr.expr, right: rr.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
     ExprUnaryOp { op: op, operand: o } =>
       let r = resolve_expr_types(texpr: o, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprLambda { params: p, body: b, semantics: s } =>
       let r = resolve_expr_types(texpr: b, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprStringInterp { parts: parts } =>
       let pr = map(parts, part => resolve_string_part(part: part, env: env, module_name: module_name))
       ExprResolveResult { expr: make_expr_node(expr_data: ExprStringInterp { parts: map(pr, p => p.part) }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(pr, p => p.diagnostics) }
@@ -709,7 +709,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       ExprResolveResult { expr: make_expr_node(expr_data: ExprSlice { base: br.expr, start: sr.expr, end: er.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, sr.diagnostics, er.diagnostics) }
     ExprReturn { value: inner } =>
       let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     NoExprData => ExprResolveResult { expr: texpr, diagnostics: [] }
   }
 }
