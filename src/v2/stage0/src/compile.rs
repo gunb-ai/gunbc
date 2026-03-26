@@ -1098,6 +1098,8 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
 };
     let typed = reconcile(norm.graph.clone());
     let typed_diags = typed.diagnostics.clone();
+    let func_entries = extract_func_entries(typed.clone());
+    let complexity = build_complexity_report(func_entries.clone());
     let typecheck_errors = {
     let mut __filtered_6 = Vec::new();
     for __elem_7 in typed_diags.iter().cloned() {
@@ -1111,10 +1113,8 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_8 = typecheck_errors.clone().len();
     __len_8 as i64
 }) > 0_i64 {
-    return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
+    return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity: complexity.clone(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
-    let func_entries = extract_func_entries(typed.clone());
-    let complexity = build_complexity_report(func_entries.clone());
     let ownership = extract_ownership_proofs(typed.clone());
     let ownership_diags = ownership_diagnostics(ownership.clone());
     let artifact_plan = default_artifact_plan({

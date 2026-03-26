@@ -570,12 +570,13 @@ fn strict_complexity_violation_count() {
     let ws = crate::helpers::workspace_root();
 
     // Collect .dag sources in the same order as assemble_stage0
-    let extdep_files = &[
+    let seed_files = &[
+        "dsl/std/types.dag",
         "dsl/extdeps/languages/rust/emit.dag",
         "dsl/extdeps/languages/python/emit.dag",
         "dsl/extdeps/languages/go/emit.dag",
     ];
-    let mut dag_paths: Vec<String> = extdep_files.iter().map(|s| s.to_string()).collect();
+    let mut dag_paths: Vec<String> = seed_files.iter().map(|s| s.to_string()).collect();
     let v2_dir = ws.join("src/v2");
     let mut v2_files: Vec<_> = std::fs::read_dir(&v2_dir)
         .unwrap()
@@ -612,7 +613,8 @@ fn strict_complexity_violation_count() {
     }
 
     // Ratchet: track the violation count. Lower this as violations are fixed.
-    const COMPLEXITY_RATCHET: usize = 500;
+    // 2026-03-25: 2 violations out of 1169 function summaries.
+    const COMPLEXITY_RATCHET: usize = 2;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
         "complexity violation count {} exceeds ratchet {}",

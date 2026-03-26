@@ -779,21 +779,23 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let typed = reconcile(graph: norm.graph)
       let typed_diags = typed.diagnostics
 
+      // Stage 5: Complexity analysis.
+      // Runs before the typecheck error gate so that complexity data is
+      // always available — even when inference has false positives.
+      let func_entries = extract_func_entries(typed: typed)
+      let complexity = build_complexity_report(func_entries: func_entries)
+
       // Gate: if typecheck produced errors, do not proceed to emit.
       let typecheck_errors = typed_diags |> filter(d => d.severity == Error)
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
           diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags),
-          complexity: empty_complexity_report(),
+          complexity: complexity,
           ownership: [],
           artifact_plan: empty_artifact_plan()
         }
       }
-
-      // Stage 5: Complexity analysis.
-      let func_entries = extract_func_entries(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries)
 
       // Stage 6: Ownership analysis.
       let ownership = extract_ownership_proofs(typed: typed)
