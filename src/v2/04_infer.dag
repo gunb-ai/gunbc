@@ -31,9 +31,10 @@ import v2.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_expr_error_node,
+  make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
+  map_children, arg_value, arg_name,
   rt_node, has_inferred, InferredNode, Resolved, CompilerError,
   NodeType, Typed, InferError, Untyped,
-  expr_children,
   Cardinality, Required, CardOptional,
   Diagnostic, Severity, Warning,
   ResourceUse,
@@ -70,7 +71,7 @@ import v2.std.core {
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe,
   BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
-  MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart,
+  MatchArm, MatchPattern, Wildcard, FieldBinding, FieldInit, NamedArg, StringPart,
   make_transport_node, local_transport_node,
   Text, Interpolation,
   leaf_node, with_optional_cardinality, with_required_cardinality,
@@ -585,8 +586,9 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
 
 fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> InferScope {
   match stmt.expr_data {
-    ExprLet { name: name, value: _, body: body } =>
-      if body == none {
+    ExprLet { name: name } =>
+      // children: [value] or [value, body] -- no body means children has 1 element
+      if stmt.children |> count <= 1 {
         extend_scope(scope: scope, name: name, resolved: stmt_type)
       } else {
         scope
@@ -672,8 +674,9 @@ fn infer_method_args_with_fold(method_name: String, method_args: List<NamedArg>,
 // First param gets accumulator type, last param gets element type.
 fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_type: Node) -> ArgInferResult {
   match arg.value.expr_data {
-    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
+    ExprLambda { params: lam_params, semantics: _ } =>
       let lam_span = arg.value.span
+      let lam_body = match arg.value.children |> first { Some { value: b } => b  None => arg.value }
       let param_count = lam_params |> count
       let param_types = lam_params |> enumerate |> map(pair =>
         if pair.first == 0 {
@@ -707,9 +710,9 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
       let typed_lam = make_expr_node(
         expr_data: ExprLambda {
           params: lam_params,
-          body: body_result.typed,
           semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
         },
+        children: [body_result.typed],
         inferred: Some { value: Resolved { node: rt_type(n: body_result.typed) } },
         span: lam_span
       )
@@ -729,8 +732,9 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
 
 fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: InferScope) -> InferResult {
   match lambda_expr.expr_data {
-    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
+    ExprLambda { params: lam_params, semantics: _ } =>
       let span = lambda_expr.span
+      let lam_body = match lambda_expr.children |> first { Some { value: b } => b  None => lambda_expr }
       let param_types = if lam_params |> count == 1 {
         [element_type]
       } else {
@@ -765,9 +769,9 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
         typed: make_expr_node(
           expr_data: ExprLambda {
             params: lam_params,
-            body: body_typed,
             semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
           },
+          children: [body_typed],
           inferred: Some { value: Resolved { node: rt_type(n: body_typed) } },
           span: span
         ),
@@ -779,7 +783,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
 
 fn is_lambda_expr(e: Node) -> Bool {
   match e.expr_data {
-    ExprLambda { params: _, body: _, semantics: _ } => true
+    ExprLambda { params: _, semantics: _ } => true
     _ => false
   }
 }
@@ -788,8 +792,9 @@ fn is_lambda_expr(e: Node) -> Bool {
 // Threads the Callable's param types to the lambda's params.
 fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_name: String?, scope: InferScope) -> ArgInferResult {
   match lambda_expr.expr_data {
-    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
+    ExprLambda { params: lam_params, semantics: _ } =>
       let span = lambda_expr.span
+      let lam_body = match lambda_expr.children |> first { Some { value: b } => b  None => lambda_expr }
       let callable_params = callable_type.params
       let param_types = lam_params |> enumerate |> map(pair =>
         match callable_params |> skip(pair.first) |> first {
@@ -809,9 +814,9 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
       let typed_lam = make_expr_node(
         expr_data: ExprLambda {
           params: lam_params,
-          body: body_typed,
           semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
         },
+        children: [body_typed],
         inferred: Some { value: Resolved { node: rt_type(n: body_typed) } },
         span: span
       )
@@ -897,7 +902,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
-      ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, inferred: Some { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
+      ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, children: [], inferred: Some { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
 
     ExprError { kind: kind, message: message } =>
       // No diagnostics here — resolve_expr_types already emitted the error.
@@ -915,6 +920,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let binding_kind = infer_var_binding_kind(scope: scope, name: name)
           ok_infer(texpr: make_expr_node(
             expr_data: ExprVar { name: name, binding_kind: Some { value: binding_kind } },
+            children: [],
             inferred: Some { value: Resolved { node: binding.resolved } },
             span: span
           ))
@@ -923,12 +929,14 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             Some { value: fsig } =>
               ok_infer(texpr: make_expr_node(
                 expr_data: ExprVar { name: name, binding_kind: Some { value: FunctionValueBinding } },
+                children: [],
                 inferred: Some { value: Resolved { node: callable_node(func_params: fsig.params, ret: fsig.inferred) } },
                 span: span
               ))
             None =>
               let err_texpr = make_expr_node(
                 expr_data: ExprVar { name: name, binding_kind: none },
+                children: [],
                 inferred: Some { value: Resolved { node: error_type_node() } },
                 span: span
               )
@@ -943,8 +951,9 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           }
       }
 
-    ExprFieldAccess { base: base_expr, field: field_name, summary: _ } =>
+    ExprFieldAccess { field: field_name, summary: _ } =>
       let span = texpr.span
+      let base_expr = match texpr.children |> first { Some { value: b } => b  None => texpr }
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
@@ -960,7 +969,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         Some { value: field_type } =>
           let field_summary = field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name)
           let fa_texpr = make_expr_node(
-            expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: field_summary },
+            expr_data: ExprFieldAccess { field: field_name, summary: field_summary },
+            children: [base_typed],
             inferred: Some { value: Resolved { node: field_type } },
             span: span
           )
@@ -972,7 +982,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           // Dynamic audit: correct — field access on Dynamic base; type is genuinely unknown
           if resolved_base.name == "Dynamic" {
             let fa_texpr = make_expr_node(
-              expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
+              expr_data: ExprFieldAccess { field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
+              children: [base_typed],
               inferred: Some { value: Resolved { node: leaf_node(name: "Dynamic") } },
               span: span
             )
@@ -984,7 +995,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             match check_service_field_access_node(base_type: base_rt, field: field_name, service_registry: scope.service_registry) {
               Some { value: svc_type } =>
                 let fa_texpr = make_expr_node(
-                  expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
+                  expr_data: ExprFieldAccess { field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
+                  children: [base_typed],
                   inferred: Some { value: Resolved { node: svc_type } },
                   span: span
                 )
@@ -1008,8 +1020,10 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       }
       }
 
-    ExprCall { func: func_name, args: call_args, call_semantics: _ } =>
+    ExprCall { func: func_name, call_semantics: _ } =>
       let span = texpr.span
+      // Reconstruct NamedArg list from arg node children for intermediate inference
+      let call_args = texpr.children |> map(arg_node => NamedArg { name: arg_name(n: arg_node), value: arg_value(n: arg_node) })
       // Pre-fetch function sig for callable-aware lambda typing (P4.7e).
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
       let sig_params = match sig {
@@ -1062,6 +1076,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       }
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
+      // Convert typed NamedArgs to arg nodes for children
+      let typed_arg_nodes = typed_args |> map(ta => make_arg_node(name: ta.name, value: ta.value, span: span))
       if sig != none {
         // Tier 1: known function signature
         let resolved_type = match sig {
@@ -1070,7 +1086,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         }
         InferResult {
           typed: make_expr_node(
-            expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: Some { value: PlainCallSemantics } },
+            expr_data: ExprCall { func: func_name, call_semantics: Some { value: PlainCallSemantics } },
+            children: typed_arg_nodes,
             inferred: Some { value: Resolved { node: resolved_type } },
             span: span
           ),
@@ -1103,9 +1120,11 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             None => error_type_node()
           }
           let bridge_result_type = refine_collection_result_type(method_name: func_name, typed_args: remaining, receiver_type: first_arg_type, fallback: base_result_type)
+          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: ta.name, value: ta.value, span: span))
           InferResult {
             typed: make_expr_node(
-              expr_data: ExprMethodCall { receiver: receiver, method: func_name, args: remaining, method_semantics: method_resolution.semantics },
+              expr_data: ExprMethodCall { method: func_name, method_semantics: method_resolution.semantics },
+              children: concat([receiver], remaining_arg_nodes),
               inferred: Some { value: Resolved { node: bridge_result_type } },
               span: span
             ),
@@ -1115,7 +1134,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           // Built-in: empty_map() → Map
           InferResult {
             typed: make_expr_node(
-              expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: Some { value: PlainCallSemantics } },
+              expr_data: ExprCall { func: func_name, call_semantics: Some { value: PlainCallSemantics } },
+              children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: bare_map_node() } },
               span: span
             ),
@@ -1146,7 +1166,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           }
           InferResult {
             typed: make_expr_node(
-              expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: call_semantics },
+              expr_data: ExprCall { func: func_name, call_semantics: call_semantics },
+              children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: bt } },
               span: span
             ),
@@ -1168,7 +1189,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             let resolved_type = callable_inferred(n: callable_type)
             InferResult {
               typed: make_expr_node(
-                expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: Some { value: PlainCallSemantics } },
+                expr_data: ExprCall { func: func_name, call_semantics: Some { value: PlainCallSemantics } },
+                children: typed_arg_nodes,
                 inferred: Some { value: Resolved { node: resolved_type } },
                 span: span
               ),
@@ -1191,7 +1213,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           }
           InferResult {
             typed: make_expr_node(
-              expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: Some { value: PlainCallSemantics } },
+              expr_data: ExprCall { func: func_name, call_semantics: Some { value: PlainCallSemantics } },
+              children: typed_arg_nodes,
               inferred: Some { value: Resolved { node: resolved_type } },
               span: span
             ),
@@ -1201,8 +1224,11 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         }
       }
 
-    ExprMethodCall { receiver: recv, method: method_name, args: mc_args, method_semantics: _ } =>
+    ExprMethodCall { method: method_name, method_semantics: _ } =>
       let span = texpr.span
+      // children: [receiver, arg0, arg1, ...]
+      let recv = match texpr.children |> first { Some { value: r } => r  None => texpr }
+      let mc_args = texpr.children |> skip(1) |> map(arg_node => NamedArg { name: arg_name(n: arg_node), value: arg_value(n: arg_node) })
       let recv_result = infer_expr(texpr: recv, scope: scope)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
@@ -1231,8 +1257,10 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       }
       let result_type = refine_collection_result_type(method_name: method_name, typed_args: typed_mc_args, receiver_type: recv_rt, fallback: base_result_type)
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
+      let typed_mc_arg_nodes = typed_mc_args |> map(ta => make_arg_node(name: ta.name, value: ta.value, span: span))
       let mc_texpr = make_expr_node(
-        expr_data: ExprMethodCall { receiver: recv_typed, method: method_name, args: typed_mc_args, method_semantics: method_semantics },
+        expr_data: ExprMethodCall { method: method_name, method_semantics: method_semantics },
+        children: concat([recv_typed], typed_mc_arg_nodes),
         inferred: Some { value: Resolved { node: result_type } },
         span: span
       )
@@ -1241,8 +1269,18 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         diagnostics: concat(recv_diags, mc_arg_diags)
       }
 
-    ExprMatch { scrutinee: scrut, arms: arms } =>
+    ExprMatch =>
       let span = texpr.span
+      // children: [scrutinee, arm0, arm1, ...]
+      let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
+      let arms = texpr.children |> skip(1) |> map(arm_node =>
+        let arm_pat = match arm_node.match_pattern { Some { value: p } => p  None => Wildcard }
+        let arm_ch = arm_node.children
+        let has_guard = arm_ch |> count == 2
+        let arm_guard = if has_guard { arm_ch |> first } else { none }
+        let arm_body_node = if has_guard { match arm_ch |> skip(1) |> first { Some { value: b } => b  None => arm_node } } else { match arm_ch |> first { Some { value: b } => b  None => arm_node } }
+        MatchArm { pattern: arm_pat, guard: arm_guard, body: arm_body_node }
+      )
       let scrut_result = infer_expr(texpr: scrut, scope: scope)
       let scrut_typed = scrut_result.typed
       let scrut_diags = scrut_result.diagnostics
@@ -1303,14 +1341,20 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         PatternDynamic { span: _ } => []
         PatternLookupBlocked => []
       }
-      let match_texpr = make_expr_node(expr_data: ExprMatch { scrutinee: scrut_typed, arms: typed_arms }, inferred: Some { value: Resolved { node: result_type } }, span: span)
+      let typed_arm_nodes = typed_arms |> map(ta => make_arm_node(pattern: ta.pattern, guard: ta.guard, body: ta.body, span: span))
+      let match_texpr = make_expr_node(expr_data: ExprMatch, children: concat([scrut_typed], typed_arm_nodes), inferred: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: match_texpr,
         diagnostics: concat(scrut_diags, arm_diags, empty_arms_diags, exhaustiveness_diags)
       }
 
-    ExprIf { condition: cond, then_branch: then_expr, else_branch: else_expr } =>
+    ExprIf =>
       let span = texpr.span
+      // children: [cond, then] or [cond, then, else]
+      let ch = texpr.children
+      let cond = match ch |> first { Some { value: c } => c  None => texpr }
+      let then_expr = match ch |> skip(1) |> first { Some { value: t } => t  None => texpr }
+      let else_expr = ch |> skip(2) |> first
       let cond_result = infer_expr(texpr: cond, scope: scope)
       let cond_typed = cond_result.typed
       let cond_diags = cond_result.diagnostics
@@ -1342,27 +1386,30 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             )]
           }
           let resolved_type = prefer_specific_type(left: then_rt, right: else_rt)
-          let if_texpr = make_expr_node(expr_data: ExprIf { condition: cond_typed, then_branch: then_typed, else_branch: Some { value: else_typed } }, inferred: Some { value: Resolved { node: resolved_type } }, span: span)
+          let if_texpr = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed, else_typed], inferred: Some { value: Resolved { node: resolved_type } }, span: span)
           InferResult {
             typed: if_texpr,
             diagnostics: concat(cond_diags, then_diags, else_diags, branch_diags)
           }
         None =>
-          let if_texpr2 = make_expr_node(expr_data: ExprIf { condition: cond_typed, then_branch: then_typed, else_branch: none }, inferred: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span)
+          let if_texpr2 = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed], inferred: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span)
           InferResult {
             typed: if_texpr2,
             diagnostics: concat(cond_diags, then_diags)
           }
       }
 
-    ExprLet { name: let_name, value: let_value, body: let_body } =>
+    ExprLet { name: let_name } =>
       let span = texpr.span
+      // children: [value] or [value, body]
+      let let_value = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let let_body = texpr.children |> skip(1) |> first
       let val_result = infer_expr(texpr: let_value, scope: scope)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics
       let val_type = rt_type(n: val_typed)
       if let_body == none {
-        let let_texpr = make_expr_node(expr_data: ExprLet { name: let_name, value: val_typed, body: none }, inferred: Some { value: Resolved { node: val_type } }, span: span)
+        let let_texpr = make_expr_node(expr_data: ExprLet { name: let_name }, children: [val_typed], inferred: Some { value: Resolved { node: val_type } }, span: span)
         InferResult {
           typed: let_texpr,
           diagnostics: val_diags
@@ -1372,19 +1419,23 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         let body_result = infer_expr(texpr: let_body.value, scope: extended)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
-        let let_texpr2 = make_expr_node(expr_data: ExprLet { name: let_name, value: val_typed, body: Some { value: body_typed } }, inferred: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
+        let let_texpr2 = make_expr_node(expr_data: ExprLet { name: let_name }, children: [val_typed, body_typed], inferred: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
         InferResult {
           typed: let_texpr2,
           diagnostics: concat(val_diags, body_diags)
         }
       }
 
-    ExprRecordLit { type_name: tn, fields: field_inits, parent_enum: _ } =>
+    ExprRecordLit { type_name: tn, parent_enum: _ } =>
       let span = texpr.span
+      // children: field init nodes
+      let field_inits = texpr.children |> map(fi_node => FieldInit { name: fi_node.name, value: match fi_node.children |> first { Some { value: v } => v  None => fi_node } })
       infer_record_lit(type_name: tn, field_inits: field_inits, span: span, scope: scope)
 
-    ExprListLit { elements: elements } =>
+    ExprListLit =>
       let span = texpr.span
+      // children: element expressions
+      let elements = texpr.children
       let elem_results = elements |> map(e => infer_expr(texpr: e, scope: scope))
       let typed_elements = elem_results |> map(r => r.typed)
       let elem_diags = flat_map(elem_results, r => r.diagnostics)
@@ -1396,14 +1447,17 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       } else {
         leaf_node(name: "Unit")
       }
-      let ll_texpr = make_expr_node(expr_data: ExprListLit { elements: typed_elements }, inferred: Some { value: Resolved { node: container_node(kind_name: "List", element: elem_type_node) } }, span: span)
+      let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: container_node(kind_name: "List", element: elem_type_node) } }, span: span)
       InferResult {
         typed: ll_texpr,
         diagnostics: elem_diags
       }
 
-    ExprBinOp { op: op, left: left_expr, right: right_expr } =>
+    ExprBinOp { op: op } =>
       let span = texpr.span
+      // children: [left, right]
+      let left_expr = match texpr.children |> first { Some { value: l } => l  None => texpr }
+      let right_expr = match texpr.children |> skip(1) |> first { Some { value: r } => r  None => texpr }
       let left_result = infer_expr(texpr: left_expr, scope: scope)
       let left_typed = left_result.typed
       let left_diags = left_result.diagnostics
@@ -1411,14 +1465,16 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
       let result_type = infer_binop_type_node(op: op, left_type: rt_type(n: left_typed))
-      let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op, left: left_typed, right: right_typed }, inferred: Some { value: Resolved { node: result_type } }, span: span)
+      let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op }, children: [left_typed, right_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
         diagnostics: concat(left_diags, right_diags)
       }
 
-    ExprUnaryOp { op: op, operand: operand_expr } =>
+    ExprUnaryOp { op: op } =>
       let span = texpr.span
+      // children: [operand]
+      let operand_expr = match texpr.children |> first { Some { value: o } => o  None => texpr }
       let operand_result = infer_expr(texpr: operand_expr, scope: scope)
       let operand_typed = operand_result.typed
       let operand_diags = operand_result.diagnostics
@@ -1426,14 +1482,16 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         Not => leaf_node(name: "Bool")
         Neg => rt_type(n: operand_typed)
       }
-      let uo_texpr = make_expr_node(expr_data: ExprUnaryOp { op: op, operand: operand_typed }, inferred: Some { value: Resolved { node: result_type } }, span: span)
+      let uo_texpr = make_expr_node(expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: uo_texpr,
         diagnostics: operand_diags
       }
 
-    ExprLambda { params: lam_params, body: lam_body, semantics: _ } =>
+    ExprLambda { params: lam_params, semantics: _ } =>
       let span = texpr.span
+      // children: [body]
+      let lam_body = match texpr.children |> first { Some { value: b } => b  None => texpr }
       let lam_scope = extend_scope_with_params(scope: scope, params: lam_params)
       let body_result = infer_expr(texpr: lam_body, scope: lam_scope)
       let body_typed = body_result.typed
@@ -1441,9 +1499,9 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let lam_texpr = make_expr_node(
         expr_data: ExprLambda {
           params: lam_params,
-          body: body_typed,
           semantics: Some { value: lambda_semantics_from_param_types(param_types: lambda_param_types_from_scope(scope: lam_scope, params: lam_params)) }
         },
+        children: [body_typed],
         inferred: Some { value: Resolved { node: rt_type(n: body_typed) } },
         span: span
       )
@@ -1452,60 +1510,77 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         diagnostics: body_diags
       }
 
-    ExprStringInterp { parts: str_parts } =>
+    ExprStringInterp =>
       let span = texpr.span
-      let part_results = str_parts |> map(p => match p {
-        Text { value: v } => StringPartInferResult {
-          typed_part: Text { value: v },
-          diagnostics: []
+      // children: text/interp part nodes
+      let typed_part_nodes = texpr.children |> map(part_node =>
+        match part_node.expr_data {
+          ExprLiteral { value: _ } => part_node
+          _ =>
+            match part_node.children |> first {
+              Some { value: inner } =>
+                let r = infer_expr(texpr: inner, scope: scope)
+                make_interp_part_node(expr: r.typed, span: part_node.span)
+              None => part_node
+            }
         }
-        Interpolation { expr: e } =>
-          let r = infer_expr(texpr: e, scope: scope)
-          let r_typed = r.typed
-          let r_diags = r.diagnostics
-          StringPartInferResult {
-            typed_part: Interpolation { expr: r_typed },
-            diagnostics: r_diags
-          }
-      })
-      let typed_parts = part_results |> map(pr => pr.typed_part)
-      let interp_diags = flat_map(part_results, pr => pr.diagnostics)
-      let si_texpr = make_expr_node(expr_data: ExprStringInterp { parts: typed_parts }, inferred: Some { value: Resolved { node: leaf_node(name: "String") } }, span: span)
+      )
+      let interp_diags = texpr.children |> flat_map(part_node =>
+        match part_node.expr_data {
+          ExprLiteral { value: _ } => []
+          _ =>
+            match part_node.children |> first {
+              Some { value: inner } =>
+                let r = infer_expr(texpr: inner, scope: scope)
+                r.diagnostics
+              None => []
+            }
+        }
+      )
+      let si_texpr = make_expr_node(expr_data: ExprStringInterp, children: typed_part_nodes, inferred: Some { value: Resolved { node: leaf_node(name: "String") } }, span: span)
       InferResult {
         typed: si_texpr,
         diagnostics: interp_diags
       }
 
-    ExprBlock { stmts: stmts } =>
+    ExprBlock =>
       let span = texpr.span
+      // children: stmt expressions
+      let stmts = texpr.children
       if count(stmts) > 0 {
         let state = infer_block_stmts(
           remaining: stmts, scope: scope,
           typed_stmts: [], diag_chunks: [],
           last_type: leaf_node(name: "Unit")
         )
-        let blk_texpr = make_expr_node(expr_data: ExprBlock { stmts: state.typed_stmts }, inferred: Some { value: Resolved { node: state.last_type } }, span: span)
+        let blk_texpr = make_expr_node(expr_data: ExprBlock, children: state.typed_stmts, inferred: Some { value: Resolved { node: state.last_type } }, span: span)
         InferResult {
           typed: blk_texpr,
           diagnostics: flat_map(state.diag_chunks, c => c)
         }
       } else {
-        ok_infer(texpr: make_expr_node(expr_data: ExprBlock { stmts: [] }, inferred: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span))
+        ok_infer(texpr: make_expr_node(expr_data: ExprBlock, children: [], inferred: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span))
       }
 
-    ExprCast { expr: cast_inner, target: target_type } =>
+    ExprCast =>
       let span = texpr.span
+      // children: [expr, target_type]
+      let cast_inner = match texpr.children |> first { Some { value: e } => e  None => texpr }
+      let target_type = match texpr.children |> skip(1) |> first { Some { value: t } => t  None => leaf_node(name: "Unit") }
       let inner_result = infer_expr(texpr: cast_inner, scope: scope)
       let inner_typed = inner_result.typed
       let inner_diags = inner_result.diagnostics
-      let cast_texpr = make_expr_node(expr_data: ExprCast { expr: inner_typed, target: target_type }, inferred: Some { value: Resolved { node: target_type } }, span: span)
+      let cast_texpr = make_expr_node(expr_data: ExprCast, children: [inner_typed, target_type], inferred: Some { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
         diagnostics: inner_diags
       }
 
-    ExprForEach { variable: variable, collection: coll, body: body_expr } =>
+    ExprForEach { variable: variable } =>
       let span = texpr.span
+      // children: [collection, body]
+      let coll = match texpr.children |> first { Some { value: c } => c  None => texpr }
+      let body_expr = match texpr.children |> skip(1) |> first { Some { value: b } => b  None => texpr }
       let coll_result = infer_expr(texpr: coll, scope: scope)
       let coll_typed = coll_result.typed
       let coll_diags = coll_result.diagnostics
@@ -1514,14 +1589,17 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let body_result = infer_expr(texpr: body_expr, scope: body_scope)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let fe_texpr = make_expr_node(expr_data: ExprForEach { variable: variable, collection: coll_typed, body: body_typed }, inferred: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
+      let fe_texpr = make_expr_node(expr_data: ExprForEach { variable: variable }, children: [coll_typed, body_typed], inferred: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
       InferResult {
         typed: fe_texpr,
         diagnostics: concat(coll_diags, body_diags)
       }
 
-    ExprIndex { base: base_expr, index: index_expr } =>
+    ExprIndex =>
       let span = texpr.span
+      // children: [base, index]
+      let base_expr = match texpr.children |> first { Some { value: b } => b  None => texpr }
+      let index_expr = match texpr.children |> skip(1) |> first { Some { value: i } => i  None => texpr }
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
@@ -1559,14 +1637,18 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         Some { value: checked } => checked.diagnostics
         None => []
       }
-      let idx_texpr = make_expr_node(expr_data: ExprIndex { base: base_typed, index: index_typed }, inferred: idx_inferred, span: span)
+      let idx_texpr = make_expr_node(expr_data: ExprIndex, children: [base_typed, index_typed], inferred: idx_inferred, span: span)
       InferResult {
         typed: idx_texpr,
         diagnostics: concat(base_diags, index_diags, index_access_diags)
       }
 
-    ExprSlice { base: base_expr, start: start_expr, end: end_expr } =>
+    ExprSlice =>
       let span = texpr.span
+      // children: [base, start, end]
+      let base_expr = match texpr.children |> first { Some { value: b } => b  None => texpr }
+      let start_expr = match texpr.children |> skip(1) |> first { Some { value: s } => s  None => texpr }
+      let end_expr = match texpr.children |> skip(2) |> first { Some { value: e } => e  None => texpr }
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
@@ -1619,16 +1701,18 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         Some { value: checked } => checked.diagnostics
         None => []
       }
-      let slc_texpr = make_expr_node(expr_data: ExprSlice { base: base_typed, start: start_typed, end: end_typed }, inferred: slc_inferred, span: span)
+      let slc_texpr = make_expr_node(expr_data: ExprSlice, children: [base_typed, start_typed, end_typed], inferred: slc_inferred, span: span)
       InferResult {
         typed: slc_texpr,
         diagnostics: concat(base_diags, start_diags, end_diags, slice_access_diags)
       }
 
-    ExprReturn { value: inner_expr } =>
+    ExprReturn =>
       let span = texpr.span
+      // children: [value]
+      let inner_expr = match texpr.children |> first { Some { value: v } => v  None => texpr }
       let inner_result = infer_expr(texpr: inner_expr, scope: scope)
-      let ret_texpr = make_expr_node(expr_data: ExprReturn { value: inner_result.typed }, inferred: Some { value: Resolved { node: rt_type(n: inner_result.typed) } }, span: span)
+      let ret_texpr = make_expr_node(expr_data: ExprReturn, children: [inner_result.typed], inferred: Some { value: Resolved { node: rt_type(n: inner_result.typed) } }, span: span)
       InferResult {
         typed: ret_texpr,
         diagnostics: inner_result.diagnostics
@@ -1686,7 +1770,8 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
       params: [], inferred: none, return_cardinality: Required, uses: [],
       body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
-    let texpr = make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: typed_fields, parent_enum: none }, inferred: Some { value: Resolved { node: anon_node } }, span: span)
+    let typed_field_nodes = typed_fields |> map(tf => make_field_init_node(name: tf.name, value: tf.value, span: span))
+    let texpr = make_expr_node(expr_data: ExprRecordLit { type_name: none, parent_enum: none }, children: typed_field_nodes, inferred: Some { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
       diagnostics: fi_diags
@@ -1731,8 +1816,10 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
         module_name: scope.module_name
       )]
     }
+    let typed_field_nodes2 = typed_fields |> map(tf => make_field_init_node(name: tf.name, value: tf.value, span: span))
     let texpr = make_expr_node(
-      expr_data: ExprRecordLit { type_name: type_name, fields: typed_fields, parent_enum: local_variant_parent },
+      expr_data: ExprRecordLit { type_name: type_name, parent_enum: local_variant_parent },
+      children: typed_field_nodes2,
       inferred: Some { value: Resolved { node: resolved_node } },
       span: span
     )
@@ -1907,7 +1994,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding {
       name: name,
-      resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     })
   )
   // Register Optional as a Disj type so lookup_type("Optional") succeeds.
@@ -2041,7 +2128,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     kernel_types,
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } })
+    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } })
   )
   // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }

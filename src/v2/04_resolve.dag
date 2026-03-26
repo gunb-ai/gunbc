@@ -21,12 +21,14 @@ import v2.std.core {
   Cardinality, Required, CardOptional,
   ResourceUse, ServiceConfig,
   MatchArm, FieldInit, NamedArg, StringPart, Text, Interpolation,
+  MatchPattern, Wildcard,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node, make_expr_error_node, map_expr_children,
+  make_expr_node, make_expr_error_node, map_children,
+  make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
   is_kernel_type, is_transport_kind,
   ErrorCategory, UnresolvedName, TypeMismatch, InvalidOperation, CascadeError,
@@ -644,10 +646,8 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
   }
 }
 
-// NOTE: resolve_expr_types is pure structural recursion — the canonical
-// map_expr_children candidate. Blocked by v1 interpreter not supporting
-// user-defined higher-order functions. Collapses to ~10 lines when v1
-// retires (Phase 3). Deletion point: P5.11.
+// P5.11: resolve_expr_types uses map_children for single-child cases,
+// make_expr_node with explicit children for multi-child cases.
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
@@ -657,71 +657,205 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         diagnostics: [Diagnostic { severity: Error, message: message, span: Some { value: texpr.span }, module_name: Some { value: module_name }, category: Some { value: CascadeError } }]
       }
     ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
-    ExprFieldAccess { base: base, field: field, summary: summary } =>
-      let r = resolve_expr_types(texpr: base, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    ExprCall { func: func, args: args, call_semantics: cs } =>
-      let ar = map(args, arg => resolve_named_arg(arg: arg, env: env, module_name: module_name))
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprCall { func: func, args: map(ar, a => a.arg), call_semantics: cs }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(ar, a => a.diagnostics) }
-    ExprMethodCall { receiver: receiver, method: method, args: args, method_semantics: ms } =>
-      let rr = resolve_expr_types(texpr: receiver, env: env, module_name: module_name)
-      let ar = map(args, arg => resolve_named_arg(arg: arg, env: env, module_name: module_name))
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprMethodCall { receiver: rr.expr, method: method, args: map(ar, a => a.arg), method_semantics: ms }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(rr.diagnostics, flat_map(ar, a => a.diagnostics)) }
-    ExprMatch { scrutinee: scrutinee, arms: arms } =>
-      let sr = resolve_expr_types(texpr: scrutinee, env: env, module_name: module_name)
-      let ar = map(arms, arm => resolve_match_arm(arm: arm, env: env, module_name: module_name))
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprMatch { scrutinee: sr.expr, arms: map(ar, a => a.arm) }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(sr.diagnostics, flat_map(ar, a => a.diagnostics)) }
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      let cr = resolve_expr_types(texpr: c, env: env, module_name: module_name)
-      let tr = resolve_expr_types(texpr: t, env: env, module_name: module_name)
-      let er = match e { Some { value: eb } => Some { value: resolve_expr_types(texpr: eb, env: env, module_name: module_name) }  None => none }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprIf { condition: cr.expr, then_branch: tr.expr, else_branch: match er { Some { value: r } => Some { value: r.expr }  None => none } }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(cr.diagnostics, tr.diagnostics, match er { Some { value: r } => r.diagnostics  None => [] }) }
-    ExprLet { name: name, value: v, body: b } =>
-      let vr = resolve_expr_types(texpr: v, env: env, module_name: module_name)
-      let br = match b { Some { value: bd } => Some { value: resolve_expr_types(texpr: bd, env: env, module_name: module_name) }  None => none }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprLet { name: name, value: vr.expr, body: match br { Some { value: r } => Some { value: r.expr }  None => none } }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => [] }) }
-    ExprRecordLit { type_name: tn, fields: fields, parent_enum: pe } =>
-      let fr = map(fields, fi => resolve_field_init(field_init: fi, env: env, module_name: module_name))
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: tn, fields: map(fr, f => f.field_init), parent_enum: pe }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(fr, f => f.diagnostics) }
-    ExprListLit { elements: els } =>
-      let er = map(els, el => resolve_expr_types(texpr: el, env: env, module_name: module_name))
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprListLit { elements: map(er, e => e.expr) }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(er, e => e.diagnostics) }
-    ExprBinOp { op: op, left: l, right: r } =>
-      let lr = resolve_expr_types(texpr: l, env: env, module_name: module_name)
-      let rr = resolve_expr_types(texpr: r, env: env, module_name: module_name)
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprBinOp { op: op, left: lr.expr, right: rr.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
-    ExprUnaryOp { op: op, operand: o } =>
-      let r = resolve_expr_types(texpr: o, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    ExprLambda { params: p, body: b, semantics: s } =>
-      let r = resolve_expr_types(texpr: b, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    ExprStringInterp { parts: parts } =>
-      let pr = map(parts, part => resolve_string_part(part: part, env: env, module_name: module_name))
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprStringInterp { parts: map(pr, p => p.part) }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(pr, p => p.diagnostics) }
-    ExprBlock { stmts: ss } =>
-      let sr = map(ss, s => resolve_expr_types(texpr: s, env: env, module_name: module_name))
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprBlock { stmts: map(sr, s => s.expr) }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(sr, s => s.diagnostics) }
-    ExprCast { expr: inner, target: target } =>
-      let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
-      let tr = resolve_node(n: target, env: env, module_name: module_name)
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprCast { expr: r.expr, target: tr.resolved }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
-    ExprForEach { variable: variable, collection: c, body: b } =>
-      let cr = resolve_expr_types(texpr: c, env: env, module_name: module_name)
-      let br = resolve_expr_types(texpr: b, env: env, module_name: module_name)
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprForEach { variable: variable, collection: cr.expr, body: br.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(cr.diagnostics, br.diagnostics) }
-    ExprIndex { base: base, index: index } =>
-      let br = resolve_expr_types(texpr: base, env: env, module_name: module_name)
-      let ir = resolve_expr_types(texpr: index, env: env, module_name: module_name)
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprIndex { base: br.expr, index: ir.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, ir.diagnostics) }
-    ExprSlice { base: base, start: start, end: end } =>
-      let br = resolve_expr_types(texpr: base, env: env, module_name: module_name)
-      let sr = resolve_expr_types(texpr: start, env: env, module_name: module_name)
-      let er = resolve_expr_types(texpr: end, env: env, module_name: module_name)
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprSlice { base: br.expr, start: sr.expr, end: er.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, sr.diagnostics, er.diagnostics) }
-    ExprReturn { value: inner } =>
-      let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+    ExprFieldAccess { field: _, summary: _ } =>
+      // children: [base]
+      let r = match texpr.children |> first {
+        Some { value: base } => resolve_expr_types(texpr: base, env: env, module_name: module_name)
+        None => ExprResolveResult { expr: texpr, diagnostics: [] }
+      }
+      ExprResolveResult { expr: map_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+    ExprCall { func: func, call_semantics: cs } =>
+      // children: arg nodes
+      let resolved_children = texpr.children |> map(arg_node =>
+        let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
+        let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
+        make_arg_node(name: if arg_node.name == "" { none } else { Some { value: arg_node.name } }, value: vr.expr, span: arg_node.span)
+      )
+      let all_diags = texpr.children |> flat_map(arg_node =>
+        let val = match arg_node.children |> first { Some { value: v } => v  None => arg_node }
+        let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
+        vr.diagnostics
+      )
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprCall { func: func, call_semantics: cs }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+    ExprMethodCall { method: method, method_semantics: ms } =>
+      // children: [receiver, arg0, arg1, ...]
+      let resolved_children = texpr.children |> enumerate |> map(pair =>
+        let idx = pair.first
+        let child = pair.second
+        if idx == 0 {
+          let rr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
+          rr.expr
+        } else {
+          let val = match child.children |> first { Some { value: v } => v  None => child }
+          let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
+          make_arg_node(name: if child.name == "" { none } else { Some { value: child.name } }, value: vr.expr, span: child.span)
+        }
+      )
+      let all_diags = texpr.children |> enumerate |> flat_map(pair =>
+        let idx = pair.first
+        let child = pair.second
+        if idx == 0 {
+          let rr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
+          rr.diagnostics
+        } else {
+          let val = match child.children |> first { Some { value: v } => v  None => child }
+          let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
+          vr.diagnostics
+        }
+      )
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprMethodCall { method: method, method_semantics: ms }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+    ExprMatch =>
+      // children: [scrutinee, arm0, arm1, ...]
+      let resolved_children = texpr.children |> enumerate |> map(pair =>
+        let idx = pair.first
+        let child = pair.second
+        if idx == 0 {
+          let sr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
+          sr.expr
+        } else {
+          // arm node: resolve guard and body within children
+          let arm_ch = child.children
+          let has_guard = arm_ch |> count == 2
+          if has_guard {
+            let guard_r = match arm_ch |> first { Some { value: g } => resolve_expr_types(texpr: g, env: env, module_name: module_name)  None => ExprResolveResult { expr: child, diagnostics: [] } }
+            let body_r = match arm_ch |> skip(1) |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: child, diagnostics: [] } }
+            make_arm_node(pattern: match child.match_pattern { Some { value: p } => p  None => Wildcard }, guard: Some { value: guard_r.expr }, body: body_r.expr, span: child.span)
+          } else {
+            let body_r = match arm_ch |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: child, diagnostics: [] } }
+            make_arm_node(pattern: match child.match_pattern { Some { value: p } => p  None => Wildcard }, guard: none, body: body_r.expr, span: child.span)
+          }
+        }
+      )
+      let all_diags = texpr.children |> enumerate |> flat_map(pair =>
+        let idx = pair.first
+        let child = pair.second
+        if idx == 0 {
+          let sr = resolve_expr_types(texpr: child, env: env, module_name: module_name)
+          sr.diagnostics
+        } else {
+          let arm_ch = child.children
+          let has_guard = arm_ch |> count == 2
+          if has_guard {
+            let guard_r = match arm_ch |> first { Some { value: g } => resolve_expr_types(texpr: g, env: env, module_name: module_name)  None => ExprResolveResult { expr: child, diagnostics: [] } }
+            let body_r = match arm_ch |> skip(1) |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: child, diagnostics: [] } }
+            concat(guard_r.diagnostics, body_r.diagnostics)
+          } else {
+            let body_r = match arm_ch |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: child, diagnostics: [] } }
+            body_r.diagnostics
+          }
+        }
+      )
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprMatch, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+    ExprIf =>
+      // children: [cond, then] or [cond, then, else]
+      let ch = texpr.children
+      let cr = match ch |> first { Some { value: c } => resolve_expr_types(texpr: c, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let tr = match ch |> skip(1) |> first { Some { value: t } => resolve_expr_types(texpr: t, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let er = match ch |> skip(2) |> first { Some { value: e } => Some { value: resolve_expr_types(texpr: e, env: env, module_name: module_name) }  None => none }
+      let resolved_children = match er { Some { value: r } => [cr.expr, tr.expr, r.expr]  None => [cr.expr, tr.expr] }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprIf, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(cr.diagnostics, tr.diagnostics, match er { Some { value: r } => r.diagnostics  None => [] }) }
+    ExprLet { name: name } =>
+      // children: [value] or [value, body]
+      let ch = texpr.children
+      let vr = match ch |> first { Some { value: v } => resolve_expr_types(texpr: v, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let br = match ch |> skip(1) |> first { Some { value: bd } => Some { value: resolve_expr_types(texpr: bd, env: env, module_name: module_name) }  None => none }
+      let resolved_children = match br { Some { value: r } => [vr.expr, r.expr]  None => [vr.expr] }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprLet { name: name }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => [] }) }
+    ExprRecordLit { type_name: tn, parent_enum: pe } =>
+      // children: field init nodes
+      let resolved_children = texpr.children |> map(fi_node =>
+        let val = match fi_node.children |> first { Some { value: v } => v  None => fi_node }
+        let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
+        make_field_init_node(name: fi_node.name, value: vr.expr, span: fi_node.span)
+      )
+      let all_diags = texpr.children |> flat_map(fi_node =>
+        let val = match fi_node.children |> first { Some { value: v } => v  None => fi_node }
+        let vr = resolve_expr_types(texpr: val, env: env, module_name: module_name)
+        vr.diagnostics
+      )
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: tn, parent_enum: pe }, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+    ExprListLit =>
+      // children: element expressions
+      let el_results = texpr.children |> map(el => resolve_expr_types(texpr: el, env: env, module_name: module_name))
+      let resolved_children = el_results |> map(r => r.expr)
+      let all_diags = flat_map(el_results, r => r.diagnostics)
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprListLit, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+    ExprBinOp { op: op } =>
+      // children: [left, right]
+      let ch = texpr.children
+      let lr = match ch |> first { Some { value: l } => resolve_expr_types(texpr: l, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let rr = match ch |> skip(1) |> first { Some { value: r } => resolve_expr_types(texpr: r, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprBinOp { op: op }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
+    ExprUnaryOp { op: op } =>
+      // children: [operand]
+      let r = match texpr.children |> first { Some { value: o } => resolve_expr_types(texpr: o, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprUnaryOp { op: op }, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
+    ExprLambda { params: p, semantics: s } =>
+      // children: [body]
+      let r = match texpr.children |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprLambda { params: p, semantics: s }, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
+    ExprStringInterp =>
+      // children: text/interp part nodes
+      let resolved_children = texpr.children |> map(part_node =>
+        match part_node.expr_data {
+          ExprLiteral { value: _ } => part_node
+          _ =>
+            match part_node.children |> first {
+              Some { value: inner } =>
+                let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
+                make_interp_part_node(expr: r.expr, span: part_node.span)
+              None => part_node
+            }
+        }
+      )
+      let all_diags = texpr.children |> flat_map(part_node =>
+        match part_node.expr_data {
+          ExprLiteral { value: _ } => []
+          _ =>
+            match part_node.children |> first {
+              Some { value: inner } =>
+                let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
+                r.diagnostics
+              None => []
+            }
+        }
+      )
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprStringInterp, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+    ExprBlock =>
+      // children: stmt expressions
+      let stmt_results = texpr.children |> map(s => resolve_expr_types(texpr: s, env: env, module_name: module_name))
+      let resolved_children = stmt_results |> map(r => r.expr)
+      let all_diags = flat_map(stmt_results, r => r.diagnostics)
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprBlock, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
+    ExprCast =>
+      // children: [expr, target_type]
+      let ch = texpr.children
+      let r = match ch |> first { Some { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let tr = match ch |> skip(1) |> first { Some { value: target } => resolve_node(n: target, env: env, module_name: module_name)  None => NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprCast, children: [r.expr, tr.resolved], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
+    ExprForEach { variable: variable } =>
+      // children: [collection, body]
+      let ch = texpr.children
+      let cr = match ch |> first { Some { value: c } => resolve_expr_types(texpr: c, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let br = match ch |> skip(1) |> first { Some { value: b } => resolve_expr_types(texpr: b, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprForEach { variable: variable }, children: [cr.expr, br.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(cr.diagnostics, br.diagnostics) }
+    ExprIndex =>
+      // children: [base, index]
+      let ch = texpr.children
+      let br = match ch |> first { Some { value: base } => resolve_expr_types(texpr: base, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let ir = match ch |> skip(1) |> first { Some { value: index } => resolve_expr_types(texpr: index, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprIndex, children: [br.expr, ir.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, ir.diagnostics) }
+    ExprSlice =>
+      // children: [base, start, end]
+      let ch = texpr.children
+      let br = match ch |> first { Some { value: base } => resolve_expr_types(texpr: base, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let sr = match ch |> skip(1) |> first { Some { value: start } => resolve_expr_types(texpr: start, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      let er = match ch |> skip(2) |> first { Some { value: end_e } => resolve_expr_types(texpr: end_e, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprSlice, children: [br.expr, sr.expr, er.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, sr.diagnostics, er.diagnostics) }
+    ExprReturn =>
+      // children: [value]
+      let r = match texpr.children |> first { Some { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprReturn, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }
     NoExprData => ExprResolveResult { expr: texpr, diagnostics: [] }
   }
 }

@@ -794,14 +794,12 @@ fixed-point check passes (byte-identical comparison).
 - Full callback `emit_shared_expr` (same mechanism)
 - File decomposition of `04_infer.dag` (depends on `map_expr_children`)
 
-**L2 bridge status:** `expr_children` primitive landed in `00_core.dag`.
-4 manual ExprData walks rewritten (~210 lines eliminated).
-`map_expr_children` **landed** in `00_core.dag` — structural tree-map over
-ExprData, covers all 18 recursive variants. `emit_shared_expr` **landed**
-with full callback dispatcher (leaf + 4 recursive arms: UnaryOp, Lambda,
-ListLit, Return). All 3 backends wired. 9 dead helper functions deleted.
-`rt_node` returns `NodeType` (Typed/InferError/Untyped). Bridge-era
-invariants documented. P5.11/P5.12 dissolution design complete.
+**L2 bridge status: DISSOLVED (P5.11 complete, 2026-03-26).** ExprData
+child fields removed. `expr_children`/`map_expr_children`/`with_expr_data`
+deleted. Children live in `node.children` as compositional Nodes.
+`map_children` replaces all bridge functions. Walker boilerplate reduced
+by ~300 lines via `_` wildcard collapse. P5.12 (tag dissolution
+assessment) is next.
 
 ### Error Classification and Progress Measurement
 
@@ -929,44 +927,41 @@ compositional target.
 - **Regression test:** Any parse test that reads `token.text` after a
   shape check exercises the coherence. The `parse_parses_strict` test
   (all `.dag` files parse without error) is the primary coverage gate.
-- **End-state:** This is the intended permanent representation. Token
-  dissolution (P5.1) is complete.
+- **End-state:** This is a stable intermediate, not full dissolution.
+  P5.1 has been **redefined** around token coherence (TokenShape +
+  text separation) rather than dissolution into Node compositions.
+  Full token→Node dissolution is future work, dependent on the
+  compiler's structural primitives maturing through P5.11/P5.12.
 
-### L2 Bridge-Era Invariants
+### L2 Bridge Status: ExprData Child Dissolution Complete (P5.11)
 
-`ExprData` is an acknowledged L2 bridge. Child `Node` structure migrates
-to `expr_children` / `map_expr_children` now so traversals can become
-structural without waiting for full semantic dissolution. Role-specific
-metadata and non-value-position data remain in `ExprData` until
-P5.11/P5.12. This is preparatory work in the final direction, not
-throwaway work.
+**The L2 bridge era is over.** As of P5.11 (2026-03-26):
 
-Rules during the bridge era:
+- `ExprData` is pure operator metadata — no Node-valued fields remain
+- All expression children live in `node.children` as compositional Nodes
+  (args→Nodes, arms→Nodes, field-inits→Nodes, string-parts→Nodes)
+- `expr_children`, `map_expr_children`, `with_expr_data` deleted
+- Replaced by `map_children(node, transform)` — structural, no ExprData
+  knowledge needed
+- `make_expr_node(expr_data, children, inferred, span)` — children are
+  explicit, not derived from ExprData
 
-1. **`expr_children` is the required API** for new expression walkers,
-   shared walkers, and any new ownership/complexity/emit traversals.
-   Direct child-field access in ExprData walks is legacy.
+**Post-dissolution rules:**
 
-2. **No new `ExprData` variant may introduce fresh value-position child
-   `Node` storage outside the `expr_children` contract.** New variants
-   must define their child order through `expr_children`. If a `Node`
-   stays in type position, pattern position, or a binding-site
-   descriptor role, the variant should say so explicitly. Legacy callers
-   may access fields directly until migrated.
+1. **`node.children` is the single authority** for expression child
+   structure. No parallel representation.
 
-3. **`ExprData` dissolution is about child structure, not about
-   `InferredNode`.** The L2 bridge (P5.11/P5.12) dissolves expression
-   metadata (`ExprData` tags, method names, operators, binding names).
-   Inferred type (`return_type`, `return_cardinality`, `InferredNode`)
-   is structural typing from P1.9 — a completed dissolution, not L2 debt.
+2. **ExprData is a closed semantic tag.** It identifies the expression
+   kind and carries non-Node metadata (function names, operator kinds,
+   binding names, semantics). P5.12 evaluates whether this tag should
+   dissolve further.
 
-4. **`map_expr_children` has landed** (v1 retired, PR #200). Stage0→stage1
-   bootstrap handles callable parameters natively, and the structural
-   mapper now backs the remaining `resolve_expr_types` rewrites. Next:
-   continue optional file splitting / orchestration cleanup inside
-   `04_infer.dag`.
+3. **Compositional wrappers are Nodes.** Arguments, match arms, field
+   inits, and string interpolation parts are Nodes in `node.children`.
+   Use `arg_value`, `arm_body`, `arm_pattern`, `arm_guard`,
+   `field_init_node_value` accessors to read their structure.
 
-5. **P5.12 is design validation, not dogmatic deletion.** A closed
+4. **P5.12 is design validation, not dogmatic deletion.** A closed
    typed semantic tag may still be the right intermediate even in a
    Node-centric compiler if it preserves exhaustiveness. P5.12 replaces
    `ExprData` with a more structural representation only if it reduces
@@ -2220,7 +2215,7 @@ can interleave with either track.
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
 | P5.0 | `kind_tag` string dispatch elimination | — | ~200 sites in `02_parse.dag` | **Done.** Parser control flow now goes through payload-insensitive token-shape helpers, source-audit ratchets enforce the API, and `kind_display_name` is diagnostics-only. Token dissolution remains P5.1. |
-| P5.1 | Token dissolution | P5.0 | ~507 lines (`01_tokenize.dag`) | Replace `Token` / `TokenKind` structures with `Node` compositions. Only tractable after P5.0 removes string dispatch. |
+| P5.1 | Token coherence (redefined) | P5.0 | ~507 lines (`01_tokenize.dag`) | **Redefined 2026-03-26.** `Token { text, span, shape }` with `TokenShape` replaces `TokenKind`. This is token coherence (shape/payload separation), not dissolution into Node. Full token→Node dissolution is future work. |
 
 #### Track B: Structural dissolutions (independent, any order)
 
@@ -2289,7 +2284,7 @@ See Active Temporary Bridges table.
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) ✓ | ~129 match sites, ~141 construction sites across all .dag files | Compositional dissolution: args→Nodes, arms→Nodes, field inits→Nodes. Children move to `node.children`. ExprData becomes pure operator metadata. v1 independent. Design decisions resolved 2026-03-26. See P5.11 design below. |
+| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) ✓ | ~129 match sites, ~141 construction sites across all .dag files | **Done (2026-03-26).** ExprData slimmed to pure operator metadata. All Node-valued fields removed. Children in `node.children` as compositional Nodes. Bridge functions deleted. ~300 lines of walker boilerplate eliminated. Diagnostic ratchet at 0. |
 | P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | Validate whether `ExprData` should dissolve into a more structural expression-kind property on Node, or remain as a closed semantic tag where that is the right exhaustiveness device. The goal is structural clarity, not dogmatic deletion. |
 
 ### P5.11 Design: ExprData Child Dissolution
