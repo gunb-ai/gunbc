@@ -1059,11 +1059,20 @@ produced nodes have `collection_kind: none` because the parser doesn't
 know about collection kinds. The regression was silent until a test
 checked `m[k]` on a `Map<String, Int>` parameter.
 
-**Current mitigation:** `resolve_node_bounded` normalizes
-`collection_kind` at entry via `collection_kind_for_name(name)`. This
-is a single derivation site that catches parser-produced nodes early.
-But `collection_kind_for_name` is itself a name-checking function —
-L1 domain knowledge.
+**Short-term invariant (per bridge policy):**
+
+- **Canonical authority:** `collection_kind_for_name` in `04_types.dag`.
+- **Trust boundary:** Before `resolve_node_bounded`, `collection_kind`
+  may be absent (parser-produced nodes have `none`). After
+  normalization at resolve entry, if derivable, it must equal
+  `collection_kind_for_name(name)`. Treat as a **normalized cache of
+  name-derived knowledge**, not independent structural truth.
+- **Regression test:** `map_index_emits_lookup_style_rust` — the test
+  that caught the 2026-03-26 regression.
+- **Deletion point:** Phase 5 L1=0 gate.
+
+Note: `collection_kind_for_name` is itself a name-checking function —
+L1 domain knowledge. The normalization is a mitigation, not a fix.
 
 **Deletion point:** Phase 5 L1=0 gate. When collection types have
 real `.dag` declarations with structural method algebras (indexing,
