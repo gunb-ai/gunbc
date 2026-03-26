@@ -15,6 +15,7 @@ module v2.compiler.infer_resolve
 import std.types { SourceSpan }
 import v2.std.core {
   Node, Field, Param,
+  NodeType, Typed, InferError, Untyped, rt_node,
   InferredNode, Resolved, CompilerError,
   Diagnostic, Severity, Error,
   Cardinality, Required, CardOptional,
