@@ -113,6 +113,8 @@ type Connective = Conj | Disj
 
 type Cardinality = Required | CardOptional
 
+type CollectionKind = ListKind | SetKind | NonEmptyListKind | NonEmptySetKind | MapKind
+
 type Field {
   name: String
   type_expr: Node
@@ -496,6 +498,8 @@ type Node {
   children: List<Node>
   // Logical connective -- And (record/all-hold), Or (sum/one-holds), none (leaf)
   connective: Connective?
+  // Collection classification -- structural, not name-based (P5.7b)
+  collection_kind: CollectionKind?
   // Ports -- what flows in and out
   params: List<Param>
   inferred: InferredNode?
@@ -519,6 +523,7 @@ type Node {
 fn make_expr_node(expr_data: ExprData, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: [], connective: none,
+    collection_kind: none,
     params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, config: none, is_self_recursive: false,
@@ -529,6 +534,7 @@ fn make_expr_node(expr_data: ExprData, inferred: InferredNode?, span: SourceSpan
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: [], connective: none,
+    collection_kind: none,
     params: [], inferred: Some { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none, config: none,
@@ -547,6 +553,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 fn make_transport_node(name: String, properties: List<FieldInit>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
     name: name, span: span, children: children, connective: none,
+    collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, config: none, is_self_recursive: false,
@@ -734,6 +741,7 @@ fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
     span: node.span,
     children: node.children,
     connective: node.connective,
+    collection_kind: node.collection_kind,
     params: node.params,
     inferred: node.inferred,
     return_cardinality: node.return_cardinality,
@@ -962,6 +970,7 @@ fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module
   }
   Node {
     name: message, span: span, children: [], connective: none,
+    collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none,
     properties: concat([sev_prop], mod_prop), type_annotation: none,
@@ -999,7 +1008,7 @@ fn is_token_node(n: Node) -> Bool {
 // =========================================================================
 
 fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
 fn no_span() -> SourceSpan {
@@ -1007,11 +1016,11 @@ fn no_span() -> SourceSpan {
 }
 
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
 fn node_is_product(n: Node) -> Bool {

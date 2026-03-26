@@ -61,7 +61,8 @@ import v2.std.core {
   Text, Interpolation,
   FieldSummary, FieldAccessStyle,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
-  leaf_node, with_required_cardinality
+  leaf_node, with_required_cardinality,
+  node_is_product, node_is_coproduct
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
@@ -89,7 +90,6 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
-  TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
@@ -108,7 +108,7 @@ import v2.compiler.emit {
   has_nested_records_node,
   is_service_item,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item, classify_type_structure,
+  classify_typed_item,
   extract_test_projections,
   bridge_method_base_name,
   is_tco_eligible, emit_shared_tco_expr,
@@ -384,8 +384,8 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // =========================================================================
 
 fn emit_go_type_def_from_connective(item: Node) -> String {
-  let kind = classify_type_structure(n: item)
-  if (kind == TypeConj) {
+  let is_product = node_is_product(n: item)
+  if is_product {
     emit_go_struct_from_children(name: item.name, children: item.children)
   } else {
     emit_go_sum_from_children(name: item.name, children: item.children)
