@@ -4,9 +4,9 @@ use v2_compiler::infer_access;
 use v2_compiler::infer_env::TypeEnv;
 use v2_compiler::infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::infer_types::{
-    bare_map_node, container_node, leaf_node, map_node, with_optional_cardinality,
+    bare_map_node, container_node, map_node,
 };
-use v2_compiler::v2_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan};
+use v2_compiler::v2_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan, leaf_node, with_optional_cardinality};
 
 fn zero_span() -> SourceSpan {
     SourceSpan { start: 0, end: 0 }
