@@ -57,6 +57,8 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   expr_has_self_call, expr_has_non_tail_self_call,
+  arg_name, arg_value, arm_body, arm_pattern, arm_guard,
+  field_init_node_name, field_init_node_value,
   leaf_node, with_required_cardinality, node_has_structure,
   node_is_product, node_is_coproduct
 }
@@ -943,7 +945,10 @@ fn emit_func_def(
 // and only the final expression is wrapped.
 fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match body.expr_data {
-    ExprLet { name: n, value: v, body: inner } => {
+    ExprLet { name: n } => {
+      let ch = body.children
+      let v = match ch |> first { Some { value: val } => val  None => body }
+      let inner = ch |> drop(1) |> first
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
@@ -953,7 +958,8 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
         None => let_line
       }
     }
-    ExprBlock { stmts: ss } => {
+    ExprBlock => {
+      let ss = body.children
       if ss |> count == 0 {
         "Ok(())"
       } else {
@@ -963,7 +969,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
         let last_str = match last_stmt {
           Some { value: s } =>
             match s.expr_data {
-              ExprReturn { value: v } => concat("return Ok(", emit_typed_expr(texpr: v, registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
+              ExprReturn => concat("return Ok(", emit_typed_expr(texpr: match s.children |> first { Some { value: rv } => rv  None => s }, registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
               _ => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
             }
           None => "Ok(())"
@@ -971,7 +977,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
-    ExprReturn { value: v } => concat("return Ok(", emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
+    ExprReturn => concat("return Ok(", emit_typed_expr(texpr: match body.children |> first { Some { value: rv } => rv  None => body }, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
     _ => concat("Ok(", emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
   }
 }
@@ -1660,7 +1666,8 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, vtoe: Map<Str
 
 fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprFieldAccess { base: b, field: f, summary: summary } =>
+    ExprFieldAccess { field: f, summary: summary } =>
+      let b = match expr.children |> first { Some { value: v } => v  None => expr }
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
@@ -1675,7 +1682,8 @@ fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scop
 
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
+      let a = expr.children |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
       emit_typed_call_expr(func: f, args: a, inferred: expr.inferred, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
   }
@@ -1683,7 +1691,9 @@ fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: Infer
 
 fn emit_rust_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
+    ExprMethodCall { method: m, method_semantics: method_semantics } =>
+      let r = match expr.children |> first { Some { value: v } => v  None => expr }
+      let a = expr.children |> drop(1) |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
       emit_typed_method_call(receiver: r, method: m, args: a, result_type: expr.inferred, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_method_call expected ExprMethodCall", target: Rust)
   }
@@ -1691,7 +1701,9 @@ fn emit_rust_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope
 
 fn emit_rust_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprMatch { scrutinee: s, arms: arm_list } =>
+    ExprMatch =>
+      let s = match expr.children |> first { Some { value: v } => v  None => expr }
+      let arm_list = expr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
       emit_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_match expected ExprMatch", target: Rust)
   }
@@ -1699,7 +1711,10 @@ fn emit_rust_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf =>
+      let c = match expr.children |> first { Some { value: v } => v  None => expr }
+      let t = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
+      let e = expr.children |> drop(2) |> first
       emit_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_if expected ExprIf", target: Rust)
   }
@@ -1707,7 +1722,9 @@ fn emit_rust_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 
 fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprLet { name: n, value: v, body: bd } =>
+    ExprLet { name: n } =>
+      let v = match expr.children |> first { Some { value: val } => val  None => expr }
+      let bd = expr.children |> drop(1) |> first
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_let expected ExprLet", target: Rust)
   }
@@ -1715,7 +1732,8 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 
 fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
+    ExprRecordLit { type_name: tn, parent_enum: parent_enum } =>
+      let fs = expr.children |> map(c => FieldInit { name: field_init_node_name(n: c), value: field_init_node_value(n: c) })
       emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: expr), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
   }
@@ -1723,7 +1741,11 @@ fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope:
 
 fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprStringInterp { parts: ps } =>
+    ExprStringInterp =>
+      let ps = expr.children |> map(child => match child.expr_data {
+        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        _ => Interpolation { expr: match child.children |> first { Some { value: e } => e  None => child } }
+      })
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_string_interp expected ExprStringInterp", target: Rust)
   }
@@ -1731,15 +1753,17 @@ fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, sco
 
 fn emit_rust_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBlock { stmts: ss } =>
-      emit_typed_block(stmts: ss, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    ExprBlock =>
+      emit_typed_block(stmts: expr.children, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_block expected ExprBlock", target: Rust)
   }
 }
 
 fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprCast { expr: e, target: t } =>
+    ExprCast =>
+      let e = match expr.children |> first { Some { value: v } => v  None => expr }
+      let t = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
       emit_typed_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_cast expected ExprCast", target: Rust)
   }
@@ -1747,7 +1771,9 @@ fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: Infer
 
 fn emit_rust_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprForEach { variable: v, collection: c, body: bd } =>
+    ExprForEach { variable: v } =>
+      let c = match expr.children |> first { Some { value: val } => val  None => expr }
+      let bd = match expr.children |> drop(1) |> first { Some { value: val } => val  None => expr }
       emit_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_for_each expected ExprForEach", target: Rust)
   }
@@ -1755,7 +1781,9 @@ fn emit_rust_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: I
 
 fn emit_rust_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprIndex { base: b, index: i } =>
+    ExprIndex =>
+      let b = match expr.children |> first { Some { value: v } => v  None => expr }
+      let i = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
       emit_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_index expected ExprIndex", target: Rust)
   }
@@ -1763,7 +1791,10 @@ fn emit_rust_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprSlice { base: b, start: s, end: e } =>
+    ExprSlice =>
+      let b = match expr.children |> first { Some { value: v } => v  None => expr }
+      let s = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
+      let e = expr.children |> drop(2) |> first
       emit_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_slice expected ExprSlice", target: Rust)
   }
@@ -1900,8 +1931,8 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     }
     // Extract field inits from the update argument (ExprRecordLit).
     let field_strs = match update_arg.expr_data {
-      ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
-        fs |> map(f => concat(emit_ident(name: f.name, target: Rust), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
+      ExprRecordLit { type_name: _, parent_enum: _ } =>
+        update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)]
     }
     let fields_str = field_strs |> join(separator: ", ")
@@ -1928,7 +1959,7 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
     match call_args |> last {
       Some { value: a } =>
         match a.value.expr_data {
-          ExprLambda { params: lps, body: _, semantics: semantics } =>
+          ExprLambda { params: lps, semantics: semantics } =>
             lambda_scope_from_semantics(scope: scope, params: lps, semantics: semantics)
           _ => scope
         }
@@ -2133,7 +2164,8 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
 // If the expression is a Lambda, annotate params with elem_type_str. Otherwise emit normally.
 fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
-    ExprLambda { params: ps, body: bd, semantics: semantics } =>
+    ExprLambda { params: ps, semantics: semantics } =>
+      let bd = match lambda_expr.children |> first { Some { value: v } => v  None => lambda_expr }
       let param_strs = lambda_param_type_strs(params: ps, semantics: semantics, fallback_types: [elem_type_str], rc_types: rc_types)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2149,7 +2181,8 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
 // of Map<String, Rc<T>>). Rust can infer the correct type from the init value and body.
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
-    ExprLambda { params: ps, body: bd, semantics: semantics } =>
+    ExprLambda { params: ps, semantics: semantics } =>
+      let bd = match lambda_expr.children |> first { Some { value: v } => v  None => lambda_expr }
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { "_" } else { elem_type_str }
       )
@@ -2192,7 +2225,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         match args |> first {
           Some { value: a } =>
             match a.value.expr_data {
-              ExprLambda { params: ps, body: bd, semantics: semantics } =>
+              ExprLambda { params: ps, semantics: semantics } =>
+                let bd = match a.value.children |> first { Some { value: v } => v  None => a.value }
                 let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
                 let p = emit_ident(name: dag_name, target: Rust)
                 let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2206,7 +2240,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         match args |> first {
           Some { value: a } =>
             match a.value.expr_data {
-              ExprLambda { params: ps, body: bd, semantics: semantics } =>
+              ExprLambda { params: ps, semantics: semantics } =>
+                let bd = match a.value.children |> first { Some { value: v } => v  None => a.value }
                 let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
                 let p = emit_ident(name: dag_name, target: Rust)
                 let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2221,7 +2256,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       match args |> first {
         Some { value: a } =>
           match a.value.expr_data {
-            ExprLambda { params: ps, body: bd, semantics: semantics } =>
+            ExprLambda { params: ps, semantics: semantics } =>
+              let bd = match a.value.children |> first { Some { value: v } => v  None => a.value }
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
               let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2235,7 +2271,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       match args |> first {
         Some { value: a } =>
           match a.value.expr_data {
-            ExprLambda { params: ps, body: bd, semantics: semantics } =>
+            ExprLambda { params: ps, semantics: semantics } =>
+              let bd = match a.value.children |> first { Some { value: v } => v  None => a.value }
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
               let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2249,7 +2286,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       match args |> first {
         Some { value: a } =>
           match a.value.expr_data {
-            ExprLambda { params: ps, body: bd, semantics: semantics } =>
+            ExprLambda { params: ps, semantics: semantics } =>
+              let bd = match a.value.children |> first { Some { value: v } => v  None => a.value }
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
               let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2263,7 +2301,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       match args |> first {
         Some { value: a } =>
           match a.value.expr_data {
-            ExprLambda { params: ps, body: bd, semantics: semantics } =>
+            ExprLambda { params: ps, semantics: semantics } =>
+              let bd = match a.value.children |> first { Some { value: v } => v  None => a.value }
               let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
               let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2311,7 +2350,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       let init_str = match args |> first {
         Some { value: init_arg } =>
           match init_arg.value.expr_data {
-            ExprCall { func: init_func, args: _, call_semantics: _ } =>
+            ExprCall { func: init_func, call_semantics: _ } =>
               if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" && !acc_has_unit_child {
                 concat("<", acc_type_str, ">::new()")
               } else if init_func == "empty_map" {
@@ -2379,8 +2418,8 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
     if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
     let update_arg = (args |> first).value.value
     let field_strs = match update_arg.expr_data {
-      ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
-        fs |> map(f => concat(emit_ident(name: f.name, target: Rust), ": ", emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
+      ExprRecordLit { type_name: _, parent_enum: _ } =>
+        update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)]
     }
     let fields_str = field_strs |> join(separator: ", ")
@@ -2570,12 +2609,13 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
             }
         }
       }
-    ExprRecordLit { type_name: tn, fields: _, parent_enum: _ } =>
+    ExprRecordLit { type_name: tn, parent_enum: _ } =>
       match tn {
         Some { value: name } => name == "Some" || name == "None"
         None => false
       }
-    ExprFieldAccess { base: b, field: f, summary: fa_summary } =>
+    ExprFieldAccess { field: f, summary: fa_summary } =>
+      let b = match texpr.children |> first { Some { value: v } => v  None => texpr }
       // If the base type is known and this field has OptionalValue shape,
       // the result is already Option<T> — don't double-wrap in Some().
       // Check 1: field_summary from reconcile directly says OptionalValue
@@ -2662,7 +2702,8 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
 // use the struct's expected field type to determine the correct parent enum.
 fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_type_name: String?, field_name: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match field_value.expr_data {
-    ExprRecordLit { type_name: tn, fields: inner_fields, parent_enum: pe } =>
+    ExprRecordLit { type_name: tn, parent_enum: pe } =>
+      let inner_fields = field_value.children |> map(c => FieldInit { name: field_init_node_name(n: c), value: field_init_node_value(n: c) })
       match tn {
         Some { value: variant_name } =>
           // Try node-based lookup first, then fall back to field_type_names map
@@ -2927,7 +2968,8 @@ fn emit_tco_init_block_stmts(remaining: List<Node>, text: List<String>,
 
 fn emit_tco_init_stmt(stmt: Node, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match stmt.expr_data {
-    ExprLet { name: n, value: v, body: _ } =>
+    ExprLet { name: n } =>
+      let v = match stmt.children |> first { Some { value: val } => val  None => stmt }
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
@@ -2943,7 +2985,8 @@ fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Param>, regist
 
 fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
+      let a = frame.expr.children |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
       let call_str = emit_typed_call(func: f, args: a, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       concat("break ", call_str, ";")
     _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
@@ -2952,7 +2995,10 @@ fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>,
 
 fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf =>
+      let c = match frame.expr.children |> first { Some { value: v } => v  None => frame.expr }
+      let t = match frame.expr.children |> drop(1) |> first { Some { value: v } => v  None => frame.expr }
+      let e = frame.expr.children |> drop(2) |> first
       let cond_str = emit_typed_expr(texpr: c, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let then_str = emit_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       match e {
@@ -2971,7 +3017,9 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, regis
 
 fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprMatch { scrutinee: s, arms: arm_list } =>
+    ExprMatch =>
+      let s = match frame.expr.children |> first { Some { value: v } => v  None => frame.expr }
+      let arm_list = frame.expr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let tco_scrut_type = match s.inferred {
         Some { value: Resolved { node: rt } } =>
@@ -3000,7 +3048,9 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, re
 
 fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprLet { name: n, value: v, body: bd } =>
+    ExprLet { name: n } =>
+      let v = match frame.expr.children |> first { Some { value: val } => val  None => frame.expr }
+      let bd = frame.expr.children |> drop(1) |> first
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
       let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
@@ -3016,7 +3066,8 @@ fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, regi
 
 fn emit_rust_tco_block(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
-    ExprBlock { stmts: ss } =>
+    ExprBlock =>
+      let ss = frame.expr.children
       if ss |> count == 0 {
         "break;"
       } else {
@@ -3399,10 +3450,10 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     // Map data: emit as lazy_static with explicit insert() calls.
     // The value is a RecordLit whose field names are map keys and field values are map values.
     match value.expr_data {
-      ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
-        let inserts = fs |> map(f =>
-          let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
-          concat("        __m.insert(\"", f.name, "\".to_string(), ", val_str, ");")
+      ExprRecordLit { type_name: _, parent_enum: _ } =>
+        let inserts = value.children |> map(f =>
+          let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+          concat("        __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
         )
         let inserts_str = inserts |> join(separator: "\n")
         concat("lazy_static::lazy_static! {\n",

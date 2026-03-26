@@ -17,6 +17,8 @@ import v2.std.core {
   ExprData, ExprCall,
   expr_children,
   diagnostic_node, no_span,
+  Diagnostic, Severity, Error,
+  ErrorCategory, TypeMismatch,
   DeclaredFuncSig
 }
 import v2.compiler.infer_types { emit_map_has }
@@ -76,13 +78,13 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>)
 fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
   // Per-node logic: detect local function calls and produce call edges.
   let this_edges = match texpr.expr_data {
-    ExprCall { func: f, args: _, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
       if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
       else { [] }
     _ => []
   }
   // Structural recursion into all child expressions.
-  let child_edges = expr_children(node: texpr) |> flat_map(child =>
+  let child_edges = texpr.children |> flat_map(child =>
     collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set)
   )
   let result = concat(this_edges, child_edges)

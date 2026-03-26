@@ -43,6 +43,9 @@ import v2.std.core {
   BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
   BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
+  arm_body, arm_pattern, arm_guard,
+  arg_name, arg_value,
+  field_init_node_name, field_init_node_value,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   TransportKind, RestTransport, ShellTransport, FileTransport,
@@ -180,7 +183,8 @@ fn emit_simple_expr(expr: Node, target: RenderTarget) -> String {
     ExprError { kind: _, message: message } =>
       emit_error_expr(message: message, target: target)
     ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: target)
-    ExprFieldAccess { base: b, field: f, summary: _ } =>
+    ExprFieldAccess { field: f, summary: _ } =>
+      let b = match expr.children |> first { Some { value: v } => v  None => expr }
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
@@ -189,7 +193,11 @@ fn emit_simple_expr(expr: Node, target: RenderTarget) -> String {
       } else {
         concat(emit_simple_expr(expr: b, target: target), ".", emit_ident(name: f, target: target))
       }
-    ExprStringInterp { parts: ps } =>
+    ExprStringInterp =>
+      let ps = expr.children |> map(child => match child.expr_data {
+        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        _ => Interpolation { expr: match child.children |> first { Some { value: e } => e  None => child } }
+      })
       emit_simple_string_interp(parts: ps, target: target)
     _ => emit_error_expr(message: "unsupported simple expr in test/mock binding", target: target)
   }
@@ -277,8 +285,12 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 // After Expr->Node dissolution, resolved type is on Node.inferred.
 fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
-    ExprLet { name: name, value: value, body: body } =>
-      if body == none {
+    ExprLet { name: name } =>
+      // children = [value, body?]. Bodyless let extends scope.
+      let ch = texpr.children
+      let has_body = (ch |> count) > 1
+      if has_body == false {
+        let value = match ch |> first { Some { value: v } => v  None => texpr }
         extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
       } else {
         scope
@@ -393,13 +405,13 @@ fn emit_data_value_json(value: Node) -> String {
       LitBool { value: b } => if b { "true" } else { "false" }
       LitNull => "null"
     }
-    ExprListLit { elements: els } => {
-      let el_strs = els |> map(e => emit_data_value_json(value: e))
+    ExprListLit => {
+      let el_strs = value.children |> map(e => emit_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } => {
-      let field_strs = fs |> map(f =>
-        concat("\"", escape_json_string(s: f.name), "\": ", emit_data_value_json(value: f.value))
+    ExprRecordLit { type_name: _, parent_enum: _ } => {
+      let field_strs = value.children |> map(f =>
+        concat("\"", escape_json_string(s: field_init_node_name(n: f)), "\": ", emit_data_value_json(value: field_init_node_value(n: f)))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
@@ -1071,24 +1083,24 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprLiteral { value: _ } => ExprCatLeaf
     ExprError { kind: _, message: _ } => ExprCatLeaf
     ExprVar { name: _, binding_kind: _ } => ExprCatLeaf
-    ExprFieldAccess { base: _, field: _, summary: _ } => ExprCatCompound
-    ExprCall { func: _, args: _, call_semantics: _ } => ExprCatCompound
-    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _ } => ExprCatCompound
-    ExprRecordLit { type_name: _, fields: _, parent_enum: _ } => ExprCatCompound
-    ExprListLit { elements: _ } => ExprCatCompound
-    ExprBinOp { op: _, left: _, right: _ } => ExprCatCompound
-    ExprUnaryOp { op: _, operand: _ } => ExprCatCompound
-    ExprLambda { params: _, body: _, semantics: _ } => ExprCatCompound
-    ExprStringInterp { parts: _ } => ExprCatCompound
-    ExprCast { expr: _, target: _ } => ExprCatCompound
-    ExprIndex { base: _, index: _ } => ExprCatCompound
-    ExprSlice { base: _, start: _, end: _ } => ExprCatCompound
-    ExprMatch { scrutinee: _, arms: _ } => ExprCatControlFlow
-    ExprIf { condition: _, then_branch: _, else_branch: _ } => ExprCatControlFlow
-    ExprForEach { variable: _, collection: _, body: _ } => ExprCatControlFlow
-    ExprBlock { stmts: _ } => ExprCatControlFlow
-    ExprLet { name: _, value: _, body: _ } => ExprCatBinding
-    ExprReturn { value: _ } => ExprCatControlFlow
+    ExprFieldAccess { field: _, summary: _ } => ExprCatCompound
+    ExprCall { func: _, call_semantics: _ } => ExprCatCompound
+    ExprMethodCall { method: _, method_semantics: _ } => ExprCatCompound
+    ExprRecordLit { type_name: _, parent_enum: _ } => ExprCatCompound
+    ExprListLit => ExprCatCompound
+    ExprBinOp { op: _ } => ExprCatCompound
+    ExprUnaryOp { op: _ } => ExprCatCompound
+    ExprLambda { params: _, semantics: _ } => ExprCatCompound
+    ExprStringInterp => ExprCatCompound
+    ExprCast => ExprCatCompound
+    ExprIndex => ExprCatCompound
+    ExprSlice => ExprCatCompound
+    ExprMatch => ExprCatControlFlow
+    ExprIf => ExprCatControlFlow
+    ExprForEach { variable: _ } => ExprCatControlFlow
+    ExprBlock => ExprCatControlFlow
+    ExprLet { name: _ } => ExprCatBinding
+    ExprReturn => ExprCatControlFlow
     NoExprData => ExprCatNone
     _ => ExprCatNone
   }
@@ -1101,10 +1113,13 @@ type FuncBodyShape
 
 fn classify_func_body(body: Node) -> FuncBodyShape {
   match body.expr_data {
-    ExprLet { name: n, value: v, body: rest } =>
+    ExprLet { name: n } =>
+      let ch = body.children
+      let v = match ch |> first { Some { value: val } => val  None => body }
+      let rest = ch |> drop(1) |> first
       FuncBodyLet { name: n, value: v, rest: rest }
-    ExprBlock { stmts: ss } =>
-      FuncBodyBlock { stmts: ss }
+    ExprBlock =>
+      FuncBodyBlock { stmts: body.children }
     _ =>
       FuncBodyExpr { expr: body }
   }
@@ -1120,16 +1135,26 @@ type TcoExprShape
 
 fn classify_tco_expr(texpr: Node) -> TcoExprShape {
   match texpr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
+      let a = texpr.children |> map(a => NamedArg { name: arg_name(n: a), value: arg_value(n: a) })
       TcoCall { func: f, args: a }
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf =>
+      let ch = texpr.children
+      let c = match ch |> first { Some { value: v } => v  None => texpr }
+      let t = match ch |> drop(1) |> first { Some { value: v } => v  None => texpr }
+      let e = ch |> drop(2) |> first
       TcoIf { condition: c, then_branch: t, else_branch: e }
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      TcoMatch { scrutinee: s, arms: arm_list }
-    ExprLet { name: n, value: v, body: bd } =>
+    ExprMatch =>
+      let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
+      let arm_list = texpr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      TcoMatch { scrutinee: scrut, arms: arm_list }
+    ExprLet { name: n } =>
+      let ch = texpr.children
+      let v = match ch |> first { Some { value: val } => val  None => texpr }
+      let bd = ch |> drop(1) |> first
       TcoLet { name: n, value: v, body: bd }
-    ExprBlock { stmts: ss } =>
-      TcoBlock { stmts: ss }
+    ExprBlock =>
+      TcoBlock { stmts: texpr.children }
     _ =>
       TcoOther { expr: texpr }
   }
@@ -1212,19 +1237,20 @@ fn emit_shared_tco_expr(
   emit_default_return: fn(TcoFrame) -> String
 ) -> String {
   match frame.expr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
       if f == fn_name {
+        let a = frame.expr.children |> map(a => NamedArg { name: arg_name(n: a), value: arg_value(n: a) })
         emit_self_call_reassign(TcoReassignInput { args: a, scope: frame.scope, depth: frame.depth })
       } else {
         emit_non_self_call(frame)
       }
-    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+    ExprIf =>
       emit_if(frame)
-    ExprMatch { scrutinee: _, arms: _ } =>
+    ExprMatch =>
       emit_match(frame)
-    ExprLet { name: _, value: _, body: _ } =>
+    ExprLet { name: _ } =>
       emit_let(frame)
-    ExprBlock { stmts: _ } =>
+    ExprBlock =>
       emit_block(frame)
     _ =>
       emit_default_return(frame)
@@ -1233,17 +1259,25 @@ fn emit_shared_tco_expr(
 
 fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: _, call_semantics: _ } => f == func_name
-    ExprIf { condition: _, then_branch: t, else_branch: e } =>
-      is_tco_candidate(texpr: t, func_name: func_name) ||
-        match e { Some { value: eb } => is_tco_candidate(texpr: eb, func_name: func_name)  None => false }
-    ExprMatch { scrutinee: _, arms: arm_list } =>
-      arm_list |> any(arm => is_tco_candidate(texpr: arm.body, func_name: func_name))
-    ExprLet { name: _, value: _, body: bd } =>
-      match bd { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
-    ExprBlock { stmts: ss } =>
-      if ss |> count == 0 { false }
-      else { ss |> any(s => is_tco_candidate(texpr: s, func_name: func_name)) }
+    ExprCall { func: f, call_semantics: _ } => f == func_name
+    ExprIf =>
+      // children = [condition, then, else?]. Check branches.
+      let ch = texpr.children
+      let then_cand = match ch |> drop(1) |> first { Some { value: t } => is_tco_candidate(texpr: t, func_name: func_name)  None => false }
+      let else_cand = match ch |> drop(2) |> first { Some { value: e } => is_tco_candidate(texpr: e, func_name: func_name)  None => false }
+      then_cand || else_cand
+    ExprMatch =>
+      // children = [scrutinee, arm0, arm1, ...]. Check arm bodies.
+      texpr.children |> drop(1) |> any(arm_node => is_tco_candidate(texpr: arm_body(n: arm_node), func_name: func_name))
+    ExprLet { name: _ } =>
+      // children = [value, body?]. Check body.
+      match texpr.children |> drop(1) |> first { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
+    ExprBlock =>
+      // children = [stmt0, stmt1, ...].
+      texpr.children |> any(s => is_tco_candidate(texpr: s, func_name: func_name))
+    NoExprData =>
+      // Wrapper nodes -- recurse through children.
+      texpr.children |> any(child => is_tco_candidate(texpr: child, func_name: func_name))
     _ => false
   }
 }
@@ -1406,21 +1440,23 @@ fn emit_shared_expr(
       wrap_result(emit_error_expr(message: message, target: target))
     ExprVar { name: _, binding_kind: _ } =>
       emit_var(texpr)
-    ExprFieldAccess { base: _, field: _, summary: _ } =>
+    ExprFieldAccess { field: _, summary: _ } =>
       emit_field_access(texpr)
-    ExprCall { func: _, args: _, call_semantics: _ } =>
+    ExprCall { func: _, call_semantics: _ } =>
       emit_call(texpr)
-    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _ } =>
+    ExprMethodCall { method: _, method_semantics: _ } =>
       emit_method_call(texpr)
-    ExprMatch { scrutinee: _, arms: _ } =>
+    ExprMatch =>
       emit_match(texpr)
-    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+    ExprIf =>
       emit_if(texpr)
-    ExprLet { name: _, value: _, body: _ } =>
+    ExprLet { name: _ } =>
       emit_let(texpr)
-    ExprRecordLit { type_name: _, fields: _, parent_enum: _ } =>
+    ExprRecordLit { type_name: _, parent_enum: _ } =>
       emit_record_lit(texpr)
-    ExprBinOp { op: op, left: left, right: right } =>
+    ExprBinOp { op: op } =>
+      let left = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let right = match texpr.children |> drop(1) |> first { Some { value: v } => v  None => texpr }
       let left_str = recurse(left)
       let right_str = recurse(right)
       if is_null_coalesce(op: op) {
@@ -1429,26 +1465,29 @@ fn emit_shared_expr(
         let op_str = emit_bin_op_symbol(op: op, target: target)
         wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
       }
-    ExprUnaryOp { op: op, operand: operand } =>
+    ExprUnaryOp { op: op } =>
+      let operand = match texpr.children |> first { Some { value: v } => v  None => texpr }
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
-    ExprLambda { params: params, body: body, semantics: _ } =>
+    ExprLambda { params: params, semantics: _ } =>
+      let body = match texpr.children |> first { Some { value: v } => v  None => texpr }
       wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: params, target: target), body_str: recurse(body), target: target))
-    ExprStringInterp { parts: _ } =>
+    ExprStringInterp =>
       emit_string_interp(texpr)
-    ExprBlock { stmts: _ } =>
+    ExprBlock =>
       emit_block(texpr)
-    ExprCast { expr: _, target: _ } =>
+    ExprCast =>
       emit_cast(texpr)
-    ExprForEach { variable: _, collection: _, body: _ } =>
+    ExprForEach { variable: _ } =>
       emit_for_each(texpr)
-    ExprIndex { base: _, index: _ } =>
+    ExprIndex =>
       emit_index(texpr)
-    ExprSlice { base: _, start: _, end: _ } =>
+    ExprSlice =>
       emit_slice(texpr)
-    ExprListLit { elements: elements } =>
-      wrap_result(emit_list_lit_expr(element_strs: elements |> map(el => recurse(el)), target: target))
-    ExprReturn { value: value } =>
-      wrap_result(emit_return(value: recurse(value), target: target))
+    ExprListLit =>
+      wrap_result(emit_list_lit_expr(element_strs: texpr.children |> map(el => recurse(el)), target: target))
+    ExprReturn =>
+      let ret_val = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      wrap_result(emit_return(value: recurse(ret_val), target: target))
     NoExprData => wrap_result("")
   }
 }
