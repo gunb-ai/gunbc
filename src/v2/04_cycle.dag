@@ -19,6 +19,10 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   result
 }
 
+fn empty_string_list() -> List<String> {
+  []
+}
+
 // Filter each binding's deps to only names present in the binding set.
 // Primitives and external names are excluded -- they can't participate in cycles.
 fn compute_in_graph_deps(
@@ -31,7 +35,7 @@ fn compute_in_graph_deps(
       Some { value: deps } =>
         let local = filter(deps, d => d != name && set_has(m: name_set, key: d))
         map_insert(acc, name, local)
-      None => map_insert(acc, name, [])
+      None => map_insert(acc, name, empty_string_list())
     }
   )
   result

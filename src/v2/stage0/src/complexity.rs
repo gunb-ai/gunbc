@@ -190,8 +190,7 @@ pub fn collection_output(binder: &str, size: Rc<SizeExpr>) -> Rc<HashMap<String,
 }
 
 pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
-    let result = Rc::new(std::collections::HashMap::new());
-    result.clone()
+    Rc::new(std::collections::HashMap::new())
 }
 
 pub fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> bool {
@@ -373,8 +372,7 @@ pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, 
 };
     r.clone()
 } else {
-    let r = Rc::new(std::collections::HashMap::new());
-    r.clone()
+    Rc::new(std::collections::HashMap::new())
 };
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(recv_r.summary.work.clone(), loop_work.clone()), span: cost_seq(recv_r.summary.span.clone(), loop_work.clone()), output_size: scan_os.clone(), certainty: recv_r.summary.certainty.clone() }), table: recv_r.table.clone() })
 }

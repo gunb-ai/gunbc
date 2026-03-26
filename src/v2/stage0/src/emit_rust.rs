@@ -3098,15 +3098,15 @@ pub fn emit_typed_call_expr(func: &str, args: Rc<Vec<Rc<NamedArg>>>, return_type
         {
     let resolved_ret = resolve_scrutinee_type_node(scope.type_env.clone(), ret_type.clone());
     let type_str = emit_node_type_rc(resolved_ret.clone(), RenderTarget::Rust, rc_types.clone());
-    if (type_str.clone() != "") && (type_str.clone() != "Dynamic") {
+    if ((type_str.clone() != "") && (type_str.clone() != "Dynamic")) && (v2_rt::string_contains(&type_str, &"compile_error!") == false) {
     v2_rt::concat(v2_rt::concat("<".to_string(), type_str.clone()), ">::new()".to_string())
 } else {
-    "compile_error!(\"empty_map requires a concrete result type\")".to_string()
+    "compile_error!(\"bare empty_map reached emit\")".to_string()
 }
 }
     }
     _ => {
-        "compile_error!(\"empty_map missing resolved return type\")".to_string()
+        "compile_error!(\"empty_map missing resolved type at emit\")".to_string()
     }
 }
 } else {
@@ -4050,18 +4050,7 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
     let acc_type_str = emit_node_type_rc(acc_type_node.clone(), RenderTarget::Rust, rc_types.clone());
     let init_str = match args.clone().first().cloned() {
     Some(init_arg) => {
-        match init_arg.value.expr_data.as_ref() {
-    ExprData::ExprCall { func: init_func, args: _, call_semantics: _, .. } => {
-        if ((init_func.clone() == "empty_map") && (acc_type_str.clone() != "_")) && (acc_type_str.clone() != "Dynamic") {
-    v2_rt::concat(v2_rt::concat("<".to_string(), acc_type_str.clone()), ">::new()".to_string())
-} else {
-    emit_typed_expr(init_arg.value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
-}
-    }
-    _ => {
         emit_typed_expr(init_arg.value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
-    }
-}
     }
     None => {
         "compile_error!(\"missing fold init argument\")".to_string()
@@ -4710,7 +4699,7 @@ pub fn emit_field_value_with_context(field_value: Rc<Node>, struct_node: Rc<Node
     }
     None => {
         if struct_node.name.clone() != "" {
-    let ftn_key = v2_rt::concat(v2_rt::concat(normalize_emit_type_name(&struct_node.name), "|".to_string()), field_name.to_string());
+    let ftn_key = v2_rt::concat(v2_rt::concat(struct_node.name.clone(), "|".to_string()), field_name.to_string());
     emit_info.field_type_names.clone().get(&ftn_key.clone()).cloned()
 } else {
     None

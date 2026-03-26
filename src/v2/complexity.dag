@@ -229,8 +229,7 @@ fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
 }
 
 fn scalar_output() -> Map<String, CostExpr> {
-  let result = empty_map()
-  result
+  empty_map()
 }
 
 
@@ -391,8 +390,7 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
         let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
         r
       } else {
-        let r = empty_map()
-        r
+        empty_map()
       }
       SummaryResult {
         summary: ComplexitySummary {

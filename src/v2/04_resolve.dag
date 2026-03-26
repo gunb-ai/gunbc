@@ -67,6 +67,20 @@ type ExprResolveResult {
   diagnostics: List<Diagnostic>
 }
 
+fn empty_diagnostics() -> List<Diagnostic> {
+  filter(
+    [Diagnostic { severity: Error, message: "", span: none, module_name: none, category: none }],
+    d => false
+  )
+}
+
+fn empty_params() -> List<Param> {
+  filter(
+    [Param { name: "", type_expr: leaf_node(name: "Unit"), default_value: none, span: no_span() }],
+    p => false
+  )
+}
+
 type NamedArgResolveResult {
   arg: NamedArg
   diagnostics: List<Diagnostic>
@@ -207,13 +221,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               resolved: Node { name: n.name, span: n.span, children: [base_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
               diagnostics: base_diags
             }
-          None => NodeResolveResult { resolved: n, diagnostics: [] }
+          None => NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
         }
       } else {
         // Product: recurse on each child's return_type
         let child_results = map(n.children, child =>
           if child.return_type == none {
-            NodeResolveResult { resolved: child, diagnostics: [] }
+            NodeResolveResult { resolved: child, diagnostics: empty_diagnostics() }
           } else {
             let child_rt = rt_type(n: child)
             let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1)
@@ -247,7 +261,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         let variant_results = map(n.children, variant_child =>
           let field_results = map(variant_child.children, field_child =>
             if field_child.return_type == none {
-              NodeResolveResult { resolved: field_child, diagnostics: [] }
+              NodeResolveResult { resolved: field_child, diagnostics: empty_diagnostics() }
             } else {
               let field_rt = rt_type(n: field_child)
               // Skip resolution for self-referencing fields in recursive types
@@ -256,7 +270,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               // recursive types where n.name is the variant, not the parent type.
               let is_self_ref = field_rt.name == n.name && field_rt.children |> count > 0
               let rt_result = if is_self_ref {
-                NodeResolveResult { resolved: field_rt, diagnostics: [] }
+                NodeResolveResult { resolved: field_rt, diagnostics: empty_diagnostics() }
               } else {
                 resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1)
               }
@@ -291,7 +305,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
       [Diagnostic { message: concat("type ", n.name, " expects ", to_string(value: expected_arity), " type arguments, got ", to_string(value: actual_arity)), severity: Error, span: n.span, module_name: Some { value: module_name }, category: Some { value: TypeMismatch } }]
-    } else { [] }
+    } else { empty_diagnostics() }
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
@@ -308,7 +322,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     )
     let is_recursive = is_recursive_type(env: env, name: n.name)
     let result = NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: n.collection_kind, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
+      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: n.collection_kind, params: empty_params(), return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
       diagnostics: concat(arity_diags, arg_diags)
     }
     result
@@ -343,12 +357,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           resolved: Node { name: n.name, span: n.span, children: [el_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
           diagnostics: el_diags
         }
-      None => NodeResolveResult { resolved: n, diagnostics: [] }
+      None => NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
     }
   } else if n.children |> count == 0 {
     // Leaf node: lookup in env, recurse if found
     if is_recursive_type(env: env, name: n.name) {
-      NodeResolveResult { resolved: n, diagnostics: [] }
+      NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
     } else {
       match lookup_type(env: env, name: n.name) {
         Some { value: resolved } =>
@@ -361,10 +375,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // reference site may carry CardOptional (e.g. String? -> String
           // in env). Without this, optionality is silently discarded.
           let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
-          NodeResolveResult { resolved: final_resolved, diagnostics: [] }
+          NodeResolveResult { resolved: final_resolved, diagnostics: empty_diagnostics() }
         None =>
           if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
-            NodeResolveResult { resolved: n, diagnostics: [] }
+            NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
           } else {
             NodeResolveResult {
               resolved: n,
@@ -381,12 +395,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else {
     // Unknown structure -- pass through
-    NodeResolveResult { resolved: n, diagnostics: [] }
+    NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
   }
 }
 
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  if n == none { NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+  if n == none { NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: empty_diagnostics() } }
   else {
     match n.value {
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
@@ -413,7 +427,7 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
   }
   let default_diags = match default_resolved {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   FieldResult {
     field: Field {
@@ -445,7 +459,7 @@ fn resolve_param(param: Param, env: TypeEnv, module_name: String) -> ParamResult
   }
   let default_diags = match default_resolved {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   ParamResult {
     param: Param {
@@ -510,7 +524,7 @@ fn resolve_match_arm(arm: MatchArm, env: TypeEnv, module_name: String) -> MatchA
   }
   let guard_diags = match guard_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   let body_result = resolve_expr_types(texpr: arm.body, env: env, module_name: module_name)
   let body_expr = body_result.expr
@@ -533,7 +547,7 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
     Text { value: value } =>
       StringPartResolveResult {
         part: Text { value: value },
-        diagnostics: []
+        diagnostics: empty_diagnostics()
       }
     Interpolation { expr: expr } =>
       let expr_result = resolve_expr_types(texpr: expr, env: env, module_name: module_name)
@@ -558,7 +572,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   }
   let auth_diags = match auth_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   let rate_result = match config.rate_limit {
     Some { value: rate_limit } => Some { value: resolve_expr_types(texpr: rate_limit, env: env, module_name: module_name) }
@@ -566,7 +580,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   }
   let rate_diags = match rate_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   let retry_result = match config.retry {
     Some { value: retry } => Some { value: resolve_expr_types(texpr: retry, env: env, module_name: module_name) }
@@ -574,7 +588,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   }
   let retry_diags = match retry_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   ServiceConfigResolveResult {
     config: ServiceConfig {
@@ -598,7 +612,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
   if is_transport_kind(t: transport, kind: LocalTransport) {
-    TransportResolveResult { transport: transport, diagnostics: [] }
+    TransportResolveResult { transport: transport, diagnostics: empty_diagnostics() }
   } else {
     // Generic resolution: resolve all property values and children
     let prop_results = map(transport.properties, p =>
@@ -623,13 +637,13 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
 // retires (Phase 3). Deletion point: P5.11.
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
-    ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
+    ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: empty_diagnostics() }
     ExprError { kind: kind, message: message } =>
       ExprResolveResult {
         expr: make_expr_error_node(kind: kind, message: message, span: texpr.span),
         diagnostics: [Diagnostic { severity: Error, message: message, span: Some { value: texpr.span }, module_name: Some { value: module_name }, category: Some { value: CascadeError } }]
       }
-    ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
+    ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: empty_diagnostics() }
     ExprFieldAccess { base: base, field: field, summary: summary } =>
       let r = resolve_expr_types(texpr: base, env: env, module_name: module_name)
       ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
@@ -648,11 +662,11 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let cr = resolve_expr_types(texpr: c, env: env, module_name: module_name)
       let tr = resolve_expr_types(texpr: t, env: env, module_name: module_name)
       let er = match e { Some { value: eb } => Some { value: resolve_expr_types(texpr: eb, env: env, module_name: module_name) }  None => none }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprIf { condition: cr.expr, then_branch: tr.expr, else_branch: match er { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(cr.diagnostics, tr.diagnostics, match er { Some { value: r } => r.diagnostics  None => [] }) }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprIf { condition: cr.expr, then_branch: tr.expr, else_branch: match er { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(cr.diagnostics, tr.diagnostics, match er { Some { value: r } => r.diagnostics  None => empty_diagnostics() }) }
     ExprLet { name: name, value: v, body: b } =>
       let vr = resolve_expr_types(texpr: v, env: env, module_name: module_name)
       let br = match b { Some { value: bd } => Some { value: resolve_expr_types(texpr: bd, env: env, module_name: module_name) }  None => none }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprLet { name: name, value: vr.expr, body: match br { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => [] }) }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprLet { name: name, value: vr.expr, body: match br { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => empty_diagnostics() }) }
     ExprRecordLit { type_name: tn, fields: fields, parent_enum: pe } =>
       let fr = map(fields, fi => resolve_field_init(field_init: fi, env: env, module_name: module_name))
       ExprResolveResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: tn, fields: map(fr, f => f.field_init), parent_enum: pe }, return_type: texpr.return_type, span: texpr.span), diagnostics: flat_map(fr, f => f.diagnostics) }
@@ -695,7 +709,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
     ExprReturn { value: inner } =>
       let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
       ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    NoExprData => ExprResolveResult { expr: texpr, diagnostics: [] }
+    NoExprData => ExprResolveResult { expr: texpr, diagnostics: empty_diagnostics() }
   }
 }
 
@@ -725,16 +739,16 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve body if present (non-optional intermediate, same pattern as transport/anno)
   let body_resolved = if item.body == none {
-    ExprResolveResult { expr: item, diagnostics: [] }
+    ExprResolveResult { expr: item, diagnostics: empty_diagnostics() }
   } else {
     resolve_expr_types(texpr: item.body.value, env: env, module_name: module_name)
   }
   let resolved_body = if item.body == none { none } else { Some { value: body_resolved.expr } }
-  let body_diags = if item.body == none { [] } else { body_resolved.diagnostics }
+  let body_diags = if item.body == none { empty_diagnostics() } else { body_resolved.diagnostics }
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
-    NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
+    NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: empty_diagnostics() }
   } else {
     resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }
@@ -743,7 +757,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve transport if present
   let transport_resolved = if item.transport == none {
-    TransportResolveResult { transport: local_transport_node(span: no_span()), diagnostics: [] }
+    TransportResolveResult { transport: local_transport_node(span: no_span()), diagnostics: empty_diagnostics() }
   } else {
     resolve_transport_binding(transport: item.transport.value, env: env, module_name: module_name)
   }
@@ -752,12 +766,12 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve config if present (non-optional intermediate, same pattern as transport/anno)
   let config_resolved = if item.config == none {
-    ServiceConfigResolveResult { config: ServiceConfig { endpoint: item, auth: none, rate_limit: none, retry: none }, diagnostics: [] }
+    ServiceConfigResolveResult { config: ServiceConfig { endpoint: item, auth: none, rate_limit: none, retry: none }, diagnostics: empty_diagnostics() }
   } else {
     resolve_service_config(config: item.config.value, env: env, module_name: module_name)
   }
   let resolved_config = if item.config == none { none } else { Some { value: config_resolved.config } }
-  let config_diags = if item.config == none { [] } else { config_resolved.diagnostics }
+  let config_diags = if item.config == none { empty_diagnostics() } else { config_resolved.diagnostics }
 
   // Resolve properties
   let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))

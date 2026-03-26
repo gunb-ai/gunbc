@@ -3572,6 +3572,22 @@ type ParseResult {
   error: Diagnostic?
 }
 
+fn empty_import_names() -> List<String> {
+  []
+}
+
+fn empty_named_args() -> List<NamedArg> {
+  []
+}
+
+fn empty_field_bindings() -> List<FieldBinding> {
+  []
+}
+
+fn empty_field_inits() -> List<FieldInit> {
+  []
+}
+
 // Typed parse results -- replace the untyped PR type.
 // Each result type has the value fields directly (no val nesting),
 // plus state and err for threading.
@@ -4605,7 +4621,7 @@ fn parse_items_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> 
 
 fn parse_import(tokens: List<Token>, state: ParserState) -> ImportResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let err_import = Import { module_path: "", names: ImportSpecific { names: [] }, span: start_span }
+  let err_import = Import { module_path: "", names: ImportSpecific { names: empty_import_names() }, span: start_span }
   let r = expect(tokens: tokens, state: state, expected: ExpectKwImport)
   if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
   let s = r.state
@@ -6809,7 +6825,7 @@ fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span:
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
     ExprResult { expr: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: method, args: r2.args, method_semantics: none }, return_type: none, span: span), state: r2.state, err: none }
   } else {
-    ExprResult { expr: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: method, args: [], method_semantics: none }, return_type: none, span: span), state: s, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: method, args: empty_named_args(), method_semantics: none }, return_type: none, span: span), state: s, err: none }
   }
 }
 
@@ -7482,7 +7498,7 @@ fn parse_variant_pattern(tokens: List<Token>, state: ParserState, name: String) 
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, state: r2.state, err: none }
   } else {
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, state: state, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: empty_field_bindings() }, state: state, err: none }
   }
 }
 
@@ -7753,7 +7769,7 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 
   if peek_is_rparen(tokens: tokens, state: s) {
     let adv = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [], parent_enum: none }, return_type: none, span: span), state: adv.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: empty_field_inits(), parent_enum: none }, return_type: none, span: span), state: adv.state, err: none }
   } else {
     let lambda_r = try_lambda_params(tokens: tokens, state: s)
     if lambda_r.is_lambda {
@@ -7935,7 +7951,7 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 
   if peek_is_rbrace(tokens: tokens, state: s) {
     let adv2 = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [], parent_enum: none }, return_type: none, span: span), state: adv2.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: empty_field_inits(), parent_enum: none }, return_type: none, span: span), state: adv2.state, err: none }
   } else {
     let k = peek_kind(tokens: tokens, state: s)
     match k {
@@ -8638,6 +8654,10 @@ fn set_has(m: Map<String, Bool>, key: String) -> Bool {
   result
 }
 
+fn empty_string_list() -> List<String> {
+  []
+}
+
 // Filter each binding's deps to only names present in the binding set.
 // Primitives and external names are excluded -- they can't participate in cycles.
 fn compute_in_graph_deps(
@@ -8650,7 +8670,7 @@ fn compute_in_graph_deps(
       Some { value: deps } =>
         let local = filter(deps, d => d != name && set_has(m: name_set, key: d))
         map_insert(acc, name, local)
-      None => map_insert(acc, name, [])
+      None => map_insert(acc, name, empty_string_list())
     }
   )
   result
@@ -8740,7 +8760,7 @@ import v2.std.core {
 import v2.compiler.infer_types {
   node_has_structure, node_is_product, node_is_optional,
   with_required_cardinality,
-  normalize_access_type_node, normalize_type_name,
+  normalize_access_type_node,
   rt_type, child_return_type_or_name, node_type_equals
 }
 
@@ -8783,12 +8803,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
-fn normalize_emit_type_name(type_name: String) -> String {
-  normalize_type_name(name: type_name)
-}
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
+  map_get(emit_info.type_summaries, type_name)
 }
 
 // =========================================================================
@@ -8900,7 +8917,7 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   if node_has_structure(n: item) == false || item.transport != none {
     return none
   }
-  let item_name = normalize_emit_type_name(type_name: item.name)
+  let item_name = item.name
   if node_is_product(n: item) {
     Some { value: TypeSummary {
       name: item_name,
@@ -8926,7 +8943,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
-              let variant_name = normalize_emit_type_name(type_name: variant.name)
+              let variant_name = variant.name
               map_insert(acc, variant_name, TypeSummary {
                 name: variant_name,
                 repr: StructRepr,
@@ -8970,7 +8987,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
           fold(item.children, init: state.field_type_names, f: (acc, child) =>
             match child.return_type {
               Some { value: Resolved { node: ft } } =>
-                let resolved_name = normalize_emit_type_name(type_name: normalize_access_type_node(n: ft).name)
+                let resolved_name = normalize_access_type_node(n: ft).name
                 if resolved_name != "" && resolved_name != "Dynamic" {
                   map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
                 } else { acc }
@@ -8982,8 +8999,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             fold(variant.children, init: acc, f: (inner_acc, child) =>
               match child.return_type {
                 Some { value: Resolved { node: ft } } =>
-                  let variant_name = normalize_emit_type_name(type_name: variant.name)
-                  let resolved_name = normalize_emit_type_name(type_name: normalize_access_type_node(n: ft).name)
+                  let variant_name = variant.name
+                  let resolved_name = normalize_access_type_node(n: ft).name
                   if resolved_name != "" && resolved_name != "Dynamic" {
                     map_insert(inner_acc, concat(variant_name, "|", child.name), resolved_name)
                   } else { inner_acc }
@@ -9172,7 +9189,7 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
-  empty_emit_graph_info, normalize_emit_type_name, lookup_emit_type_summary,
+  empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary
 }
@@ -9529,6 +9546,747 @@ fn inferred_from_node_type(result: NodeType, fallback_message: String, fallback_
     Typed { node: resolved } => Resolved { node: resolved }
     InferError { message: message, span: span } => CompilerError { message: message, span: span }
     Untyped => CompilerError { message: fallback_message, span: fallback_span }
+  }
+}
+
+fn make_typed_expr(expr_data: ExprData, inferred_type: InferredNode, span: SourceSpan) -> Node {
+  make_expr_node(expr_data: expr_data, return_type: Some { value: inferred_type }, span: span)
+}
+
+fn expr_resolved_type(texpr: Node, scope: InferScope) -> Node? {
+  match texpr.return_type {
+    Some { value: Resolved { node: rt } } => Some { value: resolve_scrutinee_type_node(env: scope.type_env, n: rt) }
+    _ => none
+  }
+}
+
+fn resolve_expected_type(expected_type: Node?, scope: InferScope) -> Node? {
+  match expected_type {
+    Some { value: et } => Some { value: resolve_scrutinee_type_node(env: scope.type_env, n: et) }
+    None => none
+  }
+}
+
+fn resolved_type_or_expected(texpr: Node, expected_type: Node?, scope: InferScope) -> Node? {
+  match resolve_expected_type(expected_type: expected_type, scope: scope) {
+    Some { value: resolved_expected } => Some { value: resolved_expected }
+    None => expr_resolved_type(texpr: texpr, scope: scope)
+  }
+}
+
+fn lookup_record_constructor_type(type_name: String?, scope: InferScope) -> Node? {
+  if type_name == none {
+    none
+  } else {
+    let direct_lookup = lookup_type(env: scope.type_env, name: type_name.value)
+    if direct_lookup != none {
+      direct_lookup
+    } else {
+      match lookup_in_scope(locals: scope.locals, name: type_name.value) {
+        Some { value: local_node } => lookup_type(env: scope.type_env, name: local_node.name)
+        None =>
+          match map_values(scope.type_env.bindings)
+            |> filter(binding => node_is_coproduct(n: binding.resolved) && binding.resolved.children |> any(child => child.name == type_name.value))
+            |> first {
+            Some { value: binding } => Some { value: binding.resolved }
+            None => none
+          }
+      }
+    }
+  }
+}
+
+fn record_literal_field_expected_type(texpr: Node, type_name: String?, field_name: String, scope: InferScope) -> Node? {
+  let record_type = match expr_resolved_type(texpr: texpr, scope: scope) {
+    Some { value: resolved_record } => Some { value: resolved_record }
+    None => lookup_record_constructor_type(type_name: type_name, scope: scope)
+  }
+  match record_type {
+    Some { value: rt } => lookup_field_type_node(n: rt, field_name: field_name)
+    None => none
+  }
+}
+
+fn node_is_placeholder_empty_list(n: Node) -> Bool {
+  node_is_container(n: n) && n.name == "List" && n.children |> count == 1 && (
+    match n.children |> first {
+      Some { value: elem } => elem.name == "Unit" && elem.children |> count == 0 && node_has_structure(n: elem) == false
+      None => false
+    }
+  )
+}
+
+fn concrete_expected_empty_map_type(expected_type: Node?, scope: InferScope) -> Node? {
+  match resolve_expected_type(expected_type: expected_type, scope: scope) {
+    Some { value: resolved_expected } =>
+      if node_is_map(n: resolved_expected) && resolved_expected.children |> count == 2 {
+        Some { value: resolved_expected }
+      } else { none }
+    None => none
+  }
+}
+
+fn concrete_expected_empty_list_type(expected_type: Node?, scope: InferScope) -> Node? {
+  match resolve_expected_type(expected_type: expected_type, scope: scope) {
+    Some { value: resolved_expected } =>
+      if resolved_expected.name == "List" && node_is_container(n: resolved_expected) && resolved_expected.children |> count == 1 {
+        Some { value: resolved_expected }
+      } else { none }
+    None => none
+  }
+}
+
+fn placeholder_matches_expected_type(current: Node, expected: Node) -> Bool {
+  if node_is_map(n: current) && current.children |> count == 0 {
+    node_is_map(n: expected) && expected.children |> count == 2
+  } else if node_is_placeholder_empty_list(n: current) {
+    expected.name == "List" && node_is_container(n: expected) && expected.children |> count == 1
+  } else {
+    false
+  }
+}
+
+fn concrete_context_type(n: Node) -> Bool {
+  n.name != "Error" && !(node_is_map(n: n) && n.children |> count == 0) && !node_is_placeholder_empty_list(n: n)
+}
+
+fn empty_map_context_error(span: SourceSpan, scope: InferScope) -> Diagnostic {
+  categorized_error(
+    message: "empty_map() requires a concrete Map<K, V> context",
+    span: span,
+    module_name: scope.module_name,
+    category: TypeMismatch
+  )
+}
+
+fn empty_list_context_error(span: SourceSpan, scope: InferScope) -> Diagnostic {
+  categorized_error(
+    message: "empty list literal requires a concrete List<T> context",
+    span: span,
+    module_name: scope.module_name,
+    category: TypeMismatch
+  )
+}
+
+fn fold_init_arg_type(typed_args: List<NamedArg>) -> Node? {
+  match typed_args |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
+    Some { value: init_arg } => Some { value: rt_type(n: init_arg.value) }
+    None =>
+      match typed_args |> first {
+        Some { value: init_arg } => Some { value: rt_type(n: init_arg.value) }
+        None => none
+      }
+  }
+}
+
+fn contextualized_method_semantics(method: String, method_semantics: MethodSemantics?, typed_args: List<NamedArg>) -> MethodSemantics? {
+  if method == "fold" {
+    match method_semantics {
+      Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } } =>
+        Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_init_arg_type(typed_args: typed_args) } }
+      _ => method_semantics
+    }
+  } else {
+    method_semantics
+  }
+}
+
+fn typed_expr_return_type(texpr: Node) -> InferredNode? {
+  texpr.return_type
+}
+
+fn empty_expr_nodes() -> List<Node> {
+  []
+}
+
+fn expr_contains_return(texpr: Node) -> Bool {
+  match texpr.expr_data {
+    ExprReturn { value: _ } => true
+    _ => expr_children(node: texpr) |> any(child => expr_contains_return(texpr: child))
+  }
+}
+
+fn contextualize_match_arm(arm: MatchArm, scope: InferScope, expected_type: Node?) -> ArmInferResult {
+  let guard_result = if arm.guard != none {
+    Some { value: contextualize_empty_container_expr(texpr: arm.guard.value, scope: scope, expected_type: none) }
+  } else {
+    none
+  }
+  let body_result = contextualize_empty_container_expr(texpr: arm.body, scope: scope, expected_type: expected_type)
+  ArmInferResult {
+    typed_arm: MatchArm {
+      pattern: arm.pattern,
+      guard: match guard_result {
+        Some { value: gr } => Some { value: gr.typed }
+        None => none
+      },
+      body: body_result.typed
+    },
+    diagnostics: concat(
+      match guard_result {
+        Some { value: gr } => gr.diagnostics
+        None => []
+      },
+      body_result.diagnostics
+    ),
+    body_type: rt_type(n: body_result.typed)
+  }
+}
+
+fn contextualize_named_arg(arg: NamedArg, scope: InferScope, expected_type: Node?) -> ArgInferResult {
+  let value_result = contextualize_empty_container_expr(texpr: arg.value, scope: scope, expected_type: expected_type)
+  ArgInferResult {
+    typed_arg: NamedArg { name: arg.name, value: value_result.typed },
+    diagnostics: value_result.diagnostics
+  }
+}
+
+fn contextualize_empty_container_expr(texpr: Node, scope: InferScope, expected_type: Node?) -> InferResult {
+  match texpr.expr_data {
+    ExprLiteral { value: lit } =>
+      InferResult {
+        typed: make_expr_node(expr_data: ExprLiteral { value: lit }, return_type: texpr.return_type, span: texpr.span),
+        diagnostics: []
+      }
+
+    ExprError { kind: kind, message: message } =>
+      InferResult { typed: make_expr_error_node(kind: kind, message: message, span: texpr.span), diagnostics: [] }
+
+    ExprVar { name: name, binding_kind: binding_kind } =>
+      match texpr.return_type {
+        Some { value: Resolved { node: current_type } } =>
+          match resolve_expected_type(expected_type: expected_type, scope: scope) {
+            Some { value: resolved_expected } =>
+              if placeholder_matches_expected_type(current: current_type, expected: resolved_expected) {
+                InferResult {
+                  typed: make_typed_expr(
+                    expr_data: ExprVar { name: name, binding_kind: binding_kind },
+                    inferred_type: Resolved { node: resolved_expected },
+                    span: texpr.span
+                  ),
+                  diagnostics: []
+                }
+              } else {
+                InferResult {
+                  typed: make_typed_expr(
+                    expr_data: ExprVar { name: name, binding_kind: binding_kind },
+                    inferred_type: Resolved { node: current_type },
+                    span: texpr.span
+                  ),
+                  diagnostics: []
+                }
+              }
+            None =>
+              InferResult {
+                typed: make_typed_expr(
+                  expr_data: ExprVar { name: name, binding_kind: binding_kind },
+                  inferred_type: Resolved { node: current_type },
+                  span: texpr.span
+                ),
+                diagnostics: []
+              }
+          }
+        _ =>
+          InferResult {
+            typed: make_expr_node(expr_data: ExprVar { name: name, binding_kind: binding_kind }, return_type: texpr.return_type, span: texpr.span),
+            diagnostics: []
+          }
+      }
+
+    ExprFieldAccess { base: base, field: field, summary: summary } =>
+      let base_result = contextualize_empty_container_expr(texpr: base, scope: scope, expected_type: none)
+      let current_return = match texpr.return_type {
+        Some { value: Resolved { node: current_type } } =>
+          match resolve_expected_type(expected_type: expected_type, scope: scope) {
+            Some { value: resolved_expected } =>
+              if placeholder_matches_expected_type(current: current_type, expected: resolved_expected) {
+                Some { value: Resolved { node: resolved_expected } }
+              } else { Some { value: Resolved { node: current_type } } }
+            None => Some { value: Resolved { node: current_type } }
+          }
+        _ => texpr.return_type
+      }
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprFieldAccess { base: base_result.typed, field: field, summary: summary },
+          return_type: current_return,
+          span: texpr.span
+        ),
+        diagnostics: base_result.diagnostics
+      }
+
+    ExprCall { func: func, args: args, call_semantics: call_semantics } =>
+      if func == "empty_map" {
+        match concrete_expected_empty_map_type(expected_type: expected_type, scope: scope) {
+          Some { value: concrete_map } =>
+            InferResult {
+              typed: make_typed_expr(
+                expr_data: ExprCall { func: func, args: args, call_semantics: call_semantics },
+                inferred_type: Resolved { node: concrete_map },
+                span: texpr.span
+              ),
+              diagnostics: []
+            }
+          None =>
+            InferResult {
+              typed: make_typed_expr(
+                expr_data: ExprCall { func: func, args: args, call_semantics: call_semantics },
+                inferred_type: CompilerError { message: "empty_map() requires a concrete Map<K, V> context", span: texpr.span },
+                span: texpr.span
+              ),
+              diagnostics: [empty_map_context_error(span: texpr.span, scope: scope)]
+            }
+        }
+      } else {
+        let resolved_return = resolved_type_or_expected(texpr: texpr, expected_type: expected_type, scope: scope)
+        let func_sig = lookup_func_sig(func_env: scope.func_env, name: func)
+        let arg_results = args |> enumerate |> map(pair =>
+          let arg_expected = match func_sig {
+            Some { value: sig } =>
+              match sig.params |> skip(pair.first) |> first {
+                Some { value: param } => Some { value: param.type_expr }
+                None => none
+              }
+            None => none
+          }
+          contextualize_named_arg(arg: pair.second, scope: scope, expected_type: arg_expected)
+        )
+        let typed_args = arg_results |> map(ar => ar.typed_arg)
+        let diags = flat_map(arg_results, ar => ar.diagnostics)
+        let final_return = match texpr.return_type {
+          Some { value: Resolved { node: current_type } } =>
+            match resolved_return {
+              Some { value: resolved_expected } =>
+                if placeholder_matches_expected_type(current: current_type, expected: resolved_expected) {
+                  Some { value: Resolved { node: resolved_expected } }
+                } else { Some { value: Resolved { node: current_type } } }
+              None => Some { value: Resolved { node: current_type } }
+            }
+          _ => texpr.return_type
+        }
+        InferResult {
+          typed: make_expr_node(
+            expr_data: ExprCall { func: func, args: typed_args, call_semantics: call_semantics },
+            return_type: final_return,
+            span: texpr.span
+          ),
+          diagnostics: diags
+        }
+      }
+
+    ExprMethodCall { receiver: receiver, method: method, args: args, method_semantics: method_semantics } =>
+      let resolved_return = resolved_type_or_expected(texpr: texpr, expected_type: expected_type, scope: scope)
+      let receiver_expected = if method == "map_insert" || method == "with" || method == "list_push" || method == "reverse" {
+        resolved_return
+      } else if method == "map_merge" {
+        resolved_return
+      } else {
+        none
+      }
+      let receiver_result = contextualize_empty_container_expr(texpr: receiver, scope: scope, expected_type: receiver_expected)
+      let receiver_elem_type = match expr_resolved_type(texpr: receiver_result.typed, scope: scope) {
+        Some { value: rt } => Some { value: for_each_element_type_node(n: rt) }
+        None => none
+      }
+      let init_expected = if method == "fold" { resolved_return } else { none }
+      let arg_results = args |> enumerate |> map(pair =>
+        let idx = pair.first
+        let arg = pair.second
+        let arg_expected = if method == "fold" {
+          let is_init_arg = arg_has_name(arg: arg, name: "init") || (arg.name == none && idx == 0)
+          if is_init_arg {
+            init_expected
+          } else {
+            none
+          }
+        } else if method == "map_merge" && idx == 0 {
+          resolved_return
+        } else {
+          none
+        }
+        contextualize_named_arg(arg: arg, scope: scope, expected_type: arg_expected)
+      )
+      let typed_args = arg_results |> map(ar => ar.typed_arg)
+      let diags = concat(receiver_result.diagnostics, flat_map(arg_results, ar => ar.diagnostics))
+      let updated_method_semantics = contextualized_method_semantics(method: method, method_semantics: method_semantics, typed_args: typed_args)
+      let final_return = match texpr.return_type {
+        Some { value: Resolved { node: current_type } } =>
+          match resolved_return {
+            Some { value: resolved_expected } =>
+              if placeholder_matches_expected_type(current: current_type, expected: resolved_expected) {
+                Some { value: Resolved { node: resolved_expected } }
+              } else { Some { value: Resolved { node: current_type } } }
+            None => Some { value: Resolved { node: current_type } }
+          }
+        _ => texpr.return_type
+      }
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprMethodCall { receiver: receiver_result.typed, method: method, args: typed_args, method_semantics: updated_method_semantics },
+          return_type: final_return,
+          span: texpr.span
+        ),
+        diagnostics: diags
+      }
+
+    ExprMatch { scrutinee: scrutinee, arms: arms } =>
+      let scrutinee_result = contextualize_empty_container_expr(texpr: scrutinee, scope: scope, expected_type: none)
+      let initial_branch_expected = resolved_type_or_expected(texpr: texpr, expected_type: expected_type, scope: scope)
+      let first_arm_probe = match arms |> first {
+        Some { value: first_arm } => Some { value: contextualize_match_arm(arm: first_arm, scope: scope, expected_type: initial_branch_expected) }
+        None => none
+      }
+      let branch_expected = match initial_branch_expected {
+        Some { value: resolved_expected } => Some { value: resolved_expected }
+        None =>
+          match first_arm_probe {
+            Some { value: probe } =>
+              if concrete_context_type(n: probe.body_type) { Some { value: probe.body_type } } else { none }
+            None => none
+          }
+      }
+      let arm_results = arms |> map(arm => contextualize_match_arm(arm: arm, scope: scope, expected_type: branch_expected))
+      let typed_arms = arm_results |> map(ar => ar.typed_arm)
+      let arm_diags = flat_map(arm_results, ar => ar.diagnostics)
+      let final_return = match branch_expected {
+        Some { value: resolved_expected } => Some { value: Resolved { node: resolved_expected } }
+        None =>
+          if arm_results |> count > 0 {
+            match arm_results |> first {
+              Some { value: first_arm } => Some { value: Resolved { node: first_arm.body_type } }
+              None => texpr.return_type
+            }
+          } else { texpr.return_type }
+      }
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprMatch { scrutinee: scrutinee_result.typed, arms: typed_arms },
+          return_type: final_return,
+          span: texpr.span
+        ),
+        diagnostics: concat(scrutinee_result.diagnostics, arm_diags)
+      }
+
+    ExprIf { condition: condition, then_branch: then_branch, else_branch: else_branch } =>
+      let condition_result = contextualize_empty_container_expr(texpr: condition, scope: scope, expected_type: none)
+      let initial_branch_expected = resolved_type_or_expected(texpr: texpr, expected_type: expected_type, scope: scope)
+      let then_probe = contextualize_empty_container_expr(texpr: then_branch, scope: scope, expected_type: initial_branch_expected)
+      let branch_expected = match initial_branch_expected {
+        Some { value: resolved_expected } => Some { value: resolved_expected }
+        None =>
+          match expr_resolved_type(texpr: then_probe.typed, scope: scope) {
+            Some { value: resolved_then } =>
+              if concrete_context_type(n: resolved_then) { Some { value: resolved_then } } else { none }
+            None => none
+          }
+      }
+      let then_result = if initial_branch_expected == branch_expected {
+        then_probe
+      } else {
+        contextualize_empty_container_expr(texpr: then_branch, scope: scope, expected_type: branch_expected)
+      }
+      let else_result = match else_branch {
+        Some { value: eb } => Some { value: contextualize_empty_container_expr(texpr: eb, scope: scope, expected_type: branch_expected) }
+        None => none
+      }
+      let final_return = match branch_expected {
+        Some { value: resolved_expected } => Some { value: Resolved { node: resolved_expected } }
+        None => texpr.return_type
+      }
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprIf {
+            condition: condition_result.typed,
+            then_branch: then_result.typed,
+            else_branch: match else_result {
+              Some { value: er } => Some { value: er.typed }
+              None => none
+            }
+          },
+          return_type: final_return,
+          span: texpr.span
+        ),
+        diagnostics: concat(
+          condition_result.diagnostics,
+          then_result.diagnostics,
+          match else_result {
+            Some { value: er } => er.diagnostics
+            None => []
+          }
+        )
+      }
+
+    ExprLet { name: name, value: value, body: body } =>
+      let value_expected = match body {
+        Some { value: body_expr } =>
+          match body_expr.expr_data {
+            ExprVar { name: body_name, binding_kind: _ } =>
+              if body_name == name { expected_type } else { none }
+            _ => none
+          }
+        None => expected_type
+      }
+      let value_result = contextualize_empty_container_expr(texpr: value, scope: scope, expected_type: value_expected)
+      let body_result = match body {
+        Some { value: body_expr } => Some { value: contextualize_empty_container_expr(texpr: body_expr, scope: scope, expected_type: expected_type) }
+        None => none
+      }
+      let final_return = match body_result {
+        Some { value: br } => br.typed.return_type
+        None => value_result.typed.return_type
+      }
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprLet {
+            name: name,
+            value: value_result.typed,
+            body: match body_result {
+              Some { value: br } => Some { value: br.typed }
+              None => none
+            }
+          },
+          return_type: final_return,
+          span: texpr.span
+        ),
+        diagnostics: concat(
+          value_result.diagnostics,
+          match body_result {
+            Some { value: br } => br.diagnostics
+            None => []
+          }
+        )
+      }
+
+    ExprRecordLit { type_name: type_name, fields: fields, parent_enum: parent_enum } =>
+      let field_results = fields |> map(field =>
+        let field_expected = record_literal_field_expected_type(texpr: texpr, type_name: type_name, field_name: field.name, scope: scope)
+        let value_result = contextualize_empty_container_expr(texpr: field.value, scope: scope, expected_type: field_expected)
+        FieldInferResult {
+          typed_field: FieldInit { name: field.name, value: value_result.typed },
+          infer_result: value_result,
+          diagnostics: value_result.diagnostics
+        }
+      )
+      let typed_fields = field_results |> map(fr => fr.typed_field)
+      let field_diags = flat_map(field_results, fr => fr.diagnostics)
+      let expected_optional_parent = Some { value: "Optional" }
+      let final_return = if type_name == none {
+        let child_nodes = field_results |> map(fir =>
+          Node {
+            name: fir.typed_field.name, span: no_span(),
+            children: [], connective: none, collection_kind: none,
+            params: [], return_type: typed_expr_return_type(texpr: fir.infer_result.typed), return_cardinality: Required, uses: [],
+            body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+          }
+        )
+        let anon_node = Node {
+          name: "", span: no_span(),
+          children: child_nodes, connective: Some { value: Conj }, collection_kind: none,
+          params: [], return_type: none, return_cardinality: Required, uses: [],
+          body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+        }
+        Some { value: Resolved { node: anon_node } }
+      } else if type_name.value == "Some" && parent_enum == expected_optional_parent {
+        match typed_fields |> filter(f => f.name == "value") |> first {
+          Some { value: value_field } => Some { value: Resolved { node: with_optional_cardinality(n: rt_type(n: value_field.value)) } }
+          None => texpr.return_type
+        }
+      } else {
+        texpr.return_type
+      }
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprRecordLit { type_name: type_name, fields: typed_fields, parent_enum: parent_enum },
+          return_type: final_return,
+          span: texpr.span
+        ),
+        diagnostics: field_diags
+      }
+
+    ExprListLit { elements: elements } =>
+      if elements |> count == 0 {
+        match concrete_expected_empty_list_type(expected_type: expected_type, scope: scope) {
+          Some { value: concrete_list } =>
+            InferResult {
+              typed: make_typed_expr(
+                expr_data: ExprListLit { elements: empty_expr_nodes() },
+                inferred_type: Resolved { node: concrete_list },
+                span: texpr.span
+              ),
+              diagnostics: []
+            }
+          None =>
+            InferResult {
+              typed: make_typed_expr(
+                expr_data: ExprListLit { elements: empty_expr_nodes() },
+                inferred_type: CompilerError { message: "empty list literal requires a concrete List<T> context", span: texpr.span },
+                span: texpr.span
+              ),
+              diagnostics: [empty_list_context_error(span: texpr.span, scope: scope)]
+            }
+        }
+      } else {
+        let element_expected = match resolve_expected_type(expected_type: expected_type, scope: scope) {
+          Some { value: resolved_expected } =>
+            if resolved_expected.name == "List" && resolved_expected.children |> count == 1 {
+              resolved_expected.children |> first
+            } else { none }
+          None => none
+        }
+        let element_results = elements |> map(el => contextualize_empty_container_expr(texpr: el, scope: scope, expected_type: element_expected))
+        let typed_elements = element_results |> map(er => er.typed)
+        let element_diags = flat_map(element_results, er => er.diagnostics)
+        let final_return = match concrete_expected_empty_list_type(expected_type: expected_type, scope: scope) {
+          Some { value: concrete_list } => Some { value: Resolved { node: concrete_list } }
+          None => texpr.return_type
+        }
+        InferResult {
+          typed: make_expr_node(
+            expr_data: ExprListLit { elements: typed_elements },
+            return_type: final_return,
+            span: texpr.span
+          ),
+          diagnostics: element_diags
+        }
+      }
+
+    ExprBinOp { op: op, left: left, right: right } =>
+      let left_result = contextualize_empty_container_expr(texpr: left, scope: scope, expected_type: none)
+      let right_result = contextualize_empty_container_expr(texpr: right, scope: scope, expected_type: none)
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprBinOp { op: op, left: left_result.typed, right: right_result.typed },
+          return_type: texpr.return_type,
+          span: texpr.span
+        ),
+        diagnostics: concat(left_result.diagnostics, right_result.diagnostics)
+      }
+
+    ExprUnaryOp { op: op, operand: operand } =>
+      let operand_result = contextualize_empty_container_expr(texpr: operand, scope: scope, expected_type: none)
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprUnaryOp { op: op, operand: operand_result.typed },
+          return_type: texpr.return_type,
+          span: texpr.span
+        ),
+        diagnostics: operand_result.diagnostics
+      }
+
+    ExprLambda { params: params, body: body, semantics: semantics } =>
+      let body_expected = match resolve_expected_type(expected_type: expected_type, scope: scope) {
+        Some { value: resolved_expected } =>
+          if resolved_expected.name == "Callable" {
+            Some { value: callable_return_type(n: resolved_expected) }
+          } else { none }
+        None => none
+      }
+      let body_result = contextualize_empty_container_expr(texpr: body, scope: scope, expected_type: body_expected)
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprLambda { params: params, body: body_result.typed, semantics: semantics },
+          return_type: body_result.typed.return_type,
+          span: texpr.span
+        ),
+        diagnostics: body_result.diagnostics
+      }
+
+    ExprStringInterp { parts: parts } =>
+      let part_results = parts |> map(part => match part {
+        Text { value: value } => StringPartInferResult { typed_part: Text { value: value }, diagnostics: [] }
+        Interpolation { expr: expr } =>
+          let expr_result = contextualize_empty_container_expr(texpr: expr, scope: scope, expected_type: none)
+          StringPartInferResult { typed_part: Interpolation { expr: expr_result.typed }, diagnostics: expr_result.diagnostics }
+      })
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprStringInterp { parts: part_results |> map(pr => pr.typed_part) },
+          return_type: texpr.return_type,
+          span: texpr.span
+        ),
+        diagnostics: flat_map(part_results, pr => pr.diagnostics)
+      }
+
+    ExprBlock { stmts: stmts } =>
+      let count_stmts = stmts |> count
+      let stmt_results = stmts |> enumerate |> map(pair =>
+        let stmt_expected = if pair.first == count_stmts - 1 || expr_contains_return(texpr: pair.second) { expected_type } else { none }
+        contextualize_empty_container_expr(texpr: pair.second, scope: scope, expected_type: stmt_expected)
+      )
+      let typed_stmts = stmt_results |> map(sr => sr.typed)
+      let final_return = match typed_stmts |> last {
+        Some { value: last_stmt } => last_stmt.return_type
+        None => texpr.return_type
+      }
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprBlock { stmts: typed_stmts },
+          return_type: final_return,
+          span: texpr.span
+        ),
+        diagnostics: flat_map(stmt_results, sr => sr.diagnostics)
+      }
+
+    ExprCast { expr: expr, target: target } =>
+      let expr_result = contextualize_empty_container_expr(texpr: expr, scope: scope, expected_type: Some { value: target })
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprCast { expr: expr_result.typed, target: target },
+          return_type: Some { value: Resolved { node: target } },
+          span: texpr.span
+        ),
+        diagnostics: expr_result.diagnostics
+      }
+
+    ExprForEach { variable: variable, collection: collection, body: body } =>
+      let collection_result = contextualize_empty_container_expr(texpr: collection, scope: scope, expected_type: none)
+      let body_result = contextualize_empty_container_expr(texpr: body, scope: scope, expected_type: none)
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprForEach { variable: variable, collection: collection_result.typed, body: body_result.typed },
+          return_type: body_result.typed.return_type,
+          span: texpr.span
+        ),
+        diagnostics: concat(collection_result.diagnostics, body_result.diagnostics)
+      }
+
+    ExprIndex { base: base, index: index } =>
+      let base_result = contextualize_empty_container_expr(texpr: base, scope: scope, expected_type: none)
+      let index_result = contextualize_empty_container_expr(texpr: index, scope: scope, expected_type: none)
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprIndex { base: base_result.typed, index: index_result.typed },
+          return_type: texpr.return_type,
+          span: texpr.span
+        ),
+        diagnostics: concat(base_result.diagnostics, index_result.diagnostics)
+      }
+
+    ExprSlice { base: base, start: start, end: end } =>
+      let base_result = contextualize_empty_container_expr(texpr: base, scope: scope, expected_type: none)
+      let start_result = contextualize_empty_container_expr(texpr: start, scope: scope, expected_type: none)
+      let end_result = contextualize_empty_container_expr(texpr: end, scope: scope, expected_type: none)
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprSlice { base: base_result.typed, start: start_result.typed, end: end_result.typed },
+          return_type: texpr.return_type,
+          span: texpr.span
+        ),
+        diagnostics: concat(base_result.diagnostics, start_result.diagnostics, end_result.diagnostics)
+      }
+
+    ExprReturn { value: value } =>
+      let value_result = contextualize_empty_container_expr(texpr: value, scope: scope, expected_type: expected_type)
+      InferResult {
+        typed: make_expr_node(
+          expr_data: ExprReturn { value: value_result.typed },
+          return_type: value_result.typed.return_type,
+          span: texpr.span
+        ),
+        diagnostics: value_result.diagnostics
+      }
+
+    NoExprData => InferResult { typed: texpr, diagnostics: [] }
   }
 }
 
@@ -10546,7 +11304,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           diagnostics: flat_map(state.diag_chunks, c => c)
         }
       } else {
-        ok_infer(texpr: make_expr_node(expr_data: ExprBlock { stmts: [] }, return_type: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span))
+        ok_infer(texpr: make_expr_node(expr_data: ExprBlock { stmts: empty_expr_nodes() }, return_type: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span))
       }
 
     ExprCast { expr: cast_inner, target: target_type } =>
@@ -10821,8 +11579,14 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   else if item.body != none && item.params |> count > 0 {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope)
-    let body_typed = body_result.typed
-    let body_diags = body_result.diagnostics
+    let body_expected = if item.return_type != none { Some { value: rt_type(n: item) } } else { none }
+    let body_context = contextualize_empty_container_expr(
+      texpr: body_result.typed,
+      scope: fn_scope,
+      expected_type: body_expected
+    )
+    let body_typed = body_context.typed
+    let body_diags = concat(body_result.diagnostics, body_context.diagnostics)
     let resolved_ret = if item.return_type == none {
       rt_type(n: body_typed)
     } else {
@@ -10847,8 +11611,9 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   else if item.body != none && item.params |> count == 0 && item.return_type != none {
     let fn_scope = scope
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope)
-    let body_typed = body_result.typed
-    let body_diags = body_result.diagnostics
+    let body_context = contextualize_empty_container_expr(texpr: body_result.typed, scope: fn_scope, expected_type: Some { value: rt_type(n: item) })
+    let body_typed = body_context.typed
+    let body_diags = concat(body_result.diagnostics, body_context.diagnostics)
     let resolved_ret = rt_type(n: item)
     TypedItemResult {
       item: Node {
@@ -10865,8 +11630,14 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   // Data definition: has body but no params, has type_annotation
   else if item.body != none && item.params |> count == 0 {
     let val_result = infer_expr(texpr: item.body.value, scope: scope)
-    let val_typed = val_result.typed
-    let val_diags = val_result.diagnostics
+    let value_expected = if item.type_annotation != none { Some { value: item.type_annotation.value } } else { none }
+    let val_context = contextualize_empty_container_expr(
+      texpr: val_result.typed,
+      scope: scope,
+      expected_type: value_expected
+    )
+    let val_typed = val_context.typed
+    let val_diags = concat(val_result.diagnostics, val_context.diagnostics)
     let resolved_ret = if item.type_annotation == none { rt_type(n: val_typed) } else { item.type_annotation.value }
     TypedItemResult {
       item: Node {
@@ -12236,8 +13007,7 @@ fn resolve_builtin_call_type(name: String) -> Node {
 // =========================================================================
 
 fn intrinsic_method_index() -> Map<String, IntrinsicMethod> {
-  let m = empty_map()
-  let m = map_insert(m, "count", MethodCount)
+  let m = map_insert(empty_map(), "count", MethodCount)
   let m = map_insert(m, "join", MethodJoin)
   let m = map_insert(m, "split", MethodSplit)
   let m = map_insert(m, "last", MethodLast)
@@ -12585,6 +13355,20 @@ type ExprResolveResult {
   diagnostics: List<Diagnostic>
 }
 
+fn empty_diagnostics() -> List<Diagnostic> {
+  filter(
+    [Diagnostic { severity: Error, message: "", span: none, module_name: none, category: none }],
+    d => false
+  )
+}
+
+fn empty_params() -> List<Param> {
+  filter(
+    [Param { name: "", type_expr: leaf_node(name: "Unit"), default_value: none, span: no_span() }],
+    p => false
+  )
+}
+
 type NamedArgResolveResult {
   arg: NamedArg
   diagnostics: List<Diagnostic>
@@ -12725,13 +13509,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               resolved: Node { name: n.name, span: n.span, children: [base_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
               diagnostics: base_diags
             }
-          None => NodeResolveResult { resolved: n, diagnostics: [] }
+          None => NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
         }
       } else {
         // Product: recurse on each child's return_type
         let child_results = map(n.children, child =>
           if child.return_type == none {
-            NodeResolveResult { resolved: child, diagnostics: [] }
+            NodeResolveResult { resolved: child, diagnostics: empty_diagnostics() }
           } else {
             let child_rt = rt_type(n: child)
             let rt_result = resolve_node_bounded(n: child_rt, env: env, module_name: module_name, depth: depth + 1)
@@ -12765,7 +13549,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         let variant_results = map(n.children, variant_child =>
           let field_results = map(variant_child.children, field_child =>
             if field_child.return_type == none {
-              NodeResolveResult { resolved: field_child, diagnostics: [] }
+              NodeResolveResult { resolved: field_child, diagnostics: empty_diagnostics() }
             } else {
               let field_rt = rt_type(n: field_child)
               // Skip resolution for self-referencing fields in recursive types
@@ -12774,7 +13558,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               // recursive types where n.name is the variant, not the parent type.
               let is_self_ref = field_rt.name == n.name && field_rt.children |> count > 0
               let rt_result = if is_self_ref {
-                NodeResolveResult { resolved: field_rt, diagnostics: [] }
+                NodeResolveResult { resolved: field_rt, diagnostics: empty_diagnostics() }
               } else {
                 resolve_node_bounded(n: field_rt, env: env, module_name: module_name, depth: depth + 1)
               }
@@ -12809,7 +13593,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
       [Diagnostic { message: concat("type ", n.name, " expects ", to_string(value: expected_arity), " type arguments, got ", to_string(value: actual_arity)), severity: Error, span: n.span, module_name: Some { value: module_name }, category: Some { value: TypeMismatch } }]
-    } else { [] }
+    } else { empty_diagnostics() }
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
@@ -12826,7 +13610,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     )
     let is_recursive = is_recursive_type(env: env, name: n.name)
     let result = NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: n.collection_kind, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
+      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: n.collection_kind, params: empty_params(), return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
       diagnostics: concat(arity_diags, arg_diags)
     }
     result
@@ -12861,12 +13645,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           resolved: Node { name: n.name, span: n.span, children: [el_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
           diagnostics: el_diags
         }
-      None => NodeResolveResult { resolved: n, diagnostics: [] }
+      None => NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
     }
   } else if n.children |> count == 0 {
     // Leaf node: lookup in env, recurse if found
     if is_recursive_type(env: env, name: n.name) {
-      NodeResolveResult { resolved: n, diagnostics: [] }
+      NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
     } else {
       match lookup_type(env: env, name: n.name) {
         Some { value: resolved } =>
@@ -12879,10 +13663,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // reference site may carry CardOptional (e.g. String? -> String
           // in env). Without this, optionality is silently discarded.
           let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
-          NodeResolveResult { resolved: final_resolved, diagnostics: [] }
+          NodeResolveResult { resolved: final_resolved, diagnostics: empty_diagnostics() }
         None =>
           if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
-            NodeResolveResult { resolved: n, diagnostics: [] }
+            NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
           } else {
             NodeResolveResult {
               resolved: n,
@@ -12899,12 +13683,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else {
     // Unknown structure -- pass through
-    NodeResolveResult { resolved: n, diagnostics: [] }
+    NodeResolveResult { resolved: n, diagnostics: empty_diagnostics() }
   }
 }
 
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  if n == none { NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+  if n == none { NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: empty_diagnostics() } }
   else {
     match n.value {
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
@@ -12931,7 +13715,7 @@ fn resolve_field(field: Field, env: TypeEnv, module_name: String) -> FieldResult
   }
   let default_diags = match default_resolved {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   FieldResult {
     field: Field {
@@ -12963,7 +13747,7 @@ fn resolve_param(param: Param, env: TypeEnv, module_name: String) -> ParamResult
   }
   let default_diags = match default_resolved {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   ParamResult {
     param: Param {
@@ -13028,7 +13812,7 @@ fn resolve_match_arm(arm: MatchArm, env: TypeEnv, module_name: String) -> MatchA
   }
   let guard_diags = match guard_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   let body_result = resolve_expr_types(texpr: arm.body, env: env, module_name: module_name)
   let body_expr = body_result.expr
@@ -13051,7 +13835,7 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
     Text { value: value } =>
       StringPartResolveResult {
         part: Text { value: value },
-        diagnostics: []
+        diagnostics: empty_diagnostics()
       }
     Interpolation { expr: expr } =>
       let expr_result = resolve_expr_types(texpr: expr, env: env, module_name: module_name)
@@ -13076,7 +13860,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   }
   let auth_diags = match auth_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   let rate_result = match config.rate_limit {
     Some { value: rate_limit } => Some { value: resolve_expr_types(texpr: rate_limit, env: env, module_name: module_name) }
@@ -13084,7 +13868,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   }
   let rate_diags = match rate_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   let retry_result = match config.retry {
     Some { value: retry } => Some { value: resolve_expr_types(texpr: retry, env: env, module_name: module_name) }
@@ -13092,7 +13876,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
   }
   let retry_diags = match retry_result {
     Some { value: result } => result.diagnostics
-    None => []
+    None => empty_diagnostics()
   }
   ServiceConfigResolveResult {
     config: ServiceConfig {
@@ -13116,7 +13900,7 @@ fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: Stri
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
   if is_transport_kind(t: transport, kind: LocalTransport) {
-    TransportResolveResult { transport: transport, diagnostics: [] }
+    TransportResolveResult { transport: transport, diagnostics: empty_diagnostics() }
   } else {
     // Generic resolution: resolve all property values and children
     let prop_results = map(transport.properties, p =>
@@ -13141,13 +13925,13 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
 // retires (Phase 3). Deletion point: P5.11.
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
-    ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
+    ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: empty_diagnostics() }
     ExprError { kind: kind, message: message } =>
       ExprResolveResult {
         expr: make_expr_error_node(kind: kind, message: message, span: texpr.span),
         diagnostics: [Diagnostic { severity: Error, message: message, span: Some { value: texpr.span }, module_name: Some { value: module_name }, category: Some { value: CascadeError } }]
       }
-    ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
+    ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: empty_diagnostics() }
     ExprFieldAccess { base: base, field: field, summary: summary } =>
       let r = resolve_expr_types(texpr: base, env: env, module_name: module_name)
       ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
@@ -13166,11 +13950,11 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let cr = resolve_expr_types(texpr: c, env: env, module_name: module_name)
       let tr = resolve_expr_types(texpr: t, env: env, module_name: module_name)
       let er = match e { Some { value: eb } => Some { value: resolve_expr_types(texpr: eb, env: env, module_name: module_name) }  None => none }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprIf { condition: cr.expr, then_branch: tr.expr, else_branch: match er { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(cr.diagnostics, tr.diagnostics, match er { Some { value: r } => r.diagnostics  None => [] }) }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprIf { condition: cr.expr, then_branch: tr.expr, else_branch: match er { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(cr.diagnostics, tr.diagnostics, match er { Some { value: r } => r.diagnostics  None => empty_diagnostics() }) }
     ExprLet { name: name, value: v, body: b } =>
       let vr = resolve_expr_types(texpr: v, env: env, module_name: module_name)
       let br = match b { Some { value: bd } => Some { value: resolve_expr_types(texpr: bd, env: env, module_name: module_name) }  None => none }
-      ExprResolveResult { expr: make_expr_node(expr_data: ExprLet { name: name, value: vr.expr, body: match br { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => [] }) }
+      ExprResolveResult { expr: make_expr_node(expr_data: ExprLet { name: name, value: vr.expr, body: match br { Some { value: r } => Some { value: r.expr }  None => none } }, return_type: texpr.return_type, span: texpr.span), diagnostics: concat(vr.diagnostics, match br { Some { value: r } => r.diagnostics  None => empty_diagnostics() }) }
     ExprRecordLit { type_name: tn, fields: fields, parent_enum: pe } =>
       let fr = map(fields, fi => resolve_field_init(field_init: fi, env: env, module_name: module_name))
       ExprResolveResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: tn, fields: map(fr, f => f.field_init), parent_enum: pe }, return_type: texpr.return_type, span: texpr.span), diagnostics: flat_map(fr, f => f.diagnostics) }
@@ -13213,7 +13997,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
     ExprReturn { value: inner } =>
       let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
       ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
-    NoExprData => ExprResolveResult { expr: texpr, diagnostics: [] }
+    NoExprData => ExprResolveResult { expr: texpr, diagnostics: empty_diagnostics() }
   }
 }
 
@@ -13243,16 +14027,16 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve body if present (non-optional intermediate, same pattern as transport/anno)
   let body_resolved = if item.body == none {
-    ExprResolveResult { expr: item, diagnostics: [] }
+    ExprResolveResult { expr: item, diagnostics: empty_diagnostics() }
   } else {
     resolve_expr_types(texpr: item.body.value, env: env, module_name: module_name)
   }
   let resolved_body = if item.body == none { none } else { Some { value: body_resolved.expr } }
-  let body_diags = if item.body == none { [] } else { body_resolved.diagnostics }
+  let body_diags = if item.body == none { empty_diagnostics() } else { body_resolved.diagnostics }
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
-    NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
+    NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: empty_diagnostics() }
   } else {
     resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }
@@ -13261,7 +14045,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve transport if present
   let transport_resolved = if item.transport == none {
-    TransportResolveResult { transport: local_transport_node(span: no_span()), diagnostics: [] }
+    TransportResolveResult { transport: local_transport_node(span: no_span()), diagnostics: empty_diagnostics() }
   } else {
     resolve_transport_binding(transport: item.transport.value, env: env, module_name: module_name)
   }
@@ -13270,12 +14054,12 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve config if present (non-optional intermediate, same pattern as transport/anno)
   let config_resolved = if item.config == none {
-    ServiceConfigResolveResult { config: ServiceConfig { endpoint: item, auth: none, rate_limit: none, retry: none }, diagnostics: [] }
+    ServiceConfigResolveResult { config: ServiceConfig { endpoint: item, auth: none, rate_limit: none, retry: none }, diagnostics: empty_diagnostics() }
   } else {
     resolve_service_config(config: item.config.value, env: env, module_name: module_name)
   }
   let resolved_config = if item.config == none { none } else { Some { value: config_resolved.config } }
-  let config_diags = if item.config == none { [] } else { config_resolved.diagnostics }
+  let config_diags = if item.config == none { empty_diagnostics() } else { config_resolved.diagnostics }
 
   // Resolve properties
   let prop_results = map(item.properties, p => resolve_field_init(field_init: p, env: env, module_name: module_name))
@@ -13586,6 +14370,14 @@ type CallEdge {
   callee: String
 }
 
+fn empty_name_set() -> Map<String, Bool> {
+  empty_map()
+}
+
+fn empty_resolved_name_map() -> Map<String, ResolvedFuncSig> {
+  empty_map()
+}
+
 // =========================================================================
 // Call graph construction
 // =========================================================================
@@ -13762,11 +14554,11 @@ fn resolve_func_sigs(
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => item.name)
-  let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
+  let local_func_set = fold(local_func_names, init: empty_name_set(), f: (acc, fn_name) =>
     map_insert(acc, fn_name, true)
   )
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
-  let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
+  let parent_resolved = fold(map_values(declared_sigs), init: empty_resolved_name_map(), f: (acc, dsig) =>
     if emit_map_has(m: local_func_set, key: dsig.name) {
       acc
     } else if dsig.return_type != none {
@@ -13992,24 +14784,6 @@ fn normalize_access_type_node(n: Node) -> Node {
     None => n
   }
 }
-
-// Temporary L1 bridge: canonicalize type references by dropping generic
-// suffixes and module prefixes until all name-based lookups are dissolved.
-fn normalize_type_name(name: String) -> String {
-  if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
-    name
-  } else {
-    let base = match name |> split(separator: "<") |> first {
-      Some { value: part } => part
-      None => name
-    }
-    match base |> split(separator: ".") |> last {
-      Some { value: short } => short
-      None => base
-    }
-  }
-}
-
 
 // =========================================================================
 // Type shape and comparison
@@ -15144,12 +15918,12 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
-    // Bare container nodes (from empty_map(), etc.) need container templates
-    // even without children -- emit with "_" placeholders.
-    let base = if n.name == "Map" {
-      emit_map_type(key_type: "_", val_type: "_", target: target)
-    } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
-      emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
+    // Empty containers must be fully specialized before emit.
+    let base = if n.name == "Map" || n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
+      match target {
+        Rust => concat("compile_error!(\"bare ", n.name, " type reached emit\")")
+        _ => concat("__EMIT_BUG_BARE_", n.name, "__")
+      }
     } else {
       emit_primitive_type(name: n.name, target: target)
     }
@@ -18608,7 +19382,7 @@ import v2.compiler.infer {
 }
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  normalize_emit_type_name, lookup_emit_type_summary
+  lookup_emit_type_summary
 }
 
 import v2.compiler.emit {
@@ -20347,12 +21121,12 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, return_type: Inferre
       Some { value: Resolved { node: ret_type } } =>
         let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
         let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-        if type_str != "" && type_str != "Dynamic" {
+        if type_str != "" && type_str != "Dynamic" && type_str |> string_contains(substring: "compile_error!") == false {
           concat("<", type_str, ">::new()")
         } else {
-          "compile_error!(\"empty_map requires a concrete result type\")"
+          "compile_error!(\"bare empty_map reached emit\")"
         }
-      _ => "compile_error!(\"empty_map missing resolved return type\")"
+      _ => "compile_error!(\"empty_map missing resolved type at emit\")"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -20817,15 +21591,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
       let init_str = match args |> first {
         Some { value: init_arg } =>
-          match init_arg.value.expr_data {
-            ExprCall { func: init_func, args: _, call_semantics: _ } =>
-              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" {
-                concat("<", acc_type_str, ">::new()")
-              } else {
-                emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              }
-            _ => emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          }
+          emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         None => "compile_error!(\"missing fold init argument\")"
       }
       let fold_fn = match args |> skip(1) |> first {
@@ -21187,7 +21953,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               // This handles cases where resolved_type is a leaf node without children
               // (e.g., Token struct where resolved_type has name "Token" but no field defs).
               if struct_node.name != "" {
-                let ftn_key = concat(normalize_emit_type_name(type_name: struct_node.name), "|", field_name)
+                let ftn_key = concat(struct_node.name, "|", field_name)
                 map_get(emit_info.field_type_names, ftn_key)
               } else { none }
           }
@@ -23644,8 +24410,7 @@ fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
 }
 
 fn scalar_output() -> Map<String, CostExpr> {
-  let result = empty_map()
-  result
+  empty_map()
 }
 
 
@@ -23806,8 +24571,7 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
         let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
         r
       } else {
-        let r = empty_map()
-        r
+        empty_map()
       }
       SummaryResult {
         summary: ComplexitySummary {

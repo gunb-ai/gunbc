@@ -75,6 +75,22 @@ type ParseResult {
   error: Diagnostic?
 }
 
+fn empty_import_names() -> List<String> {
+  []
+}
+
+fn empty_named_args() -> List<NamedArg> {
+  []
+}
+
+fn empty_field_bindings() -> List<FieldBinding> {
+  []
+}
+
+fn empty_field_inits() -> List<FieldInit> {
+  []
+}
+
 // Typed parse results -- replace the untyped PR type.
 // Each result type has the value fields directly (no val nesting),
 // plus state and err for threading.
@@ -1108,7 +1124,7 @@ fn parse_items_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> 
 
 fn parse_import(tokens: List<Token>, state: ParserState) -> ImportResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let err_import = Import { module_path: "", names: ImportSpecific { names: [] }, span: start_span }
+  let err_import = Import { module_path: "", names: ImportSpecific { names: empty_import_names() }, span: start_span }
   let r = expect(tokens: tokens, state: state, expected: ExpectKwImport)
   if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
   let s = r.state
@@ -3312,7 +3328,7 @@ fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span:
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
     ExprResult { expr: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: method, args: r2.args, method_semantics: none }, return_type: none, span: span), state: r2.state, err: none }
   } else {
-    ExprResult { expr: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: method, args: [], method_semantics: none }, return_type: none, span: span), state: s, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprMethodCall { receiver: receiver, method: method, args: empty_named_args(), method_semantics: none }, return_type: none, span: span), state: s, err: none }
   }
 }
 
@@ -3985,7 +4001,7 @@ fn parse_variant_pattern(tokens: List<Token>, state: ParserState, name: String) 
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, state: r2.state, err: none }
   } else {
-    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, state: state, err: none }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: empty_field_bindings() }, state: state, err: none }
   }
 }
 
@@ -4256,7 +4272,7 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 
   if peek_is_rparen(tokens: tokens, state: s) {
     let adv = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [], parent_enum: none }, return_type: none, span: span), state: adv.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: empty_field_inits(), parent_enum: none }, return_type: none, span: span), state: adv.state, err: none }
   } else {
     let lambda_r = try_lambda_params(tokens: tokens, state: s)
     if lambda_r.is_lambda {
@@ -4438,7 +4454,7 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 
   if peek_is_rbrace(tokens: tokens, state: s) {
     let adv2 = advance(tokens: tokens, state: s)
-    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: [], parent_enum: none }, return_type: none, span: span), state: adv2.state, err: none }
+    ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: empty_field_inits(), parent_enum: none }, return_type: none, span: span), state: adv2.state, err: none }
   } else {
     let k = peek_kind(tokens: tokens, state: s)
     match k {

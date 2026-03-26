@@ -451,6 +451,1020 @@ pub fn inferred_from_node_type(result: Rc<NodeType>, fallback_message: &str, fal
 }
 }
 
+pub fn make_typed_expr(expr_data: Rc<ExprData>, inferred_type: Rc<InferredNode>, span: SourceSpan) -> Rc<Node> {
+    make_expr_node(expr_data.clone(), Some(inferred_type.clone()), span)
+}
+
+pub fn expr_resolved_type(texpr: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match texpr.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(InferredNode::Resolved { node: rt, .. }) => {
+        Some(resolve_scrutinee_type_node(scope.type_env.clone(), rt.clone()))
+    }
+    _ => {
+        None
+    }
+}
+}
+
+pub fn resolve_expected_type(expected_type: Option<Rc<Node>>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match expected_type.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(et) => {
+        let et = Rc::new(et.clone());
+        Some(resolve_scrutinee_type_node(scope.type_env.clone(), et.clone()))
+    }
+    None => {
+        None
+    }
+}
+}
+
+pub fn resolved_type_or_expected(texpr: Rc<Node>, expected_type: Option<Rc<Node>>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match resolve_expected_type(expected_type.clone(), scope.clone()) {
+    Some(resolved_expected) => {
+        Some(resolved_expected.clone())
+    }
+    None => {
+        expr_resolved_type(texpr.clone(), scope.clone())
+    }
+}
+}
+
+pub fn lookup_record_constructor_type(type_name: Option<String>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    if type_name.clone().is_none() {
+    None
+} else {
+    let direct_lookup = lookup_type(scope.type_env.clone(), &type_name.clone().unwrap());
+    if direct_lookup.clone().is_some() {
+    direct_lookup.clone()
+} else {
+    match lookup_in_scope(scope.locals.clone(), &type_name.clone().unwrap()) {
+    Some(local_node) => {
+        lookup_type(scope.type_env.clone(), &local_node.name)
+    }
+    None => {
+        match {
+    let mut __found_12 = None;
+    for __elem_13 in ({
+    let __rc_8 = scope.type_env.bindings.clone();
+    let __map_unwrapped_9 = Rc::try_unwrap(__rc_8).unwrap_or_else(|rc| (*rc).clone());
+    let mut __entries_10 = __map_unwrapped_9.into_iter().collect::<Vec<_>>();
+    __entries_10.sort_by(|a, b| a.0.cmp(&b.0));
+    let __values_11 = __entries_10.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
+    Rc::new(__values_11)
+}).iter().cloned() {
+        if node_is_coproduct(__elem_13.resolved.clone()) && ({
+    let mut __any_14 = false;
+    for __elem_15 in __elem_13.resolved.children.iter().cloned() {
+        if __elem_15.name.clone() == type_name.clone().unwrap() {
+    __any_14 = true;
+    break;
+};
+    }
+    __any_14
+}) {
+    __found_12 = Some(__elem_13);
+    break;
+};
+    }
+    __found_12
+} {
+    Some(binding) => {
+        Some(binding.resolved.clone())
+    }
+    None => {
+        None
+    }
+}
+    }
+}
+}
+}
+}
+
+pub fn record_literal_field_expected_type(texpr: Rc<Node>, type_name: Option<String>, field_name: &str, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    let record_type = match expr_resolved_type(texpr.clone(), scope.clone()) {
+    Some(resolved_record) => {
+        Some(resolved_record.clone())
+    }
+    None => {
+        lookup_record_constructor_type(type_name, scope.clone())
+    }
+};
+    match record_type.clone() {
+    Some(rt) => {
+        lookup_field_type_node(rt.clone(), &field_name)
+    }
+    None => {
+        None
+    }
+}
+}
+
+pub fn node_is_placeholder_empty_list(n: Rc<Node>) -> bool {
+    ((node_is_container(n.clone()) && (n.name.clone() == "List")) && (({
+    let __len_0 = n.children.clone().len();
+    __len_0 as i64
+}) == 1_i64)) && (match n.children.clone().first().cloned() {
+    Some(elem) => {
+        ((elem.name.clone() == "Unit") && (({
+    let __len_1 = elem.children.clone().len();
+    __len_1 as i64
+}) == 0_i64)) && (node_has_structure(elem.clone()) == false)
+    }
+    None => {
+        false
+    }
+})
+}
+
+pub fn concrete_expected_empty_map_type(expected_type: Option<Rc<Node>>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match resolve_expected_type(expected_type.clone(), scope.clone()) {
+    Some(resolved_expected) => {
+        if node_is_map(resolved_expected.clone()) && (({
+    let __len_0 = resolved_expected.children.clone().len();
+    __len_0 as i64
+}) == 2_i64) {
+    Some(resolved_expected.clone())
+} else {
+    None
+}
+    }
+    None => {
+        None
+    }
+}
+}
+
+pub fn concrete_expected_empty_list_type(expected_type: Option<Rc<Node>>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
+    match resolve_expected_type(expected_type.clone(), scope.clone()) {
+    Some(resolved_expected) => {
+        if ((resolved_expected.name.clone() == "List") && node_is_container(resolved_expected.clone())) && (({
+    let __len_0 = resolved_expected.children.clone().len();
+    __len_0 as i64
+}) == 1_i64) {
+    Some(resolved_expected.clone())
+} else {
+    None
+}
+    }
+    None => {
+        None
+    }
+}
+}
+
+pub fn placeholder_matches_expected_type(current: Rc<Node>, expected: Rc<Node>) -> bool {
+    if node_is_map(current.clone()) && (({
+    let __len_2 = current.children.clone().len();
+    __len_2 as i64
+}) == 0_i64) {
+    node_is_map(expected.clone()) && (({
+    let __len_0 = expected.children.clone().len();
+    __len_0 as i64
+}) == 2_i64)
+} else {
+    if node_is_placeholder_empty_list(current.clone()) {
+    ((expected.name.clone() == "List") && node_is_container(expected.clone())) && (({
+    let __len_1 = expected.children.clone().len();
+    __len_1 as i64
+}) == 1_i64)
+} else {
+    false
+}
+}
+}
+
+pub fn concrete_context_type(n: Rc<Node>) -> bool {
+    ((n.name.clone() != "Error") && !(node_is_map(n.clone()) && (({
+    let __len_0 = n.children.clone().len();
+    __len_0 as i64
+}) == 0_i64))) && !node_is_placeholder_empty_list(n.clone())
+}
+
+pub fn empty_map_context_error(span: SourceSpan, scope: Rc<InferScope>) -> Rc<Diagnostic> {
+    categorized_error("empty_map() requires a concrete Map<K, V> context", span, &scope.module_name, ErrorCategory::TypeMismatch)
+}
+
+pub fn empty_list_context_error(span: SourceSpan, scope: Rc<InferScope>) -> Rc<Diagnostic> {
+    categorized_error("empty list literal requires a concrete List<T> context", span, &scope.module_name, ErrorCategory::TypeMismatch)
+}
+
+pub fn fold_init_arg_type(typed_args: Rc<Vec<Rc<NamedArg>>>) -> Option<Rc<Node>> {
+    match {
+    let mut __found_2 = None;
+    for __elem_3 in typed_args.iter().cloned() {
+        if arg_has_name(__elem_3.clone(), "init") {
+    __found_2 = Some(__elem_3);
+    break;
+};
+    }
+    __found_2
+} {
+    Some(init_arg) => {
+        Some(rt_type(init_arg.value.clone()))
+    }
+    None => {
+        match typed_args.clone().first().cloned() {
+    Some(init_arg) => {
+        Some(rt_type(init_arg.value.clone()))
+    }
+    None => {
+        None
+    }
+}
+    }
+}
+}
+
+pub fn contextualized_method_semantics(method: &str, method_semantics: Option<Rc<MethodSemantics>>, typed_args: Rc<Vec<Rc<NamedArg>>>) -> Option<Rc<MethodSemantics>> {
+    if method == "fold" {
+    match method_semantics.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(MethodSemantics::IntrinsicMethodSemantics { intrinsic, fold_accumulator_type: _, .. }) => {
+        Some(Rc::new(MethodSemantics::IntrinsicMethodSemantics { intrinsic: intrinsic.clone(), fold_accumulator_type: fold_init_arg_type(typed_args.clone()) }))
+    }
+    _ => {
+        method_semantics.clone()
+    }
+}
+} else {
+    method_semantics.clone()
+}
+}
+
+pub fn typed_expr_return_type(texpr: Rc<Node>) -> Option<Rc<InferredNode>> {
+    texpr.return_type.clone()
+}
+
+pub fn empty_expr_nodes() -> Rc<Vec<Rc<Node>>> {
+    Rc::new(Vec::new())
+}
+
+pub fn expr_contains_return(texpr: Rc<Node>) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match texpr.expr_data.as_ref() {
+    ExprData::ExprReturn { value: _, .. } => {
+        true
+    }
+    _ => {
+        {
+    let mut __any_0 = false;
+    for __elem_1 in expr_children(texpr.clone()).iter().cloned() {
+        if expr_contains_return(__elem_1.clone()) {
+    __any_0 = true;
+    break;
+};
+    }
+    __any_0
+}
+    }
+}
+    })
+}
+
+pub fn contextualize_match_arm(arm: Rc<MatchArm>, scope: Rc<InferScope>, expected_type: Option<Rc<Node>>) -> Rc<ArmInferResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let guard_result = if arm.guard.clone().is_some() {
+    Some(contextualize_empty_container_expr(arm.guard.clone().unwrap(), scope.clone(), None))
+} else {
+    None
+};
+        let body_result = contextualize_empty_container_expr(arm.body.clone(), scope.clone(), expected_type.clone());
+        Rc::new(ArmInferResult { typed_arm: Rc::new(MatchArm { pattern: arm.pattern.clone(), guard: match guard_result.clone() {
+    Some(gr) => {
+        Some(gr.typed.clone())
+    }
+    None => {
+        None
+    }
+}, body: body_result.typed.clone() }), diagnostics: v2_rt::concat(match guard_result.clone() {
+    Some(gr) => {
+        gr.diagnostics.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+}, body_result.diagnostics.clone()), body_type: rt_type(body_result.typed.clone()) })
+    })
+}
+
+pub fn contextualize_named_arg(arg: Rc<NamedArg>, scope: Rc<InferScope>, expected_type: Option<Rc<Node>>) -> Rc<ArgInferResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let value_result = contextualize_empty_container_expr(arg.value.clone(), scope.clone(), expected_type.clone());
+        Rc::new(ArgInferResult { typed_arg: Rc::new(NamedArg { name: arg.name.clone(), value: value_result.typed.clone() }), diagnostics: value_result.diagnostics.clone() })
+    })
+}
+
+pub fn contextualize_empty_container_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected_type: Option<Rc<Node>>) -> Rc<InferResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match texpr.expr_data.as_ref() {
+    ExprData::ExprLiteral { value: lit, .. } => {
+        Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprLiteral { value: lit.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+    }
+    ExprData::ExprError { kind, message, .. } => {
+        Rc::new(InferResult { typed: make_expr_error_node(kind.clone(), &message, texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+    }
+    ExprData::ExprVar { name, binding_kind, .. } => {
+        match texpr.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(InferredNode::Resolved { node: current_type, .. }) => {
+        match resolve_expected_type(expected_type.clone(), scope.clone()) {
+    Some(resolved_expected) => {
+        if placeholder_matches_expected_type(current_type.clone(), resolved_expected.clone()) {
+    Rc::new(InferResult { typed: make_typed_expr(Rc::new(ExprData::ExprVar { name: name.clone(), binding_kind: binding_kind.clone() }), Rc::new(InferredNode::Resolved { node: resolved_expected.clone() }), texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+} else {
+    Rc::new(InferResult { typed: make_typed_expr(Rc::new(ExprData::ExprVar { name: name.clone(), binding_kind: binding_kind.clone() }), Rc::new(InferredNode::Resolved { node: current_type.clone() }), texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+}
+    }
+    None => {
+        Rc::new(InferResult { typed: make_typed_expr(Rc::new(ExprData::ExprVar { name: name.clone(), binding_kind: binding_kind.clone() }), Rc::new(InferredNode::Resolved { node: current_type.clone() }), texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+    }
+}
+    }
+    _ => {
+        Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprVar { name: name.clone(), binding_kind: binding_kind.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+    }
+}
+    }
+    ExprData::ExprFieldAccess { base, field, summary, .. } => {
+        {
+    let base_result = contextualize_empty_container_expr(base.clone(), scope.clone(), None);
+    let current_return = match texpr.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(InferredNode::Resolved { node: current_type, .. }) => {
+        match resolve_expected_type(expected_type.clone(), scope.clone()) {
+    Some(resolved_expected) => {
+        if placeholder_matches_expected_type(current_type.clone(), resolved_expected.clone()) {
+    Some(Rc::new(InferredNode::Resolved { node: resolved_expected.clone() }))
+} else {
+    Some(Rc::new(InferredNode::Resolved { node: current_type.clone() }))
+}
+    }
+    None => {
+        Some(Rc::new(InferredNode::Resolved { node: current_type.clone() }))
+    }
+}
+    }
+    _ => {
+        texpr.return_type.clone()
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: base_result.typed.clone(), field: field.clone(), summary: summary.clone() }), current_return.clone(), texpr.span.clone()), diagnostics: base_result.diagnostics.clone() })
+}
+    }
+    ExprData::ExprCall { func, args, call_semantics, .. } => {
+        if func.clone() == "empty_map" {
+    match concrete_expected_empty_map_type(expected_type.clone(), scope.clone()) {
+    Some(concrete_map) => {
+        Rc::new(InferResult { typed: make_typed_expr(Rc::new(ExprData::ExprCall { func: func.clone(), args: args.clone(), call_semantics: call_semantics.clone() }), Rc::new(InferredNode::Resolved { node: concrete_map.clone() }), texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+    }
+    None => {
+        Rc::new(InferResult { typed: make_typed_expr(Rc::new(ExprData::ExprCall { func: func.clone(), args: args.clone(), call_semantics: call_semantics.clone() }), Rc::new(InferredNode::CompilerError { message: "empty_map() requires a concrete Map<K, V> context".to_string(), span: texpr.span.clone() }), texpr.span.clone()), diagnostics: Rc::new(vec!(empty_map_context_error(texpr.span.clone(), scope.clone()))) })
+    }
+}
+} else {
+    let resolved_return = resolved_type_or_expected(texpr.clone(), expected_type.clone(), scope.clone());
+    let func_sig = lookup_func_sig(scope.func_env.clone(), &func);
+    let arg_results = {
+    let mut __mapped_3 = Vec::new();
+    for __elem_4 in ({
+    let mut __enumerated_0 = Vec::new();
+    for (__idx_1, __elem_2) in args.clone().iter().enumerate() {
+        __enumerated_0.push((__idx_1 as i64, __elem_2.clone()));
+    }
+    Rc::new(__enumerated_0)
+}).iter().cloned() {
+        __mapped_3.push({
+    let arg_expected = match func_sig.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(sig) => {
+        let sig = Rc::new(sig.clone());
+        match sig.params.clone().get((__elem_4.0.clone()) as usize).cloned() {
+    Some(param) => {
+        Some(param.type_expr.clone())
+    }
+    None => {
+        None
+    }
+}
+    }
+    None => {
+        None
+    }
+};
+    contextualize_named_arg(__elem_4.1.clone(), scope.clone(), arg_expected.clone())
+});
+    }
+    Rc::new(__mapped_3)
+};
+    let typed_args = {
+    let mut __mapped_5 = Vec::new();
+    for __elem_6 in arg_results.iter().cloned() {
+        __mapped_5.push(__elem_6.typed_arg.clone());
+    }
+    Rc::new(__mapped_5)
+};
+    let diags = {
+    let mut __flat_mapped_7 = Vec::new();
+    for __elem_8 in arg_results.iter().cloned() {
+        __flat_mapped_7.extend(__elem_8.diagnostics.clone().iter().cloned());
+    }
+    Rc::new(__flat_mapped_7)
+};
+    let final_return = match texpr.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(InferredNode::Resolved { node: current_type, .. }) => {
+        match resolved_return.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(resolved_expected) => {
+        let resolved_expected = Rc::new(resolved_expected.clone());
+        if placeholder_matches_expected_type(current_type.clone(), resolved_expected.clone()) {
+    Some(Rc::new(InferredNode::Resolved { node: resolved_expected.clone() }))
+} else {
+    Some(Rc::new(InferredNode::Resolved { node: current_type.clone() }))
+}
+    }
+    None => {
+        Some(Rc::new(InferredNode::Resolved { node: current_type.clone() }))
+    }
+}
+    }
+    _ => {
+        texpr.return_type.clone()
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprCall { func: func.clone(), args: typed_args.clone(), call_semantics: call_semantics.clone() }), final_return.clone(), texpr.span.clone()), diagnostics: diags.clone() })
+}
+    }
+    ExprData::ExprMethodCall { receiver, method, args, method_semantics, .. } => {
+        {
+    let resolved_return = resolved_type_or_expected(texpr.clone(), expected_type.clone(), scope.clone());
+    let receiver_expected = if (((method.clone() == "map_insert") || (method.clone() == "with")) || (method.clone() == "list_push")) || (method.clone() == "reverse") {
+    resolved_return.clone()
+} else {
+    if method.clone() == "map_merge" {
+    resolved_return.clone()
+} else {
+    None
+}
+};
+    let receiver_result = contextualize_empty_container_expr(receiver.clone(), scope.clone(), receiver_expected.clone());
+    let receiver_elem_type = match expr_resolved_type(receiver_result.typed.clone(), scope.clone()) {
+    Some(rt) => {
+        Some(for_each_element_type_node(rt.clone()))
+    }
+    None => {
+        None
+    }
+};
+    let init_expected = if method.clone() == "fold" {
+    resolved_return.clone()
+} else {
+    None
+};
+    let arg_results = {
+    let mut __mapped_12 = Vec::new();
+    for __elem_13 in ({
+    let mut __enumerated_9 = Vec::new();
+    for (__idx_10, __elem_11) in args.clone().iter().enumerate() {
+        __enumerated_9.push((__idx_10 as i64, __elem_11.clone()));
+    }
+    Rc::new(__enumerated_9)
+}).iter().cloned() {
+        __mapped_12.push({
+    let idx = __elem_13.0.clone();
+    let arg = __elem_13.1.clone();
+    let arg_expected = if method.clone() == "fold" {
+    let is_init_arg = arg_has_name(arg.clone(), "init") || ((arg.name.clone().is_none()) && (idx.clone() == 0_i64));
+    if is_init_arg.clone() {
+    init_expected.clone()
+} else {
+    None
+}
+} else {
+    if (method.clone() == "map_merge") && (idx.clone() == 0_i64) {
+    resolved_return.clone()
+} else {
+    None
+}
+};
+    contextualize_named_arg(arg.clone(), scope.clone(), arg_expected.clone())
+});
+    }
+    Rc::new(__mapped_12)
+};
+    let typed_args = {
+    let mut __mapped_14 = Vec::new();
+    for __elem_15 in arg_results.iter().cloned() {
+        __mapped_14.push(__elem_15.typed_arg.clone());
+    }
+    Rc::new(__mapped_14)
+};
+    let diags = v2_rt::concat(receiver_result.diagnostics.clone(), {
+    let mut __flat_mapped_16 = Vec::new();
+    for __elem_17 in arg_results.iter().cloned() {
+        __flat_mapped_16.extend(__elem_17.diagnostics.clone().iter().cloned());
+    }
+    Rc::new(__flat_mapped_16)
+});
+    let updated_method_semantics = contextualized_method_semantics(&method, method_semantics.clone(), typed_args.clone());
+    let final_return = match texpr.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(InferredNode::Resolved { node: current_type, .. }) => {
+        match resolved_return.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(resolved_expected) => {
+        let resolved_expected = Rc::new(resolved_expected.clone());
+        if placeholder_matches_expected_type(current_type.clone(), resolved_expected.clone()) {
+    Some(Rc::new(InferredNode::Resolved { node: resolved_expected.clone() }))
+} else {
+    Some(Rc::new(InferredNode::Resolved { node: current_type.clone() }))
+}
+    }
+    None => {
+        Some(Rc::new(InferredNode::Resolved { node: current_type.clone() }))
+    }
+}
+    }
+    _ => {
+        texpr.return_type.clone()
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprMethodCall { receiver: receiver_result.typed.clone(), method: method.clone(), args: typed_args.clone(), method_semantics: updated_method_semantics.clone() }), final_return.clone(), texpr.span.clone()), diagnostics: diags.clone() })
+}
+    }
+    ExprData::ExprMatch { scrutinee, arms, .. } => {
+        {
+    let scrutinee_result = contextualize_empty_container_expr(scrutinee.clone(), scope.clone(), None);
+    let initial_branch_expected = resolved_type_or_expected(texpr.clone(), expected_type.clone(), scope.clone());
+    let first_arm_probe = match arms.clone().first().cloned() {
+    Some(first_arm) => {
+        Some(contextualize_match_arm(first_arm.clone(), scope.clone(), initial_branch_expected.clone()))
+    }
+    None => {
+        None
+    }
+};
+    let branch_expected = match initial_branch_expected.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(resolved_expected) => {
+        let resolved_expected = Rc::new(resolved_expected.clone());
+        Some(resolved_expected.clone())
+    }
+    None => {
+        match first_arm_probe.clone() {
+    Some(probe) => {
+        if concrete_context_type(probe.body_type.clone()) {
+    Some(probe.body_type.clone())
+} else {
+    None
+}
+    }
+    None => {
+        None
+    }
+}
+    }
+};
+    let arm_results = {
+    let mut __mapped_18 = Vec::new();
+    for __elem_19 in arms.iter().cloned() {
+        __mapped_18.push(contextualize_match_arm(__elem_19.clone(), scope.clone(), branch_expected.clone()));
+    }
+    Rc::new(__mapped_18)
+};
+    let typed_arms = {
+    let mut __mapped_20 = Vec::new();
+    for __elem_21 in arm_results.iter().cloned() {
+        __mapped_20.push(__elem_21.typed_arm.clone());
+    }
+    Rc::new(__mapped_20)
+};
+    let arm_diags = {
+    let mut __flat_mapped_22 = Vec::new();
+    for __elem_23 in arm_results.iter().cloned() {
+        __flat_mapped_22.extend(__elem_23.diagnostics.clone().iter().cloned());
+    }
+    Rc::new(__flat_mapped_22)
+};
+    let final_return = match branch_expected.clone() {
+    Some(resolved_expected) => {
+        Some(Rc::new(InferredNode::Resolved { node: resolved_expected.clone() }))
+    }
+    None => {
+        if ({
+    let __len_24 = arm_results.clone().len();
+    __len_24 as i64
+}) > 0_i64 {
+    match arm_results.clone().first().cloned() {
+    Some(first_arm) => {
+        Some(Rc::new(InferredNode::Resolved { node: first_arm.body_type.clone() }))
+    }
+    None => {
+        texpr.return_type.clone()
+    }
+}
+} else {
+    texpr.return_type.clone()
+}
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprMatch { scrutinee: scrutinee_result.typed.clone(), arms: typed_arms.clone() }), final_return.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(scrutinee_result.diagnostics.clone(), arm_diags.clone()) })
+}
+    }
+    ExprData::ExprIf { condition, then_branch, else_branch, .. } => {
+        {
+    let condition_result = contextualize_empty_container_expr(condition.clone(), scope.clone(), None);
+    let initial_branch_expected = resolved_type_or_expected(texpr.clone(), expected_type.clone(), scope.clone());
+    let then_probe = contextualize_empty_container_expr(then_branch.clone(), scope.clone(), initial_branch_expected.clone());
+    let branch_expected = match initial_branch_expected.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(resolved_expected) => {
+        let resolved_expected = Rc::new(resolved_expected.clone());
+        Some(resolved_expected.clone())
+    }
+    None => {
+        match expr_resolved_type(then_probe.typed.clone(), scope.clone()) {
+    Some(resolved_then) => {
+        if concrete_context_type(resolved_then.clone()) {
+    Some(resolved_then.clone())
+} else {
+    None
+}
+    }
+    None => {
+        None
+    }
+}
+    }
+};
+    let then_result = if initial_branch_expected.clone() == branch_expected.clone() {
+    then_probe.clone()
+} else {
+    contextualize_empty_container_expr(then_branch.clone(), scope.clone(), branch_expected.clone())
+};
+    let else_result = match else_branch.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(eb) => {
+        let eb = Rc::new(eb.clone());
+        Some(contextualize_empty_container_expr(eb.clone(), scope.clone(), branch_expected.clone()))
+    }
+    None => {
+        None
+    }
+};
+    let final_return = match branch_expected.clone() {
+    Some(resolved_expected) => {
+        Some(Rc::new(InferredNode::Resolved { node: resolved_expected.clone() }))
+    }
+    None => {
+        texpr.return_type.clone()
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprIf { condition: condition_result.typed.clone(), then_branch: then_result.typed.clone(), else_branch: match else_result.clone() {
+    Some(er) => {
+        Some(er.typed.clone())
+    }
+    None => {
+        None
+    }
+} }), final_return.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(v2_rt::concat(condition_result.diagnostics.clone(), then_result.diagnostics.clone()), match else_result.clone() {
+    Some(er) => {
+        er.diagnostics.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+}) })
+}
+    }
+    ExprData::ExprLet { name, value, body, .. } => {
+        {
+    let value_expected = match body.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(body_expr) => {
+        let body_expr = Rc::new(body_expr.clone());
+        match body_expr.expr_data.as_ref() {
+    ExprData::ExprVar { name: body_name, binding_kind: _, .. } => {
+        if body_name.clone() == name.clone() {
+    expected_type.clone()
+} else {
+    None
+}
+    }
+    _ => {
+        None
+    }
+}
+    }
+    None => {
+        expected_type.clone()
+    }
+};
+    let value_result = contextualize_empty_container_expr(value.clone(), scope.clone(), value_expected.clone());
+    let body_result = match body.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(body_expr) => {
+        let body_expr = Rc::new(body_expr.clone());
+        Some(contextualize_empty_container_expr(body_expr.clone(), scope.clone(), expected_type.clone()))
+    }
+    None => {
+        None
+    }
+};
+    let final_return = match body_result.clone() {
+    Some(br) => {
+        br.typed.return_type.clone()
+    }
+    None => {
+        value_result.typed.return_type.clone()
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprLet { name: name.clone(), value: value_result.typed.clone(), body: match body_result.clone() {
+    Some(br) => {
+        Some(br.typed.clone())
+    }
+    None => {
+        None
+    }
+} }), final_return.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(value_result.diagnostics.clone(), match body_result.clone() {
+    Some(br) => {
+        br.diagnostics.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+}) })
+}
+    }
+    ExprData::ExprRecordLit { type_name, fields, parent_enum, .. } => {
+        {
+    let field_results = {
+    let mut __mapped_25 = Vec::new();
+    for __elem_26 in fields.iter().cloned() {
+        __mapped_25.push({
+    let field_expected = record_literal_field_expected_type(texpr.clone(), type_name.clone(), &__elem_26.name, scope.clone());
+    let value_result = contextualize_empty_container_expr(__elem_26.value.clone(), scope.clone(), field_expected.clone());
+    Rc::new(FieldInferResult { typed_field: Rc::new(FieldInit { name: __elem_26.name.clone(), value: value_result.typed.clone() }), infer_result: value_result.clone(), diagnostics: value_result.diagnostics.clone() })
+});
+    }
+    Rc::new(__mapped_25)
+};
+    let typed_fields = {
+    let mut __mapped_27 = Vec::new();
+    for __elem_28 in field_results.iter().cloned() {
+        __mapped_27.push(__elem_28.typed_field.clone());
+    }
+    Rc::new(__mapped_27)
+};
+    let field_diags = {
+    let mut __flat_mapped_29 = Vec::new();
+    for __elem_30 in field_results.iter().cloned() {
+        __flat_mapped_29.extend(__elem_30.diagnostics.clone().iter().cloned());
+    }
+    Rc::new(__flat_mapped_29)
+};
+    let expected_optional_parent = Some("Optional".to_string());
+    let final_return = if type_name.clone().is_none() {
+    let child_nodes = {
+    let mut __mapped_31 = Vec::new();
+    for __elem_32 in field_results.iter().cloned() {
+        __mapped_31.push(Rc::new(Node { name: __elem_32.typed_field.name.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), return_type: typed_expr_return_type(__elem_32.infer_result.typed.clone()), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
+    }
+    Rc::new(__mapped_31)
+};
+    let anon_node = Rc::new(Node { name: "".to_string(), span: no_span(), children: child_nodes.clone(), connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    Some(Rc::new(InferredNode::Resolved { node: anon_node.clone() }))
+} else {
+    if (type_name.clone().unwrap() == "Some") && (parent_enum.clone() == expected_optional_parent.clone()) {
+    match {
+    let mut __found_35 = None;
+    for __elem_36 in typed_fields.iter().cloned() {
+        if __elem_36.name.clone() == "value" {
+    __found_35 = Some(__elem_36);
+    break;
+};
+    }
+    __found_35
+} {
+    Some(value_field) => {
+        Some(Rc::new(InferredNode::Resolved { node: with_optional_cardinality(rt_type(value_field.value.clone())) }))
+    }
+    None => {
+        texpr.return_type.clone()
+    }
+}
+} else {
+    texpr.return_type.clone()
+}
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: type_name.clone(), fields: typed_fields.clone(), parent_enum: parent_enum.clone() }), final_return.clone(), texpr.span.clone()), diagnostics: field_diags.clone() })
+}
+    }
+    ExprData::ExprListLit { elements, .. } => {
+        if ({
+    let __len_44 = elements.clone().len();
+    __len_44 as i64
+}) == 0_i64 {
+    match concrete_expected_empty_list_type(expected_type.clone(), scope.clone()) {
+    Some(concrete_list) => {
+        Rc::new(InferResult { typed: make_typed_expr(Rc::new(ExprData::ExprListLit { elements: empty_expr_nodes() }), Rc::new(InferredNode::Resolved { node: concrete_list.clone() }), texpr.span.clone()), diagnostics: Rc::new(Vec::new()) })
+    }
+    None => {
+        Rc::new(InferResult { typed: make_typed_expr(Rc::new(ExprData::ExprListLit { elements: empty_expr_nodes() }), Rc::new(InferredNode::CompilerError { message: "empty list literal requires a concrete List<T> context".to_string(), span: texpr.span.clone() }), texpr.span.clone()), diagnostics: Rc::new(vec!(empty_list_context_error(texpr.span.clone(), scope.clone()))) })
+    }
+}
+} else {
+    let element_expected = match resolve_expected_type(expected_type.clone(), scope.clone()) {
+    Some(resolved_expected) => {
+        if (resolved_expected.name.clone() == "List") && (({
+    let __len_37 = resolved_expected.children.clone().len();
+    __len_37 as i64
+}) == 1_i64) {
+    resolved_expected.children.clone().first().cloned()
+} else {
+    None
+}
+    }
+    None => {
+        None
+    }
+};
+    let element_results = {
+    let mut __mapped_38 = Vec::new();
+    for __elem_39 in elements.iter().cloned() {
+        __mapped_38.push(contextualize_empty_container_expr(__elem_39.clone(), scope.clone(), element_expected.clone()));
+    }
+    Rc::new(__mapped_38)
+};
+    let typed_elements = {
+    let mut __mapped_40 = Vec::new();
+    for __elem_41 in element_results.iter().cloned() {
+        __mapped_40.push(__elem_41.typed.clone());
+    }
+    Rc::new(__mapped_40)
+};
+    let element_diags = {
+    let mut __flat_mapped_42 = Vec::new();
+    for __elem_43 in element_results.iter().cloned() {
+        __flat_mapped_42.extend(__elem_43.diagnostics.clone().iter().cloned());
+    }
+    Rc::new(__flat_mapped_42)
+};
+    let final_return = match concrete_expected_empty_list_type(expected_type.clone(), scope.clone()) {
+    Some(concrete_list) => {
+        Some(Rc::new(InferredNode::Resolved { node: concrete_list.clone() }))
+    }
+    None => {
+        texpr.return_type.clone()
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprListLit { elements: typed_elements.clone() }), final_return.clone(), texpr.span.clone()), diagnostics: element_diags.clone() })
+}
+    }
+    ExprData::ExprBinOp { op, left, right, .. } => {
+        {
+    let left_result = contextualize_empty_container_expr(left.clone(), scope.clone(), None);
+    let right_result = contextualize_empty_container_expr(right.clone(), scope.clone(), None);
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprBinOp { op: op.clone(), left: left_result.typed.clone(), right: right_result.typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(left_result.diagnostics.clone(), right_result.diagnostics.clone()) })
+}
+    }
+    ExprData::ExprUnaryOp { op, operand, .. } => {
+        {
+    let operand_result = contextualize_empty_container_expr(operand.clone(), scope.clone(), None);
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprUnaryOp { op: op.clone(), operand: operand_result.typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: operand_result.diagnostics.clone() })
+}
+    }
+    ExprData::ExprLambda { params, body, semantics, .. } => {
+        {
+    let body_expected = match resolve_expected_type(expected_type.clone(), scope.clone()) {
+    Some(resolved_expected) => {
+        if resolved_expected.name.clone() == "Callable" {
+    Some(callable_return_type(resolved_expected.clone()))
+} else {
+    None
+}
+    }
+    None => {
+        None
+    }
+};
+    let body_result = contextualize_empty_container_expr(body.clone(), scope.clone(), body_expected.clone());
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprLambda { params: params.clone(), body: body_result.typed.clone(), semantics: semantics.clone() }), body_result.typed.return_type.clone(), texpr.span.clone()), diagnostics: body_result.diagnostics.clone() })
+}
+    }
+    ExprData::ExprStringInterp { parts, .. } => {
+        {
+    let part_results = {
+    let mut __mapped_45 = Vec::new();
+    for __elem_46 in parts.iter().cloned() {
+        __mapped_45.push(match __elem_46.as_ref() {
+    StringPart::Text { value, .. } => {
+        Rc::new(StringPartInferResult { typed_part: Rc::new(StringPart::Text { value: value.clone() }), diagnostics: Rc::new(Vec::new()) })
+    }
+    StringPart::Interpolation { expr, .. } => {
+        {
+    let expr_result = contextualize_empty_container_expr(expr.clone(), scope.clone(), None);
+    Rc::new(StringPartInferResult { typed_part: Rc::new(StringPart::Interpolation { expr: expr_result.typed.clone() }), diagnostics: expr_result.diagnostics.clone() })
+}
+    }
+});
+    }
+    Rc::new(__mapped_45)
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprStringInterp { parts: {
+    let mut __mapped_49 = Vec::new();
+    for __elem_50 in part_results.iter().cloned() {
+        __mapped_49.push(__elem_50.typed_part.clone());
+    }
+    Rc::new(__mapped_49)
+} }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: {
+    let mut __flat_mapped_51 = Vec::new();
+    for __elem_52 in part_results.iter().cloned() {
+        __flat_mapped_51.extend(__elem_52.diagnostics.clone().iter().cloned());
+    }
+    Rc::new(__flat_mapped_51)
+} })
+}
+    }
+    ExprData::ExprBlock { stmts, .. } => {
+        {
+    let count_stmts = {
+    let __len_53 = stmts.clone().len();
+    __len_53 as i64
+};
+    let stmt_results = {
+    let mut __mapped_57 = Vec::new();
+    for __elem_58 in ({
+    let mut __enumerated_54 = Vec::new();
+    for (__idx_55, __elem_56) in stmts.clone().iter().enumerate() {
+        __enumerated_54.push((__idx_55 as i64, __elem_56.clone()));
+    }
+    Rc::new(__enumerated_54)
+}).iter().cloned() {
+        __mapped_57.push({
+    let stmt_expected = if (__elem_58.0.clone() == (count_stmts.clone() - 1_i64)) || expr_contains_return(__elem_58.1.clone()) {
+    expected_type.clone()
+} else {
+    None
+};
+    contextualize_empty_container_expr(__elem_58.1.clone(), scope.clone(), stmt_expected.clone())
+});
+    }
+    Rc::new(__mapped_57)
+};
+    let typed_stmts = {
+    let mut __mapped_59 = Vec::new();
+    for __elem_60 in stmt_results.iter().cloned() {
+        __mapped_59.push(__elem_60.typed.clone());
+    }
+    Rc::new(__mapped_59)
+};
+    let final_return = match typed_stmts.clone().last().cloned() {
+    Some(last_stmt) => {
+        last_stmt.return_type.clone()
+    }
+    None => {
+        texpr.return_type.clone()
+    }
+};
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprBlock { stmts: typed_stmts.clone() }), final_return.clone(), texpr.span.clone()), diagnostics: {
+    let mut __flat_mapped_61 = Vec::new();
+    for __elem_62 in stmt_results.iter().cloned() {
+        __flat_mapped_61.extend(__elem_62.diagnostics.clone().iter().cloned());
+    }
+    Rc::new(__flat_mapped_61)
+} })
+}
+    }
+    ExprData::ExprCast { expr, target, .. } => {
+        {
+    let expr_result = contextualize_empty_container_expr(expr.clone(), scope.clone(), Some(target.clone()));
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprCast { expr: expr_result.typed.clone(), target: target.clone() }), Some(Rc::new(InferredNode::Resolved { node: target.clone() })), texpr.span.clone()), diagnostics: expr_result.diagnostics.clone() })
+}
+    }
+    ExprData::ExprForEach { variable, collection, body, .. } => {
+        {
+    let collection_result = contextualize_empty_container_expr(collection.clone(), scope.clone(), None);
+    let body_result = contextualize_empty_container_expr(body.clone(), scope.clone(), None);
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprForEach { variable: variable.clone(), collection: collection_result.typed.clone(), body: body_result.typed.clone() }), body_result.typed.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(collection_result.diagnostics.clone(), body_result.diagnostics.clone()) })
+}
+    }
+    ExprData::ExprIndex { base, index, .. } => {
+        {
+    let base_result = contextualize_empty_container_expr(base.clone(), scope.clone(), None);
+    let index_result = contextualize_empty_container_expr(index.clone(), scope.clone(), None);
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprIndex { base: base_result.typed.clone(), index: index_result.typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(base_result.diagnostics.clone(), index_result.diagnostics.clone()) })
+}
+    }
+    ExprData::ExprSlice { base, start, end, .. } => {
+        {
+    let base_result = contextualize_empty_container_expr(base.clone(), scope.clone(), None);
+    let start_result = contextualize_empty_container_expr(start.clone(), scope.clone(), None);
+    let end_result = contextualize_empty_container_expr(end.clone(), scope.clone(), None);
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprSlice { base: base_result.typed.clone(), start: start_result.typed.clone(), end: end_result.typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(v2_rt::concat(base_result.diagnostics.clone(), start_result.diagnostics.clone()), end_result.diagnostics.clone()) })
+}
+    }
+    ExprData::ExprReturn { value, .. } => {
+        {
+    let value_result = contextualize_empty_container_expr(value.clone(), scope.clone(), expected_type.clone());
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprReturn { value: value_result.typed.clone() }), value_result.typed.return_type.clone(), texpr.span.clone()), diagnostics: value_result.diagnostics.clone() })
+}
+    }
+    ExprData::NoExprData => {
+        Rc::new(InferResult { typed: texpr.clone(), diagnostics: Rc::new(Vec::new()) })
+    }
+}
+    })
+}
+
 pub fn lambda_semantics_from_param_types(param_types: Rc<Vec<Rc<Node>>>) -> Rc<LambdaSemantics> {
     Rc::new(LambdaSemantics { param_types: param_types.clone() })
 }
@@ -1902,7 +2916,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     Rc::new(__flat_mapped_39)
 } })
 } else {
-    ok_infer(make_expr_node(Rc::new(ExprData::ExprBlock { stmts: Rc::new(Vec::new()) }), Some(Rc::new(InferredNode::Resolved { node: leaf_node("Unit") })), span.clone()))
+    ok_infer(make_expr_node(Rc::new(ExprData::ExprBlock { stmts: empty_expr_nodes() }), Some(Rc::new(InferredNode::Resolved { node: leaf_node("Unit") })), span.clone()))
 }
 }
     }
@@ -2224,8 +3238,14 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
 }) > 0_i64) {
     let fn_scope = build_params_scope(scope.clone(), item.params.clone());
     let body_result = infer_expr(item.body.clone().unwrap(), fn_scope.clone());
-    let body_typed = body_result.typed.clone();
-    let body_diags = body_result.diagnostics.clone();
+    let body_expected = if item.return_type.clone().is_some() {
+    Some(rt_type(item.clone()))
+} else {
+    None
+};
+    let body_context = contextualize_empty_container_expr(body_result.typed.clone(), fn_scope.clone(), body_expected.clone());
+    let body_typed = body_context.typed.clone();
+    let body_diags = v2_rt::concat(body_result.diagnostics.clone(), body_context.diagnostics.clone());
     let resolved_ret = if item.return_type.clone().is_none() {
     rt_type(body_typed.clone())
 } else {
@@ -2245,8 +3265,9 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
 }) == 0_i64)) && (item.return_type.clone().is_some()) {
     let fn_scope = scope.clone();
     let body_result = infer_expr(item.body.clone().unwrap(), fn_scope.clone());
-    let body_typed = body_result.typed.clone();
-    let body_diags = body_result.diagnostics.clone();
+    let body_context = contextualize_empty_container_expr(body_result.typed.clone(), fn_scope.clone(), Some(rt_type(item.clone())));
+    let body_typed = body_context.typed.clone();
+    let body_diags = v2_rt::concat(body_result.diagnostics.clone(), body_context.diagnostics.clone());
     let resolved_ret = rt_type(item.clone());
     Rc::new(TypedItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: Some(body_typed.clone()), connective: None, collection_kind: None, transport: item.transport.clone(), properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: body_diags.clone() })
 } else {
@@ -2255,8 +3276,14 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
     __len_9 as i64
 }) == 0_i64) {
     let val_result = infer_expr(item.body.clone().unwrap(), scope.clone());
-    let val_typed = val_result.typed.clone();
-    let val_diags = val_result.diagnostics.clone();
+    let value_expected = if item.type_annotation.clone().is_some() {
+    Some(item.type_annotation.clone().unwrap())
+} else {
+    None
+};
+    let val_context = contextualize_empty_container_expr(val_result.typed.clone(), scope.clone(), value_expected.clone());
+    let val_typed = val_context.typed.clone();
+    let val_diags = v2_rt::concat(val_result.diagnostics.clone(), val_context.diagnostics.clone());
     let resolved_ret = if item.type_annotation.clone().is_none() {
     rt_type(val_typed.clone())
 } else {

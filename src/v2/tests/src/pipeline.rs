@@ -211,6 +211,77 @@ fn optional_alias_field_access() {
 }
 
 #[test]
+fn empty_map_uses_declared_return_type_context() {
+    let source = "module test\nfn empty_counts() -> Map<String, Int> {\n  empty_map()\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    assert!(
+        content.contains("<BTreeMap<String, i64>>::new()"),
+        "typed empty_map should emit a concrete Rust map constructor"
+    );
+    assert!(
+        !content.contains("<BTreeMap<_, _>>::new()"),
+        "typed empty_map should not leave underscore map placeholders in Rust emit"
+    );
+}
+
+#[test]
+fn empty_map_uses_named_record_field_context() {
+    let source = "module test\ntype Report { counts: Map<String, Int> }\nfn build() -> Report {\n  Report { counts: empty_map() }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    assert!(
+        content.contains("counts: <BTreeMap<String, i64>>::new()"),
+        "named record field context should specialize empty_map before Rust emit"
+    );
+}
+
+#[test]
+fn fold_init_empty_map_uses_accumulator_context() {
+    let source = "module test\nfn index(items: List<String>) -> Map<String, Bool> {\n  fold(items, init: empty_map(), f: (acc, item) => map_insert(acc, item, true))\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test.rs");
+    assert!(
+        content.contains("<BTreeMap<String, bool>>::new()"),
+        "fold init empty_map should emit a concrete Rust map constructor"
+    );
+}
+
+#[test]
+fn underconstrained_empty_map_is_rejected_before_emit() {
+    let source = "module test\nfn broken() -> Int {\n  let x = empty_map()\n  0\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| m.contains("empty_map() requires a concrete Map<K, V> context")),
+        "underconstrained empty_map should produce a targeted inference diagnostic, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn empty_list_uses_declared_return_type_context() {
+    let source = "module test\nfn empty_numbers() -> List<Int> {\n  []\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn underconstrained_empty_list_is_rejected_before_emit() {
+    let source = "module test\nfn broken() -> Int {\n  let x = []\n  0\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| m.contains("empty list literal requires a concrete List<T> context")),
+        "underconstrained empty list should produce a targeted inference diagnostic, got {:?}",
+        msgs
+    );
+}
+
+#[test]
 fn data_map_alias_lookup() {
     let source = "module test\ntype User { name: String }\ndata USERS: Map<String, User> = {}\nfn find(k: String) -> User? {\n  map_get(USERS, key: k)\n}\n";
     let result = compile_dag(source);
@@ -718,4 +789,55 @@ fn strict_complexity_violation_count() {
         "complexity violation count {} exceeds ratchet {}",
         violation_count, COMPLEXITY_RATCHET
     );
+}
+
+// ── Canonical name tests (gates normalize_type_name deletion) ───────────
+//
+// These tests verify that type names are already canonical (no module
+// prefixes, no generic parameter encoding) at every pipeline boundary.
+// If these pass, normalize_type_name is provably redundant.
+
+#[test]
+fn type_names_are_canonical_at_lookup() {
+    // Verify that type lookup works with raw names — no normalization needed.
+    // If this fails, the pipeline is producing non-canonical names that
+    // require normalize_type_name to fix at lookup time.
+    let source = "module test\ntype Coord { x: Int  y: Int }\ntype Path { points: List<Coord> }\nfn make(c: Coord) -> Path { Path { points: [c] } }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    // If lookup needed normalization, there would be "unresolved type" diagnostics
+}
+
+#[test]
+fn generic_type_names_are_canonical_at_equality() {
+    // Verify that type equality/compatibility works with raw names.
+    // List<Coord> compared to List<Coord> should match without normalization.
+    let source = "module test\ntype Coord { x: Int  y: Int }\nfn identity(items: List<Coord>) -> List<Coord> { items }\nfn first_item(items: List<Coord>) -> Coord? { items |> first }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_type_names_are_canonical_through_pipeline() {
+    // Verify Map<K,V> types resolve and compare correctly with raw names.
+    let source = "module test\ntype Config { settings: Map<String, Int> }\nfn get_setting(c: Config, key: String) -> Int? { map_get(c.settings, key) }\nfn merge_configs(a: Config, b: Config) -> Config {\n  Config { settings: map_merge(a.settings, b.settings) }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn nested_generic_names_are_canonical() {
+    // List<List<Int>>, Map<String, List<Int>> — nested generics should
+    // work without name normalization stripping the outer <...>.
+    let source = "module test\ntype Matrix { rows: List<List<Int>> }\ntype Index { lookup: Map<String, List<Int>> }\nfn first_row(m: Matrix) -> List<Int>? { m.rows |> first }\nfn get_entries(idx: Index, key: String) -> List<Int>? { map_get(idx.lookup, key) }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn optional_generic_names_are_canonical() {
+    // Optional<List<T>> and List<Optional<T>> should both work.
+    let source = "module test\ntype Bucket { items: List<Int>? }\nfn has_items(b: Bucket) -> Bool {\n  match b.items { Some { value: _ } => true  None => false }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
 }

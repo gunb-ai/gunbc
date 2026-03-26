@@ -99,7 +99,7 @@ import v2.compiler.infer {
 }
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  normalize_emit_type_name, lookup_emit_type_summary
+  lookup_emit_type_summary
 }
 
 import v2.compiler.emit {
@@ -1838,12 +1838,12 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, return_type: Inferre
       Some { value: Resolved { node: ret_type } } =>
         let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
         let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-        if type_str != "" && type_str != "Dynamic" {
+        if type_str != "" && type_str != "Dynamic" && type_str |> string_contains(substring: "compile_error!") == false {
           concat("<", type_str, ">::new()")
         } else {
-          "compile_error!(\"empty_map requires a concrete result type\")"
+          "compile_error!(\"bare empty_map reached emit\")"
         }
-      _ => "compile_error!(\"empty_map missing resolved return type\")"
+      _ => "compile_error!(\"empty_map missing resolved type at emit\")"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2308,15 +2308,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
       let init_str = match args |> first {
         Some { value: init_arg } =>
-          match init_arg.value.expr_data {
-            ExprCall { func: init_func, args: _, call_semantics: _ } =>
-              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" {
-                concat("<", acc_type_str, ">::new()")
-              } else {
-                emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              }
-            _ => emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          }
+          emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         None => "compile_error!(\"missing fold init argument\")"
       }
       let fold_fn = match args |> skip(1) |> first {
@@ -2678,7 +2670,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               // This handles cases where resolved_type is a leaf node without children
               // (e.g., Token struct where resolved_type has name "Token" but no field defs).
               if struct_node.name != "" {
-                let ftn_key = concat(normalize_emit_type_name(type_name: struct_node.name), "|", field_name)
+                let ftn_key = concat(struct_node.name, "|", field_name)
                 map_get(emit_info.field_type_names, ftn_key)
               } else { none }
           }

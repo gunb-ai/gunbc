@@ -20,7 +20,7 @@ import v2.std.core {
 import v2.compiler.infer_types {
   node_has_structure, node_is_product, node_is_optional,
   with_required_cardinality,
-  normalize_access_type_node, normalize_type_name,
+  normalize_access_type_node,
   rt_type, child_return_type_or_name, node_type_equals
 }
 
@@ -63,12 +63,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
-fn normalize_emit_type_name(type_name: String) -> String {
-  normalize_type_name(name: type_name)
-}
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
+  map_get(emit_info.type_summaries, type_name)
 }
 
 // =========================================================================
@@ -180,7 +177,7 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   if node_has_structure(n: item) == false || item.transport != none {
     return none
   }
-  let item_name = normalize_emit_type_name(type_name: item.name)
+  let item_name = item.name
   if node_is_product(n: item) {
     Some { value: TypeSummary {
       name: item_name,
@@ -206,7 +203,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
-              let variant_name = normalize_emit_type_name(type_name: variant.name)
+              let variant_name = variant.name
               map_insert(acc, variant_name, TypeSummary {
                 name: variant_name,
                 repr: StructRepr,
@@ -250,7 +247,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
           fold(item.children, init: state.field_type_names, f: (acc, child) =>
             match child.return_type {
               Some { value: Resolved { node: ft } } =>
-                let resolved_name = normalize_emit_type_name(type_name: normalize_access_type_node(n: ft).name)
+                let resolved_name = normalize_access_type_node(n: ft).name
                 if resolved_name != "" && resolved_name != "Dynamic" {
                   map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
                 } else { acc }
@@ -262,8 +259,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             fold(variant.children, init: acc, f: (inner_acc, child) =>
               match child.return_type {
                 Some { value: Resolved { node: ft } } =>
-                  let variant_name = normalize_emit_type_name(type_name: variant.name)
-                  let resolved_name = normalize_emit_type_name(type_name: normalize_access_type_node(n: ft).name)
+                  let variant_name = variant.name
+                  let resolved_name = normalize_access_type_node(n: ft).name
                   if resolved_name != "" && resolved_name != "Dynamic" {
                     map_insert(inner_acc, concat(variant_name, "|", child.name), resolved_name)
                   } else { inner_acc }

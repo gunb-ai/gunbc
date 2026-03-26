@@ -1537,14 +1537,17 @@ pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
     let __len_1 = n.children.clone().len();
     __len_1 as i64
 }) == 0_i64 {
-    let base = if n.name.clone() == "Map" {
-    emit_map_type("_", "_", target.clone())
-} else {
-    if (((n.name.clone() == "List") || (n.name.clone() == "Set")) || (n.name.clone() == "NonEmptyList")) || (n.name.clone() == "NonEmptySet") {
-    emit_container(&to_snake(&n.name), "_", target.clone())
+    let base = if ((((n.name.clone() == "Map") || (n.name.clone() == "List")) || (n.name.clone() == "Set")) || (n.name.clone() == "NonEmptyList")) || (n.name.clone() == "NonEmptySet") {
+    match target.clone() {
+    RenderTarget::Rust => {
+        v2_rt::concat(v2_rt::concat("compile_error!(\"bare ".to_string(), n.name.clone()), " type reached emit\")".to_string())
+    }
+    _ => {
+        v2_rt::concat(v2_rt::concat("__EMIT_BUG_BARE_".to_string(), n.name.clone()), "__".to_string())
+    }
+}
 } else {
     emit_primitive_type(&n.name, target.clone())
-}
 };
     if emit_map_has(rc_types.clone(), &n.name) {
     v2_rt::concat(v2_rt::concat("Rc<".to_string(), base.clone()), ">".to_string())

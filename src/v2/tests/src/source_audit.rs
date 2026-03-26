@@ -323,6 +323,29 @@ fn emit_deletes_intrinsic_string_classifier_and_lambda_scope_fallback() {
 }
 
 #[test]
+fn emit_requires_empty_containers_to_be_specialized_before_codegen() {
+    let emit_source = read_v2_file("src/v2/05_emit.dag");
+    assert!(
+        !emit_source.contains("emit_map_type(key_type: \"_\", val_type: \"_\""),
+        "05_emit.dag should not fabricate bare Map types with '_' placeholders"
+    );
+    assert!(
+        !emit_source.contains("emit_container(kind: to_snake(name: n.name), inner: \"_\""),
+        "05_emit.dag should not fabricate bare container element types with '_' placeholders"
+    );
+
+    let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+    assert!(
+        !rust_source.contains("empty_map requires a concrete result type"),
+        "05_emit_rust.dag should not recover from unconstrained empty_map at emit time"
+    );
+    assert!(
+        !rust_source.contains("init_func == \"empty_map\""),
+        "05_emit_rust.dag should not special-case fold init empty_map at emit time"
+    );
+}
+
+#[test]
 fn final_cleanup_removes_parser_and_cli_fabrication_fallbacks() {
     let parse_source = read_v2_file("src/v2/02_parse.dag");
     assert!(

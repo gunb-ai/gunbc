@@ -38,12 +38,8 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo { type_summaries: Rc::new(std::collections::HashMap::new()), variant_to_enum: Rc::new(std::collections::HashMap::new()), enum_variant_membership: Rc::new(std::collections::HashMap::new()), field_type_names: Rc::new(std::collections::HashMap::new()) })
 }
 
-pub fn normalize_emit_type_name(type_name: &str) -> String {
-    normalize_type_name(&type_name)
-}
-
 pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: &str) -> Option<Rc<TypeSummary>> {
-    emit_info.type_summaries.clone().get(&normalize_emit_type_name(&type_name)).cloned()
+    emit_info.type_summaries.clone().get(&type_name.to_string()).cloned()
 }
 
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
@@ -256,7 +252,7 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
     if (node_has_structure(item.clone()) == false) || (item.transport.clone().is_some()) {
     return None;
 };
-    let item_name = normalize_emit_type_name(&item.name);
+    let item_name = item.name.clone();
     if node_is_product(item.clone()) {
     Some(Rc::new(TypeSummary { name: item_name, repr: Rc::new(TypeRepr::StructRepr), field_summaries: build_struct_field_summaries(item.children.clone()) }))
 } else {
@@ -290,7 +286,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     let __len_4 = __elem_1.children.clone().len();
     __len_4 as i64
 }) > 0_i64 {
-    let variant_name = normalize_emit_type_name(&__elem_1.name);
+    let variant_name = __elem_1.name.clone();
     {
     let __rc_3 = __acc_0;
     let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
@@ -376,7 +372,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
         __acc_17 = match __elem_18.return_type.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ft, .. }) => {
         {
-    let resolved_name = normalize_emit_type_name(&normalize_access_type_node(ft.clone()).name);
+    let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
     if (resolved_name.clone() != "") && (resolved_name.clone() != "Dynamic") {
     {
     let __rc_20 = __acc_17;
@@ -407,8 +403,8 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
         __acc_23 = match __elem_24.return_type.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ft, .. }) => {
         {
-    let variant_name = normalize_emit_type_name(&__elem_22.name);
-    let resolved_name = normalize_emit_type_name(&normalize_access_type_node(ft.clone()).name);
+    let variant_name = __elem_22.name.clone();
+    let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
     if (resolved_name.clone() != "") && (resolved_name.clone() != "Dynamic") {
     {
     let __rc_26 = __acc_23;

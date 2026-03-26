@@ -203,8 +203,7 @@ fn resolve_builtin_call_type(name: String) -> Node {
 // =========================================================================
 
 fn intrinsic_method_index() -> Map<String, IntrinsicMethod> {
-  let m = empty_map()
-  let m = map_insert(m, "count", MethodCount)
+  let m = map_insert(empty_map(), "count", MethodCount)
   let m = map_insert(m, "join", MethodJoin)
   let m = map_insert(m, "split", MethodSplit)
   let m = map_insert(m, "last", MethodLast)

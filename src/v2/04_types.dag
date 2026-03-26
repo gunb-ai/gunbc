@@ -205,24 +205,6 @@ fn normalize_access_type_node(n: Node) -> Node {
   }
 }
 
-// Temporary L1 bridge: canonicalize type references by dropping generic
-// suffixes and module prefixes until all name-based lookups are dissolved.
-fn normalize_type_name(name: String) -> String {
-  if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
-    name
-  } else {
-    let base = match name |> split(separator: "<") |> first {
-      Some { value: part } => part
-      None => name
-    }
-    match base |> split(separator: ".") |> last {
-      Some { value: short } => short
-      None => base
-    }
-  }
-}
-
-
 // =========================================================================
 // Type shape and comparison
 // =========================================================================

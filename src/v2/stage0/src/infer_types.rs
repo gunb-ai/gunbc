@@ -241,41 +241,6 @@ pub fn normalize_access_type_node(n: Rc<Node>) -> Rc<Node> {
     })
 }
 
-pub fn normalize_type_name(name: &str) -> String {
-    if (v2_rt::string_contains(&name, &"<") == false) && (v2_rt::string_contains(&name, &".") == false) {
-    name.to_string()
-} else {
-    let base = match ({
-    let mut __split_parts_0 = Vec::new();
-    for __part_1 in name.to_string().split("<".to_string().as_str()) {
-        __split_parts_0.push(__part_1.to_string());
-    }
-    __split_parts_0
-}).first().cloned() {
-    Some(part) => {
-        part.clone()
-    }
-    None => {
-        name.to_string()
-    }
-};
-    match ({
-    let mut __split_parts_2 = Vec::new();
-    for __part_3 in base.clone().split(".".to_string().as_str()) {
-        __split_parts_2.push(__part_3.to_string());
-    }
-    __split_parts_2
-}).last().cloned() {
-    Some(short) => {
-        short.clone()
-    }
-    None => {
-        base.clone()
-    }
-}
-}
-}
-
 pub fn node_type_shape(n: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if node_is_leaf(n.clone()) {

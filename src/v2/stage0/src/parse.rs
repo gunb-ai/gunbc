@@ -16,6 +16,22 @@ pub struct ParseResult {
     pub error: Option<Rc<Diagnostic>>,
 }
 
+pub fn empty_import_names() -> Rc<Vec<String>> {
+    Rc::new(Vec::new())
+}
+
+pub fn empty_named_args() -> Rc<Vec<Rc<NamedArg>>> {
+    Rc::new(Vec::new())
+}
+
+pub fn empty_field_bindings() -> Rc<Vec<Rc<FieldBinding>>> {
+    Rc::new(Vec::new())
+}
+
+pub fn empty_field_inits() -> Rc<Vec<Rc<FieldInit>>> {
+    Rc::new(Vec::new())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AdvanceResult {
     pub token: Rc<Token>,
@@ -2600,7 +2616,7 @@ pub fn parse_items_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, acc: 
 
 pub fn parse_import(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ImportResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let err_import = Rc::new(Import { module_path: "".to_string(), names: Rc::new(ImportNames::ImportSpecific { names: Rc::new(Vec::new()) }), span: start_span.clone() });
+    let err_import = Rc::new(Import { module_path: "".to_string(), names: Rc::new(ImportNames::ImportSpecific { names: empty_import_names() }), span: start_span.clone() });
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwImport);
     if has_err(r.err.clone()) {
     return Rc::new(ImportResult { import: err_import.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -6453,7 +6469,7 @@ pub fn parse_pipe_rhs(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, receiv
 };
     Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMethodCall { receiver: receiver.clone(), method, args: r2.args.clone(), method_semantics: None }), None, span), state: r2.state.clone(), err: None })
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMethodCall { receiver: receiver.clone(), method, args: Rc::new(Vec::new()), method_semantics: None }), None, span), state: s.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMethodCall { receiver: receiver.clone(), method, args: empty_named_args(), method_semantics: None }), None, span), state: s.clone(), err: None })
 }
     })
 }
@@ -7517,7 +7533,7 @@ pub fn parse_variant_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>,
 };
     Rc::new(PatternResult { pattern: Rc::new(MatchPattern::VariantPattern { name: name.to_string(), parent_enum: None, field_bindings: r.field_bindings.clone() }), state: r2.state.clone(), err: None })
 } else {
-    Rc::new(PatternResult { pattern: Rc::new(MatchPattern::VariantPattern { name: name.to_string(), parent_enum: None, field_bindings: Rc::new(Vec::new()) }), state: state.clone(), err: None })
+    Rc::new(PatternResult { pattern: Rc::new(MatchPattern::VariantPattern { name: name.to_string(), parent_enum: None, field_bindings: empty_field_bindings() }), state: state.clone(), err: None })
 }
     })
 }
@@ -7933,7 +7949,7 @@ pub fn parse_paren_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
         let s = skip_newlines(tokens.clone(), r.state.clone());
         if peek_is_rparen(tokens.clone(), s.clone()) {
     let adv = advance(tokens.clone(), s.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: Rc::new(Vec::new()), parent_enum: None }), None, span), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: empty_field_inits(), parent_enum: None }), None, span), state: adv.state.clone(), err: None })
 } else {
     let lambda_r = try_lambda_params(tokens.clone(), s.clone());
     if lambda_r.is_lambda.clone() {
@@ -8214,7 +8230,7 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
         let s = skip_newlines(tokens.clone(), adv.state.clone());
         if peek_is_rbrace(tokens.clone(), s.clone()) {
     let adv2 = advance(tokens.clone(), s.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: Rc::new(Vec::new()), parent_enum: None }), None, span), state: adv2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: empty_field_inits(), parent_enum: None }), None, span), state: adv2.state.clone(), err: None })
 } else {
     let k = peek_kind(tokens.clone(), s.clone());
     match k.as_ref().map(|__rc| __rc.as_ref()) {
