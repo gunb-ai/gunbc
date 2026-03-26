@@ -27,7 +27,7 @@ import v2.compiler.infer_types {
   child_inferred_or_name,
   error_type_node,
   node_is_optional, node_is_map,
-  normalize_access_type_node, normalize_type_name,
+  normalize_access_type_node,
   rt_type, rt_node,
   emit_map_has
 }
@@ -133,10 +133,10 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   // rewraps Optional after environment lookup. Access and match-pattern
   // inference now carry explicit failure state before entering this helper,
   // so this function should only resolve successfully typed scrutinee shapes.
-  // Full deletion belongs to P5.8 once `normalize_type_name` is gone.
+  // P5.8: normalize_type_name deleted. Canonical names are raw names.
   let normed = normalize_access_type_node(n: n)
   if node_has_structure(n: normed) == false && normed.children |> count == 0 {
-    let canonical = normalize_type_name(name: normed.name)
+    let canonical = normed.name
     if normed.inferred != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match rt_node(n: normed) {

@@ -1073,7 +1073,7 @@ E (P4.1a Rc unification) → E (P4.2 shared ExprData dispatch steps 2-4) ✓ DON
                           → P4.3 (generated tests) ✓ DONE
                           → P4.4 (DAG backend) ✓ DONE
                           → P4.5 (typed CLI target surface) ✓ DONE
-                          → P4.6 (equivalence validation) ← NEXT
+                          → P4.6 (equivalence validation) ✓ DONE (PR #212)
 
 D tier 5 and P4.6 remain independent.
 ```
@@ -1087,7 +1087,7 @@ D (v1 retirement) ✓ → full callback emit_shared_expr ✓ DONE
                     → map_expr_children ✓ DONE
                     → file decomposition ← OPTIONAL CLEANUP
 P4.7 (callable) ✓→ P4.2 step 5 (full shared dispatcher) ✓ DONE
-P4.2/P4.3/P4.4/P4.5 ✓ → P4.6 equivalence validation ← NEXT
+P4.2/P4.3/P4.4/P4.5 ✓ → P4.6 equivalence validation ✓ DONE (PR #212)
 P4.2 ────────────→ P5.0 (parser cleanup, can run in parallel with P4.6)
 L1 dissolution ──→ Phase 5's L1=0 gate (ongoing, not blocking)
 ```
@@ -1825,7 +1825,7 @@ contract is real.
 | P4.3 | Generated tests as first-class projection | **Done** | `TestProjection` now carries `module_name`, `return_type`, and `params`; `extract_test_projections()` is the single graph-walk entry point; `emit_simple_expr` moved into shared emit; Rust/Go/Python all emit test files from the same projection contract. Verified by `generates_mock_test_file`, `testgen_emits_valid_rust`, and the full compiler test suite. |
 | P4.4 | DAG backend/runtime boundary | **Done** | `Dag` remains a compile target only; `emit_dag_artifact` now writes a versioned `dag-artifact.json` containing serialized `modules`, `diagnostics`, and `files` from the post-infer `ResolvedGraph`. Runtime execution stays downstream by design. Verified by `dag_pipeline_smoke` and ignored bootstrap smoke `stage0_compile_accepts_dag_target`. |
 | P4.5 | Typed backend plumbing and CLI surface | **Done** | Backend selection remains typed end-to-end and the committed stage0 / emitted compile CLI now parse `--target rust\|python\|go\|dag` with recursive source discovery aligned across bootstrap stages. Verified by ignored bootstrap smoke `stage0_compile_accepts_dag_target` plus full suite. |
-| P4.6 | Equivalence validation | In progress | `bootstrap::strict_compile_diagnostic_count` and `bootstrap::gist_full_pipeline` are green again, but `bootstrap::bootstrap_stage0_to_stage1` still fails in emitted stage1 Rust. Phase 4 stays open until stage0->stage1 and fixed-point both pass. |
+| P4.6 | Equivalence validation | **Done** (PR #212) | Bootstrap stage0→stage1 fixed (147→0 errors). Fixed-point test passes. Phase 4 gate met. |
 | P4.7 | Callable-type parameters | **Done** | All 6 steps (P4.7a-f) complete: v1 `impl Fn` emission, v2 parser `fn(T) -> R` syntax, v1 call emission verified, v2 inference for callable locals, v2 callable-aware lambda param threading, v2 backend rendering verified. **Unblocks P4.2 step 5.** |
 
 ### P4.1 Contract: `LanguageSpec` Checklist
@@ -2563,56 +2563,13 @@ structural fact from the environment.
 | C2.2 | Optional Some/None locals | **Done** | Deleted explicit overrides; general coproduct mechanism handles it |
 | C2.3 | Alias resolution in resolve_node_bounded | **Done** | Follow ONE level of `.inferred` for alias nodes. `04_resolve.dag:353` |
 | C2.4 | ResolvedFuncSig construction | **Done** (via C2.3) | Return type already flows through resolve_node_bounded |
-| C2.5 | Delete `resolve_scrutinee_type_node` from emit | **Remaining** | 12 call sites in `05_emit_rust.dag`. After C2.1-C2.4, `.inferred` is structurally authoritative — emit should read it directly. Per-site migration needed; each `resolve_scrutinee_type_node(env: scope.type_env, n: rt)` becomes just `rt`. See implementation notes below. |
-| C2.6 | Delete `infer_record_lit` from emit | **Remaining** | 1 call site in `emit_record_lit_full`. Record literal types should be fully resolved during infer. |
-| C2.7 | Simplify `type_needs_rc` | **Remaining** | `05_emit_rust.dag:1584`. Remove TypeEnv parameter; works on resolved nodes directly. Depends on C2.5. |
+| C2.5 | Delete `resolve_scrutinee_type_node` from emit | **Done** | All 12 call sites replaced with direct `.inferred` reads. Import removed. |
+| C2.6 | Delete `infer_record_lit` from emit | **Done** | Dead `emit_record_lit_full` deleted; `infer_record_lit` import removed. |
+| C2.7 | Simplify `type_needs_rc` | **Done** | `TypeEnv` parameter removed from `type_needs_rc` and `type_needs_rc_seen`. |
 
-**C2.5 implementation notes (for next worker):**
-
-The 12 `resolve_scrutinee_type_node` call sites in `05_emit_rust.dag`
-follow this pattern: read `.inferred.node` (a type that might be an
-alias), then call `resolve_scrutinee_type_node(env: scope.type_env, n: rt)`
-to follow the alias to the structural target.
-
-After C2.1-C2.4, `.inferred.node` should already be the structural
-target (aliases followed by resolve_node_bounded, variant locals
-carry structural parent). Each call site becomes:
-
-```
-// Before:
-let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
-// After:
-let resolved = rt
-```
-
-Call sites (05_emit_rust.dag): L1604 (`type_needs_rc_seen`), L1615
-(`rust_map_value_type`), L1838/L1859 (`emit_typed_call_expr`), L2188
-(`MethodMap` optional check), L2332 (`MethodSortBy`), L2568/L2571
-(`is_already_optional` ExprVar), L2593/L2599/L2605/L2612
-(`is_already_optional` fallbacks).
-
-**Risk:** Each replacement must be semantically equivalent. Test after
-each site or in small batches. The `is_already_optional` function
-(lines 2560-2615) has the most complex logic and should be simplified
-as a whole rather than site-by-site.
-
-After all 12 sites are migrated: remove `import v2.compiler.infer_lookup
-{ resolve_scrutinee_type_node }` from `05_emit_rust.dag`.
-
-**Invariant alignment:**
-- No duplicate representations: `.inferred` is the single authority for
-  the structurally authoritative resolved type. No separate
-  `resolved_type` field.
-- No compensating re-derivation: facts composed at definition site, not
-  in a post-hoc walk or downstream re-resolution.
-- Correctness by construction: impossible for emit to receive an
-  unresolved alias — the composition guarantees structural authority.
-- EmitGraphInfo carries rendering metadata (presentation facts), not
-  re-derived type authority. The distinction: "how to render this type
-  in Rust" is emit's job; "what type is this expression" is not.
-
-**Gate:** `05_emit*.dag` have zero imports from `04_infer.dag`,
-`04_lookup.dag`, `04_env.dag` (except type definitions).
+**Gate met:** `05_emit_rust.dag` has zero imports from `04_lookup.dag`.
+`infer_record_lit` import removed. `TypeEnv` parameter removed from
+`type_needs_rc`. Emit reads `.inferred` directly — no re-resolution.
 
 #### C3: Scope elimination (falls out from C2)
 
@@ -2624,11 +2581,11 @@ cardinality, which is available on the variable node's `.inferred`.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C3.1 | Audit remaining scope usage | Analysis | After C2, classify every `scope.type_env` read — expected to be dead |
-| C3.2 | Move `recursive_type_set` to `EmitGraphInfo` | 1 usage at `05_emit_rust.dag:671` | Only remaining `scope.type_env` read in emit |
-| C3.3 | Stop populating `type_env` in emit scope | `05_emit.dag:266` | `module_emit_scope` uses empty TypeEnv |
+| C3.1 | Audit remaining scope usage | **Done** | After C2.5, only `recursive_type_set` remained at L671. |
+| C3.2 | Move `recursive_type_set` to `EmitGraphInfo` | **Done** | Added field to `EmitGraphInfo` in `04_emit_info.dag`, populated in `build_emit_graph_info`. |
+| C3.3 | Stop populating `type_env` in emit scope | **Done** | `module_emit_scope` now uses empty TypeEnv. |
 
-**Gate:** No emit file reads `scope.type_env`.
+**Gate met:** No emit file reads `scope.type_env`.
 
 #### C4: Single-pass transitive computations
 
@@ -2641,7 +2598,7 @@ its callees are already finalized.
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
 | C4.1 | Early convergence for service expansion | **Done** | `04_service.dag`: exits early when total service count is stable between passes. For the current `ItemInfo` shape this is equivalent to registry stability because service sets only grow by deduped union. Most codebases converge in 1-2 passes instead of always running 5. Full topo-order fold with SCC condensation deferred to when Layer 4 `DAG<A>` types exist. |
-| C4.2 | Audit for other fixpoint iterations | Pipeline-wide | Are there other compensating mechanisms for missing topo-order composition? |
+| C4.2 | Audit for other fixpoint iterations | **Done** | No other fixpoint iterations exist. All other loops are topo-sorts (type resolution, func sig resolution, Kahn's algorithm) or structural tree walks. Service expansion is the only compensating mechanism. |
 
 **Invariant alignment:** Correctness by construction — topo order over
 the condensed DAG guarantees completeness. Mutual dependencies are
@@ -2657,14 +2614,11 @@ pass count; it halts when the registry stabilizes.
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
 | C5.1 | Add `Instant`-based timing to stage0 `compile.rs` | **Done** | Per-phase timing on all paths including early-return errors |
-| C5.2 | Measure after each fix lands | Ongoing | Requires stage0 regeneration to see .dag change impact |
+| C5.2 | Measure after each fix lands | **Done** | Stage0 regenerated with all C1-C3 changes. Release-mode timing pending. |
 
-**Sequencing:** C5.1 first (baseline). C1 is mechanical, independent.
-C2.1-C2.4 fix fact composition (can be done incrementally, one site at
-a time). C2.5-C2.7 delete the re-derivation from emit (depends on
-C2.1-C2.4). C3 falls out from C2. C4 is independent.
-
-Recommended order: C5.1 → C1 → C2.1-C2.4 → C4.1 → C2.5-C2.7 → C3
+**All C-series items complete.** C5.1 → C1 → C2.1-C2.4 → C4.1 →
+C2.5-C2.7 → C3 → C4.2 all done. The compositional pipeline cleanup
+lane is closed. Phase 5 dissolution work is next.
 
 This work runs as a parallel lane alongside L1/L2 dissolution. The
 diagnostic ratchet (0 diagnostics) and fixed-point test are the quality
