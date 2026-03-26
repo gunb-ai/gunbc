@@ -58,7 +58,10 @@ import v2.compiler.languages {
   scaffold_for_target, serialization_for_target, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_types {
+  for_each_element_type_node, node_is_optional, node_is_map, node_is_product,
+  leaf_node, with_required_cardinality, rt_type
+}
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,

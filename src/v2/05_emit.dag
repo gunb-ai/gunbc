@@ -34,6 +34,7 @@ import v2.std.core {
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
+  UnaryOpKind, Not, Neg,
   ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
@@ -58,7 +59,10 @@ import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
-import v2.compiler.infer_service { UniqueAccum }
+import v2.compiler.infer_service {
+  UniqueAccum,
+  is_typed_service_call_receiver, extract_typed_service_name
+}
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
@@ -743,8 +747,12 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 // emit_node_type_rc is the Rc-aware API for Rust callers.
 // =========================================================================
 
+fn empty_rc_types() -> Map<String, Bool> {
+  empty_map()
+}
+
 fn emit_node_type(n: Node, target: RenderTarget) -> String {
-  emit_node_type_rc(n: n, target: target, rc_types: empty_map())
+  emit_node_type_rc(n: n, target: target, rc_types: empty_rc_types())
 }
 
 fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
