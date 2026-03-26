@@ -134,20 +134,14 @@ pub fn substitute_type_slots(n: Rc<Node>, slot_bindings: Rc<HashMap<String, Rc<N
     }
     Rc::new(__mapped_3)
 };
-    {
-    let __rc_6 = __elem_2;
-    let mut __owned_5 = Rc::try_unwrap(__rc_6).unwrap_or_else(|rc| { debug_assert!(false, "V5: expected sole ownership of `__elem_2`"); (*rc).clone() });
-    let __taken_7 = std::mem::take(&mut __owned_5.children);
-    __owned_5.children = substituted_args.clone();
-    Rc::new(__owned_5)
-}
+    Rc::new(Node { name: __elem_2.name.clone(), span: __elem_2.span.clone(), children: substituted_args.clone(), connective: __elem_2.connective.clone(), collection_kind: None, params: __elem_2.params.clone(), return_type: __elem_2.return_type.clone(), return_cardinality: __elem_2.return_cardinality.clone(), uses: __elem_2.uses.clone(), body: __elem_2.body.clone(), transport: __elem_2.transport.clone(), properties: __elem_2.properties.clone(), type_annotation: __elem_2.type_annotation.clone(), config: __elem_2.config.clone(), is_self_recursive: __elem_2.is_self_recursive.clone(), has_non_tail_self_call: __elem_2.has_non_tail_self_call.clone(), expr_data: __elem_2.expr_data.clone() })
 } else {
     substitute_type_slots(__elem_2.clone(), slot_bindings.clone(), &decl_name)
 });
     }
     Rc::new(__mapped_1)
 };
-    Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: new_children.clone(), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
+    Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: new_children.clone(), connective: n.connective.clone(), collection_kind: None, params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
 }
     })
 }
@@ -166,7 +160,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     let base_result = resolve_node_bounded(base.clone(), env.clone(), &module_name, depth.clone() + 1_i64);
     let base_resolved = base_result.resolved.clone();
     let base_diags = base_result.diagnostics.clone();
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: Rc::new(vec!(base_resolved.clone())), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: base_diags.clone() })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: Rc::new(vec!(base_resolved.clone())), connective: n.connective.clone(), collection_kind: None, params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: base_diags.clone() })
 }
     }
     None => {
@@ -184,7 +178,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     let rt_result = resolve_node_bounded(child_rt.clone(), env.clone(), &module_name, depth.clone() + 1_i64);
     let rt_resolved = rt_result.resolved.clone();
     let rt_diags = rt_result.diagnostics.clone();
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: __elem_1.name.clone(), span: __elem_1.span.clone(), children: __elem_1.children.clone(), connective: __elem_1.connective.clone(), params: __elem_1.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: rt_resolved.clone() })), return_cardinality: __elem_1.return_cardinality.clone(), uses: __elem_1.uses.clone(), body: __elem_1.body.clone(), transport: __elem_1.transport.clone(), properties: __elem_1.properties.clone(), type_annotation: __elem_1.type_annotation.clone(), config: __elem_1.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: rt_diags.clone() })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: __elem_1.name.clone(), span: __elem_1.span.clone(), children: __elem_1.children.clone(), connective: __elem_1.connective.clone(), collection_kind: None, params: __elem_1.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: rt_resolved.clone() })), return_cardinality: __elem_1.return_cardinality.clone(), uses: __elem_1.uses.clone(), body: __elem_1.body.clone(), transport: __elem_1.transport.clone(), properties: __elem_1.properties.clone(), type_annotation: __elem_1.type_annotation.clone(), config: __elem_1.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: rt_diags.clone() })
 });
     }
     Rc::new(__mapped_0)
@@ -203,7 +197,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     }
     Rc::new(__flat_mapped_4)
 };
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: resolved_children.clone(), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: all_diags.clone() })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: resolved_children.clone(), connective: n.connective.clone(), collection_kind: None, params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: all_diags.clone() })
 }
 } else {
     if node_is_optional(n.clone()) {
@@ -235,7 +229,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
 };
     let rt_resolved = rt_result.resolved.clone();
     let rt_diags = rt_result.diagnostics.clone();
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: __elem_9.name.clone(), span: __elem_9.span.clone(), children: __elem_9.children.clone(), connective: __elem_9.connective.clone(), params: __elem_9.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: rt_resolved.clone() })), return_cardinality: __elem_9.return_cardinality.clone(), uses: __elem_9.uses.clone(), body: __elem_9.body.clone(), transport: __elem_9.transport.clone(), properties: __elem_9.properties.clone(), type_annotation: __elem_9.type_annotation.clone(), config: __elem_9.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: rt_diags.clone() })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: __elem_9.name.clone(), span: __elem_9.span.clone(), children: __elem_9.children.clone(), connective: __elem_9.connective.clone(), collection_kind: None, params: __elem_9.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: rt_resolved.clone() })), return_cardinality: __elem_9.return_cardinality.clone(), uses: __elem_9.uses.clone(), body: __elem_9.body.clone(), transport: __elem_9.transport.clone(), properties: __elem_9.properties.clone(), type_annotation: __elem_9.type_annotation.clone(), config: __elem_9.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: rt_diags.clone() })
 });
     }
     Rc::new(__mapped_8)
@@ -254,7 +248,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     }
     Rc::new(__flat_mapped_13)
 };
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: __elem_7.name.clone(), span: __elem_7.span.clone(), children: resolved_fields.clone(), connective: __elem_7.connective.clone(), params: __elem_7.params.clone(), return_type: __elem_7.return_type.clone(), return_cardinality: __elem_7.return_cardinality.clone(), uses: __elem_7.uses.clone(), body: __elem_7.body.clone(), transport: __elem_7.transport.clone(), properties: __elem_7.properties.clone(), type_annotation: __elem_7.type_annotation.clone(), config: __elem_7.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: field_diags.clone() })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: __elem_7.name.clone(), span: __elem_7.span.clone(), children: resolved_fields.clone(), connective: __elem_7.connective.clone(), collection_kind: None, params: __elem_7.params.clone(), return_type: __elem_7.return_type.clone(), return_cardinality: __elem_7.return_cardinality.clone(), uses: __elem_7.uses.clone(), body: __elem_7.body.clone(), transport: __elem_7.transport.clone(), properties: __elem_7.properties.clone(), type_annotation: __elem_7.type_annotation.clone(), config: __elem_7.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: field_diags.clone() })
 });
     }
     Rc::new(__mapped_6)
@@ -273,7 +267,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     }
     Rc::new(__flat_mapped_17)
 };
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: resolved_variants.clone(), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: all_diags.clone() })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: resolved_variants.clone(), connective: n.connective.clone(), collection_kind: None, params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: all_diags.clone() })
 }
 }
 } else {
@@ -380,7 +374,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     Rc::new(__mapped_41)
 };
     let is_recursive = is_recursive_type(env.clone(), &n.name);
-    let result = Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: substituted_children.clone(), connective: decl.connective.clone(), params: Rc::new(Vec::new()), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: decl.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() }), diagnostics: v2_rt::concat(arity_diags.clone(), arg_diags.clone()) });
+    let result = Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: substituted_children.clone(), connective: decl.connective.clone(), collection_kind: None, params: Rc::new(Vec::new()), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: decl.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() }), diagnostics: v2_rt::concat(arity_diags.clone(), arg_diags.clone()) });
     result.clone()
 } else {
     if node_is_map(n.clone()) {
@@ -406,7 +400,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     let val_result = resolve_node_bounded(val_child.clone(), env.clone(), &module_name, depth.clone() + 1_i64);
     let val_resolved = val_result.resolved.clone();
     let val_diags = val_result.diagnostics.clone();
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: Rc::new(vec!(key_resolved.clone(), val_resolved.clone())), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: v2_rt::concat(key_diags.clone(), val_diags.clone()) })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: Rc::new(vec!(key_resolved.clone(), val_resolved.clone())), connective: n.connective.clone(), collection_kind: None, params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: v2_rt::concat(key_diags.clone(), val_diags.clone()) })
 } else {
     if ({
     let __len_44 = n.children.clone().len();
@@ -418,7 +412,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     let el_result = resolve_node_bounded(el.clone(), env.clone(), &module_name, depth.clone() + 1_i64);
     let el_resolved = el_result.resolved.clone();
     let el_diags = el_result.diagnostics.clone();
-    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: Rc::new(vec!(el_resolved.clone())), connective: n.connective.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: el_diags.clone() })
+    Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: Rc::new(vec!(el_resolved.clone())), connective: n.connective.clone(), collection_kind: None, params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: el_diags.clone() })
 }
     }
     None => {
@@ -1202,7 +1196,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: &str) -
     }
     Rc::new(__flat_mapped_22)
 };
-        Rc::new(ItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: resolved_children.clone(), params: resolved_params.clone(), return_type: resolved_ret.clone(), return_cardinality: item.return_cardinality.clone(), uses: resolved_uses.clone(), body: resolved_body.clone(), connective: item.connective.clone(), transport: resolved_transport.clone(), properties: resolved_props.clone(), type_annotation: resolved_anno.clone(), config: resolved_config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(param_diags.clone(), ret_diags.clone()), use_diags.clone()), body_diags.clone()), anno_diags.clone()), transport_diags.clone()), config_diags.clone()), prop_diags.clone()), child_diags.clone()) })
+        Rc::new(ItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: resolved_children.clone(), params: resolved_params.clone(), return_type: resolved_ret.clone(), return_cardinality: item.return_cardinality.clone(), uses: resolved_uses.clone(), body: resolved_body.clone(), connective: item.connective.clone(), collection_kind: None, transport: resolved_transport.clone(), properties: resolved_props.clone(), type_annotation: resolved_anno.clone(), config: resolved_config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(param_diags.clone(), ret_diags.clone()), use_diags.clone()), body_diags.clone()), anno_diags.clone()), transport_diags.clone()), config_diags.clone()), prop_diags.clone()), child_diags.clone()) })
     })
 }
 

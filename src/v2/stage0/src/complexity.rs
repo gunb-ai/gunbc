@@ -616,8 +616,7 @@ pub fn cost_sum_depth(expr: Rc<CostExpr>) -> i64 {
 
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let s = simplify_cost(expr.clone());
-        match s.as_ref() {
+        match expr.as_ref() {
     CostExpr::CostConst { value: _, .. } => {
         "O(1)".to_string()
     }

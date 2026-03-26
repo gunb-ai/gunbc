@@ -559,8 +559,9 @@ fn cost_sum_depth(expr: CostExpr) -> Int {
 }
 
 fn classify_complexity(expr: CostExpr) -> String {
-  let s = simplify_cost(expr: expr)
-  match s {
+  // Complexity summaries are simplified before caching, so the formatter
+  // should classify the cached tree directly instead of rebuilding it.
+  match expr {
     CostConst { value: _ } => "O(1)"
     CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
