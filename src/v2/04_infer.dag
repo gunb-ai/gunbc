@@ -2244,15 +2244,11 @@ fn build_module_context(contributions: List<ItemContribution>,
     items: local.resolved_items,
     module_name: module_name
   )
-  // Variant locals come from env_variant_locals (computed once from env.bindings,
-  // which already includes all local + imported disjunction types).
-  let optional_locals = map_insert(env_variant_locals, "Some", TypeBinding {
-    name: "Some", resolved: leaf_node(name: "Optional")
-  })
-  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
-    name: "None", resolved: leaf_node(name: "Optional")
-  })
-  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
+  // C2.2: Optional Some/None now handled by the general variant constructor
+  // mechanism (C2.1). kernel_optional is a Disj node in env.bindings, so
+  // imported_variant_locals already registers Some and None with the structural
+  // parent node. No need for explicit leaf_node(name: "Optional") override.
+  let all_locals = fold(map_values(merged_scope.svc_locals), init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
   )
   ModuleContext {
