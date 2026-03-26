@@ -2228,6 +2228,195 @@ match succeeds.
 - Each convergence step survives re-bootstrap and fixed-point verification
 - The compiler is in a clean place to start real L2 work
 
+### Phase 5 Parallel: Compositional Pipeline (Performance through Fact Composition)
+
+**Motivation:** The compiler works, but its pipeline violates its own
+thesis. The thesis says: smart facts + dumb compiler; facts compose by
+construction; no passes. The current pipeline is an imperative sequence
+where later stages re-derive facts that earlier stages already computed.
+Self-compile takes ~20 minutes. The root cause is not missing
+optimization — it is broken fact composition.
+
+**Root-cause analysis (2026-03-26):** Inference fabricates name-only
+references at 5 sites where the structural fact is already available in
+the TypeEnv. Emit then calls `resolve_scrutinee_type_node` 12+ times to
+follow those name references back to the structural definitions. Emit
+rebuilds `InferScope` to perform these lookups. Service expansion uses a
+5-pass fixpoint where topo order enables single-pass computation. All of
+these are symptoms of the same violation: **facts not composed at their
+definition site**.
+
+**Principle (from the thesis):** "If the graph is suboptimal, a fact is
+missing. Fix: improve the domain model." The fix is not a post-hoc
+resolution pass (that would be adding a compiler pass — antithetical to
+the thesis). The fix is: compose the structural fact at the site where
+its inputs are first available. `.inferred` is always structural because
+inference uses the resolved binding, not the name.
+
+#### The Fact Composition Contract
+
+The pipeline has three fact-producing boundaries. Each boundary produces
+a contract — a guarantee about what facts are available downstream.
+
+**Resolve contract:** Every type reference in the graph is resolved to
+its structural definition. `TypeBinding.resolved` carries the full
+structural node (connective, children, cardinality). Names flow through
+for diagnostics, but the structural composition is the authority.
+
+**Infer contract:** Every expression node's `.inferred` carries the
+fully-resolved structural type of that expression — not a name, not an
+alias, but the structural composition. This falls out naturally: when
+inference sets `.inferred`, it uses `binding.resolved` (the structural
+fact from the TypeEnv), not `leaf_node(name: binding.name)`.
+
+**Emit contract:** Pure translation. Emit reads `.inferred` to get
+structural types, reads `EmitGraphInfo` for rendering metadata, and
+translates to target-language text. Emit never calls inference functions,
+never resolves through TypeEnv, never rebuilds scope for type lookups.
+
+#### Why the infer contract is currently broken (5 sites)
+
+The TypeEnv already carries resolved structural types. But inference
+fabricates name-only references at these sites instead of using the
+structural fact:
+
+| Site | File:Line | What happens | What it should do |
+|------|-----------|-------------|-------------------|
+| Variant constructor locals | `04_infer.dag:2217` | `resolved: leaf_node(name: binding.name)` — bare parent enum name | Use `binding.resolved` — the structural enum definition |
+| Optional Some/None | `04_infer.dag:2244` | `resolved: leaf_node(name: "Optional")` — hardcoded name | Cardinality on the binding site (P1.4); no "Optional" name needed |
+| Type alias registration | `04_infer.dag:2053` | alias_node stored with original `.inferred` intact | Resolve through TypeEnv before storing |
+| Func call return type | `04_infer.dag:1065` | `s.inferred` from sig used directly | Sig should already carry structural type |
+| ResolvedFuncSig | `04_sigs.dag:112` | `dsig.inferred.value` unwrapped without resolution | Resolve through TypeEnv at sig construction time |
+
+**Key observation:** None of these require a new pass. Each is a site
+where inference already has the structural fact (via `TypeBinding` or
+`TypeEnv`) but discards it in favor of a name. The fix is: use the
+fact that's already composed.
+
+#### C1: Node vocabulary into core
+
+Node constructors and structural predicates currently live in
+`04_types.dag` but are imported by `02_parse.dag`, `03_resolve.dag`,
+and all emit files. They read/write Node structural fields (connective,
+cardinality) and need no environment — they are Node vocabulary, not
+stage-4 concepts. The parser importing from `04_types` is a dependency
+inversion.
+
+| ID | Item | Scope | Notes |
+|----|------|-------|-------|
+| C1.1 | Move structural constructors to `00_core.dag` | ~8 functions | `leaf_node`, `rt_type`, `with_optional_cardinality`, `with_required_cardinality`, `error_type_node`, `no_span`, `child_inferred_or_name`, `node_is_leaf` |
+| C1.2 | Move structural predicates to `00_core.dag` | ~4 functions | `node_is_product`, `node_is_coproduct`, `node_has_structure`, `node_is_optional` |
+| C1.3 | Update import statements | ~15 files | Move symbols from `import v2.compiler.infer_types` to `import v2.std.core` |
+
+**What stays in `04_types.dag`:** Name-checking predicates
+(`node_is_container`, `node_is_map` — check `n.name`), normalization
+(`normalize_access_type_node`, `normalize_type_name` — check names),
+type comparison functions, and domain constructors that hardcode names
+(`map_node`, `tuple_node`, `container_node`). These are L1 domain
+knowledge that violates layering if moved to core. They stay until L1
+dissolution eliminates the name checks.
+
+**Gate:** `02_parse.dag` has zero imports from `04_*` modules.
+
+#### C2: Fix fact composition at definition sites
+
+Strengthen the infer contract so `.inferred` is always structural. No
+new Node fields. No post-hoc resolution pass. Fix the 5 sites where
+inference fabricates name-only references instead of using the
+structural fact from the environment.
+
+| ID | Item | Scope | Notes |
+|----|------|-------|-------|
+| C2.1 | Variant constructor locals | `04_infer.dag:2217-2226` | Use `binding.resolved` (structural enum node) instead of `leaf_node(name: binding.name)` |
+| C2.2 | Optional Some/None locals | `04_infer.dag:2244-2249` | Use cardinality model instead of `leaf_node(name: "Optional")` |
+| C2.3 | Type alias registration | `04_infer.dag:2053-2055` | Resolve alias target through TypeEnv before storing |
+| C2.4 | ResolvedFuncSig construction | `04_sigs.dag:112-114` | Resolve return type through TypeEnv at sig construction time |
+| C2.5 | Delete `resolve_scrutinee_type_node` from emit | 12 call sites in `05_emit_rust.dag` | After C2.1-C2.4, `.inferred` is structural; emit reads it directly |
+| C2.6 | Delete `infer_record_lit` from emit | 1 call site | Record literal types fully resolved during infer |
+| C2.7 | Simplify `type_needs_rc` | `05_emit_rust.dag:1584` | Remove TypeEnv parameter; works on resolved nodes directly |
+
+**Invariant alignment:**
+- No duplicate representations: `.inferred` is the single authority for
+  resolved type. No separate `resolved_type` field.
+- No passes: facts composed at definition site, not in a post-hoc walk.
+- Correctness by construction: impossible for emit to receive an
+  unresolved alias — the types guarantee structural composition.
+
+**Gate:** `05_emit*.dag` have zero imports from `04_infer.dag`,
+`04_lookup.dag`, `04_env.dag` (except type definitions).
+
+#### C3: Scope elimination (falls out from C2)
+
+`InferScope` is reconstructed in emit to access `TypeEnv` for type
+resolution and `scope.locals` for variable lookups. After C2, TypeEnv
+is no longer needed. The remaining `scope.locals` usage
+(`is_already_optional` at `05_emit_rust.dag:2570`) checks variable
+cardinality, which is available on the variable node's `.inferred`.
+
+| ID | Item | Scope | Notes |
+|----|------|-------|-------|
+| C3.1 | Audit remaining scope usage | Analysis | After C2, classify every `scope.type_env` read — expected to be dead |
+| C3.2 | Move `recursive_type_set` to `EmitGraphInfo` | 1 usage at `05_emit_rust.dag:671` | Only remaining `scope.type_env` read in emit |
+| C3.3 | Stop populating `type_env` in emit scope | `05_emit.dag:266` | `module_emit_scope` uses empty TypeEnv |
+
+**Gate:** No emit file reads `scope.type_env`.
+
+#### C4: Single-pass transitive computations
+
+`expand_transitive_services` runs 5 fixed iterations after inference.
+This is a compensating mechanism for not using the topological order
+that resolve already computed. A single topo-order fold computes the
+transitive closure by construction — when you process a function, all
+its callees are already finalized.
+
+| ID | Item | Scope | Notes |
+|----|------|-------|-------|
+| C4.1 | Replace 5-pass fixpoint with topo-order fold | `04_service.dag`, `04_infer.dag:2552` | Modules already in topo order from resolve; single fold suffices |
+| C4.2 | Audit for other fixpoint iterations | Pipeline-wide | Are there other compensating mechanisms for missing topo-order composition? |
+
+**Invariant alignment:** Correctness by construction — topo order
+guarantees completeness. No iteration needed.
+
+**Gate:** No fixpoint iteration in the pipeline.
+
+#### C5: Timing instrumentation
+
+| ID | Item | Scope | Notes |
+|----|------|-------|-------|
+| C5.1 | Add `Instant`-based timing to stage0 `compile.rs` | ~30 lines | Per-phase timing: frontend, normalize, reconcile, complexity, ownership, emit |
+| C5.2 | Measure after each fix lands | Ongoing | Requires stage0 regeneration to see .dag change impact |
+
+**Sequencing:** C5.1 first (baseline). C1 is mechanical, independent.
+C2.1-C2.4 fix fact composition (can be done incrementally, one site at
+a time). C2.5-C2.7 delete the re-derivation from emit (depends on
+C2.1-C2.4). C3 falls out from C2. C4 is independent.
+
+Recommended order: C5.1 → C1 → C2.1-C2.4 → C4.1 → C2.5-C2.7 → C3
+
+This work runs as a parallel lane alongside L1/L2 dissolution. The
+diagnostic ratchet (0 diagnostics) and fixed-point test are the quality
+gates — no change may regress them.
+
+#### Relationship to other design tracks
+
+**L1 dissolution:** C2 accelerates L1. When `.inferred` is structural,
+inference no longer branches on type names for type resolution. The
+name-checking predicates (`node_is_container`, `node_is_map`) remain
+as L1 bridges but lose their primary consumer (emit's type resolution).
+
+**Language extdeps:** C2 clears the path for shared emit. When emit
+reads structural facts directly instead of re-resolving through TypeEnv,
+the emit spine becomes language-agnostic — target-language rendering
+decisions (Rust `Box<T>`, Python `Optional[T]`) are the only remaining
+language-specific logic. This is the prerequisite for
+`dsl/extdeps/languages/` (Phase 4/M6).
+
+**Algebraic type vision:** C2 enforces that `.inferred` is a structural
+composition — the same principle that the algebraic vision applies to
+types themselves (Bit → compositions → types). When types compose from
+the fundamental unit and `.inferred` carries that composition, the
+compiler processes structure end-to-end.
+
 ### Beyond Phase 5: Bit-Graph Model
 
 The full algebraic vision — machine primitives grounded in
