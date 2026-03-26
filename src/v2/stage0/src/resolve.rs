@@ -358,6 +358,28 @@ pub struct TopoResult {
     pub cycle_error: Option<Rc<Diagnostic>>,
 }
 
+pub fn adjacency_add_edge(adjacency: Rc<HashMap<String, Rc<Vec<String>>>>, from_module: &str, to_module: &str) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    let existing = match adjacency.clone().get(&from_module.to_string()).cloned() {
+    Some(lst) => {
+        lst.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+};
+    {
+    let __rc_3 = adjacency;
+    let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_2.insert(from_module.to_string(), {
+    let __rc_1 = existing;
+    let mut __appended_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
+    __appended_0.push(to_module.to_string());
+    Rc::new(__appended_0)
+});
+    Rc::new(__map_ins_2)
+}
+}
+
 pub fn topological_sort(modules: Rc<Vec<Rc<Module>>>) -> Rc<TopoResult> {
     let module_names = {
     let mut __mapped_0 = Vec::new();
@@ -381,50 +403,30 @@ pub fn topological_sort(modules: Rc<Vec<Rc<Module>>>) -> Rc<TopoResult> {
     }
     Rc::new(__flat_mapped_2)
 }).iter().cloned() {
-        __acc_6 = {
-    let existing = match __acc_6.clone().get(&__elem_7.from_module.clone()).cloned() {
-    Some(lst) => {
-        lst.clone()
-    }
-    None => {
-        Rc::new(Vec::new())
-    }
-};
-    {
-    let __rc_11 = __acc_6;
-    let mut __map_ins_10 = Rc::try_unwrap(__rc_11).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_10.insert(__elem_7.from_module.clone(), {
-    let __rc_9 = existing;
-    let mut __appended_8 = Rc::try_unwrap(__rc_9).unwrap_or_else(|rc| (*rc).clone());
-    __appended_8.push(__elem_7.to_module.clone());
-    Rc::new(__appended_8)
-});
-    Rc::new(__map_ins_10)
-}
-};
+        __acc_6 = adjacency_add_edge(__acc_6.clone(), &__elem_7.from_module, &__elem_7.to_module);
     }
     __acc_6
 };
     let in_degree_map = {
-    let mut __acc_12 = Rc::new(std::collections::HashMap::new());
-    for __elem_13 in modules.iter().cloned() {
-        __acc_12 = {
-    let __rc_16 = __acc_12;
-    let mut __map_ins_15 = Rc::try_unwrap(__rc_16).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_15.insert(__elem_13.name.clone(), {
-    let __len_14 = __elem_13.imports.clone().len();
-    __len_14 as i64
+    let mut __acc_8 = Rc::new(std::collections::HashMap::new());
+    for __elem_9 in modules.iter().cloned() {
+        __acc_8 = {
+    let __rc_12 = __acc_8;
+    let mut __map_ins_11 = Rc::try_unwrap(__rc_12).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_11.insert(__elem_9.name.clone(), {
+    let __len_10 = __elem_9.imports.clone().len();
+    __len_10 as i64
 });
-    Rc::new(__map_ins_15)
+    Rc::new(__map_ins_11)
 };
     }
-    __acc_12
+    __acc_8
 };
     let initial_queue = {
-    let __rc_20 = {
-    let mut __filtered_17 = Vec::new();
-    for __elem_18 in module_names.iter().cloned() {
-        if match in_degree_map.clone().get(&__elem_18.clone()).cloned() {
+    let __rc_16 = {
+    let mut __filtered_13 = Vec::new();
+    for __elem_14 in module_names.iter().cloned() {
+        if match in_degree_map.clone().get(&__elem_14.clone()).cloned() {
     Some(0) => {
         true
     }
@@ -432,58 +434,58 @@ pub fn topological_sort(modules: Rc<Vec<Rc<Module>>>) -> Rc<TopoResult> {
         false
     }
 } {
-    __filtered_17.push(__elem_18);
+    __filtered_13.push(__elem_14);
 };
     }
-    Rc::new(__filtered_17)
+    Rc::new(__filtered_13)
 };
-    let mut __sorted_19 = Rc::try_unwrap(__rc_20).unwrap_or_else(|rc| (*rc).clone());
-    __sorted_19.sort_by_key(|name| name.clone());
-    Rc::new(__sorted_19)
+    let mut __sorted_15 = Rc::try_unwrap(__rc_16).unwrap_or_else(|rc| (*rc).clone());
+    __sorted_15.sort_by_key(|name| name.clone());
+    Rc::new(__sorted_15)
 };
     let result = kahn_drain(initial_queue.clone(), Rc::new(Vec::new()), in_degree_map.clone(), adjacency.clone());
     let module_count = {
-    let __len_21 = modules.clone().len();
-    __len_21 as i64
+    let __len_17 = modules.clone().len();
+    __len_17 as i64
 };
     if ({
-    let __len_31 = result.sorted.clone().len();
-    __len_31 as i64
+    let __len_27 = result.sorted.clone().len();
+    __len_27 as i64
 }) == module_count.clone() {
     Rc::new(TopoResult { sorted: result.sorted.clone(), cycle_error: None })
 } else {
     let sorted_set = {
-    let mut __acc_22 = Rc::new(std::collections::HashMap::new());
-    for __elem_23 in result.sorted.iter().cloned() {
-        __acc_22 = {
-    let __rc_25 = __acc_22;
-    let mut __map_ins_24 = Rc::try_unwrap(__rc_25).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_24.insert(__elem_23, true);
-    Rc::new(__map_ins_24)
+    let mut __acc_18 = Rc::new(std::collections::HashMap::new());
+    for __elem_19 in result.sorted.iter().cloned() {
+        __acc_18 = {
+    let __rc_21 = __acc_18;
+    let mut __map_ins_20 = Rc::try_unwrap(__rc_21).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_20.insert(__elem_19, true);
+    Rc::new(__map_ins_20)
 };
     }
-    __acc_22
+    __acc_18
 };
     let cycle_members = {
-    let mut __filtered_26 = Vec::new();
-    for __elem_27 in module_names.iter().cloned() {
-        if map_has(sorted_set.clone(), &__elem_27) == false {
-    __filtered_26.push(__elem_27);
+    let mut __filtered_22 = Vec::new();
+    for __elem_23 in module_names.iter().cloned() {
+        if map_has(sorted_set.clone(), &__elem_23) == false {
+    __filtered_22.push(__elem_23);
 };
     }
-    Rc::new(__filtered_26)
+    Rc::new(__filtered_22)
 };
     let cycle_desc = {
-    let mut __joined_28 = String::new();
-    let mut __first_30 = true;
-    for __elem_29 in cycle_members.iter().cloned() {
-        if !__first_30 {
-    __joined_28.push_str(&" -> ".to_string());
+    let mut __joined_24 = String::new();
+    let mut __first_26 = true;
+    for __elem_25 in cycle_members.iter().cloned() {
+        if !__first_26 {
+    __joined_24.push_str(&" -> ".to_string());
 };
-        __first_30 = false;
-        __joined_28.push_str(&__elem_29);
+        __first_26 = false;
+        __joined_24.push_str(&__elem_25);
     }
-    __joined_28
+    __joined_24
 };
     Rc::new(TopoResult { sorted: result.sorted.clone(), cycle_error: Some(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat("circular dependency detected: ".to_string(), cycle_desc.clone()), span: None, module_name: None, category: Some(ErrorCategory::InvalidOperation) })) })
 }

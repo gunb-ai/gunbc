@@ -3150,9 +3150,11 @@ pub fn emit_typed_call(func: &str, args: Rc<Vec<Rc<NamedArg>>>, registry: Rc<Has
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if func == "get" {
     let get_args = order_typed_call_args(args.clone(), &func, scope.clone());
-    return match get_args.clone().first().cloned() {
+    let get_list = get_args.clone().first().cloned();
+    let get_idx = get_args.clone().get((1_i64) as usize).cloned();
+    let get_result = match get_list.clone() {
     Some(list_arg) => {
-        match get_args.clone().get((1_i64) as usize).cloned() {
+        match get_idx.clone() {
     Some(idx_arg) => {
         {
     let list_str = emit_typed_expr(list_arg.value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
@@ -3161,18 +3163,15 @@ pub fn emit_typed_call(func: &str, args: Rc<Vec<Rc<NamedArg>>>, registry: Rc<Has
 }
     }
     None => {
-        {
-    "compile_error!(\"get call missing index argument\")".to_string()
-}
+        "compile_error!(\"get call missing index argument\")".to_string()
     }
 }
     }
     None => {
-        {
-    "compile_error!(\"get call missing list argument\")".to_string()
-}
+        "compile_error!(\"get call missing list argument\")".to_string()
     }
 };
+    return get_result.clone();
 };
         if func == "with" {
     let with_args = order_typed_call_args(args.clone(), &func, scope.clone());
@@ -3237,18 +3236,15 @@ pub fn emit_typed_call(func: &str, args: Rc<Vec<Rc<NamedArg>>>, registry: Rc<Has
 };
         if func == "to_string" {
     let to_string_args = order_typed_call_args(args.clone(), &func, scope.clone());
-    return match to_string_args.clone().first().cloned() {
+    let ts_result = match to_string_args.clone().first().cloned() {
     Some(value_arg) => {
-        {
-    v2_rt::concat(v2_rt::concat("(".to_string(), emit_typed_expr(value_arg.value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())), ").to_string()".to_string())
-}
+        v2_rt::concat(v2_rt::concat("(".to_string(), emit_typed_expr(value_arg.value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())), ").to_string()".to_string())
     }
     None => {
-        {
-    "compile_error!(\"to_string call missing value argument\")".to_string()
-}
+        "compile_error!(\"to_string call missing value argument\")".to_string()
     }
 };
+    return ts_result.clone();
 };
         let collection_scope = if (((func == "map") || (func == "filter")) || (func == "flat_map")) || (func == "fold") {
     let call_args = order_typed_call_args(args.clone(), &func, scope.clone());
@@ -4012,10 +4008,42 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
     let acc_type_node = match fold_accumulator_type.as_ref().map(|__rc| __rc.as_ref()) {
     Some(acc_type) => {
         let acc_type = Rc::new(acc_type.clone());
-        if node_is_map(acc_type.clone()) && (({
-    let __len_2 = acc_type.children.clone().len();
-    __len_2 as i64
-}) == 0_i64) {
+        {
+    let acc_children_have_unit = ({
+    let mut __any_2 = false;
+    for __elem_3 in acc_type.children.iter().cloned() {
+        if (__elem_3.name.clone() == "Unit") || (__elem_3.name.clone() == "") {
+    __any_2 = true;
+    break;
+};
+    }
+    __any_2
+}) || ({
+    let mut __any_4 = false;
+    for __elem_5 in acc_type.children.iter().cloned() {
+        {
+let __cond = {
+    let mut __any_6 = false;
+    for __elem_7 in __elem_5.children.iter().cloned() {
+        if (__elem_7.name.clone() == "Unit") || (__elem_7.name.clone() == "") {
+    __any_6 = true;
+    break;
+};
+    }
+    __any_6
+};
+if __cond {
+    __any_4 = true;
+    break;
+}
+};
+    }
+    __any_4
+});
+    if node_is_map(acc_type.clone()) && ((({
+    let __len_8 = acc_type.children.clone().len();
+    __len_8 as i64
+}) == 0_i64) || acc_children_have_unit.clone()) {
     match contextual_acc_type.clone() {
     Some(concrete_type) => {
         concrete_type.clone()
@@ -4026,6 +4054,7 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
 }
 } else {
     acc_type.clone()
+}
 }
     }
     None => {
@@ -4051,14 +4080,49 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
     }
 };
     let acc_type_str = emit_node_type_rc(acc_type_node.clone(), RenderTarget::Rust, rc_types.clone());
+    let acc_has_unit_child = ({
+    let mut __any_9 = false;
+    for __elem_10 in acc_type_node.children.iter().cloned() {
+        if (__elem_10.name.clone() == "Unit") || (__elem_10.name.clone() == "") {
+    __any_9 = true;
+    break;
+};
+    }
+    __any_9
+}) || ({
+    let mut __any_11 = false;
+    for __elem_12 in acc_type_node.children.iter().cloned() {
+        {
+let __cond = {
+    let mut __any_13 = false;
+    for __elem_14 in __elem_12.children.iter().cloned() {
+        if (__elem_14.name.clone() == "Unit") || (__elem_14.name.clone() == "") {
+    __any_13 = true;
+    break;
+};
+    }
+    __any_13
+};
+if __cond {
+    __any_11 = true;
+    break;
+}
+};
+    }
+    __any_11
+});
     let init_str = match args.clone().first().cloned() {
     Some(init_arg) => {
         match init_arg.value.expr_data.as_ref() {
     ExprData::ExprCall { func: init_func, args: _, call_semantics: _, .. } => {
-        if ((init_func.clone() == "empty_map") && (acc_type_str.clone() != "_")) && (acc_type_str.clone() != "Dynamic") {
+        if (((init_func.clone() == "empty_map") && (acc_type_str.clone() != "_")) && (acc_type_str.clone() != "Dynamic")) && !acc_has_unit_child.clone() {
     v2_rt::concat(v2_rt::concat("<".to_string(), acc_type_str.clone()), ">::new()".to_string())
 } else {
+    if init_func.clone() == "empty_map" {
+    "<BTreeMap<String, _>>::new()".to_string()
+} else {
     emit_typed_expr(init_arg.value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
+}
 }
     }
     _ => {
@@ -6691,4 +6755,3 @@ pub fn emit_dry_run_module() -> Rc<TextFile> {
     let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated by v2 compiler -- do not edit.\n".to_string(), "//\n".to_string()), "// Dry-run support: when DryRunMode(true), service methods return\n".to_string()), "// mock data instead of performing real I/O.\n\n".to_string()), "#[derive(Debug, Clone)]\n".to_string()), "pub struct DryRunMode(pub bool);\n\n".to_string()), "impl DryRunMode {\n".to_string()), "    pub fn is_dry_run(&self) -> bool {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl Default for DryRunMode {\n".to_string()), "    fn default() -> Self {\n".to_string()), "        DryRunMode(false)\n".to_string()), "    }\n".to_string()), "}\n".to_string());
     Rc::new(TextFile { path: v2_rt::concat(v2_rt::concat(rust_source_root(), "dry_run".to_string()), rust_source_ext()), content: content.clone() })
 }
-
