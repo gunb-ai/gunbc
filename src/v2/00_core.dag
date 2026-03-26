@@ -668,7 +668,8 @@ fn arg_name(n: Node) -> String? {
 }
 
 fn arg_value(n: Node) -> Node {
-  n.children |> first |> match { Some { value: v } => v  None => n }
+  let first_child = n.children |> first
+  match first_child { Some { value: v } => v  None => n }
 }
 
 fn arm_pattern(n: Node) -> MatchPattern {
@@ -680,7 +681,8 @@ fn arm_guard(n: Node) -> Node? {
 }
 
 fn arm_body(n: Node) -> Node {
-  match n.children |> last { Some { value: v } => v  None => n }
+  let last_child = n.children |> last
+  match last_child { Some { value: v } => v  None => n }
 }
 
 fn field_init_node_name(n: Node) -> String {
@@ -688,7 +690,8 @@ fn field_init_node_name(n: Node) -> String {
 }
 
 fn field_init_node_value(n: Node) -> Node {
-  n.children |> first |> match { Some { value: v } => v  None => n }
+  let first_child = n.children |> first
+  match first_child { Some { value: v } => v  None => n }
 }
 
 // =========================================================================
