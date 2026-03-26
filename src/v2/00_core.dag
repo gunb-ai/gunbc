@@ -515,6 +515,8 @@ type Node {
   config: ServiceConfig?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
+  // Match arm pattern -- set only on arm Nodes (P5.11 compositional dissolution)
+  match_pattern: MatchPattern?
   expr_data: ExprData
 }
 
@@ -527,7 +529,7 @@ fn make_expr_node(expr_data: ExprData, inferred: InferredNode?, span: SourceSpan
     params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, config: none, is_self_recursive: false,
-    has_non_tail_self_call: false, expr_data: expr_data
+    has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
   }
 }
 
@@ -544,6 +546,112 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 }
 
 // =========================================================================
+// Compositional child Node constructors (P5.11)
+//
+// Arguments, match arms, field inits, and string interp parts are Nodes.
+// This follows the same pattern as Param→Node (Decision 8).
+// Varargs emerge naturally as an N-sized list of arg Nodes.
+// =========================================================================
+
+// Argument node: the call-site dual of Param. Name carries the arg name
+// (empty string for positional args), child is the value expression.
+fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
+  let arg_name = match name { Some { value: n } => n  None => "" }
+  Node {
+    name: arg_name, span: span, children: [value], connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+// Match arm node: pattern as metadata, guard/body as children.
+// Children: [guard, body] when guard present, [body] when not.
+fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
+  let children = match guard { Some { value: g } => [g, body]  None => [body] }
+  Node {
+    name: "", span: span, children: children, connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: Some { value: pattern },
+    expr_data: NoExprData
+  }
+}
+
+// Field init node: name carries the field name, child is the value expression.
+fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, children: [value], connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+// Text part node: a literal string fragment in string interpolation.
+fn make_text_part_node(text: String, span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, children: [], connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none,
+    expr_data: ExprLiteral { value: LitStr { value: text } }
+  }
+}
+
+// Interpolation part node: child is the interpolated expression.
+fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
+  Node {
+    name: "", span: span, children: [expr], connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, config: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+// =========================================================================
+// Compositional child Node accessors (P5.11)
+// =========================================================================
+
+fn arg_name(n: Node) -> String? {
+  if n.name == "" { none } else { Some { value: n.name } }
+}
+
+fn arg_value(n: Node) -> Node {
+  n.children |> first |> match { Some { value: v } => v  None => n }
+}
+
+fn arm_pattern(n: Node) -> MatchPattern {
+  match n.match_pattern { Some { value: p } => p  None => Wildcard }
+}
+
+fn arm_guard(n: Node) -> Node? {
+  if (n.children |> count) == 2 { n.children |> first } else { none }
+}
+
+fn arm_body(n: Node) -> Node {
+  match n.children |> last { Some { value: v } => v  None => n }
+}
+
+fn field_init_node_name(n: Node) -> String {
+  n.name
+}
+
+fn field_init_node_value(n: Node) -> Node {
+  n.children |> first |> match { Some { value: v } => v  None => n }
+}
+
+// =========================================================================
 // Transport Node constructors
 //
 // Transport is a Node where name = transport kind, properties = config,
@@ -557,7 +665,7 @@ fn make_transport_node(name: String, properties: List<FieldInit>, children: List
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, config: none, is_self_recursive: false,
-    has_non_tail_self_call: false, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
@@ -753,6 +861,7 @@ fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
     config: node.config,
     is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: node.match_pattern,
     expr_data: expr_data
   }
 }
@@ -1008,7 +1117,7 @@ fn is_token_node(n: Node) -> Bool {
 // =========================================================================
 
 fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn no_span() -> SourceSpan {
