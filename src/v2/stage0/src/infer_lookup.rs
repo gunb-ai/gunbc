@@ -138,7 +138,7 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
     let __len_6 = normed.children.clone().len();
     __len_6 as i64
 }) == 0_i64) {
-    let canonical = normalize_type_name(&normed.name);
+    let canonical = normed.name.clone();
     if normed.inferred.clone().is_some() {
     let next_seen = if canonical.clone() == "" {
     seen.clone()

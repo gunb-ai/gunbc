@@ -504,8 +504,8 @@ pub fn emit_go_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 }
 
 pub fn emit_go_type_def_from_connective(item: Rc<Node>) -> String {
-    let kind = classify_type_structure(item.clone());
-    if kind == TypeStructureKind::TypeConj {
+    let is_product = node_is_product(item.clone());
+    if is_product {
     emit_go_struct_from_children(&item.name, item.children.clone())
 } else {
     emit_go_sum_from_children(&item.name, item.children.clone())

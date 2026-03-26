@@ -2698,7 +2698,8 @@ fn parse_status_pattern(tokens: List<Token>, state: ParserState) -> ExprResult {
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
   match sh {
     Some { value: ShLitInt } => {
-      let n = parse_int(s: tok.value.text)
+      let n_opt = parse_int(s: tok.value.text)
+      let n = match n_opt { Some { value: v } => v, None => 0 }
       // Check if next token is Ident("xx") -> wildcard like 5xx
       if state.pos + 1 < count(tokens) {
         let next_tok = get(tokens, state.pos + 1)
@@ -3495,7 +3496,8 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
       ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, inferred: none, span: span), state: adv.state, err: none }
     }
     Some { value: ShLitInt } => {
-      let n = parse_int(s: tok.value.text)
+      let n_opt = parse_int(s: tok.value.text)
+      let n = match n_opt { Some { value: v } => v, None => 0 }
       let adv = advance(tokens: tokens, state: state)
       ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: n } }, inferred: none, span: span), state: adv.state, err: none }
     }
@@ -4117,7 +4119,8 @@ fn parse_pattern(tokens: List<Token>, state: ParserState) -> PatternResult {
       PatternResult { pattern: LitPattern { value: LitNull }, state: adv.state, err: none }
     }
     Some { value: ShLitInt } => {
-      let n = parse_int(s: tok.value.text)
+      let n_opt = parse_int(s: tok.value.text)
+      let n = match n_opt { Some { value: v } => v, None => 0 }
       let adv = advance(tokens: tokens, state: state)
       PatternResult { pattern: LitPattern { value: LitInt { value: n } }, state: adv.state, err: none }
     }

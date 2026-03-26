@@ -65,7 +65,7 @@ fn parser_uses_expected_token_api_for_control_flow() {
     );
     assert_live_contains(
         &source,
-        "fn kind_matches_expected(",
+        "fn shape_matches_expected(",
         "02_parse.dag should match parser control flow on ExpectedToken",
     );
     assert_live_not_contains(

@@ -1,7 +1,7 @@
 // v2 tokenizer -- pure function from source string to token list.
 //
 // No I/O -- file reading is handled by the pipeline.
-// Emits all token kinds declared in core.dag, including Newline tokens
+// Emits all token shapes declared in core.dag, including Newline tokens
 // (significant for the parser's statement separation).
 //
 // String interpolation: "hello {name}" emits StrBegin("hello "), then
@@ -248,15 +248,11 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int) -> ScanResult {
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = scan_while(s: source.text, start: pos.pos, pred: is_ident_char)
   let text = substring(s: source.text, start: pos.pos, end: end)
-  let kind = match lookup(keywords, key: text) {
-    Some { value: kw } => kw
-    None => Ident { name: text }
-  }
-  let shape = match lookup(keyword_shapes, key: text) {
+  let shape = match lookup(keywords, key: text) {
     Some { value: sh } => sh
     None => ShIdent
   }
-  let token = make_token(kind: kind, text: text, span: SourceSpan { start: pos.pos, end: end }, shape: shape)
+  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: end }, shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -266,20 +262,16 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   if int_end + 1 < string_length(s: source.text) && char_at(s: source.text, pos: int_end) == "." && is_digit(ch: char_at(s: source.text, pos: int_end + 1)) {
     let frac_end = scan_while(s: source.text, start: int_end + 1, pred: is_digit)
     let text = substring(s: source.text, start: pos.pos, end: frac_end)
-    let token = make_token(kind: LitFloat { value: text }, text: text, span: SourceSpan { start: pos.pos, end: frac_end }, shape: ShLitFloat)
+    let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: frac_end }, shape: ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
   }
   let text = substring(s: source.text, start: pos.pos, end: int_end)
   let parsed = parse_int(s: text)
-  let kind = match parsed {
-    Some { value: v } => LitInt { value: v }
-    None => Unknown { char: text }
-  }
   let shape = match parsed {
     Some { value: _ } => ShLitInt
     None => ShUnknown
   }
-  let token = make_token(kind: kind, text: text, span: SourceSpan { start: pos.pos, end: int_end }, shape: shape)
+  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: int_end }, shape: shape)
   ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -306,7 +298,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(kind: LitStr { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShLitStr)
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShLitStr)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -314,7 +306,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(kind: StrBegin { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrBegin)
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrBegin)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -323,7 +315,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(kind: Unknown { char: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
@@ -340,7 +332,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(kind: StrEnd { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrEnd)
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrEnd)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -348,7 +340,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(kind: StrMid { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrMid)
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrMid)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -357,7 +349,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(kind: Unknown { char: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
