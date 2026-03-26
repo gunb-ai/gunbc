@@ -167,7 +167,7 @@ fn is_kernel_numeric(name: String) -> Bool {
 }
 
 // Arity bridge: parameterized types and their expected number of type children.
-// This is an explicit short-term bridge — deleted when real .dag algebraic
+// This is an explicit short-term bridge -- deleted when real .dag algebraic
 // declarations exist (Phase 3, P3.7). Optional is EXCLUDED: it is cardinality
 // on the binding site (P1.4), not a parameterized type.
 //

@@ -161,7 +161,7 @@ type ComplexitySummary {
 // =========================================================================
 
 type CostInternTable {
-  // func_name → cached summary (lazy computation)
+  // func_name -> cached summary (lazy computation)
   summaries: Map<String, ComplexitySummary>
 }
 
@@ -186,11 +186,11 @@ fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummar
 //
 // Compose complexity summaries over call graph structure.
 // Each rule corresponds to a DAG pattern:
-//   sequential  → cost_add
-//   parallel    → cost_max (for span)
-//   loop        → cost_mul(iterations, body)
-//   conditional → condition + cost_max(branches)
-//   recursive   → pattern-match on SCC structure
+//   sequential  -> cost_add
+//   parallel    -> cost_max (for span)
+//   loop        -> cost_mul(iterations, body)
+//   conditional -> condition + cost_max(branches)
+//   recursive   -> pattern-match on SCC structure
 // =========================================================================
 
 type RecursionPattern

@@ -186,7 +186,7 @@ fn topo_resolve_loop(
     }
   }
 
-  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
+  // Resolve ready functions -- single pass collects resolved sigs and diagnostics.
   let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Some { value: dsig } =>

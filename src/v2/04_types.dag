@@ -77,7 +77,7 @@ fn bare_map_node() -> Node {
   Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
-// P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
+// P3.7: arity bridge deleted. type_node_arity_ok removed -- arity is now
 // checked via declaration params in the type environment, not hardcoded names.
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
@@ -178,20 +178,23 @@ fn normalize_access_type_node(n: Node) -> Node {
   }
 }
 
+// Temporary L1 bridge: canonicalize type references by dropping generic
+// suffixes and module prefixes until all name-based lookups are dissolved.
 fn normalize_type_name(name: String) -> String {
   if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
     name
   } else {
-    let base = match name |> split(delimiter: "<") |> first {
+    let base = match name |> split(separator: "<") |> first {
       Some { value: part } => part
       None => name
     }
-    match base |> split(delimiter: ".") |> last {
+    match base |> split(separator: ".") |> last {
       Some { value: short } => short
       None => base
     }
   }
 }
+
 
 // =========================================================================
 // Type shape and comparison
@@ -200,14 +203,14 @@ fn normalize_type_name(name: String) -> String {
 fn node_type_shape(n: Node) -> String {
   if node_is_leaf(n: n) {
     if node_is_named_ref(n: n) {
-      concat("Named(", normalize_type_name(name: n.name), ")")
+      concat("Named(", n.name, ")")
     } else {
       concat("Primitive(", n.name, ")")
     }
   } else if node_is_product(n: n) {
-    if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
+    if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
   } else if node_is_coproduct(n: n) {
-    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
+    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
   } else if node_is_container(n: n) {
     let elem_shape = match n.children |> first {
       Some { value: el } => node_type_shape(n: el)
@@ -239,7 +242,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if node_is_container(n: left) && node_is_container(n: right) {
-    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    if left.name != right.name { false }
     else {
       match left.children |> first {
         Some { value: left_el } =>
@@ -260,7 +263,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     else { node_type_compatible(left: left_inner, right: right_inner) }
   }
   else if left_opt || right_opt { false }
-  else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
+  else { left.name == right.name }
 }
 
 fn prefer_specific_type(left: Node, right: Node) -> Node {
@@ -277,7 +280,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     left.name == "Unit"
   } else { false }
   let same_kind = if left_is_container && node_is_container(n: right) {
-    normalize_type_name(name: left_norm_name) == normalize_type_name(name: right.name)
+    left_norm_name == right.name
   } else if left_is_optional && node_is_optional(n: right) {
     true
   } else { false }
@@ -301,10 +304,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if left_leaf && right_leaf {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if left_struct && right_struct {
-    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    if left.name != right.name { false }
     else if node_is_product(n: left) != node_is_product(n: right) { false }
     else if left.children |> count != right.children |> count { false }
     else {
@@ -317,10 +320,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     }
   }
   else if left_leaf && right_struct {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if left_struct && right_leaf {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if node_is_container(n: left) && node_is_container(n: right) {
     if left.name != right.name { false }

@@ -4,12 +4,11 @@
 // and emit. Provides the core operations: lookup, merge, and cycle
 // membership checks.
 //
-// Dependency: v2.compiler.infer_types (normalize_type_name)
+// Dependency: v2.std.core
 
 module v2.compiler.infer_env
 
 import v2.std.core { Node }
-import v2.compiler.infer_types { normalize_type_name }
 
 // =========================================================================
 // Types
@@ -38,8 +37,7 @@ fn is_recursive_type(env: TypeEnv, name: String) -> Bool {
 }
 
 fn lookup_type(env: TypeEnv, name: String) -> Node? {
-  let canonical = normalize_type_name(name: name)
-  match map_get(env.bindings, canonical) {
+  match map_get(env.bindings, name) {
     Some { value: binding } => Some { value: binding.resolved }
     None => None
   }

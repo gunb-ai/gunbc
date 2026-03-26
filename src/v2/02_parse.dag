@@ -1631,7 +1631,7 @@ fn parse_optional_type_params(tokens: List<Token>, state: ParserState) -> TypePa
   if e.consumed {
     let params_result = collect_type_param_names(tokens: tokens, state: e.state, params: [])
     let r = expect(tokens: tokens, state: params_result.state, expected: ExpectGt)
-    // If Gt parsing fails, return what we have — the error propagates from caller
+    // If Gt parsing fails, return what we have -- the error propagates from caller
     TypeParamsResult { params: params_result.params, state: r.state }
   } else {
     TypeParamsResult { params: [], state: state }

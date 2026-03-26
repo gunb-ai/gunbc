@@ -357,7 +357,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // exponential blowup on diamond-shaped dependency graphs (OOM).
           // Preserve CardOptional from the reference node: the env binding
           // always stores the canonical (Required) definition, but the
-          // reference site may carry CardOptional (e.g. String? → String
+          // reference site may carry CardOptional (e.g. String? -> String
           // in env). Without this, optionality is silently discarded.
           let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
@@ -545,7 +545,7 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
   }
 }
 
-// resolve_header_def, resolve_env_def, resolve_auth_config deleted — transport dissolution
+// resolve_header_def, resolve_env_def, resolve_auth_config deleted -- transport dissolution
 
 fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: String) -> ServiceConfigResolveResult {
   let endpoint_result = resolve_expr_types(texpr: config.endpoint, env: env, module_name: module_name)
@@ -616,7 +616,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
   }
 }
 
-// NOTE: resolve_expr_types is pure structural recursion — the canonical
+// NOTE: resolve_expr_types is pure structural recursion -- the canonical
 // map_expr_children candidate. Blocked by v1 interpreter not supporting
 // user-defined higher-order functions. Collapses to ~10 lines when v1
 // retires (Phase 3). Deletion point: P5.11.

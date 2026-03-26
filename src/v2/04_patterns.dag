@@ -57,7 +57,7 @@ type PatternSubject
 
 // Temporary bridge: synthesize a "Some { value: T }" variant node for
 // Optional pattern matching. Optional is still represented as
-// [inner_type, None] — no explicit "Some" child. Track in the roadmap until
+// [inner_type, None] -- no explicit "Some" child. Track in the roadmap until
 // pattern lookup gains a fully structural Optional subject.
 fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
@@ -213,7 +213,7 @@ fn check_match_exhaustiveness(
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
   if node_is_coproduct(n: resolved) || node_is_optional(n: resolved) {
-    // Optional is represented as [inner_type, None] — the first child
+    // Optional is represented as [inner_type, None] -- the first child
     // is the inner type, not a "Some" variant. Normalize to ["Some", "None"]
     // so patterns `Some { value: x } => ... None => ...` are recognized.
     let variant_names = if node_is_optional(n: resolved) {

@@ -6,7 +6,7 @@
 // resolve_node_bounded checks declaration params at resolution time.
 //
 // The normalizer currently passes the graph through unchanged.
-// Future: Call→MethodCall unification (currently in infer).
+// Future: Call->MethodCall unification (currently in infer).
 
 module v2.compiler.normalize
 

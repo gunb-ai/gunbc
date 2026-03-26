@@ -684,7 +684,7 @@ fn rust_literal_for_pattern(value: LiteralValue) -> String {
 }
 
 // =========================================================================
-// P4.1: Target-dispatched rendering — unified by RenderTarget
+// P4.1: Target-dispatched rendering -- unified by RenderTarget
 //
 // These functions replace per-target triples (rust_X, go_X, python_X)
 // with a single function dispatched by RenderTarget. Backends should
@@ -787,7 +787,7 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
     // Bare container nodes (from empty_map(), etc.) need container templates
-    // even without children — emit with "_" placeholders.
+    // even without children -- emit with "_" placeholders.
     let base = if n.name == "Map" {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
@@ -839,7 +839,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       None => n.name
     }
   } else if n.name == "Tuple" {
-    // Tuple children may have return_type set — unwrap to get the actual type.
+    // Tuple children may have return_type set -- unwrap to get the actual type.
     let first_str = match n.children |> first {
       Some { value: c } =>
         if c.return_type != none {
@@ -864,7 +864,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    // Named product type — Rc wrapping for Rust
+    // Named product type -- Rc wrapping for Rust
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
     } else {
@@ -875,7 +875,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     let is_rust = match target { Rust => true  _ => false }
     if is_rust {
       if n.children |> count == 1 {
-        // Single-field anonymous product — unwrap the field type.
+        // Single-field anonymous product -- unwrap the field type.
         match n.children |> first {
           Some { value: field_node } =>
             if field_node.return_type != none {
@@ -886,7 +886,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
           None => "compile_error!(\"anonymous product reached Node emitter\")"
         }
       } else {
-        // Multi-field anonymous product → Rust tuple type.
+        // Multi-field anonymous product -> Rust tuple type.
         let field_types = n.children |> map(child =>
           if child.return_type != none {
             emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
@@ -903,14 +903,14 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
 
 fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name != "" {
-    // Named coproduct type — Rc wrapping for Rust
+    // Named coproduct type -- Rc wrapping for Rust
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
     } else {
       n.name
     }
   } else {
-    // Anonymous coproduct — error in all targets.
+    // Anonymous coproduct -- error in all targets.
     let is_rust = match target { Rust => true  _ => false }
     if is_rust {
       "compile_error!(\"anonymous coproduct reached Node emitter\")"
@@ -1367,7 +1367,7 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 }
 
 // =========================================================================
-// emit_shared_expr — full shared ExprData dispatcher (P4.2 step 5)
+// emit_shared_expr -- full shared ExprData dispatcher (P4.2 step 5)
 //
 // The shared layer owns the whole-tree `ExprData` match. Backends provide:
 // - `wrap_result` for target-specific result framing (Go indentation)
@@ -1450,9 +1450,9 @@ fn emit_shared_expr(
 }
 
 // =========================================================================
-// bridge_method_base_name — canonical snake_case name for each bridge method.
+// bridge_method_base_name -- canonical snake_case name for each bridge method.
 //
-// Single authority for the Bridge* → snake_case mapping. Each backend
+// Single authority for the Bridge* -> snake_case mapping. Each backend
 // either uses this directly (Rust) or derives its target convention from
 // it (Python overrides BridgeWith; Go capitalizes segments to PascalCase).
 // =========================================================================

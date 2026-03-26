@@ -47,7 +47,7 @@ type DepEdge {
   to_module: String
 }
 
-// (P5: KahnState/KahnStepResult removed — replaced by queue-based KahnDrainState)
+// (P5: KahnState/KahnStepResult removed -- replaced by queue-based KahnDrainState)
 
 // Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
@@ -345,7 +345,7 @@ type TopoResult {
 fn topological_sort(modules: List<Module>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
 
-  // Build adjacency list: from_module → [to_module, ...]
+  // Build adjacency list: from_module -> [to_module, ...]
   // "from_module is imported by to_module" means when from_module is sorted,
   // to_module's in-degree decreases.
   let adjacency = modules |> flat_map(m =>
@@ -435,7 +435,7 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
   })
 
   // Collect newly zero-in-degree nodes (neighbors that just reached 0).
-  // Deduplicate via map-as-set: diamond deps (A→C, B→C) produce C twice
+  // Deduplicate via map-as-set: diamond deps (A->C, B->C) produce C twice
   // in the flat_map; without dedup, C would be sorted twice and inflate
   // the count, causing a false cycle error.
   let new_zero_set = queue |> flat_map(node =>
