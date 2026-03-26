@@ -1092,7 +1092,7 @@ fn diagnostic_node(severity: String, message: String, span: SourceSpan, module_n
     uses: [], body: none, transport: none,
     properties: concat([sev_prop], mod_prop, cat_prop), type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: NoExprData
+    match_pattern: none, expr_data: NoExprData
   }
 }
 
@@ -1199,10 +1199,11 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
   let marker = FieldInit { name: "is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   Node {
     name: name, span: span, children: concat(imports, items), connective: none,
+    collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [marker],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
@@ -1213,17 +1214,19 @@ fn import_node(module_path: String, is_all: Bool, specific_names: List<String>, 
   } else { [] }
   let name_children = specific_names |> map(n => Node {
     name: n, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none,
+    collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   })
   Node {
     name: module_path, span: span, children: name_children, connective: none,
+    collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: concat([import_prop], all_prop),
     type_annotation: none, is_self_recursive: false,
-    has_non_tail_self_call: false, expr_data: NoExprData
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
