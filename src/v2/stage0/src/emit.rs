@@ -453,7 +453,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
 }
 
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
-    Rc::new(InferScope { type_env: typed_module.type_env.clone(), func_env: typed_module.func_env.clone(), locals: Rc::new(std::collections::HashMap::new()), module_name: typed_module.module.name.clone(), service_registry: Rc::new(std::collections::HashMap::new()), item_registry: typed_module.item_registry.clone() })
+    Rc::new(InferScope { type_env: Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(Vec::new()), recursive_type_set: Rc::new(std::collections::HashMap::new()) }), func_env: typed_module.func_env.clone(), locals: Rc::new(std::collections::HashMap::new()), module_name: typed_module.module.name.clone(), service_registry: Rc::new(std::collections::HashMap::new()), item_registry: typed_module.item_registry.clone() })
 }
 
 pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {

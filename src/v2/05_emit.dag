@@ -49,11 +49,12 @@ import v2.std.core {
   TransportKind, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
   transport_has_auth,
-  field_init_operation_modifier, operation_modifier_name
+  field_init_operation_modifier, operation_modifier_name,
+  leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type, emit_map_has }
+import v2.compiler.infer_types { node_is_optional, node_is_map, rt_type, emit_map_has }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -265,7 +266,7 @@ fn empty_emit_scope() -> InferScope {
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
-    type_env: typed_module.type_env,
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,

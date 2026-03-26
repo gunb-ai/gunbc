@@ -24,6 +24,7 @@ pub struct EmitGraphInfo {
     pub variant_to_enum: Rc<HashMap<String, String>>,
     pub enum_variant_membership: Rc<HashMap<String, bool>>,
     pub field_type_names: Rc<HashMap<String, String>>,
+    pub recursive_type_set: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -35,7 +36,7 @@ pub struct EmitInfoBuildState {
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
-    Rc::new(EmitGraphInfo { type_summaries: Rc::new(std::collections::HashMap::new()), variant_to_enum: Rc::new(std::collections::HashMap::new()), enum_variant_membership: Rc::new(std::collections::HashMap::new()), field_type_names: Rc::new(std::collections::HashMap::new()) })
+    Rc::new(EmitGraphInfo { type_summaries: Rc::new(std::collections::HashMap::new()), variant_to_enum: Rc::new(std::collections::HashMap::new()), enum_variant_membership: Rc::new(std::collections::HashMap::new()), field_type_names: Rc::new(std::collections::HashMap::new()), recursive_type_set: Rc::new(std::collections::HashMap::new()) })
 }
 
 pub fn normalize_emit_type_name(type_name: &str) -> String {

@@ -259,6 +259,26 @@ if __cond {
 }
 }
 
+pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
+    {
+    let mut __acc_4 = 0_i64;
+    for __elem_5 in ({
+    let __rc_0 = registry.clone();
+    let __map_unwrapped_1 = Rc::try_unwrap(__rc_0).unwrap_or_else(|rc| (*rc).clone());
+    let mut __entries_2 = __map_unwrapped_1.into_iter().collect::<Vec<_>>();
+    __entries_2.sort_by(|a, b| a.0.cmp(&b.0));
+    let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
+    Rc::new(__values_3)
+}).iter().cloned() {
+        __acc_4 = __acc_4.clone() + ({
+    let __len_6 = __elem_5.service_names.clone().len();
+    __len_6 as i64
+});
+    }
+    __acc_4
+}
+}
+
 pub fn expand_transitive_services(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, remaining_passes: i64) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let mut __tco_p_modules = modules;
@@ -271,7 +291,12 @@ pub fn expand_transitive_services(modules: Rc<Vec<Rc<TypedModule>>>, registry: R
             if remaining_passes.clone() <= 0_i64 {
     break registry.clone();
 } else {
+    let before = total_service_count(registry.clone());
     let next = expand_transitive_services_once(modules.clone(), registry.clone());
+    let after = total_service_count(next.clone());
+    if before == after {
+    break registry.clone();
+} else {
      {
         let __tco_0 = modules.clone();
         let __tco_1 = next.clone();
@@ -282,6 +307,7 @@ pub fn expand_transitive_services(modules: Rc<Vec<Rc<TypedModule>>>, registry: R
         continue;
     }
 
+};
 };
         }
     })

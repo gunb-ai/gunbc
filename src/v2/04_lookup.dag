@@ -19,14 +19,14 @@ import v2.std.core {
   RuntimeBridgeMethod,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary
+  FieldSummary,
+  leaf_node, with_optional_cardinality, with_required_cardinality,
+  node_is_product, node_is_coproduct, node_has_structure
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  leaf_node, with_optional_cardinality, with_required_cardinality,
   error_type_node,
   node_is_optional, node_is_map,
-  node_is_product, node_is_coproduct, node_has_structure,
   normalize_access_type_node, normalize_type_name,
   rt_type, rt_node,
   emit_map_has

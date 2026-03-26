@@ -278,8 +278,8 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
 }
 } else {
     if (({
-    let __len_45 = n.children.clone().len();
-    __len_45 as i64
+    let __len_46 = n.children.clone().len();
+    __len_46 as i64
 }) > 0_i64) && is_user_generic_use_site(n.clone(), env.clone()) {
     let decl = match lookup_type(env.clone(), &n.name) {
     Some(d) => {
@@ -409,8 +409,8 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: Rc::new(vec!(key_resolved.clone(), val_resolved.clone())), connective: n.connective.clone(), params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: v2_rt::concat(key_diags.clone(), val_diags.clone()) })
 } else {
     if ({
-    let __len_44 = n.children.clone().len();
-    __len_44 as i64
+    let __len_45 = n.children.clone().len();
+    __len_45 as i64
 }) == 1_i64 {
     match n.children.clone().first().cloned() {
     Some(el) => {
@@ -427,8 +427,8 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
 }
 } else {
     if ({
-    let __len_43 = n.children.clone().len();
-    __len_43 as i64
+    let __len_44 = n.children.clone().len();
+    __len_44 as i64
 }) == 0_i64 {
     if is_recursive_type(env.clone(), &n.name) {
     Rc::new(NodeResolveResult { resolved: n.clone(), diagnostics: Rc::new(Vec::new()) })
@@ -436,10 +436,28 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     match lookup_type(env.clone(), &n.name) {
     Some(resolved) => {
         {
-    let final_resolved = if node_is_optional(n.clone()) {
-    with_optional_cardinality(resolved.clone())
+    let structurally_resolved = if ((node_has_structure(resolved.clone()) == false) && (({
+    let __len_43 = resolved.children.clone().len();
+    __len_43 as i64
+}) == 0_i64)) && (resolved.inferred.clone().is_some()) {
+    match rt_node(resolved.clone()).as_ref() {
+    NodeType::Typed { node: target, .. } => {
+        target.clone()
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        resolved.clone()
+    }
+    NodeType::Untyped => {
+        resolved.clone()
+    }
+}
 } else {
     resolved.clone()
+};
+    let final_resolved = if node_is_optional(n.clone()) {
+    with_optional_cardinality(structurally_resolved.clone())
+} else {
+    structurally_resolved.clone()
 };
     Rc::new(NodeResolveResult { resolved: final_resolved.clone(), diagnostics: Rc::new(Vec::new()) })
 }

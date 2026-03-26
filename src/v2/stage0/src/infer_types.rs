@@ -11,10 +11,6 @@ pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn leaf_node(name: &str) -> Rc<Node> {
-    Rc::new(Node { name: name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
-}
-
 pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
     match rt_node(n.clone()).as_ref() {
     NodeType::Typed { node: rt, .. } => {
@@ -27,14 +23,6 @@ pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
         leaf_node("Unit")
     }
 }
-}
-
-pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: Cardinality::CardOptional, uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
-}
-
-pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: Cardinality::Required, uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
 }
 
 pub fn container_node(kind_name: &str, element: Rc<Node>) -> Rc<Node> {
@@ -85,22 +73,6 @@ pub fn node_is_bridge_error_name(n: Rc<Node>) -> bool {
 
 pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
     n.name.clone() == "Dynamic"
-}
-
-pub fn no_span() -> SourceSpan {
-    SourceSpan { start: 0_i64, end: 0_i64 }
-}
-
-pub fn node_is_product(n: Rc<Node>) -> bool {
-    (n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Conj))
-}
-
-pub fn node_is_coproduct(n: Rc<Node>) -> bool {
-    (n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Disj))
-}
-
-pub fn node_has_structure(n: Rc<Node>) -> bool {
-    node_is_product(n.clone()) || node_is_coproduct(n.clone())
 }
 
 pub fn node_is_container(n: Rc<Node>) -> bool {

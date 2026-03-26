@@ -2795,6 +2795,42 @@ fn is_module_node(n: Node) -> Bool {
 fn is_token_node(n: Node) -> Bool {
   n.properties |> any(p => p.name == "is_token")
 }
+
+// =========================================================================
+// Node vocabulary (structural constructors and predicates)
+//
+// These operate on Node structural fields (connective, cardinality) and
+// need no environment. They are the shared vocabulary for all pipeline
+// stages — not stage-specific concepts. Moved from 04_types.dag (C1).
+// =========================================================================
+
+fn leaf_node(name: String) -> Node {
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn no_span() -> SourceSpan {
+  SourceSpan { start: 0, end: 0 }
+}
+
+fn with_optional_cardinality(n: Node) -> Node {
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+}
+
+fn with_required_cardinality(n: Node) -> Node {
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+}
+
+fn node_is_product(n: Node) -> Bool {
+  n.connective != none && n.connective == Some { value: Conj }
+}
+
+fn node_is_coproduct(n: Node) -> Bool {
+  n.connective != none && n.connective == Some { value: Disj }
+}
+
+fn node_has_structure(n: Node) -> Bool {
+  node_is_product(n: n) || node_is_coproduct(n: n)
+}
 "##;
     const SRC_V2_01_TOKENIZE_DAG_SOURCE: &str = r##"// v2 tokenizer -- pure function from source string to token list.
 //
@@ -3361,10 +3397,9 @@ import v2.std.core {
   Ident, StrBegin, StrMid, StrEnd,
   Newline, Eof, Unknown,
   Diagnostic, Error,
-  SourceSpan
+  SourceSpan,
+  node_is_product, node_is_coproduct, with_required_cardinality
 }
-
-import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality, callable_node }
 
 // =========================================================================
 // Parser state types
@@ -4981,10 +5016,8 @@ fn parse_callable_type_expr(tokens: List<Token>, state: ParserState, start_span:
   let ret = parse_type_expr(tokens: tokens, state: r3.state)
   if has_err(err: ret.err) { return TypeResult { type_expr: dummy_te, state: ret.state, err: ret.err } }
 
-  let te = callable_node(func_params: params_result.params, ret: ret.type_expr)
-  // Set span from source location
-  let te_span = Node { name: te.name, span: start_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: te.return_cardinality, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, config: te.config, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, expr_data: te.expr_data }
-  maybe_optional(tokens: tokens, state: ret.state, te: te_span, start_span: start_span)
+  let te = Node { name: "Callable", span: start_span, children: [], connective: none, params: params_result.params, inferred: Some { value: Resolved { node: ret.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  maybe_optional(tokens: tokens, state: ret.state, te: te, start_span: start_span)
 }
 
 // Parse comma-separated type expressions for callable parameter types.
@@ -5881,7 +5914,8 @@ fn is_container_name(name: String) -> Bool {
 // Extract a string name from a Node for use in property values.
 fn node_to_name_str(n: Node) -> String {
   let has_children = n.children |> count > 0
-  if node_is_optional(n: n) {
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional {
     concat("Optional_", node_to_name_str(n: with_required_cardinality(n: n)))
   } else if n.name == "Map" {
     if n.children |> count > 1 { concat("Map_", node_to_name_str(n: last_child_or_self(n: n))) }
@@ -8426,15 +8460,14 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node,
   InferredNode, Resolved, CompilerError,
-  Diagnostic, Severity, Error
+  Diagnostic, Severity, Error,
+  leaf_node, with_optional_cardinality, node_has_structure
 }
 import v2.compiler.infer_types {
-  leaf_node, with_optional_cardinality,
   node_is_map,
   normalize_access_type_node,
   node_type_equals,
-  is_int_type_node, is_string_type_node,
-  node_has_structure
+  is_int_type_node, is_string_type_node
 }
 
 // =========================================================================
@@ -8640,11 +8673,11 @@ import v2.std.core {
   InferredNode, Resolved,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary
+  FieldSummary,
+  node_has_structure, node_is_product, with_required_cardinality
 }
 import v2.compiler.infer_types {
-  node_has_structure, node_is_product, node_is_optional,
-  with_required_cardinality,
+  node_is_optional,
   normalize_type_name, normalize_access_type_node,
   rt_type, child_inferred_or_name, node_type_equals
 }
@@ -8666,6 +8699,7 @@ type EmitGraphInfo {
   variant_to_enum: Map<String, String>
   enum_variant_membership: Map<String, Bool>
   field_type_names: Map<String, String>
+  recursive_type_set: Map<String, Bool>
 }
 
 type EmitInfoBuildState {
@@ -8684,7 +8718,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     variant_to_enum: empty_map(),
     enum_variant_membership: empty_map(),
-    field_type_names: empty_map()
+    field_type_names: empty_map(),
+    recursive_type_set: empty_map()
   }
 }
 
@@ -9032,19 +9067,19 @@ import v2.std.core {
   UnaryOpKind, Not, Neg,
   MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart,
   make_transport_node, local_transport_node,
-  Text, Interpolation
+  Text, Interpolation,
+  leaf_node, with_optional_cardinality, with_required_cardinality,
+  node_is_product, node_is_coproduct, node_has_structure, no_span
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  leaf_node, with_optional_cardinality, with_required_cardinality,
   container_node,
   map_node, bare_map_node,
   tuple_node, callable_node, callable_inferred,
   error_type_node,
   node_is_container, node_is_optional, node_is_map,
   node_is_leaf, node_is_named_ref,
-  node_is_product, node_is_coproduct, node_has_structure,
   normalize_access_type_node, normalize_type_name,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
@@ -9052,7 +9087,7 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  rt_type, no_span,
+  rt_type,
   emit_map_has
 }
 import v2.compiler.infer_method {
@@ -11174,12 +11209,17 @@ fn build_module_context(contributions: List<ItemContribution>,
     item_registry: empty_map(),
     diag_chunks: []
   )
+  // C2.1: variant constructor locals carry the structural parent enum node,
+  // not leaf_node(name). This means .inferred on variant expressions will be
+  // structurally authoritative — emit can read it directly without re-resolving
+  // through TypeEnv. binding.resolved.name still returns the enum's name for
+  // lookup_variant_parent_enum and record lit inference.
   let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
     if node_is_coproduct(n: binding.resolved) {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,
-          resolved: leaf_node(name: binding.name)
+          resolved: binding.resolved
         })
       )
     } else { acc }
@@ -11199,15 +11239,11 @@ fn build_module_context(contributions: List<ItemContribution>,
     items: local.resolved_items,
     module_name: module_name
   )
-  // Variant locals come from env_variant_locals (computed once from env.bindings,
-  // which already includes all local + imported disjunction types).
-  let optional_locals = map_insert(env_variant_locals, "Some", TypeBinding {
-    name: "Some", resolved: leaf_node(name: "Optional")
-  })
-  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
-    name: "None", resolved: leaf_node(name: "Optional")
-  })
-  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
+  // C2.2: Optional Some/None now handled by the general variant constructor
+  // mechanism (C2.1). kernel_optional is a Disj node in env.bindings, so
+  // imported_variant_locals already registers Some and None with the structural
+  // parent node. No need for explicit leaf_node(name: "Optional") override.
+  let all_locals = fold(map_values(merged_scope.svc_locals), init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
   )
   ModuleContext {
@@ -11463,11 +11499,15 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
       add_emit_item_summary(state: inner_state, item: item)
     )
   )
+  let all_recursive = modules |> fold(init: empty_map(), f: (acc, m) =>
+    map_merge(acc, m.type_env.recursive_type_set)
+  )
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     variant_to_enum: built.variant_to_enum,
     enum_variant_membership: built.enum_variant_membership,
-    field_type_names: built.field_type_names
+    field_type_names: built.field_type_names,
+    recursive_type_set: all_recursive
   }
 }
 
@@ -11555,11 +11595,11 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError,
   Cardinality, Required,
   Diagnostic,
-  expr_has_self_call, expr_has_non_tail_self_call
+  expr_has_self_call, expr_has_non_tail_self_call,
+  leaf_node, node_has_structure, node_is_product, node_is_coproduct
 }
 import v2.compiler.infer_types {
-  leaf_node, rt_type,
-  node_has_structure, node_is_product, node_is_coproduct
+  rt_type
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding
@@ -11663,13 +11703,14 @@ fn item_kind(item: Node) -> ItemKind {
   kind
 }
 
+// C2.1: variant locals carry the structural parent node, not leaf_node(name).
 fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
     if node_is_coproduct(n: item) {
       fold(item.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,
-          resolved: leaf_node(name: item.name)
+          resolved: item
         })
       )
     } else { acc }
@@ -11697,14 +11738,14 @@ import v2.std.core {
   RuntimeBridgeMethod,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary
+  FieldSummary,
+  leaf_node, with_optional_cardinality, with_required_cardinality,
+  node_is_product, node_is_coproduct, node_has_structure
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  leaf_node, with_optional_cardinality, with_required_cardinality,
   error_type_node,
   node_is_optional, node_is_map,
-  node_is_product, node_is_coproduct, node_has_structure,
   normalize_access_type_node, normalize_type_name,
   rt_type, rt_node,
   emit_map_has
@@ -11953,10 +11994,11 @@ import v2.std.core {
   BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength,
   BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower,
   BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap,
-  BridgeContains, BridgeReverse, BridgeLookup
+  BridgeContains, BridgeReverse, BridgeLookup,
+  leaf_node, with_optional_cardinality
 }
 import v2.compiler.infer_types {
-  leaf_node, with_optional_cardinality, container_node, tuple_node, error_type_node,
+  container_node, tuple_node, error_type_node,
   bare_map_node,
   method_receiver_element_node
 }
@@ -12176,14 +12218,14 @@ import v2.std.core {
   Cardinality, Required,
   Diagnostic, Severity, Error,
   ErrorCategory, FieldNotFound, VariantNotFound, InvalidOperation,
-  MatchArm, MatchPattern
+  MatchArm, MatchPattern,
+  leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  leaf_node,
   error_type_node,
   node_is_bridge_error_name, node_is_bridge_dynamic_name,
-  node_is_optional, node_is_coproduct, node_has_structure, with_optional_cardinality,
+  node_is_optional,
   extract_optional_inner_node,
   emit_map_has
 }
@@ -12445,12 +12487,13 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   is_kernel_type, is_transport_kind,
   ErrorCategory, UnresolvedName, TypeMismatch, InvalidOperation, CascadeError,
-  TransportKind, LocalTransport
+  TransportKind, LocalTransport,
+  leaf_node, with_optional_cardinality, with_required_cardinality,
+  node_has_structure, node_is_product, no_span
 }
 import v2.compiler.infer_types {
-  leaf_node, with_optional_cardinality, with_required_cardinality,
-  node_has_structure, node_is_product, node_is_optional, node_is_map, node_is_container,
-  rt_type, no_span
+  node_is_optional, node_is_map, node_is_container,
+  rt_type
 }
 import v2.compiler.infer_env {
   TypeEnv, lookup_type, is_recursive_type
@@ -12771,11 +12814,26 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // any dependent type is processed. Re-resolving the looked-up node
           // would redundantly walk the entire expanded subtree, causing
           // exponential blowup on diamond-shaped dependency graphs (OOM).
+          //
+          // C2.3: For alias nodes (leaf with .inferred but no structure),
+          // follow ONE level of .inferred to return the structural target.
+          // This is O(1), not recursive — the target is already resolved
+          // by topo ordering. Without this, downstream consumers see an
+          // alias_node wrapper and must re-resolve through TypeEnv (layer
+          // downgrade from structural to name-based).
+          //
           // Preserve CardOptional from the reference node: the env binding
           // always stores the canonical (Required) definition, but the
           // reference site may carry CardOptional (e.g. String? → String
           // in env). Without this, optionality is silently discarded.
-          let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
+          let structurally_resolved = if node_has_structure(n: resolved) == false && resolved.children |> count == 0 && resolved.inferred != none {
+            match rt_node(n: resolved) {
+              Typed { node: target } => target
+              InferError { message: _, span: _ } => resolved
+              Untyped => resolved
+            }
+          } else { resolved }
+          let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
           if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
@@ -13216,10 +13274,10 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
-  expr_children
+  expr_children,
+  leaf_node, no_span, node_has_structure
 }
 import v2.compiler.infer_types {
-  leaf_node, no_span, node_has_structure,
   emit_map_has
 }
 import v2.compiler.infer_items {
@@ -13366,11 +13424,25 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
   )
 }
 
+fn total_service_count(registry: Map<String, ItemInfo>) -> Int {
+  map_values(registry) |> fold(init: 0, f: (acc, info) => acc + info.service_names |> count)
+}
+
+// C4.1: converge to fixpoint instead of hardcoded 5 passes. Each pass
+// propagates service dependencies from callees to callers. The loop
+// terminates when no new service names are discovered (total count stable).
+// For the current ItemInfo shape this is equivalent to full-registry
+// stability: service_names only changes by monotone deduped union, so the
+// total count can increase but never decrease or redistribute.
+// Bounded by remaining_passes as safety net against pathological cases.
 fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
   if remaining_passes <= 0 { registry }
   else {
+    let before = total_service_count(registry: registry)
     let next = expand_transitive_services_once(modules: modules, registry: registry)
-    expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1)
+    let after = total_service_count(registry: next)
+    if before == after { registry }
+    else { expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1) }
   }
 }
 
@@ -13705,7 +13777,9 @@ import v2.std.core {
   is_kernel_type, is_kernel_numeric, is_kernel_textual,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   InferredNode, Resolved, CompilerError, rt_node, has_inferred,
-  NodeType, Typed, InferError, Untyped
+  NodeType, Typed, InferError, Untyped,
+  leaf_node, no_span, with_optional_cardinality, with_required_cardinality,
+  node_is_product, node_is_coproduct, node_has_structure
 }
 
 // =========================================================================
@@ -13717,30 +13791,19 @@ fn child_inferred_or_name(ch: Node) -> Node {
   else { rt_type(n: ch) }
 }
 
-fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-}
+// leaf_node, with_optional_cardinality, with_required_cardinality
+// moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // Convenience: extract the return type Node, falling back to Unit.
 // Use for emission callers and statement contexts where Unit is correct.
 // For inference callers that need error-awareness, match rt_node directly.
+// Stays here: encodes bridge-era stage-boundary policy (Unit fallback).
 fn rt_type(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
     InferError { message: _, span: _ } => leaf_node(name: "Unit")
     Untyped => leaf_node(name: "Unit")
   }
-}
-
-// P5.7a: product_property() and coproduct_property() deleted.
-// connective (Conj/Disj) is the sole authority for product/coproduct.
-
-fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
-}
-
-fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
@@ -13796,25 +13859,12 @@ fn node_is_bridge_dynamic_name(n: Node) -> Bool {
   n.name == "Dynamic"
 }
 
-fn no_span() -> SourceSpan {
-  SourceSpan { start: 0, end: 0 }
-}
+// no_span, node_is_product, node_is_coproduct, node_has_structure
+// moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // =========================================================================
-// Type predicates
+// Type predicates (name-checking and bridge-era — stay here until L1=0)
 // =========================================================================
-
-fn node_is_product(n: Node) -> Bool {
-  n.connective != none && n.connective == Some { value: Conj }
-}
-
-fn node_is_coproduct(n: Node) -> Bool {
-  n.connective != none && n.connective == Some { value: Disj }
-}
-
-fn node_has_structure(n: Node) -> Bool {
-  node_is_product(n: n) || node_is_coproduct(n: n)
-}
 
 fn node_is_container(n: Node) -> Bool {
   n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet"
@@ -14245,11 +14295,12 @@ import v2.std.core {
   TransportKind, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
   transport_has_auth,
-  field_init_operation_modifier, operation_modifier_name
+  field_init_operation_modifier, operation_modifier_name,
+  leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { leaf_node, node_is_optional, node_is_map, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, rt_type, emit_map_has }
+import v2.compiler.infer_types { node_is_optional, node_is_map, rt_type, emit_map_has }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -14461,7 +14512,7 @@ fn empty_emit_scope() -> InferScope {
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
-    type_env: typed_module.type_env,
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,
@@ -15758,7 +15809,8 @@ import v2.std.core {
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   Text, Interpolation,
   FieldSummary, FieldAccessStyle,
-  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond
+  StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
+  leaf_node, with_required_cardinality
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
@@ -15767,7 +15819,7 @@ import v2.compiler.languages {
   scaffold_for_target, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, rt_type }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -17095,7 +17147,8 @@ import v2.std.core {
   BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   FieldSummary, TupleFirst, TupleSecond,
-  Text, Interpolation
+  Text, Interpolation,
+  leaf_node, with_required_cardinality
 }
 
 import v2.compiler.artifact { RenderTarget, Python }
@@ -17103,7 +17156,7 @@ import v2.compiler.languages {
   scaffold_for_target, serialization_for_target, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, rt_type }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -18412,7 +18465,8 @@ import v2.std.core {
   transport_base_url,
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
-  expr_has_self_call, expr_has_non_tail_self_call
+  expr_has_self_call, expr_has_non_tail_self_call,
+  leaf_node, with_required_cardinality, node_has_structure
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
@@ -18428,9 +18482,8 @@ import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
-  node_is_optional, node_is_map, node_is_container, node_has_structure,
+  node_is_optional, node_is_map, node_is_container,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
-  leaf_node, with_required_cardinality,
   rt_type, emit_map_has
 }
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
@@ -18441,13 +18494,9 @@ import v2.compiler.infer_items {
 import v2.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
-import v2.compiler.infer_lookup {
-  resolve_scrutinee_type_node
-}
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
-  infer_record_lit,
   build_emit_graph_info,
   expr_span
 }
@@ -19023,7 +19072,7 @@ fn emit_non_empty_wrappers() -> String {
 fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let kind = classify_typed_item(item: item)
   if (kind == TypedItemTypeDef) {
-    emit_type_def_from_connective(item: item, recursive_types: scope.type_env.recursive_type_set, rc_types: rc_types)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, rc_types: rc_types)
   } else if (kind == TypedItemTypeAlias) {
     concat(rust_visibility_prefix(), "type ", item.name, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
@@ -19936,11 +19985,11 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   }
 }
 
-fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
-  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_map())
+fn type_needs_rc(type_node: Node) -> Bool {
+  type_needs_rc_seen(type_node: type_node, seen: empty_map())
 }
 
-fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
+fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
   let normed_kind = classify_type_structure(n: normed)
   if (normed_kind == TypeConj) {
@@ -19951,23 +20000,23 @@ fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) ->
     let canonical = normed.name
     if normed.inferred != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      type_needs_rc_seen(env: env, type_node: rt_type(n: normed), seen: next_seen)
+      type_needs_rc_seen(type_node: rt_type(n: normed), seen: next_seen)
     } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
       false
     } else {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      let resolved = resolve_scrutinee_type_node(env: env, n: normed)
+      let resolved = normed
       if node_has_structure(n: resolved) == false && resolved.inferred == none && resolved.name == normed.name && resolved.children |> count == 0 {
         false
       } else {
-        type_needs_rc_seen(env: env, type_node: resolved, seen: next_seen)
+        type_needs_rc_seen(type_node: resolved, seen: next_seen)
       }
     }
   }
 }
 
 fn rust_map_value_type(receiver_type: Node, scope: InferScope) -> Node? {
-  let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: normalize_access_type_node(n: receiver_type))
+  let resolved = normalize_access_type_node(n: receiver_type)
   let map_type = normalize_access_type_node(n: resolved)
   if node_is_map(n: map_type) {
     match map_type.children |> skip(1) |> first {
@@ -19994,7 +20043,7 @@ fn rust_lookup_receiver_needs_rc_wrap(receiver: Node, scope: InferScope) -> Bool
   match receiver.inferred {
     Some { value: Resolved { node: receiver_type } } =>
       match rust_map_value_type(receiver_type: receiver_type, scope: scope) {
-        Some { value: value_type } => type_needs_rc(env: scope.type_env, type_node: value_type)
+        Some { value: value_type } => type_needs_rc(type_node: value_type)
         None => false
       }
     _ => false
@@ -20188,7 +20237,17 @@ fn is_map_typed_expr(texpr: Node) -> Bool {
 
 fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let call_str = if func == "empty_map" {
-    "BTreeMap::new()"
+    match inferred {
+      Some { value: Resolved { node: ret_type } } =>
+        let resolved_ret = ret_type
+        let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
+        if type_str != "" && type_str != "Dynamic" {
+          concat("<", type_str, ">::new()")
+        } else {
+          "compile_error!(\"empty_map requires a concrete result type\")"
+        }
+      _ => "compile_error!(\"empty_map missing resolved return type\")"
+    }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   }
@@ -20201,9 +20260,9 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNo
     else {
       match inferred {
         Some { value: Resolved { node: ret_type } } =>
-          let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
+          let resolved_ret = ret_type
           if node_is_optional(n: resolved_ret) {
-            type_needs_rc(env: scope.type_env, type_node: with_required_cardinality(n: resolved_ret))
+            type_needs_rc(type_node: with_required_cardinality(n: resolved_ret))
           } else { false }
         _ => false
       }
@@ -20534,7 +20593,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       // RC4: If the receiver is Optional, emit .map(|p| body) to preserve Option type.
       // Otherwise use the standard for-loop collect pattern for lists.
       let recv_is_optional = match receiver.inferred {
-        Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+        Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
         _ => false
       }
       if recv_is_optional {
@@ -20684,7 +20743,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       // Annotate sort_by closure params with the element type to avoid E0282.
       let elem_type_str = match receiver.inferred {
         Some { value: Resolved { node: rt } } =>
-          let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
+          let resolved = rt
           let elem = for_each_element_type_node(n: resolved)
           // Dynamic audit: correct guard — if sort_by element type is Dynamic,
           // fall back to "_" so Rust infers the closure param type.
@@ -20884,15 +20943,6 @@ fn emit_typed_let(name: String, value: Node, body: Node?, registry: Map<String, 
   }
 }
 
-fn emit_record_lit_full(type_name: String?, fields: List<FieldInit>, span: SourceSpan, registry: Map<String, ItemInfo>, scope: InferScope, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let inferred = infer_record_lit(type_name: type_name, field_inits: fields, span: span, scope: scope)
-  match inferred.typed.expr_data {
-    ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: inferred.typed), registry: registry, scope: scope, depth: 0, vtoe: empty_map(), rc_types: rc_types, emit_info: emit_info)
-    _ =>
-      "compile_error!(\"internal error: infer_record_lit did not produce ExprRecordLit\")"
-  }
-}
 
 fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field_name: String) -> Bool {
   match lookup_emit_type_summary(emit_info: emit_info, type_name: struct_name) {
@@ -20920,10 +20970,10 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         // then resolve to the definition. resolve_scrutinee_type_node can
         // lose use-site cardinality when resolving to the type definition.
         match texpr.inferred {
-          Some { value: Resolved { node: rt } } => node_is_optional(n: rt) || node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+          Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
           _ =>
             match map_get(scope.locals, n) {
-              Some { value: binding } => node_is_optional(n: binding.resolved) || node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: binding.resolved))
+              Some { value: binding } => node_is_optional(n: binding.resolved)
               None => false
             }
         }
@@ -20945,26 +20995,26 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       else {
         match b.inferred {
           Some { value: Resolved { node: base_type } } =>
-            let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_type)
+            let resolved_base = base_type
             if is_optional_struct_field(emit_info: emit_info, struct_name: resolved_base.name, field_name: f) {
               true
             } else {
               // Fallback: struct may not be in type_summaries; check expression return type
               match texpr.inferred {
-                Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+                Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
                 _ => false
               }
             }
           _ =>
             match texpr.inferred {
-              Some { value: Resolved { node: rt } } => node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+              Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
               _ => false
             }
         }
       }
     _ =>
       match texpr.inferred {
-        Some { value: Resolved { node: rt } } => node_is_optional(n: rt) || node_is_optional(n: resolve_scrutinee_type_node(env: scope.type_env, n: rt))
+        Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
         _ => false
       }
   }
