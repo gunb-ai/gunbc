@@ -44,6 +44,7 @@ import v2.std.core {
   BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
   BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
   BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
+  arm_body,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
   TransportKind, RestTransport, ShellTransport, FileTransport,
@@ -278,8 +279,12 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 // After Expr->Node dissolution, resolved type is on Node.inferred.
 fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
-    ExprLet { name: name, value: value, body: body } =>
-      if body == none {
+    ExprLet { name: name, value: _, body: _ } =>
+      // children = [value, body?]. Bodyless let extends scope.
+      let ch = texpr.children
+      let has_body = (ch |> count) > 1
+      if has_body == false {
+        let value = match ch |> first { Some { value: v } => v  None => texpr }
         extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
       } else {
         scope
@@ -1123,14 +1128,22 @@ fn classify_tco_expr(texpr: Node) -> TcoExprShape {
   match texpr.expr_data {
     ExprCall { func: f, args: a, call_semantics: _ } =>
       TcoCall { func: f, args: a }
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+      let ch = texpr.children
+      let c = match ch |> first { Some { value: v } => v  None => texpr }
+      let t = match ch |> drop(1) |> first { Some { value: v } => v  None => texpr }
+      let e = ch |> drop(2) |> first
       TcoIf { condition: c, then_branch: t, else_branch: e }
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      TcoMatch { scrutinee: s, arms: arm_list }
-    ExprLet { name: n, value: v, body: bd } =>
+    ExprMatch { scrutinee: _, arms: arm_list } =>
+      let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
+      TcoMatch { scrutinee: scrut, arms: arm_list }
+    ExprLet { name: n, value: _, body: _ } =>
+      let ch = texpr.children
+      let v = match ch |> first { Some { value: val } => val  None => texpr }
+      let bd = ch |> drop(1) |> first
       TcoLet { name: n, value: v, body: bd }
-    ExprBlock { stmts: ss } =>
-      TcoBlock { stmts: ss }
+    ExprBlock { stmts: _ } =>
+      TcoBlock { stmts: texpr.children }
     _ =>
       TcoOther { expr: texpr }
   }
@@ -1215,6 +1228,7 @@ fn emit_shared_tco_expr(
   match frame.expr.expr_data {
     ExprCall { func: f, args: a, call_semantics: _ } =>
       if f == fn_name {
+        // args still read from ExprData during dual-write; Step 4 will switch to children
         emit_self_call_reassign(TcoReassignInput { args: a, scope: frame.scope, depth: frame.depth })
       } else {
         emit_non_self_call(frame)
@@ -1235,16 +1249,24 @@ fn emit_shared_tco_expr(
 fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
   match texpr.expr_data {
     ExprCall { func: f, args: _, call_semantics: _ } => f == func_name
-    ExprIf { condition: _, then_branch: t, else_branch: e } =>
-      is_tco_candidate(texpr: t, func_name: func_name) ||
-        match e { Some { value: eb } => is_tco_candidate(texpr: eb, func_name: func_name)  None => false }
-    ExprMatch { scrutinee: _, arms: arm_list } =>
-      arm_list |> any(arm => is_tco_candidate(texpr: arm.body, func_name: func_name))
-    ExprLet { name: _, value: _, body: bd } =>
-      match bd { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
-    ExprBlock { stmts: ss } =>
-      if ss |> count == 0 { false }
-      else { ss |> any(s => is_tco_candidate(texpr: s, func_name: func_name)) }
+    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+      // children = [condition, then, else?]. Check branches.
+      let ch = texpr.children
+      let then_cand = match ch |> drop(1) |> first { Some { value: t } => is_tco_candidate(texpr: t, func_name: func_name)  None => false }
+      let else_cand = match ch |> drop(2) |> first { Some { value: e } => is_tco_candidate(texpr: e, func_name: func_name)  None => false }
+      then_cand || else_cand
+    ExprMatch { scrutinee: _, arms: _ } =>
+      // children = [scrutinee, arm0, arm1, ...]. Check arm bodies.
+      texpr.children |> drop(1) |> any(arm_node => is_tco_candidate(texpr: arm_body(n: arm_node), func_name: func_name))
+    ExprLet { name: _, value: _, body: _ } =>
+      // children = [value, body?]. Check body.
+      match texpr.children |> drop(1) |> first { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
+    ExprBlock { stmts: _ } =>
+      // children = [stmt0, stmt1, ...].
+      texpr.children |> any(s => is_tco_candidate(texpr: s, func_name: func_name))
+    NoExprData =>
+      // Wrapper nodes -- recurse through children.
+      texpr.children |> any(child => is_tco_candidate(texpr: child, func_name: func_name))
     _ => false
   }
 }
