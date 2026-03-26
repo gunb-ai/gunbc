@@ -1825,7 +1825,7 @@ contract is real.
 | P4.3 | Generated tests as first-class projection | **Done** | `TestProjection` now carries `module_name`, `return_type`, and `params`; `extract_test_projections()` is the single graph-walk entry point; `emit_simple_expr` moved into shared emit; Rust/Go/Python all emit test files from the same projection contract. Verified by `generates_mock_test_file`, `testgen_emits_valid_rust`, and the full compiler test suite. |
 | P4.4 | DAG backend/runtime boundary | **Done** | `Dag` remains a compile target only; `emit_dag_artifact` now writes a versioned `dag-artifact.json` containing serialized `modules`, `diagnostics`, and `files` from the post-infer `ResolvedGraph`. Runtime execution stays downstream by design. Verified by `dag_pipeline_smoke` and ignored bootstrap smoke `stage0_compile_accepts_dag_target`. |
 | P4.5 | Typed backend plumbing and CLI surface | **Done** | Backend selection remains typed end-to-end and the committed stage0 / emitted compile CLI now parse `--target rust\|python\|go\|dag` with recursive source discovery aligned across bootstrap stages. Verified by ignored bootstrap smoke `stage0_compile_accepts_dag_target` plus full suite. |
-| P4.6 | Equivalence validation | **Done** (PR #212) | Bootstrap stage0→stage1 fixed (147→0 errors). Fixed-point test passes. Phase 4 gate met. |
+| P4.6 | Equivalence validation | **Done** | All three gate tests pass: `strict_compile_diagnostic_count` (0 diagnostics), `gist_full_pipeline`, and `bootstrap_stage0_to_stage1` (0 errors). Phase 4 closed 2026-03-26. |
 | P4.7 | Callable-type parameters | **Done** | All 6 steps (P4.7a-f) complete: v1 `impl Fn` emission, v2 parser `fn(T) -> R` syntax, v1 call emission verified, v2 inference for callable locals, v2 callable-aware lambda param threading, v2 backend rendering verified. **Unblocks P4.2 step 5.** |
 
 ### P4.1 Contract: `LanguageSpec` Checklist
@@ -2042,19 +2042,12 @@ type TestProjection {
 - `cargo test -p v2-compiler-tests testgen_emits_valid_rust -- --nocapture`
 - `cargo test -p v2-compiler-tests -- --nocapture`
 
-### Current Phase 4 Risks
+### Phase 4 Closed (2026-03-26)
 
-- P4.6 equivalence validation / convergence is still the explicit
-  remaining Phase 4 item after the implementation work in this branch.
-- Go `interface{}` type holes and the residual Python/Go fabrication
-  markers remain quality issues, but they no longer block the shared emit
-  boundary, cross-backend test generation, or DAG artifact contract.
-- Mixed-backend runtime execution stays intentionally downstream of the
-  compiler: the versioned DAG artifact boundary is implemented, while the
-  runtime continues to live outside compiler stages.
-- Go `interface{}` type holes and the residual Python/Go fabrication
-  markers remain quality issues, but they no longer block the shared emit
-  boundary, cross-backend test generation, or DAG artifact contract.
+Phase 4 is complete. All exit criteria met, all gate tests passing.
+
+Remaining quality items (not blocking):
+- Go `interface{}` type holes and residual Python/Go fabrication markers
 - Mixed-backend runtime execution stays intentionally downstream of the
   compiler: the versioned DAG artifact boundary is implemented, while the
   runtime continues to live outside compiler stages.
