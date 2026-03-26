@@ -134,7 +134,13 @@ pub fn substitute_type_slots(n: Rc<Node>, slot_bindings: Rc<HashMap<String, Rc<N
     }
     Rc::new(__mapped_3)
 };
-    Rc::new(Node { name: __elem_2.name.clone(), span: __elem_2.span.clone(), children: substituted_args.clone(), connective: __elem_2.connective.clone(), collection_kind: None, params: __elem_2.params.clone(), inferred: __elem_2.inferred.clone(), return_cardinality: __elem_2.return_cardinality.clone(), uses: __elem_2.uses.clone(), body: __elem_2.body.clone(), transport: __elem_2.transport.clone(), properties: __elem_2.properties.clone(), type_annotation: __elem_2.type_annotation.clone(), config: __elem_2.config.clone(), is_self_recursive: __elem_2.is_self_recursive.clone(), has_non_tail_self_call: __elem_2.has_non_tail_self_call.clone(), expr_data: __elem_2.expr_data.clone() })
+    {
+    let __rc_6 = __elem_2;
+    let mut __owned_5 = Rc::try_unwrap(__rc_6).unwrap_or_else(|rc| { debug_assert!(false, "V5: expected sole ownership of `__elem_2`"); (*rc).clone() });
+    let __taken_7 = std::mem::take(&mut __owned_5.children);
+    __owned_5.children = substituted_args.clone();
+    Rc::new(__owned_5)
+}
 } else {
     substitute_type_slots(__elem_2.clone(), slot_bindings.clone(), &decl_name)
 });
@@ -374,7 +380,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     Rc::new(__mapped_41)
 };
     let is_recursive = is_recursive_type(env.clone(), &n.name);
-    let result = Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: substituted_children.clone(), connective: decl.connective.clone(), collection_kind: None, params: Rc::new(Vec::new()), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: decl.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() }), diagnostics: v2_rt::concat(arity_diags.clone(), arg_diags.clone()) });
+    let result = Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: substituted_children.clone(), connective: decl.connective.clone(), collection_kind: decl.collection_kind.clone(), params: Rc::new(Vec::new()), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: decl.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() }), diagnostics: v2_rt::concat(arity_diags.clone(), arg_diags.clone()) });
     result.clone()
 } else {
     if node_is_map(n.clone()) {
