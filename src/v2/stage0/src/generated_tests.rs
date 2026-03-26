@@ -9138,7 +9138,7 @@ import v2.compiler.infer_types {
   node_is_leaf, node_is_named_ref,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
-  node_type_deps,
+  node_type_deps, collection_kind_for_name,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
@@ -10958,7 +10958,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding {
       name: name,
-      resolved: leaf_node(name: name)
+      resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     })
   )
   // Register Optional as a Disj type so lookup_type("Optional") succeeds.
@@ -10995,7 +10995,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     if node_has_structure(n: item) {
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
-        connective: item.connective, collection_kind: none, params: item.params, inferred: none,
+        connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -11027,7 +11027,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       // Register as a nominal type with params so generics can find the declaration.
       let bare_node = Node {
         name: item.name, span: item.span, children: [],
-        connective: none, collection_kind: none, params: item.params, inferred: none,
+        connective: none, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -11092,7 +11092,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     kernel_types,
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: leaf_node(name: name) })
+    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } })
   )
   // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -11107,7 +11107,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
     if node_has_structure(n: item) {
-      let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: none, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node { name: item.name, span: item.span, children: [], connective: none, collection_kind: none, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -12716,6 +12716,15 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       }]
     }
   }
+  // Normalize collection_kind: parser-produced nodes have collection_kind: none.
+  // Derive from name so downstream structural checks (node_is_map, node_is_container) work.
+  let n = if n.collection_kind == none {
+    let ck = collection_kind_for_name(name: n.name)
+    match ck {
+      Some { value: _ } => Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: ck, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+      None => n
+    }
+  } else { n }
   if node_has_structure(n: n) {
     if node_is_product(n: n) {
       if n.name == "Refined" {

@@ -2319,7 +2319,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
         __acc_0 = {
     let __rc_3 = __acc_0;
     let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: leaf_node(&__elem_1) }));
+    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: Rc::new(Node { name: __elem_1.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: None, collection_kind: collection_kind_for_name(&__elem_1), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
     Rc::new(__map_ins_2)
 };
     }
@@ -2399,7 +2399,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     let mut __acc_20: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_21 in module.module.items.iter().cloned() {
         __acc_20 = if node_has_structure(__elem_21.clone()) {
-    let type_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: __elem_21.children.clone(), connective: __elem_21.connective.clone(), collection_kind: None, params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let type_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: __elem_21.children.clone(), connective: __elem_21.connective.clone(), collection_kind: collection_kind_for_name(&__elem_21.name), params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_23 = __acc_20;
     let mut __map_ins_22 = Rc::try_unwrap(__rc_23).unwrap_or_else(|rc| (*rc).clone());
@@ -2435,7 +2435,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     let __len_34 = __elem_21.params.clone().len();
     __len_34 as i64
 }) > 0_i64) && (node_has_structure(__elem_21.clone()) == false)) && (__elem_21.body.clone().is_none())) && (__elem_21.transport.clone().is_none()) {
-    let bare_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let bare_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: collection_kind_for_name(&__elem_21.name), params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_29 = __acc_20;
     let mut __map_ins_28 = Rc::try_unwrap(__rc_29).unwrap_or_else(|rc| (*rc).clone());
@@ -2576,7 +2576,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
         __acc_0 = {
     let __rc_3 = __acc_0;
     let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: leaf_node(&__elem_1) }));
+    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: Rc::new(Node { name: __elem_1.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: None, collection_kind: collection_kind_for_name(&__elem_1), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
     Rc::new(__map_ins_2)
 };
     }
@@ -2642,7 +2642,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     let mut __acc_18: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_19 in module.module.items.iter().cloned() {
         __acc_18 = if node_has_structure(__elem_19.clone()) {
-    let type_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: __elem_19.children.clone(), connective: __elem_19.connective.clone(), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let type_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: __elem_19.children.clone(), connective: __elem_19.connective.clone(), collection_kind: collection_kind_for_name(&__elem_19.name), params: Rc::new(Vec::new()), inferred: None, return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_21 = __acc_18;
     let mut __map_ins_20 = Rc::try_unwrap(__rc_21).unwrap_or_else(|rc| (*rc).clone());

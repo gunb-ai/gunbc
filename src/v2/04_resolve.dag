@@ -194,6 +194,15 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       }]
     }
   }
+  // Normalize collection_kind: parser-produced nodes have collection_kind: none.
+  // Derive from name so downstream structural checks (node_is_map, node_is_container) work.
+  let n = if n.collection_kind == none {
+    let ck = collection_kind_for_name(name: n.name)
+    match ck {
+      Some { value: _ } => Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: ck, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+      None => n
+    }
+  } else { n }
   if node_has_structure(n: n) {
     if node_is_product(n: n) {
       if n.name == "Refined" {
