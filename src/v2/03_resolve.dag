@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Node, Connective, Conj, Disj, Diagnostic, Severity, ErrorCategory, UnresolvedName, InvalidOperation, kernel_types }
+import v2.std.core { Node, Connective, Conj, Disj, diagnostic_node, no_span, kernel_types, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
 
 // =========================================================================
 // Output types
@@ -21,19 +21,20 @@ import v2.std.core { Module, Import, ImportNames, ImportAll, ImportSpecific, Nod
 
 type ModuleGraph {
   modules: List<ResolvedModule>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 type ResolvedModule {
-  module: Module
+  module: Node
   resolved_imports: List<ResolvedImport>
   dep_order: Int
 }
 
 type ResolvedImport {
   module_path: String
-  names: ImportNames
-  target_module: Module?
+  is_all: Bool
+  specific_names: List<String>
+  target_module: Node?
 }
 
 // =========================================================================
@@ -52,7 +53,7 @@ type DepEdge {
 // Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
   imports_by_name: Map<String, List<ResolvedImport>>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // Map membership check -- returns true if key is present, false otherwise.
@@ -69,7 +70,7 @@ fn map_has(m: Map<String, Bool>, key: String) -> Bool {
 // Entry point
 // =========================================================================
 
-fn resolve_modules(modules: List<Module>) -> ModuleGraph {
+fn resolve_modules(modules: List<Node>) -> ModuleGraph {
   // Phase 1: check for duplicate module declarations
   let dup_diags = check_duplicate_modules(modules: modules)
 
@@ -148,7 +149,7 @@ fn resolve_modules(modules: List<Module>) -> ModuleGraph {
 // =========================================================================
 
 // Find a module by its module declaration path (the `name` field).
-fn find_module(module_index: Map<String, Module>, path: String) -> Module? {
+fn find_module(module_index: Map<String, Node>, path: String) -> Node? {
   map_get(module_index, path)
 }
 
@@ -159,12 +160,12 @@ fn find_module(module_index: Map<String, Module>, path: String) -> Module? {
 // Result of resolving one module's imports.
 type ModuleResolveResult {
   resolved_imports: List<ResolvedImport>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // Resolve all imports for a single module.
-fn resolve_module_imports(module: Module, module_index: Map<String, Module>, export_sets: Map<String, Map<String, Bool>>) -> ModuleResolveResult {
-  let results = module.imports |> map(imp =>
+fn resolve_module_imports(module: Node, module_index: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>) -> ModuleResolveResult {
+  let results = module_imports(n: module) |> map(imp =>
     resolve_import(import: imp, module_index: module_index, importing_module: module.name, export_sets: export_sets)
   )
   let resolved = results
@@ -180,30 +181,25 @@ fn resolve_module_imports(module: Module, module_index: Map<String, Module>, exp
 // Result of resolving a single import statement.
 type ImportResolveResult {
   resolved: ResolvedImport
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // Resolve a single import: find target module, validate imported names.
 fn resolve_import(
-  import: Import,
-  module_index: Map<String, Module>,
+  import: Node,
+  module_index: Map<String, Node>,
   importing_module: String,
   export_sets: Map<String, Map<String, Bool>>
 ) -> ImportResolveResult {
-  let target = find_module(module_index: module_index, path: import.module_path)
+  let target = find_module(module_index: module_index, path: import.name)
   match target {
     None => {
-      let diag = Diagnostic {
-        severity: Error,
-        message: concat("unresolved import: module '", import.module_path, "' not found (imported by '", importing_module, "')"),
-        span: Some { value: import.span },
-        module_name: Some { value: importing_module },
-        category: Some { value: UnresolvedName }
-      }
+      let diag = diagnostic_node(severity: "error", message: concat("unresolved import: module '", import.name, "' not found (imported by '", importing_module, "')"), span: import.span, module_name: Some { value: importing_module }, category: Some { value: "unresolved_name" })
       ImportResolveResult {
         resolved: ResolvedImport {
-          module_path: import.module_path,
-          names: import.names,
+          module_path: import.name,
+          is_all: import_is_all(n: import),
+          specific_names: import_specific_names(n: import),
           target_module: None
         },
         diagnostics: [diag]
@@ -212,29 +208,22 @@ fn resolve_import(
     Some { value: target_mod } => {
       // Validate each imported name exists in the target.
       // Use pre-computed export set for O(1) membership checks.
-      let exported_set = match map_get(export_sets, import.module_path) {
+      let exported_set = match map_get(export_sets, import.name) {
         Some { value: set } => set
         None => empty_map()
       }
-      let name_diags = match import.names {
-        ImportAll => []
-        ImportSpecific { names: specific_names } =>
-          specific_names
-            |> filter(name => map_has(m: exported_set, key: name) == false)
-            |> map(missing_name =>
-              Diagnostic {
-                severity: Error,
-                message: concat("name '", missing_name, "' not found in module '", import.module_path, "' (imported by '", importing_module, "')"),
-                span: Some { value: import.span },
-                module_name: Some { value: importing_module },
-                category: Some { value: UnresolvedName }
-              }
-            )
+      let name_diags = if import_is_all(n: import) { [] } else {
+        import_specific_names(n: import)
+          |> filter(name => map_has(m: exported_set, key: name) == false)
+          |> map(missing_name =>
+            diagnostic_node(severity: "error", message: concat("name '", missing_name, "' not found in module '", import.name, "' (imported by '", importing_module, "')"), span: import.span, module_name: Some { value: importing_module }, category: Some { value: "unresolved_name" })
+          )
       }
       ImportResolveResult {
         resolved: ResolvedImport {
-          module_path: import.module_path,
-          names: import.names,
+          module_path: import.name,
+          is_all: import_is_all(n: import),
+          specific_names: import_specific_names(n: import),
           target_module: Some { value: target_mod }
         },
         diagnostics: name_diags
@@ -255,23 +244,13 @@ fn resolve_import(
 // `import B { Foo }`, then importers of A can also see Foo.
 // Kernel primitives (String, Int, Bool, etc.) are always available
 // and treated as implicitly exported by every module.
-fn get_exported_names(module: Module) -> List<String> {
-  let item_names = module.items |> map(item => get_item_name(item: item))
-  let variant_names = module.items
+fn get_exported_names(module: Node) -> List<String> {
+  let item_names = module_items(n: module) |> map(item => get_item_name(item: item))
+  let variant_names = module_items(n: module)
     |> flat_map(item => get_variant_names(item: item))
-  let imported_names = module.imports
-    |> flat_map(imp => get_import_specific_names(names: imp.names))
+  let imported_names = module_imports(n: module)
+    |> flat_map(imp => if import_is_all(n: imp) { [] } else { import_specific_names(n: imp) })
   concat(item_names, variant_names, imported_names, kernel_types)
-}
-
-// Extract explicitly named imports from an ImportNames value.
-// Wildcard imports (ImportAll) are not re-exported since the target
-// module's full export list is not available at this point.
-fn get_import_specific_names(names: ImportNames) -> List<String> {
-  match names {
-    ImportAll => []
-    ImportSpecific { names: ns } => ns
-  }
 }
 
 // Extract the primary name from an item.
@@ -296,10 +275,10 @@ fn get_variant_names(item: Node) -> List<String> {
 // DuplicateCheckState -- fold accumulator for seen-set duplicate detection.
 type DuplicateCheckState {
   seen_names: Map<String, Bool>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
-fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
+fn check_duplicate_modules(modules: List<Node>) -> List<Node> {
   // Fold over modules maintaining a seen-names map for O(1) lookup.
   // For each module, check if its name is already in the seen map.
   // If so, emit a diagnostic. Then add the name to the seen map.
@@ -311,13 +290,7 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
     if is_dup {
       DuplicateCheckState {
         seen_names: state.seen_names,
-        diagnostics: concat(state.diagnostics, [Diagnostic {
-          severity: Error,
-          message: concat("duplicate module declaration: '", m.name, "'"),
-          span: Some { value: m.span },
-          module_name: Some { value: m.name },
-          category: Some { value: InvalidOperation }
-        }])
+        diagnostics: concat(state.diagnostics, [diagnostic_node(severity: "error", message: concat("duplicate module declaration: '", m.name, "'"), span: m.span, module_name: Some { value: m.name }, category: Some { value: "invalid_operation" })])
       }
     } else {
       DuplicateCheckState {
@@ -339,7 +312,7 @@ fn check_duplicate_modules(modules: List<Module>) -> List<Diagnostic> {
 
 type TopoResult {
   sorted: List<String>
-  cycle_error: Diagnostic?
+  cycle_error: Node?
 }
 
 fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String, to_module: String) -> Map<String, List<String>> {
@@ -350,21 +323,21 @@ fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String,
   map_insert(adjacency, from_module, list_push(existing, to_module))
 }
 
-fn topological_sort(modules: List<Module>) -> TopoResult {
+fn topological_sort(modules: List<Node>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
 
   // Build adjacency list: from_module → [to_module, ...]
   // "from_module is imported by to_module" means when from_module is sorted,
   // to_module's in-degree decreases.
   let adjacency = modules |> flat_map(m =>
-    m.imports |> map(imp => DepEdge { from_module: imp.module_path, to_module: m.name })
+    module_imports(n: m) |> map(imp => DepEdge { from_module: imp.name, to_module: m.name })
   ) |> fold(init: empty_map(), f: (acc, edge) =>
     adjacency_add_edge(adjacency: acc, from_module: edge.from_module, to_module: edge.to_module)
   )
 
   // Compute initial in-degrees directly from import counts.
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
-    map_insert(acc, m.name, m.imports |> count)
+    map_insert(acc, m.name, module_imports(n: m) |> count)
   )
 
   // Initial queue: all modules with in-degree 0 (no imports), sorted for determinism.
@@ -395,13 +368,7 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
     let cycle_desc = cycle_members |> join(separator: " -> ")
     TopoResult {
       sorted: result.sorted,
-      cycle_error: Some { value: Diagnostic {
-        severity: Error,
-        message: concat("circular dependency detected: ", cycle_desc),
-        span: None,
-        module_name: None,
-        category: Some { value: InvalidOperation }
-      } }
+      cycle_error: Some { value: diagnostic_node(severity: "error", message: concat("circular dependency detected: ", cycle_desc), span: no_span(), module_name: none, category: Some { value: "invalid_operation" }) }
     }
   }
 }

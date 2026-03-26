@@ -310,17 +310,17 @@ fn v2_core_dag_defines_expr_type() {
 }
 
 #[test]
-fn v2_core_dag_defines_module_type() {
+fn v2_core_dag_defines_module_node_constructor() {
     let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
     assert!(result.is_ok());
 
-    let has_module = result.ast.items.iter().any(|item| {
+    let has_module_node = result.ast.items.iter().any(|item| {
         matches!(
             &item.node,
-            daglang_syntax::ast::Item::TypeDef(td) if td.name == "Module"
+            daglang_syntax::ast::Item::FnDef(fd) if fd.name == "module_node"
         )
     });
-    assert!(has_module, "core.dag should define a 'Module' type");
+    assert!(has_module_node, "core.dag should define a 'module_node' function");
 }
 
 #[test]

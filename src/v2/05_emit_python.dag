@@ -13,16 +13,15 @@
 module v2.compiler.emit_python
 
 import v2.std.core {
-  Import, ImportAll, ImportSpecific,
   Node, InferredNode, Resolved, CompilerError,
+  is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   Connective, Conj, Disj,
   Param, MatchArm,
   MatchPattern, FieldBinding, LiteralValue,
-  TextFile, Diagnostic, SourceSpan,
+  TextFile, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
-  ServiceConfig,
   DeclaredFuncSig,
   TransportKind, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
@@ -280,7 +279,7 @@ fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let prelude = emit_py_prelude(typed_module: typed_module)
-  let imports_str = emit_py_imports(imports: m.imports)
+  let imports_str = emit_py_imports(imports: module_imports(n: m))
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   let items_str = typed_module.items
     |> map(item => emit_py_typed_item(item: item, registry: registry, scope: scope))
@@ -297,15 +296,16 @@ fn emit_py_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
 // Import emission
 // =========================================================================
 
-fn emit_py_imports(imports: List<Import>) -> String {
+fn emit_py_imports(imports: List<Node>) -> String {
   if imports |> count == 0 {
     ""
   } else {
     let import_lines = imports |> map(imp =>
-      let mod_name = module_to_filename(name: imp.module_path)
-      match imp.names {
-        ImportAll => concat("from ", mod_name, " import *")
-        ImportSpecific { names: specific_names } =>
+      let mod_name = module_to_filename(name: imp.name)
+      if import_is_all(n: imp) {
+        concat("from ", mod_name, " import *")
+      } else {
+          let specific_names = import_specific_names(n: imp)
           if specific_names |> count == 0 {
             ""
           } else {
@@ -1118,7 +1118,7 @@ fn emit_py_service_def(
   let depth = 0
   let safe_name = sanitize_service_name(name: item.name)
   let transport = service_fallback_transport(item: item)
-  let init_method = emit_py_service_init(transport: transport, config: item.config)
+  let init_method = emit_py_service_init(transport: transport)
   let op_children = item.children
   let methods = op_children |> map(op_node =>
     emit_py_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1)
@@ -1129,7 +1129,7 @@ fn emit_py_service_def(
     make_indent(level: depth + 1), methods_str)
 }
 
-fn emit_py_service_init(transport: Node, config: ServiceConfig?) -> String {
+fn emit_py_service_init(transport: Node) -> String {
   if is_transport_kind(t: transport, kind: RestTransport) {
     let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
     let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }

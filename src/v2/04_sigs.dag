@@ -16,8 +16,7 @@ import v2.std.core {
   Node, Param,
   ExprData, ExprCall,
   expr_children,
-  Diagnostic, Severity, Error,
-  ErrorCategory, TypeMismatch,
+  diagnostic_node, no_span,
   DeclaredFuncSig
 }
 import v2.compiler.infer_types { emit_map_has }
@@ -41,14 +40,14 @@ type ResolvedFuncEnv {
 
 type ResolveFuncSigsResult {
   func_env: ResolvedFuncEnv
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // Accumulator for single-pass fold over function signatures:
 // collects resolved signatures and diagnostics together.
 type SigsAccum {
   signatures: Map<String, ResolvedFuncSig>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // Call edge between two local functions.
@@ -131,7 +130,7 @@ fn topo_resolve_loop(
     call_edges: List<CallEdge>,
     local_func_set: Map<String, Bool>,
     module_name: String,
-    diagnostics: List<Diagnostic>
+    diagnostics: List<Node>
 ) -> ResolveFuncSigsResult {
   if remaining |> count == 0 {
     // Include non-local (parent) sigs -- they have inferred: Some from conversion.
@@ -163,13 +162,7 @@ fn topo_resolve_loop(
           if dsig.inferred != none {
             SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
           } else {
-            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
-              severity: Error,
-              message: concat("recursive function '", fn_name, "' requires return type annotation"),
-              span: none,
-              module_name: Some { value: module_name },
-              category: Some { value: TypeMismatch }
-            }) }
+            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, diagnostic_node(severity: "error", message: concat("recursive function '", fn_name, "' requires return type annotation"), span: no_span(), module_name: Some { value: module_name }, category: Some { value: "type_mismatch" })) }
           }
         None => acc
       }
@@ -193,13 +186,7 @@ fn topo_resolve_loop(
         if dsig.inferred != none {
           SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
         } else {
-          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
-            severity: Error,
-            message: concat("function '", fn_name, "' requires return type annotation"),
-            span: none,
-            module_name: Some { value: module_name },
-            category: Some { value: TypeMismatch }
-          }) }
+          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, diagnostic_node(severity: "error", message: concat("function '", fn_name, "' requires return type annotation"), span: no_span(), module_name: Some { value: module_name }, category: Some { value: "type_mismatch" })) }
         }
       None => acc
     }

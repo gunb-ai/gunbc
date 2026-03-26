@@ -22,16 +22,15 @@
 module v2.compiler.emit_go
 
 import v2.std.core {
-  Import, ImportAll, ImportSpecific,
   Node, InferredNode, Resolved, CompilerError,
+  is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   Connective, Conj, Disj,
   Field, Variant, Param, MatchArm,
   MatchPattern, FieldBinding, LiteralValue,
-  TextFile, Diagnostic, SourceSpan,
+  TextFile, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart, NamedArg, FieldInit,
-  ServiceConfig,
   DeclaredFuncSig,
   TransportKind, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
@@ -288,7 +287,7 @@ fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) ->
   let scope = module_emit_scope(typed_module: typed_module)
   let pkg_name = go_package_name(module_name: m.name)
   let pkg_decl = concat("package ", pkg_name)
-  let imports_str = emit_go_imports(items: typed_module.items, imports: m.imports)
+  let imports_str = emit_go_imports(items: typed_module.items, imports: module_imports(n: m))
   let imports_section = if imports_str == "" { "" } else { concat("\n\n", imports_str) }
   let items_str = typed_module.items
     |> map(item => emit_go_typed_item(item: item, registry: registry, scope: scope))
@@ -318,15 +317,15 @@ fn go_package_name(module_name: String) -> String {
 // Standard library imports and generated module imports.
 // =========================================================================
 
-fn emit_go_imports(items: List<Node>, imports: List<Import>) -> String {
+fn emit_go_imports(items: List<Node>, imports: List<Node>) -> String {
   let has_services = items |> any(item => is_service_item(item: item))
   let has_errors = items |> any(item => item.body != none && item.uses |> count > 0)
   let std_imports = collect_go_std_imports(has_services: has_services, has_errors: has_errors)
-  let module_imports = imports |> map(imp =>
-    let mod_name = module_to_filename(name: imp.module_path)
+  let pkg_imports = imports |> map(imp =>
+    let mod_name = module_to_filename(name: imp.name)
     concat("\t\"generated/", mod_name, "\"")
   )
-  let all_imports = concat(std_imports, module_imports)
+  let all_imports = concat(std_imports, pkg_imports)
   if all_imports |> count == 0 {
     ""
   } else {
