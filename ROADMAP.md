@@ -2482,18 +2482,29 @@ The TypeEnv already carries resolved structural types. But inference
 fabricates name-only references at these sites instead of using the
 structural fact:
 
-| Site | File:Line | What happens | What it should do |
-|------|-----------|-------------|-------------------|
-| Variant constructor locals | `04_infer.dag:2217` | `resolved: leaf_node(name: binding.name)` — bare parent enum name | Use `binding.resolved` — the structural enum definition |
-| Optional Some/None | `04_infer.dag:2244` | `resolved: leaf_node(name: "Optional")` — hardcoded name | Cardinality on the binding site (P1.4); no "Optional" name needed |
-| Type alias registration | `04_infer.dag:2053` | alias_node stored with original `.inferred` intact | Resolve through TypeEnv before storing |
-| Func call return type | `04_infer.dag:1065` | `s.inferred` from sig used directly | Sig should already carry structural type |
-| ResolvedFuncSig | `04_sigs.dag:112` | `dsig.inferred.value` unwrapped without resolution | Resolve through TypeEnv at sig construction time |
+| Site | File:Line | What happens | Fix | Status |
+|------|-----------|-------------|-----|--------|
+| Variant constructor locals | `04_infer.dag:2217`, `04_items.dag:130` | `resolved: leaf_node(name: binding.name)` — bare parent enum name | Use `binding.resolved` / `item` — the structural enum definition | **Done** (C2.1) |
+| Optional Some/None | `04_infer.dag:2244` | `resolved: leaf_node(name: "Optional")` — hardcoded name | Delete explicit overrides — general variant mechanism (C2.1) already handles Optional via `kernel_optional` coproduct in env | **Done** (C2.2) |
+| Type alias resolution | `04_resolve.dag:353` | `resolve_node_bounded` returns alias_node wrapper without following `.inferred` | Follow ONE level of `.inferred` for alias nodes (leaf + .inferred, no structure). O(1), safe with topo ordering. | **Done** (C2.3) |
+| Func call return type | `04_infer.dag:1065` | `s.inferred` from sig used directly | **Already fixed by C2.3** — the return type flows through `resolve_item_types` → `resolve_node_bounded` (now with alias following) before reaching `DeclaredFuncSig` | **Done** (via C2.3) |
+| ResolvedFuncSig | `04_sigs.dag:112` | `dsig.inferred.value` unwrapped without resolution | **Already fixed by C2.3** — same resolution chain | **Done** (via C2.3) |
 
-**Key observation:** None of these require a new pass. Each is a site
-where inference already has the structural fact (via `TypeBinding` or
-`TypeEnv`) but discards it in favor of a name. The fix is: use the
-fact that's already composed.
+**Implementation findings (2026-03-26):**
+
+- C2.3 was the key fix — not in `build_type_env` (TypeEnv incomplete
+  there) but in `resolve_node_bounded` (TypeEnv complete, topo order
+  guarantees target already resolved). The alias_node was a one-level
+  indirection that forced emit to re-resolve.
+- C2.4 (func sig) turned out to be already fixed by C2.3: the return
+  type flows through `resolve_item_types` → `resolve_optional_node` →
+  `resolve_node_bounded` (now with alias following).
+- C2.2 (Optional) turned out to be redundant with C2.1: the explicit
+  `leaf_node(name: "Optional")` overrides were undoing C2.1's fix.
+  Deleting them lets the general coproduct mechanism handle Optional.
+
+**Key observation:** None of these required a new pass. Each was a site
+where the structural fact existed but was discarded in favor of a name.
 
 #### C1: Node vocabulary into core
 
@@ -2506,9 +2517,9 @@ inversion.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C1.1 | Move timeless node constructors to `00_core.dag` | ~4 functions | `leaf_node`, `with_optional_cardinality`, `with_required_cardinality`, `no_span` |
-| C1.2 | Move structural predicates to `00_core.dag` | ~3 functions | `node_is_product`, `node_is_coproduct`, `node_has_structure` |
-| C1.3 | Update import statements | ~15 files | Move symbols from `import v2.compiler.infer_types` to `import v2.std.core` |
+| C1.1 | Move timeless node constructors to `00_core.dag` | **Done** | `leaf_node`, `with_optional_cardinality`, `with_required_cardinality`, `no_span` |
+| C1.2 | Move structural predicates to `00_core.dag` | **Done** | `node_is_product`, `node_is_coproduct`, `node_has_structure` |
+| C1.3 | Update import statements | **Done** | 14 .dag files updated |
 
 **What stays in `04_types.dag`:** Three categories:
 
@@ -2536,15 +2547,47 @@ new Node fields. No post-hoc resolution pass. Fix the 5 sites where
 inference fabricates name-only references instead of using the
 structural fact from the environment.
 
-| ID | Item | Scope | Notes |
-|----|------|-------|-------|
-| C2.1 | Variant constructor locals | `04_infer.dag:2217-2226` | Use `binding.resolved` (structural enum node) instead of `leaf_node(name: binding.name)` |
-| C2.2 | Optional Some/None locals | `04_infer.dag:2244-2249` | Use cardinality model for binding-site absence/presence. Preserve the distinction: binding-site absence = cardinality; value-level null/sum = actual coproduct constructor. Do not collapse value-level `Some`/`None` usage into binding cardinality. |
-| C2.3 | Type alias registration | `04_infer.dag:2053-2055` | Resolve alias target through TypeEnv before storing |
-| C2.4 | ResolvedFuncSig construction | `04_sigs.dag:112-114` | Resolve return type through TypeEnv at sig construction time |
-| C2.5 | Delete `resolve_scrutinee_type_node` from emit | 12 call sites in `05_emit_rust.dag` | After C2.1-C2.4, `.inferred` is structural; emit reads it directly |
-| C2.6 | Delete `infer_record_lit` from emit | 1 call site | Record literal types fully resolved during infer |
-| C2.7 | Simplify `type_needs_rc` | `05_emit_rust.dag:1584` | Remove TypeEnv parameter; works on resolved nodes directly |
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| C2.1 | Variant constructor locals | **Done** | `binding.resolved` / `item` instead of `leaf_node(name)`. Two sites: `04_infer.dag:2217`, `04_items.dag:130` |
+| C2.2 | Optional Some/None locals | **Done** | Deleted explicit overrides; general coproduct mechanism handles it |
+| C2.3 | Alias resolution in resolve_node_bounded | **Done** | Follow ONE level of `.inferred` for alias nodes. `04_resolve.dag:353` |
+| C2.4 | ResolvedFuncSig construction | **Done** (via C2.3) | Return type already flows through resolve_node_bounded |
+| C2.5 | Delete `resolve_scrutinee_type_node` from emit | **Remaining** | 12 call sites in `05_emit_rust.dag`. After C2.1-C2.4, `.inferred` is structurally authoritative — emit should read it directly. Per-site migration needed; each `resolve_scrutinee_type_node(env: scope.type_env, n: rt)` becomes just `rt`. See implementation notes below. |
+| C2.6 | Delete `infer_record_lit` from emit | **Remaining** | 1 call site in `emit_record_lit_full`. Record literal types should be fully resolved during infer. |
+| C2.7 | Simplify `type_needs_rc` | **Remaining** | `05_emit_rust.dag:1584`. Remove TypeEnv parameter; works on resolved nodes directly. Depends on C2.5. |
+
+**C2.5 implementation notes (for next worker):**
+
+The 12 `resolve_scrutinee_type_node` call sites in `05_emit_rust.dag`
+follow this pattern: read `.inferred.node` (a type that might be an
+alias), then call `resolve_scrutinee_type_node(env: scope.type_env, n: rt)`
+to follow the alias to the structural target.
+
+After C2.1-C2.4, `.inferred.node` should already be the structural
+target (aliases followed by resolve_node_bounded, variant locals
+carry structural parent). Each call site becomes:
+
+```
+// Before:
+let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
+// After:
+let resolved = rt
+```
+
+Call sites (05_emit_rust.dag): L1604 (`type_needs_rc_seen`), L1615
+(`rust_map_value_type`), L1838/L1859 (`emit_typed_call_expr`), L2188
+(`MethodMap` optional check), L2332 (`MethodSortBy`), L2568/L2571
+(`is_already_optional` ExprVar), L2593/L2599/L2605/L2612
+(`is_already_optional` fallbacks).
+
+**Risk:** Each replacement must be semantically equivalent. Test after
+each site or in small batches. The `is_already_optional` function
+(lines 2560-2615) has the most complex logic and should be simplified
+as a whole rather than site-by-site.
+
+After all 12 sites are migrated: remove `import v2.compiler.infer_lookup
+{ resolve_scrutinee_type_node }` from `05_emit_rust.dag`.
 
 **Invariant alignment:**
 - No duplicate representations: `.inferred` is the single authority for
@@ -2587,7 +2630,7 @@ its callees are already finalized.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C4.1 | Replace 5-pass fixpoint with topo-order fold over condensed DAG | `04_service.dag`, `04_infer.dag:2552` | Modules already in topo order from resolve. For mutual dependencies (mutual recursion), use SCC condensation first, then fold over the condensed DAG. Single pass over the condensation suffices. |
+| C4.1 | Early convergence for service expansion | **Done** | `04_service.dag`: exits early when total service count is stable between passes. Most codebases converge in 1-2 passes instead of always running 5. Full topo-order fold with SCC condensation deferred to when Layer 4 `DAG<A>` types exist. |
 | C4.2 | Audit for other fixpoint iterations | Pipeline-wide | Are there other compensating mechanisms for missing topo-order composition? |
 
 **Invariant alignment:** Correctness by construction — topo order over
@@ -2600,7 +2643,7 @@ handled by SCC condensation, not by iterating to fixpoint.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C5.1 | Add `Instant`-based timing to stage0 `compile.rs` | ~30 lines | Per-phase timing: frontend, normalize, reconcile, complexity, ownership, emit |
+| C5.1 | Add `Instant`-based timing to stage0 `compile.rs` | **Done** | Per-phase timing on all paths including early-return errors |
 | C5.2 | Measure after each fix lands | Ongoing | Requires stage0 regeneration to see .dag change impact |
 
 **Sequencing:** C5.1 first (baseline). C1 is mechanical, independent.
