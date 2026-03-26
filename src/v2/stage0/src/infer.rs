@@ -806,7 +806,8 @@ pub fn contextualize_empty_container_expr(texpr: Rc<Node>, scope: Rc<InferScope>
         texpr.return_type.clone()
     }
 };
-    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: base_result.typed.clone(), field: field.clone(), summary: summary.clone() }), current_return.clone(), texpr.span.clone()), diagnostics: base_result.diagnostics.clone() })
+    let base_typed = base_result.typed.clone();
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: base_typed.clone(), field: field.clone(), summary: summary.clone() }), current_return.clone(), texpr.span.clone()), diagnostics: base_result.diagnostics.clone() })
 }
     }
     ExprData::ExprCall { func, args, call_semantics, .. } => {
@@ -1441,7 +1442,9 @@ pub fn contextualize_empty_container_expr(texpr: Rc<Node>, scope: Rc<InferScope>
         {
     let base_result = contextualize_empty_container_expr(base.clone(), scope.clone(), None);
     let index_result = contextualize_empty_container_expr(index.clone(), scope.clone(), None);
-    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprIndex { base: base_result.typed.clone(), index: index_result.typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(base_result.diagnostics.clone(), index_result.diagnostics.clone()) })
+    let base_typed = base_result.typed.clone();
+    let index_typed = index_result.typed.clone();
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprIndex { base: base_typed.clone(), index: index_typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(base_result.diagnostics.clone(), index_result.diagnostics.clone()) })
 }
     }
     ExprData::ExprSlice { base, start, end, .. } => {
@@ -1449,7 +1452,10 @@ pub fn contextualize_empty_container_expr(texpr: Rc<Node>, scope: Rc<InferScope>
     let base_result = contextualize_empty_container_expr(base.clone(), scope.clone(), None);
     let start_result = contextualize_empty_container_expr(start.clone(), scope.clone(), None);
     let end_result = contextualize_empty_container_expr(end.clone(), scope.clone(), None);
-    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprSlice { base: base_result.typed.clone(), start: start_result.typed.clone(), end: end_result.typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(v2_rt::concat(base_result.diagnostics.clone(), start_result.diagnostics.clone()), end_result.diagnostics.clone()) })
+    let base_typed = base_result.typed.clone();
+    let start_typed = start_result.typed.clone();
+    let end_typed = end_result.typed.clone();
+    Rc::new(InferResult { typed: make_expr_node(Rc::new(ExprData::ExprSlice { base: base_typed.clone(), start: start_typed.clone(), end: end_typed.clone() }), texpr.return_type.clone(), texpr.span.clone()), diagnostics: v2_rt::concat(v2_rt::concat(base_result.diagnostics.clone(), start_result.diagnostics.clone()), end_result.diagnostics.clone()) })
 }
     }
     ExprData::ExprReturn { value, .. } => {

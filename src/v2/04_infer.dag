@@ -733,9 +733,10 @@ fn contextualize_empty_container_expr(texpr: Node, scope: InferScope, expected_t
           }
         _ => texpr.return_type
       }
+      let base_typed = base_result.typed
       InferResult {
         typed: make_expr_node(
-          expr_data: ExprFieldAccess { base: base_result.typed, field: field, summary: summary },
+          expr_data: ExprFieldAccess { base: base_typed, field: field, summary: summary },
           return_type: current_return,
           span: texpr.span
         ),
@@ -1180,9 +1181,11 @@ fn contextualize_empty_container_expr(texpr: Node, scope: InferScope, expected_t
     ExprIndex { base: base, index: index } =>
       let base_result = contextualize_empty_container_expr(texpr: base, scope: scope, expected_type: none)
       let index_result = contextualize_empty_container_expr(texpr: index, scope: scope, expected_type: none)
+      let base_typed = base_result.typed
+      let index_typed = index_result.typed
       InferResult {
         typed: make_expr_node(
-          expr_data: ExprIndex { base: base_result.typed, index: index_result.typed },
+          expr_data: ExprIndex { base: base_typed, index: index_typed },
           return_type: texpr.return_type,
           span: texpr.span
         ),
@@ -1193,9 +1196,12 @@ fn contextualize_empty_container_expr(texpr: Node, scope: InferScope, expected_t
       let base_result = contextualize_empty_container_expr(texpr: base, scope: scope, expected_type: none)
       let start_result = contextualize_empty_container_expr(texpr: start, scope: scope, expected_type: none)
       let end_result = contextualize_empty_container_expr(texpr: end, scope: scope, expected_type: none)
+      let base_typed = base_result.typed
+      let start_typed = start_result.typed
+      let end_typed = end_result.typed
       InferResult {
         typed: make_expr_node(
-          expr_data: ExprSlice { base: base_result.typed, start: start_result.typed, end: end_result.typed },
+          expr_data: ExprSlice { base: base_typed, start: start_typed, end: end_typed },
           return_type: texpr.return_type,
           span: texpr.span
         ),
