@@ -25730,9 +25730,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         let tokens = tokenize("type Foo { x: Int }");
         let last = tokens.last().expect("should have tokens");
         assert!(
-            matches!(&*last.kind, crate::v2_core::TokenKind::Eof),
+            matches!(last.shape, crate::v2_core::TokenShape::ShEof),
             "last token should be Eof, got {:?}",
-            last.kind
+            last.shape
         );
     }
 
@@ -25742,9 +25742,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         // Should have at least KwFn and Eof
         assert!(tokens.len() >= 2, "expected at least 2 tokens, got {}", tokens.len());
         assert!(
-            matches!(&*tokens[0].kind, crate::v2_core::TokenKind::KwFn),
+            matches!(tokens[0].shape, crate::v2_core::TokenShape::ShKwFn),
             "first token should be KwFn, got {:?}",
-            tokens[0].kind
+            tokens[0].shape
         );
     }
 
@@ -25782,9 +25782,9 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 // Should end with Eof
                 let last = tokens.last().expect("should have tokens");
                 assert!(
-                    matches!(&*last.kind, crate::v2_core::TokenKind::Eof),
+                    matches!(last.shape, crate::v2_core::TokenShape::ShEof),
                     "last token should be Eof, got {:?}",
-                    last.kind
+                    last.shape
                 );
 
                 // Parse the tokens
@@ -25902,7 +25902,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                         "{} should produce tokens", file
                     );
                     assert!(
-                        matches!(&*tokens.last().unwrap().kind, crate::v2_core::TokenKind::Eof),
+                        matches!(tokens.last().unwrap().shape, crate::v2_core::TokenShape::ShEof),
                         "{} should end with Eof", file
                     );
                     let result = crate::parse::parse(tokens);

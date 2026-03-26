@@ -11,7 +11,7 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node,
   InferredNode, Resolved, CompilerError,
-  Diagnostic, Severity, Error,
+  diagnostic_node, diagnostic_message,
   leaf_node, with_optional_cardinality, node_has_structure
 }
 import v2.compiler.infer_types {
@@ -27,24 +27,18 @@ import v2.compiler.infer_types {
 
 type AccessCheckResultNode {
   inferred: InferredNode?
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // =========================================================================
 // Functions
 // =========================================================================
 
-fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
-  Diagnostic {
-    severity: Error,
-    message: message,
-    span: Some { value: span },
-    module_name: Some { value: module_name },
-    category: none
-  }
+fn access_error(message: String, span: SourceSpan, module_name: String) -> Node {
+  diagnostic_node(severity: "error", message: message, span: span, module_name: Some { value: module_name }, category: none)
 }
 
-fn access_result(inferred: Node, diagnostics: List<Diagnostic>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
+fn access_result(inferred: Node, diagnostics: List<Node>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
   if count(diagnostics) == 0 {
     AccessCheckResultNode {
       inferred: Some { value: Resolved { node: inferred } },
@@ -52,7 +46,7 @@ fn access_result(inferred: Node, diagnostics: List<Diagnostic>, span: SourceSpan
     }
   } else {
     let message = match diagnostics |> first {
-      Some { value: diag } => diag.message
+      Some { value: diag } => diagnostic_message(n: diag)
       None => fallback_message
     }
     AccessCheckResultNode {

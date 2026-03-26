@@ -18,8 +18,8 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Import,
   Node, InferredNode, Resolved, CompilerError,
+  module_imports, module_items,
   Connective, Conj, Disj,
   Field, Param,
   ExprData, NoExprData,
@@ -31,10 +31,9 @@ import v2.std.core {
   NamedArg, MatchArm, FieldInit,
   StringPart, Text, Interpolation,
   LiteralValue,
-  TextFile, Diagnostic, SourceSpan,
+  TextFile, SourceSpan,
   ResourceUse,
   BinOpKind, UnaryOpKind, NullCoalesce,
-  ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
   RuntimeBridgeMethod,
@@ -85,7 +84,7 @@ import v2.compiler.languages {
 
 type EmitResult {
   files: List<TextFile>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 type BlockEmitState {

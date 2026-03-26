@@ -222,10 +222,10 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
               Some { value: ServiceMethodResult {
                 result_type: Node {
                   name: "", span: no_span(),
-                  children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: f.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
+                  children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: f.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
                   connective: Some { value: Conj },
                   collection_kind: none,
-                  params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+                  params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
                 },
                 op_params: op.params
               } }

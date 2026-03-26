@@ -11,7 +11,7 @@
 module v2.compiler.normalize
 
 import v2.std.core {
-  Node, Module, Diagnostic, Severity, Warning, Error, SourceSpan,
+  Node, Module,
   InferredNode, Resolved, CompilerError
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule }
@@ -22,7 +22,7 @@ import v2.compiler.resolve { ModuleGraph, ResolvedModule }
 
 type NormalizeResult {
   graph: ModuleGraph
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // =========================================================================

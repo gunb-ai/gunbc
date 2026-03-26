@@ -14,14 +14,16 @@
 module v2.compiler.compile
 
 import v2.std.core {
-  Diagnostic, Severity, Warning, CompileResult, Error, TextFile, SourceSpan,
-  Module, Import, ImportNames, Connective, Cardinality, Field, Param, ResourceUse,
+  CompileResult, TextFile, SourceSpan,
+  diagnostic_node, diagnostic_is_error, diagnostic_severity, diagnostic_message, diagnostic_module_name, diagnostic_category, diagnostic_span, no_span,
+  Connective, Cardinality, Field, Param, ResourceUse,
+  module_imports, module_items, is_import_node, import_is_all, import_specific_names,
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError,
   VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
-  LiteralValue, BinOpKind, UnaryOpKind, StringPart, ServiceConfig, Node, ErrorCategory
+  LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -51,7 +53,7 @@ type SourceFile {
 // error gates, they remain present but empty.
 type PipelineResult {
   files: List<TextFile>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
   complexity: ComplexityReport
   ownership: List<OwnershipProof>
   artifact_plan: ArtifactPlan
@@ -59,7 +61,7 @@ type PipelineResult {
 
 type FrontendResult {
   graph: ModuleGraph?
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 // =========================================================================
@@ -87,18 +89,18 @@ fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
   )
 }
 
-fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<Diagnostic> {
+fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<Node> {
   proofs |> flat_map(proof =>
     proof.decisions |> flat_map(decision =>
       match decision {
         SharedError { binding: binding, consumer_count: count, sites: sites } =>
-          [Diagnostic {
+          [diagnostic_node(
+            severity: "warning",
             message: concat("ownership: binding '", binding, "' in ", proof.func_name, " has ", to_string(count), " consumers -- cannot guarantee O(1) mutation (", sites |> join(separator: ", "), ")"),
-            severity: Warning,
-            span: Some { value: SourceSpan { start: 0, end: 0 } },
+            span: no_span(),
             module_name: Some { value: proof.func_name },
             category: none
-          }]
+          )]
         _ => []
       }
     )
@@ -113,14 +115,8 @@ fn empty_artifact_plan() -> ArtifactPlan {
   ArtifactPlan { artifacts: [], boundaries: [] }
 }
 
-fn compile_bundle_error(message: String) -> Diagnostic {
-  Diagnostic {
-    severity: Error,
-    message: message,
-    span: none,
-    module_name: none,
-    category: none
-  }
+fn compile_bundle_error(message: String) -> Node {
+  diagnostic_node(severity: "error", message: message, span: no_span(), module_name: none, category: none)
 }
 
 fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
@@ -203,24 +199,8 @@ fn field_value_shape_name(value: FieldValueShape) -> String {
   }
 }
 
-fn severity_name(value: Severity) -> String {
-  match value {
-    Error => "Error"
-    Warning => "Warning"
-  }
-}
-
-fn error_category_name(value: ErrorCategory) -> String {
-  match value {
-    UnresolvedName => "UnresolvedName"
-    TypeMismatch => "TypeMismatch"
-    FieldNotFound => "FieldNotFound"
-    VariantNotFound => "VariantNotFound"
-    AmbiguousCall => "AmbiguousCall"
-    InvalidOperation => "InvalidOperation"
-    CascadeError => "CascadeError"
-  }
-}
+// (P5.3: severity_name and error_category_name deleted -- severity and category
+//  are now strings stored in diagnostic Node properties, not enum variants.)
 
 fn var_binding_kind_name(value: VarBindingKind) -> String {
   match value {
@@ -275,21 +255,18 @@ fn serialize_span(span: SourceSpan) -> String {
   concat("{\"start\": ", to_string(i: span.start), ", \"end\": ", to_string(i: span.end), "}")
 }
 
-fn serialize_import_names(names: ImportNames) -> String {
-  match names {
-    ImportAll => "{\"kind\": \"ImportAll\"}"
-    ImportSpecific { names: values } =>
-      concat(
-        "{\"kind\": \"ImportSpecific\", \"names\": ",
-        json_list(items: values |> map(v => json_quote(s: v))),
-        "}")
+fn serialize_import_node(imp: Node) -> String {
+  let names_json = if import_is_all(n: imp) {
+    "{\"kind\": \"ImportAll\"}"
+  } else {
+    concat(
+      "{\"kind\": \"ImportSpecific\", \"names\": ",
+      json_list(items: import_specific_names(n: imp) |> map(v => json_quote(s: v))),
+      "}")
   }
-}
-
-fn serialize_import(imp: Import) -> String {
   concat(
-    "{\"module_path\": ", json_quote(s: imp.module_path),
-    ", \"names\": ", serialize_import_names(names: imp.names),
+    "{\"module_path\": ", json_quote(s: imp.name),
+    ", \"names\": ", names_json,
     ", \"span\": ", serialize_span(span: imp.span),
     "}")
 }
@@ -514,15 +491,6 @@ fn serialize_inferred_node(inferred: InferredNode) -> String {
   }
 }
 
-fn serialize_service_config(config: ServiceConfig) -> String {
-  concat(
-    "{\"endpoint\": ", serialize_node(node: config.endpoint),
-    ", \"auth\": ", json_optional_node(value: config.auth),
-    ", \"rate_limit\": ", json_optional_node(value: config.rate_limit),
-    ", \"retry\": ", json_optional_node(value: config.retry),
-    "}")
-}
-
 fn serialize_resource_use(resource_use: ResourceUse) -> String {
   concat(
     "{\"name\": ", json_quote(s: resource_use.name),
@@ -569,21 +537,16 @@ fn serialize_node(node: Node) -> String {
     ", \"transport\": ", json_optional_node(value: node.transport),
     ", \"properties\": ", json_list(items: node.properties |> map(prop => serialize_field_init(field_init: prop))),
     ", \"type_annotation\": ", json_optional_node(value: node.type_annotation),
-    ", \"config\": ",
-    match node.config {
-      Some { value: inner } => serialize_service_config(config: inner)
-      None => "null"
-    },
     ", \"is_self_recursive\": ", json_bool(value: node.is_self_recursive),
     ", \"has_non_tail_self_call\": ", json_bool(value: node.has_non_tail_self_call),
     ", \"expr_data\": ", serialize_expr_data(expr_node: node),
     "}")
 }
 
-fn serialize_module(module: Module) -> String {
+fn serialize_module(module: Node) -> String {
   concat(
     "{\"name\": ", json_quote(s: module.name),
-    ", \"imports\": ", json_list(items: module.imports |> map(imp => serialize_import(imp: imp))),
+    ", \"imports\": ", json_list(items: module_imports(n: module) |> map(imp => serialize_import_node(imp: imp))),
     ", \"span\": ", serialize_span(span: module.span),
     "}")
 }
@@ -596,17 +559,18 @@ fn serialize_typed_module(module: TypedModule) -> String {
     "}")
 }
 
-fn serialize_diagnostic(diagnostic: Diagnostic) -> String {
+fn serialize_diagnostic(diagnostic: Node) -> String {
+  let cat = diagnostic_category(n: diagnostic)
+  let cat_json = match cat {
+    Some { value: inner } => json_quote(s: inner)
+    None => "null"
+  }
   concat(
-    "{\"severity\": ", json_quote(s: severity_name(value: diagnostic.severity)),
-    ", \"message\": ", json_quote(s: diagnostic.message),
-    ", \"span\": ", json_optional_span(value: diagnostic.span),
-    ", \"module_name\": ", json_optional_string(value: diagnostic.module_name),
-    ", \"category\": ",
-    match diagnostic.category {
-      Some { value: inner } => json_quote(s: error_category_name(value: inner))
-      None => "null"
-    },
+    "{\"severity\": ", json_quote(s: diagnostic_severity(n: diagnostic)),
+    ", \"message\": ", json_quote(s: diagnostic_message(n: diagnostic)),
+    ", \"span\": ", serialize_span(span: diagnostic_span(n: diagnostic)),
+    ", \"module_name\": ", json_optional_string(value: diagnostic_module_name(n: diagnostic)),
+    ", \"category\": ", cat_json,
     "}")
 }
 
@@ -628,12 +592,12 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   }
 }
 
-fn boundary_ref_error(names: List<String>, ref_name: String) -> List<Diagnostic> {
+fn boundary_ref_error(names: List<String>, ref_name: String) -> List<Node> {
   if names |> any(n => n == ref_name) { [] }
   else { [compile_bundle_error(message: concat("boundary references unknown artifact '", ref_name, "'"))] }
 }
 
-fn validate_boundaries(plan: ArtifactPlan) -> List<Diagnostic> {
+fn validate_boundaries(plan: ArtifactPlan) -> List<Node> {
   let names = plan.artifacts |> map(a => a.name)
   plan.boundaries |> flat_map(b =>
     concat(
@@ -661,8 +625,8 @@ fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) ->
 }
 
 // Gather all diagnostics from a list of parse results.
-// ParseResult.error is Diagnostic? -- extract non-None errors directly.
-fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Diagnostic> {
+// ParseResult.error is Node? -- extract non-None errors directly.
+fn collect_diagnostics(parse_results: List<ParseResult>) -> List<Node> {
   fold(parse_results, init: [], f: (acc, pr) =>
     match pr.error {
       Some { value: diag } => list_push(acc, diag)
@@ -720,7 +684,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let graph_diags = graph.diagnostics
 
       // Gate: if resolve produced errors, do not proceed to typecheck.
-      let resolve_errors = graph_diags |> filter(d => d.severity == Error)
+      let resolve_errors = graph_diags |> filter(d => diagnostic_is_error(n: d))
       if resolve_errors |> count > 0 {
         return PipelineResult {
           files: [],
@@ -738,7 +702,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
 
       // Gate: if normalization produced errors (bare parameterized types,
       // arity mismatches), do not proceed to infer.
-      let norm_errors = norm_diags |> filter(d => d.severity == Error)
+      let norm_errors = norm_diags |> filter(d => diagnostic_is_error(n: d))
       if norm_errors |> count > 0 {
         return PipelineResult {
           files: [],
@@ -762,7 +726,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let complexity = build_complexity_report(func_entries: func_entries)
 
       // Gate: if typecheck produced errors, do not proceed to emit.
-      let typecheck_errors = typed_diags |> filter(d => d.severity == Error)
+      let typecheck_errors = typed_diags |> filter(d => diagnostic_is_error(n: d))
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
@@ -789,7 +753,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
-      let emit_errors = emit_diags |> filter(d => d.severity == Error)
+      let emit_errors = emit_diags |> filter(d => diagnostic_is_error(n: d))
 
       let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
       PipelineResult {

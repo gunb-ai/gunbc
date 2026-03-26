@@ -15,8 +15,8 @@
 module v2.compiler.emit_rust
 
 import v2.std.core {
-  Import, ImportAll, ImportSpecific,
   Node, InferredNode, Resolved, CompilerError,
+  is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   Connective, Conj, Disj,
   Param, LiteralValue,
   ExprData, NoExprData,
@@ -47,11 +47,10 @@ import v2.std.core {
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   NamedArg, MatchArm, FieldInit,
   MatchPattern, FieldBinding,
-  TextFile, Diagnostic, Error, SourceSpan,
+  TextFile, diagnostic_node, SourceSpan,
   ResourceUse,
   BinOpKind,
   UnaryOpKind, StringPart, Text, Interpolation,
-  ServiceConfig,
   TransportKind, LocalTransport, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
   transport_base_url,
@@ -406,11 +405,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // Build module-local vtoe: remap ambiguous variants based on this module's
   // imports AND locally-defined types. Both imported and local enums provide
   // the correct parent for ambiguous variant names.
-  let __all_imported = flat_map(m.imports, imp =>
-    match imp.names {
-      ImportSpecific { names: ns } => ns
-      _ => []
-    }
+  let __all_imported = flat_map(module_imports(n: m), imp =>
+    if import_is_all(n: imp) { [] }
+    else { import_specific_names(n: imp) }
   )
   let __local_type_names = typed_module.items |> map(item => item.name)
   let __import_enums = __all_imported |> filter(n =>
@@ -451,7 +448,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_type_names = typed_module.items
     |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef)
     |> map(item => item.name)
-  let imports_str = emit_imports(imports: m.imports, vtoe: module_vtoe, registry: registry, local_names: local_type_names)
+  let imports_str = emit_imports(imports: module_imports(n: m), vtoe: module_vtoe, registry: registry, local_names: local_type_names)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   let this_mod_filename = module_to_filename(name: m.name)
   let all_svc_names = typed_module.items |> flat_map(item =>
@@ -496,15 +493,16 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
 // Import emission
 // =========================================================================
 
-fn emit_imports(imports: List<Import>, vtoe: Map<String, String>, registry: Map<String, ItemInfo>, local_names: List<String>) -> String {
+fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<String, ItemInfo>, local_names: List<String>) -> String {
   if imports |> count == 0 {
     ""
   } else {
     let import_lines = imports |> map(imp =>
-      let mod_name = module_to_filename(name: imp.module_path)
-      match imp.names {
-        ImportAll => concat("use crate::", mod_name, "::*;")
-        ImportSpecific { names: specific_names } =>
+      let mod_name = module_to_filename(name: imp.name)
+      if import_is_all(n: imp) {
+        concat("use crate::", mod_name, "::*;")
+      } else {
+          let specific_names = import_specific_names(n: imp)
           // Filter out names that are locally defined (local definition shadows import).
           let filtered_names = specific_names |> filter(n => local_names |> all(ln => ln != n))
           if filtered_names |> count == 0 {
@@ -3160,19 +3158,19 @@ fn emit_service_def(
   let safe_name = sanitize_service_name(name: item.name)
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
-  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children, config: item.config)
+  let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children)
   let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry)
   concat(struct_def, "\n\n", impl_block)
 }
 
-fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>, config: ServiceConfig?) -> String {
+fn emit_service_struct(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
   let derives = "#[derive(Debug, Clone)]"
-  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children, config: config)
+  let config_fields = emit_service_config_fields(fallback_transport: fallback_transport, op_children: op_children)
   let dry_run_field = "\n    pub dry_run: crate::dry_run::DryRunMode,"
   concat(derives, "\npub struct ", name, " {\n", config_fields, dry_run_field, "\n}")
 }
 
-fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>, config: ServiceConfig?) -> String {
+fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>) -> String {
   let has_shell = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: ShellTransport)
   let has_rest = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: RestTransport)
   let has_file = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: FileTransport)
@@ -3623,23 +3621,17 @@ fn cli_default_literal_value(expr: Node) -> String? {
   }
 }
 
-fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<Diagnostic> {
+fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<Node> {
   workflow_funcs |> flat_map(wf =>
     wf.params |> flat_map(param =>
       match param.default_value {
         Some { value: dv } => match cli_default_literal_value(expr: dv) {
           Some { value: _ } => []
-          None => [Diagnostic {
-            severity: Error,
-            message: concat(
+          None => [diagnostic_node(severity: "error", message: concat(
               "workflow CLI default for parameter `",
               param.name,
               "` must be a string, int, float, or bool literal"
-            ),
-            span: Some { value: param.span },
-            module_name: Some { value: wf.module_name },
-            category: none
-          }]
+            ), span: param.span, module_name: Some { value: wf.module_name }, category: none)]
         }
         None => []
       }

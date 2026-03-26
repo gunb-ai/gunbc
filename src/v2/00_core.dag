@@ -93,22 +93,9 @@ type TokenShape
 // precise error locality.
 // =========================================================================
 
-type Module {
-  name: String
-  imports: List<Import>
-  items: List<Node>
-  span: SourceSpan
-}
-
-type ImportNames
-  = ImportAll
-  | ImportSpecific { names: List<String> }
-
-type Import {
-  module_path: String
-  names: ImportNames
-  span: SourceSpan
-}
+// Module, Import, ImportNames dissolved into Node compositions.
+// See dissolution helpers: module_node(), import_node(), module_imports(),
+// module_items(), is_import_node(), import_is_all(), import_specific_names().
 
 // Connective -- the logical primitive for type structure.
 // Conj = conjunction: all children hold simultaneously (record fields).
@@ -404,17 +391,6 @@ type StringPart
   = Text { value: String }
   | Interpolation { expr: Node }
 
-// =========================================================================
-// Service config
-// =========================================================================
-
-type ServiceConfig {
-  endpoint: Node
-  auth: Node?
-  rate_limit: Node?
-  retry: Node?
-}
-
 // OperationDef: parse-intermediate type. The parser reads operations using this
 // shape, then dissolves fields into Node properties and inferred.
 type OperationDef {
@@ -447,7 +423,7 @@ type CapabilityDef {
 
 type CompileResult {
   files: List<TextFile>
-  diagnostics: List<Diagnostic>
+  diagnostics: List<Node>
 }
 
 type TextFile {
@@ -455,24 +431,8 @@ type TextFile {
   content: String
 }
 
-type ErrorCategory
-  = UnresolvedName
-  | TypeMismatch
-  | FieldNotFound
-  | VariantNotFound
-  | AmbiguousCall
-  | InvalidOperation
-  | CascadeError
-
-type Diagnostic {
-  severity: Severity
-  message: String
-  span: SourceSpan?
-  module_name: String?
-  category: ErrorCategory?
-}
-
-type Severity = Error | Warning
+// (P5.3: Diagnostic, Severity, ErrorCategory dissolved into Node-based representation.
+//  Use diagnostic_node() constructor, diagnostic_is_error/diagnostic_severity/etc. accessors.)
 
 type DeclaredFuncSig {
   name: String
@@ -519,7 +479,6 @@ type Node {
   // Metadata
   properties: List<FieldInit>
   type_annotation: Node?
-  config: ServiceConfig?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
   // Match arm pattern -- set only on arm Nodes (P5.11 compositional dissolution)
@@ -536,7 +495,7 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
     collection_kind: none,
     params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, config: none, is_self_recursive: false,
+    type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
   }
 }
@@ -547,7 +506,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
     collection_kind: none,
     params: [], inferred: Some { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
-    properties: [], type_annotation: none, config: none,
+    properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
     expr_data: ExprError { kind: kind, message: message }
   }
@@ -570,7 +529,7 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
     collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, config: none, is_self_recursive: false,
+    type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
@@ -584,7 +543,7 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
     collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, config: none, is_self_recursive: false,
+    type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: Some { value: pattern },
     expr_data: NoExprData
   }
@@ -597,7 +556,7 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
     collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, config: none, is_self_recursive: false,
+    type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
@@ -609,7 +568,7 @@ fn make_text_part_node(text: String, span: SourceSpan) -> Node {
     collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, config: none, is_self_recursive: false,
+    type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,
     expr_data: ExprLiteral { value: LitStr { value: text } }
   }
@@ -622,7 +581,7 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
     collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
-    type_annotation: none, config: none, is_self_recursive: false,
+    type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
@@ -675,7 +634,7 @@ fn make_transport_node(name: String, properties: List<FieldInit>, children: List
     collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
-    type_annotation: none, config: none, is_self_recursive: false,
+    type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
@@ -929,11 +888,14 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
 //   name = message, properties encode severity/module_name/category,
 //   span = the diagnostic's source span.
 
-fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module_name: String?) -> Node {
-  let sev_name = match severity { Error => "error"  Warning => "warning" }
-  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: sev_name } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+fn diagnostic_node(severity: String, message: String, span: SourceSpan, module_name: String?, category: String?) -> Node {
+  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: severity } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   let mod_prop = match module_name {
     Some { value: mn } => [FieldInit { name: "module_name", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: mn } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
+    None => []
+  }
+  let cat_prop = match category {
+    Some { value: cat } => [FieldInit { name: "category", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: cat } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
     None => []
   }
   Node {
@@ -941,9 +903,9 @@ fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module
     collection_kind: none,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none,
-    properties: concat([sev_prop], mod_prop), type_annotation: none,
-    config: none, is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: NoExprData
+    properties: concat([sev_prop], mod_prop, cat_prop), type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false,
+    match_pattern: none, expr_data: NoExprData
   }
 }
 
@@ -951,12 +913,158 @@ fn is_diagnostic_node(n: Node) -> Bool {
   n.properties |> any(p => p.name == "severity")
 }
 
+fn diagnostic_is_error(n: Node) -> Bool {
+  diagnostic_severity(n: n) == "error"
+}
+
+fn diagnostic_severity(n: Node) -> String {
+  let sev_prop = n.properties |> filter(p => p.name == "severity") |> first
+  match sev_prop {
+    Some { value: prop } => match prop.value.expr_data {
+      ExprLiteral { value: lit } => match lit { LitStr { value: s } => s  _ => "error" }
+      _ => "error"
+    }
+    None => "error"
+  }
+}
+
+fn diagnostic_message(n: Node) -> String {
+  n.name
+}
+
+fn diagnostic_module_name(n: Node) -> String? {
+  let mod_prop = n.properties |> filter(p => p.name == "module_name") |> first
+  match mod_prop {
+    Some { value: prop } => match prop.value.expr_data {
+      ExprLiteral { value: lit } => match lit { LitStr { value: s } => Some { value: s }  _ => none }
+      _ => none
+    }
+    None => none
+  }
+}
+
+fn diagnostic_category(n: Node) -> String? {
+  let cat_prop = n.properties |> filter(p => p.name == "category") |> first
+  match cat_prop {
+    Some { value: prop } => match prop.value.expr_data {
+      ExprLiteral { value: lit } => match lit { LitStr { value: s } => Some { value: s }  _ => none }
+      _ => none
+    }
+    None => none
+  }
+}
+
+fn diagnostic_span(n: Node) -> SourceSpan {
+  n.span
+}
+
+// --- ServiceConfig as Node properties ---
+// A ServiceConfig dissolves into Node properties where:
+//   "svc_endpoint" = endpoint Node, "svc_auth" = auth Node,
+//   "svc_rate_limit" = rate_limit Node, "svc_retry" = retry Node.
+// Only non-none fields are included.
+
+fn service_config_properties(endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node?) -> List<FieldInit> {
+  let ep_prop = [FieldInit { name: "svc_endpoint", value: endpoint }]
+  let auth_prop = match auth {
+    Some { value: a } => [FieldInit { name: "svc_auth", value: a }]
+    None => []
+  }
+  let rate_prop = match rate_limit {
+    Some { value: r } => [FieldInit { name: "svc_rate_limit", value: r }]
+    None => []
+  }
+  let retry_prop = match retry {
+    Some { value: r } => [FieldInit { name: "svc_retry", value: r }]
+    None => []
+  }
+  concat(ep_prop, auth_prop, rate_prop, retry_prop)
+}
+
+fn has_service_config(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "svc_endpoint")
+}
+
+fn service_config_endpoint(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_endpoint")
+}
+
+fn service_config_auth(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_auth")
+}
+
+fn service_config_rate_limit(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_rate_limit")
+}
+
+fn service_config_retry(n: Node) -> Node? {
+  find_property(props: n.properties, prop_name: "svc_retry")
+}
+
 // --- Module as Node ---
-// When dissolved, a Module becomes a Node where:
-//   name = module name, children = item nodes, imports in properties.
+// A Module dissolves into a Node where:
+//   name = module name, children = import nodes ++ item nodes,
+//   property "__is_module" = true, span = module span.
+// Import nodes have property "__is_import" = true, name = module_path.
+// ImportAll: property "__import_all" = true. ImportSpecific: children named per import.
+
+fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
+  let marker = FieldInit { name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+  Node {
+    name: name, span: span, children: concat(imports, items), connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [marker],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn import_node(module_path: String, is_all: Bool, specific_names: List<String>, span: SourceSpan) -> Node {
+  let import_prop = FieldInit { name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+  let all_prop = if is_all {
+    [FieldInit { name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
+  } else { [] }
+  let name_children = specific_names |> map(n => Node {
+    name: n, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  })
+  Node {
+    name: module_path, span: span, children: name_children, connective: none,
+    collection_kind: none,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: concat([import_prop], all_prop),
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
 
 fn is_module_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "is_module")
+  n.properties |> any(p => p.name == "__is_module")
+}
+
+fn is_import_node(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "__is_import")
+}
+
+fn import_is_all(n: Node) -> Bool {
+  n.properties |> any(p => p.name == "__import_all")
+}
+
+fn import_specific_names(n: Node) -> List<String> {
+  n.children |> map(c => c.name)
+}
+
+fn module_imports(n: Node) -> List<Node> {
+  n.children |> filter(c => is_import_node(n: c))
+}
+
+fn module_items(n: Node) -> List<Node> {
+  n.children |> filter(c => is_import_node(n: c) == false)
 }
 
 // --- Token as Node ---
@@ -964,7 +1072,7 @@ fn is_module_node(n: Node) -> Bool {
 //   name = kind tag string, span = token span, properties encode payload.
 
 fn is_token_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "is_token")
+  n.properties |> any(p => p.name == "__is_token")
 }
 
 // =========================================================================
@@ -976,7 +1084,7 @@ fn is_token_node(n: Node) -> Bool {
 // =========================================================================
 
 fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn no_span() -> SourceSpan {
@@ -984,11 +1092,11 @@ fn no_span() -> SourceSpan {
 }
 
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
 fn node_is_product(n: Node) -> Bool {
