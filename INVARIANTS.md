@@ -1040,6 +1040,52 @@ will hit the same issue.
 
 ---
 
+### CollectionKind is bridge debt (2026-03-26)
+
+**Invariant violated:** Domain lives in the DSL, not in Rust. No case
+enumeration for open sets.
+
+`CollectionKind = ListKind | SetKind | MapKind | ...` is a closed enum
+on `Node` that the compiler branches on to distinguish collection types.
+P5.7b introduced it to replace the worse `properties |> any(p => p.name
+== "container_kind")` string-keyed pattern. It is the same class of
+violation as the deleted `BuiltinTypeKind` — compiler-side domain
+knowledge that should live in `.dag` declarations.
+
+**Why it's fragile (demonstrated 2026-03-26):** Every `Node { ... }`
+literal in the codebase must set `collection_kind` correctly, or
+`node_is_map`/`node_is_container` silently returns false. Parser-
+produced nodes have `collection_kind: none` because the parser doesn't
+know about collection kinds. The regression was silent until a test
+checked `m[k]` on a `Map<String, Int>` parameter.
+
+**Current mitigation:** `resolve_node_bounded` normalizes
+`collection_kind` at entry via `collection_kind_for_name(name)`. This
+is a single derivation site that catches parser-produced nodes early.
+But `collection_kind_for_name` is itself a name-checking function —
+L1 domain knowledge.
+
+**Deletion point:** Phase 5 L1=0 gate. When collection types have
+real `.dag` declarations with structural method algebras (indexing,
+iteration, membership — declared in the type system, not in compiler
+enums), `CollectionKind` dissolves. The compiler reads structural
+properties from declarations instead of branching on an enum.
+
+**The pure Node model path:** Collections are `.dag` declarations with
+arity (already done: `type Map<key, value>`) and method algebras (not
+yet: the `.dag` language needs method declarations on types). When
+method dispatch reads the type's declared methods instead of a compiler
+enum, `node_is_map` becomes "does this type declare an `index` method?"
+— a structural query, not a name/enum check.
+
+| # | Severity | Where | What |
+|---|----------|-------|------|
+| IV-11 | MED | `00_core.dag:120` | `CollectionKind` enum is L1 domain knowledge, same class as deleted `BuiltinTypeKind` |
+| IV-12 | MED | `04_types.dag:52` | `collection_kind_for_name` maps names to enum — name-checking function |
+| IV-13 | LOW | `04_resolve.dag:197-206` | Normalization at resolve entry — mitigation for parser not setting field |
+
+---
+
 ### L1 ratchet increase audit: 371 → 414 (+43) (2026-03-26)
 
 Systematic root-cause analysis of the +43 L1 ratchet increase between
