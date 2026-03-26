@@ -2270,7 +2270,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // Gate: if type environment construction produced errors (unresolved types),
   // halt before inference. This makes unresolved nodes structurally impossible
   // downstream -- inference and emit never see them.
-  let env_errors = env_diags |> filter(d => d.severity == Error)
+  let env_errors = env_diags |> filter(d => diagnostic_is_error(n: d))
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
