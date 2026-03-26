@@ -72,19 +72,19 @@ import v2.std.core {
   UnaryOpKind, Not, Neg,
   MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart,
   make_transport_node, local_transport_node,
-  Text, Interpolation
+  Text, Interpolation,
+  leaf_node, with_optional_cardinality, with_required_cardinality,
+  node_is_product, node_is_coproduct, node_has_structure, no_span
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  leaf_node, with_optional_cardinality, with_required_cardinality,
   container_node,
   map_node, bare_map_node,
   tuple_node, callable_node, callable_inferred,
   error_type_node,
   node_is_container, node_is_optional, node_is_map,
   node_is_leaf, node_is_named_ref,
-  node_is_product, node_is_coproduct, node_has_structure,
   normalize_access_type_node, normalize_type_name,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
@@ -92,7 +92,7 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  rt_type, no_span,
+  rt_type,
   emit_map_has
 }
 import v2.compiler.infer_method {
@@ -2214,12 +2214,17 @@ fn build_module_context(contributions: List<ItemContribution>,
     item_registry: empty_map(),
     diag_chunks: []
   )
+  // C2.1: variant constructor locals carry the structural parent enum node,
+  // not leaf_node(name). This means .inferred on variant expressions will be
+  // structurally authoritative — emit can read it directly without re-resolving
+  // through TypeEnv. binding.resolved.name still returns the enum's name for
+  // lookup_variant_parent_enum and record lit inference.
   let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
     if node_is_coproduct(n: binding.resolved) {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,
-          resolved: leaf_node(name: binding.name)
+          resolved: binding.resolved
         })
       )
     } else { acc }
@@ -2239,15 +2244,11 @@ fn build_module_context(contributions: List<ItemContribution>,
     items: local.resolved_items,
     module_name: module_name
   )
-  // Variant locals come from env_variant_locals (computed once from env.bindings,
-  // which already includes all local + imported disjunction types).
-  let optional_locals = map_insert(env_variant_locals, "Some", TypeBinding {
-    name: "Some", resolved: leaf_node(name: "Optional")
-  })
-  let optional_locals = map_insert(optional_locals, "None", TypeBinding {
-    name: "None", resolved: leaf_node(name: "Optional")
-  })
-  let all_locals = fold(map_values(merged_scope.svc_locals), init: optional_locals, f: (acc, binding) =>
+  // C2.2: Optional Some/None now handled by the general variant constructor
+  // mechanism (C2.1). kernel_optional is a Disj node in env.bindings, so
+  // imported_variant_locals already registers Some and None with the structural
+  // parent node. No need for explicit leaf_node(name: "Optional") override.
+  let all_locals = fold(map_values(merged_scope.svc_locals), init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
   )
   ModuleContext {
@@ -2503,11 +2504,15 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
       add_emit_item_summary(state: inner_state, item: item)
     )
   )
+  let all_recursive = modules |> fold(init: empty_map(), f: (acc, m) =>
+    map_merge(acc, m.type_env.recursive_type_set)
+  )
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     variant_to_enum: built.variant_to_enum,
     enum_variant_membership: built.enum_variant_membership,
-    field_type_names: built.field_type_names
+    field_type_names: built.field_type_names,
+    recursive_type_set: all_recursive
   }
 }
 

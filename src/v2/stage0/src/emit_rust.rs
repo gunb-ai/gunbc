@@ -8,7 +8,6 @@ use crate::infer_types::*;
 use crate::infer_sigs::*;
 use crate::infer_items::*;
 use crate::infer_service::*;
-use crate::infer_lookup::*;
 use crate::infer::*;
 use crate::infer_emit_info::*;
 use crate::emit::*;
@@ -1037,7 +1036,7 @@ pub fn emit_non_empty_wrappers() -> String {
 pub fn emit_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, vtoe: Rc<HashMap<String, String>>, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
     let kind = classify_typed_item(item.clone());
     if kind.clone() == TypedItemKind::TypedItemTypeDef {
-    emit_type_def_from_connective(item.clone(), scope.type_env.recursive_type_set.clone(), rc_types.clone())
+    emit_type_def_from_connective(item.clone(), emit_info.recursive_type_set.clone(), rc_types.clone())
 } else {
     if kind.clone() == TypedItemKind::TypedItemTypeAlias {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "type ".to_string()), item.name.clone()), " = ".to_string()), emit_node_type_rc(rt_type(item.clone()), RenderTarget::Rust, rc_types.clone())), ";".to_string())
@@ -2679,17 +2678,15 @@ pub fn emit_typed_field_access(base: Rc<Node>, field: &str, summary: Option<Rc<F
     })
 }
 
-pub fn type_needs_rc(env: Rc<TypeEnv>, type_node: Rc<Node>) -> bool {
-    type_needs_rc_seen(env.clone(), type_node.clone(), Rc::new(std::collections::HashMap::new()))
+pub fn type_needs_rc(type_node: Rc<Node>) -> bool {
+    type_needs_rc_seen(type_node.clone(), Rc::new(std::collections::HashMap::new()))
 }
 
-pub fn type_needs_rc_seen(env: Rc<TypeEnv>, type_node: Rc<Node>, seen: Rc<HashMap<String, bool>>) -> bool {
+pub fn type_needs_rc_seen(type_node: Rc<Node>, seen: Rc<HashMap<String, bool>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let mut __tco_p_env = env;
         let mut __tco_p_type_node = type_node;
         let mut __tco_p_seen = seen;
         loop {
-            let env = __tco_p_env;
             let type_node = __tco_p_type_node;
             let seen = __tco_p_seen;
             let normed = normalize_access_type_node(type_node);
@@ -2725,12 +2722,10 @@ pub fn type_needs_rc_seen(env: Rc<TypeEnv>, type_node: Rc<Node>, seen: Rc<HashMa
 }
 };
      {
-        let __tco_0 = env.clone();
-        let __tco_1 = rt_type(normed.clone());
-        let __tco_2 = next_seen.clone();
-        __tco_p_env = __tco_0;
-        __tco_p_type_node = __tco_1;
-        __tco_p_seen = __tco_2;
+        let __tco_0 = rt_type(normed.clone());
+        let __tco_1 = next_seen.clone();
+        __tco_p_type_node = __tco_0;
+        __tco_p_seen = __tco_1;
         continue;
     }
 
@@ -2748,7 +2743,7 @@ pub fn type_needs_rc_seen(env: Rc<TypeEnv>, type_node: Rc<Node>, seen: Rc<HashMa
     Rc::new(__map_ins_5)
 }
 };
-    let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
+    let resolved = normed.clone();
     if (((node_has_structure(resolved.clone()) == false) && (resolved.inferred.clone().is_none())) && (resolved.name.clone() == normed.name.clone())) && (({
     let __len_7 = resolved.children.clone().len();
     __len_7 as i64
@@ -2756,12 +2751,10 @@ pub fn type_needs_rc_seen(env: Rc<TypeEnv>, type_node: Rc<Node>, seen: Rc<HashMa
     break false;
 } else {
      {
-        let __tco_0 = env.clone();
-        let __tco_1 = resolved.clone();
-        let __tco_2 = next_seen.clone();
-        __tco_p_env = __tco_0;
-        __tco_p_type_node = __tco_1;
-        __tco_p_seen = __tco_2;
+        let __tco_0 = resolved.clone();
+        let __tco_1 = next_seen.clone();
+        __tco_p_type_node = __tco_0;
+        __tco_p_seen = __tco_1;
         continue;
     }
 
@@ -2775,7 +2768,7 @@ pub fn type_needs_rc_seen(env: Rc<TypeEnv>, type_node: Rc<Node>, seen: Rc<HashMa
 }
 
 pub fn rust_map_value_type(receiver_type: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
-    let resolved = resolve_scrutinee_type_node(scope.type_env.clone(), normalize_access_type_node(receiver_type.clone()));
+    let resolved = normalize_access_type_node(receiver_type.clone());
     let map_type = normalize_access_type_node(resolved.clone());
     if node_is_map(map_type.clone()) {
     match map_type.children.clone().get((1_i64) as usize).cloned() {
@@ -2814,7 +2807,7 @@ pub fn rust_lookup_receiver_needs_rc_wrap(receiver: Rc<Node>, scope: Rc<InferSco
     Some(InferredNode::Resolved { node: receiver_type, .. }) => {
         match rust_map_value_type(receiver_type.clone(), scope.clone()) {
     Some(value_type) => {
-        type_needs_rc(scope.type_env.clone(), value_type.clone())
+        type_needs_rc(value_type.clone())
     }
     None => {
         false
@@ -3098,7 +3091,7 @@ pub fn emit_typed_call_expr(func: &str, args: Rc<Vec<Rc<NamedArg>>>, inferred: O
     match inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ret_type, .. }) => {
         {
-    let resolved_ret = resolve_scrutinee_type_node(scope.type_env.clone(), ret_type.clone());
+    let resolved_ret = ret_type.clone();
     let type_str = emit_node_type_rc(resolved_ret.clone(), RenderTarget::Rust, rc_types.clone());
     if (type_str.clone() != "") && (type_str.clone() != "Dynamic") {
     v2_rt::concat(v2_rt::concat("<".to_string(), type_str.clone()), ">::new()".to_string())
@@ -3129,9 +3122,9 @@ pub fn emit_typed_call_expr(func: &str, args: Rc<Vec<Rc<NamedArg>>>, inferred: O
     match inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ret_type, .. }) => {
         {
-    let resolved_ret = resolve_scrutinee_type_node(scope.type_env.clone(), ret_type.clone());
+    let resolved_ret = ret_type.clone();
     if node_is_optional(resolved_ret.clone()) {
-    type_needs_rc(scope.type_env.clone(), with_required_cardinality(resolved_ret.clone()))
+    type_needs_rc(with_required_cardinality(resolved_ret.clone()))
 } else {
     false
 }
@@ -3813,7 +3806,7 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
         {
     let recv_is_optional = match receiver.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(resolve_scrutinee_type_node(scope.type_env.clone(), rt.clone()))
+        node_is_optional(rt.clone())
     }
     _ => {
         false
@@ -4093,7 +4086,7 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
     let elem_type_str = match receiver.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
         {
-    let resolved = resolve_scrutinee_type_node(scope.type_env.clone(), rt.clone());
+    let resolved = rt.clone();
     let elem = for_each_element_type_node(resolved.clone());
     if (elem.name.clone() != "") && (elem.name.clone() != "Dynamic") {
     emit_node_type_rc(elem.clone(), RenderTarget::Rust, rc_types.clone())
@@ -4475,18 +4468,6 @@ pub fn emit_typed_let(name: &str, value: Rc<Node>, body: Option<Rc<Node>>, regis
     })
 }
 
-pub fn emit_record_lit_full(type_name: Option<String>, fields: Rc<Vec<Rc<FieldInit>>>, span: SourceSpan, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>, rc_types: Rc<HashMap<String, bool>>, emit_info: Rc<EmitGraphInfo>) -> String {
-    let inferred = infer_record_lit(type_name, fields.clone(), span, scope.clone());
-    match inferred.typed.expr_data.as_ref() {
-    ExprData::ExprRecordLit { type_name: tn, fields: fs, parent_enum, .. } => {
-        emit_typed_record_lit(tn.clone(), fs.clone(), parent_enum.clone(), rt_type(inferred.typed.clone()), registry.clone(), scope.clone(), 0_i64, Rc::new(std::collections::HashMap::new()), rc_types.clone(), emit_info.clone())
-    }
-    _ => {
-        "compile_error!(\"internal error: infer_record_lit did not produce ExprRecordLit\")".to_string()
-    }
-}
-}
-
 pub fn is_optional_struct_field(emit_info: Rc<EmitGraphInfo>, struct_name: &str, field_name: &str) -> bool {
     match lookup_emit_type_summary(emit_info.clone(), &struct_name) {
     Some(summary) => {
@@ -4530,12 +4511,12 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
 } else {
     match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone()) || node_is_optional(resolve_scrutinee_type_node(scope.type_env.clone(), rt.clone()))
+        node_is_optional(rt.clone())
     }
     _ => {
         match scope.locals.clone().get(&n.clone()).cloned() {
     Some(binding) => {
-        node_is_optional(binding.resolved.clone()) || node_is_optional(resolve_scrutinee_type_node(scope.type_env.clone(), binding.resolved.clone()))
+        node_is_optional(binding.resolved.clone())
     }
     None => {
         false
@@ -4579,13 +4560,13 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
     match b.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: base_type, .. }) => {
         {
-    let resolved_base = resolve_scrutinee_type_node(scope.type_env.clone(), base_type.clone());
+    let resolved_base = base_type.clone();
     if is_optional_struct_field(emit_info.clone(), &resolved_base.name, &f) {
     true
 } else {
     match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(resolve_scrutinee_type_node(scope.type_env.clone(), rt.clone()))
+        node_is_optional(rt.clone())
     }
     _ => {
         false
@@ -4597,7 +4578,7 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
     _ => {
         match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(resolve_scrutinee_type_node(scope.type_env.clone(), rt.clone()))
+        node_is_optional(rt.clone())
     }
     _ => {
         false
@@ -4611,7 +4592,7 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
     _ => {
         match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone()) || node_is_optional(resolve_scrutinee_type_node(scope.type_env.clone(), rt.clone()))
+        node_is_optional(rt.clone())
     }
     _ => {
         false

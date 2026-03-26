@@ -17,14 +17,14 @@ import v2.std.core {
   Cardinality, Required,
   Diagnostic, Severity, Error,
   ErrorCategory, FieldNotFound, VariantNotFound, InvalidOperation,
-  MatchArm, MatchPattern
+  MatchArm, MatchPattern,
+  leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  leaf_node,
   error_type_node,
   node_is_bridge_error_name, node_is_bridge_dynamic_name,
-  node_is_optional, node_is_coproduct, node_has_structure, with_optional_cardinality,
+  node_is_optional,
   extract_optional_inner_node,
   emit_map_has
 }

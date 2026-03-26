@@ -22,10 +22,11 @@ import v2.std.core {
   BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength,
   BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower,
   BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap,
-  BridgeContains, BridgeReverse, BridgeLookup
+  BridgeContains, BridgeReverse, BridgeLookup,
+  leaf_node, with_optional_cardinality
 }
 import v2.compiler.infer_types {
-  leaf_node, with_optional_cardinality, container_node, tuple_node, error_type_node,
+  container_node, tuple_node, error_type_node,
   bare_map_node,
   method_receiver_element_node
 }

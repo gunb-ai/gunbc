@@ -144,7 +144,7 @@ pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<Stri
         __acc_2 = {
     let __rc_5 = __acc_2;
     let mut __map_ins_4 = Rc::try_unwrap(__rc_5).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_4.insert(__elem_3.name.clone(), Rc::new(TypeBinding { name: __elem_3.name.clone(), resolved: leaf_node(&__elem_1.name) }));
+    __map_ins_4.insert(__elem_3.name.clone(), Rc::new(TypeBinding { name: __elem_3.name.clone(), resolved: __elem_1.clone() }));
     Rc::new(__map_ins_4)
 };
     }

@@ -307,19 +307,19 @@ impl Default for StringScanResult {
 }
 
 impl StringScanResult {
-    pub fn end_pos(&self) -> i64 {
-        match self {
-            StringScanResult::ClosedString { end_pos, .. } => end_pos.clone(),
-            StringScanResult::InterpolationStart { end_pos, .. } => end_pos.clone(),
-            StringScanResult::UnterminatedString { end_pos, .. } => end_pos.clone()
-        }
-    }
-
     pub fn content(&self) -> String {
         match self {
             StringScanResult::ClosedString { content, .. } => content.clone(),
             StringScanResult::InterpolationStart { content, .. } => content.clone(),
             StringScanResult::UnterminatedString { content, .. } => content.clone()
+        }
+    }
+
+    pub fn end_pos(&self) -> i64 {
+        match self {
+            StringScanResult::ClosedString { end_pos, .. } => end_pos.clone(),
+            StringScanResult::InterpolationStart { end_pos, .. } => end_pos.clone(),
+            StringScanResult::UnterminatedString { end_pos, .. } => end_pos.clone()
         }
     }
 }

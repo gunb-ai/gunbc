@@ -1,5 +1,4 @@
 use crate::v2_core::*;
-use crate::infer_types::*;
 use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -3597,9 +3596,8 @@ pub fn parse_callable_type_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
         if has_err(ret.err.clone()) {
     return Rc::new(TypeResult { type_expr: dummy_te.clone(), state: ret.state.clone(), err: ret.err.clone() });
 };
-        let te = callable_node(params_result.params.clone(), ret.type_expr.clone());
-        let te_span = Rc::new(Node { name: te.name.clone(), span: start_span.clone(), children: te.children.clone(), connective: te.connective.clone(), params: te.params.clone(), inferred: te.inferred.clone(), return_cardinality: te.return_cardinality.clone(), uses: te.uses.clone(), body: te.body.clone(), transport: te.transport.clone(), properties: te.properties.clone(), type_annotation: te.type_annotation.clone(), config: te.config.clone(), is_self_recursive: te.is_self_recursive.clone(), has_non_tail_self_call: te.has_non_tail_self_call.clone(), expr_data: te.expr_data.clone() });
-        maybe_optional(tokens.clone(), ret.state.clone(), te_span.clone(), start_span.clone())
+        let te = Rc::new(Node { name: "Callable".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, params: params_result.params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: ret.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+        maybe_optional(tokens.clone(), ret.state.clone(), te.clone(), start_span.clone())
     })
 }
 
@@ -5362,7 +5360,8 @@ pub fn node_to_name_str(n: Rc<Node>) -> String {
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) > 0_i64;
-        if node_is_optional(n.clone()) {
+        let is_optional = n.return_cardinality.clone() == Cardinality::CardOptional;
+        if is_optional.clone() {
     v2_rt::concat("Optional_".to_string(), node_to_name_str(with_required_cardinality(n.clone())))
 } else {
     if n.name.clone() == "Map" {
