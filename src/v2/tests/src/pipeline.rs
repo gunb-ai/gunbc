@@ -225,6 +225,13 @@ fn indirect_type_alias_cycles_do_not_recurse_forever() {
 }
 
 #[test]
+fn chained_type_alias_field_access() {
+    let source = "module test\ntype A { val: Int }\ntype B = A\ntype C = B\nfn get(x: C) -> Int {\n  x.val\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn string_index_and_slice_emit_runtime_calls() {
     let source = "module test\nfn char_at(s: String) -> String {\n  s[0]\n}\nfn substr(s: String) -> String {\n  s[0..1]\n}\n";
     let result = compile_dag(source);

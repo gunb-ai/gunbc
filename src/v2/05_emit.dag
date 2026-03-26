@@ -266,7 +266,7 @@ fn empty_emit_scope() -> InferScope {
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
-    type_env: typed_module.type_env,
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,

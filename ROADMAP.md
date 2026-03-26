@@ -107,8 +107,8 @@ type Bit = True | False                           // |[Bit]| = 2
 type Byte = Tuple<Bit, Bit, Bit, Bit, Bit, Bit, Bit, Bit>  // |[Byte]| = 2^8
 
 // Level 2: Named compositions (opaque namespaces)
-// Int is List<List<Bit>> — a namespace, not a compiler-known concept
-// String is List<Int> — another namespace
+// Int is Interpret<Signed, Word64> — a namespace, not a compiler-known concept
+// String is List<Char> — another namespace
 
 // Level 3: Algebraic structures
 // Optionality: T? is cardinality 0..1 on the binding site
@@ -187,10 +187,11 @@ primitive, what are the structural constructors, and what is derived.
 
 Currently honest state: `Int`, `String`, `Bool`, `Float`, `Unit` are
 kernel primitives. The compiler treats them as special leaves via
-`is_kernel_type`. The algebraic vision says they should be compositions
-(`Int` = named namespace over `List<List<Bit>>`), but the compiler does
-not yet derive their properties from structure. This is an acknowledged
-intermediate state, not a claimed-but-unimplemented derivation.
+`is_kernel_type`. The algebraic vision says they should be declared
+compositions (`Int` = named namespace over `Interpret<Signed, Word64>`),
+but the compiler does not yet derive their properties from structure.
+This is an acknowledged intermediate state, not a
+claimed-but-unimplemented derivation.
 
 The kernel will shrink as the algebraic model matures:
 - Phase 3+: kernel types get real `.dag` declarations
@@ -256,6 +257,7 @@ Layer 1: Machine
   Vector<n, Bit>                                 (fixed-width bitvector)
   Byte   = Vector<8, Bit>
   Word32 = Vector<32, Bit>
+  Word64 = Vector<64, Bit>
   Int32  = Interpret<Signed, Word32>
 
   Note: fixed-width machine data uses Vector/bitvector, not List.
@@ -321,10 +323,15 @@ TypedModule     = Annotated<Module, TypeFacts>
 ResolvedGraph   = DAG<ModuleId, TypedModule>
 ```
 
-The split between `NodePayload` (declared shape: name, children,
-span, params) and `NodeFacts` (resolved/inferred/computed metadata)
-lines up with the pipeline story: resolve adds resolved facts, infer
-adds type facts, emit reads facts but does not re-resolve them.
+The split is: `LabeledTree` owns the recursive tree carrier (`name`,
+`children`), `NodePayload` owns the non-structural per-node fields
+(`span`, `params`, `uses`, `transport`, `expr_data`, etc.), and
+`NodeFacts` owns resolved/inferred/computed metadata. That lines up
+with the pipeline story: resolve adds resolved facts, infer adds type
+facts, emit reads facts but does not re-resolve them. `connective` and
+`return_cardinality` remain explicit structural annotations in the
+compiler's current `Node` model; Phase 5 work decides whether they
+collapse into the carrier layer or separate binding/edge annotations.
 
 **The fact composition contract as `Annotated<A,F>`:**
 
@@ -2630,14 +2637,17 @@ its callees are already finalized.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C4.1 | Early convergence for service expansion | **Done** | `04_service.dag`: exits early when total service count is stable between passes. Most codebases converge in 1-2 passes instead of always running 5. Full topo-order fold with SCC condensation deferred to when Layer 4 `DAG<A>` types exist. |
+| C4.1 | Early convergence for service expansion | **Done** | `04_service.dag`: exits early when total service count is stable between passes. For the current `ItemInfo` shape this is equivalent to registry stability because service sets only grow by deduped union. Most codebases converge in 1-2 passes instead of always running 5. Full topo-order fold with SCC condensation deferred to when Layer 4 `DAG<A>` types exist. |
 | C4.2 | Audit for other fixpoint iterations | Pipeline-wide | Are there other compensating mechanisms for missing topo-order composition? |
 
 **Invariant alignment:** Correctness by construction — topo order over
 the condensed DAG guarantees completeness. Mutual dependencies are
 handled by SCC condensation, not by iterating to fixpoint.
 
-**Gate:** No fixpoint iteration in the pipeline.
+**Current gate:** service expansion no longer relies on a hardcoded
+pass count; it halts when the registry stabilizes.
+
+**Future gate:** No fixpoint iteration in the pipeline.
 
 #### C5: Timing instrumentation
 

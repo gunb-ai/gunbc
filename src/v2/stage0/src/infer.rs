@@ -2939,7 +2939,7 @@ pub fn build_module_context(contributions: Rc<Vec<Rc<ItemContribution>>>, parent
         __acc_6 = {
     let __rc_9 = __acc_6;
     let mut __map_ins_8 = Rc::try_unwrap(__rc_9).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_8.insert(__elem_7.name.clone(), Rc::new(TypeBinding { name: __elem_7.name.clone(), resolved: leaf_node(&__elem_5.name) }));
+    __map_ins_8.insert(__elem_7.name.clone(), Rc::new(TypeBinding { name: __elem_7.name.clone(), resolved: __elem_5.resolved.clone() }));
     Rc::new(__map_ins_8)
 };
     }
@@ -2960,43 +2960,31 @@ pub fn build_module_context(contributions: Rc<Vec<Rc<ItemContribution>>>, parent
     Rc::new(__map_merged_10)
 };
     let resolve_result = resolve_func_sigs(all_declared_sigs.clone(), local.resolved_items.clone(), &module_name);
-    let optional_locals = {
-    let __rc_13 = env_variant_locals;
-    let mut __map_ins_12 = Rc::try_unwrap(__rc_13).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_12.insert("Some".to_string(), Rc::new(TypeBinding { name: "Some".to_string(), resolved: leaf_node("Optional") }));
-    Rc::new(__map_ins_12)
-};
-    let optional_locals = {
-    let __rc_15 = optional_locals;
-    let mut __map_ins_14 = Rc::try_unwrap(__rc_15).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_14.insert("None".to_string(), Rc::new(TypeBinding { name: "None".to_string(), resolved: leaf_node("Optional") }));
-    Rc::new(__map_ins_14)
-};
     let all_locals = {
-    let mut __acc_20 = optional_locals.clone();
-    for __elem_21 in ({
-    let __rc_16 = merged_scope.svc_locals.clone();
-    let __map_unwrapped_17 = Rc::try_unwrap(__rc_16).unwrap_or_else(|rc| (*rc).clone());
-    let mut __entries_18 = __map_unwrapped_17.into_iter().collect::<Vec<_>>();
-    __entries_18.sort_by(|a, b| a.0.cmp(&b.0));
-    let __values_19 = __entries_18.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
-    Rc::new(__values_19)
+    let mut __acc_16 = env_variant_locals.clone();
+    for __elem_17 in ({
+    let __rc_12 = merged_scope.svc_locals.clone();
+    let __map_unwrapped_13 = Rc::try_unwrap(__rc_12).unwrap_or_else(|rc| (*rc).clone());
+    let mut __entries_14 = __map_unwrapped_13.into_iter().collect::<Vec<_>>();
+    __entries_14.sort_by(|a, b| a.0.cmp(&b.0));
+    let __values_15 = __entries_14.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
+    Rc::new(__values_15)
 }).iter().cloned() {
-        __acc_20 = {
-    let __rc_23 = __acc_20;
-    let mut __map_ins_22 = Rc::try_unwrap(__rc_23).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_22.insert(__elem_21.name.clone(), __elem_21.clone());
-    Rc::new(__map_ins_22)
+        __acc_16 = {
+    let __rc_19 = __acc_16;
+    let mut __map_ins_18 = Rc::try_unwrap(__rc_19).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_18.insert(__elem_17.name.clone(), __elem_17.clone());
+    Rc::new(__map_ins_18)
 };
     }
-    __acc_20
+    __acc_16
 };
     Rc::new(ModuleContext { resolved_items: local.resolved_items.clone(), func_env: resolve_result.func_env.clone(), svc_registry: merged_scope.svc_registry.clone(), locals: all_locals.clone(), item_registry: local.item_registry.clone(), diagnostics: v2_rt::concat({
-    let mut __flat_mapped_26 = Vec::new();
-    for __elem_27 in local.diag_chunks.iter().cloned() {
-        __flat_mapped_26.extend(__elem_27.clone().iter().cloned());
+    let mut __flat_mapped_22 = Vec::new();
+    for __elem_23 in local.diag_chunks.iter().cloned() {
+        __flat_mapped_22.extend(__elem_23.clone().iter().cloned());
     }
-    Rc::new(__flat_mapped_26)
+    Rc::new(__flat_mapped_22)
 }, resolve_result.diagnostics.clone()) })
 }
 
@@ -3312,7 +3300,19 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
     }
     __acc_0
 };
-    Rc::new(EmitGraphInfo { type_summaries: built.type_summaries.clone(), variant_to_enum: built.variant_to_enum.clone(), enum_variant_membership: built.enum_variant_membership.clone(), field_type_names: built.field_type_names.clone() })
+    let all_recursive = {
+    let mut __acc_4 = Rc::new(std::collections::HashMap::new());
+    for __elem_5 in modules.iter().cloned() {
+        __acc_4 = {
+    let __rc_7 = __acc_4;
+    let mut __map_merged_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
+    __map_merged_6.extend(Rc::try_unwrap(__elem_5.type_env.recursive_type_set.clone()).unwrap_or_else(|rc| (*rc).clone()));
+    Rc::new(__map_merged_6)
+};
+    }
+    __acc_4
+};
+    Rc::new(EmitGraphInfo { type_summaries: built.type_summaries.clone(), variant_to_enum: built.variant_to_enum.clone(), enum_variant_membership: built.enum_variant_membership.clone(), field_type_names: built.field_type_names.clone(), recursive_type_set: all_recursive.clone() })
 }
 
 pub fn typecheck(graph: Rc<ModuleGraph>) -> Rc<TypedGraph> {

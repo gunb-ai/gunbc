@@ -15,7 +15,6 @@ use crate::artifact::*;
 use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SourceFile {
@@ -1056,13 +1055,9 @@ pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
 }
 
 pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -> Rc<PipelineResult> {
-    let t_total = Instant::now();
-    let t0 = Instant::now();
     let frontend = front_end_sources(sources.clone());
-    eprintln!("  phase: frontend    {:>10.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
     match frontend.graph.as_ref().map(|__rc| __rc.as_ref()) {
     None => {
-        eprintln!("  phase: total       {:>10.1}ms (frontend error)", t_total.elapsed().as_secs_f64() * 1000.0);
         Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: frontend.diagnostics.clone(), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() })
     }
     Some(graph) => {
@@ -1082,12 +1077,9 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_2 = resolve_errors.clone().len();
     __len_2 as i64
 }) > 0_i64 {
-    eprintln!("  phase: total       {:>10.1}ms (resolve error)", t_total.elapsed().as_secs_f64() * 1000.0);
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: frontend.diagnostics.clone(), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
-    let t1 = Instant::now();
     let norm = normalize_graph(graph.clone());
-    eprintln!("  phase: normalize   {:>10.1}ms", t1.elapsed().as_secs_f64() * 1000.0);
     let norm_diags = norm.diagnostics.clone();
     let norm_errors = {
     let mut __filtered_3 = Vec::new();
@@ -1102,17 +1094,12 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_5 = norm_errors.clone().len();
     __len_5 as i64
 }) > 0_i64 {
-    eprintln!("  phase: total       {:>10.1}ms (normalize error)", t_total.elapsed().as_secs_f64() * 1000.0);
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
-    let t2 = Instant::now();
     let typed = reconcile(norm.graph.clone());
-    eprintln!("  phase: reconcile   {:>10.1}ms", t2.elapsed().as_secs_f64() * 1000.0);
     let typed_diags = typed.diagnostics.clone();
-    let t3 = Instant::now();
     let func_entries = extract_func_entries(typed.clone());
     let complexity = build_complexity_report(func_entries.clone());
-    eprintln!("  phase: complexity  {:>10.1}ms", t3.elapsed().as_secs_f64() * 1000.0);
     let typecheck_errors = {
     let mut __filtered_6 = Vec::new();
     for __elem_7 in typed_diags.iter().cloned() {
@@ -1126,12 +1113,9 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_8 = typecheck_errors.clone().len();
     __len_8 as i64
 }) > 0_i64 {
-    eprintln!("  phase: total       {:>10.1}ms (typecheck error)", t_total.elapsed().as_secs_f64() * 1000.0);
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity: complexity.clone(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
-    let t4 = Instant::now();
     let ownership = extract_ownership_proofs(typed.clone());
-    eprintln!("  phase: ownership   {:>10.1}ms", t4.elapsed().as_secs_f64() * 1000.0);
     let ownership_diags = ownership_diagnostics(ownership.clone());
     let artifact_plan = default_artifact_plan({
     let mut __mapped_11 = Vec::new();
@@ -1140,9 +1124,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     }
     Rc::new(__mapped_11)
 }, target);
-    let t5 = Instant::now();
     let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
-    eprintln!("  phase: emit        {:>10.1}ms", t5.elapsed().as_secs_f64() * 1000.0);
     let emit_files = emit_result.files.clone();
     let emit_diags = emit_result.diagnostics.clone();
     let emit_errors = {
@@ -1162,7 +1144,6 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
 } else {
     emit_files.clone()
 };
-    eprintln!("  phase: total       {:>10.1}ms", t_total.elapsed().as_secs_f64() * 1000.0);
     Rc::new(PipelineResult { files: final_files.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), ownership_diags.clone()), emit_diags.clone()), complexity: complexity.clone(), ownership: ownership.clone(), artifact_plan: artifact_plan.clone() })
 }
     }
