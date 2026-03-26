@@ -23,6 +23,7 @@ import v2.compiler.infer_types {
   child_return_type_or_name,
   leaf_node,
   error_type_node,
+  node_is_bridge_error_name, node_is_bridge_dynamic_name,
   node_is_optional, node_is_coproduct, node_has_structure, with_optional_cardinality,
   extract_optional_inner_node,
   emit_map_has
@@ -54,8 +55,10 @@ type PatternSubject
 // Variant lookup
 // =========================================================================
 
-// Synthesize a "Some { value: T }" variant node for Optional pattern matching.
-// Optional is represented as [inner_type, None] — no explicit "Some" child.
+// Temporary bridge: synthesize a "Some { value: T }" variant node for
+// Optional pattern matching. Optional is still represented as
+// [inner_type, None] — no explicit "Some" child. Track in the roadmap until
+// pattern lookup gains a fully structural Optional subject.
 fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
   let value_field = Node { name: "value", span: scrut.span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -64,16 +67,16 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
-  if n.name == "Dynamic" {
+  if node_is_bridge_dynamic_name(n: n) {
     PatternDynamic { span: n.span }
-  } else if n.name == "Error" {
+  } else if node_is_bridge_error_name(n: n) {
     PatternLookupBlocked
   } else {
     PatternResolved { node: n }
   }
 }
 
-fn pattern_subject_from_node_type(n: NodeType, span: SourceSpan) -> PatternSubject {
+fn pattern_subject_from_node_type(n: NodeType) -> PatternSubject {
   match n {
     Typed { node: resolved } => pattern_subject_from_node(n: resolved)
     InferError { message: _, span: _ } => PatternLookupBlocked
@@ -209,7 +212,7 @@ fn check_match_exhaustiveness(
   }
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
-  if node_is_coproduct(n: resolved) {
+  if node_is_coproduct(n: resolved) || node_is_optional(n: resolved) {
     // Optional is represented as [inner_type, None] — the first child
     // is the inner type, not a "Some" variant. Normalize to ["Some", "None"]
     // so patterns `Some { value: x } => ... None => ...` are recognized.

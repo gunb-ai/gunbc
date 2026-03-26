@@ -1247,7 +1247,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let scrut_typed = scrut_result.typed
       let scrut_diags = scrut_result.diagnostics
       let scrut_rt = rt_type(n: scrut_typed)
-      let scrut_subject = pattern_subject_from_node_type(n: rt_node(n: scrut_typed), span: scrut_typed.span)
+      let scrut_subject = pattern_subject_from_node_type(n: rt_node(n: scrut_typed))
       let arm_infer_results = arms |> map(arm =>
         let typed_pattern = annotate_pattern_parent_enums(pattern: arm.pattern, scrutinee_subject: scrut_subject, scope: scope)
         let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject)

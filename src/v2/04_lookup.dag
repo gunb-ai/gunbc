@@ -129,6 +129,11 @@ fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
+  // Temporary bridge: scrutinee resolution still normalizes names and
+  // rewraps Optional after environment lookup. Access and match-pattern
+  // inference now carry explicit failure state before entering this helper,
+  // so this function should only resolve successfully typed scrutinee shapes.
+  // Full deletion belongs to P5.8 once `normalize_type_name` is gone.
   let normed = normalize_access_type_node(n: n)
   if node_has_structure(n: normed) == false && normed.children |> count == 0 {
     let canonical = normalize_type_name(name: normed.name)
@@ -154,6 +159,8 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
             normed
           } else {
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
+            // Preserve Optional scrutinee shape during alias/type-env lookup
+            // until Optional itself becomes fully structural in the lookup path.
             if node_is_optional(n: normed) { with_optional_cardinality(n: result) } else { result }
           }
         None => normed

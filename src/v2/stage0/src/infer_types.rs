@@ -79,6 +79,14 @@ pub fn error_type_node() -> Rc<Node> {
     leaf_node("Error")
 }
 
+pub fn node_is_bridge_error_name(n: Rc<Node>) -> bool {
+    n.name.clone() == "Error"
+}
+
+pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
+    n.name.clone() == "Dynamic"
+}
+
 pub fn no_span() -> SourceSpan {
     SourceSpan { start: 0_i64, end: 0_i64 }
 }
@@ -267,10 +275,10 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
             let right = __tco_p_right;
             let left_opt = node_is_optional(left.clone());
             let right_opt = node_is_optional(right.clone());
-            if (left.name.clone() == "Error") || (right.name.clone() == "Error") {
+            if node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone()) {
     break true;
 } else {
-    if (left.name.clone() == "Dynamic") || (right.name.clone() == "Dynamic") {
+    if node_is_bridge_dynamic_name(left.clone()) || node_is_bridge_dynamic_name(right.clone()) {
     break true;
 } else {
     if left_opt.clone() && (right.name.clone() == "Unit") {
@@ -387,13 +395,13 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
         let right_leaf = node_is_leaf(right.clone());
         let left_struct = node_has_structure(left.clone());
         let right_struct = node_has_structure(right.clone());
-        if (left.name.clone() == "Error") || (right.name.clone() == "Error") {
+        if node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone()) {
     true
 } else {
-    if (left.name.clone() == "Dynamic") && (right.name.clone() == "Dynamic") {
+    if node_is_bridge_dynamic_name(left.clone()) && node_is_bridge_dynamic_name(right.clone()) {
     true
 } else {
-    if (left.name.clone() == "Dynamic") || (right.name.clone() == "Dynamic") {
+    if node_is_bridge_dynamic_name(left.clone()) || node_is_bridge_dynamic_name(right.clone()) {
     false
 } else {
     if left_opt.clone() && (right.name.clone() == "Unit") {

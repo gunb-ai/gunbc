@@ -18,4 +18,6 @@ mod parse;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]
+mod infer_semantics;
+#[cfg(test)]
 mod bootstrap;

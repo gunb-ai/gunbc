@@ -437,6 +437,20 @@ pub fn categorized_error(message: &str, span: SourceSpan, module_name: &str, cat
     Rc::new(Diagnostic { severity: Severity::Error, message: message.to_string(), span: Some(span), module_name: Some(module_name.to_string()), category: Some(category) })
 }
 
+pub fn inferred_from_node_type(result: Rc<NodeType>, fallback_message: &str, fallback_span: SourceSpan) -> Rc<InferredNode> {
+    match result.as_ref() {
+    NodeType::Typed { node: resolved, .. } => {
+        Rc::new(InferredNode::Resolved { node: resolved.clone() })
+    }
+    NodeType::InferError { message, span, .. } => {
+        Rc::new(InferredNode::CompilerError { message: message.clone(), span: span.clone() })
+    }
+    NodeType::Untyped => {
+        Rc::new(InferredNode::CompilerError { message: fallback_message.to_string(), span: fallback_span })
+    }
+}
+}
+
 pub fn lambda_semantics_from_param_types(param_types: Rc<Vec<Rc<Node>>>) -> Rc<LambdaSemantics> {
     Rc::new(LambdaSemantics { param_types: param_types.clone() })
 }
@@ -458,28 +472,54 @@ pub fn lambda_param_types_from_scope(scope: Rc<InferScope>, params: Rc<Vec<Strin
 }
 }
 
-pub fn annotate_pattern_parent_enums(pattern: Rc<MatchPattern>, scrutinee_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<MatchPattern> {
+pub fn resolve_pattern_subject(scope: Rc<InferScope>, scrutinee_subject: Rc<PatternSubject>) -> Rc<PatternSubject> {
+    match scrutinee_subject.as_ref() {
+    PatternSubject::PatternResolved { node: scrutinee_type, .. } => {
+        pattern_subject_from_node(resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone()))
+    }
+    PatternSubject::PatternDynamic { span: dynamic_span, .. } => {
+        Rc::new(PatternSubject::PatternDynamic { span: dynamic_span.clone() })
+    }
+    PatternSubject::PatternLookupBlocked => {
+        Rc::new(PatternSubject::PatternLookupBlocked)
+    }
+}
+}
+
+pub fn annotate_pattern_parent_enums(pattern: Rc<MatchPattern>, scrutinee_subject: Rc<PatternSubject>, scope: Rc<InferScope>) -> Rc<MatchPattern> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match pattern.as_ref() {
     MatchPattern::VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings, .. } => {
         {
-    let resolved_scrut = resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone());
-    let inferred_parent = if node_is_optional(resolved_scrut.clone()) && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
+    let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
+    let inferred_parent = match resolved_scrut.as_ref() {
+    PatternSubject::PatternResolved { node: resolved_scrut_node, .. } => {
+        if node_is_optional(resolved_scrut_node.clone()) && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
     Some("Optional".to_string())
 } else {
-    if node_is_coproduct(resolved_scrut.clone()) {
-    Some(resolved_scrut.name.clone())
+    if node_is_coproduct(resolved_scrut_node.clone()) {
+    Some(resolved_scrut_node.name.clone())
 } else {
     None
 }
+}
+    }
+    PatternSubject::PatternDynamic { span: _, .. } => {
+        None
+    }
+    PatternSubject::PatternLookupBlocked => {
+        None
+    }
 };
     let variant_lookup = lookup_variant_in_type(resolved_scrut.clone(), &variant_name, &scope.module_name);
+    let variant_subject = lookup_result_subject(variant_lookup.clone());
     let annotated_bindings = {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in bindings.iter().cloned() {
         __mapped_0.push({
-    let field_lookup = lookup_field_in_variant(variant_lookup.resolved.clone(), &__elem_1.field_name, &scope.module_name);
-    Rc::new(FieldBinding { field_name: __elem_1.field_name.clone(), binding: annotate_pattern_parent_enums(__elem_1.binding.clone(), field_lookup.resolved.clone(), scope.clone()) })
+    let field_lookup = lookup_field_in_variant(variant_subject.clone(), &__elem_1.field_name, &scope.module_name);
+    let field_subject = lookup_result_subject(field_lookup.clone());
+    Rc::new(FieldBinding { field_name: __elem_1.field_name.clone(), binding: annotate_pattern_parent_enums(__elem_1.binding.clone(), field_subject.clone(), scope.clone()) })
 });
     }
     Rc::new(__mapped_0)
@@ -563,11 +603,11 @@ pub fn scope_after_stmt_node(stmt: Rc<Node>, stmt_type: Rc<Node>, scope: Rc<Infe
 }
 }
 
-pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPattern>, scrutinee_type: Rc<Node>) -> Rc<PatternScopeResult> {
+pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPattern>, scrutinee_subject: Rc<PatternSubject>) -> Rc<PatternScopeResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match pattern.as_ref() {
     MatchPattern::Bind { name: n, .. } => {
-        Rc::new(PatternScopeResult { scope: extend_scope(scope.clone(), &n, scrutinee_type.clone()), diagnostics: Rc::new(Vec::new()) })
+        Rc::new(PatternScopeResult { scope: extend_scope(scope.clone(), &n, pattern_binding_type(scrutinee_subject.clone())), diagnostics: Rc::new(Vec::new()) })
     }
     MatchPattern::Wildcard => {
         Rc::new(PatternScopeResult { scope: scope.clone(), diagnostics: Rc::new(Vec::new()) })
@@ -577,23 +617,24 @@ pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPa
     }
     MatchPattern::VariantPattern { name: vname, parent_enum: _, field_bindings: bindings, .. } => {
         {
-    let resolved_scrut = resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone());
+    let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
     let variant_lookup = lookup_variant_in_type(resolved_scrut.clone(), &vname, &scope.module_name);
-    let variant_node = variant_lookup.resolved.clone();
+    let variant_subject = lookup_result_subject(variant_lookup.clone());
     let variant_diags = variant_lookup.diagnostics.clone();
     {
     let mut __acc_0 = Rc::new(PatternScopeResult { scope: scope.clone(), diagnostics: variant_diags.clone() });
     for __elem_1 in bindings.iter().cloned() {
         __acc_0 = {
-    let field_lookup = lookup_field_in_variant(variant_node.clone(), &__elem_1.field_name, &scope.module_name);
-    let field_type = field_lookup.resolved.clone();
+    let field_lookup = lookup_field_in_variant(variant_subject.clone(), &__elem_1.field_name, &scope.module_name);
+    let field_subject = lookup_result_subject(field_lookup.clone());
+    let field_type = pattern_binding_type(field_subject.clone());
     match __elem_1.binding.as_ref() {
     MatchPattern::Bind { name: n, .. } => {
         Rc::new(PatternScopeResult { scope: extend_scope(__acc_0.scope.clone(), &n, field_type.clone()), diagnostics: v2_rt::concat(__acc_0.diagnostics.clone(), field_lookup.diagnostics.clone()) })
     }
     _ => {
         {
-    let nested = extend_scope_with_pattern_node(__acc_0.scope.clone(), __elem_1.binding.clone(), field_type.clone());
+    let nested = extend_scope_with_pattern_node(__acc_0.scope.clone(), __elem_1.binding.clone(), field_subject.clone());
     Rc::new(PatternScopeResult { scope: nested.scope.clone(), diagnostics: v2_rt::concat(__acc_0.diagnostics.clone(), v2_rt::concat(field_lookup.diagnostics.clone(), nested.diagnostics.clone())) })
 }
     }
@@ -1571,12 +1612,13 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     let scrut_typed = scrut_result.typed.clone();
     let scrut_diags = scrut_result.diagnostics.clone();
     let scrut_rt = rt_type(scrut_typed.clone());
+    let scrut_subject = pattern_subject_from_node_type(rt_node(scrut_typed.clone()));
     let arm_infer_results = {
     let mut __mapped_19 = Vec::new();
     for __elem_20 in arms.iter().cloned() {
         __mapped_19.push({
-    let typed_pattern = annotate_pattern_parent_enums(__elem_20.pattern.clone(), scrut_rt.clone(), scope.clone());
-    let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_rt.clone());
+    let typed_pattern = annotate_pattern_parent_enums(__elem_20.pattern.clone(), scrut_subject.clone(), scope.clone());
+    let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_subject.clone());
     let arm_scope = pattern_result.scope.clone();
     let pattern_diags = pattern_result.diagnostics.clone();
     let guard_result = if __elem_20.guard.clone().is_some() {
@@ -1639,7 +1681,17 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
 } else {
     Rc::new(Vec::new())
 };
-    let exhaustiveness_diags = check_match_exhaustiveness(scrut_rt.clone(), typed_arms.clone(), scope.type_env.clone(), span.clone(), &scope.module_name);
+    let exhaustiveness_diags = match resolve_pattern_subject(scope.clone(), scrut_subject.clone()).as_ref() {
+    PatternSubject::PatternResolved { node: resolved_scrutinee, .. } => {
+        check_match_exhaustiveness(resolved_scrutinee.clone(), typed_arms.clone(), scope.type_env.clone(), span.clone(), &scope.module_name)
+    }
+    PatternSubject::PatternDynamic { span: _, .. } => {
+        Rc::new(Vec::new())
+    }
+    PatternSubject::PatternLookupBlocked => {
+        Rc::new(Vec::new())
+    }
+};
     let match_texpr = make_expr_node(Rc::new(ExprData::ExprMatch { scrutinee: scrut_typed.clone(), arms: typed_arms.clone() }), Some(Rc::new(InferredNode::Resolved { node: result_type.clone() })), span.clone());
     Rc::new(InferResult { typed: match_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(scrut_diags.clone(), arm_diags.clone()), empty_arms_diags.clone()), exhaustiveness_diags.clone()) })
 }
@@ -1888,9 +1940,58 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     let index_result = infer_expr(index_expr.clone(), scope.clone());
     let index_typed = index_result.typed.clone();
     let index_diags = index_result.diagnostics.clone();
-    let index_check = check_index_access_node(rt_type(base_typed.clone()), rt_type(index_typed.clone()), span.clone(), &scope.module_name);
-    let idx_texpr = make_expr_node(Rc::new(ExprData::ExprIndex { base: base_typed.clone(), index: index_typed.clone() }), Some(Rc::new(InferredNode::Resolved { node: index_check.resolved_type.clone() })), span.clone());
-    Rc::new(InferResult { typed: idx_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(base_diags.clone(), index_diags.clone()), index_check.diagnostics.clone()) })
+    let base_type_result = rt_node(base_typed.clone());
+    let index_type_result = rt_node(index_typed.clone());
+    let index_check = match base_type_result.as_ref() {
+    NodeType::Typed { node: base_type, .. } => {
+        match index_type_result.as_ref() {
+    NodeType::Typed { node: index_type, .. } => {
+        Some(check_index_access_node(base_type.clone(), index_type.clone(), span.clone(), &scope.module_name))
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+};
+    let access_failure_source = match base_type_result.as_ref() {
+    NodeType::Typed { node: _, .. } => {
+        index_type_result.clone()
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::Untyped => {
+        base_type_result.clone()
+    }
+};
+    let idx_return_type = match index_check.clone() {
+    Some(checked) => {
+        checked.return_type.clone()
+    }
+    None => {
+        Some(inferred_from_node_type(access_failure_source.clone(), "invalid index access", span.clone()))
+    }
+};
+    let index_access_diags = match index_check.clone() {
+    Some(checked) => {
+        checked.diagnostics.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+};
+    let idx_texpr = make_expr_node(Rc::new(ExprData::ExprIndex { base: base_typed.clone(), index: index_typed.clone() }), idx_return_type.clone(), span.clone());
+    Rc::new(InferResult { typed: idx_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(base_diags.clone(), index_diags.clone()), index_access_diags.clone()) })
 }
     }
     ExprData::ExprSlice { base: base_expr, start: start_expr, end: end_expr, .. } => {
@@ -1905,9 +2006,79 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     let end_result = infer_expr(end_expr.clone(), scope.clone());
     let end_typed = end_result.typed.clone();
     let end_diags = end_result.diagnostics.clone();
-    let slice_check = check_slice_access_node(rt_type(base_typed.clone()), rt_type(start_typed.clone()), rt_type(end_typed.clone()), span.clone(), &scope.module_name);
-    let slc_texpr = make_expr_node(Rc::new(ExprData::ExprSlice { base: base_typed.clone(), start: start_typed.clone(), end: end_typed.clone() }), Some(Rc::new(InferredNode::Resolved { node: slice_check.resolved_type.clone() })), span.clone());
-    Rc::new(InferResult { typed: slc_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(base_diags.clone(), start_diags.clone()), end_diags.clone()), slice_check.diagnostics.clone()) })
+    let base_type_result = rt_node(base_typed.clone());
+    let start_type_result = rt_node(start_typed.clone());
+    let end_type_result = rt_node(end_typed.clone());
+    let slice_check = match base_type_result.as_ref() {
+    NodeType::Typed { node: base_type, .. } => {
+        match start_type_result.as_ref() {
+    NodeType::Typed { node: start_type, .. } => {
+        match end_type_result.as_ref() {
+    NodeType::Typed { node: end_type, .. } => {
+        Some(check_slice_access_node(base_type.clone(), start_type.clone(), end_type.clone(), span.clone(), &scope.module_name))
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+};
+    let access_failure_source = match base_type_result.as_ref() {
+    NodeType::Typed { node: _, .. } => {
+        match start_type_result.as_ref() {
+    NodeType::Typed { node: _, .. } => {
+        end_type_result.clone()
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        start_type_result.clone()
+    }
+    NodeType::Untyped => {
+        start_type_result.clone()
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::Untyped => {
+        base_type_result.clone()
+    }
+};
+    let slc_return_type = match slice_check.clone() {
+    Some(checked) => {
+        checked.return_type.clone()
+    }
+    None => {
+        Some(inferred_from_node_type(access_failure_source.clone(), "invalid slice access", span.clone()))
+    }
+};
+    let slice_access_diags = match slice_check.clone() {
+    Some(checked) => {
+        checked.diagnostics.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+};
+    let slc_texpr = make_expr_node(Rc::new(ExprData::ExprSlice { base: base_typed.clone(), start: start_typed.clone(), end: end_typed.clone() }), slc_return_type.clone(), span.clone());
+    Rc::new(InferResult { typed: slc_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(base_diags.clone(), start_diags.clone()), end_diags.clone()), slice_access_diags.clone()) })
 }
     }
     ExprData::ExprReturn { value: inner_expr, .. } => {
