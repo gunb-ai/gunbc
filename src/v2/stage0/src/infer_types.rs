@@ -78,7 +78,7 @@ pub fn container_node(kind_name: &str, element: Rc<Node>) -> Rc<Node> {
     if kind_name == "NonEmptySet" {
     container_node_with_kind(&kind_name, element.clone(), CollectionKind::NonEmptySetKind)
 } else {
-    container_node_with_kind(&kind_name, element.clone(), CollectionKind::ListKind)
+    Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 }
 }

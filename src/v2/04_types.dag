@@ -79,7 +79,7 @@ fn container_node(kind_name: String, element: Node) -> Node {
   else if kind_name == "Set" { container_node_with_kind(kind_name: kind_name, element: element, ck: SetKind) }
   else if kind_name == "NonEmptyList" { container_node_with_kind(kind_name: kind_name, element: element, ck: NonEmptyListKind) }
   else if kind_name == "NonEmptySet" { container_node_with_kind(kind_name: kind_name, element: element, ck: NonEmptySetKind) }
-  else { container_node_with_kind(kind_name: kind_name, element: element, ck: ListKind) }
+  else { Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {

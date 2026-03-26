@@ -12552,7 +12552,8 @@ import v2.std.core {
 import v2.compiler.infer_types {
   leaf_node, with_optional_cardinality, with_required_cardinality,
   node_has_structure, node_is_product, node_is_optional, node_is_map, node_is_container,
-  rt_type, no_span
+  rt_type, no_span,
+  collection_kind_for_name
 }
 import v2.compiler.infer_env {
   TypeEnv, lookup_type, is_recursive_type
@@ -12673,7 +12674,7 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
         )
         Node {
           name: child.name, span: child.span, children: substituted_args,
-          connective: child.connective, collection_kind: none, params: child.params,
+          connective: child.connective, collection_kind: child.collection_kind, params: child.params,
           return_type: child.return_type, return_cardinality: child.return_cardinality,
           uses: child.uses, body: child.body, transport: child.transport,
           properties: child.properties, type_annotation: child.type_annotation,
@@ -12737,7 +12738,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             let rt_resolved = rt_result.resolved
             let rt_diags = rt_result.diagnostics
             NodeResolveResult {
-              resolved: Node { name: child.name, span: child.span, children: child.children, connective: child.connective, collection_kind: none, params: child.params, return_type: Some { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, config: child.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+              resolved: Node { name: child.name, span: child.span, children: child.children, connective: child.connective, collection_kind: child.collection_kind, params: child.params, return_type: Some { value: Resolved { node: rt_resolved } }, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, config: child.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
               diagnostics: rt_diags
             }
           }
@@ -12780,7 +12781,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               let rt_resolved = rt_result.resolved
               let rt_diags = rt_result.diagnostics
               NodeResolveResult {
-                resolved: Node { name: field_child.name, span: field_child.span, children: field_child.children, connective: field_child.connective, collection_kind: none, params: field_child.params, return_type: Some { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: field_child.properties, type_annotation: field_child.type_annotation, config: field_child.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+                resolved: Node { name: field_child.name, span: field_child.span, children: field_child.children, connective: field_child.connective, collection_kind: field_child.collection_kind, params: field_child.params, return_type: Some { value: Resolved { node: rt_resolved } }, return_cardinality: field_child.return_cardinality, uses: field_child.uses, body: field_child.body, transport: field_child.transport, properties: field_child.properties, type_annotation: field_child.type_annotation, config: field_child.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
                 diagnostics: rt_diags
               }
             }
@@ -12788,7 +12789,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let resolved_fields = map(field_results, fr => fr.resolved)
           let field_diags = flat_map(field_results, fr => fr.diagnostics)
           NodeResolveResult {
-            resolved: Node { name: variant_child.name, span: variant_child.span, children: resolved_fields, connective: variant_child.connective, collection_kind: none, params: variant_child.params, return_type: variant_child.return_type, return_cardinality: variant_child.return_cardinality, uses: variant_child.uses, body: variant_child.body, transport: variant_child.transport, properties: variant_child.properties, type_annotation: variant_child.type_annotation, config: variant_child.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+            resolved: Node { name: variant_child.name, span: variant_child.span, children: resolved_fields, connective: variant_child.connective, collection_kind: variant_child.collection_kind, params: variant_child.params, return_type: variant_child.return_type, return_cardinality: variant_child.return_cardinality, uses: variant_child.uses, body: variant_child.body, transport: variant_child.transport, properties: variant_child.properties, type_annotation: variant_child.type_annotation, config: variant_child.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
             diagnostics: field_diags
           }
         )
@@ -12825,7 +12826,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     )
     let is_recursive = is_recursive_type(env: env, name: n.name)
     let result = NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: decl.collection_kind, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
+      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: n.collection_kind, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
       diagnostics: concat(arity_diags, arg_diags)
     }
     result
@@ -13866,7 +13867,7 @@ fn container_node(kind_name: String, element: Node) -> Node {
   else if kind_name == "Set" { container_node_with_kind(kind_name: kind_name, element: element, ck: SetKind) }
   else if kind_name == "NonEmptyList" { container_node_with_kind(kind_name: kind_name, element: element, ck: NonEmptyListKind) }
   else if kind_name == "NonEmptySet" { container_node_with_kind(kind_name: kind_name, element: element, ck: NonEmptySetKind) }
-  else { container_node_with_kind(kind_name: kind_name, element: element, ck: ListKind) }
+  else { Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
