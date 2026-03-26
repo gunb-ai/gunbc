@@ -2229,7 +2229,7 @@ The `node_is_*` predicates contain two distinct invariant violations.
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) | ~5000 lines across all .dag files + v1 interpreter | Move expression-position child Nodes from ExprData variant fields to `node.children`. Delete `expr_children`/`map_expr_children` bridge. See P5.11 design below. |
+| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) ✓ | ~129 match sites, ~141 construction sites across all .dag files | Compositional dissolution: args→Nodes, arms→Nodes, field inits→Nodes. Children move to `node.children`. ExprData becomes pure operator metadata. v1 independent. Design decisions resolved 2026-03-26. See P5.11 design below. |
 | P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | Validate whether `ExprData` should dissolve into a more structural expression-kind property on Node, or remain as a closed semantic tag where that is the right exhaustiveness device. The goal is structural clarity, not dogmatic deletion. |
 
 ### P5.11 Design: ExprData Child Dissolution
@@ -2240,61 +2240,101 @@ The `node_is_*` predicates contain two distinct invariant violations.
 ExprData match to access children — 12 manual walks totaling ~1800
 lines, of which ~600 are pure structural boilerplate.
 
-**Bridge (current):** `expr_children(node) -> List<Node>` extracts
-child expression Nodes from ExprData. `map_expr_children(node,
-transform)` (structural tree-map) is designed and now **unblocked** by
-v1 retirement — stage0→stage1 bootstrap handles callable parameters.
+**Prerequisite:** Phase 4 (shared emit stable). **Met as of 2026-03-26.**
 
-`ExprData` is an acknowledged L2 bridge. Child `Node` structure in
-value/expression position migrates to `expr_children` now so traversals
-can become structural without waiting for full semantic dissolution.
-Role-specific metadata and non-value-position data remain in `ExprData`
-until P5.11/P5.12. This is preparatory work in the final direction, not
-throwaway work. The bridge is safer than the arity bridge: the arity
-bridge invents missing information temporarily; the expr-children bridge
-re-homes information that already exists.
+#### Compositional model (bottom-up)
 
-**Target state:** Expression nodes use `node.children` for child Nodes
-that participate in value/expression position, the same way structural
-passes consume ordered child lists elsewhere in the graph. ExprData
-retains non-Node metadata plus any Nodes that still serve distinct roles
-(type position, pattern position, binding-site descriptors) until those
-roles get their own structural encoding.
+The dissolution follows the same bottom-up pattern as the composition
+stack (Layer 4). Expressions, arguments, and match arms are not special
+compiler internals — they are structural compositions of Node, the
+universal carrier. The compiler reads structure; it doesn't need
+hardcoded knowledge of "what is an argument."
 
-**Per-variant value-position child table:**
-
-`node.children` contains the child Nodes that participate in
-value/expression position, in declared order. A Node is a Node:
-distinctions like type, value, pattern, and binding-site describe where
-the node participates in the pipeline, not different carriers. The role
-vocabulary stays because it still marks real operational invariants.
-
-| Variant | children (positional) |
-|---------|----------------------|
-| ExprFieldAccess | [base] |
-| ExprCall | [arg0.value, arg1.value, ...] |
-| ExprMethodCall | [receiver, arg0.value, ...] |
-| ExprMatch | [scrutinee, guard0?, body0, guard1?, body1, ...] |
-| ExprIf | [condition, then, else?] |
-| ExprLet | [value, body?] |
-| ExprBinOp | [left, right] |
-| ExprUnaryOp | [operand] |
-| ExprLambda | [body] |
-| ExprBlock | [stmt0, stmt1, ...] |
-| ExprCast | [expr] |
-| ExprForEach | [collection, body] |
-| ExprIndex | [base, index] |
-| ExprSlice | [base, start, end] |
-| ExprReturn | [value] |
-| ExprRecordLit | [field0.value, field1.value, ...] |
-| ExprListLit | [elem0, elem1, ...] |
-| ExprStringInterp | [interp0.expr, interp1.expr, ...] |
-| ExprLiteral, ExprError, ExprVar, NoExprData | [] |
-
-**What stays in ExprData or adjacent metadata (role-specific data):**
+**Arguments are Nodes.** This follows from Decision 8 (Param→Node):
+if a parameter IS a Node, then an argument (the call-site dual of a
+parameter) is also a Node. A `NamedArg { name: String?, value: Node }`
+is just a Node whose `name` carries the arg name and whose child is the
+value expression. No parallel name list, no properties — just
+composition.
 
 ```
-ExprCall.func: String              → stays (function name is metadata)
+// Current (flat list, metadata on wrapper type):
+ExprCall { func: "foo", args: [
+  NamedArg { name: "x", value: expr1 },
+  NamedArg { name: "y", value: expr2 },
+]}
+
+// After dissolution (compositional — args are Nodes):
+Node { expr_data: ExprCall { func: "foo" }, children: [
+  Node { name: "x", children: [expr1] },   // arg node
+  Node { name: "y", children: [expr2] },   // arg node
+]}
+```
+
+For positional (unnamed) args, the wrapper Node has an empty name.
+Variable-length argument lists fall out naturally: the call node has
+N arg-children. Whether the callee accepts fixed or variable arity is
+a fact on the function's param list, not the call site. The call site
+is always "list of arg Nodes." Inference validates arity against the
+declaration.
+
+**Match arms are Nodes.** Each arm is a compositional Node whose
+children are `[guard?, body]` in value-position. Pattern stays as
+metadata on the arm node (pattern-position, not a value child) until
+pattern-position gets its own structural encoding. The match node's
+children are `[scrutinee, arm0, arm1, ...]`.
+
+```
+// Current (list of MatchArm structs):
+ExprMatch { scrutinee: s, arms: [
+  MatchArm { pattern: p0, guard: none, body: b0 },
+  MatchArm { pattern: p1, guard: g1,   body: b1 },
+]}
+
+// After dissolution (compositional — arms are Nodes):
+Node { expr_data: ExprMatch {}, children: [
+  s,                                          // scrutinee
+  Node { children: [b0], ... pattern p0 },    // arm 0
+  Node { children: [g1, b1], ... pattern p1 },// arm 1
+]}
+```
+
+**Record field inits are Nodes.** Same pattern as args:
+`FieldInit { name, value }` is a Node with `name` and child = value.
+
+**String interpolation parts are Nodes.** `StringPart = Text | Interpolation`
+— text parts are leaf Nodes, interpolation parts have expression children.
+
+**Layer placement:** These are Layer 4 structural compositions
+(`LabeledTree` instances), same as `Span`, `Tree`, `Annotated`. They
+use the universal Node carrier. No new types need to be invented — the
+existing Node shape with `name` + `children` is sufficient.
+
+```
+Layer 4 additions (expression composition shapes):
+
+  Argument<V>    = { name: String?, value: V }
+                   → Node { name: arg_name, children: [value_expr] }
+
+  MatchArm<P,V>  = { pattern: P, guard: V?, body: V }
+                   → Node { pattern: P, children: [guard?, body] }
+
+  FieldInit<V>   = { name: String, value: V }
+                   → Node { name: field_name, children: [value_expr] }
+```
+
+The compiler processes these as Nodes with children. Walkers recurse
+into `node.children` uniformly. The ExprData tag identifies the
+expression kind; `node.children` holds the compositional operands.
+
+#### What stays in ExprData (operator metadata)
+
+ExprData retains the non-Node metadata that identifies the expression
+kind and carries role-specific data. After dissolution, ExprData
+becomes an operator tag with metadata — not a container of children.
+
+```
+ExprCall.func: String              → stays (operator identity)
 ExprCall.call_semantics            → stays
 ExprMethodCall.method: String      → stays
 ExprMethodCall.method_semantics    → stays
@@ -2306,64 +2346,111 @@ ExprBinOp.op: BinOpKind           → stays
 ExprUnaryOp.op: UnaryOpKind       → stays
 ExprLet.name: String              → stays
 ExprForEach.variable: String      → stays
-ExprCast.target: Node             → stays for now (type position, not a value child)
+ExprCast.target: Node             → stays (type position, not value)
 ExprRecordLit.type_name           → stays
-ExprLambda.params                 → stays (binding-site descriptors; may include type-position nodes)
+ExprLambda.params                 → stays (binding-site descriptors)
 ExprLambda.semantics              → stays
-MatchArm.pattern                  → stays (pattern position, not a value child)
-NamedArg.name                     → stays (arg name is metadata on the child)
 ```
 
-**Positional semantics:** After dissolution, child positions are
-meaningful. `ExprIf` children are `[condition, then, else]` by
-position — child 0 is condition, child 1 is then-branch, child 2 is
-else-branch. The ExprData tag identifies the expression kind;
-`node.children` holds the value-position operands in declared order.
-Type-position, pattern-position, and binding-site data may still live
-beside that list without implying separate ontologies. This is the same
-uniform-carrier model used elsewhere in the graph.
+All Node-valued fields (children, operands, bodies, values) move to
+`node.children`. ExprData shrinks to pure metadata per expression kind.
 
-**Named arg threading:** `ExprCall` and `ExprMethodCall` have
-`args: List<NamedArg>` where each arg has `name: String?` and
-`value: Node`. After dissolution, the child Nodes are the arg values;
-the arg names become properties on the children (or on the parent via
-a parallel name list). Design decision for P5.11.
+#### Per-variant child layout (after dissolution)
 
-**Match arm threading:** `ExprMatch` has `arms: List<MatchArm>` where
-each arm has `pattern`, `guard`, and `body`. The child Nodes are
-scrutinee + arm bodies (+ guards). Patterns stay in ExprData. Design
-decision: encode arm structure as a property or flatten into children
-with a position convention.
+| Variant | node.children | ExprData retains |
+|---------|--------------|-----------------|
+| ExprCall | [arg0_node, arg1_node, ...] | func, call_semantics |
+| ExprMethodCall | [receiver, arg0_node, ...] | method, method_semantics |
+| ExprMatch | [scrutinee, arm0_node, arm1_node, ...] | (empty) |
+| ExprFieldAccess | [base] | field, summary |
+| ExprIf | [condition, then, else?] | (empty) |
+| ExprLet | [value, body?] | name |
+| ExprBinOp | [left, right] | op |
+| ExprUnaryOp | [operand] | op |
+| ExprLambda | [body] | params, semantics |
+| ExprBlock | [stmt0, stmt1, ...] | (empty) |
+| ExprCast | [expr] | target (type-position) |
+| ExprForEach | [collection, body] | variable |
+| ExprIndex | [base, index] | (empty) |
+| ExprSlice | [base, start, end] | (empty) |
+| ExprReturn | [value] | (empty) |
+| ExprRecordLit | [fi0_node, fi1_node, ...] | type_name |
+| ExprListLit | [elem0, elem1, ...] | (empty) |
+| ExprStringInterp | [part0_node, part1_node, ...] | (empty) |
+| ExprLiteral | [] | value |
+| ExprError | [] | kind, message |
+| ExprVar | [] | name, binding_kind |
+| NoExprData | (unchanged) | (unchanged) |
 
-**Migration order:**
-1. Add `node.children` population alongside ExprData during parse
-   (dual-write)
-2. Migrate walkers from ExprData child reads to `node.children` reads
-   (one at a time, test after each)
-3. Remove ExprData child fields (children now live only in
-   `node.children`)
-4. Delete `expr_children`/`map_expr_children` bridge
+Note: ExprCall/ExprMethodCall children are **arg Nodes** (name + child),
+not bare value expressions. ExprMatch children after scrutinee are
+**arm Nodes** (pattern metadata + guard/body children). ExprRecordLit
+children are **field init Nodes** (name + child). Walkers that need
+the raw value expressions go one level deeper: `arg_node.children[0]`.
 
-**Dual-write invariants (steps 1-2):**
+#### Scope audit (2026-03-26)
 
-During the migration, both `ExprData` child fields and `node.children`
-exist. `node.children` is canonical. `ExprData` child fields are
+| File | Match sites | Construction sites | Impact |
+|------|------------|-------------------|--------|
+| `02_parse.dag` | 6 | 74 | All expression construction |
+| `04_infer.dag` | 8 | 43 | Type-annotated reconstruction |
+| `05_emit_rust.dag` | 43 | 1 | Rust codegen dispatch |
+| `05_emit_python.dag` | 20 | 1 | Python codegen dispatch |
+| `05_emit_go.dag` | 20 | 1 | Go codegen dispatch |
+| `05_emit.dag` | 9 | 1 | Shared emit |
+| `04_service.dag` | 6 | 0 | Service call detection |
+| `ownership.dag` | 4 | 0 | Usage tracking |
+| `complexity.dag` | 4 | 0 | Cost analysis |
+| `04_resolve.dag` | 1 | 16 | Name resolution |
+| `00_core.dag` | 5 | 4 | Bridge functions |
+| Others | 3 | 0 | sigs, patterns, compile |
+| **Total** | **~129** | **~141** | |
+
+v1 interpreter is independent — no impact.
+
+#### Migration order
+
+1. **Define arg/arm/field-init Node constructors** in `00_core.dag`.
+   Helper functions that produce compositional wrapper Nodes:
+   `make_arg_node(name, value) -> Node`,
+   `make_arm_node(pattern, guard, body) -> Node`,
+   `make_field_init_node(name, value) -> Node`.
+
+2. **Dual-write in parser.** Update `make_expr_node` to populate
+   `node.children` using the new constructors alongside ExprData.
+   Invariant: `expr_children(node) == node.children` for every
+   expression node.
+
+3. **Migrate walkers** from ExprData child reads to `node.children`
+   reads (one at a time, test after each). Priority order:
+   - Structural walkers first (service, ownership, complexity — they
+     already use `expr_children` or do simple recursion)
+   - Emit walkers second (semantic-specific, need careful child access)
+   - Infer walkers last (reconstruct nodes, most complex)
+
+4. **Remove ExprData child fields.** Children live only in
+   `node.children`. ExprData becomes pure operator metadata.
+
+5. **Delete bridge.** `expr_children`/`map_expr_children` no longer
+   needed — walkers use `node.children` directly.
+
+#### Dual-write invariants (steps 2-3)
+
+During migration, both ExprData child fields and `node.children`
+exist. `node.children` is canonical. ExprData child fields are
 compatibility mirrors only. All constructors and rewrites must go
 through `make_expr_node` / `map_expr_children`. No pass may directly
 mutate expression child fields after the dual-write begins.
 
-Test invariants for the dual-write phase:
+Test invariants:
 - `expr_children(node) == node.children` for every expression node
 - `map_expr_children(node, identity) == node`
-- Child count is stable per variant (matches the role table above)
+- Child count is stable per variant (matches the layout table above)
 
-**Prerequisite:** Shared emit (Phase 4) should be stable before P5.11
-starts. Dissolving ExprData children changes what shared emit
-dispatches on. If shared emit is still being extracted when P5.11
-lands, the extraction must be redone.
+#### Verification
 
-**Verification:** All existing tests + diagnostic ratchet + stage0
-self-compile + fixed point + dual-write invariant tests.
+All existing tests + diagnostic ratchet + stage0 self-compile +
+fixed point + dual-write invariant tests.
 
 ### P5.0 Design: Token Shape API
 
