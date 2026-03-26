@@ -966,13 +966,28 @@ fn keyword_to_name(tokens: List<Token>, state: ParserState) -> String? {
   let tok = peek(tokens: tokens, state: state)
   match tok {
     Some { value: t } => {
-      if is_keyword_shape(shape: t.shape) {
+      if is_name_keyword_shape(shape: t.shape) {
         Some { value: t.text }
       } else {
         none
       }
     }
     None => none
+  }
+}
+
+// Keywords that are valid as names (field names, type names).
+// Excludes literal keywords (true, false, none) and resource lifecycle keywords.
+fn is_name_keyword_shape(shape: TokenShape) -> Bool {
+  match shape {
+    ShKwModule => true  ShKwImport => true  ShKwType => true  ShKwFn => true  ShKwFunc => true
+    ShKwService => true  ShKwResource => true  ShKwData => true  ShKwExtern => true
+    ShKwInterface => true  ShKwPipeline => true  ShKwProfile => true  ShKwPattern => true
+    ShKwLet => true  ShKwReturn => true  ShKwMatch => true  ShKwIf => true  ShKwElse => true
+    ShKwFor => true  ShKwIn => true  ShKwWhere => true  ShKwWith => true
+    ShKwCapability => true  ShKwOperation => true  ShKwInput => true  ShKwOutput => true
+    ShKwIdempotent => true  ShKwReadonly => true  ShKwHermetic => true
+    _ => false
   }
 }
 

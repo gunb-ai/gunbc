@@ -2523,7 +2523,7 @@ pub fn keyword_to_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Op
     match tok.as_ref().map(|__rc| __rc.as_ref()) {
     Some(t) => {
         let t = Rc::new(t.clone());
-        if is_keyword_shape(t.shape.clone()) {
+        if is_name_keyword_shape(t.shape.clone()) {
     Some(t.text.clone())
 } else {
     None
@@ -2531,6 +2531,101 @@ pub fn keyword_to_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Op
     }
     None => {
         None
+    }
+}
+}
+
+pub fn is_name_keyword_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwModule => {
+        true
+    }
+    TokenShape::ShKwImport => {
+        true
+    }
+    TokenShape::ShKwType => {
+        true
+    }
+    TokenShape::ShKwFn => {
+        true
+    }
+    TokenShape::ShKwFunc => {
+        true
+    }
+    TokenShape::ShKwService => {
+        true
+    }
+    TokenShape::ShKwResource => {
+        true
+    }
+    TokenShape::ShKwData => {
+        true
+    }
+    TokenShape::ShKwExtern => {
+        true
+    }
+    TokenShape::ShKwInterface => {
+        true
+    }
+    TokenShape::ShKwPipeline => {
+        true
+    }
+    TokenShape::ShKwProfile => {
+        true
+    }
+    TokenShape::ShKwPattern => {
+        true
+    }
+    TokenShape::ShKwLet => {
+        true
+    }
+    TokenShape::ShKwReturn => {
+        true
+    }
+    TokenShape::ShKwMatch => {
+        true
+    }
+    TokenShape::ShKwIf => {
+        true
+    }
+    TokenShape::ShKwElse => {
+        true
+    }
+    TokenShape::ShKwFor => {
+        true
+    }
+    TokenShape::ShKwIn => {
+        true
+    }
+    TokenShape::ShKwWhere => {
+        true
+    }
+    TokenShape::ShKwWith => {
+        true
+    }
+    TokenShape::ShKwCapability => {
+        true
+    }
+    TokenShape::ShKwOperation => {
+        true
+    }
+    TokenShape::ShKwInput => {
+        true
+    }
+    TokenShape::ShKwOutput => {
+        true
+    }
+    TokenShape::ShKwIdempotent => {
+        true
+    }
+    TokenShape::ShKwReadonly => {
+        true
+    }
+    TokenShape::ShKwHermetic => {
+        true
+    }
+    _ => {
+        false
     }
 }
 }

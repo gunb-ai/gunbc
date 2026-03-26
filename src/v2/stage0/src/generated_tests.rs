@@ -4303,13 +4303,28 @@ fn keyword_to_name(tokens: List<Token>, state: ParserState) -> String? {
   let tok = peek(tokens: tokens, state: state)
   match tok {
     Some { value: t } => {
-      if is_keyword_shape(shape: t.shape) {
+      if is_name_keyword_shape(shape: t.shape) {
         Some { value: t.text }
       } else {
         none
       }
     }
     None => none
+  }
+}
+
+// Keywords that are valid as names (field names, type names).
+// Excludes literal keywords (true, false, none) and resource lifecycle keywords.
+fn is_name_keyword_shape(shape: TokenShape) -> Bool {
+  match shape {
+    ShKwModule => true  ShKwImport => true  ShKwType => true  ShKwFn => true  ShKwFunc => true
+    ShKwService => true  ShKwResource => true  ShKwData => true  ShKwExtern => true
+    ShKwInterface => true  ShKwPipeline => true  ShKwProfile => true  ShKwPattern => true
+    ShKwLet => true  ShKwReturn => true  ShKwMatch => true  ShKwIf => true  ShKwElse => true
+    ShKwFor => true  ShKwIn => true  ShKwWhere => true  ShKwWith => true
+    ShKwCapability => true  ShKwOperation => true  ShKwInput => true  ShKwOutput => true
+    ShKwIdempotent => true  ShKwReadonly => true  ShKwHermetic => true
+    _ => false
   }
 }
 
@@ -12537,6 +12552,7 @@ module v2.compiler.infer_resolve
 import std.types { SourceSpan }
 import v2.std.core {
   Node, Field, Param,
+  NodeType, Typed, InferError, Untyped, rt_node,
   InferredNode, Resolved, CompilerError,
   Diagnostic, Severity, Error,
   Cardinality, Required, CardOptional,
@@ -13953,7 +13969,14 @@ fn node_is_bridge_dynamic_name(n: Node) -> Bool {
 // =========================================================================
 
 fn node_is_container(n: Node) -> Bool {
-  n.collection_kind != none
+  // Container = List, Set, NonEmptyList, NonEmptySet (NOT Map — handled by node_is_map)
+  match n.collection_kind {
+    Some { value: ListKind } => true
+    Some { value: SetKind } => true
+    Some { value: NonEmptyListKind } => true
+    Some { value: NonEmptySetKind } => true
+    _ => false
+  }
 }
 
 fn node_is_optional(n: Node) -> Bool {

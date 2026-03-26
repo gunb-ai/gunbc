@@ -100,7 +100,23 @@ pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_container(n: Rc<Node>) -> bool {
-    n.collection_kind.clone().is_some()
+    match n.collection_kind.clone() {
+    Some(CollectionKind::ListKind) => {
+        true
+    }
+    Some(CollectionKind::SetKind) => {
+        true
+    }
+    Some(CollectionKind::NonEmptyListKind) => {
+        true
+    }
+    Some(CollectionKind::NonEmptySetKind) => {
+        true
+    }
+    _ => {
+        false
+    }
+}
 }
 
 pub fn node_is_optional(n: Rc<Node>) -> bool {

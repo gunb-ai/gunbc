@@ -119,7 +119,14 @@ fn node_is_bridge_dynamic_name(n: Node) -> Bool {
 // =========================================================================
 
 fn node_is_container(n: Node) -> Bool {
-  n.collection_kind != none
+  // Container = List, Set, NonEmptyList, NonEmptySet (NOT Map — handled by node_is_map)
+  match n.collection_kind {
+    Some { value: ListKind } => true
+    Some { value: SetKind } => true
+    Some { value: NonEmptyListKind } => true
+    Some { value: NonEmptySetKind } => true
+    _ => false
+  }
 }
 
 fn node_is_optional(n: Node) -> Bool {
