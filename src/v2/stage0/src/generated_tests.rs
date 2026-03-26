@@ -9108,6 +9108,7 @@ import v2.std.core {
   NodeType, Typed, InferError, Untyped,
   expr_children,
   Cardinality, Required, CardOptional,
+  CollectionKind, ListKind, SetKind, MapKind,
   Diagnostic, Severity, Warning,
   ResourceUse,
   ServiceConfig,
@@ -9154,7 +9155,7 @@ import v2.compiler.infer_types {
   container_node,
   map_node, bare_map_node,
   tuple_node, callable_node, callable_return_type,
-  error_type_node,
+  error_type_node, collection_kind_for_name,
   node_is_container, node_is_optional, node_is_map,
   node_is_leaf, node_is_named_ref,
   node_is_product, node_is_coproduct, node_has_structure,
@@ -11735,6 +11736,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       resolved: leaf_node(name: name)
     })
   )
+
   // Register Optional as a Disj type so lookup_type("Optional") succeeds.
   // The real Optional is parametric (Optional<T>), but the kernel provides
   // the structural skeleton (Disj with Some/None variants) so that
@@ -11868,6 +11870,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: leaf_node(name: name) })
   )
+
   // Dynamic audit: correct -- Some.value is parametric; T is unknown until use-site specialization
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, collection_kind: none, params: [], return_type: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }

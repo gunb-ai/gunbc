@@ -625,6 +625,33 @@ fn scrambled_name_inference_map_types() {
     );
 }
 
+#[test]
+fn scrambled_name_inference_with_match() {
+    // Tests that pattern matching on coproducts produces identical structural
+    // output when type names are scrambled — exercises the Error cascade and
+    // variant lookup paths.
+    let source_a = "module test\ntype Shape = Circle { radius: Int } | Square { side: Int }\nfn area(s: Shape) -> Int {\n  match s { Circle { radius: r } => r * r  Square { side: s } => s * s }\n}\n";
+    let source_b = "module test\ntype Form = Circle { radius: Int } | Square { side: Int }\nfn area(s: Form) -> Int {\n  match s { Circle { radius: r } => r * r  Square { side: s } => s * s }\n}\n";
+    assert_scrambled_equivalent(
+        source_a, source_b,
+        &[("Shape", "Form")],
+        "coproduct match with field bindings",
+    );
+}
+
+#[test]
+fn scrambled_name_inference_optional_match() {
+    // Tests Optional pattern matching — exercises the Error/Dynamic cascade
+    // suppression paths through synthesize_optional_some_variant.
+    let source_a = "module test\ntype Config { value: Int? }\nfn get_value(c: Config) -> Int {\n  match c.value { Some { value: v } => v  None => 0 }\n}\n";
+    let source_b = "module test\ntype Settings { value: Int? }\nfn get_value(c: Settings) -> Int {\n  match c.value { Some { value: v } => v  None => 0 }\n}\n";
+    assert_scrambled_equivalent(
+        source_a, source_b,
+        &[("Config", "Settings")],
+        "optional match on renamed type",
+    );
+}
+
 // ── Gist pipeline smoke ─────────────────────────────────────────────────
 
 #[test]
