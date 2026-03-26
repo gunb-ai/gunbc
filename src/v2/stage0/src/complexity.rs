@@ -405,6 +405,44 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport { function_summaries: Rc::new(std::collections::HashMap::new()), violations: Rc::new(Vec::new()), intern_table: empty_intern_table(), formatted: "".to_string() })
 }
 
+pub fn estimate_cost_expr_size(expr: Rc<CostExpr>, budget: i64) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if budget.clone() <= 0_i64 {
+    0_i64
+} else {
+    match expr.as_ref() {
+    CostExpr::CostConst { value: _, .. } => {
+        budget.clone() - 1_i64
+    }
+    CostExpr::CostUnknown { reason: _, .. } => {
+        budget.clone() - 1_i64
+    }
+    CostExpr::CostAdd { left: l, right: r, .. } => {
+        {
+    let next = estimate_cost_expr_size(l.clone(), budget.clone() - 1_i64);
+    estimate_cost_expr_size(r.clone(), next)
+}
+    }
+    CostExpr::CostMul { left: l, right: r, .. } => {
+        {
+    let next = estimate_cost_expr_size(l.clone(), budget.clone() - 1_i64);
+    estimate_cost_expr_size(r.clone(), next)
+}
+    }
+    CostExpr::CostMax { left: l, right: r, .. } => {
+        {
+    let next = estimate_cost_expr_size(l.clone(), budget.clone() - 1_i64);
+    estimate_cost_expr_size(r.clone(), next)
+}
+    }
+    CostExpr::CostSum { binder: _, upper: _, body: bd, .. } => {
+        estimate_cost_expr_size(bd.clone(), budget.clone() - 1_i64)
+    }
+}
+}
+    })
+}
+
 pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match expr.as_ref() {
@@ -514,6 +552,14 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     }
 }
     })
+}
+
+pub fn maybe_simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
+    if estimate_cost_expr_size(expr.clone(), 1024_i64) <= 0_i64 {
+    expr.clone()
+} else {
+    simplify_cost(expr.clone())
+}
 }
 
 pub fn format_size(size: Rc<SizeExpr>) -> String {
@@ -1223,7 +1269,7 @@ pub fn get_or_compute_summary(func_name: &str, func_index: Rc<HashMap<String, Rc
     let placeholder = Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("computing: ".to_string(), func_name.to_string()) }), span: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("computing: ".to_string(), func_name.to_string()) }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Unknown });
     let table_with_placeholder = cache_summary(table.clone(), &func_name, placeholder.clone());
     let result = cost_of_expr(entry.body.clone(), func_index.clone(), table_with_placeholder.clone());
-    let simplified = Rc::new(ComplexitySummary { work: simplify_cost(result.summary.work.clone()), span: simplify_cost(result.summary.span.clone()), output_size: result.summary.output_size.clone(), certainty: result.summary.certainty.clone() });
+    let simplified = Rc::new(ComplexitySummary { work: maybe_simplify_cost(result.summary.work.clone()), span: maybe_simplify_cost(result.summary.span.clone()), output_size: result.summary.output_size.clone(), certainty: result.summary.certainty.clone() });
     let final_table = cache_summary(result.table.clone(), &func_name, simplified.clone());
     Rc::new(SummaryResult { summary: simplified.clone(), table: final_table.clone() })
 }
@@ -1315,7 +1361,17 @@ pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Compl
     }
     Rc::new(__mapped_8)
 };
-    let formatted = format_complexity_report(func_entries.clone(), summaries_map.clone());
-    Rc::new(ComplexityReport { function_summaries: summaries_map.clone(), violations: violations.clone(), intern_table: result.table.clone(), formatted })
+    let formatted = if ({
+    let __len_12 = func_entries.clone().len();
+    __len_12 as i64
+}) > 200_i64 {
+    v2_rt::concat(v2_rt::concat("complexity report omitted for ".to_string(), v2_rt::to_string({
+    let __len_11 = func_entries.clone().len();
+    __len_11 as i64
+})), " functions".to_string())
+} else {
+    format_complexity_report(func_entries.clone(), summaries_map.clone())
+};
+    Rc::new(ComplexityReport { function_summaries: summaries_map.clone(), violations: violations.clone(), intern_table: result.table.clone(), formatted: formatted.clone() })
 }
 

@@ -8768,9 +8768,12 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
+fn normalize_emit_type_name(type_name: String) -> String {
+  normalize_type_name(name: type_name)
+}
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, type_name)
+  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
 }
 
 // =========================================================================
@@ -8882,16 +8885,17 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   if node_has_structure(n: item) == false || item.transport != none {
     return none
   }
+  let item_name = normalize_emit_type_name(type_name: item.name)
   if node_is_product(n: item) {
     Some { value: TypeSummary {
-      name: item.name,
+      name: item_name,
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(children: item.children)
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
     Some { value: TypeSummary {
-      name: item.name,
+      name: item_name,
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children)
     } }
@@ -8907,8 +8911,9 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
-              map_insert(acc, variant.name, TypeSummary {
-                name: variant.name,
+              let variant_name = normalize_emit_type_name(type_name: variant.name)
+              map_insert(acc, variant_name, TypeSummary {
+                name: variant_name,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(children: variant.children)
               })
@@ -8950,7 +8955,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
           fold(item.children, init: state.field_type_names, f: (acc, child) =>
             match child.return_type {
               Some { value: Resolved { node: ft } } =>
-                let resolved_name = normalize_access_type_node(n: ft).name
+                let resolved_name = normalize_emit_type_name(type_name: normalize_access_type_node(n: ft).name)
                 if resolved_name != "" && resolved_name != "Dynamic" {
                   map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
                 } else { acc }
@@ -8962,9 +8967,10 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             fold(variant.children, init: acc, f: (inner_acc, child) =>
               match child.return_type {
                 Some { value: Resolved { node: ft } } =>
-                  let resolved_name = normalize_access_type_node(n: ft).name
+                  let variant_name = normalize_emit_type_name(type_name: variant.name)
+                  let resolved_name = normalize_emit_type_name(type_name: normalize_access_type_node(n: ft).name)
                   if resolved_name != "" && resolved_name != "Dynamic" {
-                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
+                    map_insert(inner_acc, concat(variant_name, "|", child.name), resolved_name)
                   } else { inner_acc }
                 _ => inner_acc
               }
@@ -18533,7 +18539,7 @@ import v2.compiler.infer {
 }
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary
+  normalize_emit_type_name, lookup_emit_type_summary
 }
 
 import v2.compiler.emit {
@@ -21107,7 +21113,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               // This handles cases where resolved_type is a leaf node without children
               // (e.g., Token struct where resolved_type has name "Token" but no field defs).
               if struct_node.name != "" {
-                let ftn_key = concat(struct_node.name, "|", field_name)
+                let ftn_key = concat(normalize_emit_type_name(type_name: struct_node.name), "|", field_name)
                 map_get(emit_info.field_type_names, ftn_key)
               } else { none }
           }
@@ -23784,6 +23790,27 @@ fn empty_complexity_report() -> ComplexityReport {
 // caching so the stored CostExpr trees are compact.
 // =========================================================================
 
+fn estimate_cost_expr_size(expr: CostExpr, budget: Int) -> Int {
+  if budget <= 0 { 0 }
+  else {
+    match expr {
+      CostConst { value: _ } => budget - 1
+      CostUnknown { reason: _ } => budget - 1
+      CostAdd { left: l, right: r } =>
+        let next = estimate_cost_expr_size(expr: l, budget: budget - 1)
+        estimate_cost_expr_size(expr: r, budget: next)
+      CostMul { left: l, right: r } =>
+        let next = estimate_cost_expr_size(expr: l, budget: budget - 1)
+        estimate_cost_expr_size(expr: r, budget: next)
+      CostMax { left: l, right: r } =>
+        let next = estimate_cost_expr_size(expr: l, budget: budget - 1)
+        estimate_cost_expr_size(expr: r, budget: next)
+      CostSum { binder: _, upper: _, body: bd } =>
+        estimate_cost_expr_size(expr: bd, budget: budget - 1)
+    }
+  }
+}
+
 fn simplify_cost(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: _ } => expr
@@ -23834,6 +23861,14 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
         CostConst { value: 0 } => CostConst { value: 0 }
         _ => CostSum { binder: b, upper: u, body: sbd }
       }
+  }
+}
+
+fn maybe_simplify_cost(expr: CostExpr) -> CostExpr {
+  if estimate_cost_expr_size(expr: expr, budget: 1024) <= 0 {
+    expr
+  } else {
+    simplify_cost(expr: expr)
   }
 }
 
@@ -24546,8 +24581,8 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
             // Simplify and cache the real summary
             let simplified = ComplexitySummary {
-              work: simplify_cost(expr: result.summary.work),
-              span: simplify_cost(expr: result.summary.span),
+              work: maybe_simplify_cost(expr: result.summary.work),
+              span: maybe_simplify_cost(expr: result.summary.span),
               output_size: result.summary.output_size,
               certainty: result.summary.certainty
             }
@@ -24626,7 +24661,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }
     }
   )
-  let formatted = format_complexity_report(entries: func_entries, summaries: summaries_map)
+  let formatted = if func_entries |> count > 200 {
+    concat("complexity report omitted for ", to_string(func_entries |> count), " functions")
+  } else {
+    format_complexity_report(entries: func_entries, summaries: summaries_map)
+  }
   ComplexityReport {
     function_summaries: summaries_map,
     violations: violations,
@@ -26157,7 +26196,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         // Prevent silent type size regressions in generated v2 types.
         // These bounds assume Node.transport and Node.config are boxed (R2).
         let node_size = std::mem::size_of::<crate::v2_core::Node>();
-        let expr_size = std::mem::size_of::<crate::v2_core::ExprData>();
+        let expr_size = std::mem::size_of::<crate::v2_core::Expr>();
         assert!(
             node_size <= 176,
             "Node size regression: {} bytes (limit: 176). Check for unboxed rare fields.",
@@ -26405,7 +26444,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
-                let typed = crate::infer::reconcile(graph);
+                let typed = crate::reconcile::reconcile(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
                     .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
@@ -26528,7 +26567,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer_items::TypedModule>>::new();
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::reconcile::TypedModule>>::new();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -26542,7 +26581,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
-                    let _unres = crate::infer::build_type_env_unresolved(
+                    let _unres = crate::reconcile::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -26559,7 +26598,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
-                    let env_result = crate::infer::build_type_env(
+                    let env_result = crate::reconcile::build_type_env(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -26583,7 +26622,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 2: full typecheck_module
                     let t_full = Instant::now();
-                    let tc_result = crate::infer::typecheck_module(
+                    let tc_result = crate::reconcile::typecheck_module(
                         resolved.clone(),
                         module_index
                     );

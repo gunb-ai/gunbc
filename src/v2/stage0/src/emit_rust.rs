@@ -4714,7 +4714,7 @@ pub fn emit_field_value_with_context(field_value: Rc<Node>, struct_node: Rc<Node
     }
     None => {
         if struct_node.name.clone() != "" {
-    let ftn_key = v2_rt::concat(v2_rt::concat(struct_node.name.clone(), "|".to_string()), field_name.to_string());
+    let ftn_key = v2_rt::concat(v2_rt::concat(normalize_emit_type_name(&struct_node.name), "|".to_string()), field_name.to_string());
     emit_info.field_type_names.clone().get(&ftn_key.clone()).cloned()
 } else {
     None

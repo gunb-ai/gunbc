@@ -98,7 +98,7 @@ import v2.compiler.infer {
 }
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary
+  normalize_emit_type_name, lookup_emit_type_summary
 }
 
 import v2.compiler.emit {
@@ -2672,7 +2672,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               // This handles cases where resolved_type is a leaf node without children
               // (e.g., Token struct where resolved_type has name "Token" but no field defs).
               if struct_node.name != "" {
-                let ftn_key = concat(struct_node.name, "|", field_name)
+                let ftn_key = concat(normalize_emit_type_name(type_name: struct_node.name), "|", field_name)
                 map_get(emit_info.field_type_names, ftn_key)
               } else { none }
           }

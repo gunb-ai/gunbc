@@ -410,27 +410,103 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
     assert!(result.ownership.is_empty(), "ownership should be empty on parse error");
 }
 
-// ── Scrambled name inference tests ──────────────────────────────────────
+// ── Scrambled name inference tests (P5.6 — L1=0 gate) ───────────────────
+//
+// The L1=0 property: inference produces identical structural results
+// regardless of type names. These tests compile the same program twice
+// with different type names, normalize the emitted code by replacing
+// user names with canonical placeholders, and compare. If the outputs
+// differ, inference is making name-dependent decisions.
 
-#[test]
-fn scrambled_name_inference_smoke() {
-    let source_a = "module test\ntype Foo { x: Int }\ntype Bar { name: String }\nfn make_foo() -> Foo { Foo { x: 1 } }\nfn get_name(b: Bar) -> String { b.name }\n";
-    let source_b = "module test\ntype Zqx { x: Int }\ntype Wmn { name: String }\nfn make_foo() -> Zqx { Zqx { x: 1 } }\nfn get_name(b: Wmn) -> String { b.name }\n";
+fn normalize_emitted_code(code: &str, name_map: &[(&str, &str)]) -> String {
+    let mut result = code.to_string();
+    for (i, (original, _scrambled)) in name_map.iter().enumerate() {
+        result = result.replace(original, &format!("__T{i}"));
+    }
+    result
+}
+
+fn normalize_emitted_code_b(code: &str, name_map: &[(&str, &str)]) -> String {
+    let mut result = code.to_string();
+    for (i, (_original, scrambled)) in name_map.iter().enumerate() {
+        result = result.replace(scrambled, &format!("__T{i}"));
+    }
+    result
+}
+
+fn assert_scrambled_equivalent(
+    source_a: &str,
+    source_b: &str,
+    name_map: &[(&str, &str)],
+    label: &str,
+) {
     let result_a = compile_dag(source_a);
     let result_b = compile_dag(source_b);
+
+    // Diagnostic counts must match
     let diags_a = diagnostic_messages(&result_a);
     let diags_b = diagnostic_messages(&result_b);
     assert_eq!(
-        diags_a.len(),
-        diags_b.len(),
-        "diagnostic counts should be equal (name-independent inference)\n  A: {:?}\n  B: {:?}",
-        diags_a,
-        diags_b
+        diags_a.len(), diags_b.len(),
+        "[{label}] diagnostic counts differ (name-dependent inference)\n  A: {diags_a:?}\n  B: {diags_b:?}"
     );
+
+    // File counts must match
     assert_eq!(
-        result_a.files.len(),
-        result_b.files.len(),
-        "emitted file counts should be equal"
+        result_a.files.len(), result_b.files.len(),
+        "[{label}] emitted file counts differ"
+    );
+
+    // Structural comparison: normalize names in emitted code and compare
+    let mut files_a: Vec<_> = result_a.files.iter()
+        .map(|f| (f.path.clone(), normalize_emitted_code(&f.content, name_map)))
+        .collect();
+    let mut files_b: Vec<_> = result_b.files.iter()
+        .map(|f| (f.path.clone(), normalize_emitted_code_b(&f.content, name_map)))
+        .collect();
+    files_a.sort_by(|a, b| a.0.cmp(&b.0));
+    files_b.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (fa, fb) in files_a.iter().zip(files_b.iter()) {
+        if fa.1 != fb.1 {
+            // Find first divergence line for better diagnostics
+            let lines_a: Vec<_> = fa.1.lines().collect();
+            let lines_b: Vec<_> = fb.1.lines().collect();
+            for (i, (la, lb)) in lines_a.iter().zip(lines_b.iter()).enumerate() {
+                if la != lb {
+                    panic!(
+                        "[{label}] structural divergence in {} at line {}:\n  A: {}\n  B: {}",
+                        fa.0, i + 1, la, lb
+                    );
+                }
+            }
+            if lines_a.len() != lines_b.len() {
+                panic!(
+                    "[{label}] {} has {} lines in A vs {} in B",
+                    fa.0, lines_a.len(), lines_b.len()
+                );
+            }
+        }
+    }
+
+    // Complexity violation counts must match
+    assert_eq!(
+        result_a.complexity.violations.len(),
+        result_b.complexity.violations.len(),
+        "[{label}] complexity violation counts differ"
+    );
+}
+
+#[test]
+fn scrambled_name_inference_smoke() {
+    // Compile same program with different type names — inference should
+    // produce structurally identical output (the L1=0 property).
+    let source_a = "module test\ntype Foo { x: Int }\ntype Bar { name: String }\nfn make_foo() -> Foo { Foo { x: 1 } }\nfn get_name(b: Bar) -> String { b.name }\n";
+    let source_b = "module test\ntype Zqx { x: Int }\ntype Wmn { name: String }\nfn make_foo() -> Zqx { Zqx { x: 1 } }\nfn get_name(b: Wmn) -> String { b.name }\n";
+    assert_scrambled_equivalent(
+        source_a, source_b,
+        &[("Foo", "Zqx"), ("Bar", "Wmn")],
+        "simple structs",
     );
 }
 
@@ -438,21 +514,43 @@ fn scrambled_name_inference_smoke() {
 fn scrambled_name_inference_containers() {
     let source_a = "module test\ntype Coord { x: Int  y: Int }\ntype Path { points: List<Coord> }\nfn empty_path() -> Path { Path { points: [] } }\n";
     let source_b = "module test\ntype Qwz { x: Int  y: Int }\ntype Ijk { points: List<Qwz> }\nfn empty_path() -> Ijk { Ijk { points: [] } }\n";
-    let result_a = compile_dag(source_a);
-    let result_b = compile_dag(source_b);
-    let diags_a = diagnostic_messages(&result_a);
-    let diags_b = diagnostic_messages(&result_b);
-    assert_eq!(
-        diags_a.len(),
-        diags_b.len(),
-        "diagnostic counts should be equal (name-independent inference)\n  A: {:?}\n  B: {:?}",
-        diags_a,
-        diags_b
+    assert_scrambled_equivalent(
+        source_a, source_b,
+        &[("Coord", "Qwz"), ("Path", "Ijk")],
+        "container types",
     );
-    assert_eq!(
-        result_a.files.len(),
-        result_b.files.len(),
-        "emitted file counts should be equal"
+}
+
+#[test]
+fn scrambled_name_inference_enums() {
+    let source_a = "module test\ntype Color = Red | Green | Blue\nfn is_red(c: Color) -> Bool {\n  match c { Red => true  _ => false }\n}\n";
+    let source_b = "module test\ntype Shade = Red | Green | Blue\nfn is_red(c: Shade) -> Bool {\n  match c { Red => true  _ => false }\n}\n";
+    assert_scrambled_equivalent(
+        source_a, source_b,
+        &[("Color", "Shade")],
+        "coproduct types",
+    );
+}
+
+#[test]
+fn scrambled_name_inference_field_access() {
+    let source_a = "module test\ntype Config { retries: Int  name: String }\nfn get_retries(c: Config) -> Int { c.retries }\nfn get_name(c: Config) -> String { c.name }\n";
+    let source_b = "module test\ntype Xyzzy { retries: Int  name: String }\nfn get_retries(c: Xyzzy) -> Int { c.retries }\nfn get_name(c: Xyzzy) -> String { c.name }\n";
+    assert_scrambled_equivalent(
+        source_a, source_b,
+        &[("Config", "Xyzzy")],
+        "field access on renamed type",
+    );
+}
+
+#[test]
+fn scrambled_name_inference_map_types() {
+    let source_a = "module test\ntype Registry { entries: Map<String, Int> }\nfn lookup(r: Registry, key: String) -> Int? { map_get(r.entries, key) }\n";
+    let source_b = "module test\ntype Catalog { entries: Map<String, Int> }\nfn lookup(r: Catalog, key: String) -> Int? { map_get(r.entries, key) }\n";
+    assert_scrambled_equivalent(
+        source_a, source_b,
+        &[("Registry", "Catalog")],
+        "map-typed fields",
     );
 }
 
