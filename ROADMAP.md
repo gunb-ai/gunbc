@@ -886,6 +886,7 @@ knowledge that the roadmap is actively dissolving.
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
 | `expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~210 lines of boilerplate across 4 manual ExprData walks (collectors + self-call detection). `map_expr_children` has landed and now backs the remaining structural rewrites. | L2 dissolution (P5.11): when expression children move to `node.children`, `expr_children` becomes `node.children` read and is deleted. |
 | ~~Arity bridge (`parameterized_type_arity`)~~ | ~~`00_core.dag`, `04_types.dag`~~ | **Resolved.** `parameterized_type_arity` and `is_parameterized_type` deleted. Compiler reads arity from `.dag` declarations. | P3.7 done. |
+| `CollectionKind` enum | `00_core.dag`, `04_types.dag`, `04_resolve.dag` | Closed enum (`ListKind \| SetKind \| MapKind`) on Node that the compiler branches on for collection-specific behavior (indexing, iteration, method dispatch). Same class as deleted `BuiltinTypeKind`. Replaced worse string-property checks (P5.7b) but is still L1 domain knowledge. Fragile: every Node construction site must propagate the field or `node_is_map`/`node_is_container` silently fails. Mitigated by `resolve_node_bounded` entry normalization via `collection_kind_for_name`. | Delete when collection types have `.dag` method algebra declarations. The compiler queries "does this type declare an `index` method?" (structural) instead of "is this `MapKind`?" (enum). |
 
 ### L2 Bridge-Era Invariants
 
@@ -2228,9 +2229,24 @@ The `node_is_*` predicates contain two distinct invariant violations.
 
 `node_is_container` checks `properties |> any(p => p.name == "container_kind")`. Containers/maps are NOT products or coproducts — a `List<T>` is a sequential collection, not a conjunction. `connective` doesn't apply. The property string is the ONLY representation, but it's a string-keyed open set. Violates "No case enumeration for open sets."
 
-**Fix (P5.7b):** Add a typed enum field to Node: `collection_kind: CollectionKind?` where `CollectionKind = ListKind | SetKind | MapKind`. `container_node()` and `map_node()` (04_types.dag:70-87) set the enum instead of a property string. Predicate becomes `n.collection_kind != none`. ~8 constructor sites + predicate definitions + 30 container/map call sites.
+**Fix (P5.7b): DONE but creates bridge debt.** Added `collection_kind:
+CollectionKind?` field to Node. Replaces string-property checks with
+typed enum — structurally better but still L1 domain knowledge (same
+class as the deleted `BuiltinTypeKind`). The enum is fragile: every
+Node construction site must propagate the field or `node_is_map` /
+`node_is_container` silently fails. A 2026-03-26 regression proved
+this — parser-produced nodes had `collection_kind: none`, breaking
+map indexing. Mitigated by normalizing at `resolve_node_bounded` entry.
 
-**Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that touches more code and should wait for Phase 5.
+**CollectionKind is a bridge, not the endgame.** The pure Node model
+says: collection-specific behavior (indexing, iteration, membership)
+should be declared in `.dag` type definitions as method algebras. The
+compiler queries "does this type declare an `index` method?" — a
+structural graph query — instead of branching on a compiler enum.
+When that exists, `CollectionKind` deletes like `BuiltinTypeKind` did.
+See Active Temporary Bridges table.
+
+**Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that creates bridge debt with a named deletion point.
 
 #### Track D: L2 dissolution (ExprData → Node children)
 
