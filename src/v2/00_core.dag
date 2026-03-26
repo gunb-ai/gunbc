@@ -29,11 +29,9 @@ import std.types { FilePath, NonEmptyStr, SourceSpan }
 
 // Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
 // Token<Shape> = { text: String, span: SourceSpan, shape: Shape }
-//
-// During P5.1 transition, `kind: TokenKind` coexists with `shape: TokenShape`.
-// The parser migrates from kind to shape+text, then kind is deleted.
+// text carries semantic content (identifier name, literal value, keyword text).
+// shape carries payload-insensitive structural classification.
 type Token {
-  kind: TokenKind
   text: String
   span: SourceSpan
   shape: TokenShape
@@ -82,51 +80,6 @@ type TokenShape
   | ShNewline | ShEof
   | ShUnknown
 
-// TokenKind: TRANSITIONAL — will be deleted after parser migrates to TokenShape.
-type TokenKind
-  // Declaration keywords
-  = KwModule | KwImport | KwType | KwFn | KwFunc
-  | KwService | KwResource | KwData | KwExtern
-  | KwInterface | KwPipeline | KwProfile | KwPattern
-  // Control flow keywords
-  | KwLet | KwReturn | KwMatch | KwIf | KwElse
-  | KwFor | KwIn | KwWhere | KwWith
-  // Literal keywords
-  | KwTrue | KwFalse | KwNone
-  // Resource lifecycle keywords
-  | KwAcquire | KwRelease | KwCapability
-  | KwOperation | KwInput | KwOutput
-  // Modifier keywords
-  | KwIdempotent | KwReadonly | KwHermetic
-  // Paired delimiters
-  | LBrace | RBrace | LParen | RParen | LBracket | RBracket
-  // Relational / arrow
-  | Lt | Gt | Le | Ge | FatArrow | Arrow
-  // Separators
-  | Colon | Comma | Dot | DotDot
-  // Assignment / equality
-  | Eq | EqEq | Ne
-  // Arithmetic
-  | Plus | Minus | Star | Slash | Percent
-  // Logic
-  | Bang | And | Or
-  // Optionality
-  | Question | NullCoalesce
-  // Sum type separator / pipe arrow
-  | Pipe
-  | PipeArrow
-  // Values
-  | LitStr { value: String }
-  | LitInt { value: Int }
-  | LitFloat { value: String }
-  | Ident { name: String }
-  // String interpolation parts
-  | StrBegin { value: String }
-  | StrMid { value: String }
-  | StrEnd { value: String }
-  // Structure
-  | Newline | Eof
-  | Unknown { char: String }
 
 // =========================================================================
 // AST -- Abstract Syntax Tree
