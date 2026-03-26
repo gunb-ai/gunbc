@@ -261,6 +261,25 @@ fn non_string_slice_is_rejected_before_emit() {
 }
 
 #[test]
+fn optional_match_requires_none_arm() {
+    let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Some { value: value } => value\n  }\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|msg| msg.contains("non-exhaustive") && msg.contains("None")),
+        "missing None arm should produce a non-exhaustive Optional match diagnostic, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn optional_match_with_some_and_none_typechecks() {
+    let source = "module test\nfn unwrap(x: String?) -> String {\n  match x {\n    Some { value: value } => value,\n    None => \"\"\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn typecheck_rejects_cross_function_param_leak() {
     let source = "module test\nfn carries_param(ghost: Int) -> Int { ghost }\nfn uses_missing() -> Int { ghost }\n";
     let result = compile_dag(source);
@@ -327,6 +346,41 @@ fn complexity_report_formatted() {
         result.complexity.formatted.contains("constant_work: O(1)"),
         "complexity report should contain 'constant_work: O(1)', got:\n{}",
         result.complexity.formatted
+    );
+    assert!(
+        result.complexity.violations.is_empty(),
+        "well-typed simple functions should have 0 complexity violations, got {}:\n{}",
+        result.complexity.violations.len(),
+        result.complexity.formatted
+    );
+}
+
+// ── Complexity ratchet ──────────────────────────────────────────────────
+//
+// Every pipeline compilation now runs complexity analysis. This ratchet
+// asserts that the violation count for a representative multi-module
+// program stays at zero. If a change introduces a function whose cost
+// cannot be symbolically bounded, this test breaks.
+
+#[test]
+fn complexity_violation_ratchet() {
+    let source = &[
+        ("module svc\ntype Config { name: String  retries: Int }\nfn default_config() -> Config {\n  Config { name: \"default\", retries: 3 }\n}\nfn config_name(c: Config) -> String { c.name }\n",),
+        ("module coll\nfn double_all(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i * 2 })\n}\nfn total(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn head(items: List<Int>) -> Int? {\n  items |> first\n}\n",),
+    ];
+    let files: Vec<(&str, &str)> = source.iter().enumerate().map(|(i, s)| {
+        let name = if i == 0 { "svc.dag" } else { "coll.dag" };
+        (name, s.0)
+    }).collect();
+    let result = compile_multi(&files);
+    assert!(
+        result.complexity.violations.is_empty(),
+        "complexity violation ratchet: expected 0 violations, got {}:\n{}",
+        result.complexity.violations.len(),
+        result.complexity.violations.iter()
+            .map(|v| format!("  {}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }
 
@@ -499,4 +553,71 @@ fn python_emit_snake_case_functions() {
             );
         }
     }
+}
+
+// ── Self-compile complexity ratchet ─────────────────────────────────────
+//
+// Compiles all v2 .dag sources and asserts the complexity violation count
+// stays within a tracked ratchet. This catches new functions with
+// unbounded cost (CostUnknown) and prevents constant-factor regression
+// by making every new violation visible.
+//
+// To tighten: lower the ratchet after fixing violations.
+
+#[test]
+#[ignore] // ~5 min: compiles all .dag sources through the full pipeline
+fn strict_complexity_violation_count() {
+    let ws = crate::helpers::workspace_root();
+
+    // Collect .dag sources in the same order as assemble_stage0
+    let seed_files = &[
+        "dsl/std/types.dag",
+        "dsl/extdeps/languages/rust/emit.dag",
+        "dsl/extdeps/languages/python/emit.dag",
+        "dsl/extdeps/languages/go/emit.dag",
+    ];
+    let mut dag_paths: Vec<String> = seed_files.iter().map(|s| s.to_string()).collect();
+    let v2_dir = ws.join("src/v2");
+    let mut v2_files: Vec<_> = std::fs::read_dir(&v2_dir)
+        .unwrap()
+        .filter_map(|e| {
+            let e = e.ok()?;
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.ends_with(".dag") { Some(format!("src/v2/{}", name)) } else { None }
+        })
+        .collect();
+    v2_files.sort();
+    dag_paths.extend(v2_files);
+
+    let files: Vec<(String, String)> = dag_paths
+        .iter()
+        .map(|rel| {
+            let full = ws.join(rel);
+            let content = std::fs::read_to_string(&full)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
+            (rel.clone(), content)
+        })
+        .collect();
+
+    let file_refs: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let result = crate::helpers::compile_multi(&file_refs);
+
+    let violation_count = result.complexity.violations.len();
+    eprintln!(
+        "complexity: {} violations out of {} function summaries",
+        violation_count,
+        result.complexity.function_summaries.len()
+    );
+    for v in result.complexity.violations.iter().take(20) {
+        eprintln!("  {}: {}", v.func_name, v.reason);
+    }
+
+    // Ratchet: track the violation count. Lower this as violations are fixed.
+    // 2026-03-25: 2 violations out of 1169 function summaries.
+    const COMPLEXITY_RATCHET: usize = 2;
+    assert!(
+        violation_count <= COMPLEXITY_RATCHET,
+        "complexity violation count {} exceeds ratchet {}",
+        violation_count, COMPLEXITY_RATCHET
+    );
 }

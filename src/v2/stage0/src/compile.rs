@@ -3,6 +3,7 @@ use crate::tokenize::*;
 use crate::parse::*;
 use crate::resolve::*;
 use crate::normalize::*;
+use crate::infer_items::*;
 use crate::infer::*;
 use crate::emit::*;
 use crate::emit_rust::*;
@@ -1097,6 +1098,8 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
 };
     let typed = reconcile(norm.graph.clone());
     let typed_diags = typed.diagnostics.clone();
+    let func_entries = extract_func_entries(typed.clone());
+    let complexity = build_complexity_report(func_entries.clone());
     let typecheck_errors = {
     let mut __filtered_6 = Vec::new();
     for __elem_7 in typed_diags.iter().cloned() {
@@ -1110,41 +1113,32 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_8 = typecheck_errors.clone().len();
     __len_8 as i64
 }) > 0_i64 {
-    return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
-};
-    let func_entries = extract_func_entries(typed.clone());
-    let complexity = if ({
-    let __len_9 = func_entries.clone().len();
-    __len_9 as i64
-}) > 100_i64 {
-    empty_complexity_report()
-} else {
-    build_complexity_report(func_entries.clone())
+    return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity: complexity.clone(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
     let ownership = extract_ownership_proofs(typed.clone());
     let ownership_diags = ownership_diagnostics(ownership.clone());
     let artifact_plan = default_artifact_plan({
-    let mut __mapped_12 = Vec::new();
-    for __elem_13 in typed.modules.iter().cloned() {
-        __mapped_12.push(__elem_13.module.name.clone());
+    let mut __mapped_11 = Vec::new();
+    for __elem_12 in typed.modules.iter().cloned() {
+        __mapped_11.push(__elem_12.module.name.clone());
     }
-    Rc::new(__mapped_12)
+    Rc::new(__mapped_11)
 }, target);
     let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
     let emit_files = emit_result.files.clone();
     let emit_diags = emit_result.diagnostics.clone();
     let emit_errors = {
-    let mut __filtered_14 = Vec::new();
-    for __elem_15 in emit_diags.iter().cloned() {
-        if __elem_15.severity.clone() == Severity::Error {
-    __filtered_14.push(__elem_15);
+    let mut __filtered_13 = Vec::new();
+    for __elem_14 in emit_diags.iter().cloned() {
+        if __elem_14.severity.clone() == Severity::Error {
+    __filtered_13.push(__elem_14);
 };
     }
-    Rc::new(__filtered_14)
+    Rc::new(__filtered_13)
 };
     let final_files = if ({
-    let __len_16 = emit_errors.clone().len();
-    __len_16 as i64
+    let __len_15 = emit_errors.clone().len();
+    __len_15 as i64
 }) > 0_i64 {
     Rc::new(Vec::new())
 } else {

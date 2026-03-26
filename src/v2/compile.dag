@@ -17,7 +17,9 @@ import v2.std.core {
   Diagnostic, Severity, Warning, CompileResult, Error, TextFile, SourceSpan,
   Module, Import, ImportNames, Connective, Cardinality, Field, Param, ResourceUse,
   FieldAccessStyle, FieldValueShape, FieldSummary,
-  InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics,
+  InferredNode, Resolved, CompilerError,
+  VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
+  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, ServiceConfig, Node, ErrorCategory
 }
@@ -25,7 +27,8 @@ import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.normalize { normalize_graph, NormalizeResult }
-import v2.compiler.infer { reconcile, ResolvedGraph, TypedModule }
+import v2.compiler.infer_items { ResolvedGraph, TypedModule }
+import v2.compiler.infer { reconcile }
 import v2.compiler.emit { EmitResult, escape_json_string }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
@@ -776,28 +779,22 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let typed = reconcile(graph: norm.graph)
       let typed_diags = typed.diagnostics
 
+      // Stage 5: Complexity analysis.
+      // Runs before the typecheck error gate so that complexity data is
+      // always available — even when inference has false positives.
+      let func_entries = extract_func_entries(typed: typed)
+      let complexity = build_complexity_report(func_entries: func_entries)
+
       // Gate: if typecheck produced errors, do not proceed to emit.
       let typecheck_errors = typed_diags |> filter(d => d.severity == Error)
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
           diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags),
-          complexity: empty_complexity_report(),
+          complexity: complexity,
           ownership: [],
           artifact_plan: empty_artifact_plan()
         }
-      }
-
-      // Stage 5: Complexity analysis.
-      // The intern table in build_complexity_report deep-clones O(N²) data
-      // when compiled to Rc-based Rust. Safe for small modules but OOMs on
-      // the full 860+ function compiler. Guard on function count until the
-      // table switches to RefCell or arena allocation.
-      let func_entries = extract_func_entries(typed: typed)
-      let complexity = if func_entries |> count > 100 {
-        empty_complexity_report()
-      } else {
-        build_complexity_report(func_entries: func_entries)
       }
 
       // Stage 6: Ownership analysis.

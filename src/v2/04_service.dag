@@ -1,0 +1,225 @@
+// Service call analysis -- pure graph walks for detecting and expanding
+// service dependencies in typed expression trees.
+//
+// Dependency chain:
+//   v2.std.core, v2.compiler.infer_types, v2.compiler.infer_items
+//     -> v2.compiler.infer_service (this file)
+//       -> v2.compiler.infer (expression inference)
+
+module v2.compiler.infer_service
+
+import std.types { SourceSpan }
+import v2.std.core {
+  Node, Param, Field,
+  Connective, Conj,
+  ExprData, NoExprData,
+  ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
+  Cardinality, Required,
+  InferredNode, Resolved,
+  expr_children
+}
+import v2.compiler.infer_types {
+  leaf_node, no_span, node_has_structure,
+  emit_map_has
+}
+import v2.compiler.infer_items {
+  ItemInfo, ItemKind, FuncItem, TypedModule,
+  return_type_to_outputs
+}
+
+// =========================================================================
+// Types
+// =========================================================================
+
+// Accumulator for map-based deduplication.
+type UniqueAccum {
+  seen: Map<String, Bool>
+  result: List<String>
+}
+
+// Lightweight operation entry for the service registry.
+type OpEntry {
+  name: String
+  outputs: List<Field>
+  params: List<Param>
+}
+
+type ServiceMethodResult {
+  result_type: Node
+  op_params: List<Param>
+}
+
+// =========================================================================
+// Typed-receiver service call detection
+// =========================================================================
+
+fn is_typed_service_call_receiver(receiver: Node) -> Bool {
+  match receiver.expr_data {
+    ExprFieldAccess { base: b, field: f, summary: _ } =>
+      match b.expr_data {
+        ExprVar { name: _, binding_kind: _ } => {
+          match f |> chars |> first {
+            Some { value: ch } => ch >= "A" && ch <= "Z"
+            None => false
+          }
+        }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn extract_typed_service_name(receiver: Node) -> String? {
+  match receiver.expr_data {
+    ExprFieldAccess { base: b, field: f, summary: _ } =>
+      match b.expr_data {
+        ExprVar { name: ns, binding_kind: _ } => Some { value: concat(ns, ".", f) }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn collect_typed_service_calls(texpr: Node) -> List<String> {
+  let result = collect_typed_service_calls_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
+  result.result
+}
+
+fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
+  // Per-node logic: detect service method calls on typed receivers.
+  let this_acc = match texpr.expr_data {
+    ExprMethodCall { receiver: r, method: _, args: _, method_semantics: _ } =>
+      if is_typed_service_call_receiver(receiver: r) {
+        match extract_typed_service_name(receiver: r) {
+          Some { value: service_name } =>
+            if emit_map_has(m: acc.seen, key: service_name) { acc }
+            else { UniqueAccum { seen: map_insert(acc.seen, service_name, true), result: list_push(acc.result, service_name) } }
+          None => acc
+        }
+      } else { acc }
+    _ => acc
+  }
+  // Structural recursion into all child expressions.
+  let result = expr_children(node: texpr) |> fold(init: this_acc, f: (a, child) =>
+    collect_typed_service_calls_into(texpr: child, acc: a)
+  )
+  result
+}
+
+fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
+  // Per-node logic: detect function calls and accumulate unique names.
+  let this_acc = match texpr.expr_data {
+    ExprCall { func: f, args: _, call_semantics: _ } =>
+      if emit_map_has(m: acc.seen, key: f) { acc }
+      else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
+    _ => acc
+  }
+  // Structural recursion into all child expressions.
+  let result = expr_children(node: texpr) |> fold(init: this_acc, f: (a, child) =>
+    collect_called_func_names_into(texpr: child, acc: a)
+  )
+  result
+}
+
+fn collect_called_func_names(texpr: Node) -> List<String> {
+  let result = collect_called_func_names_into(texpr: texpr, acc: UniqueAccum { seen: empty_map(), result: [] })
+  result.result
+}
+
+fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
+  let all_items = modules |> flat_map(m => m.items)
+  all_items |> fold(init: registry, f: (reg, item) =>
+    match map_get(reg, item.name) {
+      Some { value: info } =>
+        let is_not_func = info.kind != FuncItem
+        let has_no_body = item.body == none
+        if is_not_func { reg }
+        else if has_no_body { reg }
+        else {
+          let called = collect_called_func_names(texpr: item.body.value)
+          let extra = called |> flat_map(callee_name =>
+            match map_get(reg, callee_name) {
+              Some { value: callee_info } => callee_info.service_names
+              None => []
+            }
+          )
+          let merged = extra |> fold(init: info.service_names, f: (svc_list, svc) =>
+            if svc_list |> any(s => s == svc) { svc_list }
+            else { list_push(svc_list, svc) }
+          )
+          let same_count = merged |> count == info.service_names |> count
+          if same_count { reg }
+          else {
+            map_insert(reg, item.name, ItemInfo {
+              name: info.name,
+              kind: info.kind,
+              service_names: merged,
+              resource_names: info.resource_names,
+              params: info.params,
+              is_self_recursive: info.is_self_recursive,
+              has_non_tail_self_call: info.has_non_tail_self_call
+            })
+          }
+        }
+      None => reg
+    }
+  )
+}
+
+fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
+  if remaining_passes <= 0 { registry }
+  else {
+    let next = expand_transitive_services_once(modules: modules, registry: registry)
+    expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1)
+  }
+}
+
+// =========================================================================
+// Service registry lookups
+//
+// Service calls use dotted paths (e.g., "git.Core.CurrentBranch()").
+// The service_registry maps full service paths to their OpEntry lists.
+// FieldAccess checks if base.field is a service path; MethodCall looks up
+// the operation and returns its output type.
+// =========================================================================
+
+fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>) -> Node? {
+  if node_has_structure(n: base_type) == false && base_type.children |> count == 0 {
+    let path = concat(base_type.name, ".", field)
+    match map_get(service_registry, path) {
+      Some { value: _ } => Some { value: leaf_node(name: path) }
+      None => none
+    }
+  } else { none }
+}
+
+fn check_service_method_call_node(receiver_type: Node, method: String, service_registry: Map<String, List<OpEntry>>) -> ServiceMethodResult? {
+  if node_has_structure(n: receiver_type) == false && receiver_type.children |> count == 0 {
+    match map_get(service_registry, receiver_type.name) {
+      Some { value: ops } =>
+        let matching = ops |> filter(op => op.name == method)
+        match matching |> first {
+          Some { value: op } =>
+            if op.outputs |> count == 0 {
+              Some { value: ServiceMethodResult { result_type: leaf_node(name: "Unit"), op_params: op.params } }
+            } else {
+              Some { value: ServiceMethodResult {
+                result_type: Node {
+                  name: "", span: no_span(),
+                  children: map(op.outputs, f => Node { name: f.name, span: f.span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: f.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }),
+                  connective: Some { value: Conj },
+                  params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
+                },
+                op_params: op.params
+              } }
+            }
+          None => none
+        }
+      None => none
+    }
+  } else { none }
+}
+
+fn service_op_entry(child: Node) -> OpEntry {
+  OpEntry { name: child.name, outputs: return_type_to_outputs(return_type: child.return_type, span: child.span), params: child.params }
+}

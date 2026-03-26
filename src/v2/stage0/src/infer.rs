@@ -7,54 +7,14 @@ use crate::infer_env::*;
 use crate::infer_resolve::*;
 use crate::infer_sigs::*;
 use crate::infer_emit_info::*;
+use crate::infer_items::*;
+use crate::infer_service::*;
+use crate::infer_patterns::*;
+use crate::infer_lookup::*;
+use crate::infer_access::*;
 use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct TypedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ResolvedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct TypedModule {
-    pub module: Rc<Module>,
-    pub items: Rc<Vec<Rc<Node>>>,
-    pub type_env: Rc<TypeEnv>,
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
-pub enum ItemKind {
-    #[default]
-    FnItem,
-    FuncItem,
-    TypeItem,
-    DataItem,
-    ServiceItem,
-    OtherItem,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ItemInfo {
-    pub name: String,
-    pub kind: ItemKind,
-    pub service_names: Rc<Vec<String>>,
-    pub resource_names: Rc<Vec<String>>,
-    pub params: Rc<Vec<Rc<Param>>>,
-    pub is_self_recursive: bool,
-    pub has_non_tail_self_call: bool,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ItemContribution {
@@ -74,335 +34,6 @@ pub struct ModuleContext {
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct UniqueAccum {
-    pub seen: Rc<HashMap<String, bool>>,
-    pub result: Rc<Vec<String>>,
-}
-
-pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
-    match receiver.expr_data.as_ref() {
-    ExprData::ExprFieldAccess { base: b, field: f, summary: _, .. } => {
-        match b.expr_data.as_ref() {
-    ExprData::ExprVar { name: _, binding_kind: _, .. } => {
-        match ({
-    let mut __chars_0 = Vec::new();
-    for __ch_1 in f.clone().chars() {
-        __chars_0.push(__ch_1.to_string());
-    }
-    Rc::new(__chars_0)
-}).first().cloned() {
-    Some(ch) => {
-        (ch.clone() >= "A".to_string()) && (ch.clone() <= "Z".to_string())
-    }
-    None => {
-        false
-    }
-}
-    }
-    _ => {
-        false
-    }
-}
-    }
-    _ => {
-        false
-    }
-}
-}
-
-pub fn extract_typed_service_name(receiver: Rc<Node>) -> Option<String> {
-    match receiver.expr_data.as_ref() {
-    ExprData::ExprFieldAccess { base: b, field: f, summary: _, .. } => {
-        match b.expr_data.as_ref() {
-    ExprData::ExprVar { name: ns, binding_kind: _, .. } => {
-        Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone()))
-    }
-    _ => {
-        None
-    }
-}
-    }
-    _ => {
-        None
-    }
-}
-}
-
-pub fn collect_typed_service_calls(texpr: Rc<Node>) -> Rc<Vec<String>> {
-    let result = collect_typed_service_calls_into(texpr.clone(), Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) }));
-    result.result.clone()
-}
-
-pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> Rc<UniqueAccum> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let this_acc = match texpr.expr_data.as_ref() {
-    ExprData::ExprMethodCall { receiver: r, method: _, args: _, method_semantics: _, .. } => {
-        if is_typed_service_call_receiver(r.clone()) {
-    match extract_typed_service_name(r.clone()) {
-    Some(service_name) => {
-        if emit_map_has(acc.seen.clone(), &service_name) {
-    acc.clone()
-} else {
-    Rc::new(UniqueAccum { seen: {
-    let __rc_1 = acc.seen.clone();
-    let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_0.insert(service_name.clone(), true);
-    Rc::new(__map_ins_0)
-}, result: {
-    let __rc_3 = acc.result.clone();
-    let mut __appended_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
-    __appended_2.push(service_name.clone());
-    Rc::new(__appended_2)
-} })
-}
-    }
-    None => {
-        acc.clone()
-    }
-}
-} else {
-    acc.clone()
-}
-    }
-    _ => {
-        acc.clone()
-    }
-};
-        let result = {
-    let mut __acc_4 = this_acc.clone();
-    for __elem_5 in expr_children(texpr.clone()).iter().cloned() {
-        __acc_4 = collect_typed_service_calls_into(__elem_5.clone(), __acc_4.clone());
-    }
-    __acc_4
-};
-        result.clone()
-    })
-}
-
-pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> Rc<UniqueAccum> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let this_acc = match texpr.expr_data.as_ref() {
-    ExprData::ExprCall { func: f, args: _, call_semantics: _, .. } => {
-        if emit_map_has(acc.seen.clone(), &f) {
-    acc.clone()
-} else {
-    Rc::new(UniqueAccum { seen: {
-    let __rc_1 = acc.seen.clone();
-    let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_0.insert(f.clone(), true);
-    Rc::new(__map_ins_0)
-}, result: {
-    let __rc_3 = acc.result.clone();
-    let mut __appended_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
-    __appended_2.push(f.clone());
-    Rc::new(__appended_2)
-} })
-}
-    }
-    _ => {
-        acc.clone()
-    }
-};
-        let result = {
-    let mut __acc_4 = this_acc.clone();
-    for __elem_5 in expr_children(texpr.clone()).iter().cloned() {
-        __acc_4 = collect_called_func_names_into(__elem_5.clone(), __acc_4.clone());
-    }
-    __acc_4
-};
-        result.clone()
-    })
-}
-
-pub fn collect_called_func_names(texpr: Rc<Node>) -> Rc<Vec<String>> {
-    let result = collect_called_func_names_into(texpr.clone(), Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) }));
-    result.result.clone()
-}
-
-pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    let all_items = {
-    let mut __flat_mapped_0 = Vec::new();
-    for __elem_1 in modules.iter().cloned() {
-        __flat_mapped_0.extend(__elem_1.items.clone().iter().cloned());
-    }
-    Rc::new(__flat_mapped_0)
-};
-    {
-    let mut __acc_2 = registry.clone();
-    for __elem_3 in all_items.iter().cloned() {
-        __acc_2 = match __acc_2.clone().get(&__elem_3.name.clone()).cloned() {
-    Some(info) => {
-        {
-    let is_not_func = info.kind.clone() != ItemKind::FuncItem;
-    let has_no_body = __elem_3.body.clone().is_none();
-    if is_not_func.clone() {
-    __acc_2.clone()
-} else {
-    if has_no_body.clone() {
-    __acc_2.clone()
-} else {
-    let called = collect_called_func_names(__elem_3.body.clone().unwrap());
-    let extra = {
-    let mut __flat_mapped_4 = Vec::new();
-    for __elem_5 in called.iter().cloned() {
-        __flat_mapped_4.extend((match __acc_2.clone().get(&__elem_5.clone()).cloned() {
-    Some(callee_info) => {
-        callee_info.service_names.clone()
-    }
-    None => {
-        Rc::new(Vec::new())
-    }
-}).iter().cloned());
-    }
-    Rc::new(__flat_mapped_4)
-};
-    let merged = {
-    let mut __acc_6 = info.service_names.clone();
-    for __elem_7 in extra.iter().cloned() {
-        __acc_6 = {
-let __cond = {
-    let mut __any_10 = false;
-    for __elem_11 in __acc_6.iter().cloned() {
-        if __elem_11.clone() == __elem_7.clone() {
-    __any_10 = true;
-    break;
-};
-    }
-    __any_10
-};
-if __cond {
-    __acc_6.clone()
-} else {
-    {
-    let __rc_9 = __acc_6;
-    let mut __appended_8 = Rc::try_unwrap(__rc_9).unwrap_or_else(|rc| (*rc).clone());
-    __appended_8.push(__elem_7.clone());
-    Rc::new(__appended_8)
-}
-}
-};
-    }
-    __acc_6
-};
-    let same_count = ({
-    let __len_12 = merged.clone().len();
-    __len_12 as i64
-}) == ({
-    let __len_13 = info.service_names.clone().len();
-    __len_13 as i64
-});
-    if same_count.clone() {
-    __acc_2.clone()
-} else {
-    {
-    let __rc_15 = __acc_2;
-    let mut __map_ins_14 = Rc::try_unwrap(__rc_15).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_14.insert(__elem_3.name.clone(), Rc::new(ItemInfo { name: info.name.clone(), kind: info.kind.clone(), service_names: merged.clone(), resource_names: info.resource_names.clone(), params: info.params.clone(), is_self_recursive: info.is_self_recursive.clone(), has_non_tail_self_call: info.has_non_tail_self_call.clone() }));
-    Rc::new(__map_ins_14)
-}
-}
-}
-}
-}
-    }
-    None => {
-        __acc_2.clone()
-    }
-};
-    }
-    __acc_2
-}
-}
-
-pub fn expand_transitive_services(modules: Rc<Vec<Rc<TypedModule>>>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, remaining_passes: i64) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let mut __tco_p_modules = modules;
-        let mut __tco_p_registry = registry;
-        let mut __tco_p_remaining_passes = remaining_passes;
-        loop {
-            let modules = __tco_p_modules;
-            let registry = __tco_p_registry;
-            let remaining_passes = __tco_p_remaining_passes;
-            if remaining_passes.clone() <= 0_i64 {
-    break registry.clone();
-} else {
-    let next = expand_transitive_services_once(modules.clone(), registry.clone());
-     {
-        let __tco_0 = modules.clone();
-        let __tco_1 = next.clone();
-        let __tco_2 = remaining_passes.clone() - 1_i64;
-        __tco_p_modules = __tco_0;
-        __tco_p_registry = __tco_1;
-        __tco_p_remaining_passes = __tco_2;
-        continue;
-    }
-
-};
-        }
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct OpEntry {
-    pub name: String,
-    pub outputs: Rc<Vec<Rc<Field>>>,
-    pub params: Rc<Vec<Rc<Param>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ServiceMethodResult {
-    pub result_type: Rc<Node>,
-    pub op_params: Rc<Vec<Rc<Param>>>,
-}
-
-pub fn return_type_to_outputs(return_type: Option<Rc<InferredNode>>, span: SourceSpan) -> Rc<Vec<Rc<Field>>> {
-    if return_type.clone().is_none() {
-    Rc::new(Vec::new())
-} else {
-    match return_type.clone().unwrap().as_ref() {
-    InferredNode::CompilerError { message: _, span: _, .. } => {
-        Rc::new(Vec::new())
-    }
-    InferredNode::Resolved { node: rt, .. } => {
-        if node_has_structure(rt.clone()) {
-    if node_is_product(rt.clone()) {
-    if rt.name.clone() == "" {
-    {
-    let mut __mapped_0 = Vec::new();
-    for __elem_1 in rt.children.iter().cloned() {
-        __mapped_0.push({
-    let child_type = if __elem_1.return_type.clone().is_none() {
-    leaf_node(&__elem_1.name)
-} else {
-    rt_type(__elem_1.clone())
-};
-    Rc::new(Field { name: __elem_1.name.clone(), type_expr: child_type.clone(), cardinality: Cardinality::Required, default_value: None, from_key: None, span: span.clone() })
-});
-    }
-    Rc::new(__mapped_0)
-}
-} else {
-    Rc::new(vec!(Rc::new(Field { name: "value".to_string(), type_expr: rt.clone(), cardinality: Cardinality::Required, default_value: None, from_key: None, span: span.clone() })))
-}
-} else {
-    Rc::new(vec!(Rc::new(Field { name: "value".to_string(), type_expr: rt.clone(), cardinality: Cardinality::Required, default_value: None, from_key: None, span: span.clone() })))
-}
-} else {
-    if (rt.name.clone() == "Unit") && (({
-    let __len_2 = rt.children.clone().len();
-    __len_2 as i64
-}) == 0_i64) {
-    Rc::new(Vec::new())
-} else {
-    Rc::new(vec!(Rc::new(Field { name: "value".to_string(), type_expr: rt.clone(), cardinality: Cardinality::Required, default_value: None, from_key: None, span: span.clone() })))
-}
-}
-    }
-}
-}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -491,18 +122,6 @@ pub struct TypedItemResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct AccessCheckResultNode {
-    pub resolved_type: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct KnownMethodResolution {
-    pub semantics: Option<Rc<MethodSemantics>>,
-    pub result_type: Option<Rc<Node>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ArmInferResult {
     pub typed_arm: Rc<MatchArm>,
     pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
@@ -512,12 +131,6 @@ pub struct ArmInferResult {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PatternScopeResult {
     pub scope: Rc<InferScope>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct NodeLookupResult {
-    pub resolved: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
 }
 
@@ -562,10 +175,6 @@ pub struct VariantResult {
 pub struct CycleDetectState {
     pub recursive_names: Rc<HashMap<String, bool>>,
     pub global_visited: Rc<HashMap<String, bool>>,
-}
-
-pub fn service_op_entry(child: Rc<Node>) -> Rc<OpEntry> {
-    Rc::new(OpEntry { name: child.name.clone(), outputs: return_type_to_outputs(child.return_type.clone(), child.span.clone()), params: child.params.clone() })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -748,91 +357,12 @@ pub fn namespace_root_from_properties(properties: Rc<Vec<Rc<FieldInit>>>, name: 
 }
 }
 
-pub fn check_service_field_access_node(base_type: Rc<Node>, field: &str, scope: Rc<InferScope>) -> Option<Rc<Node>> {
-    if (node_has_structure(base_type.clone()) == false) && (({
-    let __len_0 = base_type.children.clone().len();
-    __len_0 as i64
-}) == 0_i64) {
-    let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field.to_string());
-    match scope.service_registry.clone().get(&path.clone()).cloned() {
-    Some(_) => {
-        Some(leaf_node(&path))
-    }
-    None => {
-        None
-    }
-}
-} else {
-    None
-}
-}
-
-pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, scope: Rc<InferScope>) -> Option<Rc<ServiceMethodResult>> {
-    if (node_has_structure(receiver_type.clone()) == false) && (({
-    let __len_5 = receiver_type.children.clone().len();
-    __len_5 as i64
-}) == 0_i64) {
-    match scope.service_registry.clone().get(&receiver_type.name.clone()).cloned() {
-    Some(ops) => {
-        {
-    let matching = {
-    let mut __filtered_0 = Vec::new();
-    for __elem_1 in ops.iter().cloned() {
-        if __elem_1.name.clone() == method {
-    __filtered_0.push(__elem_1);
-};
-    }
-    Rc::new(__filtered_0)
-};
-    match matching.clone().first().cloned() {
-    Some(op) => {
-        if ({
-    let __len_4 = op.outputs.clone().len();
-    __len_4 as i64
-}) == 0_i64 {
-    Some(Rc::new(ServiceMethodResult { result_type: leaf_node("Unit"), op_params: op.params.clone() }))
-} else {
-    Some(Rc::new(ServiceMethodResult { result_type: Rc::new(Node { name: "".to_string(), span: no_span(), children: {
-    let mut __mapped_2 = Vec::new();
-    for __elem_3 in op.outputs.iter().cloned() {
-        __mapped_2.push(Rc::new(Node { name: __elem_3.name.clone(), span: __elem_3.span.clone(), children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: __elem_3.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
-    }
-    Rc::new(__mapped_2)
-}, connective: Some(Connective::Conj), params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), op_params: op.params.clone() }))
-}
-    }
-    None => {
-        None
-    }
-}
-}
-    }
-    None => {
-        None
-    }
-}
-} else {
-    None
-}
-}
-
 pub fn expr_span(texpr: Rc<Node>) -> SourceSpan {
     texpr.span.clone()
 }
 
 pub fn ok_infer(texpr: Rc<Node>) -> Rc<InferResult> {
     Rc::new(InferResult { typed: texpr.clone(), diagnostics: Rc::new(Vec::new()) })
-}
-
-pub fn lookup_in_scope(scope: Rc<InferScope>, name: &str) -> Option<Rc<Node>> {
-    match scope.locals.clone().get(&name.to_string()).cloned() {
-    Some(binding) => {
-        Some(binding.resolved.clone())
-    }
-    None => {
-        None
-    }
-}
 }
 
 pub fn semantic_expr_error_node(message: &str, span: SourceSpan) -> Rc<Node> {
@@ -899,144 +429,6 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: &str) -> Rc<VarBindin
 }
 }
 
-pub fn lookup_field_type_node(n: Rc<Node>, field_name: &str) -> Option<Rc<Node>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if node_is_optional(n.clone()) {
-    let inner = with_required_cardinality(n.clone());
-    if field_name == "value" {
-    Some(inner.clone())
-} else {
-    match lookup_field_type_node(inner.clone(), &field_name) {
-    Some(inner_result) => {
-        Some(with_optional_cardinality(inner_result.clone()))
-    }
-    None => {
-        None
-    }
-}
-}
-} else {
-    if node_has_structure(n.clone()) {
-    if node_is_product(n.clone()) {
-    match {
-    let mut __found_2 = None;
-    for __elem_3 in n.children.iter().cloned() {
-        if __elem_3.name.clone() == field_name {
-    __found_2 = Some(__elem_3);
-    break;
-};
-    }
-    __found_2
-} {
-    Some(field_child) => {
-        Some(child_return_type_or_name(field_child.clone()))
-    }
-    None => {
-        None
-    }
-}
-} else {
-    lookup_coproduct_common_field_node(n.children.clone(), &field_name)
-}
-} else {
-    None
-}
-}
-    })
-}
-
-pub fn lookup_coproduct_common_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: &str) -> Option<Rc<Node>> {
-    let found_in_all = {
-    let mut __all_0 = true;
-    for __elem_1 in variants.iter().cloned() {
-        if !({
-    let mut __any_2 = false;
-    for __elem_3 in __elem_1.children.iter().cloned() {
-        if __elem_3.name.clone() == field_name {
-    __any_2 = true;
-    break;
-};
-    }
-    __any_2
-}) {
-    __all_0 = false;
-    break;
-};
-    }
-    __all_0
-};
-    let first_field = if found_in_all.clone() {
-    match variants.clone().first().cloned() {
-    Some(first_variant) => {
-        {
-    let mut __found_6 = None;
-    for __elem_7 in first_variant.children.iter().cloned() {
-        if __elem_7.name.clone() == field_name {
-    __found_6 = Some(__elem_7);
-    break;
-};
-    }
-    __found_6
-}
-    }
-    None => {
-        None
-    }
-}
-} else {
-    None
-};
-    match first_field.clone() {
-    Some(field_child) => {
-        Some(child_return_type_or_name(field_child.clone()))
-    }
-    None => {
-        None
-    }
-}
-}
-
-pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: &str) -> Option<Rc<ResolvedFuncSig>> {
-    func_env.signatures.clone().get(&name.to_string()).cloned()
-}
-
-pub fn field_summary_for_type(base_type: Rc<Node>, env: Rc<TypeEnv>, field: &str) -> Option<Rc<FieldSummary>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
-        let normed = normalize_access_type_node(resolved.clone());
-        let normed_opt = node_is_optional(normed.clone());
-        if (field == "value") && normed_opt.clone() {
-    Some(Rc::new(FieldSummary { access_style: FieldAccessStyle::OptionalUnwrap, value_shape: FieldValueShape::PlainValue }))
-} else {
-    if normed_opt.clone() {
-    let inner = with_required_cardinality(normed.clone());
-    match field_summary_for_type(inner.clone(), env.clone(), &field) {
-    Some(inner_summary) => {
-        Some(Rc::new(FieldSummary { access_style: inner_summary.access_style.clone(), value_shape: FieldValueShape::OptionalValue }))
-    }
-    None => {
-        None
-    }
-}
-} else {
-    if node_has_structure(resolved.clone()) == false {
-    None
-} else {
-    if node_is_product(resolved.clone()) {
-    build_struct_field_summaries(resolved.children.clone()).get(&field.to_string()).cloned()
-} else {
-    build_enum_field_summaries(resolved.children.clone()).get(&field.to_string()).cloned()
-}
-}
-}
-}
-    })
-}
-
-pub fn access_error(message: &str, span: SourceSpan, module_name: &str) -> Rc<Diagnostic> {
-    Rc::new(Diagnostic { severity: Severity::Error, message: message.to_string(), span: Some(span), module_name: Some(module_name.to_string()), category: None })
-}
-
 pub fn inference_error(message: &str, span: SourceSpan, module_name: &str) -> Rc<Diagnostic> {
     Rc::new(Diagnostic { severity: Severity::Error, message: message.to_string(), span: Some(span), module_name: Some(module_name.to_string()), category: None })
 }
@@ -1045,131 +437,16 @@ pub fn categorized_error(message: &str, span: SourceSpan, module_name: &str, cat
     Rc::new(Diagnostic { severity: Severity::Error, message: message.to_string(), span: Some(span), module_name: Some(module_name.to_string()), category: Some(category) })
 }
 
-pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(env.clone(), n.clone(), Rc::new(std::collections::HashMap::new()))
-}
-
-pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    let normed = normalize_access_type_node(type_node.clone());
-    let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
-    let map_type = normalize_access_type_node(resolved.clone());
-    if node_is_map(map_type.clone()) && (({
-    let __len_0 = map_type.children.clone().len();
-    __len_0 as i64
-}) >= 2_i64) {
-    match map_type.children.clone().get((1_i64) as usize).cloned() {
-    Some(value_type) => {
-        Some(value_type.clone())
+pub fn inferred_from_node_type(result: Rc<NodeType>, fallback_message: &str, fallback_span: SourceSpan) -> Rc<InferredNode> {
+    match result.as_ref() {
+    NodeType::Typed { node: resolved, .. } => {
+        Rc::new(InferredNode::Resolved { node: resolved.clone() })
     }
-    None => {
-        None
-    }
-}
-} else {
-    None
-}
-}
-
-pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<HashMap<String, bool>>) -> Rc<Node> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let normed = normalize_access_type_node(n.clone());
-        if (node_has_structure(normed.clone()) == false) && (({
-    let __len_6 = normed.children.clone().len();
-    __len_6 as i64
-}) == 0_i64) {
-    let canonical = normalize_type_name(&normed.name);
-    if normed.return_type.clone().is_some() {
-    let next_seen = if canonical.clone() == "" {
-    seen.clone()
-} else {
-    {
-    let __rc_1 = seen;
-    let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_0.insert(canonical.clone(), true);
-    Rc::new(__map_ins_0)
-}
-};
-    match rt_node(normed.clone()).as_ref() {
-    NodeType::Typed { node: target, .. } => {
-        if (((target.name.clone() == normed.name.clone()) && (target.return_type.clone().is_none())) && (node_has_structure(target.clone()) == false)) && (({
-    let __len_2 = target.children.clone().len();
-    __len_2 as i64
-}) == 0_i64) {
-    normed.clone()
-} else {
-    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), next_seen.clone())
-}
-    }
-    NodeType::InferError { message: _, span: _, .. } => {
-        normed.clone()
+    NodeType::InferError { message, span, .. } => {
+        Rc::new(InferredNode::CompilerError { message: message.clone(), span: span.clone() })
     }
     NodeType::Untyped => {
-        normed.clone()
-    }
-}
-} else {
-    if (canonical.clone() != "") && emit_map_has(seen.clone(), &canonical) {
-    leaf_node(&normed.name)
-} else {
-    let next_seen = if canonical.clone() == "" {
-    seen.clone()
-} else {
-    {
-    let __rc_4 = seen;
-    let mut __map_ins_3 = Rc::try_unwrap(__rc_4).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_3.insert(canonical.clone(), true);
-    Rc::new(__map_ins_3)
-}
-};
-    match lookup_type(env.clone(), &normed.name) {
-    Some(resolved) => {
-        if (((resolved.name.clone() == normed.name.clone()) && (resolved.return_type.clone().is_none())) && (node_has_structure(resolved.clone()) == false)) && (({
-    let __len_5 = resolved.children.clone().len();
-    __len_5 as i64
-}) == 0_i64) {
-    normed.clone()
-} else {
-    let result = resolve_scrutinee_type_node_seen(env.clone(), resolved.clone(), next_seen.clone());
-    if node_is_optional(normed.clone()) {
-    with_optional_cardinality(result.clone())
-} else {
-    result.clone()
-}
-}
-    }
-    None => {
-        normed.clone()
-    }
-}
-}
-}
-} else {
-    normed.clone()
-}
-    })
-}
-
-pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: &str, fold_accumulator_type: Option<Rc<Node>>, scope: Rc<InferScope>) -> Rc<KnownMethodResolution> {
-    match check_service_method_call_node(receiver_type.clone(), &method_name, scope.clone()) {
-    Some(svc_result) => {
-        Rc::new(KnownMethodResolution { semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics { service_name: receiver_type.name.clone(), op_params: svc_result.op_params.clone() })), result_type: Some(svc_result.result_type.clone()) })
-    }
-    None => {
-        match classify_reconciled_intrinsic_method(&method_name) {
-    Some(intrinsic) => {
-        Rc::new(KnownMethodResolution { semantics: Some(Rc::new(MethodSemantics::IntrinsicMethodSemantics { intrinsic: intrinsic.clone(), fold_accumulator_type: fold_accumulator_type.clone() })), result_type: infer_intrinsic_method_type_node(receiver_type.clone(), intrinsic.clone(), fold_accumulator_type.clone()) })
-    }
-    None => {
-        match classify_runtime_bridge_method(&method_name) {
-    Some(bridge_method) => {
-        Rc::new(KnownMethodResolution { semantics: Some(Rc::new(MethodSemantics::RuntimeBridgeSemantics { method: bridge_method.clone() })), result_type: infer_runtime_bridge_method_type_node(receiver_type.clone(), bridge_method.clone()) })
-    }
-    None => {
-        Rc::new(KnownMethodResolution { semantics: None, result_type: None })
-    }
-}
-    }
-}
+        Rc::new(InferredNode::CompilerError { message: fallback_message.to_string(), span: fallback_span })
     }
 }
 }
@@ -1195,28 +472,54 @@ pub fn lambda_param_types_from_scope(scope: Rc<InferScope>, params: Rc<Vec<Strin
 }
 }
 
-pub fn annotate_pattern_parent_enums(pattern: Rc<MatchPattern>, scrutinee_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<MatchPattern> {
+pub fn resolve_pattern_subject(scope: Rc<InferScope>, scrutinee_subject: Rc<PatternSubject>) -> Rc<PatternSubject> {
+    match scrutinee_subject.as_ref() {
+    PatternSubject::PatternResolved { node: scrutinee_type, .. } => {
+        pattern_subject_from_node(resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone()))
+    }
+    PatternSubject::PatternDynamic { span: dynamic_span, .. } => {
+        Rc::new(PatternSubject::PatternDynamic { span: dynamic_span.clone() })
+    }
+    PatternSubject::PatternLookupBlocked => {
+        Rc::new(PatternSubject::PatternLookupBlocked)
+    }
+}
+}
+
+pub fn annotate_pattern_parent_enums(pattern: Rc<MatchPattern>, scrutinee_subject: Rc<PatternSubject>, scope: Rc<InferScope>) -> Rc<MatchPattern> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match pattern.as_ref() {
     MatchPattern::VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings, .. } => {
         {
-    let resolved_scrut = resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone());
-    let inferred_parent = if node_is_optional(resolved_scrut.clone()) && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
+    let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
+    let inferred_parent = match resolved_scrut.as_ref() {
+    PatternSubject::PatternResolved { node: resolved_scrut_node, .. } => {
+        if node_is_optional(resolved_scrut_node.clone()) && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
     Some("Optional".to_string())
 } else {
-    if node_is_coproduct(resolved_scrut.clone()) {
-    Some(resolved_scrut.name.clone())
+    if node_is_coproduct(resolved_scrut_node.clone()) {
+    Some(resolved_scrut_node.name.clone())
 } else {
     None
 }
+}
+    }
+    PatternSubject::PatternDynamic { span: _, .. } => {
+        None
+    }
+    PatternSubject::PatternLookupBlocked => {
+        None
+    }
 };
     let variant_lookup = lookup_variant_in_type(resolved_scrut.clone(), &variant_name, &scope.module_name);
+    let variant_subject = lookup_result_subject(variant_lookup.clone());
     let annotated_bindings = {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in bindings.iter().cloned() {
         __mapped_0.push({
-    let field_lookup = lookup_field_in_variant(variant_lookup.resolved.clone(), &__elem_1.field_name, &scope.module_name);
-    Rc::new(FieldBinding { field_name: __elem_1.field_name.clone(), binding: annotate_pattern_parent_enums(__elem_1.binding.clone(), field_lookup.resolved.clone(), scope.clone()) })
+    let field_lookup = lookup_field_in_variant(variant_subject.clone(), &__elem_1.field_name, &scope.module_name);
+    let field_subject = lookup_result_subject(field_lookup.clone());
+    Rc::new(FieldBinding { field_name: __elem_1.field_name.clone(), binding: annotate_pattern_parent_enums(__elem_1.binding.clone(), field_subject.clone(), scope.clone()) })
 });
     }
     Rc::new(__mapped_0)
@@ -1236,75 +539,6 @@ pub fn annotate_pattern_parent_enums(pattern: Rc<MatchPattern>, scrutinee_type: 
     }
 }
     })
-}
-
-pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: SourceSpan, module_name: &str) -> Rc<AccessCheckResultNode> {
-    let normed = normalize_access_type_node(base_type.clone());
-    if ((node_has_structure(normed.clone()) == false) && (({
-    let __len_1 = normed.children.clone().len();
-    __len_1 as i64
-}) == 0_i64)) && (normed.name.clone() == "String") {
-    let diags = if is_int_type_node(index_type.clone()) {
-    Rc::new(Vec::new())
-} else {
-    Rc::new(vec!(access_error("string index requires an Int index", span, &module_name)))
-};
-    Rc::new(AccessCheckResultNode { resolved_type: leaf_node("String"), diagnostics: diags.clone() })
-} else {
-    if node_is_map(normed.clone()) && (({
-    let __len_0 = normed.children.clone().len();
-    __len_0 as i64
-}) >= 2_i64) {
-    let key_node = match normed.children.clone().first().cloned() {
-    Some(k) => {
-        k.clone()
-    }
-    None => {
-        leaf_node("String")
-    }
-};
-    let val_node = match normed.children.clone().get((1_i64) as usize).cloned() {
-    Some(v) => {
-        v.clone()
-    }
-    None => {
-        leaf_node("Unit")
-    }
-};
-    let key_diags = if node_type_equals(key_node.clone(), index_type.clone()) {
-    Rc::new(Vec::new())
-} else {
-    Rc::new(vec!(access_error("map index key type does not match the map key type", span, &module_name)))
-};
-    Rc::new(AccessCheckResultNode { resolved_type: with_optional_cardinality(val_node.clone()), diagnostics: key_diags.clone() })
-} else {
-    Rc::new(AccessCheckResultNode { resolved_type: leaf_node("Unit"), diagnostics: Rc::new(vec!(access_error("indexing is only supported for String and Map values", span, &module_name))) })
-}
-}
-}
-
-pub fn check_slice_access_node(base_type: Rc<Node>, start_type: Rc<Node>, end_type: Rc<Node>, span: SourceSpan, module_name: &str) -> Rc<AccessCheckResultNode> {
-    let base_is_string = is_string_type_node(base_type.clone());
-    let base_diags = if base_is_string.clone() {
-    Rc::new(Vec::new())
-} else {
-    Rc::new(vec!(access_error("slice is only supported for String values", span.clone(), &module_name)))
-};
-    let start_diags = if is_int_type_node(start_type.clone()) {
-    Rc::new(Vec::new())
-} else {
-    Rc::new(vec!(access_error("slice start requires an Int index", span.clone(), &module_name)))
-};
-    let end_diags = if is_int_type_node(end_type.clone()) {
-    Rc::new(Vec::new())
-} else {
-    Rc::new(vec!(access_error("slice end requires an Int index", span.clone(), &module_name)))
-};
-    Rc::new(AccessCheckResultNode { resolved_type: if base_is_string.clone() {
-    leaf_node("String")
-} else {
-    leaf_node("Unit")
-}, diagnostics: v2_rt::concat(v2_rt::concat(base_diags.clone(), start_diags.clone()), end_diags.clone()) })
 }
 
 pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Param>>>) -> Rc<InferScope> {
@@ -1369,99 +603,11 @@ pub fn scope_after_stmt_node(stmt: Rc<Node>, stmt_type: Rc<Node>, scope: Rc<Infe
 }
 }
 
-pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<NodeLookupResult> {
-    let inner = extract_optional_inner_node(scrut.clone());
-    let value_field = Rc::new(Node { name: "value".to_string(), span: scrut.span.clone(), children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: inner.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
-    let some_node = Rc::new(Node { name: "Some".to_string(), span: scrut.span.clone(), children: Rc::new(vec!(value_field.clone())), connective: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
-    Rc::new(NodeLookupResult { resolved: some_node.clone(), diagnostics: Rc::new(Vec::new()) })
-}
-
-pub fn variant_not_found_result(scrut: Rc<Node>, variant_name: &str, module_name: &str) -> Rc<NodeLookupResult> {
-    Rc::new(NodeLookupResult { resolved: scrut.clone(), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat("variant '".to_string(), v2_rt::concat(variant_name.to_string(), v2_rt::concat("' not found in type '".to_string(), v2_rt::concat(scrut.name.clone(), "'".to_string())))), span: Some(scrut.span.clone()), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::VariantNotFound) }))) })
-}
-
-pub fn lookup_variant_in_type(scrut: Rc<Node>, variant_name: &str, module_name: &str) -> Rc<NodeLookupResult> {
-    let scrut_opt = node_is_optional(scrut.clone());
-    if scrut.name.clone() == "Error" {
-    Rc::new(NodeLookupResult { resolved: error_type_node(), diagnostics: Rc::new(Vec::new()) })
-} else {
-    if scrut.name.clone() == "Dynamic" {
-    Rc::new(NodeLookupResult { resolved: error_type_node(), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat("cannot resolve variant '".to_string(), v2_rt::concat(variant_name.to_string(), "' on Dynamic scrutinee".to_string())), span: Some(scrut.span.clone()), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::VariantNotFound) }))) })
-} else {
-    if ((node_has_structure(scrut.clone()) == false) && (({
-    let __len_4 = scrut.children.clone().len();
-    __len_4 as i64
-}) == 0_i64)) && (scrut_opt.clone() == false) {
-    Rc::new(NodeLookupResult { resolved: error_type_node(), diagnostics: Rc::new(Vec::new()) })
-} else {
-    let direct_match = {
-    let mut __found_2 = None;
-    for __elem_3 in scrut.children.iter().cloned() {
-        if __elem_3.name.clone() == variant_name {
-    __found_2 = Some(__elem_3);
-    break;
-};
-    }
-    __found_2
-};
-    let fallback = if scrut_opt.clone() && (variant_name == "Some") {
-    synthesize_optional_some_variant(scrut.clone())
-} else {
-    if scrut_opt.clone() && (variant_name == "None") {
-    Rc::new(NodeLookupResult { resolved: leaf_node("None"), diagnostics: Rc::new(Vec::new()) })
-} else {
-    variant_not_found_result(scrut.clone(), &variant_name, &module_name)
-}
-};
-    match direct_match.clone() {
-    Some(v) => {
-        Rc::new(NodeLookupResult { resolved: v.clone(), diagnostics: Rc::new(Vec::new()) })
-    }
-    None => {
-        fallback.clone()
-    }
-}
-}
-}
-}
-}
-
-pub fn lookup_field_in_variant(variant: Rc<Node>, field_name: &str, module_name: &str) -> Rc<NodeLookupResult> {
-    if variant.name.clone() == "Error" {
-    Rc::new(NodeLookupResult { resolved: error_type_node(), diagnostics: Rc::new(Vec::new()) })
-} else {
-    if variant.name.clone() == "Dynamic" {
-    Rc::new(NodeLookupResult { resolved: error_type_node(), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat("cannot resolve field '".to_string(), v2_rt::concat(field_name.to_string(), "' on Dynamic variant".to_string())), span: Some(variant.span.clone()), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::FieldNotFound) }))) })
-} else {
-    match {
-    let mut __found_2 = None;
-    for __elem_3 in variant.children.iter().cloned() {
-        if __elem_3.name.clone() == field_name {
-    __found_2 = Some(__elem_3);
-    break;
-};
-    }
-    __found_2
-} {
-    Some(field_child) => {
-        {
-    let resolved = child_return_type_or_name(field_child.clone());
-    Rc::new(NodeLookupResult { resolved: resolved.clone(), diagnostics: Rc::new(Vec::new()) })
-}
-    }
-    None => {
-        Rc::new(NodeLookupResult { resolved: error_type_node(), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat("field '".to_string(), v2_rt::concat(field_name.to_string(), v2_rt::concat("' not found in variant '".to_string(), v2_rt::concat(variant.name.clone(), "'".to_string())))), span: Some(variant.span.clone()), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::FieldNotFound) }))) })
-    }
-}
-}
-}
-}
-
-pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPattern>, scrutinee_type: Rc<Node>) -> Rc<PatternScopeResult> {
+pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPattern>, scrutinee_subject: Rc<PatternSubject>) -> Rc<PatternScopeResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match pattern.as_ref() {
     MatchPattern::Bind { name: n, .. } => {
-        Rc::new(PatternScopeResult { scope: extend_scope(scope.clone(), &n, scrutinee_type.clone()), diagnostics: Rc::new(Vec::new()) })
+        Rc::new(PatternScopeResult { scope: extend_scope(scope.clone(), &n, pattern_binding_type(scrutinee_subject.clone())), diagnostics: Rc::new(Vec::new()) })
     }
     MatchPattern::Wildcard => {
         Rc::new(PatternScopeResult { scope: scope.clone(), diagnostics: Rc::new(Vec::new()) })
@@ -1471,23 +617,24 @@ pub fn extend_scope_with_pattern_node(scope: Rc<InferScope>, pattern: Rc<MatchPa
     }
     MatchPattern::VariantPattern { name: vname, parent_enum: _, field_bindings: bindings, .. } => {
         {
-    let resolved_scrut = resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone());
+    let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
     let variant_lookup = lookup_variant_in_type(resolved_scrut.clone(), &vname, &scope.module_name);
-    let variant_node = variant_lookup.resolved.clone();
+    let variant_subject = lookup_result_subject(variant_lookup.clone());
     let variant_diags = variant_lookup.diagnostics.clone();
     {
     let mut __acc_0 = Rc::new(PatternScopeResult { scope: scope.clone(), diagnostics: variant_diags.clone() });
     for __elem_1 in bindings.iter().cloned() {
         __acc_0 = {
-    let field_lookup = lookup_field_in_variant(variant_node.clone(), &__elem_1.field_name, &scope.module_name);
-    let field_type = field_lookup.resolved.clone();
+    let field_lookup = lookup_field_in_variant(variant_subject.clone(), &__elem_1.field_name, &scope.module_name);
+    let field_subject = lookup_result_subject(field_lookup.clone());
+    let field_type = pattern_binding_type(field_subject.clone());
     match __elem_1.binding.as_ref() {
     MatchPattern::Bind { name: n, .. } => {
         Rc::new(PatternScopeResult { scope: extend_scope(__acc_0.scope.clone(), &n, field_type.clone()), diagnostics: v2_rt::concat(__acc_0.diagnostics.clone(), field_lookup.diagnostics.clone()) })
     }
     _ => {
         {
-    let nested = extend_scope_with_pattern_node(__acc_0.scope.clone(), __elem_1.binding.clone(), field_type.clone());
+    let nested = extend_scope_with_pattern_node(__acc_0.scope.clone(), __elem_1.binding.clone(), field_subject.clone());
     Rc::new(PatternScopeResult { scope: nested.scope.clone(), diagnostics: v2_rt::concat(__acc_0.diagnostics.clone(), v2_rt::concat(field_lookup.diagnostics.clone(), nested.diagnostics.clone())) })
 }
     }
@@ -2118,7 +1265,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     let fa_texpr = make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: base_typed.clone(), field: field_name.clone(), summary: Some(Rc::new(FieldSummary { access_style: FieldAccessStyle::StoredField, value_shape: FieldValueShape::PlainValue })) }), Some(Rc::new(InferredNode::Resolved { node: leaf_node("Dynamic") })), span.clone());
     Rc::new(InferResult { typed: fa_texpr.clone(), diagnostics: base_diags.clone() })
 } else {
-    match check_service_field_access_node(base_rt.clone(), &field_name, scope.clone()) {
+    match check_service_field_access_node(base_rt.clone(), &field_name, scope.service_registry.clone()) {
     Some(svc_type) => {
         {
     let fa_texpr = make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: base_typed.clone(), field: field_name.clone(), summary: Some(Rc::new(FieldSummary { access_style: FieldAccessStyle::StoredField, value_shape: FieldValueShape::PlainValue })) }), Some(Rc::new(InferredNode::Resolved { node: svc_type.clone() })), span.clone());
@@ -2284,7 +1431,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     Some(call_fold_acc_type.clone())
 } else {
     None
-}, scope.clone());
+}, scope.service_registry.clone());
     let is_known_method = method_resolution.result_type.clone().is_some();
     if is_known_method.clone() && (({
     let __len_14 = typed_args.clone().len();
@@ -2438,7 +1585,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     Some(fold_acc_type.clone())
 } else {
     None
-}, scope.clone());
+}, scope.service_registry.clone());
     let base_result_type = match method_resolution.result_type.as_ref().map(|__rc| __rc.as_ref()) {
     Some(rt) => {
         let rt = Rc::new(rt.clone());
@@ -2465,12 +1612,13 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     let scrut_typed = scrut_result.typed.clone();
     let scrut_diags = scrut_result.diagnostics.clone();
     let scrut_rt = rt_type(scrut_typed.clone());
+    let scrut_subject = pattern_subject_from_node_type(rt_node(scrut_typed.clone()));
     let arm_infer_results = {
     let mut __mapped_19 = Vec::new();
     for __elem_20 in arms.iter().cloned() {
         __mapped_19.push({
-    let typed_pattern = annotate_pattern_parent_enums(__elem_20.pattern.clone(), scrut_rt.clone(), scope.clone());
-    let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_rt.clone());
+    let typed_pattern = annotate_pattern_parent_enums(__elem_20.pattern.clone(), scrut_subject.clone(), scope.clone());
+    let pattern_result = extend_scope_with_pattern_node(scope.clone(), typed_pattern.clone(), scrut_subject.clone());
     let arm_scope = pattern_result.scope.clone();
     let pattern_diags = pattern_result.diagnostics.clone();
     let guard_result = if __elem_20.guard.clone().is_some() {
@@ -2533,7 +1681,17 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
 } else {
     Rc::new(Vec::new())
 };
-    let exhaustiveness_diags = check_match_exhaustiveness(scrut_rt.clone(), typed_arms.clone(), scope.type_env.clone(), span.clone(), &scope.module_name);
+    let exhaustiveness_diags = match resolve_pattern_subject(scope.clone(), scrut_subject.clone()).as_ref() {
+    PatternSubject::PatternResolved { node: resolved_scrutinee, .. } => {
+        check_match_exhaustiveness(resolved_scrutinee.clone(), typed_arms.clone(), scope.type_env.clone(), span.clone(), &scope.module_name)
+    }
+    PatternSubject::PatternDynamic { span: _, .. } => {
+        Rc::new(Vec::new())
+    }
+    PatternSubject::PatternLookupBlocked => {
+        Rc::new(Vec::new())
+    }
+};
     let match_texpr = make_expr_node(Rc::new(ExprData::ExprMatch { scrutinee: scrut_typed.clone(), arms: typed_arms.clone() }), Some(Rc::new(InferredNode::Resolved { node: result_type.clone() })), span.clone());
     Rc::new(InferResult { typed: match_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(scrut_diags.clone(), arm_diags.clone()), empty_arms_diags.clone()), exhaustiveness_diags.clone()) })
 }
@@ -2782,9 +1940,58 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     let index_result = infer_expr(index_expr.clone(), scope.clone());
     let index_typed = index_result.typed.clone();
     let index_diags = index_result.diagnostics.clone();
-    let index_check = check_index_access_node(rt_type(base_typed.clone()), rt_type(index_typed.clone()), span.clone(), &scope.module_name);
-    let idx_texpr = make_expr_node(Rc::new(ExprData::ExprIndex { base: base_typed.clone(), index: index_typed.clone() }), Some(Rc::new(InferredNode::Resolved { node: index_check.resolved_type.clone() })), span.clone());
-    Rc::new(InferResult { typed: idx_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(base_diags.clone(), index_diags.clone()), index_check.diagnostics.clone()) })
+    let base_type_result = rt_node(base_typed.clone());
+    let index_type_result = rt_node(index_typed.clone());
+    let index_check = match base_type_result.as_ref() {
+    NodeType::Typed { node: base_type, .. } => {
+        match index_type_result.as_ref() {
+    NodeType::Typed { node: index_type, .. } => {
+        Some(check_index_access_node(base_type.clone(), index_type.clone(), span.clone(), &scope.module_name))
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+};
+    let access_failure_source = match base_type_result.as_ref() {
+    NodeType::Typed { node: _, .. } => {
+        index_type_result.clone()
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::Untyped => {
+        base_type_result.clone()
+    }
+};
+    let idx_return_type = match index_check.clone() {
+    Some(checked) => {
+        checked.return_type.clone()
+    }
+    None => {
+        Some(inferred_from_node_type(access_failure_source.clone(), "invalid index access", span.clone()))
+    }
+};
+    let index_access_diags = match index_check.clone() {
+    Some(checked) => {
+        checked.diagnostics.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+};
+    let idx_texpr = make_expr_node(Rc::new(ExprData::ExprIndex { base: base_typed.clone(), index: index_typed.clone() }), idx_return_type.clone(), span.clone());
+    Rc::new(InferResult { typed: idx_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(base_diags.clone(), index_diags.clone()), index_access_diags.clone()) })
 }
     }
     ExprData::ExprSlice { base: base_expr, start: start_expr, end: end_expr, .. } => {
@@ -2799,9 +2006,79 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     let end_result = infer_expr(end_expr.clone(), scope.clone());
     let end_typed = end_result.typed.clone();
     let end_diags = end_result.diagnostics.clone();
-    let slice_check = check_slice_access_node(rt_type(base_typed.clone()), rt_type(start_typed.clone()), rt_type(end_typed.clone()), span.clone(), &scope.module_name);
-    let slc_texpr = make_expr_node(Rc::new(ExprData::ExprSlice { base: base_typed.clone(), start: start_typed.clone(), end: end_typed.clone() }), Some(Rc::new(InferredNode::Resolved { node: slice_check.resolved_type.clone() })), span.clone());
-    Rc::new(InferResult { typed: slc_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(base_diags.clone(), start_diags.clone()), end_diags.clone()), slice_check.diagnostics.clone()) })
+    let base_type_result = rt_node(base_typed.clone());
+    let start_type_result = rt_node(start_typed.clone());
+    let end_type_result = rt_node(end_typed.clone());
+    let slice_check = match base_type_result.as_ref() {
+    NodeType::Typed { node: base_type, .. } => {
+        match start_type_result.as_ref() {
+    NodeType::Typed { node: start_type, .. } => {
+        match end_type_result.as_ref() {
+    NodeType::Typed { node: end_type, .. } => {
+        Some(check_slice_access_node(base_type.clone(), start_type.clone(), end_type.clone(), span.clone(), &scope.module_name))
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+};
+    let access_failure_source = match base_type_result.as_ref() {
+    NodeType::Typed { node: _, .. } => {
+        match start_type_result.as_ref() {
+    NodeType::Typed { node: _, .. } => {
+        end_type_result.clone()
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        start_type_result.clone()
+    }
+    NodeType::Untyped => {
+        start_type_result.clone()
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::Untyped => {
+        base_type_result.clone()
+    }
+};
+    let slc_return_type = match slice_check.clone() {
+    Some(checked) => {
+        checked.return_type.clone()
+    }
+    None => {
+        Some(inferred_from_node_type(access_failure_source.clone(), "invalid slice access", span.clone()))
+    }
+};
+    let slice_access_diags = match slice_check.clone() {
+    Some(checked) => {
+        checked.diagnostics.clone()
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+};
+    let slc_texpr = make_expr_node(Rc::new(ExprData::ExprSlice { base: base_typed.clone(), start: start_typed.clone(), end: end_typed.clone() }), slc_return_type.clone(), span.clone());
+    Rc::new(InferResult { typed: slc_texpr.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(base_diags.clone(), start_diags.clone()), end_diags.clone()), slice_access_diags.clone()) })
 }
     }
     ExprData::ExprReturn { value: inner_expr, .. } => {
@@ -2870,7 +2147,7 @@ pub fn infer_record_lit(type_name: Option<String>, field_inits: Rc<Vec<Rc<FieldI
     }
     None => {
         {
-    let local_lookup = lookup_in_scope(scope.clone(), &type_name.clone().unwrap());
+    let local_lookup = lookup_in_scope(scope.locals.clone(), &type_name.clone().unwrap());
     match local_lookup.as_ref().map(|__rc| __rc.as_ref()) {
     Some(local_node) => {
         let local_node = Rc::new(local_node.clone());
@@ -3031,107 +2308,6 @@ pub fn infer_items(items: Rc<Vec<Rc<Node>>>, scope: Rc<InferScope>) -> Rc<Vec<Rc
         __mapped_0.push(infer_item(__elem_1.clone(), scope.clone()));
     }
     Rc::new(__mapped_0)
-}
-}
-
-pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<MatchArm>>>, env: Rc<TypeEnv>, span: SourceSpan, module_name: &str) -> Rc<Vec<Rc<Diagnostic>>> {
-    let resolved = if node_has_structure(scrutinee_type.clone()) {
-    scrutinee_type.clone()
-} else {
-    match lookup_type(env.clone(), &scrutinee_type.name) {
-    Some(def) => {
-        def.clone()
-    }
-    None => {
-        scrutinee_type.clone()
-    }
-}
-};
-    if node_is_coproduct(resolved.clone()) {
-    let variant_names = if node_is_optional(resolved.clone()) {
-    Rc::new(vec!("Some".to_string(), "None".to_string()))
-} else {
-    {
-    let mut __mapped_0 = Vec::new();
-    for __elem_1 in resolved.children.iter().cloned() {
-        __mapped_0.push(__elem_1.name.clone());
-    }
-    Rc::new(__mapped_0)
-}
-};
-    let has_catch_all = {
-    let mut __any_2 = false;
-    for __elem_3 in arms.iter().cloned() {
-        if match __elem_3.pattern.as_ref() {
-    MatchPattern::Wildcard => {
-        true
-    }
-    MatchPattern::Bind { name: _, .. } => {
-        true
-    }
-    _ => {
-        false
-    }
-} {
-    __any_2 = true;
-    break;
-};
-    }
-    __any_2
-};
-    if has_catch_all.clone() {
-    Rc::new(Vec::new())
-} else {
-    let covered_set = {
-    let mut __acc_4 = Rc::new(std::collections::HashMap::new());
-    for __elem_5 in arms.iter().cloned() {
-        __acc_4 = match __elem_5.pattern.as_ref() {
-    MatchPattern::VariantPattern { name: n, parent_enum: _, field_bindings: _, .. } => {
-        {
-    let __rc_7 = __acc_4;
-    let mut __map_ins_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_6.insert(n.clone(), true);
-    Rc::new(__map_ins_6)
-}
-    }
-    _ => {
-        __acc_4.clone()
-    }
-};
-    }
-    __acc_4
-};
-    let uncovered = {
-    let mut __filtered_8 = Vec::new();
-    for __elem_9 in variant_names.iter().cloned() {
-        if map_has(covered_set.clone(), &__elem_9) == false {
-    __filtered_8.push(__elem_9);
-};
-    }
-    Rc::new(__filtered_8)
-};
-    if ({
-    let __len_13 = uncovered.clone().len();
-    __len_13 as i64
-}) > 0_i64 {
-    Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), {
-    let mut __joined_10 = String::new();
-    let mut __first_12 = true;
-    for __elem_11 in uncovered.iter().cloned() {
-        if !__first_12 {
-    __joined_10.push_str(&", ".to_string());
-};
-        __first_12 = false;
-        __joined_10.push_str(&__elem_11);
-    }
-    __joined_10
-}), span: Some(span), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::InvalidOperation) })))
-} else {
-    Rc::new(Vec::new())
-}
-}
-} else {
-    Rc::new(Vec::new())
 }
 }
 
@@ -3558,41 +2734,6 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     Rc::new(BuildTypeEnvResult { env: unresolved_env.clone(), diagnostics: Rc::new(Vec::new()) })
 }
 
-pub fn item_kind(item: Rc<Node>) -> ItemKind {
-    let kind = if node_has_structure(item.clone()) && (item.transport.clone().is_none()) {
-    ItemKind::TypeItem
-} else {
-    if item.transport.clone().is_some() {
-    ItemKind::ServiceItem
-} else {
-    if (item.body.clone().is_some()) && (({
-    let __len_1 = item.uses.clone().len();
-    __len_1 as i64
-}) > 0_i64) {
-    ItemKind::FuncItem
-} else {
-    if (item.body.clone().is_some()) && (({
-    let __len_0 = item.params.clone().len();
-    __len_0 as i64
-}) > 0_i64) {
-    ItemKind::FnItem
-} else {
-    if (item.body.clone().is_some()) && (item.type_annotation.clone().is_some()) {
-    ItemKind::DataItem
-} else {
-    if item.body.clone().is_some() {
-    ItemKind::FnItem
-} else {
-    ItemKind::OtherItem
-}
-}
-}
-}
-}
-};
-    kind.clone()
-}
-
 pub fn build_item_info(item: Rc<Node>) -> Rc<ItemInfo> {
     let kind = item_kind(item.clone());
     let res_names = {
@@ -3777,31 +2918,6 @@ pub fn fold_module_contributions(remaining: Rc<Vec<Rc<ItemContribution>>>, resol
 };
         }
     })
-}
-
-pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    {
-    let mut __acc_0 = init.clone();
-    for __elem_1 in items.iter().cloned() {
-        __acc_0 = if node_is_coproduct(__elem_1.clone()) {
-    {
-    let mut __acc_2 = __acc_0.clone();
-    for __elem_3 in __elem_1.children.iter().cloned() {
-        __acc_2 = {
-    let __rc_5 = __acc_2;
-    let mut __map_ins_4 = Rc::try_unwrap(__rc_5).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_4.insert(__elem_3.name.clone(), Rc::new(TypeBinding { name: __elem_3.name.clone(), resolved: leaf_node(&__elem_1.name) }));
-    Rc::new(__map_ins_4)
-};
-    }
-    __acc_2
-}
-} else {
-    __acc_0.clone()
-};
-    }
-    __acc_0
-}
 }
 
 pub fn build_module_context(contributions: Rc<Vec<Rc<ItemContribution>>>, parent_index: Rc<HashMap<String, Rc<TypedModule>>>, resolved_imports: Rc<Vec<Rc<ResolvedImport>>>, env: Rc<TypeEnv>, module_name: &str) -> Rc<ModuleContext> {

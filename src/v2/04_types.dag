@@ -98,6 +98,19 @@ fn error_type_node() -> Node {
   leaf_node(name: "Error")
 }
 
+// Temporary L1 bridge: these helpers centralize the remaining name-based
+// sentinel checks so the audit surface is explicit. Access/pattern inference
+// now carries explicit failure state, which shrinks the call paths that still
+// depend on these names. Deletion point: P5.6/P5.8 after the final `04_types`
+// audit removes Error/Dynamic from type comparison entirely.
+fn node_is_bridge_error_name(n: Node) -> Bool {
+  n.name == "Error"
+}
+
+fn node_is_bridge_dynamic_name(n: Node) -> Bool {
+  n.name == "Dynamic"
+}
+
 fn no_span() -> SourceSpan {
   SourceSpan { start: 0, end: 0 }
 }
@@ -212,14 +225,17 @@ fn node_type_shape(n: Node) -> String {
 }
 
 fn node_type_compatible(left: Node, right: Node) -> Bool {
-  // Error rule: suppresses cascading diagnostics from ~12 error_type_node() sites
-  // in infer. Removal requires converting those to CompilerError (L1/Phase 5).
-  // Dynamic rule: supports 15 polymorphic placeholder sites (lambda params,
-  // method returns, kernel stubs). Removal requires type variable infrastructure (L1/Phase 5).
+  // Remaining `04_types` bridge audit:
+  // - Error compatibility still suppresses cascade comparisons on residual
+  //   name-level error nodes that survive outside explicit CompilerError paths.
+  // - Dynamic compatibility still supports audited polymorphic placeholder
+  //   sites pending type-variable infrastructure.
+  // Access and pattern lookup no longer lean on these rules for malformed or
+  // upstream-failed expressions; deletion still belongs to the Phase 5 L1 work.
   let left_opt = node_is_optional(n: left)
   let right_opt = node_is_optional(n: right)
-  if left.name == "Error" || right.name == "Error" { true }
-  else if left.name == "Dynamic" || right.name == "Dynamic" { true }
+  if node_is_bridge_error_name(n: left) || node_is_bridge_error_name(n: right) { true }
+  else if node_is_bridge_dynamic_name(n: left) || node_is_bridge_dynamic_name(n: right) { true }
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if node_is_container(n: left) && node_is_container(n: right) {
@@ -270,18 +286,18 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
 }
 
 fn node_type_equals(left: Node, right: Node) -> Bool {
-  // Error rule: suppresses cascading diagnostics from ~12 error_type_node() sites
-  // in infer. Removal requires converting those to CompilerError (L1/Phase 5).
-  // Dynamic rule: Dynamic==Dynamic is true (self-equal); Dynamic!=concrete is false.
+  // Same bridge audit as node_type_compatible(): keep the residual name-based
+  // sentinel behavior explicit until the last comparison callers stop routing
+  // failed inference through type nodes.
   let left_opt = node_is_optional(n: left)
   let right_opt = node_is_optional(n: right)
   let left_leaf = node_is_leaf(n: left)
   let right_leaf = node_is_leaf(n: right)
   let left_struct = node_has_structure(n: left)
   let right_struct = node_has_structure(n: right)
-  if left.name == "Error" || right.name == "Error" { true }
-  else if left.name == "Dynamic" && right.name == "Dynamic" { true }
-  else if left.name == "Dynamic" || right.name == "Dynamic" { false }
+  if node_is_bridge_error_name(n: left) || node_is_bridge_error_name(n: right) { true }
+  else if node_is_bridge_dynamic_name(n: left) && node_is_bridge_dynamic_name(n: right) { true }
+  else if node_is_bridge_dynamic_name(n: left) || node_is_bridge_dynamic_name(n: right) { false }
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if left_leaf && right_leaf {

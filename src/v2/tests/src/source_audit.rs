@@ -56,6 +56,26 @@ fn parse_supports_null_coalesce() {
 }
 
 #[test]
+fn parser_uses_expected_token_api_for_control_flow() {
+    let source = read_v2_file("src/v2/02_parse.dag");
+    assert_live_contains(
+        &source,
+        "type ExpectedToken",
+        "02_parse.dag should define a typed ExpectedToken API",
+    );
+    assert_live_contains(
+        &source,
+        "fn kind_matches_expected(",
+        "02_parse.dag should match parser control flow on ExpectedToken",
+    );
+    assert_live_not_contains(
+        &source,
+        "fn kind_matches_tag(",
+        "02_parse.dag should no longer route parser control flow through string tag dispatch",
+    );
+}
+
+#[test]
 fn emit_handles_null_coalesce() {
     let source = read_v2_file("src/v2/05_emit_rust.dag");
     assert!(
@@ -175,6 +195,31 @@ fn typecheck_has_cycle_detection() {
     assert!(
         source.contains("recursive_types"),
         "04_infer.dag should contain recursive_types"
+    );
+}
+
+#[test]
+fn pattern_lookup_uses_explicit_subject_status() {
+    let source = read_v2_file("src/v2/04_patterns.dag");
+    assert_live_contains(
+        &source,
+        "type PatternSubject",
+        "04_patterns.dag should define an explicit PatternSubject status channel",
+    );
+    assert_live_contains(
+        &source,
+        "PatternLookupBlocked",
+        "04_patterns.dag should represent blocked lookup explicitly",
+    );
+    assert_live_not_contains(
+        &source,
+        "scrut.name == \"Error\"",
+        "04_patterns.dag should not branch on raw scrutinee Error names inline",
+    );
+    assert_live_not_contains(
+        &source,
+        "variant.name == \"Dynamic\"",
+        "04_patterns.dag should not branch on raw variant Dynamic names inline",
     );
 }
 

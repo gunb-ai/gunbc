@@ -1,0 +1,135 @@
+// Item analysis -- classifies module items and builds item metadata.
+//
+// Dependency chain:
+//   v2.std.core, v2.compiler.infer_types, v2.compiler.infer_env, v2.compiler.infer_sigs
+//     -> v2.compiler.infer_items (this file)
+//       -> v2.compiler.infer (expression inference)
+
+module v2.compiler.infer_items
+
+import std.types { SourceSpan }
+import v2.std.core {
+  Module, Node, Param, Field,
+  InferredNode, Resolved, CompilerError,
+  Cardinality, Required,
+  Diagnostic,
+  expr_has_self_call, expr_has_non_tail_self_call
+}
+import v2.compiler.infer_types {
+  leaf_node, rt_type,
+  node_has_structure, node_is_product, node_is_coproduct
+}
+import v2.compiler.infer_env {
+  TypeEnv, TypeBinding
+}
+import v2.compiler.infer_sigs {
+  ResolvedFuncEnv
+}
+
+// =========================================================================
+// Types
+// =========================================================================
+
+type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
+
+type ItemInfo {
+  name: String
+  kind: ItemKind
+  service_names: List<String>
+  resource_names: List<String>
+  params: List<Param>
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+}
+
+type TypedModule {
+  module: Module
+  items: List<Node>
+  type_env: TypeEnv
+  func_env: ResolvedFuncEnv
+  item_registry: Map<String, ItemInfo>
+}
+
+type TypedGraph {
+  modules: List<TypedModule>
+  item_registry: Map<String, ItemInfo>
+  diagnostics: List<Diagnostic>
+}
+
+// ResolvedGraph: the reconcile-to-emit boundary type.
+// Wraps TypedModules whose func_env is ResolvedFuncEnv, making it
+// structurally impossible for unresolved signatures to reach emit.
+type ResolvedGraph {
+  modules: List<TypedModule>
+  item_registry: Map<String, ItemInfo>
+  diagnostics: List<Diagnostic>
+}
+
+// =========================================================================
+// Functions
+// =========================================================================
+
+// Derive outputs from a Node's return_type.
+// Outputs live in return_type:
+//   - Single output: return_type is the Node directly
+//   - Multiple outputs: return_type is Conj Node with field children
+//   - No outputs: return_type is none
+fn return_type_to_outputs(return_type: InferredNode?, span: SourceSpan) -> List<Field> {
+  if return_type == none { [] }
+  else { match return_type.value {
+    CompilerError { message: _, span: _ } => []
+    Resolved { node: rt } =>
+        if node_has_structure(n: rt) {
+          if node_is_product(n: rt) {
+            if rt.name == "" {
+              // Anonymous product -- expand children as fields
+              map(rt.children, child =>
+                let child_type = if child.return_type == none { leaf_node(name: child.name) } else { rt_type(n: child) }
+                Field { name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span }
+              )
+            } else {
+              [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
+            }
+          } else {
+            [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
+          }
+        } else if rt.name == "Unit" && rt.children |> count == 0 {
+          []
+        } else {
+          [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
+        }
+    }
+  }
+}
+
+fn item_kind(item: Node) -> ItemKind {
+  let kind = if node_has_structure(n: item) && item.transport == none {
+    TypeItem
+  } else if item.transport != none {
+    ServiceItem
+  } else if item.body != none && item.uses |> count > 0 {
+    FuncItem
+  } else if item.body != none && item.params |> count > 0 {
+    FnItem
+  } else if item.body != none && item.type_annotation != none {
+    DataItem
+  } else if item.body != none {
+    FnItem
+  } else {
+    OtherItem
+  }
+  kind
+}
+
+fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(items, init: init, f: (acc, item) =>
+    if node_is_coproduct(n: item) {
+      fold(item.children, init: acc, f: (vacc, child) =>
+        map_insert(vacc, child.name, TypeBinding {
+          name: child.name,
+          resolved: leaf_node(name: item.name)
+        })
+      )
+    } else { acc }
+  )
+}

@@ -60,13 +60,17 @@ import v2.compiler.languages {
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
-import v2.compiler.infer {
+import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
+  ItemInfo, FuncItem
+}
+import v2.compiler.infer_service {
+  is_typed_service_call_receiver, extract_typed_service_name
+}
+import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
-  expr_span,
-  ItemInfo, FuncItem,
-  is_typed_service_call_receiver, extract_typed_service_name
+  expr_span
 }
 
 import v2.compiler.emit {

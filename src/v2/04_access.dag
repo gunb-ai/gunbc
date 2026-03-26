@@ -1,0 +1,108 @@
+// Access checks -- pure type checks for index and slice operations.
+//
+// Dependency chain:
+//   v2.std.core, v2.compiler.infer_types
+//     -> v2.compiler.infer_access (this file)
+//       -> v2.compiler.infer (expression inference)
+
+module v2.compiler.infer_access
+
+import std.types { SourceSpan }
+import v2.std.core {
+  Node,
+  InferredNode, Resolved, CompilerError,
+  Diagnostic, Severity, Error
+}
+import v2.compiler.infer_types {
+  leaf_node, with_optional_cardinality,
+  node_is_map,
+  normalize_access_type_node,
+  node_type_equals,
+  is_int_type_node, is_string_type_node,
+  node_has_structure
+}
+
+// =========================================================================
+// Types
+// =========================================================================
+
+type AccessCheckResultNode {
+  return_type: InferredNode?
+  diagnostics: List<Diagnostic>
+}
+
+// =========================================================================
+// Functions
+// =========================================================================
+
+fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagnostic {
+  Diagnostic {
+    severity: Error,
+    message: message,
+    span: Some { value: span },
+    module_name: Some { value: module_name },
+    category: none
+  }
+}
+
+fn access_result(return_type: Node, diagnostics: List<Diagnostic>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
+  if count(diagnostics) == 0 {
+    AccessCheckResultNode {
+      return_type: Some { value: Resolved { node: return_type } },
+      diagnostics: diagnostics
+    }
+  } else {
+    let message = match diagnostics |> first {
+      Some { value: diag } => diag.message
+      None => fallback_message
+    }
+    AccessCheckResultNode {
+      return_type: Some { value: CompilerError { message: message, span: span } },
+      diagnostics: diagnostics
+    }
+  }
+}
+
+fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
+  let normed = normalize_access_type_node(n: base_type)
+  if node_has_structure(n: normed) == false && normed.children |> count == 0 && normed.name == "String" {
+    let diags = if is_int_type_node(n: index_type) { [] }
+    else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
+    access_result(return_type: leaf_node(name: "String"), diagnostics: diags, span: span, fallback_message: "invalid string index access")
+  } else if node_is_map(n: normed) && normed.children |> count >= 2 {
+    let key_node = match normed.children |> first {
+      Some { value: k } => k
+      None => leaf_node(name: "")
+    }
+    let val_node = match normed.children |> skip(1) |> first {
+      Some { value: v } => v
+      None => leaf_node(name: "")
+    }
+    let key_diags = if node_type_equals(left: key_node, right: index_type) { [] }
+    else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
+    access_result(return_type: with_optional_cardinality(n: val_node), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
+  } else if node_is_map(n: normed) {
+    let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
+    access_result(return_type: leaf_node(name: "Unit"), diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
+  } else {
+    let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
+    access_result(return_type: leaf_node(name: "Unit"), diagnostics: diags, span: span, fallback_message: "invalid index access")
+  }
+}
+
+fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
+  let base_is_string = is_string_type_node(n: base_type)
+  let base_diags = if base_is_string { [] }
+  else { [access_error(message: "slice is only supported for String values", span: span, module_name: module_name)] }
+  let start_diags = if is_int_type_node(n: start_type) { [] }
+  else { [access_error(message: "slice start requires an Int index", span: span, module_name: module_name)] }
+  let end_diags = if is_int_type_node(n: end_type) { [] }
+  else { [access_error(message: "slice end requires an Int index", span: span, module_name: module_name)] }
+  let all_diags = concat(base_diags, start_diags, end_diags)
+  access_result(
+    return_type: leaf_node(name: "String"),
+    diagnostics: all_diags,
+    span: span,
+    fallback_message: "invalid slice access"
+  )
+}

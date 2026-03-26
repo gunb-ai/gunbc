@@ -123,27 +123,20 @@ pub struct ComplexitySummary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CostInternTable {
-    pub interned: Rc<HashMap<String, Rc<CostExpr>>>,
     pub summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>,
 }
 
 pub fn empty_intern_table() -> Rc<CostInternTable> {
-    Rc::new(CostInternTable { interned: Rc::new(std::collections::HashMap::new()), summaries: Rc::new(std::collections::HashMap::new()) })
+    Rc::new(CostInternTable { summaries: Rc::new(std::collections::HashMap::new()) })
 }
 
 pub fn cache_summary(table: Rc<CostInternTable>, func_name: &str, summary: Rc<ComplexitySummary>) -> Rc<CostInternTable> {
-    {
-    let __rc_1 = table;
-    let mut __owned_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| { debug_assert!(false, "V5: expected sole ownership of `table`"); (*rc).clone() });
-    let __taken_2 = std::mem::take(&mut __owned_0.summaries);
-    __owned_0.summaries = {
-    let __rc_4 = __taken_2;
-    let mut __map_ins_3 = Rc::try_unwrap(__rc_4).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_3.insert(func_name.to_string(), summary.clone());
-    Rc::new(__map_ins_3)
-};
-    Rc::new(__owned_0)
-}
+    Rc::new(CostInternTable { summaries: {
+    let __rc_1 = table.summaries.clone();
+    let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
+    __map_ins_0.insert(func_name.to_string(), summary.clone());
+    Rc::new(__map_ins_0)
+} })
 }
 
 pub fn lookup_summary(table: Rc<CostInternTable>, func_name: &str) -> Option<Rc<ComplexitySummary>> {
