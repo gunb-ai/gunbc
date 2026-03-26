@@ -1191,12 +1191,12 @@ fn service_config_retry(n: Node) -> Node? {
 // --- Module as Node ---
 // A Module dissolves into a Node where:
 //   name = module name, children = import nodes ++ item nodes,
-//   property "is_module" = true, span = module span.
-// Import nodes have property "is_import" = true, name = module_path.
-// ImportAll: property "import_all" = true. ImportSpecific: children named per import.
+//   property "__is_module" = true, span = module span.
+// Import nodes have property "__is_import" = true, name = module_path.
+// ImportAll: property "__import_all" = true. ImportSpecific: children named per import.
 
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
-  let marker = FieldInit { name: "is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+  let marker = FieldInit { name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   Node {
     name: name, span: span, children: concat(imports, items), connective: none,
     collection_kind: none,
@@ -1208,9 +1208,9 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
 }
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<String>, span: SourceSpan) -> Node {
-  let import_prop = FieldInit { name: "is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+  let import_prop = FieldInit { name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   let all_prop = if is_all {
-    [FieldInit { name: "import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
+    [FieldInit { name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
   } else { [] }
   let name_children = specific_names |> map(n => Node {
     name: n, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none,
@@ -1231,15 +1231,15 @@ fn import_node(module_path: String, is_all: Bool, specific_names: List<String>, 
 }
 
 fn is_module_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "is_module")
+  n.properties |> any(p => p.name == "__is_module")
 }
 
 fn is_import_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "is_import")
+  n.properties |> any(p => p.name == "__is_import")
 }
 
 fn import_is_all(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "import_all")
+  n.properties |> any(p => p.name == "__import_all")
 }
 
 fn import_specific_names(n: Node) -> List<String> {
@@ -1259,7 +1259,7 @@ fn module_items(n: Node) -> List<Node> {
 //   name = kind tag string, span = token span, properties encode payload.
 
 fn is_token_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "is_token")
+  n.properties |> any(p => p.name == "__is_token")
 }
 
 // =========================================================================
