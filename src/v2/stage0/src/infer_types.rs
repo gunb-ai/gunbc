@@ -219,7 +219,7 @@ pub fn node_type_shape(n: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if node_is_leaf(n.clone()) {
     if node_is_named_ref(n.clone()) {
-    v2_rt::concat(v2_rt::concat("Named(".to_string(), normalize_type_name(&n.name)), ")".to_string())
+    v2_rt::concat(v2_rt::concat("Named(".to_string(), n.name.clone()), ")".to_string())
 } else {
     v2_rt::concat(v2_rt::concat("Primitive(".to_string(), n.name.clone()), ")".to_string())
 }
@@ -228,14 +228,14 @@ pub fn node_type_shape(n: Rc<Node>) -> String {
     if n.name.clone() == "" {
     "Product(<anon>)".to_string()
 } else {
-    v2_rt::concat(v2_rt::concat("Product(".to_string(), normalize_type_name(&n.name)), ")".to_string())
+    v2_rt::concat(v2_rt::concat("Product(".to_string(), n.name.clone()), ")".to_string())
 }
 } else {
     if node_is_coproduct(n.clone()) {
     if n.name.clone() == "" {
     "Coproduct(<anon>)".to_string()
 } else {
-    v2_rt::concat(v2_rt::concat("Coproduct(".to_string(), normalize_type_name(&n.name)), ")".to_string())
+    v2_rt::concat(v2_rt::concat("Coproduct(".to_string(), n.name.clone()), ")".to_string())
 }
 } else {
     if node_is_container(n.clone()) {
@@ -288,7 +288,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
     break true;
 } else {
     if node_is_container(left.clone()) && node_is_container(right.clone()) {
-    if normalize_type_name(&left.name) != normalize_type_name(&right.name) {
+    if left.name.clone() != right.name.clone() {
     break false;
 } else {
     match left.children.clone().first().cloned() {
@@ -338,7 +338,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
     if left_opt.clone() || right_opt.clone() {
     break false;
 } else {
-    break normalize_type_name(&left.name) == normalize_type_name(&right.name);
+    break left.name.clone() == right.name.clone();
 };
 };
 };
@@ -372,7 +372,7 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
 }
 };
     let same_kind = if left_is_container.clone() && node_is_container(right.clone()) {
-    normalize_type_name(&left_norm_name) == normalize_type_name(&right.name)
+    left_norm_name == right.name.clone()
 } else {
     if left_is_optional.clone() && node_is_optional(right.clone()) {
     true
@@ -411,10 +411,10 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     true
 } else {
     if left_leaf.clone() && right_leaf.clone() {
-    normalize_type_name(&left.name) == normalize_type_name(&right.name)
+    left.name.clone() == right.name.clone()
 } else {
     if left_struct.clone() && right_struct.clone() {
-    if normalize_type_name(&left.name) != normalize_type_name(&right.name) {
+    if left.name.clone() != right.name.clone() {
     false
 } else {
     if node_is_product(left.clone()) != node_is_product(right.clone()) {
@@ -457,10 +457,10 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
 }
 } else {
     if left_leaf.clone() && right_struct.clone() {
-    normalize_type_name(&left.name) == normalize_type_name(&right.name)
+    left.name.clone() == right.name.clone()
 } else {
     if left_struct.clone() && right_leaf.clone() {
-    normalize_type_name(&left.name) == normalize_type_name(&right.name)
+    left.name.clone() == right.name.clone()
 } else {
     if node_is_container(left.clone()) && node_is_container(right.clone()) {
     if left.name.clone() != right.name.clone() {

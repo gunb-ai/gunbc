@@ -1329,7 +1329,7 @@ type Char = Int where brand("Char"), range(min: 0, max: 1114111)
 // --- Container types (parameterized) -----------------------------------
 // Bare declarations with type parameters. The compiler reads arity from
 // params and renders to target-language containers. The algebraic
-// structure (Nil|Cons for List, etc.) is denotational — not compiled.
+// structure (Nil|Cons for List, etc.) is denotational -- not compiled.
 type List<element>
 type Set<element>
 type Map<key, value>
@@ -1973,7 +1973,7 @@ fn is_kernel_numeric(name: String) -> Bool {
 }
 
 // Arity bridge: parameterized types and their expected number of type children.
-// This is an explicit short-term bridge — deleted when real .dag algebraic
+// This is an explicit short-term bridge -- deleted when real .dag algebraic
 // declarations exist (Phase 3, P3.7). Optional is EXCLUDED: it is cardinality
 // on the binding site (P1.4), not a parameterized type.
 //
@@ -5124,7 +5124,7 @@ fn parse_optional_type_params(tokens: List<Token>, state: ParserState) -> TypePa
   if e.consumed {
     let params_result = collect_type_param_names(tokens: tokens, state: e.state, params: [])
     let r = expect(tokens: tokens, state: params_result.state, expected: ExpectGt)
-    // If Gt parsing fails, return what we have — the error propagates from caller
+    // If Gt parsing fails, return what we have -- the error propagates from caller
     TypeParamsResult { params: params_result.params, state: r.state }
   } else {
     TypeParamsResult { params: [], state: state }
@@ -7997,7 +7997,7 @@ fn peek_is_colon_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
 // resolve_node_bounded checks declaration params at resolution time.
 //
 // The normalizer currently passes the graph through unchanged.
-// Future: Call→MethodCall unification (currently in infer).
+// Future: Call->MethodCall unification (currently in infer).
 
 module v2.compiler.normalize
 
@@ -8076,7 +8076,7 @@ type DepEdge {
   to_module: String
 }
 
-// (P5: KahnState/KahnStepResult removed — replaced by queue-based KahnDrainState)
+// (P5: KahnState/KahnStepResult removed -- replaced by queue-based KahnDrainState)
 
 // Accumulator for Phase 2 -- builds imports-by-name map and collects diagnostics.
 type ResolveAccum {
@@ -8374,7 +8374,7 @@ type TopoResult {
 fn topological_sort(modules: List<Module>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
 
-  // Build adjacency list: from_module → [to_module, ...]
+  // Build adjacency list: from_module -> [to_module, ...]
   // "from_module is imported by to_module" means when from_module is sorted,
   // to_module's in-degree decreases.
   let adjacency = modules |> flat_map(m =>
@@ -8464,7 +8464,7 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
   })
 
   // Collect newly zero-in-degree nodes (neighbors that just reached 0).
-  // Deduplicate via map-as-set: diamond deps (A→C, B→C) produce C twice
+  // Deduplicate via map-as-set: diamond deps (A->C, B->C) produce C twice
   // in the flat_map; without dedup, C would be sorted twice and inflate
   // the count, causing a false cycle error.
   let new_zero_set = queue |> flat_map(node =>
@@ -8699,7 +8699,7 @@ fn detect_type_cycles_kahn(
 }
 "##;
     const SRC_V2_04_EMIT_INFO_DAG_SOURCE: &str = r##"// Emit graph info: type summaries, variant-to-enum maps, and field metadata
-// used by the emission phase. These are pure functions over Node trees —
+// used by the emission phase. These are pure functions over Node trees --
 // no dependency on TypedModule or InferScope.
 //
 // Dependency chain:
@@ -8720,7 +8720,7 @@ import v2.std.core {
 import v2.compiler.infer_types {
   node_has_structure, node_is_product, node_is_optional,
   with_required_cardinality,
-  normalize_type_name, normalize_access_type_node,
+  normalize_access_type_node, normalize_type_name,
   rt_type, child_return_type_or_name, node_type_equals
 }
 
@@ -8763,12 +8763,9 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
-fn normalize_emit_type_name(type_name: String) -> String {
-  normalize_type_name(name: type_name)
-}
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
+  map_get(emit_info.type_summaries, type_name)
 }
 
 // =========================================================================
@@ -8882,14 +8879,14 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   }
   if node_is_product(n: item) {
     Some { value: TypeSummary {
-      name: normalize_emit_type_name(type_name: item.name),
+      name: item.name,
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(children: item.children)
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
     Some { value: TypeSummary {
-      name: normalize_emit_type_name(type_name: item.name),
+      name: item.name,
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children)
     } }
@@ -8905,8 +8902,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
-              map_insert(acc, normalize_emit_type_name(type_name: variant.name), TypeSummary {
-                name: normalize_emit_type_name(type_name: variant.name),
+              map_insert(acc, variant.name, TypeSummary {
+                name: variant.name,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(children: variant.children)
               })
@@ -8985,12 +8982,11 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
 // and emit. Provides the core operations: lookup, merge, and cycle
 // membership checks.
 //
-// Dependency: v2.compiler.infer_types (normalize_type_name)
+// Dependency: v2.std.core
 
 module v2.compiler.infer_env
 
 import v2.std.core { Node }
-import v2.compiler.infer_types { normalize_type_name }
 
 // =========================================================================
 // Types
@@ -9019,8 +9015,7 @@ fn is_recursive_type(env: TypeEnv, name: String) -> Bool {
 }
 
 fn lookup_type(env: TypeEnv, name: String) -> Node? {
-  let canonical = normalize_type_name(name: name)
-  match map_get(env.bindings, canonical) {
+  match map_get(env.bindings, name) {
     Some { value: binding } => Some { value: binding.resolved }
     None => None
   }
@@ -9120,7 +9115,7 @@ import v2.compiler.infer_types {
   node_is_container, node_is_optional, node_is_map,
   node_is_leaf, node_is_named_ref,
   node_is_product, node_is_coproduct, node_has_structure,
-  normalize_access_type_node, normalize_type_name,
+  normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
@@ -9360,7 +9355,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
           )
           // svc_registry + svc_locals from parent items
           // (variant_locals are derived from env.bindings in build_module_context,
-          //  which already includes all imported types — no merge needed here.)
+          //  which already includes all imported types -- no merge needed here.)
           let parent_result = fold(typed_parent.items, init: InferScopeComponents {
             func_sigs: next_func_sigs, svc_registry: svc_registry,
             svc_locals: svc_locals
@@ -9604,7 +9599,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node) -> InferScope {
 
 // Extend scope with lambda parameter names.
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
-  // Dynamic audit: correct — lambda params start as Dynamic; refined during body inference
+  // Dynamic audit: correct -- lambda params start as Dynamic; refined during body inference
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, p, TypeBinding { name: p, resolved: leaf_node(name: "Dynamic") })
   )
@@ -9716,7 +9711,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         } else if pair.first == param_count - 1 {
           elem_type
         } else {
-          // Dynamic audit: correct — fold middle params are structurally unknown
+          // Dynamic audit: correct -- fold middle params are structurally unknown
           leaf_node(name: "Dynamic")
         }
       )
@@ -9726,7 +9721,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         } else if pair.first == param_count - 1 {
           map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: elem_type })
         } else {
-          // Dynamic audit: correct — fold middle params are structurally unknown
+          // Dynamic audit: correct -- fold middle params are structurally unknown
           map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: leaf_node(name: "Dynamic") })
         }
       )
@@ -9773,7 +9768,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
           if pair.first == (lam_params |> count) - 1 {
             element_type
           } else {
-            // Dynamic audit: correct — multi-param lambda non-last params are unknown
+            // Dynamic audit: correct -- multi-param lambda non-last params are unknown
             leaf_node(name: "Dynamic")
           }
         )
@@ -9789,7 +9784,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
           if pair.first == (lam_params |> count) - 1 {
             extend_scope(scope: acc, name: pair.second, resolved: element_type)
           } else {
-            // Dynamic audit: correct — multi-param lambda non-last params are unknown
+            // Dynamic audit: correct -- multi-param lambda non-last params are unknown
             extend_scope(scope: acc, name: pair.second, resolved: leaf_node(name: "Dynamic"))
           }
         )
@@ -9935,7 +9930,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, return_type: Some { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
 
     ExprError { kind: kind, message: message } =>
-      // No diagnostics here — resolve_expr_types already emitted the error.
+      // No diagnostics here -- resolve_expr_types already emitted the error.
       // Re-emitting would produce duplicate error messages for every ExprError.
       let span = texpr.span
       InferResult {
@@ -10004,7 +9999,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             diagnostics: base_diags
           }
         None =>
-          // Dynamic audit: correct — field access on Dynamic base; type is genuinely unknown
+          // Dynamic audit: correct -- field access on Dynamic base; type is genuinely unknown
           if resolved_base.name == "Dynamic" {
             let fa_texpr = make_expr_node(
               expr_data: ExprFieldAccess { base: base_typed, field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
@@ -10063,7 +10058,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         None => error_type_node()
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
-        // Collection method bridge path (no known sig — bridge to method call)
+        // Collection method bridge path (no known sig -- bridge to method call)
         match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: first_arg.value, scope: scope)
@@ -10147,7 +10142,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             diagnostics: arg_diags
           }
         } else if func_name == "empty_map" {
-          // Built-in: empty_map() → Map
+          // Built-in: empty_map() -> Map
           InferResult {
             typed: make_expr_node(
               expr_data: ExprCall { func: func_name, args: typed_args, call_semantics: Some { value: PlainCallSemantics } },
@@ -10941,7 +10936,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // The real Optional is parametric (Optional<T>), but the kernel provides
   // the structural skeleton (Disj with Some/None variants) so that
   // RecordLit and pattern matching resolve variant constructors correctly.
-  // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
+  // Dynamic audit: correct -- Some.value is parametric; T is unknown until use-site specialization
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -11021,7 +11016,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // can resolve slot references (e.g., "A" and "B" in type Pair<A, B>).
   // Slot names resolve to leaf nodes; normalization substitutes them at
   // use sites. Phase 3 MVP: registered globally, not scoped to declaration.
-  // Only register params from items already recognized as type bindings —
+  // Only register params from items already recognized as type bindings --
   // prevents function params from leaking into the type namespace.
   let param_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, item.name) { Some { value: _ } => true  None => false }
@@ -11070,7 +11065,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: leaf_node(name: name) })
   )
-  // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
+  // Dynamic audit: correct -- Some.value is parametric; T is unknown until use-site specialization
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -11780,7 +11775,7 @@ import v2.compiler.infer_types {
   error_type_node,
   node_is_optional, node_is_map,
   node_is_product, node_is_coproduct, node_has_structure,
-  normalize_access_type_node, normalize_type_name,
+  normalize_access_type_node,
   rt_type, rt_node,
   emit_map_has
 }
@@ -11886,12 +11881,10 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   // rewraps Optional after environment lookup. Access and match-pattern
   // inference now carry explicit failure state before entering this helper,
   // so this function should only resolve successfully typed scrutinee shapes.
-  // Full deletion belongs to P5.8 once `normalize_type_name` is gone.
   let normed = normalize_access_type_node(n: n)
   if node_has_structure(n: normed) == false && normed.children |> count == 0 {
-    let canonical = normalize_type_name(name: normed.name)
     if normed.return_type != none {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      let next_seen = if normed.name == "" { seen } else { map_insert(seen, normed.name, true) }
       match rt_node(n: normed) {
         Typed { node: target } =>
           if target.name == normed.name && target.return_type == none && node_has_structure(n: target) == false && target.children |> count == 0 {
@@ -11902,10 +11895,10 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
         InferError { message: _, span: _ } => normed
         Untyped => normed
       }
-    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
+    } else if normed.name != "" && emit_map_has(m: seen, key: normed.name) {
       leaf_node(name: normed.name)
     } else {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      let next_seen = if normed.name == "" { seen } else { map_insert(seen, normed.name, true) }
       match lookup_type(env: env, name: normed.name) {
         Some { value: resolved } =>
           if resolved.name == normed.name && resolved.return_type == none && node_has_structure(n: resolved) == false && resolved.children |> count == 0 {
@@ -12176,17 +12169,17 @@ fn infer_builtin_call_type(name: String) -> Node? {
   } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
     Some { value: leaf_node(name: "Int") }
   } else if name == "lookup" || name == "map_get" {
-    // Dynamic audit: correct — value type depends on receiver's map type, unknown here
+    // Dynamic audit: correct -- value type depends on receiver's map type, unknown here
     Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
   } else if name == "map_insert" || name == "map_merge" || name == "with" {
     Some { value: bare_map_node() }
   } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
     Some { value: leaf_node(name: "Bool") }
   } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
-    // Dynamic audit: correct — element type depends on receiver, unknown here
+    // Dynamic audit: correct -- element type depends on receiver, unknown here
     Some { value: container_node(kind_name: "List", element: leaf_node(name: "Dynamic")) }
   } else if name == "Some" {
-    // Dynamic audit: correct — inner type depends on argument, unknown here
+    // Dynamic audit: correct -- inner type depends on argument, unknown here
     Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
   } else {
     none
@@ -12203,7 +12196,7 @@ fn resolve_builtin_call_type(name: String) -> Node {
 // =========================================================================
 // Intrinsic method index -- single-authority Map for O(1) lookup
 //
-// This is the canonical source of the string→IntrinsicMethod mapping.
+// This is the canonical source of the string->IntrinsicMethod mapping.
 // classify_reconciled_intrinsic_method uses if-else for Optional return;
 // this function builds the Map consumed by emit for index-based lookup.
 // =========================================================================
@@ -12291,7 +12284,7 @@ type PatternSubject
 
 // Temporary bridge: synthesize a "Some { value: T }" variant node for
 // Optional pattern matching. Optional is still represented as
-// [inner_type, None] — no explicit "Some" child. Track in the roadmap until
+// [inner_type, None] -- no explicit "Some" child. Track in the roadmap until
 // pattern lookup gains a fully structural Optional subject.
 fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
@@ -12447,7 +12440,7 @@ fn check_match_exhaustiveness(
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
   if node_is_coproduct(n: resolved) || node_is_optional(n: resolved) {
-    // Optional is represented as [inner_type, None] — the first child
+    // Optional is represented as [inner_type, None] -- the first child
     // is the inner type, not a "Some" variant. Normalize to ["Some", "None"]
     // so patterns `Some { value: x } => ... None => ...` are recognized.
     let variant_names = if node_is_optional(n: resolved) {
@@ -12848,7 +12841,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // exponential blowup on diamond-shaped dependency graphs (OOM).
           // Preserve CardOptional from the reference node: the env binding
           // always stores the canonical (Required) definition, but the
-          // reference site may carry CardOptional (e.g. String? → String
+          // reference site may carry CardOptional (e.g. String? -> String
           // in env). Without this, optionality is silently discarded.
           let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
@@ -13036,7 +13029,7 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
   }
 }
 
-// resolve_header_def, resolve_env_def, resolve_auth_config deleted — transport dissolution
+// resolve_header_def, resolve_env_def, resolve_auth_config deleted -- transport dissolution
 
 fn resolve_service_config(config: ServiceConfig, env: TypeEnv, module_name: String) -> ServiceConfigResolveResult {
   let endpoint_result = resolve_expr_types(texpr: config.endpoint, env: env, module_name: module_name)
@@ -13107,7 +13100,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
   }
 }
 
-// NOTE: resolve_expr_types is pure structural recursion — the canonical
+// NOTE: resolve_expr_types is pure structural recursion -- the canonical
 // map_expr_children candidate. Blocked by v1 interpreter not supporting
 // user-defined higher-order functions. Collapses to ~10 lines when v1
 // retires (Phase 3). Deletion point: P5.11.
@@ -13687,7 +13680,7 @@ fn topo_resolve_loop(
     }
   }
 
-  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
+  // Resolve ready functions -- single pass collects resolved sigs and diagnostics.
   let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Some { value: dsig } =>
@@ -13837,7 +13830,7 @@ fn bare_map_node() -> Node {
   Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
-// P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
+// P3.7: arity bridge deleted. type_node_arity_ok removed -- arity is now
 // checked via declaration params in the type environment, not hardcoded names.
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
@@ -13938,20 +13931,23 @@ fn normalize_access_type_node(n: Node) -> Node {
   }
 }
 
+// Temporary L1 bridge: canonicalize type references by dropping generic
+// suffixes and module prefixes until all name-based lookups are dissolved.
 fn normalize_type_name(name: String) -> String {
   if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
     name
   } else {
-    let base = match name |> split(delimiter: "<") |> first {
+    let base = match name |> split(separator: "<") |> first {
       Some { value: part } => part
       None => name
     }
-    match base |> split(delimiter: ".") |> last {
+    match base |> split(separator: ".") |> last {
       Some { value: short } => short
       None => base
     }
   }
 }
+
 
 // =========================================================================
 // Type shape and comparison
@@ -13960,14 +13956,14 @@ fn normalize_type_name(name: String) -> String {
 fn node_type_shape(n: Node) -> String {
   if node_is_leaf(n: n) {
     if node_is_named_ref(n: n) {
-      concat("Named(", normalize_type_name(name: n.name), ")")
+      concat("Named(", n.name, ")")
     } else {
       concat("Primitive(", n.name, ")")
     }
   } else if node_is_product(n: n) {
-    if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
+    if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
   } else if node_is_coproduct(n: n) {
-    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
+    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
   } else if node_is_container(n: n) {
     let elem_shape = match n.children |> first {
       Some { value: el } => node_type_shape(n: el)
@@ -13999,7 +13995,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if node_is_container(n: left) && node_is_container(n: right) {
-    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    if left.name != right.name { false }
     else {
       match left.children |> first {
         Some { value: left_el } =>
@@ -14020,7 +14016,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     else { node_type_compatible(left: left_inner, right: right_inner) }
   }
   else if left_opt || right_opt { false }
-  else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
+  else { left.name == right.name }
 }
 
 fn prefer_specific_type(left: Node, right: Node) -> Node {
@@ -14037,7 +14033,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     left.name == "Unit"
   } else { false }
   let same_kind = if left_is_container && node_is_container(n: right) {
-    normalize_type_name(name: left_norm_name) == normalize_type_name(name: right.name)
+    left_norm_name == right.name
   } else if left_is_optional && node_is_optional(n: right) {
     true
   } else { false }
@@ -14061,10 +14057,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if left_leaf && right_leaf {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if left_struct && right_struct {
-    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    if left.name != right.name { false }
     else if node_is_product(n: left) != node_is_product(n: right) { false }
     else if left.children |> count != right.children |> count { false }
     else {
@@ -14077,10 +14073,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     }
   }
   else if left_leaf && right_struct {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if left_struct && right_leaf {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if node_is_container(n: left) && node_is_container(n: right) {
     if left.name != right.name { false }
@@ -14955,7 +14951,7 @@ fn rust_literal_for_pattern(value: LiteralValue) -> String {
 }
 
 // =========================================================================
-// P4.1: Target-dispatched rendering — unified by RenderTarget
+// P4.1: Target-dispatched rendering -- unified by RenderTarget
 //
 // These functions replace per-target triples (rust_X, go_X, python_X)
 // with a single function dispatched by RenderTarget. Backends should
@@ -15058,7 +15054,7 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
     // Bare container nodes (from empty_map(), etc.) need container templates
-    // even without children — emit with "_" placeholders.
+    // even without children -- emit with "_" placeholders.
     let base = if n.name == "Map" {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
@@ -15110,7 +15106,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       None => n.name
     }
   } else if n.name == "Tuple" {
-    // Tuple children may have return_type set — unwrap to get the actual type.
+    // Tuple children may have return_type set -- unwrap to get the actual type.
     let first_str = match n.children |> first {
       Some { value: c } =>
         if c.return_type != none {
@@ -15135,7 +15131,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    // Named product type — Rc wrapping for Rust
+    // Named product type -- Rc wrapping for Rust
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
     } else {
@@ -15146,7 +15142,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     let is_rust = match target { Rust => true  _ => false }
     if is_rust {
       if n.children |> count == 1 {
-        // Single-field anonymous product — unwrap the field type.
+        // Single-field anonymous product -- unwrap the field type.
         match n.children |> first {
           Some { value: field_node } =>
             if field_node.return_type != none {
@@ -15157,7 +15153,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
           None => "compile_error!(\"anonymous product reached Node emitter\")"
         }
       } else {
-        // Multi-field anonymous product → Rust tuple type.
+        // Multi-field anonymous product -> Rust tuple type.
         let field_types = n.children |> map(child =>
           if child.return_type != none {
             emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
@@ -15174,14 +15170,14 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
 
 fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name != "" {
-    // Named coproduct type — Rc wrapping for Rust
+    // Named coproduct type -- Rc wrapping for Rust
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
     } else {
       n.name
     }
   } else {
-    // Anonymous coproduct — error in all targets.
+    // Anonymous coproduct -- error in all targets.
     let is_rust = match target { Rust => true  _ => false }
     if is_rust {
       "compile_error!(\"anonymous coproduct reached Node emitter\")"
@@ -15638,7 +15634,7 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 }
 
 // =========================================================================
-// emit_shared_expr — full shared ExprData dispatcher (P4.2 step 5)
+// emit_shared_expr -- full shared ExprData dispatcher (P4.2 step 5)
 //
 // The shared layer owns the whole-tree `ExprData` match. Backends provide:
 // - `wrap_result` for target-specific result framing (Go indentation)
@@ -15721,9 +15717,9 @@ fn emit_shared_expr(
 }
 
 // =========================================================================
-// bridge_method_base_name — canonical snake_case name for each bridge method.
+// bridge_method_base_name -- canonical snake_case name for each bridge method.
 //
-// Single authority for the Bridge* → snake_case mapping. Each backend
+// Single authority for the Bridge* -> snake_case mapping. Each backend
 // either uses this directly (Rust) or derives its target convention from
 // it (Python overrides BridgeWith; Go capitalizes segments to PascalCase).
 // =========================================================================
@@ -19716,10 +19712,10 @@ fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, v
   }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
-  // Optional<Rc<T>> matches directly — no deref needed. The Some(x) binding
+  // Optional<Rc<T>> matches directly -- no deref needed. The Some(x) binding
   // gives x: Rc<T> which is correct. Only use .as_deref().cloned() when arms
   // destructure the inner value (matches_option_rc_variant from arm analysis).
-  // Never use (*...).clone() on Optional — it can't deref Option.
+  // Never use (*...).clone() on Optional -- it can't deref Option.
   RcMatchAnalysis {
     needs_option_deref: arms_want_option,
     needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
@@ -19952,8 +19948,8 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  // Check if base type is an anonymous record — the emitter flattens these to their
-  // inner type (single-field → bare type, multi-field → tuple), so field access must be
+  // Check if base type is an anonymous record -- the emitter flattens these to their
+  // inner type (single-field -> bare type, multi-field -> tuple), so field access must be
   // translated to the flattened representation.
   let base_is_anon_record = match base.return_type {
     Some { value: Resolved { node: bt } } =>
@@ -20494,7 +20490,7 @@ fn lambda_scope_from_semantics(scope: InferScope, params: List<String>, semantic
       params |> enumerate |> fold(init: scope, f: (acc, pair) =>
         let idx = pair.first
         let param_name = pair.second
-        // Dynamic audit: correct — scope must have a binding for every lambda param.
+        // Dynamic audit: correct -- scope must have a binding for every lambda param.
         // When inference didn't resolve a param type, Dynamic is the correct sentinel.
         // Downstream guards in lambda_param_type_strs filter Dynamic from rendered
         // type annotations, and emit_node_type_rc catches any remaining leak.
@@ -20516,7 +20512,7 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: lambda_semantics } =>
         match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: param_type } =>
-            // Dynamic audit: correct guard — filter Dynamic/Error sentinels from
+            // Dynamic audit: correct guard -- filter Dynamic/Error sentinels from
             // rendered lambda param type annotations. Falls back to caller-provided
             // fallback_types (typically elem_type_str or "_"), letting Rust infer.
             if param_type.name == "Dynamic" || param_type.name == "Error" {
@@ -20704,7 +20700,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             Some { value: concrete_type } => concrete_type
             None =>
               // Fallback: infer accumulator type from init expression's return type.
-              // Dynamic audit: correct — Dynamic leaf_node here is caught by
+              // Dynamic audit: correct -- Dynamic leaf_node here is caught by
               // emit_node_type_rc which renders it as compile_error!.
               match args |> first {
                 Some { value: init_arg } =>
@@ -20742,7 +20738,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         Some { value: Resolved { node: rt } } =>
           let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
           let elem = for_each_element_type_node(n: resolved)
-          // Dynamic audit: correct guard — if sort_by element type is Dynamic,
+          // Dynamic audit: correct guard -- if sort_by element type is Dynamic,
           // fall back to "_" so Rust infers the closure param type.
           if elem.name != "" && elem.name != "Dynamic" {
             emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
@@ -20991,7 +20987,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       }
     ExprFieldAccess { base: b, field: f, summary: fa_summary } =>
       // If the base type is known and this field has OptionalValue shape,
-      // the result is already Option<T> — don't double-wrap in Some().
+      // the result is already Option<T> -- don't double-wrap in Some().
       // Check 1: field_summary from reconcile directly says OptionalValue
       let summary_says_optional = match fa_summary {
         Some { value: fs } => match fs.value_shape { OptionalValue => true, _ => false }
@@ -21032,7 +21028,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
 fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
-  // Dynamic audit (both branches below): correct guards — when a field's type is
+  // Dynamic audit (both branches below): correct guards -- when a field's type is
   // Dynamic, return none rather than using "Dynamic" as a parent type qualifier.
   // The caller falls back to other disambiguation strategies (vtoe, parent_enum).
   // First try: direct children (works for Conj/struct nodes)
@@ -21153,7 +21149,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           match vtoe_lookup {
             Some { value: vtoe_parent } => Some { value: vtoe_parent }
             None =>
-              // Dynamic audit: correct guard — when resolved_type is Dynamic or Error,
+              // Dynamic audit: correct guard -- when resolved_type is Dynamic or Error,
               // don't use it as the enum parent qualifier. Fall through to parent_enum.
               if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
                 Some { value: resolved_type.name }
@@ -23268,7 +23264,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
 
       // Stage 5: Complexity analysis.
       // Runs before the typecheck error gate so that complexity data is
-      // always available — even when inference has false positives.
+      // always available -- even when inference has false positives.
       let func_entries = extract_func_entries(typed: typed)
       let complexity = build_complexity_report(func_entries: func_entries)
 
@@ -23477,7 +23473,7 @@ type ComplexitySummary {
 // =========================================================================
 
 type CostInternTable {
-  // func_name → cached summary (lazy computation)
+  // func_name -> cached summary (lazy computation)
   summaries: Map<String, ComplexitySummary>
 }
 
@@ -23502,11 +23498,11 @@ fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummar
 //
 // Compose complexity summaries over call graph structure.
 // Each rule corresponds to a DAG pattern:
-//   sequential  → cost_add
-//   parallel    → cost_max (for span)
-//   loop        → cost_mul(iterations, body)
-//   conditional → condition + cost_max(branches)
-//   recursive   → pattern-match on SCC structure
+//   sequential  -> cost_add
+//   parallel    -> cost_max (for span)
+//   loop        -> cost_mul(iterations, body)
+//   conditional -> condition + cost_max(branches)
+//   recursive   -> pattern-match on SCC structure
 // =========================================================================
 
 type RecursionPattern
@@ -25418,15 +25414,15 @@ fn rust_runtime_source() -> String {
 //
 // F1: Span preservation (SourceSpan threaded through emit + runtime adapters)
 // F2: Trace recording (TraceEvent/TraceFrame normalized from runtime events)
-// F3: Hermetic reproduction (capture function inputs → test case)
-// F4: Cross-language source mapping (generated code → .dag spans)
+// F3: Hermetic reproduction (capture function inputs -> test case)
+// F4: Cross-language source mapping (generated code -> .dag spans)
 
 module v2.compiler.trace
 
 import v2.std.core { SourceSpan }
 
 // =========================================================================
-// F1: Span mapping -- generated code line → source .dag span
+// F1: Span mapping -- generated code line -> source .dag span
 //
 // Emitters produce SpanMappings alongside generated code. Runtime adapters
 // can use these mappings to remap target-language failures and trace events

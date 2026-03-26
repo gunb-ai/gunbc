@@ -138,15 +138,14 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
     let __len_6 = normed.children.clone().len();
     __len_6 as i64
 }) == 0_i64) {
-    let canonical = normalize_type_name(&normed.name);
     if normed.return_type.clone().is_some() {
-    let next_seen = if canonical.clone() == "" {
+    let next_seen = if normed.name.clone() == "" {
     seen.clone()
 } else {
     {
     let __rc_1 = seen;
     let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_0.insert(canonical.clone(), true);
+    __map_ins_0.insert(normed.name.clone(), true);
     Rc::new(__map_ins_0)
 }
 };
@@ -169,16 +168,16 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
     }
 }
 } else {
-    if (canonical.clone() != "") && emit_map_has(seen.clone(), &canonical) {
+    if (normed.name.clone() != "") && emit_map_has(seen.clone(), &normed.name) {
     leaf_node(&normed.name)
 } else {
-    let next_seen = if canonical.clone() == "" {
+    let next_seen = if normed.name.clone() == "" {
     seen.clone()
 } else {
     {
     let __rc_4 = seen;
     let mut __map_ins_3 = Rc::try_unwrap(__rc_4).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_3.insert(canonical.clone(), true);
+    __map_ins_3.insert(normed.name.clone(), true);
     Rc::new(__map_ins_3)
 }
 };
