@@ -16,10 +16,10 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
-  expr_children
+  expr_children,
+  leaf_node, no_span, node_has_structure
 }
 import v2.compiler.infer_types {
-  leaf_node, no_span, node_has_structure,
   emit_map_has
 }
 import v2.compiler.infer_items {

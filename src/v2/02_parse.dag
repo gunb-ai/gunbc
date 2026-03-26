@@ -55,10 +55,11 @@ import v2.std.core {
   Ident, StrBegin, StrMid, StrEnd,
   Newline, Eof, Unknown,
   Diagnostic, Error,
-  SourceSpan
+  SourceSpan,
+  node_is_product, node_is_coproduct, with_required_cardinality
 }
 
-import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality, callable_node }
+import v2.compiler.infer_types { node_is_optional, callable_node }
 
 // =========================================================================
 // Parser state types

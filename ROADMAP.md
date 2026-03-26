@@ -241,8 +241,11 @@ sequence. Any program that processes trees, dependency graphs, or
 positional data needs the same structures.
 
 The thesis says the compiler is a generic graph processor. If the
-compiler needs types that aren't in std, that's a gap in std — not a
-special case in the compiler.
+compiler needs **structural carrier types** that aren't in std, that's
+a gap in std — not a special case in the compiler. (Domain-specific
+records like `TypeFacts`, `EmitGraphInfo`, `Diagnostic` are still
+compiler semantics; the point is that the **shapes** those records
+inhabit should come from shared vocabulary.)
 
 ```
 Layer 0: Logic
@@ -250,12 +253,18 @@ Layer 0: Logic
 
 Layer 1: Machine
   Bit = Classical where width(1)                 (std/bit.dag)
-  Byte = { bits: List<Bit> where length(8) }
-  Word16/32/64 = List<Byte> where length(N)
+  Vector<n, Bit>                                 (fixed-width bitvector)
+  Byte   = Vector<8, Bit>
+  Word32 = Vector<32, Bit>
+  Int32  = Interpret<Signed, Word32>
+
+  Note: fixed-width machine data uses Vector/bitvector, not List.
+  List<A> is a variable-length collection (Layer 3). This preserves
+  the machine/container distinction the roadmap warns about.
 
 Layer 2: Named compositions
-  Int = Int64 = Word64 where signed              (std/integer.dag)
-  Nat = UInt64 = Word64 where unsigned
+  Int = Int64 = Interpret<Signed, Word64>        (std/integer.dag)
+  Nat = UInt64 = Interpret<Unsigned, Word64>
   Char = Int where range(0, 1114111)             (std/types.dag)
   String = List<Char>                            (std/string_type.dag)
 
@@ -265,53 +274,61 @@ Layer 3: Collection algebras
   Map<K,V> = K → (1 + V)
 
 Layer 4: Structural compositions                 *** MISSING FROM STD ***
-  Span      = { start: Nat, end: Nat }
-  Pair<A,B> = { first: A, second: B }           (product / Conj)
-  Either<A,B> = Left { a: A } | Right { b: B }  (coproduct / Disj)
-  Tree<A>   = { value: A, children: List<Tree<A>> }
-  DAG<A>    = topologically ordered Tree<A> with sharing
-  Annotated<A, F> = { value: A, facts: F }
+  Span<I>          = { start: I, end: I } where start <= end
+  LabeledTree<A>   = Tree<{ name: String, value: A }>
+  Tree<A>          = { value: A, children: List<Tree<A>> }
+  DAG<Id, A>       = { nodes: Map<Id, A>,
+                        edges: Set<Pair<Id, Id>> }
+                      where acyclic(edges)
+  Annotated<A, F>  = { value: A, facts: F }
 
-Layer 5: Text/source compositions                *** MISSING FROM STD ***
-  SourceSpan  = Span                             (position in source text)
-  Token       = { text: String, span: SourceSpan, shape: TokenShape }
-  LabeledTree<A> = Tree<{ name: String, value: A }>
+  Derived conveniences (not new primitives):
+    Pair<A,B>    = ergonomic alias for Conj with two fields
+    Either<A,B>  = ergonomic alias for Disj with two variants
+    SourceSpan   = Span<Nat>
+    ByteRange    = Span<Nat>
+    TimeRange    = Span<Time>
+
+Layer 5: Parser/source domain (compiler/parser vocabulary)
+  Token<Shape> = { text: String, span: SourceSpan, shape: Shape }
+
+Layer 6: Compiler domain
+  (domain-specific records using Layer 4 shapes)
 ```
 
-**Layer 4 types are general-purpose:**
+**Layer 4 types are the real addition:**
 
 | Type | What it models | Compiler use | Other uses |
 |------|---------------|-------------|------------|
-| `Span` | A contiguous range in a sequence | Source positions, byte ranges | Time ranges, array slices, text selections |
-| `Tree<A>` | Recursive hierarchical structure | AST, Node graph | File systems, org charts, UI components, parse trees |
-| `DAG<A>` | Acyclic graph with topological order | Module graph, dependency order | Build systems, task scheduling, workflow orchestration |
-| `Annotated<A,F>` | Value enriched with computed facts | TypedModule = Module + type facts | Any pipeline that accumulates metadata over stages |
+| `Span<I>` | Contiguous range in a sequence | Source positions | Time ranges, byte ranges, array slices |
+| `Tree<A>` | Recursive hierarchical structure | Within-module syntax nodes | File systems, org charts, UI components |
+| `DAG<Id,A>` | Directed acyclic graph (nodes + edges + acyclicity) | Module graph, dependency order | Build systems, task scheduling, workflows |
+| `Annotated<A,F>` | Value enriched with computed facts | TypedModule = Annotated<Module, TypeFacts> | Any pipeline that accumulates metadata |
+| `LabeledTree<A>` | Named tree (Tree combinator) | AST node structure | Any labeled hierarchy |
 
 **The compiler as an instance of std vocabulary:**
 
-The compiler's domain types (Layer 6) are instances of Layer 4-5
-compositions, not novel inventions:
+Within-module syntax nodes are trees; the module graph is a DAG.
+`Node` is the universal carrier at the compiler level, but its
+within-module shape is `LabeledTree<NodePayload>`. The pipeline
+enriches this with computed facts via `Annotated`:
 
 ```
-Node          = LabeledTree<NodeFacts>
-Module        = { name: String, tree: Node, imports: List<Import> }
-ModuleGraph   = DAG<Module>
-TypedModule   = Annotated<Module, TypeFacts>
-ResolvedGraph = DAG<TypedModule>
-TextFile      = { path: String, content: String }
+ASTNode         = Annotated<LabeledTree<NodePayload>, NodeFacts>
+Module          = { name: String, tree: ASTNode, imports: List<Import> }
+ModuleGraph     = Annotated<DAG<ModuleId, Module>, TopologyFacts>
+TypedModule     = Annotated<Module, TypeFacts>
+ResolvedGraph   = DAG<ModuleId, TypedModule>
 ```
 
-When a user writes a build system in `.dag`, they compose from the
-same `DAG<A>` and `Tree<A>` that the compiler uses. When a user writes
-a workflow engine, they compose from the same `Annotated<A,F>` pattern
-that the compiler's pipeline stages use. The vocabulary is shared
-because the structures are the same — the compiler is not special.
+The split between `NodePayload` (declared shape: name, children,
+span, params) and `NodeFacts` (resolved/inferred/computed metadata)
+lines up with the pipeline story: resolve adds resolved facts, infer
+adds type facts, emit reads facts but does not re-resolve them.
 
 **The fact composition contract as `Annotated<A,F>`:**
 
-The pipeline's fact levels (see "Phase 5 Parallel: Compositional
-Pipeline") map directly onto the `Annotated` pattern. Each stage
-takes a value and returns `Annotated<value, new_facts>`:
+Each pipeline stage produces `Annotated<previous, new_facts>`:
 
 ```
 resolve:   Module           → Annotated<Module, ResolvedFacts>
@@ -319,24 +336,22 @@ infer:     Annotated<M, R>  → Annotated<M, R + TypeFacts>
 emit:      Annotated<M, R+T> → List<TextFile>
 ```
 
-Each stage enriches the previous stage's output with new facts. No
-stage re-derives a fact from a lower level. The type system makes the
-contract visible: if emit needs a `TypeFact`, the type signature
-guarantees it was composed during infer. No runtime resolution needed.
+No stage re-derives a fact from a lower level. The type system makes
+the contract visible: if emit needs a `TypeFact`, the signature
+guarantees it was composed during infer.
 
 **P5.11 is the convergence prerequisite.** Once `ExprData` children
-dissolve into `node.children`, `Node` cleanly becomes an instance of
-`Tree<NodeFacts>`. The ~5000 lines of custom `ExprData` walkers
-reduce to `Tree.map(fn)` — the standard library's generic tree
-traversal. P5.11 is what moves the compiler's AST from ad-hoc
-internals into std vocabulary.
+dissolve into `node.children`, `Node` cleanly maps to
+`LabeledTree<NodePayload>`. The ~5000 lines of custom `ExprData`
+walkers reduce to `Tree.map(fn)`. P5.11 moves the compiler's AST
+from ad-hoc internals into std vocabulary.
 
-**Timeline:** With P3.8 (recursive generics) landed, `Tree<A>` is
-expressible in the `.dag` language today. Defining the Layer 4 types
-in `dsl/std/` is tractable now; migrating the compiler to use them
-as instances is post-Phase 5 work. The design targets convergence
-onto std compositions. The convergence is tracked separately from the
-phase plan because it crosses all phases.
+**Phase placement:** With P3.8 (recursive generics) landed, `Tree<A>`
+and `Annotated<A,F>` are expressible in `.dag` today. These types
+should be declared in `dsl/std/` as soon as generics are stable
+(Phase 3), not deferred to post-Phase 5. The full compiler refactor
+to use them as instances is later work, but the types themselves
+should exist early so intermediate steps move toward the design.
 
 **Type Layer Downgrade metric.** The composition stack provides an
 objective architectural-debt metric. When a pipeline stage re-derives

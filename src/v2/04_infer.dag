@@ -72,19 +72,19 @@ import v2.std.core {
   UnaryOpKind, Not, Neg,
   MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart,
   make_transport_node, local_transport_node,
-  Text, Interpolation
+  Text, Interpolation,
+  leaf_node, with_optional_cardinality, with_required_cardinality,
+  node_is_product, node_is_coproduct, node_has_structure, no_span
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  leaf_node, with_optional_cardinality, with_required_cardinality,
   container_node,
   map_node, bare_map_node,
   tuple_node, callable_node, callable_inferred,
   error_type_node,
   node_is_container, node_is_optional, node_is_map,
   node_is_leaf, node_is_named_ref,
-  node_is_product, node_is_coproduct, node_has_structure,
   normalize_access_type_node, normalize_type_name,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
@@ -92,7 +92,7 @@ import v2.compiler.infer_types {
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
-  rt_type, no_span,
+  rt_type,
   emit_map_has
 }
 import v2.compiler.infer_method {

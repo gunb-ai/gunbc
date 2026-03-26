@@ -20,7 +20,9 @@ import v2.std.core {
   is_kernel_type, is_kernel_numeric, is_kernel_textual,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   InferredNode, Resolved, CompilerError, rt_node, has_inferred,
-  NodeType, Typed, InferError, Untyped
+  NodeType, Typed, InferError, Untyped,
+  leaf_node, no_span, with_optional_cardinality, with_required_cardinality,
+  node_is_product, node_is_coproduct, node_has_structure
 }
 
 // =========================================================================
@@ -32,30 +34,19 @@ fn child_inferred_or_name(ch: Node) -> Node {
   else { rt_type(n: ch) }
 }
 
-fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-}
+// leaf_node, with_optional_cardinality, with_required_cardinality
+// moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // Convenience: extract the return type Node, falling back to Unit.
 // Use for emission callers and statement contexts where Unit is correct.
 // For inference callers that need error-awareness, match rt_node directly.
+// Stays here: encodes bridge-era stage-boundary policy (Unit fallback).
 fn rt_type(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
     InferError { message: _, span: _ } => leaf_node(name: "Unit")
     Untyped => leaf_node(name: "Unit")
   }
-}
-
-// P5.7a: product_property() and coproduct_property() deleted.
-// connective (Conj/Disj) is the sole authority for product/coproduct.
-
-fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
-}
-
-fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
@@ -111,25 +102,12 @@ fn node_is_bridge_dynamic_name(n: Node) -> Bool {
   n.name == "Dynamic"
 }
 
-fn no_span() -> SourceSpan {
-  SourceSpan { start: 0, end: 0 }
-}
+// no_span, node_is_product, node_is_coproduct, node_has_structure
+// moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // =========================================================================
-// Type predicates
+// Type predicates (name-checking and bridge-era — stay here until L1=0)
 // =========================================================================
-
-fn node_is_product(n: Node) -> Bool {
-  n.connective != none && n.connective == Some { value: Conj }
-}
-
-fn node_is_coproduct(n: Node) -> Bool {
-  n.connective != none && n.connective == Some { value: Disj }
-}
-
-fn node_has_structure(n: Node) -> Bool {
-  node_is_product(n: n) || node_is_coproduct(n: n)
-}
 
 fn node_is_container(n: Node) -> Bool {
   n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet"

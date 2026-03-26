@@ -13,11 +13,11 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError,
   Cardinality, Required,
   Diagnostic,
-  expr_has_self_call, expr_has_non_tail_self_call
+  expr_has_self_call, expr_has_non_tail_self_call,
+  leaf_node, node_has_structure, node_is_product, node_is_coproduct
 }
 import v2.compiler.infer_types {
-  leaf_node, rt_type,
-  node_has_structure, node_is_product, node_is_coproduct
+  rt_type
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding

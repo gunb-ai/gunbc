@@ -989,3 +989,39 @@ fn is_module_node(n: Node) -> Bool {
 fn is_token_node(n: Node) -> Bool {
   n.properties |> any(p => p.name == "is_token")
 }
+
+// =========================================================================
+// Node vocabulary (structural constructors and predicates)
+//
+// These operate on Node structural fields (connective, cardinality) and
+// need no environment. They are the shared vocabulary for all pipeline
+// stages — not stage-specific concepts. Moved from 04_types.dag (C1).
+// =========================================================================
+
+fn leaf_node(name: String) -> Node {
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn no_span() -> SourceSpan {
+  SourceSpan { start: 0, end: 0 }
+}
+
+fn with_optional_cardinality(n: Node) -> Node {
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+}
+
+fn with_required_cardinality(n: Node) -> Node {
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+}
+
+fn node_is_product(n: Node) -> Bool {
+  n.connective != none && n.connective == Some { value: Conj }
+}
+
+fn node_is_coproduct(n: Node) -> Bool {
+  n.connective != none && n.connective == Some { value: Disj }
+}
+
+fn node_has_structure(n: Node) -> Bool {
+  node_is_product(n: n) || node_is_coproduct(n: n)
+}

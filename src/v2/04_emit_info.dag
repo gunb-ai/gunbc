@@ -15,11 +15,11 @@ import v2.std.core {
   InferredNode, Resolved,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary
+  FieldSummary,
+  node_has_structure, node_is_product, with_required_cardinality
 }
 import v2.compiler.infer_types {
-  node_has_structure, node_is_product, node_is_optional,
-  with_required_cardinality,
+  node_is_optional,
   normalize_type_name, normalize_access_type_node,
   rt_type, child_inferred_or_name, node_type_equals
 }
