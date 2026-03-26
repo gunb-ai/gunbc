@@ -5,7 +5,7 @@
 //! All tests call stage0 functions directly.
 
 use crate::helpers::*;
-use v2_compiler::v2_core::TokenKind;
+use v2_compiler::v2_core::TokenShape;
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 
@@ -227,7 +227,7 @@ fn tokenizer_two_char_operators() {
 fn tokenizer_scans_pipe_arrow() {
     let tokens = tokenize("items |> count");
     assert!(
-        tokens.iter().any(|t| matches!(&*t.kind, TokenKind::PipeArrow)),
+        tokens.iter().any(|t| matches!(t.shape, TokenShape::ShPipeArrow)),
         "should contain PipeArrow token"
     );
 }
@@ -238,7 +238,7 @@ fn tokenizer_scans_null_coalesce() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&*t.kind, TokenKind::NullCoalesce)),
+            .any(|t| matches!(t.shape, TokenShape::ShNullCoalesce)),
         "should contain NullCoalesce token"
     );
 }
@@ -247,13 +247,13 @@ fn tokenizer_scans_null_coalesce() {
 fn tokenize_produces_correct_kinds() {
     let tokens = tokenize("fn add(a: Int) -> Int { a }");
     assert!(
-        tokens.iter().any(|t| matches!(&*t.kind, TokenKind::KwFn)),
+        tokens.iter().any(|t| matches!(t.shape, TokenShape::ShKwFn)),
         "should contain KwFn token"
     );
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&*t.kind, TokenKind::Ident { .. })),
+            .any(|t| matches!(t.shape, TokenShape::ShIdent)),
         "should contain Ident token"
     );
 }

@@ -760,7 +760,7 @@ removed from default features. `v2_runtime_shim.rs` deleted. CI excludes
 `v2-compiler` from workspace test (generated_tests.rs too large).
 `assemble_stage0` binary exists for regenerating the seed from v1.
 
-**Known `assemble_stage0` post-regeneration fixups (4 issues):**
+**Known `assemble_stage0` post-regeneration fixups (5 issues):**
 Each regeneration requires the same manual corrections. These should be
 fixed in the assembler itself — they violate "no parallel implementations."
 
@@ -773,6 +773,11 @@ fixed in the assembler itself — they violate "no parallel implementations."
    Fix: add it back manually.
 4. **Adds `[workspace]` to `Cargo.toml`** — conflicts with the parent workspace.
    Fix: `git checkout HEAD -- Cargo.toml`.
+5. **Duplicates `collection_kind` in Node literals** — emits `collection_kind`
+   twice in `parse.rs` Node construction (5 sites: `parse_fn_def`,
+   `parse_func_def`, `parse_data_def`, etc.). Fix: `sed -i ''
+   's/transport: None, collection_kind: None, properties/transport: None,
+   properties/g' src/v2/stage0/src/parse.rs`.
 
 Root cause: the assembler generates from AST without awareness of the committed
 stage0's hand-maintained files and test module structure. Long-term fix is either
@@ -866,6 +871,26 @@ structure, not about primitive-ness.
 | `artifact.dag` | 113 | 2 | Consumed types only | `RenderTarget`, `Artifact`, `ArtifactPlan`, `default_artifact_plan` consumed by `compile.dag`. Speculative boundary verification types removed (P1.11 **done**). |
 | `trace.dag` | 221 | 13 | Completely disconnected from pipeline | No other `.dag` file imports from it. Type-only schema with pure helpers. Should not grow until a consumer exists. |
 
+### Bridge Invariant Policy
+
+Any new invariant introduced as a bridge (temporary regression with a
+named deletion point) must declare:
+
+1. **Canonical authority** — what is the single source of truth for the
+   fact this bridge encodes?
+2. **Trust boundary** — at which pipeline stage is the invariant
+   guaranteed to hold? Before that point it may be absent or wrong.
+3. **Regression test** — what test will break if the bridge regresses?
+4. **Deletion point or end-state declaration** — either a named phase
+   where this bridge is deleted, or a statement that this is the
+   intended permanent representation.
+
+Each ratchet increase must be justified by the safer landing zone it
+buys. If a bridge increases the ratchet count, the increase is
+acceptable only when the prior state was worse (e.g., uncounted string
+checks replaced by counted typed checks) AND the bridge has a named
+deletion path that will reduce the count below the prior baseline.
+
 ### Active Temporary Bridges
 
 These are acknowledged short-term regressions with named deletion
@@ -886,6 +911,26 @@ knowledge that the roadmap is actively dissolving.
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
 | `expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~210 lines of boilerplate across 4 manual ExprData walks (collectors + self-call detection). `map_expr_children` has landed and now backs the remaining structural rewrites. | L2 dissolution (P5.11): when expression children move to `node.children`, `expr_children` becomes `node.children` read and is deleted. |
 | ~~Arity bridge (`parameterized_type_arity`)~~ | ~~`00_core.dag`, `04_types.dag`~~ | **Resolved.** `parameterized_type_arity` and `is_parameterized_type` deleted. Compiler reads arity from `.dag` declarations. | P3.7 done. |
+| `CollectionKind` enum | `00_core.dag`, `04_types.dag`, `04_resolve.dag` | Closed enum on Node that the compiler branches on for collection-specific behavior (indexing, iteration, method dispatch). Same class as deleted `BuiltinTypeKind`. Replaced worse string-property checks (P5.7b) but is still L1 domain knowledge. **Trust boundary:** before `resolve_node_bounded`, `collection_kind` may be absent (parser doesn't set it); after normalization at resolve entry, if derivable, it must equal `collection_kind_for_name(name)`. Treat as a normalized cache of name-derived knowledge, not independent structural truth. | Delete when collection types have `.dag` method algebra declarations. The compiler queries "does this type declare an `index` method?" (structural) instead of "is this `MapKind`?" (enum). |
+
+### L3 Token Coherence Invariant (P5.1)
+
+`Token { text, span, shape }` introduces a coherence requirement:
+parser control flow branches on `shape` and then reads payload from
+`text`, so `text` and `shape` must stay aligned. This is an **end-state
+invariant**, not bridge debt — the Token type IS the Layer 5
+compositional target.
+
+- **Canonical authority:** `01_tokenize.dag` is the single producer.
+  Every `make_token(text: ..., shape: ...)` call must set both fields
+  consistently.
+- **Trust boundary:** After `tokenize()` returns, every token's `text`
+  matches its `shape` classification. The parser may assume this.
+- **Regression test:** Any parse test that reads `token.text` after a
+  shape check exercises the coherence. The `parse_parses_strict` test
+  (all `.dag` files parse without error) is the primary coverage gate.
+- **End-state:** This is the intended permanent representation. Token
+  dissolution (P5.1) is complete.
 
 ### L2 Bridge-Era Invariants
 
@@ -2221,9 +2266,24 @@ The `node_is_*` predicates contain two distinct invariant violations.
 
 `node_is_container` checks `properties |> any(p => p.name == "container_kind")`. Containers/maps are NOT products or coproducts — a `List<T>` is a sequential collection, not a conjunction. `connective` doesn't apply. The property string is the ONLY representation, but it's a string-keyed open set. Violates "No case enumeration for open sets."
 
-**Fix (P5.7b):** Add a typed enum field to Node: `collection_kind: CollectionKind?` where `CollectionKind = ListKind | SetKind | MapKind`. `container_node()` and `map_node()` (04_types.dag:70-87) set the enum instead of a property string. Predicate becomes `n.collection_kind != none`. ~8 constructor sites + predicate definitions + 30 container/map call sites.
+**Fix (P5.7b): DONE but creates bridge debt.** Added `collection_kind:
+CollectionKind?` field to Node. Replaces string-property checks with
+typed enum — structurally better but still L1 domain knowledge (same
+class as the deleted `BuiltinTypeKind`). The enum is fragile: every
+Node construction site must propagate the field or `node_is_map` /
+`node_is_container` silently fails. A 2026-03-26 regression proved
+this — parser-produced nodes had `collection_kind: none`, breaking
+map indexing. Mitigated by normalizing at `resolve_node_bounded` entry.
 
-**Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that touches more code and should wait for Phase 5.
+**CollectionKind is a bridge, not the endgame.** The pure Node model
+says: collection-specific behavior (indexing, iteration, membership)
+should be declared in `.dag` type definitions as method algebras. The
+compiler queries "does this type declare an `index` method?" — a
+structural graph query — instead of branching on a compiler enum.
+When that exists, `CollectionKind` deletes like `BuiltinTypeKind` did.
+See Active Temporary Bridges table.
+
+**Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that creates bridge debt with a named deletion point.
 
 #### Track D: L2 dissolution (ExprData → Node children)
 
