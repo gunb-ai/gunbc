@@ -16,7 +16,6 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
-  expr_children,
   leaf_node, no_span, node_has_structure
 }
 import v2.compiler.infer_types {
@@ -100,7 +99,7 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccu
     _ => acc
   }
   // Structural recursion into all child expressions.
-  let result = expr_children(node: texpr) |> fold(init: this_acc, f: (a, child) =>
+  let result = texpr.children |> fold(init: this_acc, f: (a, child) =>
     collect_typed_service_calls_into(texpr: child, acc: a)
   )
   result
@@ -115,7 +114,7 @@ fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum 
     _ => acc
   }
   // Structural recursion into all child expressions.
-  let result = expr_children(node: texpr) |> fold(init: this_acc, f: (a, child) =>
+  let result = texpr.children |> fold(init: this_acc, f: (a, child) =>
     collect_called_func_names_into(texpr: child, acc: a)
   )
   result

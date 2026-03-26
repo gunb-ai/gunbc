@@ -1005,8 +1005,8 @@ fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
     ExprCall { func: f, args: _, call_semantics: _ } =>
       if f == fn_name { true }
-      else { expr_children(node: texpr) |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
-    _ => expr_children(node: texpr) |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
+      else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
+    _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
   }
 }
 

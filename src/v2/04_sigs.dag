@@ -15,7 +15,6 @@ module v2.compiler.infer_sigs
 import v2.std.core {
   Node, Param,
   ExprData, ExprCall,
-  expr_children,
   Diagnostic, Severity, Error,
   ErrorCategory, TypeMismatch,
   DeclaredFuncSig
@@ -83,7 +82,7 @@ fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String
     _ => []
   }
   // Structural recursion into all child expressions.
-  let child_edges = expr_children(node: texpr) |> flat_map(child =>
+  let child_edges = texpr.children |> flat_map(child =>
     collect_calls_in_expr(caller: caller, texpr: child, local_func_set: local_func_set)
   )
   let result = concat(this_edges, child_edges)
