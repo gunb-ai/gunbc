@@ -2389,26 +2389,11 @@ pub fn make_type_node_with_ck(name: &str, span: SourceSpan, children: Rc<Vec<Rc<
 }
 
 pub fn make_type_node_with_children(name: &str, span: SourceSpan, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
-    if name == "List" {
-    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::ListKind)
-} else {
-    if name == "Set" {
-    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::SetKind)
-} else {
-    if name == "NonEmptyList" {
-    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::NonEmptyListKind)
-} else {
-    if name == "NonEmptySet" {
-    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::NonEmptySetKind)
-} else {
-    if name == "Map" {
-    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::MapKind)
+    let ck = collection_kind_for_name(&name);
+    if ck.clone().is_some() {
+    make_type_node_with_ck(&name, span, children.clone(), ck.clone().unwrap())
 } else {
     Rc::new(Node { name: name.to_string(), span, children: children.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
-}
-}
-}
-}
 }
 }
 

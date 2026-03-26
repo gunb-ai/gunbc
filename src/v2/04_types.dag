@@ -59,6 +59,17 @@ fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
+// Single authority: name → CollectionKind mapping.
+// Used by both the parser (type expression parsing) and inference (type construction).
+fn collection_kind_for_name(name: String) -> CollectionKind? {
+  if name == "List" { Some { value: ListKind } }
+  else if name == "Set" { Some { value: SetKind } }
+  else if name == "NonEmptyList" { Some { value: NonEmptyListKind } }
+  else if name == "NonEmptySet" { Some { value: NonEmptySetKind } }
+  else if name == "Map" { Some { value: MapKind } }
+  else { none }
+}
+
 fn container_node_with_kind(kind_name: String, element: Node, ck: CollectionKind) -> Node {
   Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, collection_kind: Some { value: ck }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }

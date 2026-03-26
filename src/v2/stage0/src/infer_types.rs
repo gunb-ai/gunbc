@@ -37,6 +37,30 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), collection_kind: n.collection_kind.clone(), params: n.params.clone(), return_type: n.return_type.clone(), return_cardinality: Cardinality::Required, uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
 }
 
+pub fn collection_kind_for_name(name: &str) -> Option<CollectionKind> {
+    if name == "List" {
+    Some(CollectionKind::ListKind)
+} else {
+    if name == "Set" {
+    Some(CollectionKind::SetKind)
+} else {
+    if name == "NonEmptyList" {
+    Some(CollectionKind::NonEmptyListKind)
+} else {
+    if name == "NonEmptySet" {
+    Some(CollectionKind::NonEmptySetKind)
+} else {
+    if name == "Map" {
+    Some(CollectionKind::MapKind)
+} else {
+    None
+}
+}
+}
+}
+}
+}
+
 pub fn container_node_with_kind(kind_name: &str, element: Rc<Node>, ck: CollectionKind) -> Rc<Node> {
     Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element.clone())), connective: None, collection_kind: Some(ck), params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }

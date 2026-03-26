@@ -3557,7 +3557,7 @@ import v2.std.core {
 }
 
 import v2.compiler.tokenize { TokenShape, token_shape, token_shape_display_name, kind_display_name }
-import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality, callable_node }
+import v2.compiler.infer_types { node_is_optional, node_is_product, node_is_coproduct, with_required_cardinality, callable_node, collection_kind_for_name }
 
 // =========================================================================
 // Parser state types
@@ -4458,12 +4458,13 @@ fn make_type_node_with_ck(name: String, span: SourceSpan, children: List<Node>, 
 }
 
 fn make_type_node_with_children(name: String, span: SourceSpan, children: List<Node>) -> Node {
-  if name == "List" { make_type_node_with_ck(name: name, span: span, children: children, ck: ListKind) }
-  else if name == "Set" { make_type_node_with_ck(name: name, span: span, children: children, ck: SetKind) }
-  else if name == "NonEmptyList" { make_type_node_with_ck(name: name, span: span, children: children, ck: NonEmptyListKind) }
-  else if name == "NonEmptySet" { make_type_node_with_ck(name: name, span: span, children: children, ck: NonEmptySetKind) }
-  else if name == "Map" { make_type_node_with_ck(name: name, span: span, children: children, ck: MapKind) }
-  else { Node { name: name, span: span, children: children, connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } }
+  // Delegate to the single authority in 04_types.dag for name → CollectionKind
+  let ck = collection_kind_for_name(name: name)
+  if ck != none {
+    make_type_node_with_ck(name: name, span: span, children: children, ck: ck.value)
+  } else {
+    Node { name: name, span: span, children: children, connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  }
 }
 
 // Check if a Node represents an inline record (Conj with children).
@@ -13843,6 +13844,17 @@ fn with_optional_cardinality(n: Node) -> Node {
 
 fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+}
+
+// Single authority: name → CollectionKind mapping.
+// Used by both the parser (type expression parsing) and inference (type construction).
+fn collection_kind_for_name(name: String) -> CollectionKind? {
+  if name == "List" { Some { value: ListKind } }
+  else if name == "Set" { Some { value: SetKind } }
+  else if name == "NonEmptyList" { Some { value: NonEmptyListKind } }
+  else if name == "NonEmptySet" { Some { value: NonEmptySetKind } }
+  else if name == "Map" { Some { value: MapKind } }
+  else { none }
 }
 
 fn container_node_with_kind(kind_name: String, element: Node, ck: CollectionKind) -> Node {
