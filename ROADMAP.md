@@ -167,6 +167,185 @@ definitions; the compiler reads structure from those declarations; names
 are opaque. This is sufficient for the thesis without requiring the full
 algebraic foundation up front.
 
+### Compositional Basis
+
+The thesis says the compiler processes graph structure, not names. But
+what IS the irreducible structure? This section answers: what is
+primitive, what are the structural constructors, and what is derived.
+
+**1. Compiler-model primitives (what the compiler operates on):**
+
+- `Node` as the universal carrier
+- Product composition (Conj) — record/struct/tuple
+- Coproduct composition (Disj) — enum/variant/sum
+- Cardinality on bindings (Required, CardOptional)
+- Generic slot composition (`<T>` — Phase 3)
+- Recursion / self-reference (SCC-detected cycle metadata)
+- Collection constructors (List, Set, Map — type-level, not name-level)
+
+**2. Value/type-algebra primitives (what the kernel knows):**
+
+Currently honest state: `Int`, `String`, `Bool`, `Float`, `Unit` are
+kernel primitives. The compiler treats them as special leaves via
+`is_kernel_type`. The algebraic vision says they should be compositions
+(`Int` = named namespace over `List<List<Bit>>`), but the compiler does
+not yet derive their properties from structure. This is an acknowledged
+intermediate state, not a claimed-but-unimplemented derivation.
+
+The kernel will shrink as the algebraic model matures:
+- Phase 3+: kernel types get real `.dag` declarations
+- Phase 5+: `is_kernel_type` dissolves into structural property reads
+- Beyond: bit-graph model; `Int` genuinely derived from `Bit`
+
+**3. Structural constructors (how compositions are built):**
+
+| Constructor | Builds | Compiler representation |
+|-------------|--------|------------------------|
+| Product | Records, tuples, structs | `connective: Conj`, named children |
+| Coproduct | Enums, variants, sums | `connective: Disj`, named children |
+| Cardinality | Presence/absence on bindings | `return_cardinality: CardOptional` |
+| Parameterization | Generic types (`List<T>`) | Slot substitution before inference |
+| Recursion | Self-referential types | SCC cycle metadata on Node |
+| Collection | Indexed structures | `List<A>`, `Set<A>`, `Map<K,V>` type constructors |
+
+**4. What is derived (named namespaces over the above):**
+
+| Derived concept | Composition |
+|----------------|-------------|
+| Tuple | Unnamed product (Conj, positional children) |
+| Record / struct | Named product (Conj, named children) |
+| Enum | Named coproduct (Disj, variant children) |
+| Optional binding | Cardinality 0..1 on the binding site |
+| Type alias | Namespace over an existing composition |
+| Function | `Callable { params: List<Param>, return: Node }` |
+| Service | Record of operations + transport/runtime metadata |
+
+Names are opaque namespaces over structure. The compiler's semantic
+basis is not the set of named user types; it is the set of structural
+constructors and binding/cardinality facts from which named declarations
+are composed.
+
+### Composition Stack
+
+The algebraic type vision (above) covers Layers 0-3: logic, machine
+primitives, named numeric/text types, and collection algebras. These
+are already modeled in `dsl/std/` (`logic.dag`, `bit.dag`,
+`integer.dag`, `float.dag`, `types.dag`).
+
+Between collections and any domain application — including the compiler
+itself — there is a layer of **structural compositions** that are
+general-purpose but currently only exist implicitly inside the
+compiler's ad-hoc type definitions. The compiler's `Node` is a tree;
+its `ModuleGraph` is a DAG; its `SourceSpan` is a span over a
+sequence. Any program that processes trees, dependency graphs, or
+positional data needs the same structures.
+
+The thesis says the compiler is a generic graph processor. If the
+compiler needs types that aren't in std, that's a gap in std — not a
+special case in the compiler.
+
+```
+Layer 0: Logic
+  Classical = True | False                       (std/logic.dag)
+
+Layer 1: Machine
+  Bit = Classical where width(1)                 (std/bit.dag)
+  Byte = { bits: List<Bit> where length(8) }
+  Word16/32/64 = List<Byte> where length(N)
+
+Layer 2: Named compositions
+  Int = Int64 = Word64 where signed              (std/integer.dag)
+  Nat = UInt64 = Word64 where unsigned
+  Char = Int where range(0, 1114111)             (std/types.dag)
+  String = List<Char>                            (std/string_type.dag)
+
+Layer 3: Collection algebras
+  List<A>  = Σ n. Fin(n) → A                    (std/types.dag)
+  Set<A>   = A → Bool
+  Map<K,V> = K → (1 + V)
+
+Layer 4: Structural compositions                 *** MISSING FROM STD ***
+  Span      = { start: Nat, end: Nat }
+  Pair<A,B> = { first: A, second: B }           (product / Conj)
+  Either<A,B> = Left { a: A } | Right { b: B }  (coproduct / Disj)
+  Tree<A>   = { value: A, children: List<Tree<A>> }
+  DAG<A>    = topologically ordered Tree<A> with sharing
+  Annotated<A, F> = { value: A, facts: F }
+
+Layer 5: Text/source compositions                *** MISSING FROM STD ***
+  SourceSpan  = Span                             (position in source text)
+  Token       = { text: String, span: SourceSpan, shape: TokenShape }
+  LabeledTree<A> = Tree<{ name: String, value: A }>
+```
+
+**Layer 4 types are general-purpose:**
+
+| Type | What it models | Compiler use | Other uses |
+|------|---------------|-------------|------------|
+| `Span` | A contiguous range in a sequence | Source positions, byte ranges | Time ranges, array slices, text selections |
+| `Tree<A>` | Recursive hierarchical structure | AST, Node graph | File systems, org charts, UI components, parse trees |
+| `DAG<A>` | Acyclic graph with topological order | Module graph, dependency order | Build systems, task scheduling, workflow orchestration |
+| `Annotated<A,F>` | Value enriched with computed facts | TypedModule = Module + type facts | Any pipeline that accumulates metadata over stages |
+
+**The compiler as an instance of std vocabulary:**
+
+The compiler's domain types (Layer 6) are instances of Layer 4-5
+compositions, not novel inventions:
+
+```
+Node          = LabeledTree<NodeFacts>
+Module        = { name: String, tree: Node, imports: List<Import> }
+ModuleGraph   = DAG<Module>
+TypedModule   = Annotated<Module, TypeFacts>
+ResolvedGraph = DAG<TypedModule>
+TextFile      = { path: String, content: String }
+```
+
+When a user writes a build system in `.dag`, they compose from the
+same `DAG<A>` and `Tree<A>` that the compiler uses. When a user writes
+a workflow engine, they compose from the same `Annotated<A,F>` pattern
+that the compiler's pipeline stages use. The vocabulary is shared
+because the structures are the same — the compiler is not special.
+
+**The fact composition contract as `Annotated<A,F>`:**
+
+The pipeline's fact levels (see "Phase 5 Parallel: Compositional
+Pipeline") map directly onto the `Annotated` pattern. Each stage
+takes a value and returns `Annotated<value, new_facts>`:
+
+```
+resolve:   Module           → Annotated<Module, ResolvedFacts>
+infer:     Annotated<M, R>  → Annotated<M, R + TypeFacts>
+emit:      Annotated<M, R+T> → List<TextFile>
+```
+
+Each stage enriches the previous stage's output with new facts. No
+stage re-derives a fact from a lower level. The type system makes the
+contract visible: if emit needs a `TypeFact`, the type signature
+guarantees it was composed during infer. No runtime resolution needed.
+
+**P5.11 is the convergence prerequisite.** Once `ExprData` children
+dissolve into `node.children`, `Node` cleanly becomes an instance of
+`Tree<NodeFacts>`. The ~5000 lines of custom `ExprData` walkers
+reduce to `Tree.map(fn)` — the standard library's generic tree
+traversal. P5.11 is what moves the compiler's AST from ad-hoc
+internals into std vocabulary.
+
+**Timeline:** With P3.8 (recursive generics) landed, `Tree<A>` is
+expressible in the `.dag` language today. Defining the Layer 4 types
+in `dsl/std/` is tractable now; migrating the compiler to use them
+as instances is post-Phase 5 work. The design targets convergence
+onto std compositions. The convergence is tracked separately from the
+phase plan because it crosses all phases.
+
+**Type Layer Downgrade metric.** The composition stack provides an
+objective architectural-debt metric. When a pipeline stage re-derives
+a fact by looking up a name, it is performing a **layer downgrade** —
+dropping from a higher layer (annotated structure) back to a lower
+layer (name string). Facts should only compose upward. Layer
+downgrades are the precise measure of the compositional violations
+identified in the C1-C5 work.
+
 ### Collection Denotational Model
 
 Collections are not one algebra — they are a **family of related
@@ -2230,12 +2409,14 @@ match succeeds.
 
 ### Phase 5 Parallel: Compositional Pipeline (Performance through Fact Composition)
 
-**Motivation:** The compiler works, but its pipeline violates its own
-thesis. The thesis says: smart facts + dumb compiler; facts compose by
-construction; no passes. The current pipeline is an imperative sequence
-where later stages re-derive facts that earlier stages already computed.
-Self-compile takes ~20 minutes. The root cause is not missing
-optimization — it is broken fact composition.
+**Motivation:** The compiler works, but its pipeline has compensating
+re-derivation where later stages re-derive facts that earlier stages
+already computed. The staged pipeline (resolve → infer → emit) is
+correct; the problem is that stages fail to compose facts at their
+definition site, forcing downstream stages to re-resolve through
+environments that should be opaque to them. Self-compile takes
+~20 minutes. The root cause is not missing optimization — it is broken
+fact composition.
 
 **Root-cause analysis (2026-03-26):** Inference fabricates name-only
 references at 5 sites where the structural fact is already available in
@@ -2243,15 +2424,19 @@ the TypeEnv. Emit then calls `resolve_scrutinee_type_node` 12+ times to
 follow those name references back to the structural definitions. Emit
 rebuilds `InferScope` to perform these lookups. Service expansion uses a
 5-pass fixpoint where topo order enables single-pass computation. All of
-these are symptoms of the same violation: **facts not composed at their
-definition site**.
+these are **layer downgrades** (see Composition Stack) — facts dropping
+from annotated structure back to name strings.
 
 **Principle (from the thesis):** "If the graph is suboptimal, a fact is
 missing. Fix: improve the domain model." The fix is not a post-hoc
-resolution pass (that would be adding a compiler pass — antithetical to
-the thesis). The fix is: compose the structural fact at the site where
-its inputs are first available. `.inferred` is always structural because
-inference uses the resolved binding, not the name.
+resolution pass — that would add a compensating re-derivation stage.
+The fix is: compose the structural fact at the site where its inputs
+are first available. `.inferred` is the structurally authoritative
+resolved type because inference uses `binding.resolved`, not the name.
+("Structurally authoritative" means the type is resolved through the
+environment — not that it must be eagerly inlined into a deep copy.
+Graph sharing and canonical resolved nodes are fine; what matters is
+that the authority is structural, not name-based.)
 
 #### The Fact Composition Contract
 
@@ -2264,10 +2449,12 @@ structural node (connective, children, cardinality). Names flow through
 for diagnostics, but the structural composition is the authority.
 
 **Infer contract:** Every expression node's `.inferred` carries the
-fully-resolved structural type of that expression — not a name, not an
-alias, but the structural composition. This falls out naturally: when
+structurally authoritative resolved type of that expression — not a
+bare name, not an unresolved alias. This falls out naturally: when
 inference sets `.inferred`, it uses `binding.resolved` (the structural
-fact from the TypeEnv), not `leaf_node(name: binding.name)`.
+fact from the TypeEnv), not `leaf_node(name: binding.name)`. Graph
+sharing is fine; canonical resolved nodes are fine; what must not
+happen is storing a name that forces downstream re-resolution.
 
 **Emit contract:** Pure translation. Emit reads `.inferred` to get
 structural types, reads `EmitGraphInfo` for rendering metadata, and
@@ -2304,17 +2491,26 @@ inversion.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C1.1 | Move structural constructors to `00_core.dag` | ~8 functions | `leaf_node`, `rt_type`, `with_optional_cardinality`, `with_required_cardinality`, `error_type_node`, `no_span`, `child_inferred_or_name`, `node_is_leaf` |
-| C1.2 | Move structural predicates to `00_core.dag` | ~4 functions | `node_is_product`, `node_is_coproduct`, `node_has_structure`, `node_is_optional` |
+| C1.1 | Move timeless node constructors to `00_core.dag` | ~4 functions | `leaf_node`, `with_optional_cardinality`, `with_required_cardinality`, `no_span` |
+| C1.2 | Move structural predicates to `00_core.dag` | ~3 functions | `node_is_product`, `node_is_coproduct`, `node_has_structure` |
 | C1.3 | Update import statements | ~15 files | Move symbols from `import v2.compiler.infer_types` to `import v2.std.core` |
 
-**What stays in `04_types.dag`:** Name-checking predicates
-(`node_is_container`, `node_is_map` — check `n.name`), normalization
-(`normalize_access_type_node`, `normalize_type_name` — check names),
-type comparison functions, and domain constructors that hardcode names
-(`map_node`, `tuple_node`, `container_node`). These are L1 domain
-knowledge that violates layering if moved to core. They stay until L1
-dissolution eliminates the name checks.
+**What stays in `04_types.dag`:** Three categories:
+
+1. *Name-checking predicates* (`node_is_container`, `node_is_map`,
+   `node_is_optional` — reads `n.name` or encodes cardinality policy).
+   L1 domain knowledge; stays until dissolution.
+2. *Bridge-era policy helpers* (`rt_type`, `error_type_node`,
+   `child_inferred_or_name`, `node_is_leaf`). These encode
+   stage-boundary semantics (what to return on error, how to fall
+   back). Moving them into core would freeze transitional policy into
+   the deepest layer.
+3. *Domain constructors* (`map_node`, `tuple_node`, `container_node`,
+   `callable_node`). Hardcode names like "Map", "Tuple". L1 domain
+   knowledge.
+4. *Type comparison and normalization* (`node_type_compatible`,
+   `normalize_access_type_node`, `normalize_type_name`). Inference-
+   specific logic.
 
 **Gate:** `02_parse.dag` has zero imports from `04_*` modules.
 
@@ -2328,7 +2524,7 @@ structural fact from the environment.
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
 | C2.1 | Variant constructor locals | `04_infer.dag:2217-2226` | Use `binding.resolved` (structural enum node) instead of `leaf_node(name: binding.name)` |
-| C2.2 | Optional Some/None locals | `04_infer.dag:2244-2249` | Use cardinality model instead of `leaf_node(name: "Optional")` |
+| C2.2 | Optional Some/None locals | `04_infer.dag:2244-2249` | Use cardinality model for binding-site absence/presence. Preserve the distinction: binding-site absence = cardinality; value-level null/sum = actual coproduct constructor. Do not collapse value-level `Some`/`None` usage into binding cardinality. |
 | C2.3 | Type alias registration | `04_infer.dag:2053-2055` | Resolve alias target through TypeEnv before storing |
 | C2.4 | ResolvedFuncSig construction | `04_sigs.dag:112-114` | Resolve return type through TypeEnv at sig construction time |
 | C2.5 | Delete `resolve_scrutinee_type_node` from emit | 12 call sites in `05_emit_rust.dag` | After C2.1-C2.4, `.inferred` is structural; emit reads it directly |
@@ -2337,10 +2533,15 @@ structural fact from the environment.
 
 **Invariant alignment:**
 - No duplicate representations: `.inferred` is the single authority for
-  resolved type. No separate `resolved_type` field.
-- No passes: facts composed at definition site, not in a post-hoc walk.
+  the structurally authoritative resolved type. No separate
+  `resolved_type` field.
+- No compensating re-derivation: facts composed at definition site, not
+  in a post-hoc walk or downstream re-resolution.
 - Correctness by construction: impossible for emit to receive an
-  unresolved alias — the types guarantee structural composition.
+  unresolved alias — the composition guarantees structural authority.
+- EmitGraphInfo carries rendering metadata (presentation facts), not
+  re-derived type authority. The distinction: "how to render this type
+  in Rust" is emit's job; "what type is this expression" is not.
 
 **Gate:** `05_emit*.dag` have zero imports from `04_infer.dag`,
 `04_lookup.dag`, `04_env.dag` (except type definitions).
@@ -2371,11 +2572,12 @@ its callees are already finalized.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C4.1 | Replace 5-pass fixpoint with topo-order fold | `04_service.dag`, `04_infer.dag:2552` | Modules already in topo order from resolve; single fold suffices |
+| C4.1 | Replace 5-pass fixpoint with topo-order fold over condensed DAG | `04_service.dag`, `04_infer.dag:2552` | Modules already in topo order from resolve. For mutual dependencies (mutual recursion), use SCC condensation first, then fold over the condensed DAG. Single pass over the condensation suffices. |
 | C4.2 | Audit for other fixpoint iterations | Pipeline-wide | Are there other compensating mechanisms for missing topo-order composition? |
 
-**Invariant alignment:** Correctness by construction — topo order
-guarantees completeness. No iteration needed.
+**Invariant alignment:** Correctness by construction — topo order over
+the condensed DAG guarantees completeness. Mutual dependencies are
+handled by SCC condensation, not by iterating to fixpoint.
 
 **Gate:** No fixpoint iteration in the pipeline.
 
