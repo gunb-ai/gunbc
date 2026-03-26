@@ -1012,43 +1012,44 @@ fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
 
 fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, args: _, call_semantics: _ } =>
       if f == fn_name {
         if in_tail == false { true }
-        else { a |> any(na => expr_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false)) }
+        else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false)) }
       } else {
-        a |> any(na => expr_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
+        texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
       }
     ExprError { kind: _, message: _ } => false
     ExprVar { name: _, binding_kind: _ } => false
     ExprLiteral { value: _ } => false
-    ExprFieldAccess { base: b, field: _, summary: _ } =>
-      expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
-      expr_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
-        || a |> any(na => expr_has_non_tail_self_call(texpr: na.value, fn_name: fn_name, in_tail: false))
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      // Condition is never tail; branches inherit tail context.
-      expr_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
-        || expr_has_non_tail_self_call(texpr: t, fn_name: fn_name, in_tail: in_tail)
-        || match e {
-          Some { value: eb } => expr_has_non_tail_self_call(texpr: eb, fn_name: fn_name, in_tail: in_tail)
-          None => false
-        }
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      // Scrutinee is never tail; arm bodies inherit tail context.
-      expr_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
-        || arm_list |> any(arm =>
-          expr_has_non_tail_self_call(texpr: arm.body, fn_name: fn_name, in_tail: in_tail))
-    ExprLet { name: _, value: v, body: bd } =>
-      // Value is never tail; body (continuation) inherits tail context.
-      expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)
-        || match bd {
-          Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)
-          None => false
-        }
-    ExprBlock { stmts: ss } =>
-      // Only the last statement in a block is in tail position.
+    ExprFieldAccess { base: _, field: _, summary: _ } =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
+    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _ } =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
+    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+      // children = [condition, then, else?]. Condition is never tail; branches inherit tail.
+      let ch = texpr.children
+      let cond_bad = match ch |> first { Some { value: c } => expr_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)  None => false }
+      let then_bad = match ch |> drop(1) |> first { Some { value: t } => expr_has_non_tail_self_call(texpr: t, fn_name: fn_name, in_tail: in_tail)  None => false }
+      let else_bad = match ch |> drop(2) |> first { Some { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail)  None => false }
+      cond_bad || then_bad || else_bad
+    ExprMatch { scrutinee: _, arms: _ } =>
+      // children = [scrutinee, arm0, arm1, ...]. Scrutinee is never tail; arm bodies inherit tail.
+      let ch = texpr.children
+      let scrut_bad = match ch |> first { Some { value: s } => expr_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)  None => false }
+      let arms_bad = ch |> drop(1) |> any(arm_node =>
+        let body = arm_body(n: arm_node)
+        expr_has_non_tail_self_call(texpr: body, fn_name: fn_name, in_tail: in_tail))
+      scrut_bad || arms_bad
+    ExprLet { name: _, value: _, body: _ } =>
+      // children = [value, body?]. Value is never tail; body inherits tail.
+      let ch = texpr.children
+      let val_bad = match ch |> first { Some { value: v } => expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)  None => false }
+      let body_bad = match ch |> drop(1) |> first { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)  None => false }
+      val_bad || body_bad
+    ExprBlock { stmts: _ } =>
+      // children = [stmt0, stmt1, ...]. Only last is in tail position.
+      let ss = texpr.children
       let ss_count = ss |> count
       if ss_count == 0 { false }
       else {
@@ -1062,38 +1063,12 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
         }
         init_bad || last_bad
       }
-    ExprBinOp { op: _, left: l, right: r } =>
-      expr_has_non_tail_self_call(texpr: l, fn_name: fn_name, in_tail: false)
-        || expr_has_non_tail_self_call(texpr: r, fn_name: fn_name, in_tail: false)
-    ExprUnaryOp { op: _, operand: e } =>
-      expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
-    ExprLambda { params: _, body: bd, semantics: _ } =>
-      // Lambda bodies are separate contexts -- self-calls inside are non-tail.
-      expr_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
-      fs |> any(fi => expr_has_non_tail_self_call(texpr: fi.value, fn_name: fn_name, in_tail: false))
-    ExprListLit { elements: els } =>
-      els |> any(el => expr_has_non_tail_self_call(texpr: el, fn_name: fn_name, in_tail: false))
-    ExprStringInterp { parts: ps } =>
-      ps |> any(p => match p {
-        Interpolation { expr: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
-        Text { value: _ } => false
-      })
-    ExprCast { expr: e, target: _ } =>
-      expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
-    ExprForEach { variable: _, collection: c, body: bd } =>
-      expr_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)
-        || expr_has_non_tail_self_call(texpr: bd, fn_name: fn_name, in_tail: false)
-    ExprIndex { base: b, index: i } =>
-      expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
-        || expr_has_non_tail_self_call(texpr: i, fn_name: fn_name, in_tail: false)
-    ExprSlice { base: b, start: s, end: e } =>
-      expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: false)
-        || expr_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)
-        || expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: false)
-    ExprReturn { value: v } =>
-      expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)
-    NoExprData => false
+    // All remaining variants: children are never in tail position.
+    _ =>
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
+    NoExprData =>
+      // Wrapper nodes (arg, arm, field-init) -- recurse through children.
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail))
   }
 }
 
