@@ -16,13 +16,11 @@ module v2.compiler.complexity
 
 import v2.std.core {
   Node,
-  ExprData, NoExprData,
+  ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
-  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
-  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
-  Text, Interpolation, Param,
+  ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach,
+  Param,
+  arg_value, arm_body,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
@@ -268,7 +266,8 @@ fn receiver_size_var(recv: Node) -> SizeExpr {
       SizeLen { collection: vname }
     ExprFieldAccess { base: _, field: fname } =>
       SizeLen { collection: fname }
-    ExprMethodCall { receiver: inner_recv, method: _, args: _, method_semantics: method_semantics } =>
+    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: method_semantics } =>
+      let inner_recv = match recv.children |> first { Some { value: r } => r  None => recv }
       if method_preserves_collection_size(method_semantics: method_semantics) {
         receiver_size_var(recv: inner_recv)
       } else {
@@ -297,11 +296,11 @@ fn size_binder_name(size: SizeExpr) -> String {
 //   ShapeConstant     -- O(1) regardless of input size
 // =========================================================================
 
-fn resolve_lambda_arg(mc_args: List<NamedArg>) -> Node? {
-  let f_arg = mc_args |> filter(a => a.name == Some { value: "f" }) |> first
+fn resolve_lambda_arg(mc_arg_nodes: List<Node>) -> Node? {
+  let f_arg = mc_arg_nodes |> filter(a => a.name == "f") |> first
   match f_arg {
-    Some { value: fa } => Some { value: fa.value }
-    None => mc_args |> map(a => a.value) |> first
+    Some { value: fa } => Some { value: arg_value(n: fa) }
+    None => mc_arg_nodes |> map(a => arg_value(n: a)) |> first
   }
 }
 
@@ -760,14 +759,12 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: rr.table
       }
 
-    ExprCall { func: fname, args: call_args } =>
+    ExprCall { func: fname, args: _ } =>
       // Look up callee summary (recursive via get_or_compute_summary)
       let callee_result = match map_get(func_index, fname) {
         Some { value: entry } =>
           get_or_compute_summary(func_name: fname, func_index: func_index, table: table)
         None =>
-          // Not in func_index: built-in intrinsic (concat, map_get, etc.)
-          // All intrinsics are O(1) with Proven certainty.
           SummaryResult {
             summary: ComplexitySummary {
               work: CostConst { value: 1 },
@@ -778,8 +775,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
             table: table
           }
       }
-      // Accumulate arg costs
-      let args_result = call_args |> fold(init: SummaryResult {
+      // Accumulate arg costs via node.children (arg nodes)
+      let args_result = texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
@@ -788,7 +785,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         },
         table: callee_result.table
       }, f: fn(acc, a) {
-        let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
+        let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, table: acc.table)
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: acc.summary.work, b: ar.summary.work),
@@ -809,7 +806,9 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: args_result.table
       }
 
-    ExprMethodCall { receiver: recv, method: mname, args: mc_args, method_semantics: ms } =>
+    ExprMethodCall { receiver: _, method: mname, args: _, method_semantics: ms } =>
+      let recv = match texpr.children |> first { Some { value: r } => r  None => texpr }
+      let mc_args = texpr.children |> drop(1)
       let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
       let size = receiver_size_var(recv: recv)
       let binder = size_binder_name(size: size)
@@ -850,7 +849,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           },
           table: recv_r.table
         }, f: fn(acc, a) {
-          let ar = cost_of_expr(texpr: a.value, func_index: func_index, table: acc.table)
+          let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, table: acc.table)
           SummaryResult {
             summary: ComplexitySummary {
               work: cost_seq(a: acc.summary.work, b: ar.summary.work),
@@ -872,12 +871,11 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         }
       }
 
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      let s_r = cost_of_expr(texpr: s, func_index: func_index, table: table)
-      // Single pass: collect both accumulated max and individual branch costs.
-      // Previous code re-evaluated each arm body a second time to get individual
-      // costs, causing exponential blowup on nested match expressions (2^depth).
-      let arms_accum = arm_list |> fold(init: MatchCostAccum {
+    ExprMatch { scrutinee: _, arms: _ } =>
+      let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
+      let arm_nodes = texpr.children |> drop(1)
+      let s_r = cost_of_expr(texpr: scrut, func_index: func_index, table: table)
+      let arms_accum = arm_nodes |> fold(init: MatchCostAccum {
         result: SummaryResult {
           summary: ComplexitySummary {
             work: CostConst { value: 0 },
@@ -888,8 +886,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           table: s_r.table
         },
         branch_costs: []
-      }, f: fn(acc, arm) {
-        let ar = cost_of_expr(texpr: arm.body, func_index: func_index, table: acc.result.table)
+      }, f: fn(acc, arm_node) {
+        let ar = cost_of_expr(texpr: arm_body(n: arm_node), func_index: func_index, table: acc.result.table)
         MatchCostAccum {
           result: SummaryResult {
             summary: ComplexitySummary {
@@ -913,10 +911,13 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: arms_accum.result.table
       }
 
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+      let ch = texpr.children
+      let c = match ch |> first { Some { value: v } => v  None => texpr }
+      let t = match ch |> drop(1) |> first { Some { value: v } => v  None => texpr }
       let c_r = cost_of_expr(texpr: c, func_index: func_index, table: table)
       let t_r = cost_of_expr(texpr: t, func_index: func_index, table: c_r.table)
-      let e_result = match e {
+      let e_result = match ch |> drop(2) |> first {
         Some { value: eb } =>
           let er = cost_of_expr(texpr: eb, func_index: func_index, table: t_r.table)
           SummaryResult {
@@ -945,9 +946,11 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: e_result.table
       }
 
-    ExprLet { name: _, value: v, body: bd } =>
+    ExprLet { name: _, value: _, body: _ } =>
+      let ch = texpr.children
+      let v = match ch |> first { Some { value: val } => val  None => texpr }
       let v_r = cost_of_expr(texpr: v, func_index: func_index, table: table)
-      match bd {
+      match ch |> drop(1) |> first {
         Some { value: b } =>
           let b_r = cost_of_expr(texpr: b, func_index: func_index, table: v_r.table)
           SummaryResult {
@@ -962,8 +965,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         None => v_r
       }
 
-    ExprBlock { stmts: ss } =>
-      ss |> fold(init: SummaryResult {
+    ExprBlock { stmts: _ } =>
+      texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 0 },
           span: CostConst { value: 0 },
@@ -984,7 +987,9 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         }
       })
 
-    ExprForEach { variable: _, collection: c, body: bd } =>
+    ExprForEach { variable: _, collection: _, body: _ } =>
+      let c = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let bd = match texpr.children |> drop(1) |> first { Some { value: v } => v  None => texpr }
       let c_r = cost_of_expr(texpr: c, func_index: func_index, table: table)
       let bd_r = cost_of_expr(texpr: bd, func_index: func_index, table: c_r.table)
       let size = receiver_size_var(recv: c)
@@ -1000,29 +1005,11 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: bd_r.table
       }
 
-    ExprReturn { value: v } =>
-      cost_of_expr(texpr: v, func_index: func_index, table: table)
-
-    ExprFieldAccess { base: b, field: _ } =>
-      cost_of_expr(texpr: b, func_index: func_index, table: table)
-
-    ExprUnaryOp { op: _, operand: e } =>
-      let er = cost_of_expr(texpr: e, func_index: func_index, table: table)
-      SummaryResult {
-        summary: ComplexitySummary {
-          work: cost_seq(a: CostConst { value: 1 }, b: er.summary.work),
-          span: cost_seq(a: CostConst { value: 1 }, b: er.summary.span),
-          output_size: empty_map(),
-          certainty: er.summary.certainty
-        },
-        table: er.table
-      }
-
-    ExprLambda { params: _, body: bd } =>
-      cost_of_expr(texpr: bd, func_index: func_index, table: table)
-
-    ExprRecordLit { type_name: _, fields: fs } =>
-      fs |> fold(init: SummaryResult {
+    // All remaining variants: sequential cost over node.children.
+    // Handles Return, FieldAccess, UnaryOp, Lambda, RecordLit, ListLit,
+    // StringInterp, Cast, Index, Slice, BinOp, and NoExprData (wrapper nodes).
+    _ =>
+      texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 1 },
           span: CostConst { value: 1 },
@@ -1030,107 +1017,18 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
           certainty: Proven
         },
         table: table
-      }, f: fn(acc, fi) {
-        let fr = cost_of_expr(texpr: fi.value, func_index: func_index, table: acc.table)
+      }, f: fn(acc, child) {
+        let cr = cost_of_expr(texpr: child, func_index: func_index, table: acc.table)
         SummaryResult {
           summary: ComplexitySummary {
-            work: cost_seq(a: acc.summary.work, b: fr.summary.work),
-            span: cost_seq(a: acc.summary.span, b: fr.summary.span),
-            output_size: empty_map(),
-            certainty: fr.summary.certainty
+            work: cost_seq(a: acc.summary.work, b: cr.summary.work),
+            span: cost_seq(a: acc.summary.span, b: cr.summary.span),
+            output_size: cr.summary.output_size,
+            certainty: cr.summary.certainty
           },
-          table: fr.table
+          table: cr.table
         }
       })
-
-    ExprListLit { elements: els } =>
-      els |> fold(init: SummaryResult {
-        summary: ComplexitySummary {
-          work: CostConst { value: 1 },
-          span: CostConst { value: 1 },
-          output_size: empty_map(),
-          certainty: Proven
-        },
-        table: table
-      }, f: fn(acc, el) {
-        let er = cost_of_expr(texpr: el, func_index: func_index, table: acc.table)
-        SummaryResult {
-          summary: ComplexitySummary {
-            work: cost_seq(a: acc.summary.work, b: er.summary.work),
-            span: cost_seq(a: acc.summary.span, b: er.summary.span),
-            output_size: empty_map(),
-            certainty: er.summary.certainty
-          },
-          table: er.table
-        }
-      })
-
-    ExprStringInterp { parts: ps } =>
-      ps |> fold(init: SummaryResult {
-        summary: ComplexitySummary {
-          work: CostConst { value: 1 },
-          span: CostConst { value: 1 },
-          output_size: empty_map(),
-          certainty: Proven
-        },
-        table: table
-      }, f: fn(acc, p) {
-        match p {
-          Interpolation { expr: e } =>
-            let er = cost_of_expr(texpr: e, func_index: func_index, table: acc.table)
-            SummaryResult {
-              summary: ComplexitySummary {
-                work: cost_seq(a: acc.summary.work, b: er.summary.work),
-                span: cost_seq(a: acc.summary.span, b: er.summary.span),
-                output_size: empty_map(),
-                certainty: er.summary.certainty
-              },
-              table: er.table
-            }
-          Text { value: _ } => acc
-        }
-      })
-
-    ExprCast { expr: e, target: _ } =>
-      cost_of_expr(texpr: e, func_index: func_index, table: table)
-
-    ExprIndex { base: b, index: i } =>
-      let br = cost_of_expr(texpr: b, func_index: func_index, table: table)
-      let ir = cost_of_expr(texpr: i, func_index: func_index, table: br.table)
-      SummaryResult {
-        summary: ComplexitySummary {
-          work: cost_seq(a: br.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: ir.summary.work)),
-          span: cost_seq(a: br.summary.span, b: cost_seq(a: CostConst { value: 1 }, b: ir.summary.span)),
-          output_size: empty_map(),
-          certainty: Proven
-        },
-        table: ir.table
-      }
-
-    ExprSlice { base: b, start: s, end: e } =>
-      let br = cost_of_expr(texpr: b, func_index: func_index, table: table)
-      let sr = cost_of_expr(texpr: s, func_index: func_index, table: br.table)
-      let er = cost_of_expr(texpr: e, func_index: func_index, table: sr.table)
-      SummaryResult {
-        summary: ComplexitySummary {
-          work: cost_seq(a: br.summary.work, b: cost_seq(a: sr.summary.work, b: er.summary.work)),
-          span: cost_seq(a: br.summary.span, b: cost_seq(a: sr.summary.span, b: er.summary.span)),
-          output_size: empty_map(),
-          certainty: Proven
-        },
-        table: er.table
-      }
-
-    NoExprData =>
-      SummaryResult {
-        summary: ComplexitySummary {
-          work: CostConst { value: 0 },
-          span: CostConst { value: 0 },
-          output_size: empty_map(),
-          certainty: Proven
-        },
-        table: table
-      }
   }
 }
 
@@ -1139,42 +1037,10 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
 fn estimate_expr_size(texpr: Node, budget: Int) -> Int {
   if budget <= 0 { 0 }
   else {
-    match texpr.expr_data {
-      ExprBlock { stmts: ss } =>
-        ss |> fold(init: budget, f: (acc, s) => estimate_expr_size(texpr: s, budget: acc))
-      ExprBinOp { op: _, left: l, right: r } =>
-        let s1 = estimate_expr_size(texpr: l, budget: budget - 1)
-        estimate_expr_size(texpr: r, budget: s1)
-      ExprIf { condition: c, then_branch: t, else_branch: e } =>
-        let s1 = estimate_expr_size(texpr: c, budget: budget - 1)
-        let s2 = estimate_expr_size(texpr: t, budget: s1)
-        match e {
-          Some { value: eb } => estimate_expr_size(texpr: eb, budget: s2)
-          None => s2
-        }
-      ExprLet { name: _, value: v, body: b } =>
-        let s1 = estimate_expr_size(texpr: v, budget: budget - 1)
-        match b {
-          Some { value: bd } => estimate_expr_size(texpr: bd, budget: s1)
-          None => s1
-        }
-      ExprMatch { scrutinee: s, arms: arms } =>
-        let s1 = estimate_expr_size(texpr: s, budget: budget - 1)
-        arms |> fold(init: s1, f: (acc, arm) => estimate_expr_size(texpr: arm.body, budget: acc))
-      ExprForEach { variable: _, collection: c, body: b } =>
-        let s1 = estimate_expr_size(texpr: c, budget: budget - 1)
-        estimate_expr_size(texpr: b, budget: s1)
-      ExprCall { func: _, args: a } =>
-        a |> fold(init: budget - 1, f: (acc, arg) => estimate_expr_size(texpr: arg.value, budget: acc))
-      ExprMethodCall { receiver: r, method: _, args: a } =>
-        let s1 = estimate_expr_size(texpr: r, budget: budget - 1)
-        a |> fold(init: s1, f: (acc, arg) => estimate_expr_size(texpr: arg.value, budget: acc))
-      ExprLambda { params: _, body: b } =>
-        estimate_expr_size(texpr: b, budget: budget - 1)
-      ExprReturn { value: v } =>
-        estimate_expr_size(texpr: v, budget: budget - 1)
-      _ => budget - 1
-    }
+    // Walk children structurally. Each child decrements budget by 1.
+    texpr.children |> fold(init: budget - 1, f: (acc, child) =>
+      estimate_expr_size(texpr: child, budget: acc)
+    )
   }
 }
 
