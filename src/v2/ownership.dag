@@ -134,7 +134,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprLiteral { value: _ } => accum
 
-    ExprFieldAccess { base: _, field: f } =>
+    ExprFieldAccess { field: f } =>
       // children = [base]. Check if base is a variable for projection.
       let base_node = match texpr.children |> first { Some { value: b } => b  None => texpr }
       match base_node.expr_data {
@@ -167,7 +167,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         )
       }
 
-    ExprMethodCall { receiver: _, method: mname, args: _ } =>
+    ExprMethodCall { method: mname } =>
       // children = [receiver, arg0_node, arg1_node, ...].
       let recv = match texpr.children |> first { Some { value: r } => r  None => texpr }
       let mc_args = texpr.children |> drop(1)
@@ -195,7 +195,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         )
       }
 
-    ExprMatch { scrutinee: _, arms: _ } =>
+    ExprMatch =>
       // children = [scrutinee, arm0_node, arm1_node, ...].
       let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
       let arm_nodes = texpr.children |> drop(1)
@@ -205,7 +205,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
-    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+    ExprIf =>
       // children = [condition, then, else?].
       let ch = texpr.children
       let c = match ch |> first { Some { value: v } => v  None => texpr }
@@ -218,7 +218,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
-    ExprLet { name: _, value: _, body: _ } =>
+    ExprLet { name: _ } =>
       // children = [value, body?].
       let ch = texpr.children
       let v = match ch |> first { Some { value: val } => val  None => texpr }
@@ -228,7 +228,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         None => v_accum
       }
 
-    ExprBlock { stmts: _ } =>
+    ExprBlock =>
       // children = [stmt0, stmt1, ...]. Only last is tail.
       let ss = texpr.children
       let ss_count = ss |> count
@@ -246,7 +246,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         }
       }
 
-    ExprReturn { value: _ } =>
+    ExprReturn =>
       // children = [value]. Value is in tail position.
       texpr.children |> fold(init: accum, f: (acc, child) =>
         walk_expr(accum: acc, texpr: child, in_tail: true)

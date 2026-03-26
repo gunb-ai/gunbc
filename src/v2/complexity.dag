@@ -264,9 +264,9 @@ fn receiver_size_var(recv: Node) -> SizeExpr {
   match recv.expr_data {
     ExprVar { name: vname } =>
       SizeLen { collection: vname }
-    ExprFieldAccess { base: _, field: fname } =>
+    ExprFieldAccess { field: fname } =>
       SizeLen { collection: fname }
-    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: method_semantics } =>
+    ExprMethodCall { method: _, method_semantics: method_semantics } =>
       let inner_recv = match recv.children |> first { Some { value: r } => r  None => recv }
       if method_preserves_collection_size(method_semantics: method_semantics) {
         receiver_size_var(recv: inner_recv)
@@ -746,7 +746,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: table
       }
 
-    ExprBinOp { op: _, left: l, right: r } =>
+    ExprBinOp { op: _ } =>
       let lr = cost_of_expr(texpr: l, func_index: func_index, table: table)
       let rr = cost_of_expr(texpr: r, func_index: func_index, table: lr.table)
       SummaryResult {
@@ -806,7 +806,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: args_result.table
       }
 
-    ExprMethodCall { receiver: _, method: mname, args: _, method_semantics: ms } =>
+    ExprMethodCall { method: mname, method_semantics: ms } =>
       let recv = match texpr.children |> first { Some { value: r } => r  None => texpr }
       let mc_args = texpr.children |> drop(1)
       let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
@@ -871,7 +871,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         }
       }
 
-    ExprMatch { scrutinee: _, arms: _ } =>
+    ExprMatch =>
       let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
       let arm_nodes = texpr.children |> drop(1)
       let s_r = cost_of_expr(texpr: scrut, func_index: func_index, table: table)
@@ -911,7 +911,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: arms_accum.result.table
       }
 
-    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+    ExprIf =>
       let ch = texpr.children
       let c = match ch |> first { Some { value: v } => v  None => texpr }
       let t = match ch |> drop(1) |> first { Some { value: v } => v  None => texpr }
@@ -946,7 +946,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: e_result.table
       }
 
-    ExprLet { name: _, value: _, body: _ } =>
+    ExprLet { name: _ } =>
       let ch = texpr.children
       let v = match ch |> first { Some { value: val } => val  None => texpr }
       let v_r = cost_of_expr(texpr: v, func_index: func_index, table: table)
@@ -965,7 +965,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         None => v_r
       }
 
-    ExprBlock { stmts: _ } =>
+    ExprBlock =>
       texpr.children |> fold(init: SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 0 },

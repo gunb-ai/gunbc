@@ -54,7 +54,8 @@ type ServiceMethodResult {
 
 fn is_typed_service_call_receiver(receiver: Node) -> Bool {
   match receiver.expr_data {
-    ExprFieldAccess { base: b, field: f, summary: _ } =>
+    ExprFieldAccess { field: f, summary: _ } =>
+      let b = match receiver.children |> first { Some { value: v } => v  None => receiver }
       match b.expr_data {
         ExprVar { name: _, binding_kind: _ } => {
           match f |> chars |> first {
@@ -70,7 +71,8 @@ fn is_typed_service_call_receiver(receiver: Node) -> Bool {
 
 fn extract_typed_service_name(receiver: Node) -> String? {
   match receiver.expr_data {
-    ExprFieldAccess { base: b, field: f, summary: _ } =>
+    ExprFieldAccess { field: f, summary: _ } =>
+      let b = match receiver.children |> first { Some { value: v } => v  None => receiver }
       match b.expr_data {
         ExprVar { name: ns, binding_kind: _ } => Some { value: concat(ns, ".", f) }
         _ => none
@@ -87,7 +89,8 @@ fn collect_typed_service_calls(texpr: Node) -> List<String> {
 fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
   // Per-node logic: detect service method calls on typed receivers.
   let this_acc = match texpr.expr_data {
-    ExprMethodCall { receiver: r, method: _, args: _, method_semantics: _ } =>
+    ExprMethodCall { method: _, method_semantics: _ } =>
+      let r = match texpr.children |> first { Some { value: v } => v  None => texpr }
       if is_typed_service_call_receiver(receiver: r) {
         match extract_typed_service_name(receiver: r) {
           Some { value: service_name } =>
@@ -108,7 +111,7 @@ fn collect_typed_service_calls_into(texpr: Node, acc: UniqueAccum) -> UniqueAccu
 fn collect_called_func_names_into(texpr: Node, acc: UniqueAccum) -> UniqueAccum {
   // Per-node logic: detect function calls and accumulate unique names.
   let this_acc = match texpr.expr_data {
-    ExprCall { func: f, args: _, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
       if emit_map_has(m: acc.seen, key: f) { acc }
       else { UniqueAccum { seen: map_insert(acc.seen, f, true), result: list_push(acc.result, f) } }
     _ => acc
