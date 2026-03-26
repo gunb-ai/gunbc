@@ -143,7 +143,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false)
       }
 
-    ExprCall { func: fname, args: _ } =>
+    ExprCall { func: fname } =>
       // children = [arg0_node, arg1_node, ...]. Arg names on node.name.
       if fname == "fold" {
         let init_arg = texpr.children |> filter(a => a.name == "init") |> first

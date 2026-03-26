@@ -747,6 +747,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       }
 
     ExprBinOp { op: _ } =>
+      let l = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let r = match texpr.children |> drop(1) |> first { Some { value: v } => v  None => texpr }
       let lr = cost_of_expr(texpr: l, func_index: func_index, table: table)
       let rr = cost_of_expr(texpr: r, func_index: func_index, table: lr.table)
       SummaryResult {
@@ -759,7 +761,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: rr.table
       }
 
-    ExprCall { func: fname, args: _ } =>
+    ExprCall { func: fname } =>
       // Look up callee summary (recursive via get_or_compute_summary)
       let callee_result = match map_get(func_index, fname) {
         Some { value: entry } =>
@@ -987,7 +989,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         }
       })
 
-    ExprForEach { variable: _, collection: _, body: _ } =>
+    ExprForEach { variable: _ } =>
       let c = match texpr.children |> first { Some { value: v } => v  None => texpr }
       let bd = match texpr.children |> drop(1) |> first { Some { value: v } => v  None => texpr }
       let c_r = cost_of_expr(texpr: c, func_index: func_index, table: table)
