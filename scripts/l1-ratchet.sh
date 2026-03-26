@@ -57,10 +57,7 @@ echo "  Total:                         $total"
 
 # Ratchet: total must not exceed this value.
 # Categories and total are aligned with ROADMAP.md § Architectural Ratchet.
-# Updated 2026-03-26: 373→412 after P5.7a/b (CollectionKind typed enum replaced
-# uncounted string-property checks with counted typed predicates — net structural
-# improvement that increases the counter).
-L1_RATCHET=414
+L1_RATCHET=373
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( total > L1_RATCHET )); then
