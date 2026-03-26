@@ -252,46 +252,46 @@ fn v2_core_dag_defines_token_type() {
 }
 
 #[test]
-fn v2_core_dag_defines_token_kind_sum_type() {
+fn v2_core_dag_defines_token_shape_sum_type() {
     let result = daglang_syntax::parser::parse_to_result(V2_CORE_DAG);
     assert!(result.is_ok());
 
-    let token_kind = result.ast.items.iter().find_map(|item| {
+    let token_shape = result.ast.items.iter().find_map(|item| {
         if let daglang_syntax::ast::Item::TypeDef(td) = &item.node {
-            if td.name == "TokenKind" {
+            if td.name == "TokenShape" {
                 return Some(td);
             }
         }
         None
     });
-    let td = token_kind.expect("core.dag should define a 'TokenKind' type");
+    let td = token_shape.expect("core.dag should define a 'TokenShape' type");
 
     match &td.body {
         daglang_syntax::ast::TypeBody::Sum(variants) => {
             assert!(
                 variants.len() > 30,
-                "TokenKind should have 30+ variants, got {}",
+                "TokenShape should have 30+ variants, got {}",
                 variants.len()
             );
             let variant_names: Vec<&str> = variants.iter().map(|v| v.name.as_str()).collect();
             assert!(
-                variant_names.contains(&"KwModule"),
-                "TokenKind should include KwModule"
+                variant_names.contains(&"ShKwModule"),
+                "TokenShape should include ShKwModule"
             );
             assert!(
-                variant_names.contains(&"Eof"),
-                "TokenKind should include Eof"
+                variant_names.contains(&"ShEof"),
+                "TokenShape should include ShEof"
             );
             assert!(
-                variant_names.contains(&"LitStr"),
-                "TokenKind should include LitStr"
+                variant_names.contains(&"ShLitStr"),
+                "TokenShape should include ShLitStr"
             );
             assert!(
-                variant_names.contains(&"Ident"),
-                "TokenKind should include Ident"
+                variant_names.contains(&"ShIdent"),
+                "TokenShape should include ShIdent"
             );
         }
-        _ => panic!("TokenKind should be a sum type"),
+        _ => panic!("TokenShape should be a sum type"),
     }
 }
 

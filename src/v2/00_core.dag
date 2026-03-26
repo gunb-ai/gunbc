@@ -27,55 +27,59 @@ import std.types { FilePath, NonEmptyStr, SourceSpan }
 // a source string.
 // =========================================================================
 
+// Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
+// Token<Shape> = { text: String, span: SourceSpan, shape: Shape }
+// text carries semantic content (identifier name, literal value, keyword text).
+// shape carries payload-insensitive structural classification.
 type Token {
-  kind: TokenKind
+  text: String
   span: SourceSpan
+  shape: TokenShape
 }
 
-type TokenKind
+// TokenShape: payload-insensitive token classification.
+// Every variant is a unit variant — payloads live in Token.text.
+// This is the structural classifier; Token.text carries the semantic content.
+type TokenShape
   // Declaration keywords
-  = KwModule | KwImport | KwType | KwFn | KwFunc
-  | KwService | KwResource | KwData | KwExtern
-  | KwInterface | KwPipeline | KwProfile | KwPattern
+  = ShKwModule | ShKwImport | ShKwType | ShKwFn | ShKwFunc
+  | ShKwService | ShKwResource | ShKwData | ShKwExtern
+  | ShKwInterface | ShKwPipeline | ShKwProfile | ShKwPattern
   // Control flow keywords
-  | KwLet | KwReturn | KwMatch | KwIf | KwElse
-  | KwFor | KwIn | KwWhere | KwWith
+  | ShKwLet | ShKwReturn | ShKwMatch | ShKwIf | ShKwElse
+  | ShKwFor | ShKwIn | ShKwWhere | ShKwWith
   // Literal keywords
-  | KwTrue | KwFalse | KwNone
+  | ShKwTrue | ShKwFalse | ShKwNone
   // Resource lifecycle keywords
-  | KwAcquire | KwRelease | KwCapability
-  | KwOperation | KwInput | KwOutput
+  | ShKwAcquire | ShKwRelease | ShKwCapability
+  | ShKwOperation | ShKwInput | ShKwOutput
   // Modifier keywords
-  | KwIdempotent | KwReadonly | KwHermetic
+  | ShKwIdempotent | ShKwReadonly | ShKwHermetic
   // Paired delimiters
-  | LBrace | RBrace | LParen | RParen | LBracket | RBracket
+  | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
   // Relational / arrow
-  | Lt | Gt | Le | Ge | FatArrow | Arrow
+  | ShLt | ShGt | ShLe | ShGe | ShFatArrow | ShArrow
   // Separators
-  | Colon | Comma | Dot | DotDot
+  | ShColon | ShComma | ShDot | ShDotDot
   // Assignment / equality
-  | Eq | EqEq | Ne
+  | ShEq | ShEqEq | ShNe
   // Arithmetic
-  | Plus | Minus | Star | Slash | Percent
+  | ShPlus | ShMinus | ShStar | ShSlash | ShPercent
   // Logic
-  | Bang | And | Or
+  | ShBang | ShAnd | ShOr
   // Optionality
-  | Question | NullCoalesce
+  | ShQuestion | ShNullCoalesce
   // Sum type separator / pipe arrow
-  | Pipe
-  | PipeArrow
-  // Values
-  | LitStr { value: String }
-  | LitInt { value: Int }
-  | LitFloat { value: String }
-  | Ident { name: String }
-  // String interpolation parts
-  | StrBegin { value: String }
-  | StrMid { value: String }
-  | StrEnd { value: String }
+  | ShPipe
+  | ShPipeArrow
+  // Values (payload in Token.text)
+  | ShLitStr | ShLitInt | ShLitFloat | ShIdent
+  // String interpolation parts (payload in Token.text)
+  | ShStrBegin | ShStrMid | ShStrEnd
   // Structure
-  | Newline | Eof
-  | Unknown { char: String }
+  | ShNewline | ShEof
+  | ShUnknown
+
 
 // =========================================================================
 // AST -- Abstract Syntax Tree
