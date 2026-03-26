@@ -49,30 +49,39 @@ fn rt_type(n: Node) -> Node {
   }
 }
 
+fn collection_kind_for_name(name: String) -> CollectionKind? {
+  if name == "List" { Some { value: ListKind } }
+  else if name == "Set" { Some { value: SetKind } }
+  else if name == "NonEmptyList" { Some { value: NonEmptyListKind } }
+  else if name == "NonEmptySet" { Some { value: NonEmptySetKind } }
+  else if name == "Map" { Some { value: MapKind } }
+  else { none }
+}
+
 fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, collection_kind: collection_kind_for_name(name: kind_name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
-    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
-    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  ], connective: Some { value: Conj }, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: Some { value: Conj }, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, collection_kind: Some { value: MapKind }, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: Some { value: MapKind }, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
 // checked via declaration params in the type environment, not hardcoded names.
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
-  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn callable_inferred(n: Node) -> Node {
@@ -110,7 +119,14 @@ fn node_is_bridge_dynamic_name(n: Node) -> Bool {
 // =========================================================================
 
 fn node_is_container(n: Node) -> Bool {
-  n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet"
+  // Container = List, Set, NonEmptyList, NonEmptySet (NOT Map — handled by node_is_map)
+  match n.collection_kind {
+    Some { value: ListKind } => true
+    Some { value: SetKind } => true
+    Some { value: NonEmptyListKind } => true
+    Some { value: NonEmptySetKind } => true
+    _ => false
+  }
 }
 
 fn node_is_optional(n: Node) -> Bool {
@@ -121,7 +137,8 @@ fn node_is_optional(n: Node) -> Bool {
 }
 
 fn node_is_map(n: Node) -> Bool {
-  n.name == "Map"
+  let is_map = n.collection_kind == Some { value: MapKind }
+  is_map
 }
 
 fn node_is_leaf(n: Node) -> Bool {
@@ -156,20 +173,6 @@ fn normalize_access_type_node(n: Node) -> Node {
   }
 }
 
-fn normalize_type_name(name: String) -> String {
-  if name |> string_contains(substring: "<") == false && name |> string_contains(substring: ".") == false {
-    name
-  } else {
-    let base = match name |> split(delimiter: "<") |> first {
-      Some { value: part } => part
-      None => name
-    }
-    match base |> split(delimiter: ".") |> last {
-      Some { value: short } => short
-      None => base
-    }
-  }
-}
 
 // =========================================================================
 // Type shape and comparison
@@ -178,14 +181,14 @@ fn normalize_type_name(name: String) -> String {
 fn node_type_shape(n: Node) -> String {
   if node_is_leaf(n: n) {
     if node_is_named_ref(n: n) {
-      concat("Named(", normalize_type_name(name: n.name), ")")
+      concat("Named(", n.name, ")")
     } else {
       concat("Primitive(", n.name, ")")
     }
   } else if node_is_product(n: n) {
-    if n.name == "" { "Product(<anon>)" } else { concat("Product(", normalize_type_name(name: n.name), ")") }
+    if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
   } else if node_is_coproduct(n: n) {
-    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", normalize_type_name(name: n.name), ")") }
+    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
   } else if node_is_container(n: n) {
     let elem_shape = match n.children |> first {
       Some { value: el } => node_type_shape(n: el)
@@ -217,7 +220,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if node_is_container(n: left) && node_is_container(n: right) {
-    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    if left.name != right.name { false }
     else {
       match left.children |> first {
         Some { value: left_el } =>
@@ -238,7 +241,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     else { node_type_compatible(left: left_inner, right: right_inner) }
   }
   else if left_opt || right_opt { false }
-  else { normalize_type_name(name: left.name) == normalize_type_name(name: right.name) }
+  else { left.name == right.name }
 }
 
 fn prefer_specific_type(left: Node, right: Node) -> Node {
@@ -255,7 +258,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     left.name == "Unit"
   } else { false }
   let same_kind = if left_is_container && node_is_container(n: right) {
-    normalize_type_name(name: left_norm_name) == normalize_type_name(name: right.name)
+    left_norm_name == right.name
   } else if left_is_optional && node_is_optional(n: right) {
     true
   } else { false }
@@ -279,10 +282,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
   else if left_leaf && right_leaf {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if left_struct && right_struct {
-    if normalize_type_name(name: left.name) != normalize_type_name(name: right.name) { false }
+    if left.name != right.name { false }
     else if node_is_product(n: left) != node_is_product(n: right) { false }
     else if left.children |> count != right.children |> count { false }
     else {
@@ -295,10 +298,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     }
   }
   else if left_leaf && right_struct {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if left_struct && right_leaf {
-    normalize_type_name(name: left.name) == normalize_type_name(name: right.name)
+    left.name == right.name
   }
   else if node_is_container(n: left) && node_is_container(n: right) {
     if left.name != right.name { false }

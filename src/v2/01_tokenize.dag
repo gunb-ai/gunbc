@@ -1,7 +1,7 @@
 // v2 tokenizer -- pure function from source string to token list.
 //
 // No I/O -- file reading is handled by the pipeline.
-// Emits all token kinds declared in core.dag, including Newline tokens
+// Emits all token shapes declared in core.dag, including Newline tokens
 // (significant for the parser's statement separation).
 //
 // String interpolation: "hello {name}" emits StrBegin("hello "), then
@@ -14,42 +14,45 @@ module v2.compiler.tokenize
 
 import std.types { SourceSpan }
 import v2.std.core {
-  Token, TokenKind,
-  KwModule, KwImport, KwType, KwFn, KwFunc, KwService, KwResource,
-  KwData, KwExtern, KwInterface, KwPipeline, KwProfile, KwPattern,
-  KwLet, KwReturn, KwMatch, KwIf, KwElse, KwFor, KwIn, KwWhere, KwWith,
-  KwTrue, KwFalse, KwNone,
-  KwAcquire, KwRelease, KwCapability, KwOperation, KwInput, KwOutput,
-  KwIdempotent, KwReadonly, KwHermetic,
-  LBrace, RBrace, LParen, RParen, LBracket, RBracket,
-  Lt, Gt, Le, Ge, FatArrow, Arrow,
-  Colon, Comma, Dot, DotDot, Eq, EqEq, Ne,
-  Plus, Minus, Star, Slash, Percent, Bang, And, Or,
-  Question, NullCoalesce, Pipe, PipeArrow,
-  LitStr, LitInt, LitFloat, Ident,
-  StrBegin, StrMid, StrEnd,
-  Newline, Eof, Unknown
+  Token, TokenShape,
+  ShKwModule, ShKwImport, ShKwType, ShKwFn, ShKwFunc,
+  ShKwService, ShKwResource, ShKwData, ShKwExtern,
+  ShKwInterface, ShKwPipeline, ShKwProfile, ShKwPattern,
+  ShKwLet, ShKwReturn, ShKwMatch, ShKwIf, ShKwElse,
+  ShKwFor, ShKwIn, ShKwWhere, ShKwWith,
+  ShKwTrue, ShKwFalse, ShKwNone,
+  ShKwAcquire, ShKwRelease, ShKwCapability,
+  ShKwOperation, ShKwInput, ShKwOutput,
+  ShKwIdempotent, ShKwReadonly, ShKwHermetic,
+  ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
+  ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
+  ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
+  ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
+  ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow,
+  ShLitStr, ShLitInt, ShLitFloat, ShIdent,
+  ShStrBegin, ShStrMid, ShStrEnd,
+  ShNewline, ShEof, ShUnknown
 }
 
 // === Keyword table ===
 //
 // Data declaration, not match arms. Adding a keyword = one entry here.
 
-data keywords: Map<String, TokenKind> = {
-  "module": KwModule, "import": KwImport, "type": KwType,
-  "fn": KwFn, "func": KwFunc, "service": KwService,
-  "resource": KwResource, "data": KwData, "extern": KwExtern,
-  "interface": KwInterface, "pipeline": KwPipeline,
-  "profile": KwProfile, "pattern": KwPattern,
-  "let": KwLet, "return": KwReturn, "match": KwMatch,
-  "if": KwIf, "else": KwElse, "for": KwFor, "in": KwIn,
-  "where": KwWhere, "with": KwWith,
-  "true": KwTrue, "false": KwFalse, "none": KwNone, "null": KwNone,
-  "acquire": KwAcquire, "release": KwRelease,
-  "capability": KwCapability, "operation": KwOperation,
-  "input": KwInput, "output": KwOutput,
-  "idempotent": KwIdempotent, "readonly": KwReadonly,
-  "hermetic": KwHermetic
+data keywords: Map<String, TokenShape> = {
+  "module": ShKwModule, "import": ShKwImport, "type": ShKwType,
+  "fn": ShKwFn, "func": ShKwFunc, "service": ShKwService,
+  "resource": ShKwResource, "data": ShKwData, "extern": ShKwExtern,
+  "interface": ShKwInterface, "pipeline": ShKwPipeline,
+  "profile": ShKwProfile, "pattern": ShKwPattern,
+  "let": ShKwLet, "return": ShKwReturn, "match": ShKwMatch,
+  "if": ShKwIf, "else": ShKwElse, "for": ShKwFor, "in": ShKwIn,
+  "where": ShKwWhere, "with": ShKwWith,
+  "true": ShKwTrue, "false": ShKwFalse, "none": ShKwNone, "null": ShKwNone,
+  "acquire": ShKwAcquire, "release": ShKwRelease,
+  "capability": ShKwCapability, "operation": ShKwOperation,
+  "input": ShKwInput, "output": ShKwOutput,
+  "idempotent": ShKwIdempotent, "readonly": ShKwReadonly,
+  "hermetic": ShKwHermetic
 }
 
 // === Single-char punctuation table ===
@@ -57,11 +60,11 @@ data keywords: Map<String, TokenKind> = {
 // Note: { and } are NOT in this table -- they require special handling
 // for string interpolation brace depth tracking.
 
-data single_punct: Map<String, TokenKind> = {
-  "(": LParen, ")": RParen,
-  "[": LBracket, "]": RBracket,
-  ":": Colon, ",": Comma, ".": Dot,
-  "+": Plus, "*": Star, "%": Percent, "/": Slash
+data single_punct: Map<String, TokenShape> = {
+  "(": ShLParen, ")": ShRParen,
+  "[": ShLBracket, "]": ShRBracket,
+  ":": ShColon, ",": ShComma, ".": ShDot,
+  "+": ShPlus, "*": ShStar, "%": ShPercent, "/": ShSlash
 }
 
 // === Tokenizer state ===
@@ -107,6 +110,12 @@ type SourceRef {
   text: String
 }
 
+// === Token construction helper ===
+//
+fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
+  Token { text: text, span: span, shape: shape }
+}
+
 // === Entry point ===
 
 fn tokenize(source: String) -> List<Token> {
@@ -117,7 +126,7 @@ fn tokenize(source: String) -> List<Token> {
   // inside an Rc-wrapped struct which always has refcount >= 2).
   let final_state = tokenize_loop(source: src, tokens: [], pos: initial)
   let eof_span = SourceSpan { start: final_state.pos, end: final_state.pos }
-  list_push(final_state.tokens, Token { kind: Eof, span: eof_span })
+  list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof))
 }
 
 // === Main loop ===
@@ -131,7 +140,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
 
   // Newlines are significant (statement separation)
   if ch == "\n" {
-    let tok = Token { kind: Newline, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
+    let tok = make_token(text: "\n", span: SourceSpan { start: s.pos, end: s.pos + 1 }, shape: ShNewline)
     return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
       pos: s.pos + 1, interp_depth: s.interp_depth
     })
@@ -152,7 +161,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
     } else {
       // Nested brace inside interpolation expression -- decrement depth
       let new_depth = replace_last(stack: s.interp_depth, value: top - 1)
-      let tok = Token { kind: RBrace, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
+      let tok = make_token(text: "}", span: SourceSpan { start: s.pos, end: s.pos + 1 }, shape: ShRBrace)
       return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
         pos: s.pos + 1, interp_depth: new_depth
       })
@@ -175,26 +184,26 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
     char_at(s: source.text, pos: pos.pos + 1)
   } else { "" }
 
-  if ch == "=" && next_ch == ">" { return emit(pos: pos, kind: FatArrow, len: 2) }
-  if ch == "-" && next_ch == ">" { return emit(pos: pos, kind: Arrow, len: 2) }
-  if ch == "=" && next_ch == "=" { return emit(pos: pos, kind: EqEq, len: 2) }
-  if ch == "!" && next_ch == "=" { return emit(pos: pos, kind: Ne, len: 2) }
-  if ch == "<" && next_ch == "=" { return emit(pos: pos, kind: Le, len: 2) }
-  if ch == ">" && next_ch == "=" { return emit(pos: pos, kind: Ge, len: 2) }
-  if ch == "&" && next_ch == "&" { return emit(pos: pos, kind: And, len: 2) }
-  if ch == "|" && next_ch == "|" { return emit(pos: pos, kind: Or, len: 2) }
-  if ch == "|" && next_ch == ">" { return emit(pos: pos, kind: PipeArrow, len: 2) }
-  if ch == "|" { return emit(pos: pos, kind: Pipe, len: 1) }
-  if ch == "?" && next_ch == "?" { return emit(pos: pos, kind: NullCoalesce, len: 2) }
-  if ch == "." && next_ch == "." { return emit(pos: pos, kind: DotDot, len: 2) }
+  if ch == "=" && next_ch == ">" { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2) }
+  if ch == "-" && next_ch == ">" { return emit(pos: pos, shape: ShArrow, text: "->", len: 2) }
+  if ch == "=" && next_ch == "=" { return emit(pos: pos, shape: ShEqEq, text: "==", len: 2) }
+  if ch == "!" && next_ch == "=" { return emit(pos: pos, shape: ShNe, text: "!=", len: 2) }
+  if ch == "<" && next_ch == "=" { return emit(pos: pos, shape: ShLe, text: "<=", len: 2) }
+  if ch == ">" && next_ch == "=" { return emit(pos: pos, shape: ShGe, text: ">=", len: 2) }
+  if ch == "&" && next_ch == "&" { return emit(pos: pos, shape: ShAnd, text: "&&", len: 2) }
+  if ch == "|" && next_ch == "|" { return emit(pos: pos, shape: ShOr, text: "||", len: 2) }
+  if ch == "|" && next_ch == ">" { return emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2) }
+  if ch == "|" { return emit(pos: pos, shape: ShPipe, text: "|", len: 1) }
+  if ch == "?" && next_ch == "?" { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2) }
+  if ch == "." && next_ch == "." { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2) }
 
   // Single-character operators not in the table
-  if ch == "=" { return emit(pos: pos, kind: Eq, len: 1) }
-  if ch == "<" { return emit(pos: pos, kind: Lt, len: 1) }
-  if ch == ">" { return emit(pos: pos, kind: Gt, len: 1) }
-  if ch == "-" { return emit(pos: pos, kind: Minus, len: 1) }
-  if ch == "!" { return emit(pos: pos, kind: Bang, len: 1) }
-  if ch == "?" { return emit(pos: pos, kind: Question, len: 1) }
+  if ch == "=" { return emit(pos: pos, shape: ShEq, text: "=", len: 1) }
+  if ch == "<" { return emit(pos: pos, shape: ShLt, text: "<", len: 1) }
+  if ch == ">" { return emit(pos: pos, shape: ShGt, text: ">", len: 1) }
+  if ch == "-" { return emit(pos: pos, shape: ShMinus, text: "-", len: 1) }
+  if ch == "!" { return emit(pos: pos, shape: ShBang, text: "!", len: 1) }
+  if ch == "?" { return emit(pos: pos, shape: ShQuestion, text: "?", len: 1) }
 
   // Braces -- need special handling for interpolation depth tracking
   if ch == "{" {
@@ -203,7 +212,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
     } else {
       pos.interp_depth
     }
-    let tok = Token { kind: LBrace, span: SourceSpan { start: pos.pos, end: pos.pos + 1 } }
+    let tok = make_token(text: "{", span: SourceSpan { start: pos.pos, end: pos.pos + 1 }, shape: ShLBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: new_depth
     }
@@ -212,7 +221,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   if ch == "}" {
     // Not inside interpolation (that case handled in tokenize_loop).
     // This is a normal RBrace.
-    let tok = Token { kind: RBrace, span: SourceSpan { start: pos.pos, end: pos.pos + 1 } }
+    let tok = make_token(text: "}", span: SourceSpan { start: pos.pos, end: pos.pos + 1 }, shape: ShRBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: pos.interp_depth
     }
@@ -220,18 +229,15 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
 
   // Single-char punctuation from table
   match lookup(single_punct, key: ch) {
-    Some { value: kind } => emit(pos: pos, kind: kind, len: 1)
-    None => emit(pos: pos, kind: Unknown { char: ch }, len: 1)
+    Some { value: sh } => emit(pos: pos, shape: sh, text: ch, len: 1)
+    None => emit(pos: pos, shape: ShUnknown, text: ch, len: 1)
   }
 }
 
 // === Helpers ===
 
-fn emit(pos: TokPos, kind: TokenKind, len: Int) -> ScanResult {
-  let token = Token {
-    kind: kind,
-    span: SourceSpan { start: pos.pos, end: pos.pos + len }
-  }
+fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int) -> ScanResult {
+  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: pos.pos + len }, shape: shape)
   ScanResult {
     pos: pos.pos + len,
     token: token,
@@ -242,11 +248,11 @@ fn emit(pos: TokPos, kind: TokenKind, len: Int) -> ScanResult {
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = scan_while(s: source.text, start: pos.pos, pred: is_ident_char)
   let text = substring(s: source.text, start: pos.pos, end: end)
-  let kind = match lookup(keywords, key: text) {
-    Some { value: kw } => kw
-    None => Ident { name: text }
+  let shape = match lookup(keywords, key: text) {
+    Some { value: sh } => sh
+    None => ShIdent
   }
-  let token = Token { kind: kind, span: SourceSpan { start: pos.pos, end: end } }
+  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: end }, shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -256,22 +262,16 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   if int_end + 1 < string_length(s: source.text) && char_at(s: source.text, pos: int_end) == "." && is_digit(ch: char_at(s: source.text, pos: int_end + 1)) {
     let frac_end = scan_while(s: source.text, start: int_end + 1, pred: is_digit)
     let text = substring(s: source.text, start: pos.pos, end: frac_end)
-    let token = Token {
-      kind: LitFloat { value: text },
-      span: SourceSpan { start: pos.pos, end: frac_end }
-    }
+    let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: frac_end }, shape: ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
   }
   let text = substring(s: source.text, start: pos.pos, end: int_end)
   let parsed = parse_int(s: text)
-  let kind = match parsed {
-    Some { value: v } => LitInt { value: v }
-    None => Unknown { char: text }
+  let shape = match parsed {
+    Some { value: _ } => ShLitInt
+    None => ShUnknown
   }
-  let token = Token {
-    kind: kind,
-    span: SourceSpan { start: pos.pos, end: int_end }
-  }
+  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: int_end }, shape: shape)
   ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -298,10 +298,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: LitStr { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShLitStr)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -309,10 +306,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: StrBegin { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrBegin)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -321,10 +315,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: Unknown { char: processed },
-        span: SourceSpan { start: span_start, end: end_pos }
-      }
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
@@ -341,10 +332,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: StrEnd { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrEnd)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -352,10 +340,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: StrMid { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrMid)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -364,10 +349,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: Unknown { char: processed },
-        span: SourceSpan { start: span_start, end: end_pos }
-      }
+      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth

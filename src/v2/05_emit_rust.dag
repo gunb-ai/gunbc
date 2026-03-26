@@ -57,7 +57,8 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   expr_has_self_call, expr_has_non_tail_self_call,
-  leaf_node, with_required_cardinality, node_has_structure
+  leaf_node, with_required_cardinality, node_has_structure,
+  node_is_product, node_is_coproduct
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
@@ -100,7 +101,6 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
-  TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
@@ -118,7 +118,7 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item, classify_type_structure,
+  classify_typed_item,
   has_mock_prefix,
   extract_test_projections,
   bridge_method_base_name,
@@ -470,7 +470,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && classify_type_structure(n: item) == TypeDisj)
+    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && node_is_coproduct(n: item))
     |> map(item => concat("use ", item.name, "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -712,8 +712,8 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
 }
 
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
-  let kind = classify_type_structure(n: item)
-  if (kind == TypeConj) {
+  let is_product = node_is_product(n: item)
+  if is_product {
     emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   } else {
     emit_enum_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
@@ -1406,12 +1406,13 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
       None => inferred_node
     }
   } else { inferred_node }
-  let n_kind = classify_type_structure(n: n)
+  let is_product = node_is_product(n: n)
+  let is_coproduct = node_is_coproduct(n: n)
   if n.name == "__EmitTypeCacheMiss" { type_name }
     else if n.name == "Error" { type_name }
-    else if (n_kind == TypeConj) {
+    else if is_product {
       if n.name == "" { type_name } else { Some { value: n.name } }
-    } else if (n_kind == TypeDisj) {
+    } else if is_coproduct {
       type_name
     } else if n.children |> count == 0 && n.name != "" {
       Some { value: n.name }
@@ -1538,8 +1539,8 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   // translated to the flattened representation.
   let base_is_anon_record = match base.inferred {
     Some { value: Resolved { node: bt } } =>
-      let kind = classify_type_structure(n: bt)
-      if (kind == TypeConj) && bt.name == "" { true } else { false }
+      let is_product = node_is_product(n: bt)
+      if is_product && bt.name == "" { true } else { false }
     _ => false
   }
   if base_is_anon_record {
@@ -1581,10 +1582,11 @@ fn type_needs_rc(type_node: Node) -> Bool {
 
 fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
-  let normed_kind = classify_type_structure(n: normed)
-  if (normed_kind == TypeConj) {
+  let is_product = node_is_product(n: normed)
+  let is_coproduct = node_is_coproduct(n: normed)
+  if is_product {
     true
-  } else if (normed_kind == TypeDisj) {
+  } else if is_coproduct {
     normed.children |> any(child => child.children |> count > 0)
   } else {
     let canonical = normed.name
@@ -2702,8 +2704,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
   match qualified_name {
     None =>
       // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
-      let kind = classify_type_structure(n: resolved_type)
-      if (kind == TypeConj) && resolved_type.name == "" {
+      let is_product = node_is_product(n: resolved_type)
+      if is_product && resolved_type.name == "" {
         if fields |> count == 1 {
           match fields |> first {
             Some { value: f } =>
@@ -3293,12 +3295,12 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 
 fn emit_shell_return(inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let kind = classify_type_structure(n: effective)
+  let is_product = node_is_product(n: effective)
   if effective.name == "Bool" || effective.name == "bool" {
     "Ok(output.status.success())"
   } else if effective.name == "List" || effective.name == "Vec" || node_is_container(n: effective) {
     "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
-  } else if kind == TypeConj && effective.children |> count > 1 {
+  } else if is_product && effective.children |> count > 1 {
     concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
   } else {
     "Ok(stdout)"
@@ -3306,8 +3308,8 @@ fn emit_shell_return(inferred: Node) -> String {
 }
 
 fn unwrap_single_field_product(n: Node) -> Node {
-  let kind = classify_type_structure(n: n)
-  if kind == TypeConj && n.name == "" && n.children |> count == 1 {
+  let is_product = node_is_product(n: n)
+  if is_product && n.name == "" && n.children |> count == 1 {
     match n.children |> first {
       Some { value: field_node } => rt_type(n: field_node)
       None => n
@@ -3317,8 +3319,8 @@ fn unwrap_single_field_product(n: Node) -> Node {
 
 fn emit_file_call(op_name: String, inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let kind = classify_type_structure(n: effective)
-  let parse_line = if kind == TypeConj && effective.children |> count > 1 {
+  let is_product = node_is_product(n: effective)
+  let parse_line = if is_product && effective.children |> count > 1 {
     "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
   } else {
     "Ok(content)"

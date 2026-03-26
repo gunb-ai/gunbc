@@ -696,7 +696,7 @@ if __cond {
     for __elem_39 in ({
     let mut __filtered_36 = Vec::new();
     for __elem_37 in typed_module.items.iter().cloned() {
-        if (classify_typed_item(__elem_37.clone()) == TypedItemKind::TypedItemTypeDef) && (classify_type_structure(__elem_37.clone()) == TypeStructureKind::TypeDisj) {
+        if (classify_typed_item(__elem_37.clone()) == TypedItemKind::TypedItemTypeDef) && node_is_coproduct(__elem_37.clone()) {
     __filtered_36.push(__elem_37);
 };
     }
@@ -1118,8 +1118,8 @@ pub fn needs_box_wrapping(n: Rc<Node>, recursive_types: Rc<HashMap<String, bool>
 }
 
 pub fn emit_type_def_from_connective(item: Rc<Node>, recursive_types: Rc<HashMap<String, bool>>, rc_types: Rc<HashMap<String, bool>>) -> String {
-    let kind = classify_type_structure(item.clone());
-    if kind == TypeStructureKind::TypeConj {
+    let is_product = node_is_product(item.clone());
+    if is_product {
     emit_struct_from_children(&item.name, item.children.clone(), recursive_types.clone(), rc_types.clone())
 } else {
     emit_enum_from_children(&item.name, item.children.clone(), recursive_types.clone(), rc_types.clone())
@@ -2397,21 +2397,22 @@ pub fn explicit_record_struct_name(type_name: Option<String>, inferred_node: Rc<
 } else {
     inferred_node.clone()
 };
-    let n_kind = classify_type_structure(n.clone());
+    let is_product = node_is_product(n.clone());
+    let is_coproduct = node_is_coproduct(n.clone());
     if n.name.clone() == "__EmitTypeCacheMiss" {
     type_name.clone()
 } else {
     if n.name.clone() == "Error" {
     type_name.clone()
 } else {
-    if n_kind.clone() == TypeStructureKind::TypeConj {
+    if is_product {
     if n.name.clone() == "" {
     type_name.clone()
 } else {
     Some(n.name.clone())
 }
 } else {
-    if n_kind.clone() == TypeStructureKind::TypeDisj {
+    if is_coproduct {
     type_name.clone()
 } else {
     if (({
@@ -2588,8 +2589,8 @@ pub fn emit_typed_field_access(base: Rc<Node>, field: &str, summary: Option<Rc<F
         let base_is_anon_record = match base.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: bt, .. }) => {
         {
-    let kind = classify_type_structure(bt.clone());
-    if (kind == TypeStructureKind::TypeConj) && (bt.name.clone() == "") {
+    let is_product = node_is_product(bt.clone());
+    if is_product && (bt.name.clone() == "") {
     true
 } else {
     false
@@ -2690,11 +2691,12 @@ pub fn type_needs_rc_seen(type_node: Rc<Node>, seen: Rc<HashMap<String, bool>>) 
             let type_node = __tco_p_type_node;
             let seen = __tco_p_seen;
             let normed = normalize_access_type_node(type_node);
-            let normed_kind = classify_type_structure(normed.clone());
-            if normed_kind.clone() == TypeStructureKind::TypeConj {
+            let is_product = node_is_product(normed.clone());
+            let is_coproduct = node_is_coproduct(normed.clone());
+            if is_product {
     break true;
 } else {
-    if normed_kind.clone() == TypeStructureKind::TypeDisj {
+    if is_coproduct {
     {
     let mut __any_0 = false;
     for __elem_1 in normed.children.iter().cloned() {
@@ -4816,8 +4818,8 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<FieldI
         match qualified_name.clone() {
     None => {
         {
-    let kind = classify_type_structure(resolved_type.clone());
-    if (kind == TypeStructureKind::TypeConj) && (resolved_type.name.clone() == "") {
+    let is_product = node_is_product(resolved_type.clone());
+    if is_product && (resolved_type.name.clone() == "") {
     if ({
     let __len_5 = fields.clone().len();
     __len_5 as i64
@@ -5918,14 +5920,14 @@ pub fn emit_shell_call(op_name: &str, transport: Rc<Node>, registry: Rc<HashMap<
 
 pub fn emit_shell_return(inferred: Rc<Node>) -> String {
     let effective = unwrap_single_field_product(inferred.clone());
-    let kind = classify_type_structure(effective.clone());
+    let is_product = node_is_product(effective.clone());
     if (effective.name.clone() == "Bool") || (effective.name.clone() == "bool") {
     "Ok(output.status.success())".to_string()
 } else {
     if ((effective.name.clone() == "List") || (effective.name.clone() == "Vec")) || node_is_container(effective.clone()) {
     "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
 } else {
-    if (kind == TypeStructureKind::TypeConj) && (({
+    if is_product && (({
     let __len_0 = effective.children.clone().len();
     __len_0 as i64
 }) > 1_i64) {
@@ -5938,8 +5940,8 @@ pub fn emit_shell_return(inferred: Rc<Node>) -> String {
 }
 
 pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    let kind = classify_type_structure(n.clone());
-    if ((kind == TypeStructureKind::TypeConj) && (n.name.clone() == "")) && (({
+    let is_product = node_is_product(n.clone());
+    if (is_product && (n.name.clone() == "")) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) == 1_i64) {
@@ -5958,8 +5960,8 @@ pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
 
 pub fn emit_file_call(op_name: &str, inferred: Rc<Node>) -> String {
     let effective = unwrap_single_field_product(inferred.clone());
-    let kind = classify_type_structure(effective.clone());
-    let parse_line = if (kind == TypeStructureKind::TypeConj) && (({
+    let is_product = node_is_product(effective.clone());
+    let parse_line = if is_product && (({
     let __len_0 = effective.children.clone().len();
     __len_0 as i64
 }) > 1_i64) {
@@ -6755,3 +6757,4 @@ pub fn emit_dry_run_module() -> Rc<TextFile> {
     let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated by v2 compiler -- do not edit.\n".to_string(), "//\n".to_string()), "// Dry-run support: when DryRunMode(true), service methods return\n".to_string()), "// mock data instead of performing real I/O.\n\n".to_string()), "#[derive(Debug, Clone)]\n".to_string()), "pub struct DryRunMode(pub bool);\n\n".to_string()), "impl DryRunMode {\n".to_string()), "    pub fn is_dry_run(&self) -> bool {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl Default for DryRunMode {\n".to_string()), "    fn default() -> Self {\n".to_string()), "        DryRunMode(false)\n".to_string()), "    }\n".to_string()), "}\n".to_string());
     Rc::new(TextFile { path: v2_rt::concat(v2_rt::concat(rust_source_root(), "dry_run".to_string()), rust_source_ext()), content: content.clone() })
 }
+

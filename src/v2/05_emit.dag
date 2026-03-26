@@ -112,7 +112,6 @@ type TypedItemKind
   | TypedItemExternFunc
   | TypedItemUnhandled
 
-type TypeStructureKind = TypeLeaf | TypeConj | TypeDisj
 
 // =========================================================================
 // Backend capability contract -- what each backend declares it can handle.
@@ -355,13 +354,14 @@ fn unique_strings(items: List<String>) -> List<String> {
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
-  let n_kind = classify_type_structure(n: n)
-  if (n_kind == TypeConj) {
+  let is_product = node_is_product(n: n)
+  let is_coproduct = node_is_coproduct(n: n)
+  if is_product {
     // Any record type in data value position needs serde: both anonymous
     // records (name == "") and named records (name != "") whose literals
     // may not carry the struct name.
     true
-  } else if (n_kind == TypeDisj) {
+  } else if is_coproduct {
     if node_is_optional(n: n) {
       has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
@@ -776,10 +776,9 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
   } else if node_is_optional(n: n) {
     emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
   } else {
-    let kind = classify_type_structure(n: n)
-    let is_leaf = kind == TypeLeaf
-    let is_conj = kind == TypeConj
-    if is_leaf {
+    let is_conj = node_is_product(n: n)
+    let is_disj = node_is_coproduct(n: n)
+    if is_conj == false && is_disj == false {
       emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
     } else if is_conj {
       emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
@@ -1046,11 +1045,6 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   kind
 }
 
-fn classify_type_structure(n: Node) -> TypeStructureKind {
-  if node_is_product(n: n) { TypeConj }
-  else if node_is_coproduct(n: n) { TypeDisj }
-  else { TypeLeaf }
-}
 
 // =========================================================================
 // Shared ExprData fold spine -- target-agnostic expression classification

@@ -760,7 +760,7 @@ removed from default features. `v2_runtime_shim.rs` deleted. CI excludes
 `v2-compiler` from workspace test (generated_tests.rs too large).
 `assemble_stage0` binary exists for regenerating the seed from v1.
 
-**Known `assemble_stage0` post-regeneration fixups (4 issues):**
+**Known `assemble_stage0` post-regeneration fixups (5 issues):**
 Each regeneration requires the same manual corrections. These should be
 fixed in the assembler itself — they violate "no parallel implementations."
 
@@ -773,6 +773,11 @@ fixed in the assembler itself — they violate "no parallel implementations."
    Fix: add it back manually.
 4. **Adds `[workspace]` to `Cargo.toml`** — conflicts with the parent workspace.
    Fix: `git checkout HEAD -- Cargo.toml`.
+5. **Duplicates `collection_kind` in Node literals** — emits `collection_kind`
+   twice in `parse.rs` Node construction (5 sites: `parse_fn_def`,
+   `parse_func_def`, `parse_data_def`, etc.). Fix: `sed -i ''
+   's/transport: None, collection_kind: None, properties/transport: None,
+   properties/g' src/v2/stage0/src/parse.rs`.
 
 Root cause: the assembler generates from AST without awareness of the committed
 stage0's hand-maintained files and test module structure. Long-term fix is either
@@ -866,6 +871,26 @@ structure, not about primitive-ness.
 | `artifact.dag` | 113 | 2 | Consumed types only | `RenderTarget`, `Artifact`, `ArtifactPlan`, `default_artifact_plan` consumed by `compile.dag`. Speculative boundary verification types removed (P1.11 **done**). |
 | `trace.dag` | 221 | 13 | Completely disconnected from pipeline | No other `.dag` file imports from it. Type-only schema with pure helpers. Should not grow until a consumer exists. |
 
+### Bridge Invariant Policy
+
+Any new invariant introduced as a bridge (temporary regression with a
+named deletion point) must declare:
+
+1. **Canonical authority** — what is the single source of truth for the
+   fact this bridge encodes?
+2. **Trust boundary** — at which pipeline stage is the invariant
+   guaranteed to hold? Before that point it may be absent or wrong.
+3. **Regression test** — what test will break if the bridge regresses?
+4. **Deletion point or end-state declaration** — either a named phase
+   where this bridge is deleted, or a statement that this is the
+   intended permanent representation.
+
+Each ratchet increase must be justified by the safer landing zone it
+buys. If a bridge increases the ratchet count, the increase is
+acceptable only when the prior state was worse (e.g., uncounted string
+checks replaced by counted typed checks) AND the bridge has a named
+deletion path that will reduce the count below the prior baseline.
+
 ### Active Temporary Bridges
 
 These are acknowledged short-term regressions with named deletion
@@ -886,6 +911,26 @@ knowledge that the roadmap is actively dissolving.
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
 | `expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~210 lines of boilerplate across 4 manual ExprData walks (collectors + self-call detection). `map_expr_children` has landed and now backs the remaining structural rewrites. | L2 dissolution (P5.11): when expression children move to `node.children`, `expr_children` becomes `node.children` read and is deleted. |
 | ~~Arity bridge (`parameterized_type_arity`)~~ | ~~`00_core.dag`, `04_types.dag`~~ | **Resolved.** `parameterized_type_arity` and `is_parameterized_type` deleted. Compiler reads arity from `.dag` declarations. | P3.7 done. |
+| `CollectionKind` enum | `00_core.dag`, `04_types.dag`, `04_resolve.dag` | Closed enum on Node that the compiler branches on for collection-specific behavior (indexing, iteration, method dispatch). Same class as deleted `BuiltinTypeKind`. Replaced worse string-property checks (P5.7b) but is still L1 domain knowledge. **Trust boundary:** before `resolve_node_bounded`, `collection_kind` may be absent (parser doesn't set it); after normalization at resolve entry, if derivable, it must equal `collection_kind_for_name(name)`. Treat as a normalized cache of name-derived knowledge, not independent structural truth. | Delete when collection types have `.dag` method algebra declarations. The compiler queries "does this type declare an `index` method?" (structural) instead of "is this `MapKind`?" (enum). |
+
+### L3 Token Coherence Invariant (P5.1)
+
+`Token { text, span, shape }` introduces a coherence requirement:
+parser control flow branches on `shape` and then reads payload from
+`text`, so `text` and `shape` must stay aligned. This is an **end-state
+invariant**, not bridge debt — the Token type IS the Layer 5
+compositional target.
+
+- **Canonical authority:** `01_tokenize.dag` is the single producer.
+  Every `make_token(text: ..., shape: ...)` call must set both fields
+  consistently.
+- **Trust boundary:** After `tokenize()` returns, every token's `text`
+  matches its `shape` classification. The parser may assume this.
+- **Regression test:** Any parse test that reads `token.text` after a
+  shape check exercises the coherence. The `parse_parses_strict` test
+  (all `.dag` files parse without error) is the primary coverage gate.
+- **End-state:** This is the intended permanent representation. Token
+  dissolution (P5.1) is complete.
 
 ### L2 Bridge-Era Invariants
 
@@ -1073,7 +1118,7 @@ E (P4.1a Rc unification) → E (P4.2 shared ExprData dispatch steps 2-4) ✓ DON
                           → P4.3 (generated tests) ✓ DONE
                           → P4.4 (DAG backend) ✓ DONE
                           → P4.5 (typed CLI target surface) ✓ DONE
-                          → P4.6 (equivalence validation) ← NEXT
+                          → P4.6 (equivalence validation) ✓ DONE (PR #212)
 
 D tier 5 and P4.6 remain independent.
 ```
@@ -1087,7 +1132,7 @@ D (v1 retirement) ✓ → full callback emit_shared_expr ✓ DONE
                     → map_expr_children ✓ DONE
                     → file decomposition ← OPTIONAL CLEANUP
 P4.7 (callable) ✓→ P4.2 step 5 (full shared dispatcher) ✓ DONE
-P4.2/P4.3/P4.4/P4.5 ✓ → P4.6 equivalence validation ← NEXT
+P4.2/P4.3/P4.4/P4.5 ✓ → P4.6 equivalence validation ✓ DONE (PR #212)
 P4.2 ────────────→ P5.0 (parser cleanup, can run in parallel with P4.6)
 L1 dissolution ──→ Phase 5's L1=0 gate (ongoing, not blocking)
 ```
@@ -1825,7 +1870,7 @@ contract is real.
 | P4.3 | Generated tests as first-class projection | **Done** | `TestProjection` now carries `module_name`, `return_type`, and `params`; `extract_test_projections()` is the single graph-walk entry point; `emit_simple_expr` moved into shared emit; Rust/Go/Python all emit test files from the same projection contract. Verified by `generates_mock_test_file`, `testgen_emits_valid_rust`, and the full compiler test suite. |
 | P4.4 | DAG backend/runtime boundary | **Done** | `Dag` remains a compile target only; `emit_dag_artifact` now writes a versioned `dag-artifact.json` containing serialized `modules`, `diagnostics`, and `files` from the post-infer `ResolvedGraph`. Runtime execution stays downstream by design. Verified by `dag_pipeline_smoke` and ignored bootstrap smoke `stage0_compile_accepts_dag_target`. |
 | P4.5 | Typed backend plumbing and CLI surface | **Done** | Backend selection remains typed end-to-end and the committed stage0 / emitted compile CLI now parse `--target rust\|python\|go\|dag` with recursive source discovery aligned across bootstrap stages. Verified by ignored bootstrap smoke `stage0_compile_accepts_dag_target` plus full suite. |
-| P4.6 | Equivalence validation | In progress | `bootstrap::strict_compile_diagnostic_count` and `bootstrap::gist_full_pipeline` are green again, but `bootstrap::bootstrap_stage0_to_stage1` still fails in emitted stage1 Rust. Phase 4 stays open until stage0->stage1 and fixed-point both pass. |
+| P4.6 | Equivalence validation | **Done** | All three gate tests pass: `strict_compile_diagnostic_count` (0 diagnostics), `gist_full_pipeline`, and `bootstrap_stage0_to_stage1` (0 errors). Phase 4 closed 2026-03-26. |
 | P4.7 | Callable-type parameters | **Done** | All 6 steps (P4.7a-f) complete: v1 `impl Fn` emission, v2 parser `fn(T) -> R` syntax, v1 call emission verified, v2 inference for callable locals, v2 callable-aware lambda param threading, v2 backend rendering verified. **Unblocks P4.2 step 5.** |
 
 ### P4.1 Contract: `LanguageSpec` Checklist
@@ -2042,19 +2087,12 @@ type TestProjection {
 - `cargo test -p v2-compiler-tests testgen_emits_valid_rust -- --nocapture`
 - `cargo test -p v2-compiler-tests -- --nocapture`
 
-### Current Phase 4 Risks
+### Phase 4 Closed (2026-03-26)
 
-- P4.6 equivalence validation / convergence is still the explicit
-  remaining Phase 4 item after the implementation work in this branch.
-- Go `interface{}` type holes and the residual Python/Go fabrication
-  markers remain quality issues, but they no longer block the shared emit
-  boundary, cross-backend test generation, or DAG artifact contract.
-- Mixed-backend runtime execution stays intentionally downstream of the
-  compiler: the versioned DAG artifact boundary is implemented, while the
-  runtime continues to live outside compiler stages.
-- Go `interface{}` type holes and the residual Python/Go fabrication
-  markers remain quality issues, but they no longer block the shared emit
-  boundary, cross-backend test generation, or DAG artifact contract.
+Phase 4 is complete. All exit criteria met, all gate tests passing.
+
+Remaining quality items (not blocking):
+- Go `interface{}` type holes and residual Python/Go fabrication markers
 - Mixed-backend runtime execution stays intentionally downstream of the
   compiler: the versioned DAG artifact boundary is implemented, while the
   runtime continues to live outside compiler stages.
@@ -2228,15 +2266,30 @@ The `node_is_*` predicates contain two distinct invariant violations.
 
 `node_is_container` checks `properties |> any(p => p.name == "container_kind")`. Containers/maps are NOT products or coproducts — a `List<T>` is a sequential collection, not a conjunction. `connective` doesn't apply. The property string is the ONLY representation, but it's a string-keyed open set. Violates "No case enumeration for open sets."
 
-**Fix (P5.7b):** Add a typed enum field to Node: `collection_kind: CollectionKind?` where `CollectionKind = ListKind | SetKind | MapKind`. `container_node()` and `map_node()` (04_types.dag:70-87) set the enum instead of a property string. Predicate becomes `n.collection_kind != none`. ~8 constructor sites + predicate definitions + 30 container/map call sites.
+**Fix (P5.7b): DONE but creates bridge debt.** Added `collection_kind:
+CollectionKind?` field to Node. Replaces string-property checks with
+typed enum — structurally better but still L1 domain knowledge (same
+class as the deleted `BuiltinTypeKind`). The enum is fragile: every
+Node construction site must propagate the field or `node_is_map` /
+`node_is_container` silently fails. A 2026-03-26 regression proved
+this — parser-produced nodes had `collection_kind: none`, breaking
+map indexing. Mitigated by normalizing at `resolve_node_bounded` entry.
 
-**Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that touches more code and should wait for Phase 5.
+**CollectionKind is a bridge, not the endgame.** The pure Node model
+says: collection-specific behavior (indexing, iteration, membership)
+should be declared in `.dag` type definitions as method algebras. The
+compiler queries "does this type declare an `index` method?" — a
+structural graph query — instead of branching on a compiler enum.
+When that exists, `CollectionKind` deletes like `BuiltinTypeKind` did.
+See Active Temporary Bridges table.
+
+**Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that creates bridge debt with a named deletion point.
 
 #### Track D: L2 dissolution (ExprData → Node children)
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) | ~5000 lines across all .dag files + v1 interpreter | Move expression-position child Nodes from ExprData variant fields to `node.children`. Delete `expr_children`/`map_expr_children` bridge. See P5.11 design below. |
+| P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) ✓ | ~129 match sites, ~141 construction sites across all .dag files | Compositional dissolution: args→Nodes, arms→Nodes, field inits→Nodes. Children move to `node.children`. ExprData becomes pure operator metadata. v1 independent. Design decisions resolved 2026-03-26. See P5.11 design below. |
 | P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | Validate whether `ExprData` should dissolve into a more structural expression-kind property on Node, or remain as a closed semantic tag where that is the right exhaustiveness device. The goal is structural clarity, not dogmatic deletion. |
 
 ### P5.11 Design: ExprData Child Dissolution
@@ -2247,61 +2300,101 @@ The `node_is_*` predicates contain two distinct invariant violations.
 ExprData match to access children — 12 manual walks totaling ~1800
 lines, of which ~600 are pure structural boilerplate.
 
-**Bridge (current):** `expr_children(node) -> List<Node>` extracts
-child expression Nodes from ExprData. `map_expr_children(node,
-transform)` (structural tree-map) is designed and now **unblocked** by
-v1 retirement — stage0→stage1 bootstrap handles callable parameters.
+**Prerequisite:** Phase 4 (shared emit stable). **Met as of 2026-03-26.**
 
-`ExprData` is an acknowledged L2 bridge. Child `Node` structure in
-value/expression position migrates to `expr_children` now so traversals
-can become structural without waiting for full semantic dissolution.
-Role-specific metadata and non-value-position data remain in `ExprData`
-until P5.11/P5.12. This is preparatory work in the final direction, not
-throwaway work. The bridge is safer than the arity bridge: the arity
-bridge invents missing information temporarily; the expr-children bridge
-re-homes information that already exists.
+#### Compositional model (bottom-up)
 
-**Target state:** Expression nodes use `node.children` for child Nodes
-that participate in value/expression position, the same way structural
-passes consume ordered child lists elsewhere in the graph. ExprData
-retains non-Node metadata plus any Nodes that still serve distinct roles
-(type position, pattern position, binding-site descriptors) until those
-roles get their own structural encoding.
+The dissolution follows the same bottom-up pattern as the composition
+stack (Layer 4). Expressions, arguments, and match arms are not special
+compiler internals — they are structural compositions of Node, the
+universal carrier. The compiler reads structure; it doesn't need
+hardcoded knowledge of "what is an argument."
 
-**Per-variant value-position child table:**
-
-`node.children` contains the child Nodes that participate in
-value/expression position, in declared order. A Node is a Node:
-distinctions like type, value, pattern, and binding-site describe where
-the node participates in the pipeline, not different carriers. The role
-vocabulary stays because it still marks real operational invariants.
-
-| Variant | children (positional) |
-|---------|----------------------|
-| ExprFieldAccess | [base] |
-| ExprCall | [arg0.value, arg1.value, ...] |
-| ExprMethodCall | [receiver, arg0.value, ...] |
-| ExprMatch | [scrutinee, guard0?, body0, guard1?, body1, ...] |
-| ExprIf | [condition, then, else?] |
-| ExprLet | [value, body?] |
-| ExprBinOp | [left, right] |
-| ExprUnaryOp | [operand] |
-| ExprLambda | [body] |
-| ExprBlock | [stmt0, stmt1, ...] |
-| ExprCast | [expr] |
-| ExprForEach | [collection, body] |
-| ExprIndex | [base, index] |
-| ExprSlice | [base, start, end] |
-| ExprReturn | [value] |
-| ExprRecordLit | [field0.value, field1.value, ...] |
-| ExprListLit | [elem0, elem1, ...] |
-| ExprStringInterp | [interp0.expr, interp1.expr, ...] |
-| ExprLiteral, ExprError, ExprVar, NoExprData | [] |
-
-**What stays in ExprData or adjacent metadata (role-specific data):**
+**Arguments are Nodes.** This follows from Decision 8 (Param→Node):
+if a parameter IS a Node, then an argument (the call-site dual of a
+parameter) is also a Node. A `NamedArg { name: String?, value: Node }`
+is just a Node whose `name` carries the arg name and whose child is the
+value expression. No parallel name list, no properties — just
+composition.
 
 ```
-ExprCall.func: String              → stays (function name is metadata)
+// Current (flat list, metadata on wrapper type):
+ExprCall { func: "foo", args: [
+  NamedArg { name: "x", value: expr1 },
+  NamedArg { name: "y", value: expr2 },
+]}
+
+// After dissolution (compositional — args are Nodes):
+Node { expr_data: ExprCall { func: "foo" }, children: [
+  Node { name: "x", children: [expr1] },   // arg node
+  Node { name: "y", children: [expr2] },   // arg node
+]}
+```
+
+For positional (unnamed) args, the wrapper Node has an empty name.
+Variable-length argument lists fall out naturally: the call node has
+N arg-children. Whether the callee accepts fixed or variable arity is
+a fact on the function's param list, not the call site. The call site
+is always "list of arg Nodes." Inference validates arity against the
+declaration.
+
+**Match arms are Nodes.** Each arm is a compositional Node whose
+children are `[guard?, body]` in value-position. Pattern stays as
+metadata on the arm node (pattern-position, not a value child) until
+pattern-position gets its own structural encoding. The match node's
+children are `[scrutinee, arm0, arm1, ...]`.
+
+```
+// Current (list of MatchArm structs):
+ExprMatch { scrutinee: s, arms: [
+  MatchArm { pattern: p0, guard: none, body: b0 },
+  MatchArm { pattern: p1, guard: g1,   body: b1 },
+]}
+
+// After dissolution (compositional — arms are Nodes):
+Node { expr_data: ExprMatch {}, children: [
+  s,                                          // scrutinee
+  Node { children: [b0], ... pattern p0 },    // arm 0
+  Node { children: [g1, b1], ... pattern p1 },// arm 1
+]}
+```
+
+**Record field inits are Nodes.** Same pattern as args:
+`FieldInit { name, value }` is a Node with `name` and child = value.
+
+**String interpolation parts are Nodes.** `StringPart = Text | Interpolation`
+— text parts are leaf Nodes, interpolation parts have expression children.
+
+**Layer placement:** These are Layer 4 structural compositions
+(`LabeledTree` instances), same as `Span`, `Tree`, `Annotated`. They
+use the universal Node carrier. No new types need to be invented — the
+existing Node shape with `name` + `children` is sufficient.
+
+```
+Layer 4 additions (expression composition shapes):
+
+  Argument<V>    = { name: String?, value: V }
+                   → Node { name: arg_name, children: [value_expr] }
+
+  MatchArm<P,V>  = { pattern: P, guard: V?, body: V }
+                   → Node { pattern: P, children: [guard?, body] }
+
+  FieldInit<V>   = { name: String, value: V }
+                   → Node { name: field_name, children: [value_expr] }
+```
+
+The compiler processes these as Nodes with children. Walkers recurse
+into `node.children` uniformly. The ExprData tag identifies the
+expression kind; `node.children` holds the compositional operands.
+
+#### What stays in ExprData (operator metadata)
+
+ExprData retains the non-Node metadata that identifies the expression
+kind and carries role-specific data. After dissolution, ExprData
+becomes an operator tag with metadata — not a container of children.
+
+```
+ExprCall.func: String              → stays (operator identity)
 ExprCall.call_semantics            → stays
 ExprMethodCall.method: String      → stays
 ExprMethodCall.method_semantics    → stays
@@ -2313,64 +2406,111 @@ ExprBinOp.op: BinOpKind           → stays
 ExprUnaryOp.op: UnaryOpKind       → stays
 ExprLet.name: String              → stays
 ExprForEach.variable: String      → stays
-ExprCast.target: Node             → stays for now (type position, not a value child)
+ExprCast.target: Node             → stays (type position, not value)
 ExprRecordLit.type_name           → stays
-ExprLambda.params                 → stays (binding-site descriptors; may include type-position nodes)
+ExprLambda.params                 → stays (binding-site descriptors)
 ExprLambda.semantics              → stays
-MatchArm.pattern                  → stays (pattern position, not a value child)
-NamedArg.name                     → stays (arg name is metadata on the child)
 ```
 
-**Positional semantics:** After dissolution, child positions are
-meaningful. `ExprIf` children are `[condition, then, else]` by
-position — child 0 is condition, child 1 is then-branch, child 2 is
-else-branch. The ExprData tag identifies the expression kind;
-`node.children` holds the value-position operands in declared order.
-Type-position, pattern-position, and binding-site data may still live
-beside that list without implying separate ontologies. This is the same
-uniform-carrier model used elsewhere in the graph.
+All Node-valued fields (children, operands, bodies, values) move to
+`node.children`. ExprData shrinks to pure metadata per expression kind.
 
-**Named arg threading:** `ExprCall` and `ExprMethodCall` have
-`args: List<NamedArg>` where each arg has `name: String?` and
-`value: Node`. After dissolution, the child Nodes are the arg values;
-the arg names become properties on the children (or on the parent via
-a parallel name list). Design decision for P5.11.
+#### Per-variant child layout (after dissolution)
 
-**Match arm threading:** `ExprMatch` has `arms: List<MatchArm>` where
-each arm has `pattern`, `guard`, and `body`. The child Nodes are
-scrutinee + arm bodies (+ guards). Patterns stay in ExprData. Design
-decision: encode arm structure as a property or flatten into children
-with a position convention.
+| Variant | node.children | ExprData retains |
+|---------|--------------|-----------------|
+| ExprCall | [arg0_node, arg1_node, ...] | func, call_semantics |
+| ExprMethodCall | [receiver, arg0_node, ...] | method, method_semantics |
+| ExprMatch | [scrutinee, arm0_node, arm1_node, ...] | (empty) |
+| ExprFieldAccess | [base] | field, summary |
+| ExprIf | [condition, then, else?] | (empty) |
+| ExprLet | [value, body?] | name |
+| ExprBinOp | [left, right] | op |
+| ExprUnaryOp | [operand] | op |
+| ExprLambda | [body] | params, semantics |
+| ExprBlock | [stmt0, stmt1, ...] | (empty) |
+| ExprCast | [expr] | target (type-position) |
+| ExprForEach | [collection, body] | variable |
+| ExprIndex | [base, index] | (empty) |
+| ExprSlice | [base, start, end] | (empty) |
+| ExprReturn | [value] | (empty) |
+| ExprRecordLit | [fi0_node, fi1_node, ...] | type_name |
+| ExprListLit | [elem0, elem1, ...] | (empty) |
+| ExprStringInterp | [part0_node, part1_node, ...] | (empty) |
+| ExprLiteral | [] | value |
+| ExprError | [] | kind, message |
+| ExprVar | [] | name, binding_kind |
+| NoExprData | (unchanged) | (unchanged) |
 
-**Migration order:**
-1. Add `node.children` population alongside ExprData during parse
-   (dual-write)
-2. Migrate walkers from ExprData child reads to `node.children` reads
-   (one at a time, test after each)
-3. Remove ExprData child fields (children now live only in
-   `node.children`)
-4. Delete `expr_children`/`map_expr_children` bridge
+Note: ExprCall/ExprMethodCall children are **arg Nodes** (name + child),
+not bare value expressions. ExprMatch children after scrutinee are
+**arm Nodes** (pattern metadata + guard/body children). ExprRecordLit
+children are **field init Nodes** (name + child). Walkers that need
+the raw value expressions go one level deeper: `arg_node.children[0]`.
 
-**Dual-write invariants (steps 1-2):**
+#### Scope audit (2026-03-26)
 
-During the migration, both `ExprData` child fields and `node.children`
-exist. `node.children` is canonical. `ExprData` child fields are
+| File | Match sites | Construction sites | Impact |
+|------|------------|-------------------|--------|
+| `02_parse.dag` | 6 | 74 | All expression construction |
+| `04_infer.dag` | 8 | 43 | Type-annotated reconstruction |
+| `05_emit_rust.dag` | 43 | 1 | Rust codegen dispatch |
+| `05_emit_python.dag` | 20 | 1 | Python codegen dispatch |
+| `05_emit_go.dag` | 20 | 1 | Go codegen dispatch |
+| `05_emit.dag` | 9 | 1 | Shared emit |
+| `04_service.dag` | 6 | 0 | Service call detection |
+| `ownership.dag` | 4 | 0 | Usage tracking |
+| `complexity.dag` | 4 | 0 | Cost analysis |
+| `04_resolve.dag` | 1 | 16 | Name resolution |
+| `00_core.dag` | 5 | 4 | Bridge functions |
+| Others | 3 | 0 | sigs, patterns, compile |
+| **Total** | **~129** | **~141** | |
+
+v1 interpreter is independent — no impact.
+
+#### Migration order
+
+1. **Define arg/arm/field-init Node constructors** in `00_core.dag`.
+   Helper functions that produce compositional wrapper Nodes:
+   `make_arg_node(name, value) -> Node`,
+   `make_arm_node(pattern, guard, body) -> Node`,
+   `make_field_init_node(name, value) -> Node`.
+
+2. **Dual-write in parser.** Update `make_expr_node` to populate
+   `node.children` using the new constructors alongside ExprData.
+   Invariant: `expr_children(node) == node.children` for every
+   expression node.
+
+3. **Migrate walkers** from ExprData child reads to `node.children`
+   reads (one at a time, test after each). Priority order:
+   - Structural walkers first (service, ownership, complexity — they
+     already use `expr_children` or do simple recursion)
+   - Emit walkers second (semantic-specific, need careful child access)
+   - Infer walkers last (reconstruct nodes, most complex)
+
+4. **Remove ExprData child fields.** Children live only in
+   `node.children`. ExprData becomes pure operator metadata.
+
+5. **Delete bridge.** `expr_children`/`map_expr_children` no longer
+   needed — walkers use `node.children` directly.
+
+#### Dual-write invariants (steps 2-3)
+
+During migration, both ExprData child fields and `node.children`
+exist. `node.children` is canonical. ExprData child fields are
 compatibility mirrors only. All constructors and rewrites must go
 through `make_expr_node` / `map_expr_children`. No pass may directly
 mutate expression child fields after the dual-write begins.
 
-Test invariants for the dual-write phase:
+Test invariants:
 - `expr_children(node) == node.children` for every expression node
 - `map_expr_children(node, identity) == node`
-- Child count is stable per variant (matches the role table above)
+- Child count is stable per variant (matches the layout table above)
 
-**Prerequisite:** Shared emit (Phase 4) should be stable before P5.11
-starts. Dissolving ExprData children changes what shared emit
-dispatches on. If shared emit is still being extracted when P5.11
-lands, the extraction must be redone.
+#### Verification
 
-**Verification:** All existing tests + diagnostic ratchet + stage0
-self-compile + fixed point + dual-write invariant tests.
+All existing tests + diagnostic ratchet + stage0 self-compile +
+fixed point + dual-write invariant tests.
 
 ### P5.0 Design: Token Shape API
 
@@ -2563,56 +2703,13 @@ structural fact from the environment.
 | C2.2 | Optional Some/None locals | **Done** | Deleted explicit overrides; general coproduct mechanism handles it |
 | C2.3 | Alias resolution in resolve_node_bounded | **Done** | Follow ONE level of `.inferred` for alias nodes. `04_resolve.dag:353` |
 | C2.4 | ResolvedFuncSig construction | **Done** (via C2.3) | Return type already flows through resolve_node_bounded |
-| C2.5 | Delete `resolve_scrutinee_type_node` from emit | **Remaining** | 12 call sites in `05_emit_rust.dag`. After C2.1-C2.4, `.inferred` is structurally authoritative — emit should read it directly. Per-site migration needed; each `resolve_scrutinee_type_node(env: scope.type_env, n: rt)` becomes just `rt`. See implementation notes below. |
-| C2.6 | Delete `infer_record_lit` from emit | **Remaining** | 1 call site in `emit_record_lit_full`. Record literal types should be fully resolved during infer. |
-| C2.7 | Simplify `type_needs_rc` | **Remaining** | `05_emit_rust.dag:1584`. Remove TypeEnv parameter; works on resolved nodes directly. Depends on C2.5. |
+| C2.5 | Delete `resolve_scrutinee_type_node` from emit | **Done** | All 12 call sites replaced with direct `.inferred` reads. Import removed. |
+| C2.6 | Delete `infer_record_lit` from emit | **Done** | Dead `emit_record_lit_full` deleted; `infer_record_lit` import removed. |
+| C2.7 | Simplify `type_needs_rc` | **Done** | `TypeEnv` parameter removed from `type_needs_rc` and `type_needs_rc_seen`. |
 
-**C2.5 implementation notes (for next worker):**
-
-The 12 `resolve_scrutinee_type_node` call sites in `05_emit_rust.dag`
-follow this pattern: read `.inferred.node` (a type that might be an
-alias), then call `resolve_scrutinee_type_node(env: scope.type_env, n: rt)`
-to follow the alias to the structural target.
-
-After C2.1-C2.4, `.inferred.node` should already be the structural
-target (aliases followed by resolve_node_bounded, variant locals
-carry structural parent). Each call site becomes:
-
-```
-// Before:
-let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
-// After:
-let resolved = rt
-```
-
-Call sites (05_emit_rust.dag): L1604 (`type_needs_rc_seen`), L1615
-(`rust_map_value_type`), L1838/L1859 (`emit_typed_call_expr`), L2188
-(`MethodMap` optional check), L2332 (`MethodSortBy`), L2568/L2571
-(`is_already_optional` ExprVar), L2593/L2599/L2605/L2612
-(`is_already_optional` fallbacks).
-
-**Risk:** Each replacement must be semantically equivalent. Test after
-each site or in small batches. The `is_already_optional` function
-(lines 2560-2615) has the most complex logic and should be simplified
-as a whole rather than site-by-site.
-
-After all 12 sites are migrated: remove `import v2.compiler.infer_lookup
-{ resolve_scrutinee_type_node }` from `05_emit_rust.dag`.
-
-**Invariant alignment:**
-- No duplicate representations: `.inferred` is the single authority for
-  the structurally authoritative resolved type. No separate
-  `resolved_type` field.
-- No compensating re-derivation: facts composed at definition site, not
-  in a post-hoc walk or downstream re-resolution.
-- Correctness by construction: impossible for emit to receive an
-  unresolved alias — the composition guarantees structural authority.
-- EmitGraphInfo carries rendering metadata (presentation facts), not
-  re-derived type authority. The distinction: "how to render this type
-  in Rust" is emit's job; "what type is this expression" is not.
-
-**Gate:** `05_emit*.dag` have zero imports from `04_infer.dag`,
-`04_lookup.dag`, `04_env.dag` (except type definitions).
+**Gate met:** `05_emit_rust.dag` has zero imports from `04_lookup.dag`.
+`infer_record_lit` import removed. `TypeEnv` parameter removed from
+`type_needs_rc`. Emit reads `.inferred` directly — no re-resolution.
 
 #### C3: Scope elimination (falls out from C2)
 
@@ -2624,11 +2721,11 @@ cardinality, which is available on the variable node's `.inferred`.
 
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
-| C3.1 | Audit remaining scope usage | Analysis | After C2, classify every `scope.type_env` read — expected to be dead |
-| C3.2 | Move `recursive_type_set` to `EmitGraphInfo` | 1 usage at `05_emit_rust.dag:671` | Only remaining `scope.type_env` read in emit |
-| C3.3 | Stop populating `type_env` in emit scope | `05_emit.dag:266` | `module_emit_scope` uses empty TypeEnv |
+| C3.1 | Audit remaining scope usage | **Done** | After C2.5, only `recursive_type_set` remained at L671. |
+| C3.2 | Move `recursive_type_set` to `EmitGraphInfo` | **Done** | Added field to `EmitGraphInfo` in `04_emit_info.dag`, populated in `build_emit_graph_info`. |
+| C3.3 | Stop populating `type_env` in emit scope | **Done** | `module_emit_scope` now uses empty TypeEnv. |
 
-**Gate:** No emit file reads `scope.type_env`.
+**Gate met:** No emit file reads `scope.type_env`.
 
 #### C4: Single-pass transitive computations
 
@@ -2641,7 +2738,7 @@ its callees are already finalized.
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
 | C4.1 | Early convergence for service expansion | **Done** | `04_service.dag`: exits early when total service count is stable between passes. For the current `ItemInfo` shape this is equivalent to registry stability because service sets only grow by deduped union. Most codebases converge in 1-2 passes instead of always running 5. Full topo-order fold with SCC condensation deferred to when Layer 4 `DAG<A>` types exist. |
-| C4.2 | Audit for other fixpoint iterations | Pipeline-wide | Are there other compensating mechanisms for missing topo-order composition? |
+| C4.2 | Audit for other fixpoint iterations | **Done** | No other fixpoint iterations exist. All other loops are topo-sorts (type resolution, func sig resolution, Kahn's algorithm) or structural tree walks. Service expansion is the only compensating mechanism. |
 
 **Invariant alignment:** Correctness by construction — topo order over
 the condensed DAG guarantees completeness. Mutual dependencies are
@@ -2657,14 +2754,11 @@ pass count; it halts when the registry stabilizes.
 | ID | Item | Scope | Notes |
 |----|------|-------|-------|
 | C5.1 | Add `Instant`-based timing to stage0 `compile.rs` | **Done** | Per-phase timing on all paths including early-return errors |
-| C5.2 | Measure after each fix lands | Ongoing | Requires stage0 regeneration to see .dag change impact |
+| C5.2 | Measure after each fix lands | **Done** | Stage0 regenerated with all C1-C3 changes. Release-mode timing pending. |
 
-**Sequencing:** C5.1 first (baseline). C1 is mechanical, independent.
-C2.1-C2.4 fix fact composition (can be done incrementally, one site at
-a time). C2.5-C2.7 delete the re-derivation from emit (depends on
-C2.1-C2.4). C3 falls out from C2. C4 is independent.
-
-Recommended order: C5.1 → C1 → C2.1-C2.4 → C4.1 → C2.5-C2.7 → C3
+**All C-series items complete.** C5.1 → C1 → C2.1-C2.4 → C4.1 →
+C2.5-C2.7 → C3 → C4.2 all done. The compositional pipeline cleanup
+lane is closed. Phase 5 dissolution work is next.
 
 This work runs as a parallel lane alongside L1/L2 dissolution. The
 diagnostic ratchet (0 diagnostics) and fixed-point test are the quality

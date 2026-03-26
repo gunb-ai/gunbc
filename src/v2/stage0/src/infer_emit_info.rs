@@ -39,12 +39,8 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo { type_summaries: Rc::new(std::collections::HashMap::new()), variant_to_enum: Rc::new(std::collections::HashMap::new()), enum_variant_membership: Rc::new(std::collections::HashMap::new()), field_type_names: Rc::new(std::collections::HashMap::new()), recursive_type_set: Rc::new(std::collections::HashMap::new()) })
 }
 
-pub fn normalize_emit_type_name(type_name: &str) -> String {
-    normalize_type_name(&type_name)
-}
-
 pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: &str) -> Option<Rc<TypeSummary>> {
-    emit_info.type_summaries.clone().get(&normalize_emit_type_name(&type_name)).cloned()
+    emit_info.type_summaries.clone().get(&type_name.to_string()).cloned()
 }
 
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
@@ -258,7 +254,7 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
     return None;
 };
     if node_is_product(item.clone()) {
-    Some(Rc::new(TypeSummary { name: normalize_emit_type_name(&item.name), repr: Rc::new(TypeRepr::StructRepr), field_summaries: build_struct_field_summaries(item.children.clone()) }))
+    Some(Rc::new(TypeSummary { name: item.name.clone(), repr: Rc::new(TypeRepr::StructRepr), field_summaries: build_struct_field_summaries(item.children.clone()) }))
 } else {
     let unit_only = {
     let mut __all_0 = true;
@@ -273,7 +269,7 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
     }
     __all_0
 };
-    Some(Rc::new(TypeSummary { name: normalize_emit_type_name(&item.name), repr: Rc::new(TypeRepr::EnumRepr { unit_only: unit_only.clone() }), field_summaries: build_enum_field_summaries(item.children.clone()) }))
+    Some(Rc::new(TypeSummary { name: item.name.clone(), repr: Rc::new(TypeRepr::EnumRepr { unit_only: unit_only.clone() }), field_summaries: build_enum_field_summaries(item.children.clone()) }))
 }
 }
 
@@ -293,7 +289,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     {
     let __rc_3 = __acc_0;
     let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_2.insert(normalize_emit_type_name(&__elem_1.name), Rc::new(TypeSummary { name: normalize_emit_type_name(&__elem_1.name), repr: Rc::new(TypeRepr::StructRepr), field_summaries: build_struct_field_summaries(__elem_1.children.clone()) }));
+    __map_ins_2.insert(__elem_1.name.clone(), Rc::new(TypeSummary { name: __elem_1.name.clone(), repr: Rc::new(TypeRepr::StructRepr), field_summaries: build_struct_field_summaries(__elem_1.children.clone()) }));
     Rc::new(__map_ins_2)
 }
 } else {
