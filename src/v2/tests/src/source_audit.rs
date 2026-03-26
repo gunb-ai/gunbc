@@ -347,8 +347,8 @@ fn service_calls_under_return_inject_service_params() {
     assert!(source.contains("ExprIndex"), "00_core.dag should contain ExprIndex");
     assert!(source.contains("ExprSlice"), "00_core.dag should contain ExprSlice");
     assert!(
-        source.contains("fn expr_children"),
-        "00_core.dag should contain fn expr_children"
+        source.contains("fn map_children"),
+        "00_core.dag should contain fn map_children"
     );
 }
 

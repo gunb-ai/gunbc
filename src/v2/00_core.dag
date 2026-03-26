@@ -344,29 +344,32 @@ type ConfigPropertyKey
 // When a Node carries computation (expr_data != NoExprData), the Node's
 // inferred and span provide the resolved type and source location.
 // Sub-expressions are Node values (not Expr).
+// ExprData: pure operator metadata tag (P5.11 dissolution).
+// All child Nodes live in node.children. ExprData retains only
+// non-Node metadata that identifies the expression kind.
 type ExprData
   = NoExprData
   | ExprLiteral { value: LiteralValue }
   | ExprError { kind: ExprErrorKind, message: String }
   | ExprVar { name: String, binding_kind: VarBindingKind? }
-  | ExprFieldAccess { base: Node, field: String, summary: FieldSummary? }
-  | ExprCall { func: String, args: List<NamedArg>, call_semantics: CallSemantics? }
-  | ExprMethodCall { receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics? }
-  | ExprMatch { scrutinee: Node, arms: List<MatchArm> }
-  | ExprIf { condition: Node, then_branch: Node, else_branch: Node? }
-  | ExprLet { name: String, value: Node, body: Node? }
-  | ExprRecordLit { type_name: String?, fields: List<FieldInit>, parent_enum: String? }
-  | ExprListLit { elements: List<Node> }
-  | ExprBinOp { op: BinOpKind, left: Node, right: Node }
-  | ExprUnaryOp { op: UnaryOpKind, operand: Node }
-  | ExprLambda { params: List<String>, body: Node, semantics: LambdaSemantics? }
-  | ExprStringInterp { parts: List<StringPart> }
-  | ExprBlock { stmts: List<Node> }
-  | ExprCast { expr: Node, target: Node }
-  | ExprForEach { variable: String, collection: Node, body: Node }
-  | ExprIndex { base: Node, index: Node }
-  | ExprSlice { base: Node, start: Node, end: Node }
-  | ExprReturn { value: Node }
+  | ExprFieldAccess { field: String, summary: FieldSummary? }
+  | ExprCall { func: String, call_semantics: CallSemantics? }
+  | ExprMethodCall { method: String, method_semantics: MethodSemantics? }
+  | ExprMatch
+  | ExprIf
+  | ExprLet { name: String }
+  | ExprRecordLit { type_name: String?, parent_enum: String? }
+  | ExprListLit
+  | ExprBinOp { op: BinOpKind }
+  | ExprUnaryOp { op: UnaryOpKind }
+  | ExprLambda { params: List<String>, semantics: LambdaSemantics? }
+  | ExprStringInterp
+  | ExprBlock
+  | ExprCast
+  | ExprForEach { variable: String }
+  | ExprIndex
+  | ExprSlice
+  | ExprReturn
 
 type NamedArg { name: String?, value: Node }
 type MatchArm { pattern: MatchPattern, guard: Node?, body: Node }
@@ -524,56 +527,17 @@ type Node {
   expr_data: ExprData
 }
 
-// Construct a Node carrying expression data (the Node-embedded form).
-// Accepts InferredNode? for inferred and passes it through directly.
-// Dual-write (P5.11): populates node.children from ExprData using
-// compositional constructors. All 141 call sites get this for free.
-fn make_expr_node(expr_data: ExprData, inferred: InferredNode?, span: SourceSpan) -> Node {
+// Construct a Node carrying expression data (P5.11 dissolved form).
+// Children are passed explicitly — ExprData is pure operator metadata.
+fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: expr_data_to_children(expr_data: expr_data, span: span),
+    name: "", span: span, children: children,
     connective: none,
     collection_kind: none,
     params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, config: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
-  }
-}
-
-// Derive compositional children from ExprData fields (P5.11 dual-write).
-// This is the central translation: ExprData child fields → node.children
-// using the compositional Node constructors.
-fn expr_data_to_children(expr_data: ExprData, span: SourceSpan) -> List<Node> {
-  match expr_data {
-    ExprFieldAccess { base: b, field: _, summary: _ } => [b]
-    ExprCall { func: _, args: a, call_semantics: _ } =>
-      a |> map(na => make_arg_node(name: na.name, value: na.value, span: span))
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } =>
-      concat([r], a |> map(na => make_arg_node(name: na.name, value: na.value, span: span)))
-    ExprMatch { scrutinee: s, arms: arms } =>
-      concat([s], arms |> map(arm => make_arm_node(pattern: arm.pattern, guard: arm.guard, body: arm.body, span: span)))
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      match e { Some { value: el } => [c, t, el]  None => [c, t] }
-    ExprLet { name: _, value: v, body: b } =>
-      match b { Some { value: body } => [v, body]  None => [v] }
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } =>
-      fs |> map(f => make_field_init_node(name: f.name, value: f.value, span: span))
-    ExprListLit { elements: els } => els
-    ExprBinOp { op: _, left: l, right: r } => [l, r]
-    ExprUnaryOp { op: _, operand: o } => [o]
-    ExprLambda { params: _, body: b, semantics: _ } => [b]
-    ExprStringInterp { parts: ps } =>
-      ps |> map(p => match p {
-        Text { value: v } => make_text_part_node(text: v, span: span)
-        Interpolation { expr: e } => make_interp_part_node(expr: e, span: span)
-      })
-    ExprBlock { stmts: ss } => ss
-    ExprCast { expr: e, target: t } => [e, t]
-    ExprForEach { variable: _, collection: c, body: b } => [c, b]
-    ExprIndex { base: b, index: i } => [b, i]
-    ExprSlice { base: b, start: s, end: e } => [b, s, e]
-    ExprReturn { value: v } => [v]
-    _ => []
   }
 }
 
@@ -851,149 +815,22 @@ fn transport_env(t: Node) -> List<FieldInit> {
 // ExprData structural primitives
 //
 // expr_children: extracts every child expression Node from an ExprData.
-// map_expr_children: applies a transform to every child expression Node
-// and reconstructs the ExprData with the transformed children.
-//
-// These are the L2 dissolution foundation. All ExprData walks that are
-// pure structural recursion (resolve_expr_types, collectors, self-call
-// detection) reduce to expr_children or map_expr_children + per-node logic.
+// Map over node.children, applying transform to each child.
+// Replaces expr_children/map_expr_children — no ExprData knowledge needed.
 // =========================================================================
 
-fn expr_children(node: Node) -> List<Node> {
-  match node.expr_data {
-    ExprFieldAccess { base: b, field: _, summary: _ } => [b]
-    ExprCall { func: _, args: a, call_semantics: _ } => a |> map(na => na.value)
-    ExprMethodCall { receiver: r, method: _, args: a, method_semantics: _ } => concat([r], a |> map(na => na.value))
-    ExprMatch { scrutinee: s, arms: arms } =>
-      let arm_nodes = arms |> flat_map(arm =>
-        let guard_nodes = match arm.guard { Some { value: g } => [g]  None => [] }
-        concat(guard_nodes, [arm.body])
-      )
-      concat([s], arm_nodes)
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
-      match e { Some { value: el } => [c, t, el]  None => [c, t] }
-    ExprLet { name: _, value: v, body: b } =>
-      match b { Some { value: body } => [v, body]  None => [v] }
-    ExprRecordLit { type_name: _, fields: fs, parent_enum: _ } => fs |> map(f => f.value)
-    ExprListLit { elements: els } => els
-    ExprBinOp { op: _, left: l, right: r } => [l, r]
-    ExprUnaryOp { op: _, operand: o } => [o]
-    ExprLambda { params: _, body: b, semantics: _ } => [b]
-    ExprStringInterp { parts: ps } => ps |> flat_map(p => match p { Interpolation { expr: e } => [e]  Text { value: _ } => [] })
-    ExprBlock { stmts: ss } => ss
-    ExprCast { expr: e, target: t } => [e, t]
-    ExprForEach { variable: _, collection: c, body: b } => [c, b]
-    ExprIndex { base: b, index: i } => [b, i]
-    ExprSlice { base: b, start: s, end: e } => [b, s, e]
-    ExprReturn { value: v } => [v]
-    _ => []
-  }
-}
-
-fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
+fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
   Node {
-    name: node.name,
-    span: node.span,
-    children: expr_data_to_children(expr_data: expr_data, span: node.span),
-    connective: node.connective,
-    collection_kind: node.collection_kind,
-    params: node.params,
-    inferred: node.inferred,
-    return_cardinality: node.return_cardinality,
-    uses: node.uses,
-    body: node.body,
-    transport: node.transport,
-    properties: node.properties,
-    type_annotation: node.type_annotation,
-    config: node.config,
-    is_self_recursive: node.is_self_recursive,
+    name: node.name, span: node.span,
+    children: node.children |> map(child => transform(child)),
+    connective: node.connective, collection_kind: node.collection_kind,
+    params: node.params, inferred: node.inferred,
+    return_cardinality: node.return_cardinality, uses: node.uses,
+    body: node.body, transport: node.transport,
+    properties: node.properties, type_annotation: node.type_annotation,
+    config: node.config, is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call,
-    match_pattern: node.match_pattern,
-    expr_data: expr_data
-  }
-}
-
-fn map_expr_children(expr_node: Node, transform: fn(Node) -> Node) -> Node {
-  match expr_node.expr_data {
-    ExprFieldAccess { base: b, field: f, summary: summary } =>
-      with_expr_data(node: expr_node, expr_data: ExprFieldAccess { base: transform(b), field: f, summary: summary })
-    ExprCall { func: func, args: args, call_semantics: call_semantics } =>
-      with_expr_data(node: expr_node, expr_data: ExprCall {
-        func: func,
-        args: args |> map(arg => NamedArg { name: arg.name, value: transform(arg.value) }),
-        call_semantics: call_semantics
-      })
-    ExprMethodCall { receiver: receiver, method: method, args: args, method_semantics: method_semantics } =>
-      with_expr_data(node: expr_node, expr_data: ExprMethodCall {
-        receiver: transform(receiver),
-        method: method,
-        args: args |> map(arg => NamedArg { name: arg.name, value: transform(arg.value) }),
-        method_semantics: method_semantics
-      })
-    ExprMatch { scrutinee: scrutinee, arms: arms } =>
-      with_expr_data(node: expr_node, expr_data: ExprMatch {
-        scrutinee: transform(scrutinee),
-        arms: arms |> map(arm => MatchArm {
-          pattern: arm.pattern,
-          guard: match arm.guard {
-            Some { value: guard } => Some { value: transform(guard) }
-            None => none
-          },
-          body: transform(arm.body)
-        })
-      })
-    ExprIf { condition: condition, then_branch: then_branch, else_branch: else_branch } =>
-      with_expr_data(node: expr_node, expr_data: ExprIf {
-        condition: transform(condition),
-        then_branch: transform(then_branch),
-        else_branch: match else_branch {
-          Some { value: branch } => Some { value: transform(branch) }
-          None => none
-        }
-      })
-    ExprLet { name: name, value: value, body: body } =>
-      with_expr_data(node: expr_node, expr_data: ExprLet {
-        name: name,
-        value: transform(value),
-        body: match body {
-          Some { value: inner } => Some { value: transform(inner) }
-          None => none
-        }
-      })
-    ExprRecordLit { type_name: type_name, fields: fields, parent_enum: parent_enum } =>
-      with_expr_data(node: expr_node, expr_data: ExprRecordLit {
-        type_name: type_name,
-        fields: fields |> map(field => FieldInit { name: field.name, value: transform(field.value) }),
-        parent_enum: parent_enum
-      })
-    ExprListLit { elements: elements } =>
-      with_expr_data(node: expr_node, expr_data: ExprListLit { elements: elements |> map(el => transform(el)) })
-    ExprBinOp { op: op, left: left, right: right } =>
-      with_expr_data(node: expr_node, expr_data: ExprBinOp { op: op, left: transform(left), right: transform(right) })
-    ExprUnaryOp { op: op, operand: operand } =>
-      with_expr_data(node: expr_node, expr_data: ExprUnaryOp { op: op, operand: transform(operand) })
-    ExprLambda { params: params, body: body, semantics: semantics } =>
-      with_expr_data(node: expr_node, expr_data: ExprLambda { params: params, body: transform(body), semantics: semantics })
-    ExprStringInterp { parts: parts } =>
-      with_expr_data(node: expr_node, expr_data: ExprStringInterp {
-        parts: parts |> map(part => match part {
-          Text { value: value } => Text { value: value }
-          Interpolation { expr: expr } => Interpolation { expr: transform(expr) }
-        })
-      })
-    ExprBlock { stmts: stmts } =>
-      with_expr_data(node: expr_node, expr_data: ExprBlock { stmts: stmts |> map(stmt => transform(stmt)) })
-    ExprCast { expr: expr, target: target } =>
-      with_expr_data(node: expr_node, expr_data: ExprCast { expr: transform(expr), target: transform(target) })
-    ExprForEach { variable: variable, collection: collection, body: body } =>
-      with_expr_data(node: expr_node, expr_data: ExprForEach { variable: variable, collection: transform(collection), body: transform(body) })
-    ExprIndex { base: base, index: index } =>
-      with_expr_data(node: expr_node, expr_data: ExprIndex { base: transform(base), index: transform(index) })
-    ExprSlice { base: base, start: start, end: end } =>
-      with_expr_data(node: expr_node, expr_data: ExprSlice { base: transform(base), start: transform(start), end: transform(end) })
-    ExprReturn { value: value } =>
-      with_expr_data(node: expr_node, expr_data: ExprReturn { value: transform(value) })
-    _ => expr_node
+    match_pattern: node.match_pattern, expr_data: node.expr_data
   }
 }
 
@@ -1007,7 +844,7 @@ fn map_expr_children(expr_node: Node, transform: fn(Node) -> Node) -> Node {
 
 fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: _, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
       if f == fn_name { true }
       else { texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name)) }
     _ => texpr.children |> any(child => expr_has_self_call(texpr: child, fn_name: fn_name))
@@ -1016,7 +853,7 @@ fn expr_has_self_call(texpr: Node, fn_name: String) -> Bool {
 
 fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, args: _, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
       if f == fn_name {
         if in_tail == false { true }
         else { texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false)) }
@@ -1026,18 +863,18 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
     ExprError { kind: _, message: _ } => false
     ExprVar { name: _, binding_kind: _ } => false
     ExprLiteral { value: _ } => false
-    ExprFieldAccess { base: _, field: _, summary: _ } =>
+    ExprFieldAccess { field: _, summary: _ } =>
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
-    ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _ } =>
+    ExprMethodCall { method: _, method_semantics: _ } =>
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
-    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+    ExprIf =>
       // children = [condition, then, else?]. Condition is never tail; branches inherit tail.
       let ch = texpr.children
       let cond_bad = match ch |> first { Some { value: c } => expr_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)  None => false }
       let then_bad = match ch |> drop(1) |> first { Some { value: t } => expr_has_non_tail_self_call(texpr: t, fn_name: fn_name, in_tail: in_tail)  None => false }
       let else_bad = match ch |> drop(2) |> first { Some { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail)  None => false }
       cond_bad || then_bad || else_bad
-    ExprMatch { scrutinee: _, arms: _ } =>
+    ExprMatch =>
       // children = [scrutinee, arm0, arm1, ...]. Scrutinee is never tail; arm bodies inherit tail.
       let ch = texpr.children
       let scrut_bad = match ch |> first { Some { value: s } => expr_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)  None => false }
@@ -1045,13 +882,13 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
         let body = arm_body(n: arm_node)
         expr_has_non_tail_self_call(texpr: body, fn_name: fn_name, in_tail: in_tail))
       scrut_bad || arms_bad
-    ExprLet { name: _, value: _, body: _ } =>
+    ExprLet { name: _ } =>
       // children = [value, body?]. Value is never tail; body inherits tail.
       let ch = texpr.children
       let val_bad = match ch |> first { Some { value: v } => expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)  None => false }
       let body_bad = match ch |> drop(1) |> first { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)  None => false }
       val_bad || body_bad
-    ExprBlock { stmts: _ } =>
+    ExprBlock =>
       // children = [stmt0, stmt1, ...]. Only last is in tail position.
       let ss = texpr.children
       let ss_count = ss |> count

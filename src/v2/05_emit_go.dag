@@ -61,6 +61,8 @@ import v2.std.core {
   Text, Interpolation,
   FieldSummary, FieldAccessStyle,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
+  arg_name, arg_value, arm_body, arm_pattern, arm_guard,
+  field_init_node_name, field_init_node_value,
   leaf_node, with_required_cardinality,
   node_is_product, node_is_coproduct
 }
@@ -589,7 +591,8 @@ fn emit_go_expr_var(expr: Node, depth: Int) -> String {
 fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprFieldAccess { base: b, field: f, summary: summary } =>
+    ExprFieldAccess { field: f, summary: summary } =>
+      let b = match expr.children |> first { Some { value: v } => v  None => expr }
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => concat(prefix, service_var_name(service_name: svc_name))
@@ -605,7 +608,8 @@ fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope:
 fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
+      let a = expr.children |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
       concat(prefix, emit_go_typed_call(func: f, args: a, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_call expected ExprCall", target: Go))
   }
@@ -614,7 +618,9 @@ fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 fn emit_go_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprMethodCall { receiver: r, method: m, args: a, method_semantics: method_semantics } =>
+    ExprMethodCall { method: m, method_semantics: method_semantics } =>
+      let r = match expr.children |> first { Some { value: v } => v  None => expr }
+      let a = expr.children |> drop(1) |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
       concat(prefix, emit_go_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_method_call expected ExprMethodCall", target: Go))
   }
@@ -622,7 +628,9 @@ fn emit_go_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: 
 
 fn emit_go_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprMatch { scrutinee: s, arms: arm_list } =>
+    ExprMatch =>
+      let s = match expr.children |> first { Some { value: v } => v  None => expr }
+      let arm_list = expr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
       emit_go_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
     _ => concat(make_indent(level: depth), emit_error_expr(message: "emit_go_expr_match expected ExprMatch", target: Go))
   }
@@ -630,7 +638,10 @@ fn emit_go_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 
 fn emit_go_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf =>
+      let c = match expr.children |> first { Some { value: v } => v  None => expr }
+      let t = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
+      let e = expr.children |> drop(2) |> first
       emit_go_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth)
     _ => concat(make_indent(level: depth), emit_error_expr(message: "emit_go_expr_if expected ExprIf", target: Go))
   }
@@ -638,7 +649,9 @@ fn emit_go_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScop
 
 fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprLet { name: n, value: v, body: bd } =>
+    ExprLet { name: n } =>
+      let v = match expr.children |> first { Some { value: val } => val  None => expr }
+      let bd = expr.children |> drop(1) |> first
       emit_go_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
     _ => concat(make_indent(level: depth), emit_error_expr(message: "emit_go_expr_let expected ExprLet", target: Go))
   }
@@ -647,7 +660,8 @@ fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 fn emit_go_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprRecordLit { type_name: tn, fields: fs, parent_enum: _ } =>
+    ExprRecordLit { type_name: tn, parent_enum: _ } =>
+      let fs = expr.children |> map(c => FieldInit { name: field_init_node_name(n: c), value: field_init_node_value(n: c) })
       concat(prefix, emit_go_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_record_lit expected ExprRecordLit", target: Go))
   }
@@ -656,7 +670,11 @@ fn emit_go_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: I
 fn emit_go_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprStringInterp { parts: ps } =>
+    ExprStringInterp =>
+      let ps = expr.children |> map(child => match child.expr_data {
+        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        _ => Interpolation { expr: match child.children |> first { Some { value: e } => e  None => child } }
+      })
       concat(prefix, emit_go_typed_string_interp(parts: ps, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_string_interp expected ExprStringInterp", target: Go))
   }
@@ -664,8 +682,8 @@ fn emit_go_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, scope
 
 fn emit_go_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprBlock { stmts: ss } =>
-      emit_go_typed_block(stmts: ss, registry: registry, scope: scope, depth: depth)
+    ExprBlock =>
+      emit_go_typed_block(stmts: expr.children, registry: registry, scope: scope, depth: depth)
     _ => concat(make_indent(level: depth), emit_error_expr(message: "emit_go_expr_block expected ExprBlock", target: Go))
   }
 }
@@ -673,7 +691,9 @@ fn emit_go_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprCast { expr: e, target: t } =>
+    ExprCast =>
+      let e = match expr.children |> first { Some { value: v } => v  None => expr }
+      let t = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
       concat(prefix, emit_go_typed_cast(expr: e, target: t, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_cast expected ExprCast", target: Go))
   }
@@ -681,7 +701,9 @@ fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 
 fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprForEach { variable: v, collection: c, body: bd } =>
+    ExprForEach { variable: v } =>
+      let c = match expr.children |> first { Some { value: val } => val  None => expr }
+      let bd = match expr.children |> drop(1) |> first { Some { value: val } => val  None => expr }
       emit_go_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
     _ => concat(make_indent(level: depth), emit_error_expr(message: "emit_go_expr_for_each expected ExprForEach", target: Go))
   }
@@ -690,7 +712,9 @@ fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: Inf
 fn emit_go_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprIndex { base: b, index: i } =>
+    ExprIndex =>
+      let b = match expr.children |> first { Some { value: v } => v  None => expr }
+      let i = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
       concat(prefix, emit_go_typed_index(base: b, index: i, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_index expected ExprIndex", target: Go))
   }
@@ -699,7 +723,10 @@ fn emit_go_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 fn emit_go_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprSlice { base: b, start: s, end: e } =>
+    ExprSlice =>
+      let b = match expr.children |> first { Some { value: v } => v  None => expr }
+      let s = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
+      let e = expr.children |> drop(2) |> first
       concat(prefix, emit_go_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_slice expected ExprSlice", target: Go))
   }
@@ -981,7 +1008,10 @@ fn emit_go_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>,
 fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match body.expr_data {
-    ExprLet { name: n, value: v, body: inner } => {
+    ExprLet { name: n } => {
+      let ch = body.children
+      let v = match ch |> first { Some { value: val } => val  None => body }
+      let inner = ch |> drop(1) |> first
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: scope, depth: 0)
       let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: Go))
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
@@ -991,7 +1021,8 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
         None => let_line
       }
     }
-    ExprBlock { stmts: ss } => {
+    ExprBlock => {
+      let ss = body.children
       if ss |> count == 0 {
         concat(prefix, "return struct{}{}, nil")
       } else {
@@ -1024,7 +1055,8 @@ fn emit_go_typed_tco_body(texpr: Node, fn_name: String, params: List<Param>, reg
 fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprCall { func: f, args: a, call_semantics: _ } =>
+    ExprCall { func: f, call_semantics: _ } =>
+      let a = frame.expr.children |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
       let call_str = emit_go_typed_call(func: f, args: a, registry: registry, scope: frame.scope)
       concat(prefix, "return ", call_str)
     _ => concat(prefix, emit_error_expr(message: "emit_go_tco_non_self_call expected ExprCall", target: Go))
@@ -1034,7 +1066,10 @@ fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -
 fn emit_go_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf =>
+      let c = match frame.expr.children |> first { Some { value: v } => v  None => frame.expr }
+      let t = match frame.expr.children |> drop(1) |> first { Some { value: v } => v  None => frame.expr }
+      let e = frame.expr.children |> drop(2) |> first
       let cond_str = emit_go_typed_expr(texpr: c, registry: registry, scope: frame.scope, depth: 0)
       let then_str = emit_go_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1)
       match e {
@@ -1054,7 +1089,9 @@ fn emit_go_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, registr
 fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprMatch { scrutinee: s, arms: arm_list } =>
+    ExprMatch =>
+      let s = match frame.expr.children |> first { Some { value: v } => v  None => frame.expr }
+      let arm_list = frame.expr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
       let scrut_str = emit_go_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: 0)
       let arm_strs = arm_list |> map(arm =>
         emit_go_typed_tco_switch_case(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth))
@@ -1067,7 +1104,9 @@ fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, regi
 fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprLet { name: n, value: v, body: bd } =>
+    ExprLet { name: n } =>
+      let v = match frame.expr.children |> first { Some { value: val } => val  None => frame.expr }
+      let bd = frame.expr.children |> drop(1) |> first
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: 0)
       let let_line = concat(prefix, emit_let_binding(name: n, value: val_str, target: Go))
       let next_scope = extend_scope(scope: frame.scope, name: n, resolved: rt_type(n: v))
@@ -1083,7 +1122,8 @@ fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, regist
 fn emit_go_tco_block(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprBlock { stmts: ss } =>
+    ExprBlock =>
+      let ss = frame.expr.children
       if ss |> count == 0 {
         concat(prefix, "return")
       } else {
