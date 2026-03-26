@@ -16,11 +16,8 @@ import v2.std.core {
   Node, Param,
   ExprData, NoExprData, ExprError,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
-  ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
-  ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  MatchArm, MatchPattern, FieldInit, NamedArg, StringPart,
-  Text, Interpolation
+  ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn,
+  arg_value, arm_body
 }
 
 // =========================================================================
@@ -137,81 +134,103 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprLiteral { value: _ } => accum
 
-    ExprFieldAccess { base: b, field: f } =>
-      match b.expr_data {
+    ExprFieldAccess { base: _, field: f } =>
+      // children = [base]. Check if base is a variable for projection.
+      let base_node = match texpr.children |> first { Some { value: b } => b  None => texpr }
+      match base_node.expr_data {
         ExprVar { name: vn } =>
           record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f))
-        _ => walk_expr(accum: accum, texpr: b, in_tail: false)
+        _ => walk_expr(accum: accum, texpr: base_node, in_tail: false)
       }
 
-    ExprCall { func: fname, args: call_args } =>
+    ExprCall { func: fname, args: _ } =>
+      // children = [arg0_node, arg1_node, ...]. Arg names on node.name.
       if fname == "fold" {
-        let init_arg = call_args |> filter(a => a.name == Some { value: "init" }) |> first
+        let init_arg = texpr.children |> filter(a => a.name == "init") |> first
         let threaded_accum = match init_arg {
-          Some { value: ia } => match ia.value.expr_data {
-            ExprVar { name: vn } =>
-              record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init")
-            _ => walk_expr(accum: accum, texpr: ia.value, in_tail: false)
-          }
+          Some { value: ia } =>
+            let ia_val = arg_value(n: ia)
+            match ia_val.expr_data {
+              ExprVar { name: vn } =>
+                record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init")
+              _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false)
+            }
           None => accum
         }
-        let non_init = call_args |> filter(a => a.name != Some { value: "init" })
+        let non_init = texpr.children |> filter(a => a.name != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
         )
       } else {
-        call_args |> fold(init: accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+        texpr.children |> fold(init: accum, f: (acc, a) =>
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
         )
       }
 
-    ExprMethodCall { receiver: recv, method: mname, args: mc_args } =>
+    ExprMethodCall { receiver: _, method: mname, args: _ } =>
+      // children = [receiver, arg0_node, arg1_node, ...].
+      let recv = match texpr.children |> first { Some { value: r } => r  None => texpr }
+      let mc_args = texpr.children |> drop(1)
       if mname == "fold" {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
-        let init_arg = mc_args |> filter(a => a.name == Some { value: "init" }) |> first
+        let init_arg = mc_args |> filter(a => a.name == "init") |> first
         let threaded_accum = match init_arg {
-          Some { value: ia } => match ia.value.expr_data {
-            ExprVar { name: vn } =>
-              record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init")
-            _ => walk_expr(accum: recv_accum, texpr: ia.value, in_tail: false)
-          }
+          Some { value: ia } =>
+            let ia_val = arg_value(n: ia)
+            match ia_val.expr_data {
+              ExprVar { name: vn } =>
+                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init")
+              _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false)
+            }
           None => recv_accum
         }
-        let non_init = mc_args |> filter(a => a.name != Some { value: "init" })
+        let non_init = mc_args |> filter(a => a.name != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
         )
       } else {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
         mc_args |> fold(init: recv_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: a.value, in_tail: false)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false)
         )
       }
 
-    ExprMatch { scrutinee: s, arms: arm_list } =>
-      let s_accum = walk_expr(accum: accum, texpr: s, in_tail: false)
-      let branch_accums = arm_list |> map(arm =>
-        walk_expr(accum: s_accum, texpr: arm.body, in_tail: in_tail)
+    ExprMatch { scrutinee: _, arms: _ } =>
+      // children = [scrutinee, arm0_node, arm1_node, ...].
+      let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
+      let arm_nodes = texpr.children |> drop(1)
+      let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false)
+      let branch_accums = arm_nodes |> map(arm_node =>
+        walk_expr(accum: s_accum, texpr: arm_body(n: arm_node), in_tail: in_tail)
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
-    ExprIf { condition: c, then_branch: t, else_branch: e } =>
+    ExprIf { condition: _, then_branch: _, else_branch: _ } =>
+      // children = [condition, then, else?].
+      let ch = texpr.children
+      let c = match ch |> first { Some { value: v } => v  None => texpr }
+      let t = match ch |> drop(1) |> first { Some { value: v } => v  None => texpr }
       let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false)
       let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail)
-      let e_accum = match e {
+      let e_accum = match ch |> drop(2) |> first {
         Some { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail)
         None => c_accum
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
-    ExprLet { name: _, value: v, body: bd } =>
+    ExprLet { name: _, value: _, body: _ } =>
+      // children = [value, body?].
+      let ch = texpr.children
+      let v = match ch |> first { Some { value: val } => val  None => texpr }
       let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false)
-      match bd {
+      match ch |> drop(1) |> first {
         Some { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail)
         None => v_accum
       }
 
-    ExprBlock { stmts: ss } =>
+    ExprBlock { stmts: _ } =>
+      // children = [stmt0, stmt1, ...]. Only last is tail.
+      let ss = texpr.children
       let ss_count = ss |> count
       if ss_count == 0 { accum }
       else {
@@ -227,54 +246,19 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         }
       }
 
-    ExprBinOp { op: _, left: l, right: r } =>
-      let l_accum = walk_expr(accum: accum, texpr: l, in_tail: false)
-      walk_expr(accum: l_accum, texpr: r, in_tail: false)
-
-    ExprUnaryOp { op: _, operand: e } =>
-      walk_expr(accum: accum, texpr: e, in_tail: false)
-
-    ExprLambda { params: _, body: bd } =>
-      walk_expr(accum: accum, texpr: bd, in_tail: false)
-
-    ExprRecordLit { type_name: _, fields: fs } =>
-      fs |> fold(init: accum, f: (acc, fi) =>
-        walk_expr(accum: acc, texpr: fi.value, in_tail: false)
+    ExprReturn { value: _ } =>
+      // children = [value]. Value is in tail position.
+      texpr.children |> fold(init: accum, f: (acc, child) =>
+        walk_expr(accum: acc, texpr: child, in_tail: true)
       )
 
-    ExprListLit { elements: els } =>
-      els |> fold(init: accum, f: (acc, el) =>
-        walk_expr(accum: acc, texpr: el, in_tail: false)
+    // All remaining variants: children are never in tail position.
+    // Handles BinOp, UnaryOp, Lambda, RecordLit, ListLit, StringInterp,
+    // Cast, ForEach, Index, Slice, Error, and NoExprData (wrapper nodes).
+    _ =>
+      texpr.children |> fold(init: accum, f: (acc, child) =>
+        walk_expr(accum: acc, texpr: child, in_tail: false)
       )
-
-    ExprStringInterp { parts: ps } =>
-      ps |> fold(init: accum, f: (acc, p) => match p {
-        Interpolation { expr: e } => walk_expr(accum: acc, texpr: e, in_tail: false)
-        Text { value: _ } => acc
-      })
-
-    ExprCast { expr: e, target: _ } =>
-      walk_expr(accum: accum, texpr: e, in_tail: false)
-
-    ExprForEach { variable: _, collection: c, body: bd } =>
-      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false)
-      walk_expr(accum: c_accum, texpr: bd, in_tail: false)
-
-    ExprIndex { base: b, index: i } =>
-      let b_accum = walk_expr(accum: accum, texpr: b, in_tail: false)
-      walk_expr(accum: b_accum, texpr: i, in_tail: false)
-
-    ExprSlice { base: b, start: s, end: e } =>
-      let b_accum = walk_expr(accum: accum, texpr: b, in_tail: false)
-      let s_accum = walk_expr(accum: b_accum, texpr: s, in_tail: false)
-      walk_expr(accum: s_accum, texpr: e, in_tail: false)
-
-    ExprReturn { value: v } =>
-      walk_expr(accum: accum, texpr: v, in_tail: true)
-
-    ExprError { kind: _, message: _ } => accum
-
-    NoExprData => accum
   }
 }
 
