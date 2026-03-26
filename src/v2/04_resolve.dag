@@ -356,11 +356,26 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // any dependent type is processed. Re-resolving the looked-up node
           // would redundantly walk the entire expanded subtree, causing
           // exponential blowup on diamond-shaped dependency graphs (OOM).
+          //
+          // C2.3: For alias nodes (leaf with .inferred but no structure),
+          // follow ONE level of .inferred to return the structural target.
+          // This is O(1), not recursive — the target is already resolved
+          // by topo ordering. Without this, downstream consumers see an
+          // alias_node wrapper and must re-resolve through TypeEnv (layer
+          // downgrade from structural to name-based).
+          //
           // Preserve CardOptional from the reference node: the env binding
           // always stores the canonical (Required) definition, but the
           // reference site may carry CardOptional (e.g. String? → String
           // in env). Without this, optionality is silently discarded.
-          let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: resolved) } else { resolved }
+          let structurally_resolved = if node_has_structure(n: resolved) == false && resolved.children |> count == 0 && resolved.inferred != none {
+            match rt_node(n: resolved) {
+              Typed { node: target } => target
+              InferError { message: _, span: _ } => resolved
+              Untyped => resolved
+            }
+          } else { resolved }
+          let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
           if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
