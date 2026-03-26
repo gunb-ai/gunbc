@@ -34,7 +34,6 @@ import v2.std.core {
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
-  UnaryOpKind, Not, Neg,
   ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
@@ -59,11 +58,7 @@ import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
-import v2.compiler.infer_service {
-  UniqueAccum,
-  OpEntry,
-  is_typed_service_call_receiver, extract_typed_service_name
-}
+import v2.compiler.infer_service { UniqueAccum }
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
@@ -117,6 +112,7 @@ type TypedItemKind
   | TypedItemExternFunc
   | TypedItemUnhandled
 
+type TypeStructureKind = TypeLeaf | TypeConj | TypeDisj
 
 // =========================================================================
 // Backend capability contract -- what each backend declares it can handle.
@@ -256,34 +252,14 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
 // Scope helpers
 // =========================================================================
 
-fn emit_empty_type_bindings() -> Map<String, TypeBinding> {
-  empty_map()
-}
-
-fn emit_empty_bool_name_set() -> Map<String, Bool> {
-  empty_map()
-}
-
-fn emit_empty_func_sig_map() -> Map<String, ResolvedFuncSig> {
-  empty_map()
-}
-
-fn emit_empty_service_registry() -> Map<String, List<OpEntry>> {
-  empty_map()
-}
-
-fn emit_empty_item_info_map() -> Map<String, ItemInfo> {
-  empty_map()
-}
-
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: emit_empty_type_bindings(), recursive_types: [], recursive_type_set: emit_empty_bool_name_set() },
-    func_env: ResolvedFuncEnv { signatures: emit_empty_func_sig_map() },
-    locals: emit_empty_type_bindings(),
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
+    func_env: ResolvedFuncEnv { signatures: empty_map() },
+    locals: empty_map(),
     module_name: "",
-    service_registry: emit_empty_service_registry(),
-    item_registry: emit_empty_item_info_map()
+    service_registry: empty_map(),
+    item_registry: empty_map()
   }
 }
 
@@ -291,9 +267,9 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
-    locals: emit_empty_type_bindings(),
+    locals: empty_map(),
     module_name: typed_module.module.name,
-    service_registry: emit_empty_service_registry(),
+    service_registry: empty_map(),
     item_registry: typed_module.item_registry
   }
 }
@@ -362,7 +338,7 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
 }
 
 fn unique_strings(items: List<String>) -> List<String> {
-  let result = items |> fold(init: UniqueAccum { seen: emit_empty_bool_name_set(), result: [] }, f: fn(acc, item) {
+  let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
     if emit_map_has(m: acc.seen, key: item) { acc }
     else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
@@ -379,12 +355,13 @@ fn unique_strings(items: List<String>) -> List<String> {
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
-  if node_is_product(n: n) {
+  let n_kind = classify_type_structure(n: n)
+  if (n_kind == TypeConj) {
     // Any record type in data value position needs serde: both anonymous
     // records (name == "") and named records (name != "") whose literals
     // may not carry the struct name.
     true
-  } else if node_is_coproduct(n: n) {
+  } else if (n_kind == TypeDisj) {
     if node_is_optional(n: n) {
       has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
@@ -709,7 +686,7 @@ fn rust_literal_for_pattern(value: LiteralValue) -> String {
 }
 
 // =========================================================================
-// P4.1: Target-dispatched rendering -- unified by RenderTarget
+// P4.1: Target-dispatched rendering — unified by RenderTarget
 //
 // These functions replace per-target triples (rust_X, go_X, python_X)
 // with a single function dispatched by RenderTarget. Backends should
@@ -768,12 +745,8 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 // emit_node_type_rc is the Rc-aware API for Rust callers.
 // =========================================================================
 
-fn empty_rc_types() -> Map<String, Bool> {
-  empty_map()
-}
-
 fn emit_node_type(n: Node, target: RenderTarget) -> String {
-  emit_node_type_rc(n: n, target: target, rc_types: empty_rc_types())
+  emit_node_type_rc(n: n, target: target, rc_types: empty_map())
 }
 
 fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
@@ -803,24 +776,27 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
   } else if node_is_optional(n: n) {
     emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
   } else {
-    if node_is_product(n: n) {
-      emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
-    } else if node_is_coproduct(n: n) {
-      emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
-    } else {
+    let kind = classify_type_structure(n: n)
+    let is_leaf = kind == TypeLeaf
+    let is_conj = kind == TypeConj
+    if is_leaf {
       emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
+    } else if is_conj {
+      emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
+    } else {
+      emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
     }
   }
 }
 
 fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.children |> count == 0 {
-    // Empty containers must be fully specialized before emit.
-    let base = if n.name == "Map" || n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
-      match target {
-        Rust => concat("compile_error!(\"bare ", n.name, " type reached emit\")")
-        _ => concat("__EMIT_BUG_BARE_", n.name, "__")
-      }
+    // Bare container nodes (from empty_map(), etc.) need container templates
+    // even without children — emit with "_" placeholders.
+    let base = if n.name == "Map" {
+      emit_map_type(key_type: "_", val_type: "_", target: target)
+    } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
+      emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
     } else {
       emit_primitive_type(name: n.name, target: target)
     }
@@ -868,7 +844,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       None => n.name
     }
   } else if n.name == "Tuple" {
-    // Tuple children may have return_type set -- unwrap to get the actual type.
+    // Tuple children may have return_type set — unwrap to get the actual type.
     let first_str = match n.children |> first {
       Some { value: c } =>
         if c.return_type != none {
@@ -893,7 +869,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    // Named product type -- Rc wrapping for Rust
+    // Named product type — Rc wrapping for Rust
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
     } else {
@@ -904,7 +880,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     let is_rust = match target { Rust => true  _ => false }
     if is_rust {
       if n.children |> count == 1 {
-        // Single-field anonymous product -- unwrap the field type.
+        // Single-field anonymous product — unwrap the field type.
         match n.children |> first {
           Some { value: field_node } =>
             if field_node.return_type != none {
@@ -915,7 +891,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
           None => "compile_error!(\"anonymous product reached Node emitter\")"
         }
       } else {
-        // Multi-field anonymous product -> Rust tuple type.
+        // Multi-field anonymous product → Rust tuple type.
         let field_types = n.children |> map(child =>
           if child.return_type != none {
             emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
@@ -932,14 +908,14 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
 
 fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name != "" {
-    // Named coproduct type -- Rc wrapping for Rust
+    // Named coproduct type — Rc wrapping for Rust
     if emit_map_has(m: rc_types, key: n.name) {
       concat("Rc<", n.name, ">")
     } else {
       n.name
     }
   } else {
-    // Anonymous coproduct -- error in all targets.
+    // Anonymous coproduct — error in all targets.
     let is_rust = match target { Rust => true  _ => false }
     if is_rust {
       "compile_error!(\"anonymous coproduct reached Node emitter\")"
@@ -1070,6 +1046,11 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
   kind
 }
 
+fn classify_type_structure(n: Node) -> TypeStructureKind {
+  if node_is_product(n: n) { TypeConj }
+  else if node_is_coproduct(n: n) { TypeDisj }
+  else { TypeLeaf }
+}
 
 // =========================================================================
 // Shared ExprData fold spine -- target-agnostic expression classification
@@ -1396,7 +1377,7 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 }
 
 // =========================================================================
-// emit_shared_expr -- full shared ExprData dispatcher (P4.2 step 5)
+// emit_shared_expr — full shared ExprData dispatcher (P4.2 step 5)
 //
 // The shared layer owns the whole-tree `ExprData` match. Backends provide:
 // - `wrap_result` for target-specific result framing (Go indentation)
@@ -1479,9 +1460,9 @@ fn emit_shared_expr(
 }
 
 // =========================================================================
-// bridge_method_base_name -- canonical snake_case name for each bridge method.
+// bridge_method_base_name — canonical snake_case name for each bridge method.
 //
-// Single authority for the Bridge* -> snake_case mapping. Each backend
+// Single authority for the Bridge* → snake_case mapping. Each backend
 // either uses this directly (Rust) or derives its target convention from
 // it (Python overrides BridgeWith; Go capitalizes segments to PascalCase).
 // =========================================================================

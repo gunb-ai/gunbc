@@ -27,7 +27,7 @@ import v2.compiler.infer_types {
   error_type_node,
   node_is_optional, node_is_map,
   node_is_product, node_is_coproduct, node_has_structure,
-  normalize_access_type_node,
+  normalize_access_type_node, normalize_type_name,
   rt_type, rt_node,
   emit_map_has
 }
@@ -133,10 +133,12 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   // rewraps Optional after environment lookup. Access and match-pattern
   // inference now carry explicit failure state before entering this helper,
   // so this function should only resolve successfully typed scrutinee shapes.
+  // Full deletion belongs to P5.8 once `normalize_type_name` is gone.
   let normed = normalize_access_type_node(n: n)
   if node_has_structure(n: normed) == false && normed.children |> count == 0 {
+    let canonical = normalize_type_name(name: normed.name)
     if normed.return_type != none {
-      let next_seen = if normed.name == "" { seen } else { map_insert(seen, normed.name, true) }
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match rt_node(n: normed) {
         Typed { node: target } =>
           if target.name == normed.name && target.return_type == none && node_has_structure(n: target) == false && target.children |> count == 0 {
@@ -147,10 +149,10 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
         InferError { message: _, span: _ } => normed
         Untyped => normed
       }
-    } else if normed.name != "" && emit_map_has(m: seen, key: normed.name) {
+    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
       leaf_node(name: normed.name)
     } else {
-      let next_seen = if normed.name == "" { seen } else { map_insert(seen, normed.name, true) }
+      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match lookup_type(env: env, name: normed.name) {
         Some { value: resolved } =>
           if resolved.name == normed.name && resolved.return_type == none && node_has_structure(n: resolved) == false && resolved.children |> count == 0 {

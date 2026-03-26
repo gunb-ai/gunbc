@@ -58,10 +58,7 @@ import v2.compiler.languages {
   scaffold_for_target, serialization_for_target, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types {
-  for_each_element_type_node, node_is_optional, node_is_map, node_is_product,
-  leaf_node, with_required_cardinality, rt_type
-}
+import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -80,6 +77,7 @@ import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
+  TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
@@ -98,7 +96,7 @@ import v2.compiler.emit {
   apply_type_template1, apply_type_template2,
   is_null_coalesce, emit_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
-  classify_typed_item,
+  classify_typed_item, classify_type_structure,
   extract_test_projections,
   bridge_method_base_name,
   is_tco_eligible, emit_shared_tco_expr,
@@ -383,7 +381,8 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // =========================================================================
 
 fn emit_py_type_def_from_connective(item: Node) -> String {
-  if node_is_product(n: item) {
+  let kind = classify_type_structure(n: item)
+  if (kind == TypeConj) {
     emit_py_dataclass_from_children(name: item.name, children: item.children)
   } else {
     emit_py_enum_from_children(name: item.name, children: item.children)

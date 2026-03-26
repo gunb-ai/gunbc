@@ -405,8 +405,9 @@ pub fn resolve_builtin_call_type(name: &str) -> Rc<Node> {
 }
 
 pub fn intrinsic_method_index() -> Rc<HashMap<String, IntrinsicMethod>> {
+    let m = Rc::new(std::collections::HashMap::new());
     let m = {
-    let __rc_1 = Rc::new(std::collections::HashMap::new());
+    let __rc_1 = m;
     let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
     __map_ins_0.insert("count".to_string(), IntrinsicMethod::MethodCount);
     Rc::new(__map_ins_0)

@@ -15,13 +15,9 @@ pub fn set_has(m: Rc<HashMap<String, bool>>, key: &str) -> bool {
     result.clone()
 }
 
-pub fn empty_string_list() -> Rc<Vec<String>> {
-    Rc::new(Vec::new())
-}
-
 pub fn compute_in_graph_deps(all_names: Rc<Vec<String>>, deps_map: Rc<HashMap<String, Rc<Vec<String>>>>, name_set: Rc<HashMap<String, bool>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     let result = {
-    let mut __acc_0: Rc<std::collections::HashMap<String, Rc<Vec<String>>>> = Rc::new(std::collections::HashMap::new());
+    let mut __acc_0 = Rc::new(std::collections::HashMap::new());
     for __elem_1 in all_names.iter().cloned() {
         __acc_0 = match deps_map.clone().get(&__elem_1.clone()).cloned() {
     Some(deps) => {
@@ -47,7 +43,7 @@ pub fn compute_in_graph_deps(all_names: Rc<Vec<String>>, deps_map: Rc<HashMap<St
         {
     let __rc_7 = __acc_0;
     let mut __map_ins_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_6.insert(__elem_1.clone(), empty_string_list());
+    __map_ins_6.insert(__elem_1.clone(), Rc::new(Vec::new()));
     Rc::new(__map_ins_6)
 }
     }

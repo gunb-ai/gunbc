@@ -481,7 +481,8 @@ pub fn emit_py_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 }
 
 pub fn emit_py_type_def_from_connective(item: Rc<Node>) -> String {
-    if node_is_product(item.clone()) {
+    let kind = classify_type_structure(item.clone());
+    if kind == TypeStructureKind::TypeConj {
     emit_py_dataclass_from_children(&item.name, item.children.clone())
 } else {
     emit_py_enum_from_children(&item.name, item.children.clone())

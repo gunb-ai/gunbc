@@ -1,4 +1,5 @@
 use crate::v2_core::*;
+use crate::infer_types::*;
 use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -28,7 +29,8 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, name: &str) -> bool {
 }
 
 pub fn lookup_type(env: Rc<TypeEnv>, name: &str) -> Option<Rc<Node>> {
-    match env.bindings.clone().get(&name.to_string()).cloned() {
+    let canonical = normalize_type_name(&name);
+    match env.bindings.clone().get(&canonical).cloned() {
     Some(binding) => {
         Some(binding.resolved.clone())
     }

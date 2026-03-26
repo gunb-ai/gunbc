@@ -53,6 +53,14 @@ pub enum TypedItemKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
+pub enum TypeStructureKind {
+    #[default]
+    TypeLeaf,
+    TypeConj,
+    TypeDisj,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
 pub enum BackendCapability {
     #[default]
     CapServiceEmit,
@@ -440,32 +448,12 @@ pub fn emit_simple_string_interp(parts: Rc<Vec<Rc<StringPart>>>, target: RenderT
     })
 }
 
-pub fn emit_empty_type_bindings() -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
-pub fn emit_empty_bool_name_set() -> Rc<HashMap<String, bool>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
-pub fn emit_empty_func_sig_map() -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
-pub fn emit_empty_service_registry() -> Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
-pub fn emit_empty_item_info_map() -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
 pub fn empty_emit_scope() -> Rc<InferScope> {
-    Rc::new(InferScope { type_env: Rc::new(TypeEnv { bindings: emit_empty_type_bindings(), recursive_types: Rc::new(Vec::new()), recursive_type_set: emit_empty_bool_name_set() }), func_env: Rc::new(ResolvedFuncEnv { signatures: emit_empty_func_sig_map() }), locals: emit_empty_type_bindings(), module_name: "".to_string(), service_registry: emit_empty_service_registry(), item_registry: emit_empty_item_info_map() })
+    Rc::new(InferScope { type_env: Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(Vec::new()), recursive_type_set: Rc::new(std::collections::HashMap::new()) }), func_env: Rc::new(ResolvedFuncEnv { signatures: Rc::new(std::collections::HashMap::new()) }), locals: Rc::new(std::collections::HashMap::new()), module_name: "".to_string(), service_registry: Rc::new(std::collections::HashMap::new()), item_registry: Rc::new(std::collections::HashMap::new()) })
 }
 
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
-    Rc::new(InferScope { type_env: typed_module.type_env.clone(), func_env: typed_module.func_env.clone(), locals: emit_empty_type_bindings(), module_name: typed_module.module.name.clone(), service_registry: emit_empty_service_registry(), item_registry: typed_module.item_registry.clone() })
+    Rc::new(InferScope { type_env: typed_module.type_env.clone(), func_env: typed_module.func_env.clone(), locals: Rc::new(std::collections::HashMap::new()), module_name: typed_module.module.name.clone(), service_registry: Rc::new(std::collections::HashMap::new()), item_registry: typed_module.item_registry.clone() })
 }
 
 pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
@@ -583,7 +571,7 @@ pub fn order_typed_call_args(args: Rc<Vec<Rc<NamedArg>>>, func: &str, scope: Rc<
 
 pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     let result = {
-    let mut __acc_0 = Rc::new(UniqueAccum { seen: emit_empty_bool_name_set(), result: Rc::new(Vec::new()) });
+    let mut __acc_0 = Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) });
     for __elem_1 in items.iter().cloned() {
         __acc_0 = if emit_map_has(__acc_0.seen.clone(), &__elem_1) {
     __acc_0.clone()
@@ -611,10 +599,11 @@ pub fn has_nested_records_node(n: Rc<Node>) -> bool {
         let mut __tco_p_n = n;
         loop {
             let n = __tco_p_n;
-            if node_is_product(n.clone()) {
+            let n_kind = classify_type_structure(n.clone());
+            if n_kind.clone() == TypeStructureKind::TypeConj {
     break true;
 } else {
-    if node_is_coproduct(n.clone()) {
+    if n_kind.clone() == TypeStructureKind::TypeDisj {
     if node_is_optional(n.clone()) {
      {
         let __tco_0 = with_required_cardinality(n.clone());
@@ -1426,12 +1415,8 @@ pub fn emit_map_type(key_type: &str, val_type: &str, target: RenderTarget) -> St
 }
 }
 
-pub fn empty_rc_types() -> Rc<HashMap<String, bool>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
-    emit_node_type_rc(n.clone(), target, empty_rc_types())
+    emit_node_type_rc(n.clone(), target, Rc::new(std::collections::HashMap::new()))
 }
 
 pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
@@ -1517,13 +1502,16 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
     if node_is_optional(n.clone()) {
     emit_container("optional", &emit_node_type_rc(with_required_cardinality(n.clone()), target.clone(), rc_types.clone()), target.clone())
 } else {
-    if node_is_product(n.clone()) {
+    let kind = classify_type_structure(n.clone());
+    let is_leaf = kind.clone() == TypeStructureKind::TypeLeaf;
+    let is_conj = kind.clone() == TypeStructureKind::TypeConj;
+    if is_leaf.clone() {
+    emit_node_type_leaf_rc(n.clone(), target.clone(), rc_types.clone())
+} else {
+    if is_conj.clone() {
     emit_node_type_conj_rc(n.clone(), target.clone(), rc_types.clone())
 } else {
-    if node_is_coproduct(n.clone()) {
     emit_node_type_disj_rc(n.clone(), target.clone(), rc_types.clone())
-} else {
-    emit_node_type_leaf_rc(n.clone(), target.clone(), rc_types.clone())
 }
 }
 }
@@ -1537,17 +1525,14 @@ pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
     let __len_1 = n.children.clone().len();
     __len_1 as i64
 }) == 0_i64 {
-    let base = if ((((n.name.clone() == "Map") || (n.name.clone() == "List")) || (n.name.clone() == "Set")) || (n.name.clone() == "NonEmptyList")) || (n.name.clone() == "NonEmptySet") {
-    match target.clone() {
-    RenderTarget::Rust => {
-        v2_rt::concat(v2_rt::concat("compile_error!(\"bare ".to_string(), n.name.clone()), " type reached emit\")".to_string())
-    }
-    _ => {
-        v2_rt::concat(v2_rt::concat("__EMIT_BUG_BARE_".to_string(), n.name.clone()), "__".to_string())
-    }
-}
+    let base = if n.name.clone() == "Map" {
+    emit_map_type("_", "_", target.clone())
+} else {
+    if (((n.name.clone() == "List") || (n.name.clone() == "Set")) || (n.name.clone() == "NonEmptyList")) || (n.name.clone() == "NonEmptySet") {
+    emit_container(&to_snake(&n.name), "_", target.clone())
 } else {
     emit_primitive_type(&n.name, target.clone())
+}
 };
     if emit_map_has(rc_types.clone(), &n.name) {
     v2_rt::concat(v2_rt::concat("Rc<".to_string(), base.clone()), ">".to_string())
@@ -1943,6 +1928,18 @@ pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
 }
 };
     kind.clone()
+}
+
+pub fn classify_type_structure(n: Rc<Node>) -> TypeStructureKind {
+    if node_is_product(n.clone()) {
+    TypeStructureKind::TypeConj
+} else {
+    if node_is_coproduct(n.clone()) {
+    TypeStructureKind::TypeDisj
+} else {
+    TypeStructureKind::TypeLeaf
+}
+}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]

@@ -781,7 +781,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
 
       // Stage 5: Complexity analysis.
       // Runs before the typecheck error gate so that complexity data is
-      // always available -- even when inference has false positives.
+      // always available — even when inference has false positives.
       let func_entries = extract_func_entries(typed: typed)
       let complexity = build_complexity_report(func_entries: func_entries)
 

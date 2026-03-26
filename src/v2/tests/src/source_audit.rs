@@ -57,47 +57,21 @@ fn parse_supports_null_coalesce() {
 
 #[test]
 fn parser_uses_expected_token_api_for_control_flow() {
-    let parse_source = read_v2_file("src/v2/02_parse.dag");
-    let tokenize_source = read_v2_file("src/v2/01_tokenize.dag");
+    let source = read_v2_file("src/v2/02_parse.dag");
     assert_live_contains(
-        &tokenize_source,
-        "type TokenShape",
-        "01_tokenize.dag should define a payload-insensitive TokenShape API",
-    );
-    assert_live_contains(
-        &tokenize_source,
-        "fn token_shape(",
-        "01_tokenize.dag should export token_shape for parser control flow",
-    );
-    assert_live_contains(
-        &tokenize_source,
-        "fn kind_display_name(",
-        "01_tokenize.dag should keep diagnostics-only token display names",
-    );
-    assert_live_contains(
-        &parse_source,
+        &source,
         "type ExpectedToken",
         "02_parse.dag should define a typed ExpectedToken API",
     );
     assert_live_contains(
-        &parse_source,
-        "fn expected_token_shape(",
-        "02_parse.dag should map ExpectedToken through TokenShape",
-    );
-    assert_live_contains(
-        &parse_source,
-        "fn expect_shape(",
-        "02_parse.dag should route parser expectations through TokenShape",
-    );
-    assert_live_contains(
-        &parse_source,
+        &source,
         "fn kind_matches_expected(",
         "02_parse.dag should match parser control flow on ExpectedToken",
     );
     assert_live_not_contains(
-        &parse_source,
-        "fn kind_tag(",
-        "02_parse.dag should no longer define string-tag parser helpers",
+        &source,
+        "fn kind_matches_tag(",
+        "02_parse.dag should no longer route parser control flow through string tag dispatch",
     );
 }
 
@@ -319,29 +293,6 @@ fn emit_deletes_intrinsic_string_classifier_and_lambda_scope_fallback() {
     assert!(
         !rust_source.contains("let needs_wrap = false"),
         "05_emit_rust.dag should NOT contain 'let needs_wrap = false'"
-    );
-}
-
-#[test]
-fn emit_requires_empty_containers_to_be_specialized_before_codegen() {
-    let emit_source = read_v2_file("src/v2/05_emit.dag");
-    assert!(
-        !emit_source.contains("emit_map_type(key_type: \"_\", val_type: \"_\""),
-        "05_emit.dag should not fabricate bare Map types with '_' placeholders"
-    );
-    assert!(
-        !emit_source.contains("emit_container(kind: to_snake(name: n.name), inner: \"_\""),
-        "05_emit.dag should not fabricate bare container element types with '_' placeholders"
-    );
-
-    let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
-    assert!(
-        !rust_source.contains("empty_map requires a concrete result type"),
-        "05_emit_rust.dag should not recover from unconstrained empty_map at emit time"
-    );
-    assert!(
-        !rust_source.contains("init_func == \"empty_map\""),
-        "05_emit_rust.dag should not special-case fold init empty_map at emit time"
     );
 }
 

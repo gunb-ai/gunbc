@@ -113,8 +113,6 @@ type Connective = Conj | Disj
 
 type Cardinality = Required | CardOptional
 
-type CollectionKind = ListKind | SetKind | NonEmptyListKind | NonEmptySetKind | MapKind
-
 type Field {
   name: String
   type_expr: Node
@@ -169,7 +167,7 @@ fn is_kernel_numeric(name: String) -> Bool {
 }
 
 // Arity bridge: parameterized types and their expected number of type children.
-// This is an explicit short-term bridge -- deleted when real .dag algebraic
+// This is an explicit short-term bridge — deleted when real .dag algebraic
 // declarations exist (Phase 3, P3.7). Optional is EXCLUDED: it is cardinality
 // on the binding site (P1.4), not a parameterized type.
 //
@@ -498,8 +496,6 @@ type Node {
   children: List<Node>
   // Logical connective -- And (record/all-hold), Or (sum/one-holds), none (leaf)
   connective: Connective?
-  // Collection kind -- typed structural marker for container/map nodes
-  collection_kind: CollectionKind?
   // Ports -- what flows in and out
   params: List<Param>
   return_type: InferredNode?
@@ -522,7 +518,7 @@ type Node {
 // Accepts InferredNode? for return_type and passes it through directly.
 fn make_expr_node(expr_data: ExprData, return_type: InferredNode?, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [], connective: none, collection_kind: none,
+    name: "", span: span, children: [], connective: none,
     params: [], return_type: return_type, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, config: none, is_self_recursive: false,
@@ -532,7 +528,7 @@ fn make_expr_node(expr_data: ExprData, return_type: InferredNode?, span: SourceS
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [], connective: none, collection_kind: none,
+    name: "", span: span, children: [], connective: none,
     params: [], return_type: Some { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none, config: none,
@@ -550,7 +546,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 
 fn make_transport_node(name: String, properties: List<FieldInit>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: children, connective: none, collection_kind: none,
+    name: name, span: span, children: children, connective: none,
     params: [], return_type: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, config: none, is_self_recursive: false,
@@ -737,7 +733,7 @@ fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
     name: node.name,
     span: node.span,
     children: node.children,
-    connective: node.connective, collection_kind: node.collection_kind,
+    connective: node.connective,
     params: node.params,
     return_type: node.return_type,
     return_cardinality: node.return_cardinality,
@@ -965,7 +961,7 @@ fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module
     None => []
   }
   Node {
-    name: message, span: span, children: [], connective: none, collection_kind: none,
+    name: message, span: span, children: [], connective: none,
     params: [], return_type: none, return_cardinality: Required,
     uses: [], body: none, transport: none,
     properties: concat([sev_prop], mod_prop), type_annotation: none,

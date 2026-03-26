@@ -161,7 +161,7 @@ type ComplexitySummary {
 // =========================================================================
 
 type CostInternTable {
-  // func_name -> cached summary (lazy computation)
+  // func_name → cached summary (lazy computation)
   summaries: Map<String, ComplexitySummary>
 }
 
@@ -186,11 +186,11 @@ fn lookup_summary(table: CostInternTable, func_name: String) -> ComplexitySummar
 //
 // Compose complexity summaries over call graph structure.
 // Each rule corresponds to a DAG pattern:
-//   sequential  -> cost_add
-//   parallel    -> cost_max (for span)
-//   loop        -> cost_mul(iterations, body)
-//   conditional -> condition + cost_max(branches)
-//   recursive   -> pattern-match on SCC structure
+//   sequential  → cost_add
+//   parallel    → cost_max (for span)
+//   loop        → cost_mul(iterations, body)
+//   conditional → condition + cost_max(branches)
+//   recursive   → pattern-match on SCC structure
 // =========================================================================
 
 type RecursionPattern
@@ -229,7 +229,8 @@ fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
 }
 
 fn scalar_output() -> Map<String, CostExpr> {
-  empty_map()
+  let result = empty_map()
+  result
 }
 
 
@@ -390,7 +391,8 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
         let r = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
         r
       } else {
-        empty_map()
+        let r = empty_map()
+        r
       }
       SummaryResult {
         summary: ComplexitySummary {
@@ -447,27 +449,6 @@ fn empty_complexity_report() -> ComplexityReport {
 // caching so the stored CostExpr trees are compact.
 // =========================================================================
 
-fn estimate_cost_expr_size(expr: CostExpr, budget: Int) -> Int {
-  if budget <= 0 { 0 }
-  else {
-    match expr {
-      CostConst { value: _ } => budget - 1
-      CostUnknown { reason: _ } => budget - 1
-      CostAdd { left: l, right: r } =>
-        let next = estimate_cost_expr_size(expr: l, budget: budget - 1)
-        estimate_cost_expr_size(expr: r, budget: next)
-      CostMul { left: l, right: r } =>
-        let next = estimate_cost_expr_size(expr: l, budget: budget - 1)
-        estimate_cost_expr_size(expr: r, budget: next)
-      CostMax { left: l, right: r } =>
-        let next = estimate_cost_expr_size(expr: l, budget: budget - 1)
-        estimate_cost_expr_size(expr: r, budget: next)
-      CostSum { binder: _, upper: _, body: bd } =>
-        estimate_cost_expr_size(expr: bd, budget: budget - 1)
-    }
-  }
-}
-
 fn simplify_cost(expr: CostExpr) -> CostExpr {
   match expr {
     CostConst { value: _ } => expr
@@ -518,14 +499,6 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
         CostConst { value: 0 } => CostConst { value: 0 }
         _ => CostSum { binder: b, upper: u, body: sbd }
       }
-  }
-}
-
-fn maybe_simplify_cost(expr: CostExpr) -> CostExpr {
-  if estimate_cost_expr_size(expr: expr, budget: 1024) <= 0 {
-    expr
-  } else {
-    simplify_cost(expr: expr)
   }
 }
 
@@ -586,9 +559,8 @@ fn cost_sum_depth(expr: CostExpr) -> Int {
 }
 
 fn classify_complexity(expr: CostExpr) -> String {
-  // Complexity summaries are simplified before caching, so the formatter
-  // should classify the cached tree directly instead of rebuilding it.
-  match expr {
+  let s = simplify_cost(expr: expr)
+  match s {
     CostConst { value: _ } => "O(1)"
     CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
@@ -1238,8 +1210,8 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
             // Simplify and cache the real summary
             let simplified = ComplexitySummary {
-              work: maybe_simplify_cost(expr: result.summary.work),
-              span: maybe_simplify_cost(expr: result.summary.span),
+              work: simplify_cost(expr: result.summary.work),
+              span: simplify_cost(expr: result.summary.span),
               output_size: result.summary.output_size,
               certainty: result.summary.certainty
             }
@@ -1318,11 +1290,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }
     }
   )
-  let formatted = if func_entries |> count > 200 {
-    concat("complexity report omitted for ", to_string(func_entries |> count), " functions")
-  } else {
-    format_complexity_report(entries: func_entries, summaries: summaries_map)
-  }
+  let formatted = format_complexity_report(entries: func_entries, summaries: summaries_map)
   ComplexityReport {
     function_summaries: summaries_map,
     violations: violations,

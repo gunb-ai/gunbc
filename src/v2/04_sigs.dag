@@ -57,14 +57,6 @@ type CallEdge {
   callee: String
 }
 
-fn empty_name_set() -> Map<String, Bool> {
-  empty_map()
-}
-
-fn empty_resolved_name_map() -> Map<String, ResolvedFuncSig> {
-  empty_map()
-}
-
 // =========================================================================
 // Call graph construction
 // =========================================================================
@@ -194,7 +186,7 @@ fn topo_resolve_loop(
     }
   }
 
-  // Resolve ready functions -- single pass collects resolved sigs and diagnostics.
+  // Resolve ready functions — single pass collects resolved sigs and diagnostics.
   let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Some { value: dsig } =>
@@ -241,11 +233,11 @@ fn resolve_func_sigs(
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => item.name)
-  let local_func_set = fold(local_func_names, init: empty_name_set(), f: (acc, fn_name) =>
+  let local_func_set = fold(local_func_names, init: empty_map(), f: (acc, fn_name) =>
     map_insert(acc, fn_name, true)
   )
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set)
-  let parent_resolved = fold(map_values(declared_sigs), init: empty_resolved_name_map(), f: (acc, dsig) =>
+  let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
     if emit_map_has(m: local_func_set, key: dsig.name) {
       acc
     } else if dsig.return_type != none {

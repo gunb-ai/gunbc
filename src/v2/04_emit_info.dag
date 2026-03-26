@@ -1,5 +1,5 @@
 // Emit graph info: type summaries, variant-to-enum maps, and field metadata
-// used by the emission phase. These are pure functions over Node trees --
+// used by the emission phase. These are pure functions over Node trees —
 // no dependency on TypedModule or InferScope.
 //
 // Dependency chain:
@@ -20,7 +20,7 @@ import v2.std.core {
 import v2.compiler.infer_types {
   node_has_structure, node_is_product, node_is_optional,
   with_required_cardinality,
-  normalize_access_type_node,
+  normalize_type_name, normalize_access_type_node,
   rt_type, child_return_type_or_name, node_type_equals
 }
 
@@ -63,9 +63,12 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
+fn normalize_emit_type_name(type_name: String) -> String {
+  normalize_type_name(name: type_name)
+}
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
-  map_get(emit_info.type_summaries, type_name)
+  map_get(emit_info.type_summaries, normalize_emit_type_name(type_name: type_name))
 }
 
 // =========================================================================
@@ -177,17 +180,16 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   if node_has_structure(n: item) == false || item.transport != none {
     return none
   }
-  let item_name = item.name
   if node_is_product(n: item) {
     Some { value: TypeSummary {
-      name: item_name,
+      name: normalize_emit_type_name(type_name: item.name),
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(children: item.children)
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
     Some { value: TypeSummary {
-      name: item_name,
+      name: normalize_emit_type_name(type_name: item.name),
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children)
     } }
@@ -203,9 +205,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
             if variant.children |> count > 0 {
-              let variant_name = variant.name
-              map_insert(acc, variant_name, TypeSummary {
-                name: variant_name,
+              map_insert(acc, normalize_emit_type_name(type_name: variant.name), TypeSummary {
+                name: normalize_emit_type_name(type_name: variant.name),
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(children: variant.children)
               })
@@ -259,10 +260,9 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             fold(variant.children, init: acc, f: (inner_acc, child) =>
               match child.return_type {
                 Some { value: Resolved { node: ft } } =>
-                  let variant_name = variant.name
                   let resolved_name = normalize_access_type_node(n: ft).name
                   if resolved_name != "" && resolved_name != "Dynamic" {
-                    map_insert(inner_acc, concat(variant_name, "|", child.name), resolved_name)
+                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
                   } else { inner_acc }
                 _ => inner_acc
               }

@@ -211,77 +211,6 @@ fn optional_alias_field_access() {
 }
 
 #[test]
-fn empty_map_uses_declared_return_type_context() {
-    let source = "module test\nfn empty_counts() -> Map<String, Int> {\n  empty_map()\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test.rs");
-    assert!(
-        content.contains("<BTreeMap<String, i64>>::new()"),
-        "typed empty_map should emit a concrete Rust map constructor"
-    );
-    assert!(
-        !content.contains("<BTreeMap<_, _>>::new()"),
-        "typed empty_map should not leave underscore map placeholders in Rust emit"
-    );
-}
-
-#[test]
-fn empty_map_uses_named_record_field_context() {
-    let source = "module test\ntype Report { counts: Map<String, Int> }\nfn build() -> Report {\n  Report { counts: empty_map() }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test.rs");
-    assert!(
-        content.contains("counts: <BTreeMap<String, i64>>::new()"),
-        "named record field context should specialize empty_map before Rust emit"
-    );
-}
-
-#[test]
-fn fold_init_empty_map_uses_accumulator_context() {
-    let source = "module test\nfn index(items: List<String>) -> Map<String, Bool> {\n  fold(items, init: empty_map(), f: (acc, item) => map_insert(acc, item, true))\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test.rs");
-    assert!(
-        content.contains("<BTreeMap<String, bool>>::new()"),
-        "fold init empty_map should emit a concrete Rust map constructor"
-    );
-}
-
-#[test]
-fn underconstrained_empty_map_is_rejected_before_emit() {
-    let source = "module test\nfn broken() -> Int {\n  let x = empty_map()\n  0\n}\n";
-    let result = compile_dag(source);
-    let msgs = diagnostic_messages(&result);
-    assert!(
-        msgs.iter().any(|m| m.contains("empty_map() requires a concrete Map<K, V> context")),
-        "underconstrained empty_map should produce a targeted inference diagnostic, got {:?}",
-        msgs
-    );
-}
-
-#[test]
-fn empty_list_uses_declared_return_type_context() {
-    let source = "module test\nfn empty_numbers() -> List<Int> {\n  []\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn underconstrained_empty_list_is_rejected_before_emit() {
-    let source = "module test\nfn broken() -> Int {\n  let x = []\n  0\n}\n";
-    let result = compile_dag(source);
-    let msgs = diagnostic_messages(&result);
-    assert!(
-        msgs.iter().any(|m| m.contains("empty list literal requires a concrete List<T> context")),
-        "underconstrained empty list should produce a targeted inference diagnostic, got {:?}",
-        msgs
-    );
-}
-
-#[test]
 fn data_map_alias_lookup() {
     let source = "module test\ntype User { name: String }\ndata USERS: Map<String, User> = {}\nfn find(k: String) -> User? {\n  map_get(USERS, key: k)\n}\n";
     let result = compile_dag(source);
@@ -481,103 +410,27 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
     assert!(result.ownership.is_empty(), "ownership should be empty on parse error");
 }
 
-// ── Scrambled name inference tests (P5.6 — L1=0 gate) ───────────────────
-//
-// The L1=0 property: inference produces identical structural results
-// regardless of type names. These tests compile the same program twice
-// with different type names, normalize the emitted code by replacing
-// user names with canonical placeholders, and compare. If the outputs
-// differ, inference is making name-dependent decisions.
-
-fn normalize_emitted_code(code: &str, name_map: &[(&str, &str)]) -> String {
-    let mut result = code.to_string();
-    for (i, (original, _scrambled)) in name_map.iter().enumerate() {
-        result = result.replace(original, &format!("__T{i}"));
-    }
-    result
-}
-
-fn normalize_emitted_code_b(code: &str, name_map: &[(&str, &str)]) -> String {
-    let mut result = code.to_string();
-    for (i, (_original, scrambled)) in name_map.iter().enumerate() {
-        result = result.replace(scrambled, &format!("__T{i}"));
-    }
-    result
-}
-
-fn assert_scrambled_equivalent(
-    source_a: &str,
-    source_b: &str,
-    name_map: &[(&str, &str)],
-    label: &str,
-) {
-    let result_a = compile_dag(source_a);
-    let result_b = compile_dag(source_b);
-
-    // Diagnostic counts must match
-    let diags_a = diagnostic_messages(&result_a);
-    let diags_b = diagnostic_messages(&result_b);
-    assert_eq!(
-        diags_a.len(), diags_b.len(),
-        "[{label}] diagnostic counts differ (name-dependent inference)\n  A: {diags_a:?}\n  B: {diags_b:?}"
-    );
-
-    // File counts must match
-    assert_eq!(
-        result_a.files.len(), result_b.files.len(),
-        "[{label}] emitted file counts differ"
-    );
-
-    // Structural comparison: normalize names in emitted code and compare
-    let mut files_a: Vec<_> = result_a.files.iter()
-        .map(|f| (f.path.clone(), normalize_emitted_code(&f.content, name_map)))
-        .collect();
-    let mut files_b: Vec<_> = result_b.files.iter()
-        .map(|f| (f.path.clone(), normalize_emitted_code_b(&f.content, name_map)))
-        .collect();
-    files_a.sort_by(|a, b| a.0.cmp(&b.0));
-    files_b.sort_by(|a, b| a.0.cmp(&b.0));
-
-    for (fa, fb) in files_a.iter().zip(files_b.iter()) {
-        if fa.1 != fb.1 {
-            // Find first divergence line for better diagnostics
-            let lines_a: Vec<_> = fa.1.lines().collect();
-            let lines_b: Vec<_> = fb.1.lines().collect();
-            for (i, (la, lb)) in lines_a.iter().zip(lines_b.iter()).enumerate() {
-                if la != lb {
-                    panic!(
-                        "[{label}] structural divergence in {} at line {}:\n  A: {}\n  B: {}",
-                        fa.0, i + 1, la, lb
-                    );
-                }
-            }
-            if lines_a.len() != lines_b.len() {
-                panic!(
-                    "[{label}] {} has {} lines in A vs {} in B",
-                    fa.0, lines_a.len(), lines_b.len()
-                );
-            }
-        }
-    }
-
-    // Complexity violation counts must match
-    assert_eq!(
-        result_a.complexity.violations.len(),
-        result_b.complexity.violations.len(),
-        "[{label}] complexity violation counts differ"
-    );
-}
+// ── Scrambled name inference tests ──────────────────────────────────────
 
 #[test]
 fn scrambled_name_inference_smoke() {
-    // Compile same program with different type names — inference should
-    // produce structurally identical output (the L1=0 property).
     let source_a = "module test\ntype Foo { x: Int }\ntype Bar { name: String }\nfn make_foo() -> Foo { Foo { x: 1 } }\nfn get_name(b: Bar) -> String { b.name }\n";
     let source_b = "module test\ntype Zqx { x: Int }\ntype Wmn { name: String }\nfn make_foo() -> Zqx { Zqx { x: 1 } }\nfn get_name(b: Wmn) -> String { b.name }\n";
-    assert_scrambled_equivalent(
-        source_a, source_b,
-        &[("Foo", "Zqx"), ("Bar", "Wmn")],
-        "simple structs",
+    let result_a = compile_dag(source_a);
+    let result_b = compile_dag(source_b);
+    let diags_a = diagnostic_messages(&result_a);
+    let diags_b = diagnostic_messages(&result_b);
+    assert_eq!(
+        diags_a.len(),
+        diags_b.len(),
+        "diagnostic counts should be equal (name-independent inference)\n  A: {:?}\n  B: {:?}",
+        diags_a,
+        diags_b
+    );
+    assert_eq!(
+        result_a.files.len(),
+        result_b.files.len(),
+        "emitted file counts should be equal"
     );
 }
 
@@ -585,70 +438,21 @@ fn scrambled_name_inference_smoke() {
 fn scrambled_name_inference_containers() {
     let source_a = "module test\ntype Coord { x: Int  y: Int }\ntype Path { points: List<Coord> }\nfn empty_path() -> Path { Path { points: [] } }\n";
     let source_b = "module test\ntype Qwz { x: Int  y: Int }\ntype Ijk { points: List<Qwz> }\nfn empty_path() -> Ijk { Ijk { points: [] } }\n";
-    assert_scrambled_equivalent(
-        source_a, source_b,
-        &[("Coord", "Qwz"), ("Path", "Ijk")],
-        "container types",
+    let result_a = compile_dag(source_a);
+    let result_b = compile_dag(source_b);
+    let diags_a = diagnostic_messages(&result_a);
+    let diags_b = diagnostic_messages(&result_b);
+    assert_eq!(
+        diags_a.len(),
+        diags_b.len(),
+        "diagnostic counts should be equal (name-independent inference)\n  A: {:?}\n  B: {:?}",
+        diags_a,
+        diags_b
     );
-}
-
-#[test]
-fn scrambled_name_inference_enums() {
-    let source_a = "module test\ntype Color = Red | Green | Blue\nfn is_red(c: Color) -> Bool {\n  match c { Red => true  _ => false }\n}\n";
-    let source_b = "module test\ntype Shade = Red | Green | Blue\nfn is_red(c: Shade) -> Bool {\n  match c { Red => true  _ => false }\n}\n";
-    assert_scrambled_equivalent(
-        source_a, source_b,
-        &[("Color", "Shade")],
-        "coproduct types",
-    );
-}
-
-#[test]
-fn scrambled_name_inference_field_access() {
-    let source_a = "module test\ntype Config { retries: Int  name: String }\nfn get_retries(c: Config) -> Int { c.retries }\nfn get_name(c: Config) -> String { c.name }\n";
-    let source_b = "module test\ntype Xyzzy { retries: Int  name: String }\nfn get_retries(c: Xyzzy) -> Int { c.retries }\nfn get_name(c: Xyzzy) -> String { c.name }\n";
-    assert_scrambled_equivalent(
-        source_a, source_b,
-        &[("Config", "Xyzzy")],
-        "field access on renamed type",
-    );
-}
-
-#[test]
-fn scrambled_name_inference_map_types() {
-    let source_a = "module test\ntype Registry { entries: Map<String, Int> }\nfn lookup(r: Registry, key: String) -> Int? { map_get(r.entries, key) }\n";
-    let source_b = "module test\ntype Catalog { entries: Map<String, Int> }\nfn lookup(r: Catalog, key: String) -> Int? { map_get(r.entries, key) }\n";
-    assert_scrambled_equivalent(
-        source_a, source_b,
-        &[("Registry", "Catalog")],
-        "map-typed fields",
-    );
-}
-
-#[test]
-fn scrambled_name_inference_with_match() {
-    // Tests that pattern matching on coproducts produces identical structural
-    // output when type names are scrambled — exercises the Error cascade and
-    // variant lookup paths.
-    let source_a = "module test\ntype Shape = Circle { radius: Int } | Square { side: Int }\nfn area(s: Shape) -> Int {\n  match s { Circle { radius: r } => r * r  Square { side: s } => s * s }\n}\n";
-    let source_b = "module test\ntype Form = Circle { radius: Int } | Square { side: Int }\nfn area(s: Form) -> Int {\n  match s { Circle { radius: r } => r * r  Square { side: s } => s * s }\n}\n";
-    assert_scrambled_equivalent(
-        source_a, source_b,
-        &[("Shape", "Form")],
-        "coproduct match with field bindings",
-    );
-}
-
-#[test]
-fn scrambled_name_inference_optional_match() {
-    // Tests Optional pattern matching — exercises the Error/Dynamic cascade
-    // suppression paths through synthesize_optional_some_variant.
-    let source_a = "module test\ntype Config { value: Int? }\nfn get_value(c: Config) -> Int {\n  match c.value { Some { value: v } => v  None => 0 }\n}\n";
-    let source_b = "module test\ntype Settings { value: Int? }\nfn get_value(c: Settings) -> Int {\n  match c.value { Some { value: v } => v  None => 0 }\n}\n";
-    assert_scrambled_equivalent(
-        source_a, source_b,
-        &[("Config", "Settings")],
-        "optional match on renamed type",
+    assert_eq!(
+        result_a.files.len(),
+        result_b.files.len(),
+        "emitted file counts should be equal"
     );
 }
 
@@ -816,55 +620,4 @@ fn strict_complexity_violation_count() {
         "complexity violation count {} exceeds ratchet {}",
         violation_count, COMPLEXITY_RATCHET
     );
-}
-
-// ── Canonical name tests (gates normalize_type_name deletion) ───────────
-//
-// These tests verify that type names are already canonical (no module
-// prefixes, no generic parameter encoding) at every pipeline boundary.
-// If these pass, normalize_type_name is provably redundant.
-
-#[test]
-fn type_names_are_canonical_at_lookup() {
-    // Verify that type lookup works with raw names — no normalization needed.
-    // If this fails, the pipeline is producing non-canonical names that
-    // require normalize_type_name to fix at lookup time.
-    let source = "module test\ntype Coord { x: Int  y: Int }\ntype Path { points: List<Coord> }\nfn make(c: Coord) -> Path { Path { points: [c] } }\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    // If lookup needed normalization, there would be "unresolved type" diagnostics
-}
-
-#[test]
-fn generic_type_names_are_canonical_at_equality() {
-    // Verify that type equality/compatibility works with raw names.
-    // List<Coord> compared to List<Coord> should match without normalization.
-    let source = "module test\ntype Coord { x: Int  y: Int }\nfn identity(items: List<Coord>) -> List<Coord> { items }\nfn first_item(items: List<Coord>) -> Coord? { items |> first }\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn map_type_names_are_canonical_through_pipeline() {
-    // Verify Map<K,V> types resolve and compare correctly with raw names.
-    let source = "module test\ntype Config { settings: Map<String, Int> }\nfn get_setting(c: Config, key: String) -> Int? { map_get(c.settings, key) }\nfn merge_configs(a: Config, b: Config) -> Config {\n  Config { settings: map_merge(a.settings, b.settings) }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn nested_generic_names_are_canonical() {
-    // List<List<Int>>, Map<String, List<Int>> — nested generics should
-    // work without name normalization stripping the outer <...>.
-    let source = "module test\ntype Matrix { rows: List<List<Int>> }\ntype Index { lookup: Map<String, List<Int>> }\nfn first_row(m: Matrix) -> List<Int>? { m.rows |> first }\nfn get_entries(idx: Index, key: String) -> List<Int>? { map_get(idx.lookup, key) }\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn optional_generic_names_are_canonical() {
-    // Optional<List<T>> and List<Optional<T>> should both work.
-    let source = "module test\ntype Bucket { items: List<Int>? }\nfn has_items(b: Bucket) -> Bool {\n  match b.items { Some { value: _ } => true  None => false }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
 }

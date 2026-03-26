@@ -10,15 +10,15 @@
 //
 // F1: Span preservation (SourceSpan threaded through emit + runtime adapters)
 // F2: Trace recording (TraceEvent/TraceFrame normalized from runtime events)
-// F3: Hermetic reproduction (capture function inputs -> test case)
-// F4: Cross-language source mapping (generated code -> .dag spans)
+// F3: Hermetic reproduction (capture function inputs → test case)
+// F4: Cross-language source mapping (generated code → .dag spans)
 
 module v2.compiler.trace
 
 import v2.std.core { SourceSpan }
 
 // =========================================================================
-// F1: Span mapping -- generated code line -> source .dag span
+// F1: Span mapping -- generated code line → source .dag span
 //
 // Emitters produce SpanMappings alongside generated code. Runtime adapters
 // can use these mappings to remap target-language failures and trace events

@@ -74,7 +74,6 @@ import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
   node_is_optional, node_is_map, node_is_container, node_has_structure,
-  node_is_product, node_is_coproduct,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   leaf_node, with_required_cardinality,
   rt_type, emit_map_has
@@ -103,13 +102,13 @@ import v2.compiler.infer_emit_info {
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
+  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
+  TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
-  empty_rc_types,
   emit_string_literal, emit_simple_expr,
   module_emit_scope,
   scope_after_expr,
@@ -124,7 +123,7 @@ import v2.compiler.emit {
   is_null_coalesce, is_type_alias_return_node,
   is_service_item, has_service_items,
   typed_named_arg_matches, order_typed_call_args,
-  classify_typed_item,
+  classify_typed_item, classify_type_structure,
   has_mock_prefix,
   extract_test_projections,
   bridge_method_base_name,
@@ -391,10 +390,6 @@ fn emit_lib_rs(modules: List<TypedModule>, has_services: Bool) -> TextFile {
 // Module emission
 // =========================================================================
 
-fn empty_name_map() -> Map<String, String> {
-  empty_map()
-}
-
 // Backwards-compatible wrapper for tests that call emit_module directly.
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let emit_info = build_emit_graph_info(modules: [typed_module])
@@ -405,7 +400,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
       acc
     }
   )
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, vtoe: emit_info.variant_to_enum, rc_types: rc_types, svc_module_map: empty_name_map())
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, vtoe: emit_info.variant_to_enum, rc_types: rc_types, svc_module_map: empty_map())
 }
 
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, vtoe: Map<String, String>, rc_types: Map<String, Bool>, svc_module_map: Map<String, String>) -> TextFile {
@@ -482,7 +477,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && node_is_coproduct(n: item))
+    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && classify_type_structure(n: item) == TypeDisj)
     |> map(item => concat("use ", item.name, "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -723,7 +718,8 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
 }
 
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
-  if node_is_product(n: item) {
+  let kind = classify_type_structure(n: item)
+  if (kind == TypeConj) {
     emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   } else {
     emit_enum_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
@@ -1306,10 +1302,10 @@ fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, v
   }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
-  // Optional<Rc<T>> matches directly -- no deref needed. The Some(x) binding
+  // Optional<Rc<T>> matches directly — no deref needed. The Some(x) binding
   // gives x: Rc<T> which is correct. Only use .as_deref().cloned() when arms
   // destructure the inner value (matches_option_rc_variant from arm analysis).
-  // Never use (*...).clone() on Optional -- it can't deref Option.
+  // Never use (*...).clone() on Optional — it can't deref Option.
   RcMatchAnalysis {
     needs_option_deref: arms_want_option,
     needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
@@ -1416,11 +1412,12 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
       None => inferred_node
     }
   } else { inferred_node }
+  let n_kind = classify_type_structure(n: n)
   if n.name == "__EmitTypeCacheMiss" { type_name }
     else if n.name == "Error" { type_name }
-    else if node_is_product(n: n) {
+    else if (n_kind == TypeConj) {
       if n.name == "" { type_name } else { Some { value: n.name } }
-    } else if node_is_coproduct(n: n) {
+    } else if (n_kind == TypeDisj) {
       type_name
     } else if n.children |> count == 0 && n.name != "" {
       Some { value: n.name }
@@ -1542,12 +1539,13 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
 
 fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let base_str = emit_typed_expr_base(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  // Check if base type is an anonymous record -- the emitter flattens these to their
-  // inner type (single-field -> bare type, multi-field -> tuple), so field access must be
+  // Check if base type is an anonymous record — the emitter flattens these to their
+  // inner type (single-field → bare type, multi-field → tuple), so field access must be
   // translated to the flattened representation.
   let base_is_anon_record = match base.return_type {
     Some { value: Resolved { node: bt } } =>
-      if node_is_product(n: bt) && bt.name == "" { true } else { false }
+      let kind = classify_type_structure(n: bt)
+      if (kind == TypeConj) && bt.name == "" { true } else { false }
     _ => false
   }
   if base_is_anon_record {
@@ -1584,14 +1582,15 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
 }
 
 fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
-  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_rc_types())
+  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_map())
 }
 
 fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
-  if node_is_product(n: normed) {
+  let normed_kind = classify_type_structure(n: normed)
+  if (normed_kind == TypeConj) {
     true
-  } else if node_is_coproduct(n: normed) {
+  } else if (normed_kind == TypeDisj) {
     normed.children |> any(child => child.children |> count > 0)
   } else {
     let canonical = normed.name
@@ -1838,12 +1837,12 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, return_type: Inferre
       Some { value: Resolved { node: ret_type } } =>
         let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
         let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-        if type_str != "" && type_str != "Dynamic" && type_str |> string_contains(substring: "compile_error!") == false {
+        if type_str != "" && type_str != "Dynamic" {
           concat("<", type_str, ">::new()")
         } else {
-          "compile_error!(\"bare empty_map reached emit\")"
+          "compile_error!(\"empty_map requires a concrete result type\")"
         }
-      _ => "compile_error!(\"empty_map missing resolved type at emit\")"
+      _ => "compile_error!(\"empty_map missing resolved return type\")"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -1874,16 +1873,16 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   // Built-in: get(list, index) -> list[index as usize].clone()
   if func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
-    return match get_args |> first {
+    match get_args |> first {
       Some { value: list_arg } =>
         match get_args |> skip(1) |> first {
           Some { value: idx_arg } =>
             let list_str = emit_typed_expr(texpr: list_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
             let index_str = emit_typed_expr(texpr: idx_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            concat(list_str, ".get((", index_str, ") as usize).cloned()")
-          None => "compile_error!(\"get call missing index argument\")"
+            return concat(list_str, ".get((", index_str, ") as usize).cloned()")
+          None => return "compile_error!(\"get call missing index argument\")"
         }
-      None => "compile_error!(\"get call missing list argument\")"
+      None => return "compile_error!(\"get call missing list argument\")"
     }
   }
   // Built-in: with(struct, { field: value }) -> StructName { field: value, ..struct.clone() }
@@ -1915,10 +1914,10 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   }
   if func == "to_string" {
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
-    return match to_string_args |> first {
+    match to_string_args |> first {
       Some { value: value_arg } =>
-        concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
-      None => "compile_error!(\"to_string call missing value argument\")"
+        return concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
+      None => return "compile_error!(\"to_string call missing value argument\")"
     }
   }
   // For collection functions (map, filter, flat_map, fold), extend scope with the
@@ -2084,7 +2083,7 @@ fn lambda_scope_from_semantics(scope: InferScope, params: List<String>, semantic
       params |> enumerate |> fold(init: scope, f: (acc, pair) =>
         let idx = pair.first
         let param_name = pair.second
-        // Dynamic audit: correct -- scope must have a binding for every lambda param.
+        // Dynamic audit: correct — scope must have a binding for every lambda param.
         // When inference didn't resolve a param type, Dynamic is the correct sentinel.
         // Downstream guards in lambda_param_type_strs filter Dynamic from rendered
         // type annotations, and emit_node_type_rc catches any remaining leak.
@@ -2106,7 +2105,7 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: lambda_semantics } =>
         match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: param_type } =>
-            // Dynamic audit: correct guard -- filter Dynamic/Error sentinels from
+            // Dynamic audit: correct guard — filter Dynamic/Error sentinels from
             // rendered lambda param type annotations. Falls back to caller-provided
             // fallback_types (typically elem_type_str or "_"), letting Rust infer.
             if param_type.name == "Dynamic" || param_type.name == "Error" {
@@ -2294,7 +2293,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             Some { value: concrete_type } => concrete_type
             None =>
               // Fallback: infer accumulator type from init expression's return type.
-              // Dynamic audit: correct -- Dynamic leaf_node here is caught by
+              // Dynamic audit: correct — Dynamic leaf_node here is caught by
               // emit_node_type_rc which renders it as compile_error!.
               match args |> first {
                 Some { value: init_arg } =>
@@ -2308,7 +2307,15 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
       let init_str = match args |> first {
         Some { value: init_arg } =>
-          emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          match init_arg.value.expr_data {
+            ExprCall { func: init_func, args: _, call_semantics: _ } =>
+              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" {
+                concat("<", acc_type_str, ">::new()")
+              } else {
+                emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+              }
+            _ => emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          }
         None => "compile_error!(\"missing fold init argument\")"
       }
       let fold_fn = match args |> skip(1) |> first {
@@ -2324,7 +2331,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         Some { value: Resolved { node: rt } } =>
           let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: rt)
           let elem = for_each_element_type_node(n: resolved)
-          // Dynamic audit: correct guard -- if sort_by element type is Dynamic,
+          // Dynamic audit: correct guard — if sort_by element type is Dynamic,
           // fall back to "_" so Rust infers the closure param type.
           if elem.name != "" && elem.name != "Dynamic" {
             emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
@@ -2526,7 +2533,7 @@ fn emit_record_lit_full(type_name: String?, fields: List<FieldInit>, span: Sourc
   let inferred = infer_record_lit(type_name: type_name, field_inits: fields, span: span, scope: scope)
   match inferred.typed.expr_data {
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: inferred.typed), registry: registry, scope: scope, depth: 0, vtoe: empty_name_map(), rc_types: rc_types, emit_info: emit_info)
+      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: inferred.typed), registry: registry, scope: scope, depth: 0, vtoe: empty_map(), rc_types: rc_types, emit_info: emit_info)
     _ =>
       "compile_error!(\"internal error: infer_record_lit did not produce ExprRecordLit\")"
   }
@@ -2573,7 +2580,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
       }
     ExprFieldAccess { base: b, field: f, summary: fa_summary } =>
       // If the base type is known and this field has OptionalValue shape,
-      // the result is already Option<T> -- don't double-wrap in Some().
+      // the result is already Option<T> — don't double-wrap in Some().
       // Check 1: field_summary from reconcile directly says OptionalValue
       let summary_says_optional = match fa_summary {
         Some { value: fs } => match fs.value_shape { OptionalValue => true, _ => false }
@@ -2614,7 +2621,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
 fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
-  // Dynamic audit (both branches below): correct guards -- when a field's type is
+  // Dynamic audit (both branches below): correct guards — when a field's type is
   // Dynamic, return none rather than using "Dynamic" as a parent type qualifier.
   // The caller falls back to other disambiguation strategies (vtoe, parent_enum).
   // First try: direct children (works for Conj/struct nodes)
@@ -2700,7 +2707,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
   match qualified_name {
     None =>
       // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
-      if node_is_product(n: resolved_type) && resolved_type.name == "" {
+      let kind = classify_type_structure(n: resolved_type)
+      if (kind == TypeConj) && resolved_type.name == "" {
         if fields |> count == 1 {
           match fields |> first {
             Some { value: f } =>
@@ -2735,7 +2743,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           match vtoe_lookup {
             Some { value: vtoe_parent } => Some { value: vtoe_parent }
             None =>
-              // Dynamic audit: correct guard -- when resolved_type is Dynamic or Error,
+              // Dynamic audit: correct guard — when resolved_type is Dynamic or Error,
               // don't use it as the enum parent qualifier. Fall through to parent_enum.
               if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
                 Some { value: resolved_type.name }
@@ -3183,7 +3191,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_rc_types()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3191,7 +3199,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: empty_rc_types())
+  let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: empty_map())
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_return_type = rt_type(n: op_node)
   let real_body = emit_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry, depth: depth + 2, return_type: op_return_type)
@@ -3290,11 +3298,12 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 
 fn emit_shell_return(return_type: Node) -> String {
   let effective = unwrap_single_field_product(n: return_type)
+  let kind = classify_type_structure(n: effective)
   if effective.name == "Bool" || effective.name == "bool" {
     "Ok(output.status.success())"
   } else if effective.name == "List" || effective.name == "Vec" || node_is_container(n: effective) {
     "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
-  } else if node_is_product(n: effective) && effective.children |> count > 1 {
+  } else if kind == TypeConj && effective.children |> count > 1 {
     concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
   } else {
     "Ok(stdout)"
@@ -3302,7 +3311,8 @@ fn emit_shell_return(return_type: Node) -> String {
 }
 
 fn unwrap_single_field_product(n: Node) -> Node {
-  if node_is_product(n: n) && n.name == "" && n.children |> count == 1 {
+  let kind = classify_type_structure(n: n)
+  if kind == TypeConj && n.name == "" && n.children |> count == 1 {
     match n.children |> first {
       Some { value: field_node } => rt_type(n: field_node)
       None => n
@@ -3312,7 +3322,8 @@ fn unwrap_single_field_product(n: Node) -> Node {
 
 fn emit_file_call(op_name: String, return_type: Node) -> String {
   let effective = unwrap_single_field_product(n: return_type)
-  let parse_line = if node_is_product(n: effective) && effective.children |> count > 1 {
+  let kind = classify_type_structure(n: effective)
+  let parse_line = if kind == TypeConj && effective.children |> count > 1 {
     "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
   } else {
     "Ok(content)"
@@ -3351,7 +3362,7 @@ fn emit_resource_def(item: Node) -> String {
 
 fn emit_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_rc_types()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3359,7 +3370,7 @@ fn emit_capability_method(cap_node: Node) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_node_type_rc(n: rt_type(n: cap_node), target: Rust, rc_types: empty_rc_types())
+  let ret = emit_node_type_rc(n: rt_type(n: cap_node), target: Rust, rc_types: empty_map())
   concat("async fn ", emit_ident(name: cap_node.name, target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
@@ -3375,10 +3386,10 @@ fn emit_capability_method(cap_node: Node) -> String {
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   // Data defs use lazy_static (requires Sync) or serde (requires Deserialize),
   // so render types without Rc wrapping.
-  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_rc_types())
+  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_map())
   let upper_name = to_screaming_snake(name: name)
   if is_simple_type_node(n: type_node) {
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
     concat(rust_visibility_prefix(), "const ", upper_name, ": ", ty_str, " = ", val_str, ";")
   } else if has_nested_records_node(n: type_node) {
     // Complex data with nested anonymous records -> serde deserialization
@@ -3393,7 +3404,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     match value.expr_data {
       ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
         let inserts = fs |> map(f =>
-          let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
+          let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
           concat("        __m.insert(\"", f.name, "\".to_string(), ", val_str, ");")
         )
         let inserts_str = inserts |> join(separator: "\n")
@@ -3405,14 +3416,14 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
           "    };\n",
           "}")
       _ =>
-        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
+        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
         concat("lazy_static::lazy_static! {\n",
           "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
           "}")
     }
   } else {
     // Complex types use lazy_static for heap-allocated values
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
     concat("lazy_static::lazy_static! {\n",
       "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
       "}")
@@ -3451,7 +3462,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(p.name, ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_rc_types())))
+    |> map(p => concat(p.name, ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map())))
     |> join(separator: ", ")
   concat(
     "// Signature: ",

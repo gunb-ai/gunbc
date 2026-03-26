@@ -35,14 +35,6 @@ pub struct CallEdge {
     pub callee: String,
 }
 
-pub fn empty_name_set() -> Rc<HashMap<String, bool>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
-pub fn empty_resolved_name_map() -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
-    Rc::new(std::collections::HashMap::new())
-}
-
 pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<CallEdge>>> {
     {
     let mut __flat_mapped_0 = Vec::new();
@@ -400,7 +392,7 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
     Rc::new(__mapped_3)
 };
     let local_func_set = {
-    let mut __acc_5 = empty_name_set();
+    let mut __acc_5 = Rc::new(std::collections::HashMap::new());
     for __elem_6 in local_func_names.iter().cloned() {
         __acc_5 = {
     let __rc_8 = __acc_5;
@@ -413,7 +405,7 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
 };
     let call_edges = collect_func_call_edges(items.clone(), local_func_set.clone());
     let parent_resolved = {
-    let mut __acc_13 = empty_resolved_name_map();
+    let mut __acc_13: Rc<std::collections::HashMap<String, Rc<ResolvedFuncSig>>> = Rc::new(std::collections::HashMap::new());
     for __elem_14 in ({
     let __rc_9 = declared_sigs.clone();
     let __map_unwrapped_10 = Rc::try_unwrap(__rc_9).unwrap_or_else(|rc| (*rc).clone());
