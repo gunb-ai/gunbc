@@ -13,6 +13,7 @@ import v2.std.core {
   Node,
   ExprData, NoExprData,
   InferredNode, Resolved,
+  NodeType, Typed, InferError, Untyped,
   Cardinality, Required,
   Diagnostic, Severity, Error,
   ErrorCategory, FieldNotFound, VariantNotFound, InvalidOperation,
@@ -36,9 +37,18 @@ import v2.compiler.infer_env {
 // =========================================================================
 
 type NodeLookupResult {
-  resolved: Node
+  status: NodeLookupStatus
   diagnostics: List<Diagnostic>
 }
+
+type NodeLookupStatus
+  = LookupResolved { node: Node }
+  | LookupFailed
+
+type PatternSubject
+  = PatternResolved { node: Node }
+  | PatternDynamic { span: SourceSpan }
+  | PatternLookupBlocked
 
 // =========================================================================
 // Variant lookup
@@ -46,16 +56,62 @@ type NodeLookupResult {
 
 // Synthesize a "Some { value: T }" variant node for Optional pattern matching.
 // Optional is represented as [inner_type, None] — no explicit "Some" child.
-fn synthesize_optional_some_variant(scrut: Node) -> NodeLookupResult {
+fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
   let value_field = Node { name: "value", span: scrut.span, children: [], connective: none, params: [], return_type: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
   let some_node = Node { name: "Some", span: scrut.span, children: [value_field], connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  NodeLookupResult { resolved: some_node, diagnostics: [] }
+  some_node
+}
+
+fn pattern_subject_from_node(n: Node) -> PatternSubject {
+  if n.name == "Dynamic" {
+    PatternDynamic { span: n.span }
+  } else if n.name == "Error" {
+    PatternLookupBlocked
+  } else {
+    PatternResolved { node: n }
+  }
+}
+
+fn pattern_subject_from_node_type(n: NodeType, span: SourceSpan) -> PatternSubject {
+  match n {
+    Typed { node: resolved } => pattern_subject_from_node(n: resolved)
+    InferError { message: _, span: _ } => PatternLookupBlocked
+    Untyped => PatternLookupBlocked
+  }
+}
+
+fn node_lookup_resolved(node: Node) -> NodeLookupResult {
+  NodeLookupResult {
+    status: LookupResolved { node: node },
+    diagnostics: []
+  }
+}
+
+fn node_lookup_failed(diagnostics: List<Diagnostic>) -> NodeLookupResult {
+  NodeLookupResult {
+    status: LookupFailed,
+    diagnostics: diagnostics
+  }
+}
+
+fn lookup_result_subject(result: NodeLookupResult) -> PatternSubject {
+  match result.status {
+    LookupResolved { node: resolved } => pattern_subject_from_node(n: resolved)
+    LookupFailed => PatternLookupBlocked
+  }
+}
+
+fn pattern_binding_type(subject: PatternSubject) -> Node {
+  match subject {
+    PatternResolved { node: resolved } => resolved
+    PatternDynamic { span: _ } => error_type_node()
+    PatternLookupBlocked => error_type_node()
+  }
 }
 
 fn variant_not_found_result(scrut: Node, variant_name: String, module_name: String) -> NodeLookupResult {
-  NodeLookupResult {
-    resolved: scrut,
+  node_lookup_failed(
     diagnostics: [Diagnostic {
       severity: Error,
       message: concat("variant '", concat(variant_name, concat("' not found in type '", concat(scrut.name, "'")))),
@@ -63,84 +119,68 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
       module_name: Some { value: module_name },
       category: Some { value: VariantNotFound }
     }]
-  }
+  )
 }
 
-fn lookup_variant_in_type(scrut: Node, variant_name: String, module_name: String) -> NodeLookupResult {
-  let scrut_opt = node_is_optional(n: scrut)
-  if scrut.name == "Error" {
-    // Error type cascade: suppress diagnostics. The real error is upstream.
-    NodeLookupResult {
-      resolved: error_type_node(),
-      diagnostics: []
-    }
-  } else if scrut.name == "Dynamic" {
-    NodeLookupResult {
-      resolved: error_type_node(),
-      diagnostics: [Diagnostic {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String) -> NodeLookupResult {
+  match scrut {
+    PatternLookupBlocked =>
+      node_lookup_failed(diagnostics: [])
+    PatternDynamic { span: dynamic_span } =>
+      node_lookup_failed(diagnostics: [Diagnostic {
         severity: Error,
         message: concat("cannot resolve variant '", concat(variant_name, "' on Dynamic scrutinee")),
-        span: Some { value: scrut.span },
+        span: Some { value: dynamic_span },
         module_name: Some { value: module_name },
         category: Some { value: VariantNotFound }
-      }]
-    }
-  } else if node_has_structure(n: scrut) == false && scrut.children |> count == 0 && scrut_opt == false {
-    // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
-    NodeLookupResult {
-      resolved: error_type_node(),
-      diagnostics: []
-    }
-  } else {
-    let direct_match = scrut.children |> filter(c => c.name == variant_name) |> first
-    let fallback = if scrut_opt && variant_name == "Some" {
-      synthesize_optional_some_variant(scrut: scrut)
-    } else if scrut_opt && variant_name == "None" {
-      NodeLookupResult { resolved: leaf_node(name: "None"), diagnostics: [] }
-    } else {
-      variant_not_found_result(scrut: scrut, variant_name: variant_name, module_name: module_name)
-    }
-    match direct_match {
-      Some { value: v } => NodeLookupResult { resolved: v, diagnostics: [] }
-      None => fallback
-    }
+      }])
+    PatternResolved { node: scrut_node } =>
+      let scrut_opt = node_is_optional(n: scrut_node)
+      if node_has_structure(n: scrut_node) == false && scrut_node.children |> count == 0 && scrut_opt == false {
+        // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
+        node_lookup_failed(diagnostics: [])
+      } else {
+        let direct_match = scrut_node.children |> filter(c => c.name == variant_name) |> first
+        let fallback = if scrut_opt && variant_name == "Some" {
+          node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
+        } else if scrut_opt && variant_name == "None" {
+          node_lookup_resolved(node: leaf_node(name: "None"))
+        } else {
+          variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name)
+        }
+        match direct_match {
+          Some { value: v } => node_lookup_resolved(node: v)
+          None => fallback
+        }
+      }
   }
 }
 
-fn lookup_field_in_variant(variant: Node, field_name: String, module_name: String) -> NodeLookupResult {
-  if variant.name == "Error" {
-    // Error type cascade: suppress diagnostics. The real error is upstream.
-    NodeLookupResult {
-      resolved: error_type_node(),
-      diagnostics: []
-    }
-  } else if variant.name == "Dynamic" {
-    NodeLookupResult {
-      resolved: error_type_node(),
-      diagnostics: [Diagnostic {
+fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String) -> NodeLookupResult {
+  match variant {
+    PatternLookupBlocked =>
+      node_lookup_failed(diagnostics: [])
+    PatternDynamic { span: dynamic_span } =>
+      node_lookup_failed(diagnostics: [Diagnostic {
         severity: Error,
         message: concat("cannot resolve field '", concat(field_name, "' on Dynamic variant")),
-        span: Some { value: variant.span },
+        span: Some { value: dynamic_span },
         module_name: Some { value: module_name },
         category: Some { value: FieldNotFound }
-      }]
-    }
-  } else {
-    match variant.children |> filter(c => c.name == field_name) |> first {
-      Some { value: field_child } =>
-        let resolved = child_return_type_or_name(ch: field_child)
-        NodeLookupResult { resolved: resolved, diagnostics: [] }
-      None => NodeLookupResult {
-        resolved: error_type_node(),
-        diagnostics: [Diagnostic {
+      }])
+    PatternResolved { node: variant_node } =>
+      match variant_node.children |> filter(c => c.name == field_name) |> first {
+        Some { value: field_child } =>
+          let resolved = child_return_type_or_name(ch: field_child)
+          node_lookup_resolved(node: resolved)
+        None => node_lookup_failed(diagnostics: [Diagnostic {
           severity: Error,
-          message: concat("field '", concat(field_name, concat("' not found in variant '", concat(variant.name, "'")))),
-          span: Some { value: variant.span },
+          message: concat("field '", concat(field_name, concat("' not found in variant '", concat(variant_node.name, "'")))),
+          span: Some { value: variant_node.span },
           module_name: Some { value: module_name },
           category: Some { value: FieldNotFound }
-        }]
+        }])
       }
-    }
   }
 }
 

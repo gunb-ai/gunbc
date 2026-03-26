@@ -134,10 +134,10 @@ import v2.compiler.infer_service {
   service_op_entry
 }
 import v2.compiler.infer_patterns {
-  NodeLookupResult,
+  NodeLookupResult, PatternSubject,
   lookup_variant_in_type, lookup_field_in_variant,
-  synthesize_optional_some_variant,
-  variant_not_found_result,
+  pattern_subject_from_node_type, pattern_subject_from_node,
+  lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness
 }
 import v2.compiler.infer_lookup {
@@ -468,6 +468,14 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   }
 }
 
+fn inferred_from_node_type(result: NodeType, fallback_message: String, fallback_span: SourceSpan) -> InferredNode {
+  match result {
+    Typed { node: resolved } => Resolved { node: resolved }
+    InferError { message: message, span: span } => CompilerError { message: message, span: span }
+    Untyped => CompilerError { message: fallback_message, span: fallback_span }
+  }
+}
+
 fn lambda_semantics_from_param_types(param_types: List<Node>) -> LambdaSemantics {
   LambdaSemantics { param_types: param_types }
 }
@@ -481,21 +489,39 @@ fn lambda_param_types_from_scope(scope: InferScope, params: List<String>) -> Lis
   )
 }
 
-fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_type: Node, scope: InferScope) -> MatchPattern {
+fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
+  match scrutinee_subject {
+    PatternResolved { node: scrutinee_type } =>
+      pattern_subject_from_node(n: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type))
+    PatternDynamic { span: dynamic_span } =>
+      PatternDynamic { span: dynamic_span }
+    PatternLookupBlocked =>
+      PatternLookupBlocked
+  }
+}
+
+fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: PatternSubject, scope: InferScope) -> MatchPattern {
   match pattern {
     VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings } =>
-      let resolved_scrut = resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)
-      let inferred_parent = if node_is_optional(n: resolved_scrut) && (variant_name == "Some" || variant_name == "None") {
-        Some { value: "Optional" }
-      } else if node_is_coproduct(n: resolved_scrut) {
-        Some { value: resolved_scrut.name }
-      } else { none }
+      let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
+      let inferred_parent = match resolved_scrut {
+        PatternResolved { node: resolved_scrut_node } =>
+          if node_is_optional(n: resolved_scrut_node) && (variant_name == "Some" || variant_name == "None") {
+            Some { value: "Optional" }
+          } else if node_is_coproduct(n: resolved_scrut_node) {
+            Some { value: resolved_scrut_node.name }
+          } else { none }
+        PatternDynamic { span: _ } => none
+        PatternLookupBlocked => none
+      }
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name)
+      let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
-        let field_lookup = lookup_field_in_variant(variant: variant_lookup.resolved, field_name: binding.field_name, module_name: scope.module_name)
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: binding.field_name, module_name: scope.module_name)
+        let field_subject = lookup_result_subject(result: field_lookup)
         FieldBinding {
           field_name: binding.field_name,
-          binding: annotate_pattern_parent_enums(pattern: binding.binding, scrutinee_type: field_lookup.resolved, scope: scope)
+          binding: annotate_pattern_parent_enums(pattern: binding.binding, scrutinee_subject: field_subject, scope: scope)
         }
       )
       match inferred_parent {
@@ -569,28 +595,27 @@ fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> Infe
   }
 }
 
-fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_type: Node) -> PatternScopeResult {
+fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scrutinee_subject: PatternSubject) -> PatternScopeResult {
   match pattern {
-    Bind { name: n } => PatternScopeResult { scope: extend_scope(scope: scope, name: n, resolved: scrutinee_type), diagnostics: [] }
+    Bind { name: n } => PatternScopeResult { scope: extend_scope(scope: scope, name: n, resolved: pattern_binding_type(subject: scrutinee_subject)), diagnostics: [] }
     Wildcard => PatternScopeResult { scope: scope, diagnostics: [] }
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
-      let resolved_scrut = resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)
-      // Find variant child by name in the Disj node
+      let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name)
-      let variant_node = variant_lookup.resolved
+      let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
-        // Find field in variant's children
-        let field_lookup = lookup_field_in_variant(variant: variant_node, field_name: fb.field_name, module_name: scope.module_name)
-        let field_type = field_lookup.resolved
+        let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: fb.field_name, module_name: scope.module_name)
+        let field_subject = lookup_result_subject(result: field_lookup)
+        let field_type = pattern_binding_type(subject: field_subject)
         match fb.binding {
           Bind { name: n } => PatternScopeResult {
             scope: extend_scope(scope: acc.scope, name: n, resolved: field_type),
             diagnostics: concat(acc.diagnostics, field_lookup.diagnostics)
           }
           _ =>
-            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb.binding, scrutinee_type: field_type)
+            let nested = extend_scope_with_pattern_node(scope: acc.scope, pattern: fb.binding, scrutinee_subject: field_subject)
             PatternScopeResult {
               scope: nested.scope,
               diagnostics: concat(acc.diagnostics, concat(field_lookup.diagnostics, nested.diagnostics))
@@ -1222,9 +1247,10 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let scrut_typed = scrut_result.typed
       let scrut_diags = scrut_result.diagnostics
       let scrut_rt = rt_type(n: scrut_typed)
+      let scrut_subject = pattern_subject_from_node_type(n: rt_node(n: scrut_typed), span: scrut_typed.span)
       let arm_infer_results = arms |> map(arm =>
-        let typed_pattern = annotate_pattern_parent_enums(pattern: arm.pattern, scrutinee_type: scrut_rt, scope: scope)
-        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_type: scrut_rt)
+        let typed_pattern = annotate_pattern_parent_enums(pattern: arm.pattern, scrutinee_subject: scrut_subject, scope: scope)
+        let pattern_result = extend_scope_with_pattern_node(scope: scope, pattern: typed_pattern, scrutinee_subject: scrut_subject)
         let arm_scope = pattern_result.scope
         let pattern_diags = pattern_result.diagnostics
         let guard_result = if arm.guard != none {
@@ -1265,13 +1291,18 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       } else {
         []
       }
-      let exhaustiveness_diags = check_match_exhaustiveness(
-        scrutinee_type: scrut_rt,
-        arms: typed_arms,
-        env: scope.type_env,
-        span: span,
-        module_name: scope.module_name
-      )
+      let exhaustiveness_diags = match resolve_pattern_subject(scope: scope, scrutinee_subject: scrut_subject) {
+        PatternResolved { node: resolved_scrutinee } =>
+          check_match_exhaustiveness(
+            scrutinee_type: resolved_scrutinee,
+            arms: typed_arms,
+            env: scope.type_env,
+            span: span,
+            module_name: scope.module_name
+          )
+        PatternDynamic { span: _ } => []
+        PatternLookupBlocked => []
+      }
       let match_texpr = make_expr_node(expr_data: ExprMatch { scrutinee: scrut_typed, arms: typed_arms }, return_type: Some { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: match_texpr,
@@ -1497,16 +1528,41 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let index_result = infer_expr(texpr: index_expr, scope: scope)
       let index_typed = index_result.typed
       let index_diags = index_result.diagnostics
-      let index_check = check_index_access_node(
-        base_type: rt_type(n: base_typed),
-        index_type: rt_type(n: index_typed),
-        span: span,
-        module_name: scope.module_name
-      )
-      let idx_texpr = make_expr_node(expr_data: ExprIndex { base: base_typed, index: index_typed }, return_type: Some { value: Resolved { node: index_check.resolved_type } }, span: span)
+      let base_type_result = rt_node(n: base_typed)
+      let index_type_result = rt_node(n: index_typed)
+      let index_check = match base_type_result {
+        Typed { node: base_type } =>
+          match index_type_result {
+            Typed { node: index_type } =>
+              Some { value: check_index_access_node(
+                base_type: base_type,
+                index_type: index_type,
+                span: span,
+                module_name: scope.module_name
+              ) }
+            InferError { message: _, span: _ } => none
+            Untyped => none
+          }
+        InferError { message: _, span: _ } => none
+        Untyped => none
+      }
+      let access_failure_source = match base_type_result {
+        Typed { node: _ } => index_type_result
+        InferError { message: _, span: _ } => base_type_result
+        Untyped => base_type_result
+      }
+      let idx_return_type = match index_check {
+        Some { value: checked } => checked.return_type
+        None => Some { value: inferred_from_node_type(result: access_failure_source, fallback_message: "invalid index access", fallback_span: span) }
+      }
+      let index_access_diags = match index_check {
+        Some { value: checked } => checked.diagnostics
+        None => []
+      }
+      let idx_texpr = make_expr_node(expr_data: ExprIndex { base: base_typed, index: index_typed }, return_type: idx_return_type, span: span)
       InferResult {
         typed: idx_texpr,
-        diagnostics: concat(base_diags, index_diags, index_check.diagnostics)
+        diagnostics: concat(base_diags, index_diags, index_access_diags)
       }
 
     ExprSlice { base: base_expr, start: start_expr, end: end_expr } =>
@@ -1520,17 +1576,53 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let end_result = infer_expr(texpr: end_expr, scope: scope)
       let end_typed = end_result.typed
       let end_diags = end_result.diagnostics
-      let slice_check = check_slice_access_node(
-        base_type: rt_type(n: base_typed),
-        start_type: rt_type(n: start_typed),
-        end_type: rt_type(n: end_typed),
-        span: span,
-        module_name: scope.module_name
-      )
-      let slc_texpr = make_expr_node(expr_data: ExprSlice { base: base_typed, start: start_typed, end: end_typed }, return_type: Some { value: Resolved { node: slice_check.resolved_type } }, span: span)
+      let base_type_result = rt_node(n: base_typed)
+      let start_type_result = rt_node(n: start_typed)
+      let end_type_result = rt_node(n: end_typed)
+      let slice_check = match base_type_result {
+        Typed { node: base_type } =>
+          match start_type_result {
+            Typed { node: start_type } =>
+              match end_type_result {
+                Typed { node: end_type } =>
+                  Some { value: check_slice_access_node(
+                    base_type: base_type,
+                    start_type: start_type,
+                    end_type: end_type,
+                    span: span,
+                    module_name: scope.module_name
+                  ) }
+                InferError { message: _, span: _ } => none
+                Untyped => none
+              }
+            InferError { message: _, span: _ } => none
+            Untyped => none
+          }
+        InferError { message: _, span: _ } => none
+        Untyped => none
+      }
+      let access_failure_source = match base_type_result {
+        Typed { node: _ } =>
+          match start_type_result {
+            Typed { node: _ } => end_type_result
+            InferError { message: _, span: _ } => start_type_result
+            Untyped => start_type_result
+          }
+        InferError { message: _, span: _ } => base_type_result
+        Untyped => base_type_result
+      }
+      let slc_return_type = match slice_check {
+        Some { value: checked } => checked.return_type
+        None => Some { value: inferred_from_node_type(result: access_failure_source, fallback_message: "invalid slice access", fallback_span: span) }
+      }
+      let slice_access_diags = match slice_check {
+        Some { value: checked } => checked.diagnostics
+        None => []
+      }
+      let slc_texpr = make_expr_node(expr_data: ExprSlice { base: base_typed, start: start_typed, end: end_typed }, return_type: slc_return_type, span: span)
       InferResult {
         typed: slc_texpr,
-        diagnostics: concat(base_diags, start_diags, end_diags, slice_check.diagnostics)
+        diagnostics: concat(base_diags, start_diags, end_diags, slice_access_diags)
       }
 
     ExprReturn { value: inner_expr } =>

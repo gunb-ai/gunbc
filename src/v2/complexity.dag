@@ -161,20 +161,17 @@ type ComplexitySummary {
 // =========================================================================
 
 type CostInternTable {
-  // structural-hash → canonical CostExpr (deduplication)
-  interned: Map<String, CostExpr>
   // func_name → cached summary (lazy computation)
   summaries: Map<String, ComplexitySummary>
 }
 
 fn empty_intern_table() -> CostInternTable {
-  CostInternTable { interned: empty_map(), summaries: empty_map() }
+  CostInternTable { summaries: empty_map() }
 }
 
 // Cache a complexity summary for a function.
 fn cache_summary(table: CostInternTable, func_name: String, summary: ComplexitySummary) -> CostInternTable {
   CostInternTable {
-    interned: table.interned,
     summaries: map_insert(table.summaries, func_name, summary)
   }
 }

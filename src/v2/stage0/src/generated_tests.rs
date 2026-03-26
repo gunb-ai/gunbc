@@ -23002,16 +23002,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       }
 
       // Stage 5: Complexity analysis.
-      // The intern table in build_complexity_report deep-clones O(N²) data
-      // when compiled to Rc-based Rust. Safe for small modules but OOMs on
-      // the full 860+ function compiler. Guard on function count until the
-      // table switches to RefCell or arena allocation.
       let func_entries = extract_func_entries(typed: typed)
-      let complexity = if func_entries |> count > 100 {
-        empty_complexity_report()
-      } else {
-        build_complexity_report(func_entries: func_entries)
-      }
+      let complexity = build_complexity_report(func_entries: func_entries)
 
       // Stage 6: Ownership analysis.
       let ownership = extract_ownership_proofs(typed: typed)
@@ -23206,20 +23198,17 @@ type ComplexitySummary {
 // =========================================================================
 
 type CostInternTable {
-  // structural-hash → canonical CostExpr (deduplication)
-  interned: Map<String, CostExpr>
   // func_name → cached summary (lazy computation)
   summaries: Map<String, ComplexitySummary>
 }
 
 fn empty_intern_table() -> CostInternTable {
-  CostInternTable { interned: empty_map(), summaries: empty_map() }
+  CostInternTable { summaries: empty_map() }
 }
 
 // Cache a complexity summary for a function.
 fn cache_summary(table: CostInternTable, func_name: String, summary: ComplexitySummary) -> CostInternTable {
   CostInternTable {
-    interned: table.interned,
     summaries: map_insert(table.summaries, func_name, summary)
   }
 }

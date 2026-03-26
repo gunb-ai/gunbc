@@ -106,6 +106,44 @@ type ConfigResult { config: ServiceConfig, state: ParserState, err: Diagnostic? 
 // Pratt parser binding power
 type BindingPower { left: Int, right: Int }
 
+type ExpectedToken
+  = ExpectKwModule
+  | ExpectKwImport
+  | ExpectKwType
+  | ExpectKwFn
+  | ExpectKwFunc
+  | ExpectKwService
+  | ExpectKwResource
+  | ExpectKwData
+  | ExpectKwExtern
+  | ExpectKwInterface
+  | ExpectKwPattern
+  | ExpectKwLet
+  | ExpectKwReturn
+  | ExpectKwMatch
+  | ExpectKwIf
+  | ExpectKwElse
+  | ExpectKwFor
+  | ExpectKwIn
+  | ExpectKwCapability
+  | ExpectKwOperation
+  | ExpectLBrace
+  | ExpectRBrace
+  | ExpectLParen
+  | ExpectRParen
+  | ExpectLBracket
+  | ExpectRBracket
+  | ExpectLt
+  | ExpectGt
+  | ExpectFatArrow
+  | ExpectArrow
+  | ExpectColon
+  | ExpectComma
+  | ExpectDot
+  | ExpectEq
+  | ExpectQuestion
+  | ExpectPipe
+
 // List results
 type ImportsResult { imports: List<Import>, state: ParserState, err: Diagnostic? }
 type ItemsResult { items: List<Node>, state: ParserState, err: Diagnostic? }
@@ -770,91 +808,92 @@ fn kind_tag(kind: TokenKind) -> String {
   }
 }
 
-// kind_matches_tag -- structural match for tag-based dispatch.
-// Maps a tag string to the corresponding TokenKind predicate.
-// Used by expect/eat which still take string tags for error messages.
-fn kind_matches_tag(kind: TokenKind, tag: String) -> Bool {
-  if tag == "KwModule" { is_kw_module_kind(kind: kind) }
-  else if tag == "KwImport" { is_kw_import_kind(kind: kind) }
-  else if tag == "KwType" { is_kw_type_kind(kind: kind) }
-  else if tag == "KwFn" { is_kw_fn_kind(kind: kind) }
-  else if tag == "KwFunc" { is_kw_func_kind(kind: kind) }
-  else if tag == "KwService" { is_kw_service_kind(kind: kind) }
-  else if tag == "KwResource" { is_kw_resource_kind(kind: kind) }
-  else if tag == "KwData" { is_kw_data_kind(kind: kind) }
-  else if tag == "KwExtern" { is_kw_extern_kind(kind: kind) }
-  else if tag == "KwInterface" { is_kw_interface_kind(kind: kind) }
-  else if tag == "KwPipeline" { is_kw_pipeline_kind(kind: kind) }
-  else if tag == "KwProfile" { is_kw_profile_kind(kind: kind) }
-  else if tag == "KwPattern" { is_kw_pattern_kind(kind: kind) }
-  else if tag == "KwLet" { is_kw_let_kind(kind: kind) }
-  else if tag == "KwReturn" { is_kw_return_kind(kind: kind) }
-  else if tag == "KwMatch" { is_kw_match_kind(kind: kind) }
-  else if tag == "KwIf" { is_kw_if_kind(kind: kind) }
-  else if tag == "KwElse" { is_kw_else_kind(kind: kind) }
-  else if tag == "KwFor" { is_kw_for_kind(kind: kind) }
-  else if tag == "KwIn" { is_kw_in_kind(kind: kind) }
-  else if tag == "KwWhere" { is_kw_where_kind(kind: kind) }
-  else if tag == "KwWith" { is_kw_with_kind(kind: kind) }
-  else if tag == "KwTrue" { is_kw_true_kind(kind: kind) }
-  else if tag == "KwFalse" { is_kw_false_kind(kind: kind) }
-  else if tag == "KwNone" { is_kw_none_kind(kind: kind) }
-  else if tag == "KwAcquire" { is_kw_acquire_kind(kind: kind) }
-  else if tag == "KwRelease" { is_kw_release_kind(kind: kind) }
-  else if tag == "KwCapability" { is_kw_capability_kind(kind: kind) }
-  else if tag == "KwOperation" { is_kw_operation_kind(kind: kind) }
-  else if tag == "KwInput" { is_kw_input_kind(kind: kind) }
-  else if tag == "KwOutput" { is_kw_output_kind(kind: kind) }
-  else if tag == "KwIdempotent" { is_kw_idempotent_kind(kind: kind) }
-  else if tag == "KwReadonly" { is_kw_readonly_kind(kind: kind) }
-  else if tag == "KwHermetic" { is_kw_hermetic_kind(kind: kind) }
-  else if tag == "LBrace" { is_lbrace_kind(kind: kind) }
-  else if tag == "RBrace" { is_rbrace_kind(kind: kind) }
-  else if tag == "LParen" { is_lparen_kind(kind: kind) }
-  else if tag == "RParen" { is_rparen_kind(kind: kind) }
-  else if tag == "LBracket" { is_lbracket_kind(kind: kind) }
-  else if tag == "RBracket" { is_rbracket_kind(kind: kind) }
-  else if tag == "Lt" { is_lt_kind(kind: kind) }
-  else if tag == "Gt" { is_gt_kind(kind: kind) }
-  else if tag == "Le" { is_le_kind(kind: kind) }
-  else if tag == "Ge" { is_ge_kind(kind: kind) }
-  else if tag == "FatArrow" { is_fat_arrow_kind(kind: kind) }
-  else if tag == "Arrow" { is_arrow_kind(kind: kind) }
-  else if tag == "Colon" { is_colon_kind(kind: kind) }
-  else if tag == "Comma" { is_comma_kind(kind: kind) }
-  else if tag == "Dot" { is_dot_kind(kind: kind) }
-  else if tag == "DotDot" { is_dot_dot_kind(kind: kind) }
-  else if tag == "Eq" { is_eq_kind(kind: kind) }
-  else if tag == "EqEq" { is_eq_eq_kind(kind: kind) }
-  else if tag == "Ne" { is_ne_kind(kind: kind) }
-  else if tag == "Plus" { is_plus_kind(kind: kind) }
-  else if tag == "Minus" { is_minus_kind(kind: kind) }
-  else if tag == "Star" { is_star_kind(kind: kind) }
-  else if tag == "Slash" { is_slash_kind(kind: kind) }
-  else if tag == "Percent" { is_percent_kind(kind: kind) }
-  else if tag == "Bang" { is_bang_kind(kind: kind) }
-  else if tag == "And" { is_and_kind(kind: kind) }
-  else if tag == "Or" { is_or_kind(kind: kind) }
-  else if tag == "Question" { is_question_kind(kind: kind) }
-  else if tag == "NullCoalesce" { is_null_coalesce_kind(kind: kind) }
-  else if tag == "Pipe" { is_pipe_kind(kind: kind) }
-  else if tag == "PipeArrow" { is_pipe_arrow_kind(kind: kind) }
-  else if tag == "Ident" { is_ident_kind(kind: kind) }
-  else if tag == "LitStr" { is_lit_str_kind(kind: kind) }
-  else if tag == "LitInt" { is_lit_int_kind(kind: kind) }
-  else if tag == "LitFloat" { is_lit_float_kind(kind: kind) }
-  else if tag == "StrBegin" { is_str_begin_kind(kind: kind) }
-  else if tag == "StrMid" { is_str_mid_kind(kind: kind) }
-  else if tag == "StrEnd" { is_str_end_kind(kind: kind) }
-  else if tag == "Newline" { is_newline_kind(kind: kind) }
-  else if tag == "Eof" { is_eof_kind(kind: kind) }
-  else { false }
+fn expected_token_name(expected: ExpectedToken) -> String {
+  match expected {
+    ExpectKwModule => "KwModule"
+    ExpectKwImport => "KwImport"
+    ExpectKwType => "KwType"
+    ExpectKwFn => "KwFn"
+    ExpectKwFunc => "KwFunc"
+    ExpectKwService => "KwService"
+    ExpectKwResource => "KwResource"
+    ExpectKwData => "KwData"
+    ExpectKwExtern => "KwExtern"
+    ExpectKwInterface => "KwInterface"
+    ExpectKwPattern => "KwPattern"
+    ExpectKwLet => "KwLet"
+    ExpectKwReturn => "KwReturn"
+    ExpectKwMatch => "KwMatch"
+    ExpectKwIf => "KwIf"
+    ExpectKwElse => "KwElse"
+    ExpectKwFor => "KwFor"
+    ExpectKwIn => "KwIn"
+    ExpectKwCapability => "KwCapability"
+    ExpectKwOperation => "KwOperation"
+    ExpectLBrace => "LBrace"
+    ExpectRBrace => "RBrace"
+    ExpectLParen => "LParen"
+    ExpectRParen => "RParen"
+    ExpectLBracket => "LBracket"
+    ExpectRBracket => "RBracket"
+    ExpectLt => "Lt"
+    ExpectGt => "Gt"
+    ExpectFatArrow => "FatArrow"
+    ExpectArrow => "Arrow"
+    ExpectColon => "Colon"
+    ExpectComma => "Comma"
+    ExpectDot => "Dot"
+    ExpectEq => "Eq"
+    ExpectQuestion => "Question"
+    ExpectPipe => "Pipe"
+  }
 }
 
-fn expect(tokens: List<Token>, state: ParserState, tag: String) -> TokenResult {
+fn kind_matches_expected(kind: TokenKind, expected: ExpectedToken) -> Bool {
+  match expected {
+    ExpectKwModule => is_kw_module_kind(kind: kind)
+    ExpectKwImport => is_kw_import_kind(kind: kind)
+    ExpectKwType => is_kw_type_kind(kind: kind)
+    ExpectKwFn => is_kw_fn_kind(kind: kind)
+    ExpectKwFunc => is_kw_func_kind(kind: kind)
+    ExpectKwService => is_kw_service_kind(kind: kind)
+    ExpectKwResource => is_kw_resource_kind(kind: kind)
+    ExpectKwData => is_kw_data_kind(kind: kind)
+    ExpectKwExtern => is_kw_extern_kind(kind: kind)
+    ExpectKwInterface => is_kw_interface_kind(kind: kind)
+    ExpectKwPattern => is_kw_pattern_kind(kind: kind)
+    ExpectKwLet => is_kw_let_kind(kind: kind)
+    ExpectKwReturn => is_kw_return_kind(kind: kind)
+    ExpectKwMatch => is_kw_match_kind(kind: kind)
+    ExpectKwIf => is_kw_if_kind(kind: kind)
+    ExpectKwElse => is_kw_else_kind(kind: kind)
+    ExpectKwFor => is_kw_for_kind(kind: kind)
+    ExpectKwIn => is_kw_in_kind(kind: kind)
+    ExpectKwCapability => is_kw_capability_kind(kind: kind)
+    ExpectKwOperation => is_kw_operation_kind(kind: kind)
+    ExpectLBrace => is_lbrace_kind(kind: kind)
+    ExpectRBrace => is_rbrace_kind(kind: kind)
+    ExpectLParen => is_lparen_kind(kind: kind)
+    ExpectRParen => is_rparen_kind(kind: kind)
+    ExpectLBracket => is_lbracket_kind(kind: kind)
+    ExpectRBracket => is_rbracket_kind(kind: kind)
+    ExpectLt => is_lt_kind(kind: kind)
+    ExpectGt => is_gt_kind(kind: kind)
+    ExpectFatArrow => is_fat_arrow_kind(kind: kind)
+    ExpectArrow => is_arrow_kind(kind: kind)
+    ExpectColon => is_colon_kind(kind: kind)
+    ExpectComma => is_comma_kind(kind: kind)
+    ExpectDot => is_dot_kind(kind: kind)
+    ExpectEq => is_eq_kind(kind: kind)
+    ExpectQuestion => is_question_kind(kind: kind)
+    ExpectPipe => is_pipe_kind(kind: kind)
+  }
+}
+
+fn expect(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> TokenResult {
   let k = peek_kind(tokens: tokens, state: state)
   let matches = match k {
-    Some { value: kind } => kind_matches_tag(kind: kind, tag: tag)
+    Some { value: kind } => kind_matches_expected(kind: kind, expected: expected)
     None => false
   }
   if matches {
@@ -865,7 +904,8 @@ fn expect(tokens: List<Token>, state: ParserState, tag: String) -> TokenResult {
       Some { value: kind } => kind_tag(kind: kind)
       None => "EOF"
     }
-    TokenResult { token: Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected {tag}, found {found}", span: current_span(tokens: tokens, state: state)) } }
+    let wanted = expected_token_name(expected: expected)
+    TokenResult { token: Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
@@ -987,10 +1027,10 @@ fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> Parser
 }
 
 // Eat: consume the token if it matches, otherwise leave state unchanged.
-fn eat(tokens: List<Token>, state: ParserState, tag: String) -> EatResult {
+fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatResult {
   let k = peek_kind(tokens: tokens, state: state)
   let matches = match k {
-    Some { value: kind } => kind_matches_tag(kind: kind, tag: tag)
+    Some { value: kind } => kind_matches_expected(kind: kind, expected: expected)
     None => false
   }
   if matches {
@@ -1059,7 +1099,7 @@ fn parse_dotted_ident(tokens: List<Token>, state: ParserState) -> NameResult {
 }
 
 fn parse_dotted_ident_rest(tokens: List<Token>, state: ParserState, acc: String) -> NameResult {
-  let e = eat(tokens: tokens, state: state, tag: "Dot")
+  let e = eat(tokens: tokens, state: state, expected: ExpectDot)
   if e.consumed {
     let r = expect_name(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return r }
@@ -1092,7 +1132,7 @@ fn parse_module(tokens: List<Token>, state: ParserState) -> ModuleResult {
   let start_span = current_span(tokens: tokens, state: s)
 
   // module path.name
-  let r = expect(tokens: tokens, state: s, tag: "KwModule")
+  let r = expect(tokens: tokens, state: s, expected: ExpectKwModule)
   if has_err(err: r.err) { return ModuleResult { module: Module { name: "", imports: [], items: [], span: start_span }, state: r.state, err: r.err } }
   let s = r.state
 
@@ -1162,7 +1202,7 @@ fn parse_items_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> 
 fn parse_import(tokens: List<Token>, state: ParserState) -> ImportResult {
   let start_span = current_span(tokens: tokens, state: state)
   let err_import = Import { module_path: "", names: ImportSpecific { names: [] }, span: start_span }
-  let r = expect(tokens: tokens, state: state, tag: "KwImport")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwImport)
   if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
   let s = r.state
 
@@ -1172,13 +1212,13 @@ fn parse_import(tokens: List<Token>, state: ParserState) -> ImportResult {
   let s = r.state
 
   // Optional binding list: { Name1, Name2 }
-  let e = eat(tokens: tokens, state: s, tag: "LBrace")
+  let e = eat(tokens: tokens, state: s, expected: ExpectLBrace)
   if e.consumed {
     let r = parse_import_names(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
     let names = r.names
     let s = r.state
-    let r = expect(tokens: tokens, state: s, tag: "RBrace")
+    let r = expect(tokens: tokens, state: s, expected: ExpectRBrace)
     if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
     let imp = Import { module_path: mod_path, names: ImportSpecific { names: names }, span: start_span }
@@ -1204,7 +1244,7 @@ fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Str
     if has_err(err: r.err) { return NamesResult { names: [], state: r.state, err: r.err } }
     let name = r.name
     let s = skip_newlines(tokens: tokens, state: r.state)
-    let e = eat(tokens: tokens, state: s, tag: "Comma")
+    let e = eat(tokens: tokens, state: s, expected: ExpectComma)
     let s = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { s })
     parse_import_names_acc(tokens: tokens, state: s, acc: list_push(acc, name))
   }
@@ -1283,7 +1323,7 @@ fn outputs_to_return_type(outputs: List<Field>, span: SourceSpan) -> InferredNod
 fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, tag: "KwType")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwType)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -1296,13 +1336,13 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let s = skip_newlines(tokens: tokens, state: type_params_result.state)
 
   // Record type: type Name { fields }
-  let e = eat(tokens: tokens, state: s, tag: "LBrace")
+  let e = eat(tokens: tokens, state: s, expected: ExpectLBrace)
   if e.consumed {
     let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
     let named_dummy = Node { name: name, span: start_span, children: [], params: type_params, return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
-    let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f))
     let item = Node { name: name, span: start_span, children: type_children, connective: Some { value: Conj }, params: type_params, return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -1310,7 +1350,7 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   } else {
     // Sum type or alias: type Name = ...
     // Or bare primitive declaration: type Name (no body)
-    let eq = eat(tokens: tokens, state: s, tag: "Eq")
+    let eq = eat(tokens: tokens, state: s, expected: ExpectEq)
     if eq.consumed {
       let s = skip_newlines(tokens: tokens, state: eq.state)
       parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span, type_params: type_params)
@@ -1390,7 +1430,7 @@ fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<Field
   let r = parse_single_predicate(tokens: tokens, state: state)
   if has_err(err: r.err) { return PredsResult { predicates: [], state: r.state, err: r.err } }
   let acc = list_push(acc, r.predicate)
-  let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+  let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
   if e.consumed {
     parse_predicates_acc(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state), acc: acc)
   } else {
@@ -1410,13 +1450,13 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
   let s = r.state
 
   // Check for (args)
-  let e = eat(tokens: tokens, state: s, tag: "LParen")
+  let e = eat(tokens: tokens, state: s, expected: ExpectLParen)
   if e.consumed {
     match pred_name {
       "pattern" => {
         let r2 = parse_expr(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         match r2.expr.expr_data {
           ExprLiteral { value: LitStr { value: s } } =>
@@ -1428,14 +1468,14 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
       "format" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         PredResult { predicate: FieldInit { name: "Format", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
       }
       "brand" => {
         let r2 = parse_expr(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         match r2.expr.expr_data {
           ExprLiteral { value: LitStr { value: s } } =>
@@ -1447,14 +1487,14 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
       "content" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         PredResult { predicate: FieldInit { name: "ContentEncoding", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
       }
       "domain" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         PredResult { predicate: FieldInit { name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, return_type: none, span: zero_span) }, state: r3.state, err: none }
       }
@@ -1462,7 +1502,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         // range(min: N) | range(max: N) | range(min: N, max: N)
         let r2 = parse_named_int_args(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RParen")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
         // Preserve min/max values as structured record fields
         let min_fields = if r2.min_val != none {
@@ -1492,7 +1532,7 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
 fn parse_named_int_args(tokens: List<Token>, state: ParserState) -> RangeArgsResult {
   let r = parse_single_named_int(tokens: tokens, state: state)
   if has_err(err: r.err) { return RangeArgsResult { min_val: none, max_val: none, state: r.state, err: r.err } }
-  let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+  let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
   if e.consumed {
     let r2 = parse_single_named_int(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
     if has_err(err: r2.err) { return RangeArgsResult { min_val: none, max_val: none, state: r2.state, err: r2.err } }
@@ -1515,7 +1555,7 @@ fn parse_single_named_int(tokens: List<Token>, state: ParserState) -> NamedIntRe
   let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return NamedIntResult { arg_name: "", arg_value: 0, state: r.state, err: r.err } }
   let name = r.name
-  let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r2.state, err: r2.err } }
   let r3 = parse_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r3.state, err: r3.err } }
@@ -1528,12 +1568,12 @@ fn parse_single_named_int(tokens: List<Token>, state: ParserState) -> NamedIntRe
 
 fn parse_variant_fields(tokens: List<Token>, state: ParserState, vname: String) -> VariantResult {
   let start_span = current_span(tokens: tokens, state: state)
-  let e = eat(tokens: tokens, state: state, tag: "LBrace")
+  let e = eat(tokens: tokens, state: state, expected: ExpectLBrace)
   if e.consumed {
     let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
     if has_err(err: r.err) { return VariantResult { variant: Variant { name: vname, fields: [], span: start_span }, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
-    let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
     if has_err(err: r2.err) { return VariantResult { variant: Variant { name: vname, fields: [], span: start_span }, state: r2.state, err: r2.err } }
     let v = Variant { name: vname, fields: r.fields, span: start_span }
     VariantResult { variant: v, state: r2.state, err: none }
@@ -1550,7 +1590,7 @@ fn parse_more_variants(tokens: List<Token>, state: ParserState) -> VariantsResul
 
 fn parse_more_variants_acc(tokens: List<Token>, state: ParserState, acc: List<Variant>) -> VariantsResult {
   let s = skip_newlines(tokens: tokens, state: state)
-  let e = eat(tokens: tokens, state: s, tag: "Pipe")
+  let e = eat(tokens: tokens, state: s, expected: ExpectPipe)
   if e.consumed {
     let s = skip_newlines(tokens: tokens, state: e.state)
     let r = expect_ident(tokens: tokens, state: s)
@@ -1583,7 +1623,7 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
       let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: adv.state))
       if has_err(err: r.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: inline_start), state: r.state, err: r.err } }
       let s2 = skip_newlines(tokens: tokens, state: r.state)
-      let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
+      let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
       if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: inline_start), state: r2.state, err: r2.err } }
       let span = current_span(tokens: tokens, state: s)
       let te = Node { name: "", span: span, children: map(r.fields, f => field_to_child_node(field: f)), connective: Some { value: Conj }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -1610,7 +1650,7 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
 fn parse_callable_type_expr(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> TypeResult {
   let dummy_te = leaf_type_node(name: "Callable", span: start_span)
   // Expect opening paren
-  let r = expect(tokens: tokens, state: state, tag: "LParen")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
   if has_err(err: r.err) { return TypeResult { type_expr: dummy_te, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -1624,11 +1664,11 @@ fn parse_callable_type_expr(tokens: List<Token>, state: ParserState, start_span:
 
   // Expect closing paren
   let s2 = skip_newlines(tokens: tokens, state: params_result.state)
-  let r2 = expect(tokens: tokens, state: s2, tag: "RParen")
+  let r2 = expect(tokens: tokens, state: s2, expected: ExpectRParen)
   if has_err(err: r2.err) { return TypeResult { type_expr: dummy_te, state: r2.state, err: r2.err } }
 
   // Expect arrow ->
-  let r3 = expect(tokens: tokens, state: r2.state, tag: "Arrow")
+  let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectArrow)
   if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
 
   // Parse return type
@@ -1649,7 +1689,7 @@ fn parse_callable_param_types(tokens: List<Token>, state: ParserState, acc: List
   let param = Param { name: "", type_expr: r.type_expr, default_value: none, span: r.type_expr.span }
   let acc = list_push(acc, param)
 
-  let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+  let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
   if e.consumed {
     let s = skip_newlines(tokens: tokens, state: e.state)
     if peek_is_rparen(tokens: tokens, state: s) {
@@ -1666,7 +1706,7 @@ fn parse_callable_param_types(tokens: List<Token>, state: ParserState, acc: List
 fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name: String, start_span: SourceSpan) -> TypeResult {
   let dummy_te = leaf_type_node(name: type_name, span: start_span)
   // Check for generic: Name<T> or Map<K,V>
-  let e = eat(tokens: tokens, state: state, tag: "Lt")
+  let e = eat(tokens: tokens, state: state, expected: ExpectLt)
   if e.consumed {
     let r = parse_type_expr(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return r }
@@ -1676,7 +1716,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
     // Collect all type args: Name<A, B, C, ...>
     let type_args = collect_type_args(tokens: tokens, state: s, args: [first_arg])
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, state: type_args.state, err: type_args.err } }
-    let r3 = expect(tokens: tokens, state: type_args.state, tag: "Gt")
+    let r3 = expect(tokens: tokens, state: type_args.state, expected: ExpectGt)
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
     let te = Node { name: type_name, span: start_span, children: type_args.args, connective: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
     maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
@@ -1695,10 +1735,10 @@ type TypeParamsResult {
 // Parse optional type parameters: <name, name, ...>
 // Returns empty params if no < is found.
 fn parse_optional_type_params(tokens: List<Token>, state: ParserState) -> TypeParamsResult {
-  let e = eat(tokens: tokens, state: state, tag: "Lt")
+  let e = eat(tokens: tokens, state: state, expected: ExpectLt)
   if e.consumed {
     let params_result = collect_type_param_names(tokens: tokens, state: e.state, params: [])
-    let r = expect(tokens: tokens, state: params_result.state, tag: "Gt")
+    let r = expect(tokens: tokens, state: params_result.state, expected: ExpectGt)
     // If Gt parsing fails, return what we have — the error propagates from caller
     TypeParamsResult { params: params_result.params, state: r.state }
   } else {
@@ -1712,7 +1752,7 @@ fn collect_type_param_names(tokens: List<Token>, state: ParserState, params: Lis
     let span = current_span(tokens: tokens, state: r.state)
     let param = Param { name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span }
     let next_params = list_push(params, param)
-    let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
     if e.consumed {
       collect_type_param_names(tokens: tokens, state: e.state, params: next_params)
     } else {
@@ -1731,7 +1771,7 @@ type TypeArgsResult {
 
 // Collect comma-separated type args until > is reached.
 fn collect_type_args(tokens: List<Token>, state: ParserState, args: List<Node>) -> TypeArgsResult {
-  let e = eat(tokens: tokens, state: state, tag: "Comma")
+  let e = eat(tokens: tokens, state: state, expected: ExpectComma)
   if e.consumed {
     let r = parse_type_expr(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return TypeArgsResult { args: args, state: r.state, err: r.err } }
@@ -1742,7 +1782,7 @@ fn collect_type_args(tokens: List<Token>, state: ParserState, args: List<Node>) 
 }
 
 fn maybe_optional(tokens: List<Token>, state: ParserState, te: Node, start_span: SourceSpan) -> TypeResult {
-  let e = eat(tokens: tokens, state: state, tag: "Question")
+  let e = eat(tokens: tokens, state: state, expected: ExpectQuestion)
   if e.consumed {
     let ote = Node { name: te.name, span: te.span, children: te.children, connective: te.connective, params: te.params, return_type: te.return_type, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, config: te.config, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, expr_data: te.expr_data }
     TypeResult { type_expr: ote, state: e.state, err: none }
@@ -1770,7 +1810,7 @@ fn parse_field_list_acc(tokens: List<Token>, state: ParserState, acc: List<Field
       let r = parse_field(tokens: tokens, state: s)
       if has_err(err: r.err) { return FieldsResult { fields: [], state: r.state, err: r.err } }
       let s2 = r.state
-      let e = eat(tokens: tokens, state: s2, tag: "Comma")
+      let e = eat(tokens: tokens, state: s2, expected: ExpectComma)
       let s3 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { s2 })
       parse_field_list_acc(tokens: tokens, state: s3, acc: list_push(acc, r.field))
     } else {
@@ -1786,7 +1826,7 @@ fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
   if has_err(err: r.err) { return FieldResult { field: dummy_field, state: r.state, err: r.err } }
   let name = r.name
 
-  let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return FieldResult { field: dummy_field, state: r2.state, err: r2.err } }
 
   let r3 = parse_type_expr(tokens: tokens, state: r2.state)
@@ -1800,7 +1840,7 @@ fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
   let s = from_r.state
 
   // Check for default value: = expr
-  let e = eat(tokens: tokens, state: s, tag: "Eq")
+  let e = eat(tokens: tokens, state: s, expected: ExpectEq)
   if e.consumed {
     let r4 = parse_expr(tokens: tokens, state: e.state)
     if has_err(err: r4.err) { return FieldResult { field: dummy_field, state: r4.state, err: r4.err } }
@@ -1847,7 +1887,7 @@ fn parse_optional_from_key(tokens: List<Token>, state: ParserState) -> FromKeyRe
 fn parse_fn_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, tag: "KwFn")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwFn)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -1889,10 +1929,10 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   // Accept func, pattern, or interface as the leading keyword
   let k = peek_kind(tokens: tokens, state: state)
   let r = match k {
-    Some { value: KwFunc } => expect(tokens: tokens, state: state, tag: "KwFunc")
-    Some { value: KwPattern } => expect(tokens: tokens, state: state, tag: "KwPattern")
-    Some { value: KwInterface } => expect(tokens: tokens, state: state, tag: "KwInterface")
-    _ => expect(tokens: tokens, state: state, tag: "KwFunc")
+    Some { value: KwFunc } => expect(tokens: tokens, state: state, expected: ExpectKwFunc)
+    Some { value: KwPattern } => expect(tokens: tokens, state: state, expected: ExpectKwPattern)
+    Some { value: KwInterface } => expect(tokens: tokens, state: state, expected: ExpectKwInterface)
+    _ => expect(tokens: tokens, state: state, expected: ExpectKwFunc)
   }
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
@@ -1954,7 +1994,7 @@ fn parse_uses_list_acc(tokens: List<Token>, state: ParserState, acc: List<Resour
   let acc = list_push(acc, r.resource_use)
   let s = r.state
 
-  let e = eat(tokens: tokens, state: s, tag: "Comma")
+  let e = eat(tokens: tokens, state: s, expected: ExpectComma)
   if e.consumed {
     parse_uses_list_acc(tokens: tokens, state: e.state, acc: acc)
   } else {
@@ -1969,7 +2009,7 @@ fn parse_uses_entry(tokens: List<Token>, state: ParserState) -> ResUseResult {
   if has_err(err: r.err) { return ResUseResult { resource_use: dummy, state: r.state, err: r.err } }
   let name = r.name
 
-  let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return ResUseResult { resource_use: dummy, state: r2.state, err: r2.err } }
 
   let r3 = parse_type_expr(tokens: tokens, state: r2.state)
@@ -1979,7 +2019,7 @@ fn parse_uses_entry(tokens: List<Token>, state: ParserState) -> ResUseResult {
 }
 
 fn parse_optional_return_type(tokens: List<Token>, state: ParserState) -> OptRetResult {
-  let e = eat(tokens: tokens, state: state, tag: "Arrow")
+  let e = eat(tokens: tokens, state: state, expected: ExpectArrow)
   if e.consumed {
     let r = parse_type_expr(tokens: tokens, state: e.state)
     if has_err(err: r.err) { return OptRetResult { return_type: none, state: r.state, err: r.err } }
@@ -1996,7 +2036,7 @@ fn parse_optional_return_type(tokens: List<Token>, state: ParserState) -> OptRet
 fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, tag: "KwService")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwService)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
   let r_ns = expect_name(tokens: tokens, state: r.state)
@@ -2006,7 +2046,7 @@ fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 
-  let r = expect(tokens: tokens, state: r.state, tag: "LBrace")
+  let r = expect(tokens: tokens, state: r.state, expected: ExpectLBrace)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -2015,7 +2055,7 @@ fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let s = skip_newlines(tokens: tokens, state: r.state)
-  let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
+  let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
 
   // Build child Nodes from operations -- dissolve PortContract into properties + return_type
@@ -2064,12 +2104,12 @@ fn parse_service_entries(tokens: List<Token>, state: ParserState, config: Servic
     match k {
       Some { value: Ident { name: "config" } } => {
         let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
         if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r.state, err: r.err } }
         let r2 = parse_service_config_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
         if has_err(err: r2.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r2.state, err: r2.err } }
         let s2 = skip_newlines(tokens: tokens, state: r2.state)
-        let r3 = expect(tokens: tokens, state: s2, tag: "RBrace")
+        let r3 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
         if has_err(err: r3.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r3.state, err: r3.err } }
         parse_service_entries(tokens: tokens, state: r3.state, config: Some { value: r2.config }, transport: transport, operations: operations)
       }
@@ -2112,12 +2152,12 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, state: r.state, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
     if has_err(err: r2.err) { return ConfigResult { config: dummy_cfg, state: r2.state, err: r2.err } }
     let r3 = parse_expr(tokens: tokens, state: r2.state)
     if has_err(err: r3.err) { return ConfigResult { config: dummy_cfg, state: r3.state, err: r3.err } }
     let s2 = r3.state
-    let e = eat(tokens: tokens, state: s2, tag: "Comma")
+    let e = eat(tokens: tokens, state: s2, expected: ExpectComma)
     let s3 = if e.consumed { e.state } else { s2 }
 
     match fname {
@@ -2137,31 +2177,31 @@ fn parse_transport_binding(tokens: List<Token>, state: ParserState) -> Transport
   match k {
     Some { value: Ident { name: "rest" } } => {
       let adv = advance(tokens: tokens, state: state)
-      let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
       if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
       let r2 = parse_rest_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
       if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
-      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
       if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
       TransportResult { transport: r2.transport, state: r3.state, err: none }
     }
     Some { value: Ident { name: "shell" } } => {
       let adv = advance(tokens: tokens, state: state)
-      let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
       if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
       let r2 = parse_shell_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
       if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
-      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
       if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
       TransportResult { transport: r2.transport, state: r3.state, err: none }
     }
     Some { value: Ident { name: "file" } } => {
       let adv = advance(tokens: tokens, state: state)
-      let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
       if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
       let r2 = parse_file_binding_body(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
       if has_err(err: r2.err) { return TransportResult { transport: r2.transport, state: r2.state, err: r2.err } }
-      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
       if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
       TransportResult { transport: r2.transport, state: r3.state, err: none }
     }
@@ -2190,11 +2230,11 @@ fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?) -
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
     if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
     let r3 = parse_expr(tokens: tokens, state: r2.state)
     if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-    let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = if e.consumed { e.state } else { r3.state }
     match fname {
       "base_url" => parse_rest_fields(tokens: tokens, state: s2, base_url: Some { value: r3.expr })
@@ -2218,24 +2258,24 @@ fn parse_shell_fields(tokens: List<Token>, state: ParserState, argv: List<Node>)
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
     if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
     match fname {
       "argv" => {
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "LBracket")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectLBracket)
         if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-        let r4 = parse_expr_list_until(tokens: tokens, state: r3.state, end_tag: "RBracket")
+        let r4 = parse_expr_list_until(tokens: tokens, state: r3.state, end_expected: ExpectRBracket)
         if has_err(err: r4.err) { return TransportResult { transport: dummy, state: r4.state, err: r4.err } }
-        let r5 = expect(tokens: tokens, state: r4.state, tag: "RBracket")
+        let r5 = expect(tokens: tokens, state: r4.state, expected: ExpectRBracket)
         if has_err(err: r5.err) { return TransportResult { transport: dummy, state: r5.state, err: r5.err } }
-        let e = eat(tokens: tokens, state: r5.state, tag: "Comma")
+        let e = eat(tokens: tokens, state: r5.state, expected: ExpectComma)
         let s2 = if e.consumed { e.state } else { r5.state }
         parse_shell_fields(tokens: tokens, state: s2, argv: r4.exprs)
       }
       _ => {
         let r3 = parse_expr(tokens: tokens, state: r2.state)
         if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-        let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
+        let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
         let s2 = if e.consumed { e.state } else { r3.state }
         parse_shell_fields(tokens: tokens, state: s2, argv: argv)
       }
@@ -2261,11 +2301,11 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return TransportResult { transport: dummy, state: r.state, err: r.err } }
     let fname = r.name
-    let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
     if has_err(err: r2.err) { return TransportResult { transport: dummy, state: r2.state, err: r2.err } }
     let r3 = parse_expr(tokens: tokens, state: r2.state)
     if has_err(err: r3.err) { return TransportResult { transport: dummy, state: r3.state, err: r3.err } }
-    let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = if e.consumed { e.state } else { r3.state }
     match fname {
       "path" => parse_file_fields(tokens: tokens, state: s2, base_path: Some { value: r3.expr })
@@ -2278,7 +2318,7 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
 fn parse_operation_def(tokens: List<Token>, state: ParserState) -> OpResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span }
-  let r = expect(tokens: tokens, state: state, tag: "KwOperation")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwOperation)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -2302,12 +2342,12 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
   let mod_props = modifiers_to_props(modifiers: modifiers, span: start_span)
   let s = mods_r.state
 
-  let r = expect(tokens: tokens, state: s, tag: "LParen")
+  let r = expect(tokens: tokens, state: s, expected: ExpectLParen)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let inputs = r.fields
-  let r = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RParen")
+  let r = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRParen)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let s = r.state
 
@@ -2338,7 +2378,7 @@ fn parse_operation_v2_inline(tokens: List<Token>, state: ParserState, name: Stri
 // v1 block: operation Name { input {} output {} modifiers transport exit response mock_response }
 fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String, start_span: SourceSpan) -> OpResult {
   let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span }
-  let r = expect(tokens: tokens, state: state, tag: "LBrace")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -2348,7 +2388,7 @@ fn parse_operation_v1_body(tokens: List<Token>, state: ParserState, name: String
   )
   if has_err(err: r2.err) { return OpResult { operation: dummy_op, state: r2.state, err: r2.err } }
 
-  let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+  let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
   if has_err(err: r3.err) { return OpResult { operation: dummy_op, state: r3.state, err: r3.err } }
 
   let op = OperationDef {
@@ -2378,21 +2418,21 @@ fn parse_op_body_entries(
     match k {
       Some { value: KwInput } => {
         let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
         if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
         let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
         if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
         if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
         parse_op_body_entries(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
       Some { value: KwOutput } => {
         let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
         if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
         let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
         if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
         if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
         parse_op_body_entries(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
       }
@@ -2419,11 +2459,11 @@ fn parse_op_body_entries(
           parse_op_body_entries(tokens: tokens, state: r.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: Some { value: r.transport }, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
         } else if id == "exit" {
           let adv = advance(tokens: tokens, state: s)
-          let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
           if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
           let r2 = parse_exit_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
           if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-          let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+          let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
           if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
           parse_op_body_entries(tokens: tokens, state: r3.state, inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: r2.entries, response_props: response_props, mock_props: mock_props)
         } else if id == "response" {
@@ -2439,7 +2479,7 @@ fn parse_op_body_entries(
           if peek_is_colon_after_ident(tokens: tokens, state: s) {
             let r = expect_ident(tokens: tokens, state: s)
             if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-            let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+            let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
             if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
             let r3 = parse_expr(tokens: tokens, state: r2.state)
             if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
@@ -2569,7 +2609,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Fie
     let r = parse_status_pattern(tokens: tokens, state: s)
     if has_err(err: r.err) { return ExitEntriesResult { entries: [], state: r.state, err: r.err } }
     let code = r.expr
-    let r2 = expect(tokens: tokens, state: r.state, tag: "FatArrow")
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectFatArrow)
     if has_err(err: r2.err) { return ExitEntriesResult { entries: [], state: r2.state, err: r2.err } }
     let r3 = parse_type_expr(tokens: tokens, state: r2.state)
     if has_err(err: r3.err) { return ExitEntriesResult { entries: [], state: r3.state, err: r3.err } }
@@ -2587,7 +2627,7 @@ fn parse_exit_entries_acc(tokens: List<Token>, state: ParserState, acc: List<Fie
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("exit_", code_str)
     let entry = FieldInit { name: prop_name, value: make_expr_node(expr_data: ExprVar { name: type_name, binding_kind: none }, return_type: none, span: r3.type_expr.span) }
-    let e = eat(tokens: tokens, state: desc_r.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: desc_r.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
     parse_exit_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
   }
@@ -2676,11 +2716,11 @@ fn parse_optional_response_block(tokens: List<Token>, state: ParserState) -> Res
   match k {
     Some { value: Ident { name: "response" } } => {
       let adv = advance(tokens: tokens, state: state)
-      let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
       if has_err(err: r.err) { return ResponsesResult { responses: [], state: r.state, err: r.err } }
       let r2 = parse_response_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
       if has_err(err: r2.err) { return ResponsesResult { responses: [], state: r2.state, err: r2.err } }
-      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
       if has_err(err: r3.err) { return ResponsesResult { responses: [], state: r3.state, err: r3.err } }
       ResponsesResult { responses: r2.entries, state: r3.state, err: none }
     }
@@ -2700,7 +2740,7 @@ fn parse_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List
     let r = parse_status_pattern(tokens: tokens, state: s)
     if has_err(err: r.err) { return RespEntriesResult { entries: [], state: r.state, err: r.err } }
     let status = r.expr
-    let r2 = expect(tokens: tokens, state: r.state, tag: "FatArrow")
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectFatArrow)
     if has_err(err: r2.err) { return RespEntriesResult { entries: [], state: r2.state, err: r2.err } }
     let r3 = parse_type_expr(tokens: tokens, state: r2.state)
     if has_err(err: r3.err) { return RespEntriesResult { entries: [], state: r3.state, err: r3.err } }
@@ -2709,7 +2749,7 @@ fn parse_response_entries_acc(tokens: List<Token>, state: ParserState, acc: List
     let type_name = node_to_name_str(n: r3.type_expr)
     let prop_name = concat("response_", status_str)
     let entry = FieldInit { name: prop_name, value: make_expr_node(expr_data: ExprVar { name: type_name, binding_kind: none }, return_type: none, span: r3.type_expr.span) }
-    let e = eat(tokens: tokens, state: r3.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r3.state })
     parse_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
   }
@@ -2721,11 +2761,11 @@ fn parse_optional_mock_response_block(tokens: List<Token>, state: ParserState) -
   match k {
     Some { value: Ident { name: "mock_response" } } => {
       let adv = advance(tokens: tokens, state: state)
-      let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
       if has_err(err: r.err) { return MocksResult { mocks: [], state: r.state, err: r.err } }
       let r2 = parse_mock_response_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
       if has_err(err: r2.err) { return MocksResult { mocks: [], state: r2.state, err: r2.err } }
-      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
       if has_err(err: r3.err) { return MocksResult { mocks: [], state: r3.state, err: r3.err } }
       MocksResult { mocks: r2.entries, state: r3.state, err: none }
     }
@@ -2745,7 +2785,7 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc:
     let r = parse_status_pattern(tokens: tokens, state: s)
     if has_err(err: r.err) { return MockEntriesResult { entries: [], state: r.state, err: r.err } }
     let status = r.expr
-    let r2 = expect(tokens: tokens, state: r.state, tag: "FatArrow")
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectFatArrow)
     if has_err(err: r2.err) { return MockEntriesResult { entries: [], state: r2.state, err: r2.err } }
     let r3 = parse_expr(tokens: tokens, state: r2.state)
     if has_err(err: r3.err) { return MockEntriesResult { entries: [], state: r3.state, err: r3.err } }
@@ -2763,7 +2803,7 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc:
     let status_str = status_expr_to_str(expr: status)
     let prop_name = concat("mock_", status_str)
     let entry = FieldInit { name: prop_name, value: body }
-    let e = eat(tokens: tokens, state: desc_r.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: desc_r.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { desc_r.state })
     parse_mock_response_entries_acc(tokens: tokens, state: s2, acc: list_push(acc, entry))
   }
@@ -2776,7 +2816,7 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc:
 fn parse_resource_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, tag: "KwResource")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwResource)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -2784,13 +2824,13 @@ fn parse_resource_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 
-  let r = expect(tokens: tokens, state: r.state, tag: "LBrace")
+  let r = expect(tokens: tokens, state: r.state, expected: ExpectLBrace)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let r = parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), properties: [], capabilities: [])
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
-  let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RBrace")
+  let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
 
   // Build child Nodes from capabilities -- dissolve CapabilityContract into return_type
@@ -2831,19 +2871,19 @@ fn parse_resource_entries(tokens: List<Token>, state: ParserState, properties: L
       }
       Some { value: KwAcquire } => {
         let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
         if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
         let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RBrace")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
         if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
         parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
       }
       Some { value: KwRelease } => {
         let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
         if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
         let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        let r3 = expect(tokens: tokens, state: r2.state, tag: "RBrace")
+        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
         if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
         parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
       }
@@ -2852,7 +2892,7 @@ fn parse_resource_entries(tokens: List<Token>, state: ParserState, properties: L
           let r = expect_ident(tokens: tokens, state: s)
           if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
           let fname = r.name
-          let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+          let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
           if has_err(err: r2.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r2.state, err: r2.err } }
           let r3 = parse_expr(tokens: tokens, state: r2.state)
           if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
@@ -2878,7 +2918,7 @@ fn skip_until_rbrace(tokens: List<Token>, state: ParserState) -> UnitResult {
       Some { value: LBrace } => {
         let adv = advance(tokens: tokens, state: s)
         let inner = skip_until_rbrace(tokens: tokens, state: adv.state)
-        let r = expect(tokens: tokens, state: inner.state, tag: "RBrace")
+        let r = expect(tokens: tokens, state: inner.state, expected: ExpectRBrace)
         if has_err(err: r.err) { return UnitResult { state: r.state, err: r.err } }
         skip_until_rbrace(tokens: tokens, state: r.state)
       }
@@ -2894,7 +2934,7 @@ fn skip_until_rbrace(tokens: List<Token>, state: ParserState) -> UnitResult {
 fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy_cap = CapabilityDef { name: "", inputs: [], outputs: [], span: start_span }
-  let r = expect(tokens: tokens, state: state, tag: "KwCapability")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwCapability)
   if has_err(err: r.err) { return CapResult { capability: dummy_cap, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -2904,21 +2944,21 @@ fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
 
   // Dispatch: LBrace = v1 block, LParen = v2 inline
   if peek_is_lbrace(tokens: tokens, state: s) {
-    let r2 = expect(tokens: tokens, state: s, tag: "LBrace")
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectLBrace)
     if has_err(err: r2.err) { return CapResult { capability: dummy_cap, state: r2.state, err: r2.err } }
     let io = parse_input_output_blocks(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state))
     if has_err(err: io.err) { return CapResult { capability: dummy_cap, state: io.state, err: io.err } }
-    let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: io.state), tag: "RBrace")
+    let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: io.state), expected: ExpectRBrace)
     if has_err(err: r3.err) { return CapResult { capability: dummy_cap, state: r3.state, err: r3.err } }
     let cap = CapabilityDef { name: name, inputs: io.inputs, outputs: io.outputs, span: start_span }
     CapResult { capability: cap, state: skip_newlines(tokens: tokens, state: r3.state), err: none }
   } else if peek_is_lparen(tokens: tokens, state: s) {
-    let r2 = expect(tokens: tokens, state: s, tag: "LParen")
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectLParen)
     if has_err(err: r2.err) { return CapResult { capability: dummy_cap, state: r2.state, err: r2.err } }
     let r3 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state))
     if has_err(err: r3.err) { return CapResult { capability: dummy_cap, state: r3.state, err: r3.err } }
     let inputs = r3.fields
-    let r4 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), tag: "RParen")
+    let r4 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), expected: ExpectRParen)
     if has_err(err: r4.err) { return CapResult { capability: dummy_cap, state: r4.state, err: r4.err } }
     let ret = parse_optional_return_type(tokens: tokens, state: r4.state)
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, state: ret.state, err: ret.err } }
@@ -2948,21 +2988,21 @@ fn parse_io_blocks_acc(tokens: List<Token>, state: ParserState, inputs: List<Fie
     match k {
       Some { value: KwInput } => {
         let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
         if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
         let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
         if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
         if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
         parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs)
       }
       Some { value: KwOutput } => {
         let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, tag: "LBrace")
+        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
         if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
         let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
         if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), tag: "RBrace")
+        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
         if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
         parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields)
       }
@@ -2981,7 +3021,7 @@ fn parse_io_blocks_acc(tokens: List<Token>, state: ParserState, inputs: List<Fie
 fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, tag: "KwData")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwData)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -2989,14 +3029,14 @@ fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 
-  let r = expect(tokens: tokens, state: r.state, tag: "Colon")
+  let r = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let r = parse_type_expr(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let te = r.type_expr
 
-  let r = expect(tokens: tokens, state: r.state, tag: "Eq")
+  let r = expect(tokens: tokens, state: r.state, expected: ExpectEq)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
 
   let r = parse_expr(tokens: tokens, state: r.state)
@@ -3017,7 +3057,7 @@ fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
 fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], return_type: none, return_cardinality: Required, uses: [], body: none, connective: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, tag: "KwExtern")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwExtern)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
 
   // Expect "fn" or "func" after extern
@@ -3068,7 +3108,7 @@ fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
 // =========================================================================
 
 fn parse_params(tokens: List<Token>, state: ParserState) -> ParamsResult {
-  let r = expect(tokens: tokens, state: state, tag: "LParen")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
   if has_err(err: r.err) { return ParamsResult { params: [], state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -3079,7 +3119,7 @@ fn parse_params(tokens: List<Token>, state: ParserState) -> ParamsResult {
     let r = parse_param_list(tokens: tokens, state: s)
     if has_err(err: r.err) { return r }
     let s = skip_newlines(tokens: tokens, state: r.state)
-    let r2 = expect(tokens: tokens, state: s, tag: "RParen")
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectRParen)
     if has_err(err: r2.err) { return ParamsResult { params: [], state: r2.state, err: r2.err } }
     ParamsResult { params: r.params, state: r2.state, err: none }
   }
@@ -3095,7 +3135,7 @@ fn parse_param_list_acc(tokens: List<Token>, state: ParserState, acc: List<Param
   let acc = list_push(acc, r.param)
   let s = r.state
 
-  let e = eat(tokens: tokens, state: s, tag: "Comma")
+  let e = eat(tokens: tokens, state: s, expected: ExpectComma)
   if e.consumed {
     let s2 = skip_newlines(tokens: tokens, state: e.state)
     if peek_is_rparen(tokens: tokens, state: s2) {
@@ -3116,7 +3156,7 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
   if has_err(err: r.err) { return ParamResult { param: dummy_param, state: r.state, err: r.err } }
   let name = r.name
 
-  let r2 = expect(tokens: tokens, state: r.state, tag: "Colon")
+  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return ParamResult { param: dummy_param, state: r2.state, err: r2.err } }
 
   let r3 = parse_type_expr(tokens: tokens, state: r2.state)
@@ -3124,7 +3164,7 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
   let s = r3.state
 
   // Optional default value
-  let e = eat(tokens: tokens, state: s, tag: "Eq")
+  let e = eat(tokens: tokens, state: s, expected: ExpectEq)
   if e.consumed {
     let r4 = parse_expr(tokens: tokens, state: e.state)
     if has_err(err: r4.err) { return ParamResult { param: dummy_param, state: r4.state, err: r4.err } }
@@ -3148,7 +3188,7 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
 
 fn parse_block(tokens: List<Token>, state: ParserState) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "LBrace")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -3157,7 +3197,7 @@ fn parse_block(tokens: List<Token>, state: ParserState) -> ExprResult {
   let stmts = r.stmts
   let s = skip_newlines(tokens: tokens, state: r.state)
 
-  let r = expect(tokens: tokens, state: s, tag: "RBrace")
+  let r = expect(tokens: tokens, state: s, expected: ExpectRBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   // If only one statement, unwrap from Block
@@ -3221,7 +3261,7 @@ fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult 
   let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let name = r.name
-  let r2 = expect(tokens: tokens, state: r.state, tag: "Eq")
+  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectEq)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
   let r3 = parse_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return r3 }
@@ -3593,7 +3633,7 @@ fn make_call_expr(lhs: Node, args: List<NamedArg>, span: SourceSpan) -> Node {
 
 fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "LBracket")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLBracket)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = r.state
 
@@ -3610,12 +3650,12 @@ fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, spa
     if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
     let end_expr = r.expr
     let s = r.state
-    let r = expect(tokens: tokens, state: s, tag: "RBracket")
+    let r = expect(tokens: tokens, state: s, expected: ExpectRBracket)
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
     ExprResult { expr: make_expr_node(expr_data: ExprSlice { base: base, start: first_expr, end: end_expr }, return_type: none, span: span), state: r.state, err: none }
   } else {
     // Index
-    let r = expect(tokens: tokens, state: s, tag: "RBracket")
+    let r = expect(tokens: tokens, state: s, expected: ExpectRBracket)
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
     ExprResult { expr: make_expr_node(expr_data: ExprIndex { base: base, index: first_expr }, return_type: none, span: span), state: r.state, err: none }
   }
@@ -3626,7 +3666,7 @@ fn parse_index_or_slice(tokens: List<Token>, state: ParserState, base: Node, spa
 // =========================================================================
 
 fn parse_call_args(tokens: List<Token>, state: ParserState) -> ArgsResult {
-  let r = expect(tokens: tokens, state: state, tag: "LParen")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
   if has_err(err: r.err) { return ArgsResult { args: [], state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -3637,7 +3677,7 @@ fn parse_call_args(tokens: List<Token>, state: ParserState) -> ArgsResult {
     let r = parse_arg_list(tokens: tokens, state: s)
     if has_err(err: r.err) { return r }
     let s = skip_newlines(tokens: tokens, state: r.state)
-    let r2 = expect(tokens: tokens, state: s, tag: "RParen")
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectRParen)
     if has_err(err: r2.err) { return ArgsResult { args: [], state: r2.state, err: r2.err } }
     ArgsResult { args: r.args, state: r2.state, err: none }
   }
@@ -3654,7 +3694,7 @@ fn parse_arg_list_acc(tokens: List<Token>, state: ParserState, acc: List<NamedAr
   let acc = list_push(acc, r.arg)
   let s = r.state
 
-  let e = eat(tokens: tokens, state: s, tag: "Comma")
+  let e = eat(tokens: tokens, state: s, expected: ExpectComma)
   if e.consumed {
     let s2 = skip_newlines(tokens: tokens, state: e.state)
     if peek_is_rparen(tokens: tokens, state: s2) {
@@ -3711,21 +3751,21 @@ fn parse_single_arg(tokens: List<Token>, state: ParserState) -> ArgResult {
 fn parse_match(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "KwMatch")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwMatch)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return r }
   let scrutinee = r.expr
 
-  let r = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "LBrace")
+  let r = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_match_arms(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let arms = r.arms
 
-  let r = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RBrace")
+  let r = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   ExprResult { expr: make_expr_node(expr_data: ExprMatch { scrutinee: scrutinee, arms: arms }, return_type: none, span: span), state: r.state, err: none }
@@ -3809,7 +3849,7 @@ fn parse_match_arms_acc(tokens: List<Token>, state: ParserState, acc: List<Match
   } else {
     let r = parse_match_arm(tokens: tokens, state: s)
     if has_err(err: r.err) { return ArmsResult { arms: acc, state: r.state, err: r.err } }
-    let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
     parse_match_arms_acc(tokens: tokens, state: s2, acc: list_push(acc, r.arm))
   }
@@ -3831,7 +3871,7 @@ fn parse_match_arm(tokens: List<Token>, state: ParserState) -> ArmResult {
   let guard = guard_r.guard
   let s = guard_r.state
 
-  let r = expect(tokens: tokens, state: s, tag: "FatArrow")
+  let r = expect(tokens: tokens, state: s, expected: ExpectFatArrow)
   if has_err(err: r.err) { return ArmResult { arm: dummy_arm, state: r.state, err: r.err } }
 
   let s = skip_newlines(tokens: tokens, state: r.state)
@@ -3897,7 +3937,7 @@ fn looks_like_arm_start(tokens: List<Token>, state: ParserState) -> Bool {
         // Name => or Name { ... } =>
         if peek_is_fat_arrow_at(tokens: tokens, state: state, offset: 1) {
           true
-        } else if peek_is_tag_at(tokens: tokens, state: state, offset: 1, tag: "LBrace") {
+        } else if peek_is_expected_at(tokens: tokens, state: state, offset: 1, expected: ExpectLBrace) {
           scan_for_fat_arrow_after_braces(tokens: tokens, state: state, start_offset: 2)
         } else {
           false
@@ -3923,12 +3963,12 @@ fn peek_is_fat_arrow_at(tokens: List<Token>, state: ParserState, offset: Int) ->
   }
 }
 
-// Check if token at (pos + offset) has the given tag.
-fn peek_is_tag_at(tokens: List<Token>, state: ParserState, offset: Int, tag: String) -> Bool {
+// Check if token at (pos + offset) matches the expected token shape.
+fn peek_is_expected_at(tokens: List<Token>, state: ParserState, offset: Int, expected: ExpectedToken) -> Bool {
   if state.pos + offset < count(tokens) {
     let tok = get(tokens, state.pos + offset)
     match tok {
-      Some { value: t } => kind_matches_tag(kind: t.kind, tag: tag)
+      Some { value: t } => kind_matches_expected(kind: t.kind, expected: expected)
       None => false
     }
   } else {
@@ -4033,7 +4073,7 @@ fn parse_variant_pattern(tokens: List<Token>, state: ParserState, name: String) 
     let adv = advance(tokens: tokens, state: state)
     let r = parse_variant_bindings_brace(tokens: tokens, state: skip_newlines(tokens: tokens, state: adv.state))
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
-    let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RBrace")
+    let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBrace)
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, state: r2.state, err: none }
   } else {
@@ -4055,17 +4095,17 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, state: ParserState, acc
     let field_name = r.name
     let s = r.state
 
-    let e = eat(tokens: tokens, state: s, tag: "Colon")
+    let e = eat(tokens: tokens, state: s, expected: ExpectColon)
     if e.consumed {
       let r2 = parse_pattern(tokens: tokens, state: e.state)
       if has_err(err: r2.err) { return BindingsResult { field_bindings: [], state: r2.state, err: r2.err } }
       let s2 = r2.state
-      let e2 = eat(tokens: tokens, state: s2, tag: "Comma")
+      let e2 = eat(tokens: tokens, state: s2, expected: ExpectComma)
       let s3 = skip_newlines(tokens: tokens, state: if e2.consumed { e2.state } else { s2 })
       let fb = FieldBinding { field_name: field_name, binding: r2.pattern }
       parse_variant_bindings_brace_acc(tokens: tokens, state: s3, acc: list_push(acc, fb))
     } else {
-      let e2 = eat(tokens: tokens, state: s, tag: "Comma")
+      let e2 = eat(tokens: tokens, state: s, expected: ExpectComma)
       let s2 = skip_newlines(tokens: tokens, state: if e2.consumed { e2.state } else { s })
       let fb = FieldBinding { field_name: field_name, binding: Bind { name: field_name } }
       parse_variant_bindings_brace_acc(tokens: tokens, state: s2, acc: list_push(acc, fb))
@@ -4080,7 +4120,7 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, state: ParserState, acc
 fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "KwIf")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwIf)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
@@ -4092,7 +4132,7 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   let then_branch = r.expr
   let s = skip_newlines(tokens: tokens, state: r.state)
 
-  let e = eat(tokens: tokens, state: s, tag: "KwElse")
+  let e = eat(tokens: tokens, state: s, expected: ExpectKwElse)
   if e.consumed {
     let s = skip_newlines(tokens: tokens, state: e.state)
     if peek_is_kw_if(tokens: tokens, state: s) {
@@ -4116,14 +4156,14 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "KwLet")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwLet)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let name = r.name
 
-  let r = expect(tokens: tokens, state: r.state, tag: "Eq")
+  let r = expect(tokens: tokens, state: r.state, expected: ExpectEq)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr(tokens: tokens, state: r.state)
@@ -4139,7 +4179,7 @@ fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "KwReturn")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwReturn)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr(tokens: tokens, state: r.state)
@@ -4154,14 +4194,14 @@ fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "KwFor")
+  let r = expect(tokens: tokens, state: state, expected: ExpectKwFor)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let var_name = r.name
 
-  let r = expect(tokens: tokens, state: r.state, tag: "KwIn")
+  let r = expect(tokens: tokens, state: r.state, expected: ExpectKwIn)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
@@ -4182,7 +4222,7 @@ fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
 
 fn parse_record_literal(tokens: List<Token>, state: ParserState, name: String, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "LBrace")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -4190,7 +4230,7 @@ fn parse_record_literal(tokens: List<Token>, state: ParserState, name: String, s
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let s = skip_newlines(tokens: tokens, state: r.state)
-  let r2 = expect(tokens: tokens, state: s, tag: "RBrace")
+  let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
 
   ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: Some { value: name }, fields: r.fields, parent_enum: none }, return_type: none, span: span), state: r2.state, err: none }
@@ -4207,7 +4247,7 @@ fn parse_field_init_list_acc(tokens: List<Token>, state: ParserState, acc: List<
   } else {
     let r = parse_field_init(tokens: tokens, state: s)
     if has_err(err: r.err) { return FieldInitsResult { fields: [], state: r.state, err: r.err } }
-    let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
     parse_field_init_list_acc(tokens: tokens, state: s2, acc: list_push(acc, r.field))
   }
@@ -4256,26 +4296,26 @@ fn parse_field_init(tokens: List<Token>, state: ParserState) -> FieldInitResult 
 fn parse_list_literal(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "LBracket")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLBracket)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
-  let r = parse_expr_list_until(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), end_tag: "RBracket")
+  let r = parse_expr_list_until(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), end_expected: ExpectRBracket)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
-  let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), tag: "RBracket")
+  let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBracket)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
 
   ExprResult { expr: make_expr_node(expr_data: ExprListLit { elements: r.exprs }, return_type: none, span: span), state: r2.state, err: none }
 }
 
-fn parse_expr_list_until(tokens: List<Token>, state: ParserState, end_tag: String) -> ExprsResult {
-  parse_expr_list_until_acc(tokens: tokens, state: state, end_tag: end_tag, acc: [])
+fn parse_expr_list_until(tokens: List<Token>, state: ParserState, end_expected: ExpectedToken) -> ExprsResult {
+  parse_expr_list_until_acc(tokens: tokens, state: state, end_expected: end_expected, acc: [])
 }
 
-fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_tag: String, acc: List<Node>) -> ExprsResult {
+fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_expected: ExpectedToken, acc: List<Node>) -> ExprsResult {
   let s = skip_newlines(tokens: tokens, state: state)
   let at_end_tag = match peek_kind(tokens: tokens, state: s) {
-    Some { value: kind } => kind_matches_tag(kind: kind, tag: end_tag)
+    Some { value: kind } => kind_matches_expected(kind: kind, expected: end_expected)
     None => false
   }
   if at_end_tag || at_end(tokens: tokens, state: s) {
@@ -4283,9 +4323,9 @@ fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_tag: S
   } else {
     let r = parse_expr(tokens: tokens, state: s)
     if has_err(err: r.err) { return ExprsResult { exprs: [], state: r.state, err: r.err } }
-    let e = eat(tokens: tokens, state: r.state, tag: "Comma")
+    let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)
     let s2 = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { r.state })
-    parse_expr_list_until_acc(tokens: tokens, state: s2, end_tag: end_tag, acc: list_push(acc, r.expr))
+    parse_expr_list_until_acc(tokens: tokens, state: s2, end_expected: end_expected, acc: list_push(acc, r.expr))
   }
 }
 
@@ -4302,7 +4342,7 @@ fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_tag: S
 fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, tag: "LParen")
+  let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -4319,7 +4359,7 @@ fn parse_paren_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
       let r = parse_expr(tokens: tokens, state: s)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
       let s = skip_newlines(tokens: tokens, state: r.state)
-      let r2 = expect(tokens: tokens, state: s, tag: "RParen")
+      let r2 = expect(tokens: tokens, state: s, expected: ExpectRParen)
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
       ExprResult { expr: r.expr, state: r2.state, err: none }
     }
@@ -4337,15 +4377,15 @@ fn parse_fn_lambda(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy = parse_recovery_placeholder()
   // Consume 'fn'
-  let r1 = expect(tokens: tokens, state: state, tag: "KwFn")
+  let r1 = expect(tokens: tokens, state: state, expected: ExpectKwFn)
   if has_err(err: r1.err) { return ExprResult { expr: dummy, state: r1.state, err: r1.err } }
   // Consume '('
-  let r2 = expect(tokens: tokens, state: r1.state, tag: "LParen")
+  let r2 = expect(tokens: tokens, state: r1.state, expected: ExpectLParen)
   if has_err(err: r2.err) { return ExprResult { expr: dummy, state: r2.state, err: r2.err } }
   // Collect parameter names
   let params_r = collect_fn_lambda_params(tokens: tokens, state: r2.state, acc: [])
   // Consume ')'
-  let r3 = expect(tokens: tokens, state: params_r.state, tag: "RParen")
+  let r3 = expect(tokens: tokens, state: params_r.state, expected: ExpectRParen)
   if has_err(err: r3.err) { return ExprResult { expr: dummy, state: r3.state, err: r3.err } }
   let s = skip_newlines(tokens: tokens, state: r3.state)
   // Parse body: { ... }
@@ -4408,7 +4448,7 @@ fn collect_lambda_idents(tokens: List<Token>, state: ParserState, acc: List<Stri
       Some { value: Ident { name: n } } => {
         let adv = advance(tokens: tokens, state: state)
         let new_acc = list_push(acc, n)
-        let e = eat(tokens: tokens, state: adv.state, tag: "Comma")
+        let e = eat(tokens: tokens, state: adv.state, expected: ExpectComma)
         if e.consumed {
           collect_lambda_idents(tokens: tokens, state: e.state, acc: new_acc)
         } else {
@@ -4498,7 +4538,7 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
         let r = parse_stmts(tokens: tokens, state: s)
         if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
         let s2 = skip_newlines(tokens: tokens, state: r.state)
-        let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
+        let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
         if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
         if count(r.stmts) == 1 {
           ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
@@ -4510,7 +4550,7 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
         let r = parse_stmts(tokens: tokens, state: s)
         if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
         let s2 = skip_newlines(tokens: tokens, state: r.state)
-        let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
+        let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
         if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
         if count(r.stmts) == 1 {
           ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
@@ -4524,21 +4564,21 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
           let r = parse_field_init_list(tokens: tokens, state: s)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
           let s2 = skip_newlines(tokens: tokens, state: r.state)
-          let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
+          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
           ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: r.fields, parent_enum: none }, return_type: none, span: span), state: r2.state, err: none }
         } else if peek_is_lit_str(tokens: tokens, state: s) && peek_is_colon_after_ident(tokens: tokens, state: s) {
           let r = parse_field_init_list(tokens: tokens, state: s)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
           let s2 = skip_newlines(tokens: tokens, state: r.state)
-          let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
+          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
           ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, fields: r.fields, parent_enum: none }, return_type: none, span: span), state: r2.state, err: none }
         } else {
           let r = parse_stmts(tokens: tokens, state: s)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
           let s2 = skip_newlines(tokens: tokens, state: r.state)
-          let r2 = expect(tokens: tokens, state: s2, tag: "RBrace")
+          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
           if count(r.stmts) == 1 {
             ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
