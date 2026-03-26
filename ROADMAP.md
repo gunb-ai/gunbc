@@ -899,13 +899,13 @@ knowledge that the roadmap is actively dissolving.
 |--------|----------|-------------|----------------|
 | ~~`rt_node` sentinel fabrication~~ | ~~`00_core.dag`~~ | **Resolved.** `rt_node` returns `NodeType = Typed \| InferError \| Untyped`; no sentinel fabrication. Callers distinguish typed/failed/untyped explicitly. | P1.9 done. |
 | ~~`Field.optional` + `Field.cardinality` duplication~~ | ~~`00_core.dag`~~ | **Resolved.** `Field.optional` deleted. `Field.cardinality` is the single authority. Parser `maybe_optional` sets `CardOptional` on the type node. | P1.4 done. |
-| `prefer_specific_type` | `04_types.dag` | Prefers typed container/optional over Unit-parameterized when resolving if-branch types. Uses `node_is_optional`, `node_is_container`, `normalize_type_name`. | Reduced by P1.4/P1.9; full dissolution with L1 continuation. |
+| `prefer_specific_type` | `04_types.dag` | Prefers typed container/optional over Unit-parameterized when resolving if-branch types. Uses `node_is_optional`, `node_is_container`. `normalize_type_name` deleted (P5.8). | Reduced by P1.4/P1.9; full dissolution with L1 continuation. |
 | `node_type_compatible` Unit special cases | `04_types.dag` | Treats `Unit`-element containers as compatible. | Reduced by P1.4/P1.9; remaining cases are L1 dissolution. |
 | `node_is_bridge_error_name` / `node_is_bridge_dynamic_name` | `04_types.dag` | Centralizes the remaining name-based Error/Dynamic sentinel checks used by `node_type_equals` / `node_type_compatible` and pattern subject classification. | Delete in P5.6/P5.8 after the `04_types` audit removes name-based sentinel comparison. |
 | ~~`Some` constructor → `optional_node`~~ | ~~`04_infer.dag`~~ | **Resolved.** `optional_node` deleted; `Some` record lit infers via `with_optional_cardinality`. | P1.4 done. |
 | ~~`node_is_error_type` / `node_is_dynamic`~~ | ~~`04_types.dag`~~ | **Resolved.** Predicates deleted. | P1.9 done. |
 | Optional pattern synthesis | `04_patterns.dag` | Synthesizes `Some { value: T }` and `None` subjects so Optional pattern matching can reuse variant lookup while Optional is still encoded as `[inner_type, None]`. | Delete when pattern lookup gains a fully structural Optional subject. |
-| Scrutinee normalization + Optional rewrap | `04_lookup.dag` | `resolve_scrutinee_type_node` still uses `normalize_type_name` and re-applies Optional cardinality after env lookup to preserve scrutinee shape during alias resolution. | Delete with P5.8 (`normalize_type_name`) and the final lookup audit. |
+| Scrutinee normalization + Optional rewrap | `04_lookup.dag` | `resolve_scrutinee_type_node` uses `normalize_access_type_node` and re-applies Optional cardinality after env lookup to preserve scrutinee shape during alias resolution. `normalize_type_name` deleted (P5.8). | Final lookup audit remains. |
 | Complexity guard (>100 functions) | `compile.dag` | Returns `empty_complexity_report()` for modules with >100 functions to avoid Rc-cloning OOM in the intern table. **This silently weakens the pipeline-wired proof layer.** | Fix the intern table to use arena allocation or `RefCell` instead of deep Rc cloning. Track as bootstrap performance item. |
 | `expr_children` | `00_core.dag` | Extracts child expression Nodes from ExprData variants. Reimplements `node.children` for expressions because ExprData stores children inside variant fields instead of in `node.children`. Eliminates ~210 lines of boilerplate across 4 manual ExprData walks (collectors + self-call detection). `map_expr_children` has landed and now backs the remaining structural rewrites. | L2 dissolution (P5.11): when expression children move to `node.children`, `expr_children` becomes `node.children` read and is deleted. |
 | ~~Arity bridge (`parameterized_type_arity`)~~ | ~~`00_core.dag`, `04_types.dag`~~ | **Resolved.** `parameterized_type_arity` and `is_parameterized_type` deleted. Compiler reads arity from `.dag` declarations. | P3.7 done. |
@@ -960,6 +960,12 @@ compositional target.
    inits, and string interpolation parts are Nodes in `node.children`.
    Use `arg_value`, `arm_body`, `arm_pattern`, `arm_guard`,
    `field_init_node_value` accessors to read their structure.
+   **Canonical expression accessors** (`if_condition`, `if_then_branch`,
+   `match_scrutinee`, `match_arm_nodes`, `binop_left`, `binop_right`,
+   `lambda_body`, `let_value`, `let_body`, etc.) centralize the
+   per-variant child layout in `00_core.dag`. Consumers must use these
+   instead of ad-hoc `first`/`drop(N)` indexing. Missing required
+   children return error nodes (fail-fast), not the parent node.
 
 4. **P5.12 is design validation, not dogmatic deletion.** A closed
    typed semantic tag may still be the right intermediate even in a
@@ -1011,18 +1017,17 @@ canonical source of truth; older 470-count prose is stale.
 | `.connective` direct access | `connective_field_count` | 27 | Product vs coproduct read from Node field |
 | `Conj` / `Disj` references | `conj_disj_count` | 47 | Connective shape matching (includes parse, which must produce them) |
 | Type constructors | `constructor_count` | 158 | `leaf_node`, `container_node`, `tuple_node`, etc. |
-| Type-name comparisons | `typename_count` | 42 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `node_is_*` predicate calls | `predicate_count` | 123 | Centralized type-specific dispatch helpers |
-| `classify_type_structure` calls | `classify_count` | 17 | Structural classification (replaces raw `.connective` reads in emit) |
+| Type-name comparisons | `typename_count` | 40 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| `node_is_*` predicate calls | `predicate_count` | 148 | Centralized type-specific dispatch helpers |
+| `classify_type_structure` calls | `classify_count` | 0 | **Deleted** |
 | `builtin_type_kind()` calls | `builtin_count` | 0 | **Deleted** |
-| **Total** | | **414** | |
+| **Total** | | **420** | |
 
-Updated 2026-03-26 (was 373). P5.7a/b replaced uncounted string-property
-checks (`properties |> any(p => p.name == "container_kind")`) with
-counted typed-enum predicates (`n.collection_kind`). Net structural
-improvement: property strings eliminated, `CollectionKind` enum is
-single-authority. Counter increased because the ratchet measures
-typed-predicate calls that were previously invisible string checks.
+Updated 2026-03-26 (was 373→414→420). P5.7a/b replaced uncounted
+string-property checks with counted typed-enum predicates
+(`n.collection_kind`). `classify_type_structure` fully deleted (0
+calls). Counter reflects true predicate count (148) after P5.11
+dissolution added structural accessor calls.
 
 `BuiltinTypeKind` enum and `builtin_type_kind()` fully deleted.
 `classify_type_structure()` replaces direct `.connective` reads in
@@ -2230,10 +2235,10 @@ can interleave with either track.
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.6 | Scrambled-name tests (full suite) | Phase 4 (emit name-opacity) | Test suite | Inference produces identical **inferred structure** (typed graph shapes) regardless of type names. Emit excluded (legitimately reads names for target identifiers). This is the L1=0 verification gate. |
+| P5.6 | Scrambled-name tests (full suite) | Phase 4 (emit name-opacity) | Test suite | **Done (2026-03-26).** 6 tests comparing full typed-graph JSON (via DAG backend) after name normalization: smoke, containers, enums, field access, map types, nested types. Inference produces identical structural decisions regardless of type names. |
 | P5.7 | Delete `node_is_*` predicates | P5.6 passing + P5.7a/P5.7b below | 82 call sites | Two distinct invariant violations behind the predicates. See P5.7 design below. |
-| P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | Unnecessary when types are always structurally complete (arity enforced since Phase 1, declarations since Phase 3). |
-| P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | Unnecessary when nodes carry structure directly. |
+| P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | **Done (2026-03-26).** Function and all call sites deleted. One comment marker remains in `04_lookup.dag:136`. |
+| P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | **Done (2026-03-26).** Function and all call sites deleted. Ratchet category reports 0. |
 | P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Note: collections (`Set`, `Map`, `List`) are *not* products or coproducts — they are function/indexed types in the denotational model. `Conj`/`Disj` remain relevant for record types (product) and coproduct types (e.g., `Result<T, E> = Ok \| Err`), but the collection algebra family is orthogonal. `Optional` is cardinality, not a coproduct node (P1.4). |
 
 **`04_types` audit scope before deleting the final L1 bridges:**

@@ -2,6 +2,7 @@
 
 use crate::helpers::*;
 use v2_compiler::artifact::RenderTarget;
+use serde_json::Value;
 
 // ── Basic pipeline tests ────────────────────────────────────────────────
 
@@ -418,48 +419,191 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
 }
 
 // ── Scrambled name inference tests ──────────────────────────────────────
+//
+// These tests verify that inference is name-opaque: replacing all user-defined
+// type names with arbitrary strings produces identical structural decisions
+// (typed graph shape, connective, cardinality, collection_kind, expr_data).
+//
+// Implementation: compile both variants with RenderTarget::Dag to get the
+// full typed graph as JSON, then normalize names and strip spans before
+// comparing the structural JSON values.
+
+/// Compile source with DAG backend and return the typed graph as parsed JSON.
+fn typed_graph_json(source: &str) -> Value {
+    let result = compile_dag_target(source, RenderTarget::Dag);
+    let json_str = find_file(&result, "dag-artifact.json");
+    serde_json::from_str(&json_str).expect("dag artifact should be valid JSON")
+}
+
+/// Normalize a JSON value for structural comparison:
+/// - Replace user-defined type names with ordinal placeholders
+/// - Strip span fields (source positions depend on name lengths)
+/// - Strip diagnostic messages (may contain type names)
+fn normalize_typed_graph(
+    value: &Value,
+    name_map: &std::collections::HashMap<&str, String>,
+) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, v) in map {
+                // Strip spans — they are positional, not structural
+                if k == "span" {
+                    out.insert(k.clone(), Value::Null);
+                    continue;
+                }
+                // Strip diagnostic messages — they may embed type names
+                if k == "diagnostics" {
+                    if let Value::Array(arr) = v {
+                        out.insert(
+                            k.clone(),
+                            Value::Array(vec![Value::Null; arr.len()]),
+                        );
+                        continue;
+                    }
+                }
+                // item_registry_keys: normalize then sort (set semantics, order is name-dependent)
+                if k == "item_registry_keys" {
+                    if let Value::Array(arr) = v {
+                        let mut normalized: Vec<Value> = arr
+                            .iter()
+                            .map(|v| normalize_typed_graph(v, name_map))
+                            .collect();
+                        normalized.sort_by(|a, b| {
+                            a.as_str().unwrap_or("").cmp(b.as_str().unwrap_or(""))
+                        });
+                        out.insert(k.clone(), Value::Array(normalized));
+                        continue;
+                    }
+                }
+                // Normalize name fields: replace user-defined names with ordinals
+                if k == "name" {
+                    if let Value::String(s) = v {
+                        if let Some(replacement) = name_map.get(s.as_str()) {
+                            out.insert(k.clone(), Value::String(replacement.clone()));
+                            continue;
+                        }
+                    }
+                }
+                out.insert(k.clone(), normalize_typed_graph(v, name_map));
+            }
+            Value::Object(out)
+        }
+        Value::Array(arr) => {
+            Value::Array(arr.iter().map(|v| normalize_typed_graph(v, name_map)).collect())
+        }
+        Value::String(s) => {
+            if let Some(replacement) = name_map.get(s.as_str()) {
+                Value::String(replacement.clone())
+            } else {
+                value.clone()
+            }
+        }
+        _ => value.clone(),
+    }
+}
+
+/// Assert that two programs produce structurally identical typed graphs
+/// after normalizing user-defined type names.
+///
+/// `names_a` and `names_b` are parallel arrays: names_a[i] in source_a
+/// corresponds to names_b[i] in source_b. Both get mapped to `__T{i}`.
+fn assert_scrambled_name_structural_eq(
+    source_a: &str,
+    source_b: &str,
+    names_a: &[&str],
+    names_b: &[&str],
+    label: &str,
+) {
+    assert_eq!(names_a.len(), names_b.len(), "name lists must be parallel");
+
+    let graph_a = typed_graph_json(source_a);
+    let graph_b = typed_graph_json(source_b);
+
+    let mut map_a = std::collections::HashMap::new();
+    let mut map_b = std::collections::HashMap::new();
+    for (i, (na, nb)) in names_a.iter().zip(names_b.iter()).enumerate() {
+        let ordinal = format!("__T{}", i);
+        map_a.insert(*na, ordinal.clone());
+        map_b.insert(*nb, ordinal);
+    }
+
+    let norm_a = normalize_typed_graph(&graph_a, &map_a);
+    let norm_b = normalize_typed_graph(&graph_b, &map_b);
+
+    assert_eq!(
+        norm_a, norm_b,
+        "scrambled-name structural mismatch in {label}:\n\
+         normalized A:\n{}\n\
+         normalized B:\n{}",
+        serde_json::to_string_pretty(&norm_a).unwrap_or_default(),
+        serde_json::to_string_pretty(&norm_b).unwrap_or_default(),
+    );
+}
 
 #[test]
 fn scrambled_name_inference_smoke() {
-    let source_a = "module test\ntype Foo { x: Int }\ntype Bar { name: String }\nfn make_foo() -> Foo { Foo { x: 1 } }\nfn get_name(b: Bar) -> String { b.name }\n";
-    let source_b = "module test\ntype Zqx { x: Int }\ntype Wmn { name: String }\nfn make_foo() -> Zqx { Zqx { x: 1 } }\nfn get_name(b: Wmn) -> String { b.name }\n";
-    let result_a = compile_dag(source_a);
-    let result_b = compile_dag(source_b);
-    let diags_a = diagnostic_messages(&result_a);
-    let diags_b = diagnostic_messages(&result_b);
-    assert_eq!(
-        diags_a.len(),
-        diags_b.len(),
-        "diagnostic counts should be equal (name-independent inference)\n  A: {:?}\n  B: {:?}",
-        diags_a,
-        diags_b
-    );
-    assert_eq!(
-        result_a.files.len(),
-        result_b.files.len(),
-        "emitted file counts should be equal"
+    assert_scrambled_name_structural_eq(
+        "module test\ntype Foo { x: Int }\ntype Bar { name: String }\nfn make_foo() -> Foo { Foo { x: 1 } }\nfn get_name(b: Bar) -> String { b.name }\n",
+        "module test\ntype Zqx { x: Int }\ntype Wmn { name: String }\nfn make_foo() -> Zqx { Zqx { x: 1 } }\nfn get_name(b: Wmn) -> String { b.name }\n",
+        &["Foo", "Bar"],
+        &["Zqx", "Wmn"],
+        "smoke (simple structs)",
     );
 }
 
 #[test]
 fn scrambled_name_inference_containers() {
-    let source_a = "module test\ntype Coord { x: Int  y: Int }\ntype Path { points: List<Coord> }\nfn empty_path() -> Path { Path { points: [] } }\n";
-    let source_b = "module test\ntype Qwz { x: Int  y: Int }\ntype Ijk { points: List<Qwz> }\nfn empty_path() -> Ijk { Ijk { points: [] } }\n";
-    let result_a = compile_dag(source_a);
-    let result_b = compile_dag(source_b);
-    let diags_a = diagnostic_messages(&result_a);
-    let diags_b = diagnostic_messages(&result_b);
-    assert_eq!(
-        diags_a.len(),
-        diags_b.len(),
-        "diagnostic counts should be equal (name-independent inference)\n  A: {:?}\n  B: {:?}",
-        diags_a,
-        diags_b
+    assert_scrambled_name_structural_eq(
+        "module test\ntype Coord { x: Int  y: Int }\ntype Path { points: List<Coord> }\nfn empty_path() -> Path { Path { points: [] } }\n",
+        "module test\ntype Qwz { x: Int  y: Int }\ntype Ijk { points: List<Qwz> }\nfn empty_path() -> Ijk { Ijk { points: [] } }\n",
+        &["Coord", "Path"],
+        &["Qwz", "Ijk"],
+        "containers (List<T>)",
     );
-    assert_eq!(
-        result_a.files.len(),
-        result_b.files.len(),
-        "emitted file counts should be equal"
+}
+
+#[test]
+fn scrambled_name_inference_enums() {
+    assert_scrambled_name_structural_eq(
+        "module test\ntype Color = Red | Green | Blue\nfn is_red(c: Color) -> Bool {\n  match c {\n    Red => true\n    Green => false\n    Blue => false\n  }\n}\n",
+        "module test\ntype Shade = Red | Green | Blue\nfn is_red(c: Shade) -> Bool {\n  match c {\n    Red => true\n    Green => false\n    Blue => false\n  }\n}\n",
+        &["Color"],
+        &["Shade"],
+        "enums (coproducts)",
+    );
+}
+
+#[test]
+fn scrambled_name_inference_field_access() {
+    assert_scrambled_name_structural_eq(
+        "module test\ntype Vec2 { x: Int  y: Int }\nfn sum(v: Vec2) -> Int { v.x + v.y }\n",
+        "module test\ntype Pqr { x: Int  y: Int }\nfn sum(v: Pqr) -> Int { v.x + v.y }\n",
+        &["Vec2"],
+        &["Pqr"],
+        "field access",
+    );
+}
+
+#[test]
+fn scrambled_name_inference_map_types() {
+    assert_scrambled_name_structural_eq(
+        "module test\ntype Config { entries: Map<String, Int> }\nfn empty_config() -> Config { Config { entries: {} } }\n",
+        "module test\ntype Settings { entries: Map<String, Int> }\nfn empty_config() -> Settings { Settings { entries: {} } }\n",
+        &["Config"],
+        &["Settings"],
+        "map types",
+    );
+}
+
+#[test]
+fn scrambled_name_inference_nested_types() {
+    assert_scrambled_name_structural_eq(
+        "module test\ntype Inner { value: Int }\ntype Outer { items: List<Inner>  label: String }\nfn make() -> Outer { Outer { items: [], label: \"x\" } }\n",
+        "module test\ntype Alpha { value: Int }\ntype Beta { items: List<Alpha>  label: String }\nfn make() -> Beta { Beta { items: [], label: \"x\" } }\n",
+        &["Inner", "Outer"],
+        &["Alpha", "Beta"],
+        "nested types",
     );
 }
 

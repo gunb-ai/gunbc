@@ -470,10 +470,49 @@ fn serialize_expr_data(expr_node: Node) -> String {
         "{\"kind\": \"ExprForEach\", \"variable\": ", json_quote(s: variable),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    // All remaining variants: just tag + children
-    _ =>
+    ExprMatch =>
       concat(
-        "{\"kind\": \"ExprOther\"",
+        "{\"kind\": \"ExprMatch\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprIf =>
+      concat(
+        "{\"kind\": \"ExprIf\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprListLit =>
+      concat(
+        "{\"kind\": \"ExprListLit\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprStringInterp =>
+      concat(
+        "{\"kind\": \"ExprStringInterp\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprBlock =>
+      concat(
+        "{\"kind\": \"ExprBlock\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprCast =>
+      concat(
+        "{\"kind\": \"ExprCast\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprIndex =>
+      concat(
+        "{\"kind\": \"ExprIndex\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprSlice =>
+      concat(
+        "{\"kind\": \"ExprSlice\"",
+        ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
+        "}")
+    ExprReturn =>
+      concat(
+        "{\"kind\": \"ExprReturn\"",
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
   }

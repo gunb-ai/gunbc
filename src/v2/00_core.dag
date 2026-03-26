@@ -588,15 +588,52 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 
 // =========================================================================
 // Compositional child Node accessors (P5.11)
+//
+// Child layout is the single source of truth for expression structure.
+// Required children return an error node when missing (fail-fast),
+// preventing silent self-recursion from malformed nodes.
+//
+// | Variant         | Children                              |
+// |-----------------|---------------------------------------|
+// | ExprFieldAccess | [base]                                |
+// | ExprCall        | [arg0, arg1, ...]                     |
+// | ExprMethodCall  | [receiver, arg0, arg1, ...]           |
+// | ExprMatch       | [scrutinee, arm0, arm1, ...]          |
+// | ExprIf          | [condition, then, else?]              |
+// | ExprLet         | [value, body?]                        |
+// | ExprRecordLit   | [field_init0, ...]                    |
+// | ExprListLit     | [elem0, ...]                          |
+// | ExprBinOp       | [left, right]                         |
+// | ExprUnaryOp     | [operand]                             |
+// | ExprLambda      | [body]                                |
+// | ExprStringInterp| [part0, ...]                          |
+// | ExprBlock       | [stmt0, ...]                          |
+// | ExprCast        | [expr, target]                        |
+// | ExprForEach     | [collection, body]                    |
+// | ExprIndex       | [base, index]                         |
+// | ExprSlice       | [base, start, end]                    |
+// | ExprReturn      | [value]                               |
 // =========================================================================
+
+// Required child at position. Returns error node if missing.
+fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
+  match texpr.children |> drop(index) |> first {
+    Some { value: v } => v
+    None => make_expr_error_node(kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
+  }
+}
+
+// -- Wrapper node accessors (arg, arm, field-init) --
 
 fn arg_name(n: Node) -> String? {
   if n.name == "" { none } else { Some { value: n.name } }
 }
 
 fn arg_value(n: Node) -> Node {
-  let first_child = n.children |> first
-  match first_child { Some { value: v } => v  None => n }
+  match n.children |> first {
+    Some { value: v } => v
+    None => make_expr_error_node(kind: InternalExprError, message: "malformed arg: missing value", span: n.span)
+  }
 }
 
 fn arm_pattern(n: Node) -> MatchPattern {
@@ -608,8 +645,10 @@ fn arm_guard(n: Node) -> Node? {
 }
 
 fn arm_body(n: Node) -> Node {
-  let last_child = n.children |> last
-  match last_child { Some { value: v } => v  None => n }
+  match n.children |> last {
+    Some { value: v } => v
+    None => make_expr_error_node(kind: InternalExprError, message: "malformed arm: missing body", span: n.span)
+  }
 }
 
 fn field_init_node_name(n: Node) -> String {
@@ -617,9 +656,76 @@ fn field_init_node_name(n: Node) -> String {
 }
 
 fn field_init_node_value(n: Node) -> Node {
-  let first_child = n.children |> first
-  match first_child { Some { value: v } => v  None => n }
+  match n.children |> first {
+    Some { value: v } => v
+    None => make_expr_error_node(kind: InternalExprError, message: "malformed field-init: missing value", span: n.span)
+  }
 }
+
+// -- ExprIf --
+fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
+fn if_then_branch(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
+fn if_else_branch(texpr: Node) -> Node? { texpr.children |> drop(2) |> first }
+
+// -- ExprMatch --
+fn match_scrutinee(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
+fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> drop(1) }
+
+// -- ExprBinOp --
+fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
+fn binop_right(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "binop right") }
+
+// -- ExprUnaryOp --
+fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "unaryop operand") }
+
+// -- ExprFieldAccess --
+fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
+
+// -- ExprMethodCall --
+fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
+fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> drop(1) }
+
+// -- ExprCall --
+fn call_arg_nodes(texpr: Node) -> List<Node> { texpr.children }
+
+// -- ExprLambda --
+fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
+
+// -- ExprLet --
+fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
+fn let_body(texpr: Node) -> Node? { texpr.children |> drop(1) |> first }
+
+// -- ExprCast --
+fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
+fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "cast target") }
+
+// -- ExprForEach --
+fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
+fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
+
+// -- ExprIndex --
+fn index_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
+fn index_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "index expression") }
+
+// -- ExprSlice --
+fn slice_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "slice base") }
+fn slice_start(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "slice start") }
+fn slice_end(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 2, role: "slice end") }
+
+// -- ExprReturn --
+fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "return value") }
+
+// -- ExprBlock --
+fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
+
+// -- ExprRecordLit --
+fn record_field_nodes(texpr: Node) -> List<Node> { texpr.children }
+
+// -- ExprListLit --
+fn list_elements(texpr: Node) -> List<Node> { texpr.children }
+
+// -- ExprStringInterp --
+fn string_interp_parts(texpr: Node) -> List<Node> { texpr.children }
 
 // =========================================================================
 // Transport Node constructors
@@ -827,25 +933,18 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
     ExprMethodCall { method: _, method_semantics: _ } =>
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
     ExprIf =>
-      // children = [condition, then, else?]. Condition is never tail; branches inherit tail.
-      let ch = texpr.children
-      let cond_bad = match ch |> first { Some { value: c } => expr_has_non_tail_self_call(texpr: c, fn_name: fn_name, in_tail: false)  None => false }
-      let then_bad = match ch |> drop(1) |> first { Some { value: t } => expr_has_non_tail_self_call(texpr: t, fn_name: fn_name, in_tail: in_tail)  None => false }
-      let else_bad = match ch |> drop(2) |> first { Some { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail)  None => false }
+      let cond_bad = expr_has_non_tail_self_call(texpr: if_condition(texpr: texpr), fn_name: fn_name, in_tail: false)
+      let then_bad = expr_has_non_tail_self_call(texpr: if_then_branch(texpr: texpr), fn_name: fn_name, in_tail: in_tail)
+      let else_bad = match if_else_branch(texpr: texpr) { Some { value: e } => expr_has_non_tail_self_call(texpr: e, fn_name: fn_name, in_tail: in_tail)  None => false }
       cond_bad || then_bad || else_bad
     ExprMatch =>
-      // children = [scrutinee, arm0, arm1, ...]. Scrutinee is never tail; arm bodies inherit tail.
-      let ch = texpr.children
-      let scrut_bad = match ch |> first { Some { value: s } => expr_has_non_tail_self_call(texpr: s, fn_name: fn_name, in_tail: false)  None => false }
-      let arms_bad = ch |> drop(1) |> any(arm_node =>
-        let body = arm_body(n: arm_node)
-        expr_has_non_tail_self_call(texpr: body, fn_name: fn_name, in_tail: in_tail))
+      let scrut_bad = expr_has_non_tail_self_call(texpr: match_scrutinee(texpr: texpr), fn_name: fn_name, in_tail: false)
+      let arms_bad = match_arm_nodes(texpr: texpr) |> any(arm_node =>
+        expr_has_non_tail_self_call(texpr: arm_body(n: arm_node), fn_name: fn_name, in_tail: in_tail))
       scrut_bad || arms_bad
     ExprLet { name: _ } =>
-      // children = [value, body?]. Value is never tail; body inherits tail.
-      let ch = texpr.children
-      let val_bad = match ch |> first { Some { value: v } => expr_has_non_tail_self_call(texpr: v, fn_name: fn_name, in_tail: false)  None => false }
-      let body_bad = match ch |> drop(1) |> first { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)  None => false }
+      let val_bad = expr_has_non_tail_self_call(texpr: let_value(texpr: texpr), fn_name: fn_name, in_tail: false)
+      let body_bad = match let_body(texpr: texpr) { Some { value: b } => expr_has_non_tail_self_call(texpr: b, fn_name: fn_name, in_tail: in_tail)  None => false }
       val_bad || body_bad
     ExprBlock =>
       // children = [stmt0, stmt1, ...]. Only last is in tail position.
@@ -863,12 +962,12 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
         }
         init_bad || last_bad
       }
+    NoExprData =>
+      // Wrapper nodes (arg, arm, field-init) -- recurse through children preserving tail context.
+      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail))
     // All remaining variants: children are never in tail position.
     _ =>
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false))
-    NoExprData =>
-      // Wrapper nodes (arg, arm, field-init) -- recurse through children.
-      texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: in_tail))
   }
 }
 
