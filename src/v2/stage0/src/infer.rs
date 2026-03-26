@@ -2216,7 +2216,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         __mapped_0.push(infer_item(__elem_1.clone(), scope.clone()).item.clone());
     }
     Rc::new(__mapped_0)
-}, params: item.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: leaf_node("Unit") })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: None, connective: item.connective.clone(), collection_kind: None, transport: item.transport.clone(), properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: Rc::new(Vec::new()) })
+}, params: item.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: leaf_node("Unit") })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: None, connective: item.connective.clone(), collection_kind: item.collection_kind.clone(), transport: item.transport.clone(), properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: Rc::new(Vec::new()) })
 } else {
     if (item.body.clone().is_some()) && (({
     let __len_11 = item.params.clone().len();
@@ -2292,7 +2292,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         __mapped_6.push(infer_item(__elem_7.clone(), scope.clone()).item.clone());
     }
     Rc::new(__mapped_6)
-}, params: item.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: None, connective: item.connective.clone(), collection_kind: None, transport: item.transport.clone(), properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: Rc::new(Vec::new()) })
+}, params: item.params.clone(), return_type: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: None, connective: item.connective.clone(), collection_kind: item.collection_kind.clone(), transport: item.transport.clone(), properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: Rc::new(Vec::new()) })
 }
 }
 }
@@ -2399,7 +2399,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     let mut __acc_20: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_21 in module.module.items.iter().cloned() {
         __acc_20 = if node_has_structure(__elem_21.clone()) {
-    let type_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: __elem_21.children.clone(), connective: __elem_21.connective.clone(), collection_kind: None, params: __elem_21.params.clone(), return_type: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let type_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: __elem_21.children.clone(), connective: __elem_21.connective.clone(), collection_kind: __elem_21.collection_kind.clone(), params: __elem_21.params.clone(), return_type: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_23 = __acc_20;
     let mut __map_ins_22 = Rc::try_unwrap(__rc_23).unwrap_or_else(|rc| (*rc).clone());
@@ -2642,7 +2642,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     let mut __acc_18: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_19 in module.module.items.iter().cloned() {
         __acc_18 = if node_has_structure(__elem_19.clone()) {
-    let type_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: __elem_19.children.clone(), connective: __elem_19.connective.clone(), collection_kind: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let type_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: __elem_19.children.clone(), connective: __elem_19.connective.clone(), collection_kind: __elem_19.collection_kind.clone(), params: Rc::new(Vec::new()), return_type: None, return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_21 = __acc_18;
     let mut __map_ins_20 = Rc::try_unwrap(__rc_21).unwrap_or_else(|rc| (*rc).clone());
@@ -3315,8 +3315,16 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
     Rc::new(EmitGraphInfo { type_summaries: built.type_summaries.clone(), variant_to_enum: built.variant_to_enum.clone(), enum_variant_membership: built.enum_variant_membership.clone(), field_type_names: built.field_type_names.clone() })
 }
 
+pub fn infer_empty_typed_module_index() -> Rc<HashMap<String, Rc<TypedModule>>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
+pub fn infer_empty_item_info_map() -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
 pub fn typecheck(graph: Rc<ModuleGraph>) -> Rc<TypedGraph> {
-    typecheck_modules(graph.modules.clone(), Rc::new(Vec::new()), Rc::new(std::collections::HashMap::new()), Rc::new(std::collections::HashMap::new()), Rc::new(Vec::new()))
+    typecheck_modules(graph.modules.clone(), Rc::new(Vec::new()), infer_empty_typed_module_index(), infer_empty_item_info_map(), Rc::new(Vec::new()))
 }
 
 pub fn typecheck_modules(remaining: Rc<Vec<Rc<ResolvedModule>>>, modules: Rc<Vec<Rc<TypedModule>>>, module_index: Rc<HashMap<String, Rc<TypedModule>>>, item_registry: Rc<HashMap<String, Rc<ItemInfo>>>, diag_chunks: Rc<Vec<Rc<Vec<Rc<Diagnostic>>>>>) -> Rc<TypedGraph> {

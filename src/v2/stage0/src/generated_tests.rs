@@ -2543,7 +2543,7 @@ fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
     name: node.name,
     span: node.span,
     children: node.children,
-    connective: node.connective, collection_kind: none,
+    connective: node.connective, collection_kind: node.collection_kind,
     params: node.params,
     return_type: node.return_type,
     return_cardinality: node.return_cardinality,
@@ -3519,6 +3519,7 @@ import v2.std.core {
   NodeType, Typed, InferError, Untyped, rt_node,
   Connective, Conj, Disj,
   Field, Variant, Param, ResourceUse, Cardinality, Required, CardOptional,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -4452,6 +4453,19 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
   Node { name: name, span: span, children: [], connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
+fn make_type_node_with_ck(name: String, span: SourceSpan, children: List<Node>, ck: CollectionKind) -> Node {
+  Node { name: name, span: span, children: children, connective: none, collection_kind: Some { value: ck }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn make_type_node_with_children(name: String, span: SourceSpan, children: List<Node>) -> Node {
+  if name == "List" { make_type_node_with_ck(name: name, span: span, children: children, ck: ListKind) }
+  else if name == "Set" { make_type_node_with_ck(name: name, span: span, children: children, ck: SetKind) }
+  else if name == "NonEmptyList" { make_type_node_with_ck(name: name, span: span, children: children, ck: NonEmptyListKind) }
+  else if name == "NonEmptySet" { make_type_node_with_ck(name: name, span: span, children: children, ck: NonEmptySetKind) }
+  else if name == "Map" { make_type_node_with_ck(name: name, span: span, children: children, ck: MapKind) }
+  else { Node { name: name, span: span, children: children, connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } }
+}
+
 // Check if a Node represents an inline record (Conj with children).
 fn is_conj_with_children(n: Node) -> Bool {
   node_is_product(n: n) && n.children |> count > 0
@@ -5108,7 +5122,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, state: type_args.state, err: type_args.err } }
     let r3 = expect(tokens: tokens, state: type_args.state, expected: ExpectGt)
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
-    let te = Node { name: type_name, span: start_span, children: type_args.args, connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let te = make_type_node_with_children(name: type_name, span: start_span, children: type_args.args)
     maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
   } else {
     // Plain named type
@@ -10794,7 +10808,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: Some { value: Resolved { node: leaf_node(name: "Unit") } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: item.connective, collection_kind: none, transport: item.transport,
+        connective: item.connective, collection_kind: item.collection_kind, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
         config: item.config,
         is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -10887,7 +10901,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: item.connective, collection_kind: none, transport: item.transport,
+        connective: item.connective, collection_kind: item.collection_kind, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
         config: item.config,
         is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -10977,7 +10991,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     if node_has_structure(n: item) {
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
-        connective: item.connective, collection_kind: none, params: item.params, return_type: none,
+        connective: item.connective, collection_kind: item.collection_kind, params: item.params, return_type: none,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -11089,7 +11103,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
     if node_has_structure(n: item) {
-      let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: none, params: [], return_type: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: item.collection_kind, params: [], return_type: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
     } else if item.return_type != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node { name: item.name, span: item.span, children: [], connective: none, collection_kind: none, params: [], return_type: item.return_type, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -11563,6 +11577,14 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
 // defined in the graph).
 // =========================================================================
 
+fn infer_empty_typed_module_index() -> Map<String, TypedModule> {
+  empty_map()
+}
+
+fn infer_empty_item_info_map() -> Map<String, ItemInfo> {
+  empty_map()
+}
+
 fn typecheck(graph: ModuleGraph) -> TypedGraph {
   // SG-9: Use explicit recursion with standalone parameters instead of fold
   // with a struct accumulator. Standalone Rc parameters have refcount 1 in
@@ -11575,8 +11597,8 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
   typecheck_modules(
     remaining: graph.modules,
     modules: [],
-    module_index: empty_map(),
-    item_registry: empty_map(),
+    module_index: infer_empty_typed_module_index(),
+    item_registry: infer_empty_item_info_map(),
     diag_chunks: []
   )
 }
@@ -12663,7 +12685,7 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
     )
     Node {
       name: n.name, span: n.span, children: new_children,
-      connective: n.connective, collection_kind: none, params: n.params,
+      connective: n.connective, collection_kind: n.collection_kind, params: n.params,
       return_type: n.return_type, return_cardinality: n.return_cardinality,
       uses: n.uses, body: n.body, transport: n.transport,
       properties: n.properties, type_annotation: n.type_annotation,
@@ -12698,7 +12720,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             let base_resolved = base_result.resolved
             let base_diags = base_result.diagnostics
             NodeResolveResult {
-              resolved: Node { name: n.name, span: n.span, children: [base_resolved], connective: n.connective, collection_kind: none, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+              resolved: Node { name: n.name, span: n.span, children: [base_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
               diagnostics: base_diags
             }
           None => NodeResolveResult { resolved: n, diagnostics: [] }
@@ -12722,7 +12744,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         let resolved_children = map(child_results, cr => cr.resolved)
         let all_diags = flat_map(child_results, cr => cr.diagnostics)
         NodeResolveResult {
-          resolved: Node { name: n.name, span: n.span, children: resolved_children, connective: n.connective, collection_kind: none, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+          resolved: Node { name: n.name, span: n.span, children: resolved_children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
           diagnostics: all_diags
         }
       }
@@ -12772,7 +12794,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         let resolved_variants = map(variant_results, vr => vr.resolved)
         let all_diags = flat_map(variant_results, vr => vr.diagnostics)
         NodeResolveResult {
-          resolved: Node { name: n.name, span: n.span, children: resolved_variants, connective: n.connective, collection_kind: none, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+          resolved: Node { name: n.name, span: n.span, children: resolved_variants, connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
           diagnostics: all_diags
         }
       }
@@ -12802,7 +12824,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     )
     let is_recursive = is_recursive_type(env: env, name: n.name)
     let result = NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: none, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
+      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: decl.collection_kind, params: [], return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data },
       diagnostics: concat(arity_diags, arg_diags)
     }
     result
@@ -12823,7 +12845,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let val_resolved = val_result.resolved
     let val_diags = val_result.diagnostics
     NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: [key_resolved, val_resolved], connective: n.connective, collection_kind: none, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+      resolved: Node { name: n.name, span: n.span, children: [key_resolved, val_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
       diagnostics: concat(key_diags, val_diags)
     }
   } else if n.children |> count == 1 {
@@ -12834,7 +12856,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         let el_resolved = el_result.resolved
         let el_diags = el_result.diagnostics
         NodeResolveResult {
-          resolved: Node { name: n.name, span: n.span, children: [el_resolved], connective: n.connective, collection_kind: none, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
+          resolved: Node { name: n.name, span: n.span, children: [el_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData },
           diagnostics: el_diags
         }
       None => NodeResolveResult { resolved: n, diagnostics: [] }
@@ -13269,7 +13291,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       params: resolved_params, return_type: resolved_ret,
       return_cardinality: item.return_cardinality,
       uses: resolved_uses, body: resolved_body,
-      connective: item.connective, collection_kind: none, transport: resolved_transport,
+      connective: item.connective, collection_kind: item.collection_kind, transport: resolved_transport,
       properties: resolved_props, type_annotation: resolved_anno,
       config: resolved_config, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
     },
@@ -13816,11 +13838,11 @@ fn rt_type(n: Node) -> Node {
 // connective (Conj/Disj) is the sole authority for product/coproduct.
 
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: none, params: n.params, return_type: n.return_type, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: none, params: n.params, return_type: n.return_type, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, return_type: n.return_type, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, config: n.config, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, expr_data: n.expr_data }
 }
 
 fn container_node_with_kind(kind_name: String, element: Node, ck: CollectionKind) -> Node {
@@ -13905,11 +13927,10 @@ fn node_has_structure(n: Node) -> Bool {
 }
 
 fn node_is_container(n: Node) -> Bool {
-  // Bridge: check typed field first, fall back to name until parser sets collection_kind
   match n.collection_kind {
     Some { value: MapKind } => false
     Some { value: _ } => true
-    None => n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet"
+    None => false
   }
 }
 
@@ -13921,10 +13942,9 @@ fn node_is_optional(n: Node) -> Bool {
 }
 
 fn node_is_map(n: Node) -> Bool {
-  // Bridge: check typed field first, fall back to name until parser sets collection_kind
   match n.collection_kind {
     Some { value: MapKind } => true
-    _ => n.name == "Map"
+    _ => false
   }
 }
 
@@ -14330,6 +14350,7 @@ import v2.std.core {
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
   BinOpKind, NullCoalesce,
+  UnaryOpKind, Not, Neg,
   ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
@@ -14354,7 +14375,11 @@ import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
-import v2.compiler.infer_service { UniqueAccum }
+import v2.compiler.infer_service {
+  UniqueAccum,
+  OpEntry,
+  is_typed_service_call_receiver, extract_typed_service_name
+}
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
@@ -14547,14 +14572,34 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
 // Scope helpers
 // =========================================================================
 
+fn emit_empty_type_bindings() -> Map<String, TypeBinding> {
+  empty_map()
+}
+
+fn emit_empty_bool_name_set() -> Map<String, Bool> {
+  empty_map()
+}
+
+fn emit_empty_func_sig_map() -> Map<String, ResolvedFuncSig> {
+  empty_map()
+}
+
+fn emit_empty_service_registry() -> Map<String, List<OpEntry>> {
+  empty_map()
+}
+
+fn emit_empty_item_info_map() -> Map<String, ItemInfo> {
+  empty_map()
+}
+
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
-    func_env: ResolvedFuncEnv { signatures: empty_map() },
-    locals: empty_map(),
+    type_env: TypeEnv { bindings: emit_empty_type_bindings(), recursive_types: [], recursive_type_set: emit_empty_bool_name_set() },
+    func_env: ResolvedFuncEnv { signatures: emit_empty_func_sig_map() },
+    locals: emit_empty_type_bindings(),
     module_name: "",
-    service_registry: empty_map(),
-    item_registry: empty_map()
+    service_registry: emit_empty_service_registry(),
+    item_registry: emit_empty_item_info_map()
   }
 }
 
@@ -14562,9 +14607,9 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
-    locals: empty_map(),
+    locals: emit_empty_type_bindings(),
     module_name: typed_module.module.name,
-    service_registry: empty_map(),
+    service_registry: emit_empty_service_registry(),
     item_registry: typed_module.item_registry
   }
 }
@@ -14633,7 +14678,7 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
 }
 
 fn unique_strings(items: List<String>) -> List<String> {
-  let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
+  let result = items |> fold(init: UniqueAccum { seen: emit_empty_bool_name_set(), result: [] }, f: fn(acc, item) {
     if emit_map_has(m: acc.seen, key: item) { acc }
     else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
@@ -15039,8 +15084,12 @@ fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> St
 // emit_node_type_rc is the Rc-aware API for Rust callers.
 // =========================================================================
 
+fn empty_rc_types() -> Map<String, Bool> {
+  empty_map()
+}
+
 fn emit_node_type(n: Node, target: RenderTarget) -> String {
-  emit_node_type_rc(n: n, target: target, rc_types: empty_map())
+  emit_node_type_rc(n: n, target: target, rc_types: empty_rc_types())
 }
 
 fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
@@ -15857,7 +15906,10 @@ import v2.compiler.languages {
   scaffold_for_target, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_types {
+  for_each_element_type_node, node_is_optional, node_is_map, node_is_product,
+  leaf_node, with_required_cardinality, rt_type
+}
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -17191,7 +17243,10 @@ import v2.compiler.languages {
   scaffold_for_target, serialization_for_target, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, leaf_node, with_required_cardinality, rt_type }
+import v2.compiler.infer_types {
+  for_each_element_type_node, node_is_optional, node_is_map, node_is_product,
+  leaf_node, with_required_cardinality, rt_type
+}
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -18515,6 +18570,7 @@ import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
   node_is_optional, node_is_map, node_is_container, node_has_structure,
+  node_is_product, node_is_coproduct,
   is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   leaf_node, with_required_cardinality,
   rt_type, emit_map_has
@@ -18543,12 +18599,13 @@ import v2.compiler.infer_emit_info {
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput,
+  EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
+  empty_rc_types,
   emit_string_literal, emit_simple_expr,
   module_emit_scope,
   scope_after_expr,
@@ -18830,6 +18887,10 @@ fn emit_lib_rs(modules: List<TypedModule>, has_services: Bool) -> TextFile {
 // Module emission
 // =========================================================================
 
+fn empty_name_map() -> Map<String, String> {
+  empty_map()
+}
+
 // Backwards-compatible wrapper for tests that call emit_module directly.
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let emit_info = build_emit_graph_info(modules: [typed_module])
@@ -18840,7 +18901,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
       acc
     }
   )
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, vtoe: emit_info.variant_to_enum, rc_types: rc_types, svc_module_map: empty_map())
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, vtoe: emit_info.variant_to_enum, rc_types: rc_types, svc_module_map: empty_name_map())
 }
 
 fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, vtoe: Map<String, String>, rc_types: Map<String, Bool>, svc_module_map: Map<String, String>) -> TextFile {
@@ -20019,7 +20080,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
 }
 
 fn type_needs_rc(env: TypeEnv, type_node: Node) -> Bool {
-  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_map())
+  type_needs_rc_seen(env: env, type_node: type_node, seen: empty_rc_types())
 }
 
 fn type_needs_rc_seen(env: TypeEnv, type_node: Node, seen: Map<String, Bool>) -> Bool {
@@ -20309,16 +20370,16 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   // Built-in: get(list, index) -> list[index as usize].clone()
   if func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
-    match get_args |> first {
+    return match get_args |> first {
       Some { value: list_arg } =>
         match get_args |> skip(1) |> first {
           Some { value: idx_arg } =>
             let list_str = emit_typed_expr(texpr: list_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
             let index_str = emit_typed_expr(texpr: idx_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            return concat(list_str, ".get((", index_str, ") as usize).cloned()")
-          None => return "compile_error!(\"get call missing index argument\")"
+            concat(list_str, ".get((", index_str, ") as usize).cloned()")
+          None => "compile_error!(\"get call missing index argument\")"
         }
-      None => return "compile_error!(\"get call missing list argument\")"
+      None => "compile_error!(\"get call missing list argument\")"
     }
   }
   // Built-in: with(struct, { field: value }) -> StructName { field: value, ..struct.clone() }
@@ -20350,10 +20411,10 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   }
   if func == "to_string" {
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
-    match to_string_args |> first {
+    return match to_string_args |> first {
       Some { value: value_arg } =>
-        return concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
-      None => return "compile_error!(\"to_string call missing value argument\")"
+        concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
+      None => "compile_error!(\"to_string call missing value argument\")"
     }
   }
   // For collection functions (map, filter, flat_map, fold), extend scope with the
@@ -20969,7 +21030,7 @@ fn emit_record_lit_full(type_name: String?, fields: List<FieldInit>, span: Sourc
   let inferred = infer_record_lit(type_name: type_name, field_inits: fields, span: span, scope: scope)
   match inferred.typed.expr_data {
     ExprRecordLit { type_name: tn, fields: fs, parent_enum: parent_enum } =>
-      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: inferred.typed), registry: registry, scope: scope, depth: 0, vtoe: empty_map(), rc_types: rc_types, emit_info: emit_info)
+      emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: inferred.typed), registry: registry, scope: scope, depth: 0, vtoe: empty_name_map(), rc_types: rc_types, emit_info: emit_info)
     _ =>
       "compile_error!(\"internal error: infer_record_lit did not produce ExprRecordLit\")"
   }
@@ -21626,7 +21687,7 @@ fn emit_modifier_doc_from_props(properties: List<FieldInit>) -> String {
 
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_rc_types()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -21634,7 +21695,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: empty_map())
+  let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: empty_rc_types())
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_return_type = rt_type(n: op_node)
   let real_body = emit_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry, depth: depth + 2, return_type: op_return_type)
@@ -21794,7 +21855,7 @@ fn emit_resource_def(item: Node) -> String {
 
 fn emit_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map()))
+    concat(emit_ident(name: p.name, target: Rust), ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_rc_types()))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -21802,7 +21863,7 @@ fn emit_capability_method(cap_node: Node) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_node_type_rc(n: rt_type(n: cap_node), target: Rust, rc_types: empty_map())
+  let ret = emit_node_type_rc(n: rt_type(n: cap_node), target: Rust, rc_types: empty_rc_types())
   concat("async fn ", emit_ident(name: cap_node.name, target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
@@ -21818,10 +21879,10 @@ fn emit_capability_method(cap_node: Node) -> String {
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   // Data defs use lazy_static (requires Sync) or serde (requires Deserialize),
   // so render types without Rc wrapping.
-  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_map())
+  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_rc_types())
   let upper_name = to_screaming_snake(name: name)
   if is_simple_type_node(n: type_node) {
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
     concat(rust_visibility_prefix(), "const ", upper_name, ": ", ty_str, " = ", val_str, ";")
   } else if has_nested_records_node(n: type_node) {
     // Complex data with nested anonymous records -> serde deserialization
@@ -21836,7 +21897,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     match value.expr_data {
       ExprRecordLit { fields: fs, type_name: _, parent_enum: _ } =>
         let inserts = fs |> map(f =>
-          let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+          let val_str = emit_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
           concat("        __m.insert(\"", f.name, "\".to_string(), ", val_str, ");")
         )
         let inserts_str = inserts |> join(separator: "\n")
@@ -21848,14 +21909,14 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
           "    };\n",
           "}")
       _ =>
-        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
         concat("lazy_static::lazy_static! {\n",
           "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
           "}")
     }
   } else {
     // Complex types use lazy_static for heap-allocated values
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_rc_types(), emit_info: emit_info)
     concat("lazy_static::lazy_static! {\n",
       "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
       "}")
@@ -21894,7 +21955,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(p.name, ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_map())))
+    |> map(p => concat(p.name, ": ", emit_rust_param_type(n: p.type_expr, rc_types: empty_rc_types())))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
@@ -24705,7 +24766,7 @@ import extdeps.languages.python.emit {
 import extdeps.languages.go.emit {
   go_type_map, go_keywords, go_container_templates,
   go_reserved, go_reserved_escape_suffix,
-  go_source_extension, go_manifest_file
+  go_manifest_file
 }
 
 type ReservedWordStrategy
@@ -24836,7 +24897,7 @@ fn go_spec() -> LanguageSpec {
     scaffold: {
       manifest_file: go_manifest_file,
       module_init_file: null,
-      source_file_extension: go_source_extension,
+      source_file_extension: ".go",
       source_dir: null
     },
     serialization: {
@@ -26196,7 +26257,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         // Prevent silent type size regressions in generated v2 types.
         // These bounds assume Node.transport and Node.config are boxed (R2).
         let node_size = std::mem::size_of::<crate::v2_core::Node>();
-        let expr_size = std::mem::size_of::<crate::v2_core::Expr>();
+        let expr_size = std::mem::size_of::<crate::v2_core::ExprData>();
         assert!(
             node_size <= 176,
             "Node size regression: {} bytes (limit: 176). Check for unboxed rare fields.",
@@ -26444,7 +26505,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
-                let typed = crate::reconcile::reconcile(graph);
+                let typed = crate::infer::reconcile(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
                     .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
@@ -26567,7 +26628,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::reconcile::TypedModule>>::new();
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer_items::TypedModule>>::new();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -26581,7 +26642,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
-                    let _unres = crate::reconcile::build_type_env_unresolved(
+                    let _unres = crate::infer::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -26598,7 +26659,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
-                    let env_result = crate::reconcile::build_type_env(
+                    let env_result = crate::infer::build_type_env(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -26622,7 +26683,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 2: full typecheck_module
                     let t_full = Instant::now();
-                    let tc_result = crate::reconcile::typecheck_module(
+                    let tc_result = crate::infer::typecheck_module(
                         resolved.clone(),
                         module_index
                     );

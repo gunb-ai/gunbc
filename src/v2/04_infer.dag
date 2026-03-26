@@ -1753,7 +1753,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: Some { value: Resolved { node: leaf_node(name: "Unit") } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: item.connective, collection_kind: none, transport: item.transport,
+        connective: item.connective, collection_kind: item.collection_kind, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
         config: item.config,
         is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -1846,7 +1846,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         return_type: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: item.connective, collection_kind: none, transport: item.transport,
+        connective: item.connective, collection_kind: item.collection_kind, transport: item.transport,
         properties: item.properties, type_annotation: typed_anno,
         config: item.config,
         is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -1936,7 +1936,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     if node_has_structure(n: item) {
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
-        connective: item.connective, collection_kind: none, params: item.params, return_type: none,
+        connective: item.connective, collection_kind: item.collection_kind, params: item.params, return_type: none,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData
@@ -2048,7 +2048,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
   let local_bindings = fold(module.module.items, init: empty_map(), f: (acc, item) =>
     if node_has_structure(n: item) {
-      let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: none, params: [], return_type: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+      let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: item.collection_kind, params: [], return_type: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
     } else if item.return_type != none && item.params |> count == 0 && item.body == none {
       let alias_node = Node { name: item.name, span: item.span, children: [], connective: none, collection_kind: none, params: [], return_type: item.return_type, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
@@ -2522,6 +2522,14 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
 // defined in the graph).
 // =========================================================================
 
+fn infer_empty_typed_module_index() -> Map<String, TypedModule> {
+  empty_map()
+}
+
+fn infer_empty_item_info_map() -> Map<String, ItemInfo> {
+  empty_map()
+}
+
 fn typecheck(graph: ModuleGraph) -> TypedGraph {
   // SG-9: Use explicit recursion with standalone parameters instead of fold
   // with a struct accumulator. Standalone Rc parameters have refcount 1 in
@@ -2534,8 +2542,8 @@ fn typecheck(graph: ModuleGraph) -> TypedGraph {
   typecheck_modules(
     remaining: graph.modules,
     modules: [],
-    module_index: empty_map(),
-    item_registry: empty_map(),
+    module_index: infer_empty_typed_module_index(),
+    item_registry: infer_empty_item_info_map(),
     diag_chunks: []
   )
 }

@@ -22,6 +22,7 @@ import v2.std.core {
   NodeType, Typed, InferError, Untyped, rt_node,
   Connective, Conj, Disj,
   Field, Variant, Param, ResourceUse, Cardinality, Required, CardOptional,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -955,6 +956,19 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
   Node { name: name, span: span, children: [], connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
 }
 
+fn make_type_node_with_ck(name: String, span: SourceSpan, children: List<Node>, ck: CollectionKind) -> Node {
+  Node { name: name, span: span, children: children, connective: none, collection_kind: Some { value: ck }, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+}
+
+fn make_type_node_with_children(name: String, span: SourceSpan, children: List<Node>) -> Node {
+  if name == "List" { make_type_node_with_ck(name: name, span: span, children: children, ck: ListKind) }
+  else if name == "Set" { make_type_node_with_ck(name: name, span: span, children: children, ck: SetKind) }
+  else if name == "NonEmptyList" { make_type_node_with_ck(name: name, span: span, children: children, ck: NonEmptyListKind) }
+  else if name == "NonEmptySet" { make_type_node_with_ck(name: name, span: span, children: children, ck: NonEmptySetKind) }
+  else if name == "Map" { make_type_node_with_ck(name: name, span: span, children: children, ck: MapKind) }
+  else { Node { name: name, span: span, children: children, connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData } }
+}
+
 // Check if a Node represents an inline record (Conj with children).
 fn is_conj_with_children(n: Node) -> Bool {
   node_is_product(n: n) && n.children |> count > 0
@@ -1611,7 +1625,7 @@ fn finish_type_expr_from_name(tokens: List<Token>, state: ParserState, type_name
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, state: type_args.state, err: type_args.err } }
     let r3 = expect(tokens: tokens, state: type_args.state, expected: ExpectGt)
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, state: r3.state, err: r3.err } }
-    let te = Node { name: type_name, span: start_span, children: type_args.args, connective: none, collection_kind: none, params: [], return_type: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, expr_data: NoExprData }
+    let te = make_type_node_with_children(name: type_name, span: start_span, children: type_args.args)
     maybe_optional(tokens: tokens, state: r3.state, te: te, start_span: start_span)
   } else {
     // Plain named type

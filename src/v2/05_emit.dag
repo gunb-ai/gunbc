@@ -61,6 +61,7 @@ import v2.compiler.infer_items {
 }
 import v2.compiler.infer_service {
   UniqueAccum,
+  OpEntry,
   is_typed_service_call_receiver, extract_typed_service_name
 }
 import v2.compiler.infer {
@@ -255,14 +256,34 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
 // Scope helpers
 // =========================================================================
 
+fn emit_empty_type_bindings() -> Map<String, TypeBinding> {
+  empty_map()
+}
+
+fn emit_empty_bool_name_set() -> Map<String, Bool> {
+  empty_map()
+}
+
+fn emit_empty_func_sig_map() -> Map<String, ResolvedFuncSig> {
+  empty_map()
+}
+
+fn emit_empty_service_registry() -> Map<String, List<OpEntry>> {
+  empty_map()
+}
+
+fn emit_empty_item_info_map() -> Map<String, ItemInfo> {
+  empty_map()
+}
+
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
-    func_env: ResolvedFuncEnv { signatures: empty_map() },
-    locals: empty_map(),
+    type_env: TypeEnv { bindings: emit_empty_type_bindings(), recursive_types: [], recursive_type_set: emit_empty_bool_name_set() },
+    func_env: ResolvedFuncEnv { signatures: emit_empty_func_sig_map() },
+    locals: emit_empty_type_bindings(),
     module_name: "",
-    service_registry: empty_map(),
-    item_registry: empty_map()
+    service_registry: emit_empty_service_registry(),
+    item_registry: emit_empty_item_info_map()
   }
 }
 
@@ -270,9 +291,9 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
-    locals: empty_map(),
+    locals: emit_empty_type_bindings(),
     module_name: typed_module.module.name,
-    service_registry: empty_map(),
+    service_registry: emit_empty_service_registry(),
     item_registry: typed_module.item_registry
   }
 }
@@ -341,7 +362,7 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
 }
 
 fn unique_strings(items: List<String>) -> List<String> {
-  let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
+  let result = items |> fold(init: UniqueAccum { seen: emit_empty_bool_name_set(), result: [] }, f: fn(acc, item) {
     if emit_map_has(m: acc.seen, key: item) { acc }
     else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })

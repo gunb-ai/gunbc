@@ -1010,7 +1010,7 @@ pub fn expr_children(node: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn with_expr_data(node: Rc<Node>, expr_data: Rc<ExprData>) -> Rc<Node> {
-    Rc::new(Node { name: node.name.clone(), span: node.span.clone(), children: node.children.clone(), connective: node.connective.clone(), collection_kind: None, params: node.params.clone(), return_type: node.return_type.clone(), return_cardinality: node.return_cardinality.clone(), uses: node.uses.clone(), body: node.body.clone(), transport: node.transport.clone(), properties: node.properties.clone(), type_annotation: node.type_annotation.clone(), config: node.config.clone(), is_self_recursive: node.is_self_recursive.clone(), has_non_tail_self_call: node.has_non_tail_self_call.clone(), expr_data: expr_data.clone() })
+    Rc::new(Node { name: node.name.clone(), span: node.span.clone(), children: node.children.clone(), connective: node.connective.clone(), collection_kind: node.collection_kind.clone(), params: node.params.clone(), return_type: node.return_type.clone(), return_cardinality: node.return_cardinality.clone(), uses: node.uses.clone(), body: node.body.clone(), transport: node.transport.clone(), properties: node.properties.clone(), type_annotation: node.type_annotation.clone(), config: node.config.clone(), is_self_recursive: node.is_self_recursive.clone(), has_non_tail_self_call: node.has_non_tail_self_call.clone(), expr_data: expr_data.clone() })
 }
 
 pub fn map_expr_children(expr_node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) -> Rc<Node> {

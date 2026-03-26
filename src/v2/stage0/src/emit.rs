@@ -440,12 +440,32 @@ pub fn emit_simple_string_interp(parts: Rc<Vec<Rc<StringPart>>>, target: RenderT
     })
 }
 
+pub fn emit_empty_type_bindings() -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
+pub fn emit_empty_bool_name_set() -> Rc<HashMap<String, bool>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
+pub fn emit_empty_func_sig_map() -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
+pub fn emit_empty_service_registry() -> Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
+pub fn emit_empty_item_info_map() -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
 pub fn empty_emit_scope() -> Rc<InferScope> {
-    Rc::new(InferScope { type_env: Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(Vec::new()), recursive_type_set: Rc::new(std::collections::HashMap::new()) }), func_env: Rc::new(ResolvedFuncEnv { signatures: Rc::new(std::collections::HashMap::new()) }), locals: Rc::new(std::collections::HashMap::new()), module_name: "".to_string(), service_registry: Rc::new(std::collections::HashMap::new()), item_registry: Rc::new(std::collections::HashMap::new()) })
+    Rc::new(InferScope { type_env: Rc::new(TypeEnv { bindings: emit_empty_type_bindings(), recursive_types: Rc::new(Vec::new()), recursive_type_set: emit_empty_bool_name_set() }), func_env: Rc::new(ResolvedFuncEnv { signatures: emit_empty_func_sig_map() }), locals: emit_empty_type_bindings(), module_name: "".to_string(), service_registry: emit_empty_service_registry(), item_registry: emit_empty_item_info_map() })
 }
 
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
-    Rc::new(InferScope { type_env: typed_module.type_env.clone(), func_env: typed_module.func_env.clone(), locals: Rc::new(std::collections::HashMap::new()), module_name: typed_module.module.name.clone(), service_registry: Rc::new(std::collections::HashMap::new()), item_registry: typed_module.item_registry.clone() })
+    Rc::new(InferScope { type_env: typed_module.type_env.clone(), func_env: typed_module.func_env.clone(), locals: emit_empty_type_bindings(), module_name: typed_module.module.name.clone(), service_registry: emit_empty_service_registry(), item_registry: typed_module.item_registry.clone() })
 }
 
 pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
@@ -563,7 +583,7 @@ pub fn order_typed_call_args(args: Rc<Vec<Rc<NamedArg>>>, func: &str, scope: Rc<
 
 pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     let result = {
-    let mut __acc_0 = Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) });
+    let mut __acc_0 = Rc::new(UniqueAccum { seen: emit_empty_bool_name_set(), result: Rc::new(Vec::new()) });
     for __elem_1 in items.iter().cloned() {
         __acc_0 = if emit_map_has(__acc_0.seen.clone(), &__elem_1) {
     __acc_0.clone()
@@ -1406,8 +1426,12 @@ pub fn emit_map_type(key_type: &str, val_type: &str, target: RenderTarget) -> St
 }
 }
 
+pub fn empty_rc_types() -> Rc<HashMap<String, bool>> {
+    Rc::new(std::collections::HashMap::new())
+}
+
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
-    emit_node_type_rc(n.clone(), target, Rc::new(std::collections::HashMap::new()))
+    emit_node_type_rc(n.clone(), target, empty_rc_types())
 }
 
 pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {

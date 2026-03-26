@@ -737,7 +737,7 @@ fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
     name: node.name,
     span: node.span,
     children: node.children,
-    connective: node.connective, collection_kind: none,
+    connective: node.connective, collection_kind: node.collection_kind,
     params: node.params,
     return_type: node.return_type,
     return_cardinality: node.return_cardinality,

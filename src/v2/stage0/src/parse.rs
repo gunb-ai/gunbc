@@ -2384,6 +2384,34 @@ pub fn leaf_type_node(name: &str, span: SourceSpan) -> Rc<Node> {
     Rc::new(Node { name: name.to_string(), span, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
+pub fn make_type_node_with_ck(name: &str, span: SourceSpan, children: Rc<Vec<Rc<Node>>>, ck: CollectionKind) -> Rc<Node> {
+    Rc::new(Node { name: name.to_string(), span, children: children.clone(), connective: None, collection_kind: Some(ck), params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+}
+
+pub fn make_type_node_with_children(name: &str, span: SourceSpan, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
+    if name == "List" {
+    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::ListKind)
+} else {
+    if name == "Set" {
+    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::SetKind)
+} else {
+    if name == "NonEmptyList" {
+    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::NonEmptyListKind)
+} else {
+    if name == "NonEmptySet" {
+    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::NonEmptySetKind)
+} else {
+    if name == "Map" {
+    make_type_node_with_ck(&name, span, children.clone(), CollectionKind::MapKind)
+} else {
+    Rc::new(Node { name: name.to_string(), span, children: children.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+}
+}
+}
+}
+}
+}
+
 pub fn is_conj_with_children(n: Rc<Node>) -> bool {
     node_is_product(n.clone()) && (({
     let __len_0 = n.children.clone().len();
@@ -3332,7 +3360,7 @@ pub fn finish_type_expr_from_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
     if has_err(r3.err.clone()) {
     return Rc::new(TypeResult { type_expr: dummy_te.clone(), state: r3.state.clone(), err: r3.err.clone() });
 };
-    let te = Rc::new(Node { name: type_name.to_string(), span: start_span.clone(), children: type_args.args.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let te = make_type_node_with_children(&type_name, start_span.clone(), type_args.args.clone());
     maybe_optional(tokens.clone(), r3.state.clone(), te.clone(), start_span.clone())
 } else {
     let te = leaf_type_node(&type_name, start_span.clone());
