@@ -121,13 +121,14 @@ fn item_kind(item: Node) -> ItemKind {
   kind
 }
 
+// C2.1: variant locals carry the structural parent node, not leaf_node(name).
 fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
     if node_is_coproduct(n: item) {
       fold(item.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,
-          resolved: leaf_node(name: item.name)
+          resolved: item
         })
       )
     } else { acc }

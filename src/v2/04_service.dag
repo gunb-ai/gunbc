@@ -166,11 +166,22 @@ fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<Str
   )
 }
 
+fn total_service_count(registry: Map<String, ItemInfo>) -> Int {
+  map_values(registry) |> fold(init: 0, f: (acc, info) => acc + info.service_names |> count)
+}
+
+// C4.1: converge to fixpoint instead of hardcoded 5 passes. Each pass
+// propagates service dependencies from callees to callers. The loop
+// terminates when no new service names are discovered (total count stable).
+// Bounded by remaining_passes as safety net against pathological cases.
 fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
   if remaining_passes <= 0 { registry }
   else {
+    let before = total_service_count(registry: registry)
     let next = expand_transitive_services_once(modules: modules, registry: registry)
-    expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1)
+    let after = total_service_count(registry: next)
+    if before == after { registry }
+    else { expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1) }
   }
 }
 

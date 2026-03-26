@@ -2214,12 +2214,17 @@ fn build_module_context(contributions: List<ItemContribution>,
     item_registry: empty_map(),
     diag_chunks: []
   )
+  // C2.1: variant constructor locals carry the structural parent enum node,
+  // not leaf_node(name). This means .inferred on variant expressions will be
+  // structurally authoritative — emit can read it directly without re-resolving
+  // through TypeEnv. binding.resolved.name still returns the enum's name for
+  // lookup_variant_parent_enum and record lit inference.
   let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
     if node_is_coproduct(n: binding.resolved) {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,
-          resolved: leaf_node(name: binding.name)
+          resolved: binding.resolved
         })
       )
     } else { acc }
