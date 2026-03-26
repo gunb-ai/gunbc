@@ -27,11 +27,62 @@ import std.types { FilePath, NonEmptyStr, SourceSpan }
 // a source string.
 // =========================================================================
 
+// Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
+// Token<Shape> = { text: String, span: SourceSpan, shape: Shape }
+//
+// During P5.1 transition, `kind: TokenKind` coexists with `shape: TokenShape`.
+// The parser migrates from kind to shape+text, then kind is deleted.
 type Token {
   kind: TokenKind
+  text: String
   span: SourceSpan
+  shape: TokenShape
 }
 
+// TokenShape: payload-insensitive token classification.
+// Every variant is a unit variant — payloads live in Token.text.
+// This is the structural classifier; Token.text carries the semantic content.
+type TokenShape
+  // Declaration keywords
+  = ShKwModule | ShKwImport | ShKwType | ShKwFn | ShKwFunc
+  | ShKwService | ShKwResource | ShKwData | ShKwExtern
+  | ShKwInterface | ShKwPipeline | ShKwProfile | ShKwPattern
+  // Control flow keywords
+  | ShKwLet | ShKwReturn | ShKwMatch | ShKwIf | ShKwElse
+  | ShKwFor | ShKwIn | ShKwWhere | ShKwWith
+  // Literal keywords
+  | ShKwTrue | ShKwFalse | ShKwNone
+  // Resource lifecycle keywords
+  | ShKwAcquire | ShKwRelease | ShKwCapability
+  | ShKwOperation | ShKwInput | ShKwOutput
+  // Modifier keywords
+  | ShKwIdempotent | ShKwReadonly | ShKwHermetic
+  // Paired delimiters
+  | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
+  // Relational / arrow
+  | ShLt | ShGt | ShLe | ShGe | ShFatArrow | ShArrow
+  // Separators
+  | ShColon | ShComma | ShDot | ShDotDot
+  // Assignment / equality
+  | ShEq | ShEqEq | ShNe
+  // Arithmetic
+  | ShPlus | ShMinus | ShStar | ShSlash | ShPercent
+  // Logic
+  | ShBang | ShAnd | ShOr
+  // Optionality
+  | ShQuestion | ShNullCoalesce
+  // Sum type separator / pipe arrow
+  | ShPipe
+  | ShPipeArrow
+  // Values (payload in Token.text)
+  | ShLitStr | ShLitInt | ShLitFloat | ShIdent
+  // String interpolation parts (payload in Token.text)
+  | ShStrBegin | ShStrMid | ShStrEnd
+  // Structure
+  | ShNewline | ShEof
+  | ShUnknown
+
+// TokenKind: TRANSITIONAL — will be deleted after parser migrates to TokenShape.
 type TokenKind
   // Declaration keywords
   = KwModule | KwImport | KwType | KwFn | KwFunc

@@ -1833,11 +1833,62 @@ import std.types { FilePath, NonEmptyStr, SourceSpan }
 // a source string.
 // =========================================================================
 
+// Token: Layer 5 compositional type (see Composition Stack in ROADMAP).
+// Token<Shape> = { text: String, span: SourceSpan, shape: Shape }
+//
+// During P5.1 transition, `kind: TokenKind` coexists with `shape: TokenShape`.
+// The parser migrates from kind to shape+text, then kind is deleted.
 type Token {
   kind: TokenKind
+  text: String
   span: SourceSpan
+  shape: TokenShape
 }
 
+// TokenShape: payload-insensitive token classification.
+// Every variant is a unit variant — payloads live in Token.text.
+// This is the structural classifier; Token.text carries the semantic content.
+type TokenShape
+  // Declaration keywords
+  = ShKwModule | ShKwImport | ShKwType | ShKwFn | ShKwFunc
+  | ShKwService | ShKwResource | ShKwData | ShKwExtern
+  | ShKwInterface | ShKwPipeline | ShKwProfile | ShKwPattern
+  // Control flow keywords
+  | ShKwLet | ShKwReturn | ShKwMatch | ShKwIf | ShKwElse
+  | ShKwFor | ShKwIn | ShKwWhere | ShKwWith
+  // Literal keywords
+  | ShKwTrue | ShKwFalse | ShKwNone
+  // Resource lifecycle keywords
+  | ShKwAcquire | ShKwRelease | ShKwCapability
+  | ShKwOperation | ShKwInput | ShKwOutput
+  // Modifier keywords
+  | ShKwIdempotent | ShKwReadonly | ShKwHermetic
+  // Paired delimiters
+  | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
+  // Relational / arrow
+  | ShLt | ShGt | ShLe | ShGe | ShFatArrow | ShArrow
+  // Separators
+  | ShColon | ShComma | ShDot | ShDotDot
+  // Assignment / equality
+  | ShEq | ShEqEq | ShNe
+  // Arithmetic
+  | ShPlus | ShMinus | ShStar | ShSlash | ShPercent
+  // Logic
+  | ShBang | ShAnd | ShOr
+  // Optionality
+  | ShQuestion | ShNullCoalesce
+  // Sum type separator / pipe arrow
+  | ShPipe
+  | ShPipeArrow
+  // Values (payload in Token.text)
+  | ShLitStr | ShLitInt | ShLitFloat | ShIdent
+  // String interpolation parts (payload in Token.text)
+  | ShStrBegin | ShStrMid | ShStrEnd
+  // Structure
+  | ShNewline | ShEof
+  | ShUnknown
+
+// TokenKind: TRANSITIONAL — will be deleted after parser migrates to TokenShape.
 type TokenKind
   // Declaration keywords
   = KwModule | KwImport | KwType | KwFn | KwFunc
@@ -2848,7 +2899,7 @@ module v2.compiler.tokenize
 
 import std.types { SourceSpan }
 import v2.std.core {
-  Token, TokenKind,
+  Token, TokenKind, TokenShape,
   KwModule, KwImport, KwType, KwFn, KwFunc, KwService, KwResource,
   KwData, KwExtern, KwInterface, KwPipeline, KwProfile, KwPattern,
   KwLet, KwReturn, KwMatch, KwIf, KwElse, KwFor, KwIn, KwWhere, KwWith,
@@ -2862,7 +2913,24 @@ import v2.std.core {
   Question, NullCoalesce, Pipe, PipeArrow,
   LitStr, LitInt, LitFloat, Ident,
   StrBegin, StrMid, StrEnd,
-  Newline, Eof, Unknown
+  Newline, Eof, Unknown,
+  ShKwModule, ShKwImport, ShKwType, ShKwFn, ShKwFunc,
+  ShKwService, ShKwResource, ShKwData, ShKwExtern,
+  ShKwInterface, ShKwPipeline, ShKwProfile, ShKwPattern,
+  ShKwLet, ShKwReturn, ShKwMatch, ShKwIf, ShKwElse,
+  ShKwFor, ShKwIn, ShKwWhere, ShKwWith,
+  ShKwTrue, ShKwFalse, ShKwNone,
+  ShKwAcquire, ShKwRelease, ShKwCapability,
+  ShKwOperation, ShKwInput, ShKwOutput,
+  ShKwIdempotent, ShKwReadonly, ShKwHermetic,
+  ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
+  ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
+  ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
+  ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
+  ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow,
+  ShLitStr, ShLitInt, ShLitFloat, ShIdent,
+  ShStrBegin, ShStrMid, ShStrEnd,
+  ShNewline, ShEof, ShUnknown
 }
 
 // === Keyword table ===
@@ -2886,6 +2954,23 @@ data keywords: Map<String, TokenKind> = {
   "hermetic": KwHermetic
 }
 
+data keyword_shapes: Map<String, TokenShape> = {
+  "module": ShKwModule, "import": ShKwImport, "type": ShKwType,
+  "fn": ShKwFn, "func": ShKwFunc, "service": ShKwService,
+  "resource": ShKwResource, "data": ShKwData, "extern": ShKwExtern,
+  "interface": ShKwInterface, "pipeline": ShKwPipeline,
+  "profile": ShKwProfile, "pattern": ShKwPattern,
+  "let": ShKwLet, "return": ShKwReturn, "match": ShKwMatch,
+  "if": ShKwIf, "else": ShKwElse, "for": ShKwFor, "in": ShKwIn,
+  "where": ShKwWhere, "with": ShKwWith,
+  "true": ShKwTrue, "false": ShKwFalse, "none": ShKwNone, "null": ShKwNone,
+  "acquire": ShKwAcquire, "release": ShKwRelease,
+  "capability": ShKwCapability, "operation": ShKwOperation,
+  "input": ShKwInput, "output": ShKwOutput,
+  "idempotent": ShKwIdempotent, "readonly": ShKwReadonly,
+  "hermetic": ShKwHermetic
+}
+
 // === Single-char punctuation table ===
 //
 // Note: { and } are NOT in this table -- they require special handling
@@ -2896,6 +2981,13 @@ data single_punct: Map<String, TokenKind> = {
   "[": LBracket, "]": RBracket,
   ":": Colon, ",": Comma, ".": Dot,
   "+": Plus, "*": Star, "%": Percent, "/": Slash
+}
+
+data single_punct_shapes: Map<String, TokenShape> = {
+  "(": ShLParen, ")": ShRParen,
+  "[": ShLBracket, "]": ShRBracket,
+  ":": ShColon, ",": ShComma, ".": ShDot,
+  "+": ShPlus, "*": ShStar, "%": ShPercent, "/": ShSlash
 }
 
 // === Tokenizer state ===
@@ -2941,6 +3033,14 @@ type SourceRef {
   text: String
 }
 
+// === Token construction helper ===
+//
+// During transition, populates both kind and shape fields.
+// After parser migrates to shape+text, kind field and this helper simplify.
+fn make_token(kind: TokenKind, text: String, span: SourceSpan, shape: TokenShape) -> Token {
+  Token { kind: kind, text: text, span: span, shape: shape }
+}
+
 // === Entry point ===
 
 fn tokenize(source: String) -> List<Token> {
@@ -2951,7 +3051,7 @@ fn tokenize(source: String) -> List<Token> {
   // inside an Rc-wrapped struct which always has refcount >= 2).
   let final_state = tokenize_loop(source: src, tokens: [], pos: initial)
   let eof_span = SourceSpan { start: final_state.pos, end: final_state.pos }
-  list_push(final_state.tokens, Token { kind: Eof, span: eof_span })
+  list_push(final_state.tokens, make_token(kind: Eof, text: "", span: eof_span, shape: ShEof))
 }
 
 // === Main loop ===
@@ -2965,7 +3065,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
 
   // Newlines are significant (statement separation)
   if ch == "\n" {
-    let tok = Token { kind: Newline, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
+    let tok = make_token(kind: Newline, text: "\n", span: SourceSpan { start: s.pos, end: s.pos + 1 }, shape: ShNewline)
     return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
       pos: s.pos + 1, interp_depth: s.interp_depth
     })
@@ -2986,7 +3086,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
     } else {
       // Nested brace inside interpolation expression -- decrement depth
       let new_depth = replace_last(stack: s.interp_depth, value: top - 1)
-      let tok = Token { kind: RBrace, span: SourceSpan { start: s.pos, end: s.pos + 1 } }
+      let tok = make_token(kind: RBrace, text: "}", span: SourceSpan { start: s.pos, end: s.pos + 1 }, shape: ShRBrace)
       return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
         pos: s.pos + 1, interp_depth: new_depth
       })
@@ -3009,26 +3109,26 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
     char_at(s: source.text, pos: pos.pos + 1)
   } else { "" }
 
-  if ch == "=" && next_ch == ">" { return emit(pos: pos, kind: FatArrow, len: 2) }
-  if ch == "-" && next_ch == ">" { return emit(pos: pos, kind: Arrow, len: 2) }
-  if ch == "=" && next_ch == "=" { return emit(pos: pos, kind: EqEq, len: 2) }
-  if ch == "!" && next_ch == "=" { return emit(pos: pos, kind: Ne, len: 2) }
-  if ch == "<" && next_ch == "=" { return emit(pos: pos, kind: Le, len: 2) }
-  if ch == ">" && next_ch == "=" { return emit(pos: pos, kind: Ge, len: 2) }
-  if ch == "&" && next_ch == "&" { return emit(pos: pos, kind: And, len: 2) }
-  if ch == "|" && next_ch == "|" { return emit(pos: pos, kind: Or, len: 2) }
-  if ch == "|" && next_ch == ">" { return emit(pos: pos, kind: PipeArrow, len: 2) }
-  if ch == "|" { return emit(pos: pos, kind: Pipe, len: 1) }
-  if ch == "?" && next_ch == "?" { return emit(pos: pos, kind: NullCoalesce, len: 2) }
-  if ch == "." && next_ch == "." { return emit(pos: pos, kind: DotDot, len: 2) }
+  if ch == "=" && next_ch == ">" { return emit(pos: pos, kind: FatArrow, shape: ShFatArrow, text: "=>", len: 2) }
+  if ch == "-" && next_ch == ">" { return emit(pos: pos, kind: Arrow, shape: ShArrow, text: "->", len: 2) }
+  if ch == "=" && next_ch == "=" { return emit(pos: pos, kind: EqEq, shape: ShEqEq, text: "==", len: 2) }
+  if ch == "!" && next_ch == "=" { return emit(pos: pos, kind: Ne, shape: ShNe, text: "!=", len: 2) }
+  if ch == "<" && next_ch == "=" { return emit(pos: pos, kind: Le, shape: ShLe, text: "<=", len: 2) }
+  if ch == ">" && next_ch == "=" { return emit(pos: pos, kind: Ge, shape: ShGe, text: ">=", len: 2) }
+  if ch == "&" && next_ch == "&" { return emit(pos: pos, kind: And, shape: ShAnd, text: "&&", len: 2) }
+  if ch == "|" && next_ch == "|" { return emit(pos: pos, kind: Or, shape: ShOr, text: "||", len: 2) }
+  if ch == "|" && next_ch == ">" { return emit(pos: pos, kind: PipeArrow, shape: ShPipeArrow, text: "|>", len: 2) }
+  if ch == "|" { return emit(pos: pos, kind: Pipe, shape: ShPipe, text: "|", len: 1) }
+  if ch == "?" && next_ch == "?" { return emit(pos: pos, kind: NullCoalesce, shape: ShNullCoalesce, text: "??", len: 2) }
+  if ch == "." && next_ch == "." { return emit(pos: pos, kind: DotDot, shape: ShDotDot, text: "..", len: 2) }
 
   // Single-character operators not in the table
-  if ch == "=" { return emit(pos: pos, kind: Eq, len: 1) }
-  if ch == "<" { return emit(pos: pos, kind: Lt, len: 1) }
-  if ch == ">" { return emit(pos: pos, kind: Gt, len: 1) }
-  if ch == "-" { return emit(pos: pos, kind: Minus, len: 1) }
-  if ch == "!" { return emit(pos: pos, kind: Bang, len: 1) }
-  if ch == "?" { return emit(pos: pos, kind: Question, len: 1) }
+  if ch == "=" { return emit(pos: pos, kind: Eq, shape: ShEq, text: "=", len: 1) }
+  if ch == "<" { return emit(pos: pos, kind: Lt, shape: ShLt, text: "<", len: 1) }
+  if ch == ">" { return emit(pos: pos, kind: Gt, shape: ShGt, text: ">", len: 1) }
+  if ch == "-" { return emit(pos: pos, kind: Minus, shape: ShMinus, text: "-", len: 1) }
+  if ch == "!" { return emit(pos: pos, kind: Bang, shape: ShBang, text: "!", len: 1) }
+  if ch == "?" { return emit(pos: pos, kind: Question, shape: ShQuestion, text: "?", len: 1) }
 
   // Braces -- need special handling for interpolation depth tracking
   if ch == "{" {
@@ -3037,7 +3137,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
     } else {
       pos.interp_depth
     }
-    let tok = Token { kind: LBrace, span: SourceSpan { start: pos.pos, end: pos.pos + 1 } }
+    let tok = make_token(kind: LBrace, text: "{", span: SourceSpan { start: pos.pos, end: pos.pos + 1 }, shape: ShLBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: new_depth
     }
@@ -3046,26 +3146,26 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   if ch == "}" {
     // Not inside interpolation (that case handled in tokenize_loop).
     // This is a normal RBrace.
-    let tok = Token { kind: RBrace, span: SourceSpan { start: pos.pos, end: pos.pos + 1 } }
+    let tok = make_token(kind: RBrace, text: "}", span: SourceSpan { start: pos.pos, end: pos.pos + 1 }, shape: ShRBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: pos.interp_depth
     }
   }
 
   // Single-char punctuation from table
+  let punct_shape = lookup(single_punct_shapes, key: ch)
   match lookup(single_punct, key: ch) {
-    Some { value: kind } => emit(pos: pos, kind: kind, len: 1)
-    None => emit(pos: pos, kind: Unknown { char: ch }, len: 1)
+    Some { value: kind } =>
+      let sh = match punct_shape { Some { value: s } => s, None => ShUnknown }
+      emit(pos: pos, kind: kind, shape: sh, text: ch, len: 1)
+    None => emit(pos: pos, kind: Unknown { char: ch }, shape: ShUnknown, text: ch, len: 1)
   }
 }
 
 // === Helpers ===
 
-fn emit(pos: TokPos, kind: TokenKind, len: Int) -> ScanResult {
-  let token = Token {
-    kind: kind,
-    span: SourceSpan { start: pos.pos, end: pos.pos + len }
-  }
+fn emit(pos: TokPos, kind: TokenKind, shape: TokenShape, text: String, len: Int) -> ScanResult {
+  let token = make_token(kind: kind, text: text, span: SourceSpan { start: pos.pos, end: pos.pos + len }, shape: shape)
   ScanResult {
     pos: pos.pos + len,
     token: token,
@@ -3080,7 +3180,11 @@ fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
     Some { value: kw } => kw
     None => Ident { name: text }
   }
-  let token = Token { kind: kind, span: SourceSpan { start: pos.pos, end: end } }
+  let shape = match lookup(keyword_shapes, key: text) {
+    Some { value: sh } => sh
+    None => ShIdent
+  }
+  let token = make_token(kind: kind, text: text, span: SourceSpan { start: pos.pos, end: end }, shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -3090,10 +3194,7 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   if int_end + 1 < string_length(s: source.text) && char_at(s: source.text, pos: int_end) == "." && is_digit(ch: char_at(s: source.text, pos: int_end + 1)) {
     let frac_end = scan_while(s: source.text, start: int_end + 1, pred: is_digit)
     let text = substring(s: source.text, start: pos.pos, end: frac_end)
-    let token = Token {
-      kind: LitFloat { value: text },
-      span: SourceSpan { start: pos.pos, end: frac_end }
-    }
+    let token = make_token(kind: LitFloat { value: text }, text: text, span: SourceSpan { start: pos.pos, end: frac_end }, shape: ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
   }
   let text = substring(s: source.text, start: pos.pos, end: int_end)
@@ -3102,10 +3203,11 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
     Some { value: v } => LitInt { value: v }
     None => Unknown { char: text }
   }
-  let token = Token {
-    kind: kind,
-    span: SourceSpan { start: pos.pos, end: int_end }
+  let shape = match parsed {
+    Some { value: _ } => ShLitInt
+    None => ShUnknown
   }
+  let token = make_token(kind: kind, text: text, span: SourceSpan { start: pos.pos, end: int_end }, shape: shape)
   ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -3132,10 +3234,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: LitStr { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(kind: LitStr { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShLitStr)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -3143,10 +3242,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: StrBegin { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(kind: StrBegin { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrBegin)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -3155,10 +3251,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: Unknown { char: processed },
-        span: SourceSpan { start: span_start, end: end_pos }
-      }
+      let token = make_token(kind: Unknown { char: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
@@ -3175,10 +3268,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: StrEnd { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(kind: StrEnd { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrEnd)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -3186,10 +3276,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: StrMid { value: processed },
-        span: SourceSpan { start: span_start, end: end_pos + 1 }
-      }
+      let token = make_token(kind: StrMid { value: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrMid)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -3198,10 +3285,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = Token {
-        kind: Unknown { char: processed },
-        span: SourceSpan { start: span_start, end: end_pos }
-      }
+      let token = make_token(kind: Unknown { char: processed }, text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
@@ -3382,7 +3466,7 @@ import v2.std.core {
   ServiceConfig, OperationDef,
   OperationModifier, Idempotent, Readonly, Hermetic,
   CapabilityDef,
-  Token, TokenKind,
+  Token, TokenKind, TokenShape,
   KwModule, KwImport, KwType, KwFn, KwFunc, KwService, KwResource,
   KwData, KwExtern, KwInterface, KwPipeline, KwProfile, KwPattern,
   KwLet, KwReturn, KwMatch, KwIf, KwElse, KwFor, KwIn, KwWhere, KwWith,
@@ -3396,6 +3480,23 @@ import v2.std.core {
   Question, NullCoalesce, Pipe, PipeArrow,
   Ident, StrBegin, StrMid, StrEnd,
   Newline, Eof, Unknown,
+  ShKwModule, ShKwImport, ShKwType, ShKwFn, ShKwFunc,
+  ShKwService, ShKwResource, ShKwData, ShKwExtern,
+  ShKwInterface, ShKwPipeline, ShKwProfile, ShKwPattern,
+  ShKwLet, ShKwReturn, ShKwMatch, ShKwIf, ShKwElse,
+  ShKwFor, ShKwIn, ShKwWhere, ShKwWith,
+  ShKwTrue, ShKwFalse, ShKwNone,
+  ShKwAcquire, ShKwRelease, ShKwCapability,
+  ShKwOperation, ShKwInput, ShKwOutput,
+  ShKwIdempotent, ShKwReadonly, ShKwHermetic,
+  ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
+  ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
+  ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
+  ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr,
+  ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow,
+  ShLitStr, ShLitInt, ShLitFloat, ShIdent,
+  ShStrBegin, ShStrMid, ShStrEnd,
+  ShNewline, ShEof, ShUnknown,
   Diagnostic, Error,
   SourceSpan,
   node_is_product, node_is_coproduct, with_required_cardinality
@@ -3560,6 +3661,14 @@ fn peek_kind(tokens: List<Token>, state: ParserState) -> TokenKind? {
   }
 }
 
+fn peek_shape(tokens: List<Token>, state: ParserState) -> TokenShape? {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } => Some { value: t.shape }
+    None => none
+  }
+}
+
 fn at_end(tokens: List<Token>, state: ParserState) -> Bool {
   state.pos >= count(tokens)
 }
@@ -3580,7 +3689,7 @@ fn advance(tokens: List<Token>, state: ParserState) -> AdvanceResult {
       AdvanceResult { token: t, state: next }
     }
     None => {
-      let eof_tok = Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }
+      let eof_tok = Token { kind: Eof, text: "", span: SourceSpan { start: 0, end: 0 }, shape: ShEof }
       AdvanceResult { token: eof_tok, state: state }
     }
   }
@@ -3696,373 +3805,465 @@ fn is_null_coalesce_kind(kind: TokenKind) -> Bool { match kind { NullCoalesce =>
 fn is_pipe_kind(kind: TokenKind) -> Bool { match kind { Pipe => true  _ => false } }
 fn is_pipe_arrow_kind(kind: TokenKind) -> Bool { match kind { PipeArrow => true  _ => false } }
 
+// Shape predicates -- payload-insensitive token classification.
+// Payload variants
+fn is_ident_shape(shape: TokenShape) -> Bool { match shape { ShIdent => true  _ => false } }
+fn is_lit_str_shape(shape: TokenShape) -> Bool { match shape { ShLitStr => true  _ => false } }
+fn is_lit_int_shape(shape: TokenShape) -> Bool { match shape { ShLitInt => true  _ => false } }
+fn is_lit_float_shape(shape: TokenShape) -> Bool { match shape { ShLitFloat => true  _ => false } }
+fn is_str_begin_shape(shape: TokenShape) -> Bool { match shape { ShStrBegin => true  _ => false } }
+fn is_str_mid_shape(shape: TokenShape) -> Bool { match shape { ShStrMid => true  _ => false } }
+fn is_str_end_shape(shape: TokenShape) -> Bool { match shape { ShStrEnd => true  _ => false } }
+fn is_unknown_shape(shape: TokenShape) -> Bool { match shape { ShUnknown => true  _ => false } }
+// Structure
+fn is_newline_shape(shape: TokenShape) -> Bool { match shape { ShNewline => true  _ => false } }
+fn is_eof_shape(shape: TokenShape) -> Bool { match shape { ShEof => true  _ => false } }
+// Declaration keywords
+fn is_kw_module_shape(shape: TokenShape) -> Bool { match shape { ShKwModule => true  _ => false } }
+fn is_kw_import_shape(shape: TokenShape) -> Bool { match shape { ShKwImport => true  _ => false } }
+fn is_kw_type_shape(shape: TokenShape) -> Bool { match shape { ShKwType => true  _ => false } }
+fn is_kw_fn_shape(shape: TokenShape) -> Bool { match shape { ShKwFn => true  _ => false } }
+fn is_kw_func_shape(shape: TokenShape) -> Bool { match shape { ShKwFunc => true  _ => false } }
+fn is_kw_service_shape(shape: TokenShape) -> Bool { match shape { ShKwService => true  _ => false } }
+fn is_kw_resource_shape(shape: TokenShape) -> Bool { match shape { ShKwResource => true  _ => false } }
+fn is_kw_data_shape(shape: TokenShape) -> Bool { match shape { ShKwData => true  _ => false } }
+fn is_kw_extern_shape(shape: TokenShape) -> Bool { match shape { ShKwExtern => true  _ => false } }
+fn is_kw_interface_shape(shape: TokenShape) -> Bool { match shape { ShKwInterface => true  _ => false } }
+fn is_kw_pipeline_shape(shape: TokenShape) -> Bool { match shape { ShKwPipeline => true  _ => false } }
+fn is_kw_profile_shape(shape: TokenShape) -> Bool { match shape { ShKwProfile => true  _ => false } }
+fn is_kw_pattern_shape(shape: TokenShape) -> Bool { match shape { ShKwPattern => true  _ => false } }
+// Control flow keywords
+fn is_kw_let_shape(shape: TokenShape) -> Bool { match shape { ShKwLet => true  _ => false } }
+fn is_kw_return_shape(shape: TokenShape) -> Bool { match shape { ShKwReturn => true  _ => false } }
+fn is_kw_match_shape(shape: TokenShape) -> Bool { match shape { ShKwMatch => true  _ => false } }
+fn is_kw_if_shape(shape: TokenShape) -> Bool { match shape { ShKwIf => true  _ => false } }
+fn is_kw_else_shape(shape: TokenShape) -> Bool { match shape { ShKwElse => true  _ => false } }
+fn is_kw_for_shape(shape: TokenShape) -> Bool { match shape { ShKwFor => true  _ => false } }
+fn is_kw_in_shape(shape: TokenShape) -> Bool { match shape { ShKwIn => true  _ => false } }
+fn is_kw_where_shape(shape: TokenShape) -> Bool { match shape { ShKwWhere => true  _ => false } }
+fn is_kw_with_shape(shape: TokenShape) -> Bool { match shape { ShKwWith => true  _ => false } }
+// Literal keywords
+fn is_kw_true_shape(shape: TokenShape) -> Bool { match shape { ShKwTrue => true  _ => false } }
+fn is_kw_false_shape(shape: TokenShape) -> Bool { match shape { ShKwFalse => true  _ => false } }
+fn is_kw_none_shape(shape: TokenShape) -> Bool { match shape { ShKwNone => true  _ => false } }
+// Resource lifecycle keywords
+fn is_kw_acquire_shape(shape: TokenShape) -> Bool { match shape { ShKwAcquire => true  _ => false } }
+fn is_kw_release_shape(shape: TokenShape) -> Bool { match shape { ShKwRelease => true  _ => false } }
+fn is_kw_capability_shape(shape: TokenShape) -> Bool { match shape { ShKwCapability => true  _ => false } }
+fn is_kw_operation_shape(shape: TokenShape) -> Bool { match shape { ShKwOperation => true  _ => false } }
+fn is_kw_input_shape(shape: TokenShape) -> Bool { match shape { ShKwInput => true  _ => false } }
+fn is_kw_output_shape(shape: TokenShape) -> Bool { match shape { ShKwOutput => true  _ => false } }
+// Modifier keywords
+fn is_kw_idempotent_shape(shape: TokenShape) -> Bool { match shape { ShKwIdempotent => true  _ => false } }
+fn is_kw_readonly_shape(shape: TokenShape) -> Bool { match shape { ShKwReadonly => true  _ => false } }
+fn is_kw_hermetic_shape(shape: TokenShape) -> Bool { match shape { ShKwHermetic => true  _ => false } }
+// Paired delimiters
+fn is_lbrace_shape(shape: TokenShape) -> Bool { match shape { ShLBrace => true  _ => false } }
+fn is_rbrace_shape(shape: TokenShape) -> Bool { match shape { ShRBrace => true  _ => false } }
+fn is_lparen_shape(shape: TokenShape) -> Bool { match shape { ShLParen => true  _ => false } }
+fn is_rparen_shape(shape: TokenShape) -> Bool { match shape { ShRParen => true  _ => false } }
+fn is_lbracket_shape(shape: TokenShape) -> Bool { match shape { ShLBracket => true  _ => false } }
+fn is_rbracket_shape(shape: TokenShape) -> Bool { match shape { ShRBracket => true  _ => false } }
+// Relational / arrow
+fn is_lt_shape(shape: TokenShape) -> Bool { match shape { ShLt => true  _ => false } }
+fn is_gt_shape(shape: TokenShape) -> Bool { match shape { ShGt => true  _ => false } }
+fn is_le_shape(shape: TokenShape) -> Bool { match shape { ShLe => true  _ => false } }
+fn is_ge_shape(shape: TokenShape) -> Bool { match shape { ShGe => true  _ => false } }
+fn is_fat_arrow_shape(shape: TokenShape) -> Bool { match shape { ShFatArrow => true  _ => false } }
+fn is_arrow_shape(shape: TokenShape) -> Bool { match shape { ShArrow => true  _ => false } }
+// Separators
+fn is_colon_shape(shape: TokenShape) -> Bool { match shape { ShColon => true  _ => false } }
+fn is_comma_shape(shape: TokenShape) -> Bool { match shape { ShComma => true  _ => false } }
+fn is_dot_shape(shape: TokenShape) -> Bool { match shape { ShDot => true  _ => false } }
+fn is_dot_dot_shape(shape: TokenShape) -> Bool { match shape { ShDotDot => true  _ => false } }
+// Assignment / equality
+fn is_eq_shape(shape: TokenShape) -> Bool { match shape { ShEq => true  _ => false } }
+fn is_eq_eq_shape(shape: TokenShape) -> Bool { match shape { ShEqEq => true  _ => false } }
+fn is_ne_shape(shape: TokenShape) -> Bool { match shape { ShNe => true  _ => false } }
+// Arithmetic
+fn is_plus_shape(shape: TokenShape) -> Bool { match shape { ShPlus => true  _ => false } }
+fn is_minus_shape(shape: TokenShape) -> Bool { match shape { ShMinus => true  _ => false } }
+fn is_star_shape(shape: TokenShape) -> Bool { match shape { ShStar => true  _ => false } }
+fn is_slash_shape(shape: TokenShape) -> Bool { match shape { ShSlash => true  _ => false } }
+fn is_percent_shape(shape: TokenShape) -> Bool { match shape { ShPercent => true  _ => false } }
+// Logic
+fn is_bang_shape(shape: TokenShape) -> Bool { match shape { ShBang => true  _ => false } }
+fn is_and_shape(shape: TokenShape) -> Bool { match shape { ShAnd => true  _ => false } }
+fn is_or_shape(shape: TokenShape) -> Bool { match shape { ShOr => true  _ => false } }
+// Optionality
+fn is_question_shape(shape: TokenShape) -> Bool { match shape { ShQuestion => true  _ => false } }
+fn is_null_coalesce_shape(shape: TokenShape) -> Bool { match shape { ShNullCoalesce => true  _ => false } }
+// Pipe
+fn is_pipe_shape(shape: TokenShape) -> Bool { match shape { ShPipe => true  _ => false } }
+fn is_pipe_arrow_shape(shape: TokenShape) -> Bool { match shape { ShPipeArrow => true  _ => false } }
+
 fn peek_is_ident(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_ident_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_ident_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_newline(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_newline_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_newline_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_eof(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_eof_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_eof_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_lit_str(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_lit_str_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_lit_str_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_lbrace(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_lbrace_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_lbrace_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_rbrace(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_rbrace_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_rbrace_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_lparen(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_lparen_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_lparen_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_rparen(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_rparen_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_rparen_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_lbracket(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_lbracket_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_lbracket_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_rbracket(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_rbracket_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_rbracket_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_colon(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_colon_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_colon_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_comma(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_comma_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_comma_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_dot(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_dot_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_dot_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_dot_dot(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_dot_dot_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_dot_dot_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_eq(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_eq_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_eq_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_fat_arrow(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_fat_arrow_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_fat_arrow_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_arrow(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_arrow_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_arrow_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_lt(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_lt_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_lt_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_gt(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_gt_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_gt_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_pipe(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_pipe_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_pipe_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_pipe_arrow(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_pipe_arrow_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_pipe_arrow_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_question(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_question_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_question_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_module(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_module_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_module_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_import(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_import_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_import_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_type(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_type_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_type_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_fn(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_fn_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_fn_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_func(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_func_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_func_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_service(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_service_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_service_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_resource(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_resource_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_resource_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_data(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_data_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_data_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_extern(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_extern_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_extern_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_interface(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_interface_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_interface_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_pipeline(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_pipeline_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_pipeline_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_profile(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_profile_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_profile_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_pattern(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_pattern_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_pattern_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_let(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_let_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_let_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_return(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_return_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_return_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_match(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_match_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_match_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_if(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_if_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_if_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_else(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_else_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_else_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_for(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_for_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_for_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_in(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_in_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_in_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_where(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_where_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_where_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_with(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_with_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_with_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_true(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_true_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_true_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_false(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_false_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_false_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_idempotent(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_idempotent_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_idempotent_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_readonly(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_readonly_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_readonly_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_hermetic(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_hermetic_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_hermetic_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_capability(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_capability_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_capability_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_operation(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_operation_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_operation_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_input(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_input_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_input_shape(shape: shape)
     None => false
   }
 }
 
 fn peek_is_kw_output(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_kind(tokens: tokens, state: state) {
-    Some { value: kind } => is_kw_output_kind(kind: kind)
+  match peek_shape(tokens: tokens, state: state) {
+    Some { value: shape } => is_kw_output_shape(shape: shape)
     None => false
   }
 }
@@ -4149,6 +4350,86 @@ fn kind_tag(kind: TokenKind) -> String {
   }
 }
 
+fn shape_display_name(shape: TokenShape) -> String {
+  match shape {
+    ShKwModule => "KwModule"
+    ShKwImport => "KwImport"
+    ShKwType => "KwType"
+    ShKwFn => "KwFn"
+    ShKwFunc => "KwFunc"
+    ShKwService => "KwService"
+    ShKwResource => "KwResource"
+    ShKwData => "KwData"
+    ShKwExtern => "KwExtern"
+    ShKwInterface => "KwInterface"
+    ShKwPipeline => "KwPipeline"
+    ShKwProfile => "KwProfile"
+    ShKwPattern => "KwPattern"
+    ShKwLet => "KwLet"
+    ShKwReturn => "KwReturn"
+    ShKwMatch => "KwMatch"
+    ShKwIf => "KwIf"
+    ShKwElse => "KwElse"
+    ShKwFor => "KwFor"
+    ShKwIn => "KwIn"
+    ShKwWhere => "KwWhere"
+    ShKwWith => "KwWith"
+    ShKwTrue => "KwTrue"
+    ShKwFalse => "KwFalse"
+    ShKwNone => "KwNone"
+    ShKwAcquire => "KwAcquire"
+    ShKwRelease => "KwRelease"
+    ShKwCapability => "KwCapability"
+    ShKwOperation => "KwOperation"
+    ShKwInput => "KwInput"
+    ShKwOutput => "KwOutput"
+    ShKwIdempotent => "KwIdempotent"
+    ShKwReadonly => "KwReadonly"
+    ShKwHermetic => "KwHermetic"
+    ShLBrace => "LBrace"
+    ShRBrace => "RBrace"
+    ShLParen => "LParen"
+    ShRParen => "RParen"
+    ShLBracket => "LBracket"
+    ShRBracket => "RBracket"
+    ShLt => "Lt"
+    ShGt => "Gt"
+    ShLe => "Le"
+    ShGe => "Ge"
+    ShFatArrow => "FatArrow"
+    ShArrow => "Arrow"
+    ShColon => "Colon"
+    ShComma => "Comma"
+    ShDot => "Dot"
+    ShDotDot => "DotDot"
+    ShEq => "Eq"
+    ShEqEq => "EqEq"
+    ShNe => "Ne"
+    ShPlus => "Plus"
+    ShMinus => "Minus"
+    ShStar => "Star"
+    ShSlash => "Slash"
+    ShPercent => "Percent"
+    ShBang => "Bang"
+    ShAnd => "And"
+    ShOr => "Or"
+    ShQuestion => "Question"
+    ShNullCoalesce => "NullCoalesce"
+    ShPipe => "Pipe"
+    ShPipeArrow => "PipeArrow"
+    ShLitStr => "LitStr"
+    ShLitInt => "LitInt"
+    ShLitFloat => "LitFloat"
+    ShIdent => "Ident"
+    ShStrBegin => "StrBegin"
+    ShStrMid => "StrMid"
+    ShStrEnd => "StrEnd"
+    ShNewline => "Newline"
+    ShEof => "Eof"
+    ShUnknown => "Unknown"
+  }
+}
+
 fn expected_token_name(expected: ExpectedToken) -> String {
   match expected {
     ExpectKwModule => "KwModule"
@@ -4231,22 +4512,63 @@ fn kind_matches_expected(kind: TokenKind, expected: ExpectedToken) -> Bool {
   }
 }
 
+fn shape_matches_expected(shape: TokenShape, expected: ExpectedToken) -> Bool {
+  match expected {
+    ExpectKwModule => is_kw_module_shape(shape: shape)
+    ExpectKwImport => is_kw_import_shape(shape: shape)
+    ExpectKwType => is_kw_type_shape(shape: shape)
+    ExpectKwFn => is_kw_fn_shape(shape: shape)
+    ExpectKwFunc => is_kw_func_shape(shape: shape)
+    ExpectKwService => is_kw_service_shape(shape: shape)
+    ExpectKwResource => is_kw_resource_shape(shape: shape)
+    ExpectKwData => is_kw_data_shape(shape: shape)
+    ExpectKwExtern => is_kw_extern_shape(shape: shape)
+    ExpectKwInterface => is_kw_interface_shape(shape: shape)
+    ExpectKwPattern => is_kw_pattern_shape(shape: shape)
+    ExpectKwLet => is_kw_let_shape(shape: shape)
+    ExpectKwReturn => is_kw_return_shape(shape: shape)
+    ExpectKwMatch => is_kw_match_shape(shape: shape)
+    ExpectKwIf => is_kw_if_shape(shape: shape)
+    ExpectKwElse => is_kw_else_shape(shape: shape)
+    ExpectKwFor => is_kw_for_shape(shape: shape)
+    ExpectKwIn => is_kw_in_shape(shape: shape)
+    ExpectKwCapability => is_kw_capability_shape(shape: shape)
+    ExpectKwOperation => is_kw_operation_shape(shape: shape)
+    ExpectLBrace => is_lbrace_shape(shape: shape)
+    ExpectRBrace => is_rbrace_shape(shape: shape)
+    ExpectLParen => is_lparen_shape(shape: shape)
+    ExpectRParen => is_rparen_shape(shape: shape)
+    ExpectLBracket => is_lbracket_shape(shape: shape)
+    ExpectRBracket => is_rbracket_shape(shape: shape)
+    ExpectLt => is_lt_shape(shape: shape)
+    ExpectGt => is_gt_shape(shape: shape)
+    ExpectFatArrow => is_fat_arrow_shape(shape: shape)
+    ExpectArrow => is_arrow_shape(shape: shape)
+    ExpectColon => is_colon_shape(shape: shape)
+    ExpectComma => is_comma_shape(shape: shape)
+    ExpectDot => is_dot_shape(shape: shape)
+    ExpectEq => is_eq_shape(shape: shape)
+    ExpectQuestion => is_question_shape(shape: shape)
+    ExpectPipe => is_pipe_shape(shape: shape)
+  }
+}
+
 fn expect(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> TokenResult {
-  let k = peek_kind(tokens: tokens, state: state)
-  let matches = match k {
-    Some { value: kind } => kind_matches_expected(kind: kind, expected: expected)
+  let sh = peek_shape(tokens: tokens, state: state)
+  let matches = match sh {
+    Some { value: shape } => shape_matches_expected(shape: shape, expected: expected)
     None => false
   }
   if matches {
     let adv = advance(tokens: tokens, state: state)
     TokenResult { token: adv.token, state: adv.state, err: none }
   } else {
-    let found = match k {
-      Some { value: kind } => kind_tag(kind: kind)
+    let found = match sh {
+      Some { value: shape } => shape_display_name(shape: shape)
       None => "EOF"
     }
     let wanted = expected_token_name(expected: expected)
-    TokenResult { token: Token { kind: Eof, span: SourceSpan { start: 0, end: 0 } }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
+    TokenResult { token: Token { kind: Eof, text: "", span: SourceSpan { start: 0, end: 0 }, shape: ShEof }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
@@ -4342,9 +4664,9 @@ fn skip_newlines(tokens: List<Token>, state: ParserState) -> ParserState {
   }
 }
 
-// Is the token kind a continuation operator (|>, ., ||, &&)?
-fn is_continuation_kind(kind: TokenKind) -> Bool {
-  is_pipe_arrow_kind(kind: kind) || is_dot_kind(kind: kind) || is_or_kind(kind: kind) || is_and_kind(kind: kind)
+// Is the token shape a continuation operator (|>, ., ||, &&)?
+fn is_continuation_shape(shape: TokenShape) -> Bool {
+  is_pipe_arrow_shape(shape: shape) || is_dot_shape(shape: shape) || is_or_shape(shape: shape) || is_and_shape(shape: shape)
 }
 
 // Skip newlines only if the next non-newline token is a continuation
@@ -4353,8 +4675,8 @@ fn is_continuation_kind(kind: TokenKind) -> Bool {
 fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> ParserState {
   let is_continuation = if peek_is_newline(tokens: tokens, state: state) {
     let s = skip_newlines(tokens: tokens, state: state)
-    match peek_kind(tokens: tokens, state: s) {
-      Some { value: kind } => is_continuation_kind(kind: kind)
+    match peek_shape(tokens: tokens, state: s) {
+      Some { value: shape } => is_continuation_shape(shape: shape)
       None => false
     }
   } else {
@@ -6586,7 +6908,7 @@ fn peek_is_eq_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
   if state.pos + 1 < count(tokens) {
     let next_tok = get(tokens, state.pos + 1)
     match next_tok {
-      Some { value: t } => is_eq_kind(kind: t.kind)
+      Some { value: t } => is_eq_shape(shape: t.shape)
       None => false
     }
   } else {
@@ -6652,15 +6974,15 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
             ExprResult { expr: lhs, state: s, err: none }
           } else {
             let adv = advance(tokens: tokens, state: s)
-            let op_kind = adv.token.kind
+            let op_shape = adv.token.shape
             // Special case: dot is field access
-            if is_dot_kind(kind: op_kind) {
+            if is_dot_shape(shape: op_shape) {
               let r = expect_name(tokens: tokens, state: adv.state)
               if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: state)
               let new_lhs = make_expr_node(expr_data: ExprFieldAccess { base: lhs, field: r.name, summary: none }, inferred: none, span: span)
               parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
-            } else if is_pipe_arrow_kind(kind: op_kind) {
+            } else if is_pipe_arrow_shape(shape: op_shape) {
               let span = current_span(tokens: tokens, state: state)
               let r = parse_pipe_rhs(tokens: tokens, state: adv.state, receiver: lhs, span: span)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
@@ -6670,7 +6992,7 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
               let r = parse_expr_bp(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: state)
-              let binop = token_to_binop(kind: op_kind)
+              let binop = token_to_binop(kind: adv.token.kind)
               let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, left: lhs, right: r.expr }, inferred: none, span: span)
               parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
             }
@@ -7148,14 +7470,14 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
             ExprResult { expr: lhs, state: s, err: none }
           } else {
             let adv = advance(tokens: tokens, state: s)
-            let op_kind = adv.token.kind
-            if is_dot_kind(kind: op_kind) {
+            let op_shape = adv.token.shape
+            if is_dot_shape(shape: op_shape) {
               let r = expect_name(tokens: tokens, state: adv.state)
               if has_err(err: r.err) { return ExprResult { expr: lhs, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: s)
               let new_lhs = make_expr_node(expr_data: ExprFieldAccess { base: lhs, field: r.name, summary: none }, inferred: none, span: span)
               parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
-            } else if is_pipe_arrow_kind(kind: op_kind) {
+            } else if is_pipe_arrow_shape(shape: op_shape) {
               let span = current_span(tokens: tokens, state: s)
               let r = parse_pipe_rhs(tokens: tokens, state: adv.state, receiver: lhs, span: span)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
@@ -7165,7 +7487,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
               let r = parse_expr_bp_no_brace(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: s)
-              let binop = token_to_binop(kind: op_kind)
+              let binop = token_to_binop(kind: adv.token.kind)
               let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop, left: lhs, right: r.expr }, inferred: none, span: span)
               parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
             }
@@ -7295,7 +7617,7 @@ fn peek_is_fat_arrow_at(tokens: List<Token>, state: ParserState, offset: Int) ->
   if state.pos + offset < count(tokens) {
     let tok = get(tokens, state.pos + offset)
     match tok {
-      Some { value: t } => is_fat_arrow_kind(kind: t.kind)
+      Some { value: t } => is_fat_arrow_shape(shape: t.shape)
       None => false
     }
   } else {
@@ -7308,7 +7630,7 @@ fn peek_is_expected_at(tokens: List<Token>, state: ParserState, offset: Int, exp
   if state.pos + offset < count(tokens) {
     let tok = get(tokens, state.pos + offset)
     match tok {
-      Some { value: t } => kind_matches_expected(kind: t.kind, expected: expected)
+      Some { value: t } => shape_matches_expected(shape: t.shape, expected: expected)
       None => false
     }
   } else {
@@ -7328,7 +7650,7 @@ fn scan_braces_depth(tokens: List<Token>, state: ParserState, idx: Int, depth: I
       if idx < count(tokens) {
         let tok = get(tokens, idx)
         match tok {
-          Some { value: t } => is_fat_arrow_kind(kind: t.kind)
+          Some { value: t } => is_fat_arrow_shape(shape: t.shape)
           None => false
         }
       } else {
@@ -7341,9 +7663,9 @@ fn scan_braces_depth(tokens: List<Token>, state: ParserState, idx: Int, depth: I
     let tok = get(tokens, idx)
     match tok {
       Some { value: t } => {
-        if is_lbrace_kind(kind: t.kind) {
+        if is_lbrace_shape(shape: t.shape) {
           scan_braces_depth(tokens: tokens, state: state, idx: idx + 1, depth: depth + 1)
-        } else if is_rbrace_kind(kind: t.kind) {
+        } else if is_rbrace_shape(shape: t.shape) {
           scan_braces_depth(tokens: tokens, state: state, idx: idx + 1, depth: depth - 1)
         } else {
           scan_braces_depth(tokens: tokens, state: state, idx: idx + 1, depth: depth)
@@ -7936,7 +8258,7 @@ fn peek_is_colon_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
   if state.pos + 1 < count(tokens) {
     let next_tok = get(tokens, state.pos + 1)
     match next_tok {
-      Some { value: t } => is_colon_kind(kind: t.kind)
+      Some { value: t } => is_colon_shape(shape: t.shape)
       None => false
     }
   } else {

@@ -490,6 +490,19 @@ pub fn peek_kind(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Option<R
 }
 }
 
+pub fn peek_shape(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Option<TokenShape> {
+    let tok = peek(tokens.clone(), state.clone());
+    match tok.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(t) => {
+        let t = Rc::new(t.clone());
+        Some(t.shape.clone())
+    }
+    None => {
+        None
+    }
+}
+}
+
 pub fn at_end(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
     state.pos.clone() >= ({
     let __len_0 = tokens.clone().len();
@@ -522,7 +535,7 @@ pub fn advance(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Advance
     }
     None => {
         {
-    let eof_tok = Rc::new(Token { kind: Rc::new(TokenKind::Eof), span: SourceSpan { start: 0_i64, end: 0_i64 } });
+    let eof_tok = Rc::new(Token { kind: Rc::new(TokenKind::Eof), text: "".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, shape: TokenShape::ShEof });
     Rc::new(AdvanceResult { token: eof_tok.clone(), state: state.clone() })
 }
     }
@@ -1369,10 +1382,835 @@ pub fn is_pipe_arrow_kind(kind: Rc<TokenKind>) -> bool {
 }
 }
 
+pub fn is_ident_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShIdent => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lit_str_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLitStr => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lit_int_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLitInt => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lit_float_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLitFloat => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_str_begin_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShStrBegin => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_str_mid_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShStrMid => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_str_end_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShStrEnd => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_unknown_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShUnknown => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_newline_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShNewline => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_eof_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShEof => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_module_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwModule => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_import_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwImport => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_type_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwType => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_fn_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwFn => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_func_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwFunc => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_service_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwService => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_resource_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwResource => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_data_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwData => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_extern_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwExtern => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_interface_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwInterface => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_pipeline_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwPipeline => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_profile_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwProfile => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_pattern_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwPattern => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_let_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwLet => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_return_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwReturn => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_match_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwMatch => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_if_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwIf => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_else_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwElse => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_for_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwFor => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_in_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwIn => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_where_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwWhere => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_with_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwWith => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_true_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwTrue => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_false_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwFalse => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_none_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwNone => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_acquire_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwAcquire => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_release_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwRelease => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_capability_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwCapability => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_operation_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwOperation => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_input_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwInput => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_output_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwOutput => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_idempotent_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwIdempotent => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_readonly_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwReadonly => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_kw_hermetic_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShKwHermetic => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lbrace_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLBrace => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_rbrace_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShRBrace => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lparen_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLParen => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_rparen_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShRParen => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lbracket_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLBracket => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_rbracket_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShRBracket => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_lt_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLt => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_gt_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShGt => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_le_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShLe => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_ge_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShGe => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_fat_arrow_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShFatArrow => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_arrow_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShArrow => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_colon_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShColon => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_comma_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShComma => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_dot_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShDot => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_dot_dot_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShDotDot => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_eq_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShEq => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_eq_eq_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShEqEq => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_ne_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShNe => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_plus_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShPlus => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_minus_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShMinus => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_star_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShStar => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_slash_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShSlash => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_percent_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShPercent => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_bang_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShBang => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_and_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShAnd => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_or_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShOr => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_question_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShQuestion => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_null_coalesce_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShNullCoalesce => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_pipe_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShPipe => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
+pub fn is_pipe_arrow_shape(shape: TokenShape) -> bool {
+    match shape {
+    TokenShape::ShPipeArrow => {
+        true
+    }
+    _ => {
+        false
+    }
+}
+}
+
 pub fn peek_is_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_ident_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_ident_shape(shape)
     }
     None => {
         false
@@ -1381,9 +2219,9 @@ pub fn peek_is_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool
 }
 
 pub fn peek_is_newline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_newline_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_newline_shape(shape)
     }
     None => {
         false
@@ -1392,9 +2230,9 @@ pub fn peek_is_newline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_eof(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_eof_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_eof_shape(shape)
     }
     None => {
         false
@@ -1403,9 +2241,9 @@ pub fn peek_is_eof(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
 }
 
 pub fn peek_is_lit_str(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_lit_str_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_lit_str_shape(shape)
     }
     None => {
         false
@@ -1414,9 +2252,9 @@ pub fn peek_is_lit_str(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_lbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_lbrace_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_lbrace_shape(shape)
     }
     None => {
         false
@@ -1425,9 +2263,9 @@ pub fn peek_is_lbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> boo
 }
 
 pub fn peek_is_rbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_rbrace_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_rbrace_shape(shape)
     }
     None => {
         false
@@ -1436,9 +2274,9 @@ pub fn peek_is_rbrace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> boo
 }
 
 pub fn peek_is_lparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_lparen_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_lparen_shape(shape)
     }
     None => {
         false
@@ -1447,9 +2285,9 @@ pub fn peek_is_lparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> boo
 }
 
 pub fn peek_is_rparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_rparen_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_rparen_shape(shape)
     }
     None => {
         false
@@ -1458,9 +2296,9 @@ pub fn peek_is_rparen(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> boo
 }
 
 pub fn peek_is_lbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_lbracket_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_lbracket_shape(shape)
     }
     None => {
         false
@@ -1469,9 +2307,9 @@ pub fn peek_is_lbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> b
 }
 
 pub fn peek_is_rbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_rbracket_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_rbracket_shape(shape)
     }
     None => {
         false
@@ -1480,9 +2318,9 @@ pub fn peek_is_rbracket(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> b
 }
 
 pub fn peek_is_colon(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_colon_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_colon_shape(shape)
     }
     None => {
         false
@@ -1491,9 +2329,9 @@ pub fn peek_is_colon(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool
 }
 
 pub fn peek_is_comma(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_comma_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_comma_shape(shape)
     }
     None => {
         false
@@ -1502,9 +2340,9 @@ pub fn peek_is_comma(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool
 }
 
 pub fn peek_is_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_dot_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_dot_shape(shape)
     }
     None => {
         false
@@ -1513,9 +2351,9 @@ pub fn peek_is_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
 }
 
 pub fn peek_is_dot_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_dot_dot_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_dot_dot_shape(shape)
     }
     None => {
         false
@@ -1524,9 +2362,9 @@ pub fn peek_is_dot_dot(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_eq_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_eq_shape(shape)
     }
     None => {
         false
@@ -1535,9 +2373,9 @@ pub fn peek_is_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
 }
 
 pub fn peek_is_fat_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_fat_arrow_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_fat_arrow_shape(shape)
     }
     None => {
         false
@@ -1546,9 +2384,9 @@ pub fn peek_is_fat_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 }
 
 pub fn peek_is_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_arrow_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_arrow_shape(shape)
     }
     None => {
         false
@@ -1557,9 +2395,9 @@ pub fn peek_is_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool
 }
 
 pub fn peek_is_lt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_lt_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_lt_shape(shape)
     }
     None => {
         false
@@ -1568,9 +2406,9 @@ pub fn peek_is_lt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
 }
 
 pub fn peek_is_gt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_gt_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_gt_shape(shape)
     }
     None => {
         false
@@ -1579,9 +2417,9 @@ pub fn peek_is_gt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
 }
 
 pub fn peek_is_pipe(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_pipe_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_pipe_shape(shape)
     }
     None => {
         false
@@ -1590,9 +2428,9 @@ pub fn peek_is_pipe(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool 
 }
 
 pub fn peek_is_pipe_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_pipe_arrow_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_pipe_arrow_shape(shape)
     }
     None => {
         false
@@ -1601,9 +2439,9 @@ pub fn peek_is_pipe_arrow(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
 }
 
 pub fn peek_is_question(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_question_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_question_shape(shape)
     }
     None => {
         false
@@ -1612,9 +2450,9 @@ pub fn peek_is_question(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> b
 }
 
 pub fn peek_is_kw_module(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_module_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_module_shape(shape)
     }
     None => {
         false
@@ -1623,9 +2461,9 @@ pub fn peek_is_kw_module(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 }
 
 pub fn peek_is_kw_import(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_import_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_import_shape(shape)
     }
     None => {
         false
@@ -1634,9 +2472,9 @@ pub fn peek_is_kw_import(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 }
 
 pub fn peek_is_kw_type(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_type_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_type_shape(shape)
     }
     None => {
         false
@@ -1645,9 +2483,9 @@ pub fn peek_is_kw_type(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_kw_fn(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_fn_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_fn_shape(shape)
     }
     None => {
         false
@@ -1656,9 +2494,9 @@ pub fn peek_is_kw_fn(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool
 }
 
 pub fn peek_is_kw_func(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_func_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_func_shape(shape)
     }
     None => {
         false
@@ -1667,9 +2505,9 @@ pub fn peek_is_kw_func(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_kw_service(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_service_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_service_shape(shape)
     }
     None => {
         false
@@ -1678,9 +2516,9 @@ pub fn peek_is_kw_service(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
 }
 
 pub fn peek_is_kw_resource(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_resource_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_resource_shape(shape)
     }
     None => {
         false
@@ -1689,9 +2527,9 @@ pub fn peek_is_kw_resource(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -
 }
 
 pub fn peek_is_kw_data(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_data_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_data_shape(shape)
     }
     None => {
         false
@@ -1700,9 +2538,9 @@ pub fn peek_is_kw_data(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_kw_extern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_extern_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_extern_shape(shape)
     }
     None => {
         false
@@ -1711,9 +2549,9 @@ pub fn peek_is_kw_extern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 }
 
 pub fn peek_is_kw_interface(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_interface_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_interface_shape(shape)
     }
     None => {
         false
@@ -1722,9 +2560,9 @@ pub fn peek_is_kw_interface(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) 
 }
 
 pub fn peek_is_kw_pipeline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_pipeline_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_pipeline_shape(shape)
     }
     None => {
         false
@@ -1733,9 +2571,9 @@ pub fn peek_is_kw_pipeline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -
 }
 
 pub fn peek_is_kw_profile(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_profile_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_profile_shape(shape)
     }
     None => {
         false
@@ -1744,9 +2582,9 @@ pub fn peek_is_kw_profile(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
 }
 
 pub fn peek_is_kw_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_pattern_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_pattern_shape(shape)
     }
     None => {
         false
@@ -1755,9 +2593,9 @@ pub fn peek_is_kw_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
 }
 
 pub fn peek_is_kw_let(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_let_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_let_shape(shape)
     }
     None => {
         false
@@ -1766,9 +2604,9 @@ pub fn peek_is_kw_let(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> boo
 }
 
 pub fn peek_is_kw_return(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_return_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_return_shape(shape)
     }
     None => {
         false
@@ -1777,9 +2615,9 @@ pub fn peek_is_kw_return(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 }
 
 pub fn peek_is_kw_match(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_match_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_match_shape(shape)
     }
     None => {
         false
@@ -1788,9 +2626,9 @@ pub fn peek_is_kw_match(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> b
 }
 
 pub fn peek_is_kw_if(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_if_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_if_shape(shape)
     }
     None => {
         false
@@ -1799,9 +2637,9 @@ pub fn peek_is_kw_if(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool
 }
 
 pub fn peek_is_kw_else(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_else_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_else_shape(shape)
     }
     None => {
         false
@@ -1810,9 +2648,9 @@ pub fn peek_is_kw_else(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_kw_for(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_for_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_for_shape(shape)
     }
     None => {
         false
@@ -1821,9 +2659,9 @@ pub fn peek_is_kw_for(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> boo
 }
 
 pub fn peek_is_kw_in(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_in_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_in_shape(shape)
     }
     None => {
         false
@@ -1832,9 +2670,9 @@ pub fn peek_is_kw_in(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool
 }
 
 pub fn peek_is_kw_where(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_where_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_where_shape(shape)
     }
     None => {
         false
@@ -1843,9 +2681,9 @@ pub fn peek_is_kw_where(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> b
 }
 
 pub fn peek_is_kw_with(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_with_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_with_shape(shape)
     }
     None => {
         false
@@ -1854,9 +2692,9 @@ pub fn peek_is_kw_with(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_kw_true(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_true_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_true_shape(shape)
     }
     None => {
         false
@@ -1865,9 +2703,9 @@ pub fn peek_is_kw_true(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn peek_is_kw_false(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_false_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_false_shape(shape)
     }
     None => {
         false
@@ -1876,9 +2714,9 @@ pub fn peek_is_kw_false(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> b
 }
 
 pub fn peek_is_kw_idempotent(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_idempotent_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_idempotent_shape(shape)
     }
     None => {
         false
@@ -1887,9 +2725,9 @@ pub fn peek_is_kw_idempotent(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>)
 }
 
 pub fn peek_is_kw_readonly(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_readonly_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_readonly_shape(shape)
     }
     None => {
         false
@@ -1898,9 +2736,9 @@ pub fn peek_is_kw_readonly(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -
 }
 
 pub fn peek_is_kw_hermetic(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_hermetic_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_hermetic_shape(shape)
     }
     None => {
         false
@@ -1909,9 +2747,9 @@ pub fn peek_is_kw_hermetic(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -
 }
 
 pub fn peek_is_kw_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_capability_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_capability_shape(shape)
     }
     None => {
         false
@@ -1920,9 +2758,9 @@ pub fn peek_is_kw_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>)
 }
 
 pub fn peek_is_kw_operation(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_operation_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_operation_shape(shape)
     }
     None => {
         false
@@ -1931,9 +2769,9 @@ pub fn peek_is_kw_operation(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) 
 }
 
 pub fn peek_is_kw_input(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_input_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_input_shape(shape)
     }
     None => {
         false
@@ -1942,9 +2780,9 @@ pub fn peek_is_kw_input(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> b
 }
 
 pub fn peek_is_kw_output(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
-    match peek_kind(tokens.clone(), state.clone()) {
-    Some(kind) => {
-        is_kw_output_kind(kind.clone())
+    match peek_shape(tokens.clone(), state.clone()) {
+    Some(shape) => {
+        is_kw_output_shape(shape)
     }
     None => {
         false
@@ -2182,6 +3020,236 @@ pub fn kind_tag(kind: Rc<TokenKind>) -> String {
 }
 }
 
+pub fn shape_display_name(shape: TokenShape) -> String {
+    match shape {
+    TokenShape::ShKwModule => {
+        "KwModule".to_string()
+    }
+    TokenShape::ShKwImport => {
+        "KwImport".to_string()
+    }
+    TokenShape::ShKwType => {
+        "KwType".to_string()
+    }
+    TokenShape::ShKwFn => {
+        "KwFn".to_string()
+    }
+    TokenShape::ShKwFunc => {
+        "KwFunc".to_string()
+    }
+    TokenShape::ShKwService => {
+        "KwService".to_string()
+    }
+    TokenShape::ShKwResource => {
+        "KwResource".to_string()
+    }
+    TokenShape::ShKwData => {
+        "KwData".to_string()
+    }
+    TokenShape::ShKwExtern => {
+        "KwExtern".to_string()
+    }
+    TokenShape::ShKwInterface => {
+        "KwInterface".to_string()
+    }
+    TokenShape::ShKwPipeline => {
+        "KwPipeline".to_string()
+    }
+    TokenShape::ShKwProfile => {
+        "KwProfile".to_string()
+    }
+    TokenShape::ShKwPattern => {
+        "KwPattern".to_string()
+    }
+    TokenShape::ShKwLet => {
+        "KwLet".to_string()
+    }
+    TokenShape::ShKwReturn => {
+        "KwReturn".to_string()
+    }
+    TokenShape::ShKwMatch => {
+        "KwMatch".to_string()
+    }
+    TokenShape::ShKwIf => {
+        "KwIf".to_string()
+    }
+    TokenShape::ShKwElse => {
+        "KwElse".to_string()
+    }
+    TokenShape::ShKwFor => {
+        "KwFor".to_string()
+    }
+    TokenShape::ShKwIn => {
+        "KwIn".to_string()
+    }
+    TokenShape::ShKwWhere => {
+        "KwWhere".to_string()
+    }
+    TokenShape::ShKwWith => {
+        "KwWith".to_string()
+    }
+    TokenShape::ShKwTrue => {
+        "KwTrue".to_string()
+    }
+    TokenShape::ShKwFalse => {
+        "KwFalse".to_string()
+    }
+    TokenShape::ShKwNone => {
+        "KwNone".to_string()
+    }
+    TokenShape::ShKwAcquire => {
+        "KwAcquire".to_string()
+    }
+    TokenShape::ShKwRelease => {
+        "KwRelease".to_string()
+    }
+    TokenShape::ShKwCapability => {
+        "KwCapability".to_string()
+    }
+    TokenShape::ShKwOperation => {
+        "KwOperation".to_string()
+    }
+    TokenShape::ShKwInput => {
+        "KwInput".to_string()
+    }
+    TokenShape::ShKwOutput => {
+        "KwOutput".to_string()
+    }
+    TokenShape::ShKwIdempotent => {
+        "KwIdempotent".to_string()
+    }
+    TokenShape::ShKwReadonly => {
+        "KwReadonly".to_string()
+    }
+    TokenShape::ShKwHermetic => {
+        "KwHermetic".to_string()
+    }
+    TokenShape::ShLBrace => {
+        "LBrace".to_string()
+    }
+    TokenShape::ShRBrace => {
+        "RBrace".to_string()
+    }
+    TokenShape::ShLParen => {
+        "LParen".to_string()
+    }
+    TokenShape::ShRParen => {
+        "RParen".to_string()
+    }
+    TokenShape::ShLBracket => {
+        "LBracket".to_string()
+    }
+    TokenShape::ShRBracket => {
+        "RBracket".to_string()
+    }
+    TokenShape::ShLt => {
+        "Lt".to_string()
+    }
+    TokenShape::ShGt => {
+        "Gt".to_string()
+    }
+    TokenShape::ShLe => {
+        "Le".to_string()
+    }
+    TokenShape::ShGe => {
+        "Ge".to_string()
+    }
+    TokenShape::ShFatArrow => {
+        "FatArrow".to_string()
+    }
+    TokenShape::ShArrow => {
+        "Arrow".to_string()
+    }
+    TokenShape::ShColon => {
+        "Colon".to_string()
+    }
+    TokenShape::ShComma => {
+        "Comma".to_string()
+    }
+    TokenShape::ShDot => {
+        "Dot".to_string()
+    }
+    TokenShape::ShDotDot => {
+        "DotDot".to_string()
+    }
+    TokenShape::ShEq => {
+        "Eq".to_string()
+    }
+    TokenShape::ShEqEq => {
+        "EqEq".to_string()
+    }
+    TokenShape::ShNe => {
+        "Ne".to_string()
+    }
+    TokenShape::ShPlus => {
+        "Plus".to_string()
+    }
+    TokenShape::ShMinus => {
+        "Minus".to_string()
+    }
+    TokenShape::ShStar => {
+        "Star".to_string()
+    }
+    TokenShape::ShSlash => {
+        "Slash".to_string()
+    }
+    TokenShape::ShPercent => {
+        "Percent".to_string()
+    }
+    TokenShape::ShBang => {
+        "Bang".to_string()
+    }
+    TokenShape::ShAnd => {
+        "And".to_string()
+    }
+    TokenShape::ShOr => {
+        "Or".to_string()
+    }
+    TokenShape::ShQuestion => {
+        "Question".to_string()
+    }
+    TokenShape::ShNullCoalesce => {
+        "NullCoalesce".to_string()
+    }
+    TokenShape::ShPipe => {
+        "Pipe".to_string()
+    }
+    TokenShape::ShPipeArrow => {
+        "PipeArrow".to_string()
+    }
+    TokenShape::ShLitStr => {
+        "LitStr".to_string()
+    }
+    TokenShape::ShLitInt => {
+        "LitInt".to_string()
+    }
+    TokenShape::ShLitFloat => {
+        "LitFloat".to_string()
+    }
+    TokenShape::ShIdent => {
+        "Ident".to_string()
+    }
+    TokenShape::ShStrBegin => {
+        "StrBegin".to_string()
+    }
+    TokenShape::ShStrMid => {
+        "StrMid".to_string()
+    }
+    TokenShape::ShStrEnd => {
+        "StrEnd".to_string()
+    }
+    TokenShape::ShNewline => {
+        "Newline".to_string()
+    }
+    TokenShape::ShEof => {
+        "Eof".to_string()
+    }
+    TokenShape::ShUnknown => {
+        "Unknown".to_string()
+    }
+}
+}
+
 pub fn expected_token_name(expected: ExpectedToken) -> String {
     match expected {
     ExpectedToken::ExpectKwModule => {
@@ -2408,12 +3476,124 @@ pub fn kind_matches_expected(kind: Rc<TokenKind>, expected: ExpectedToken) -> bo
 }
 }
 
+pub fn shape_matches_expected(shape: TokenShape, expected: ExpectedToken) -> bool {
+    match expected {
+    ExpectedToken::ExpectKwModule => {
+        is_kw_module_shape(shape)
+    }
+    ExpectedToken::ExpectKwImport => {
+        is_kw_import_shape(shape)
+    }
+    ExpectedToken::ExpectKwType => {
+        is_kw_type_shape(shape)
+    }
+    ExpectedToken::ExpectKwFn => {
+        is_kw_fn_shape(shape)
+    }
+    ExpectedToken::ExpectKwFunc => {
+        is_kw_func_shape(shape)
+    }
+    ExpectedToken::ExpectKwService => {
+        is_kw_service_shape(shape)
+    }
+    ExpectedToken::ExpectKwResource => {
+        is_kw_resource_shape(shape)
+    }
+    ExpectedToken::ExpectKwData => {
+        is_kw_data_shape(shape)
+    }
+    ExpectedToken::ExpectKwExtern => {
+        is_kw_extern_shape(shape)
+    }
+    ExpectedToken::ExpectKwInterface => {
+        is_kw_interface_shape(shape)
+    }
+    ExpectedToken::ExpectKwPattern => {
+        is_kw_pattern_shape(shape)
+    }
+    ExpectedToken::ExpectKwLet => {
+        is_kw_let_shape(shape)
+    }
+    ExpectedToken::ExpectKwReturn => {
+        is_kw_return_shape(shape)
+    }
+    ExpectedToken::ExpectKwMatch => {
+        is_kw_match_shape(shape)
+    }
+    ExpectedToken::ExpectKwIf => {
+        is_kw_if_shape(shape)
+    }
+    ExpectedToken::ExpectKwElse => {
+        is_kw_else_shape(shape)
+    }
+    ExpectedToken::ExpectKwFor => {
+        is_kw_for_shape(shape)
+    }
+    ExpectedToken::ExpectKwIn => {
+        is_kw_in_shape(shape)
+    }
+    ExpectedToken::ExpectKwCapability => {
+        is_kw_capability_shape(shape)
+    }
+    ExpectedToken::ExpectKwOperation => {
+        is_kw_operation_shape(shape)
+    }
+    ExpectedToken::ExpectLBrace => {
+        is_lbrace_shape(shape)
+    }
+    ExpectedToken::ExpectRBrace => {
+        is_rbrace_shape(shape)
+    }
+    ExpectedToken::ExpectLParen => {
+        is_lparen_shape(shape)
+    }
+    ExpectedToken::ExpectRParen => {
+        is_rparen_shape(shape)
+    }
+    ExpectedToken::ExpectLBracket => {
+        is_lbracket_shape(shape)
+    }
+    ExpectedToken::ExpectRBracket => {
+        is_rbracket_shape(shape)
+    }
+    ExpectedToken::ExpectLt => {
+        is_lt_shape(shape)
+    }
+    ExpectedToken::ExpectGt => {
+        is_gt_shape(shape)
+    }
+    ExpectedToken::ExpectFatArrow => {
+        is_fat_arrow_shape(shape)
+    }
+    ExpectedToken::ExpectArrow => {
+        is_arrow_shape(shape)
+    }
+    ExpectedToken::ExpectColon => {
+        is_colon_shape(shape)
+    }
+    ExpectedToken::ExpectComma => {
+        is_comma_shape(shape)
+    }
+    ExpectedToken::ExpectDot => {
+        is_dot_shape(shape)
+    }
+    ExpectedToken::ExpectEq => {
+        is_eq_shape(shape)
+    }
+    ExpectedToken::ExpectQuestion => {
+        is_question_shape(shape)
+    }
+    ExpectedToken::ExpectPipe => {
+        is_pipe_shape(shape)
+    }
+}
+}
+
 pub fn expect(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: ExpectedToken) -> Rc<TokenResult> {
-    let k = peek_kind(tokens.clone(), state.clone());
-    let matches = match k.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(kind) => {
-        let kind = Rc::new(kind.clone());
-        kind_matches_expected(kind.clone(), expected.clone())
+    let sh = peek_shape(tokens.clone(), state.clone());
+    let matches = match sh.clone() {
+    Some(shape) => {
+        shape_matches_expected(shape.clone(), expected.clone())
     }
     None => {
         false
@@ -2423,17 +3603,16 @@ pub fn expect(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, expected: Expe
     let adv = advance(tokens.clone(), state.clone());
     Rc::new(TokenResult { token: adv.token.clone(), state: adv.state.clone(), err: None })
 } else {
-    let found = match k.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(kind) => {
-        let kind = Rc::new(kind.clone());
-        kind_tag(kind.clone())
+    let found = match sh.clone() {
+    Some(shape) => {
+        shape_display_name(shape.clone())
     }
     None => {
         "EOF".to_string()
     }
 };
     let wanted = expected_token_name(expected.clone());
-    Rc::new(TokenResult { token: Rc::new(Token { kind: Rc::new(TokenKind::Eof), span: SourceSpan { start: 0_i64, end: 0_i64 } }), state: state.clone(), err: Some(parse_error(&format!("expected {}, found {}", wanted, found.clone()), current_span(tokens.clone(), state.clone()))) })
+    Rc::new(TokenResult { token: Rc::new(Token { kind: Rc::new(TokenKind::Eof), text: "".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, shape: TokenShape::ShEof }), state: state.clone(), err: Some(parse_error(&format!("expected {}, found {}", wanted, found.clone()), current_span(tokens.clone(), state.clone()))) })
 }
 }
 
@@ -2654,16 +3833,16 @@ pub fn skip_newlines(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<P
     })
 }
 
-pub fn is_continuation_kind(kind: Rc<TokenKind>) -> bool {
-    ((is_pipe_arrow_kind(kind.clone()) || is_dot_kind(kind.clone())) || is_or_kind(kind.clone())) || is_and_kind(kind.clone())
+pub fn is_continuation_shape(shape: TokenShape) -> bool {
+    ((is_pipe_arrow_shape(shape.clone()) || is_dot_shape(shape.clone())) || is_or_shape(shape.clone())) || is_and_shape(shape.clone())
 }
 
 pub fn skip_continuation_newlines(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ParserState> {
     let is_continuation = if peek_is_newline(tokens.clone(), state.clone()) {
     let s = skip_newlines(tokens.clone(), state.clone());
-    match peek_kind(tokens.clone(), s.clone()) {
-    Some(kind) => {
-        is_continuation_kind(kind.clone())
+    match peek_shape(tokens.clone(), s.clone()) {
+    Some(shape) => {
+        is_continuation_shape(shape)
     }
     None => {
         false
@@ -6484,7 +7663,7 @@ pub fn peek_is_eq_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     let next_tok = tokens.clone().get((state.pos.clone() + 1_i64) as usize).cloned();
     match next_tok.clone() {
     Some(t) => {
-        is_eq_kind(t.kind.clone())
+        is_eq_shape(t.shape.clone())
     }
     None => {
         false
@@ -6574,8 +7753,8 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
     break Rc::new(ExprResult { expr: lhs.clone(), state: s.clone(), err: None });
 } else {
     let adv = advance(tokens.clone(), s.clone());
-    let op_kind = adv.token.kind.clone();
-    if is_dot_kind(op_kind.clone()) {
+    let op_shape = adv.token.shape.clone();
+    if is_dot_shape(op_shape.clone()) {
     let r = expect_name(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
     break Rc::new(ExprResult { expr: lhs.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -6595,7 +7774,7 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
     }
 
 } else {
-    if is_pipe_arrow_kind(op_kind.clone()) {
+    if is_pipe_arrow_shape(op_shape.clone()) {
     let span = current_span(tokens.clone(), state.clone());
     let r = parse_pipe_rhs(tokens.clone(), adv.state.clone(), lhs.clone(), span);
     if has_err(r.err.clone()) {
@@ -6620,7 +7799,7 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
     break Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let span = current_span(tokens.clone(), state.clone());
-    let binop = token_to_binop(op_kind.clone());
+    let binop = token_to_binop(adv.token.kind.clone());
     let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp { op: binop, left: lhs.clone(), right: r.expr.clone() }), None, span);
      {
         let __tco_0 = tokens.clone();
@@ -7360,8 +8539,8 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     break Rc::new(ExprResult { expr: lhs.clone(), state: s.clone(), err: None });
 } else {
     let adv = advance(tokens.clone(), s.clone());
-    let op_kind = adv.token.kind.clone();
-    if is_dot_kind(op_kind.clone()) {
+    let op_shape = adv.token.shape.clone();
+    if is_dot_shape(op_shape.clone()) {
     let r = expect_name(tokens.clone(), adv.state.clone());
     if has_err(r.err.clone()) {
     break Rc::new(ExprResult { expr: lhs.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -7381,7 +8560,7 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     }
 
 } else {
-    if is_pipe_arrow_kind(op_kind.clone()) {
+    if is_pipe_arrow_shape(op_shape.clone()) {
     let span = current_span(tokens.clone(), s.clone());
     let r = parse_pipe_rhs(tokens.clone(), adv.state.clone(), lhs.clone(), span);
     if has_err(r.err.clone()) {
@@ -7406,7 +8585,7 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     break Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let span = current_span(tokens.clone(), s.clone());
-    let binop = token_to_binop(op_kind.clone());
+    let binop = token_to_binop(adv.token.kind.clone());
     let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp { op: binop, left: lhs.clone(), right: r.expr.clone() }), None, span);
      {
         let __tco_0 = tokens.clone();
@@ -7628,7 +8807,7 @@ pub fn peek_is_fat_arrow_at(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
     let tok = tokens.clone().get((state.pos.clone() + offset.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        is_fat_arrow_kind(t.kind.clone())
+        is_fat_arrow_shape(t.shape.clone())
     }
     None => {
         false
@@ -7647,7 +8826,7 @@ pub fn peek_is_expected_at(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, o
     let tok = tokens.clone().get((state.pos.clone() + offset.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        kind_matches_expected(t.kind.clone(), expected)
+        shape_matches_expected(t.shape.clone(), expected)
     }
     None => {
         false
@@ -7685,7 +8864,7 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
     let tok = tokens.clone().get((idx.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        break is_fat_arrow_kind(t.kind.clone());
+        break is_fat_arrow_shape(t.shape.clone());
     }
     None => {
         break false;
@@ -7701,7 +8880,7 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
     let tok = tokens.clone().get((idx.clone()) as usize).cloned();
     match tok.clone() {
     Some(t) => {
-        if is_lbrace_kind(t.kind.clone()) {
+        if is_lbrace_shape(t.shape.clone()) {
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = state.clone();
@@ -7715,7 +8894,7 @@ pub fn scan_braces_depth(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, idx
     }
 
 } else {
-    if is_rbrace_kind(t.kind.clone()) {
+    if is_rbrace_shape(t.shape.clone()) {
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = state.clone();
@@ -8641,7 +9820,7 @@ pub fn peek_is_colon_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSta
     let next_tok = tokens.clone().get((state.pos.clone() + 1_i64) as usize).cloned();
     match next_tok.clone() {
     Some(t) => {
-        is_colon_kind(t.kind.clone())
+        is_colon_shape(t.shape.clone())
     }
     None => {
         false
