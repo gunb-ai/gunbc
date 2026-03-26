@@ -586,7 +586,7 @@ fn serialize_node(node: Node) -> String {
       None => "null"
     },
     ", \"params\": ", json_list(items: node.params |> map(param => serialize_param(param: param))),
-    ", \"return_type\": ", json_optional_inferred_node(value: node.return_type),
+    ", \"inferred\": ", json_optional_inferred_node(value: node.inferred),
     ", \"return_cardinality\": ", json_quote(s: cardinality_name(value: node.return_cardinality)),
     ", \"uses\": ", json_list(items: node.uses |> map(item => serialize_resource_use(resource_use: item))),
     ", \"body\": ", json_optional_node(value: node.body),

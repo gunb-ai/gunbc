@@ -8,7 +8,7 @@ use std::rc::Rc;
 pub struct ResolvedFuncSig {
     pub name: String,
     pub params: Rc<Vec<Rc<Param>>>,
-    pub return_type: Rc<Node>,
+    pub inferred: Rc<Node>,
     pub is_async: bool,
 }
 
@@ -123,7 +123,7 @@ pub fn func_reaches_self(root: &str, current: &str, call_edges: Rc<Vec<Rc<CallEd
 }
 
 pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
-    Rc::new(ResolvedFuncSig { name: dsig.name.clone(), params: dsig.params.clone(), return_type: dsig.return_type.clone().unwrap(), is_async: dsig.is_async.clone() })
+    Rc::new(ResolvedFuncSig { name: dsig.name.clone(), params: dsig.params.clone(), inferred: dsig.inferred.clone().unwrap(), is_async: dsig.is_async.clone() })
 }
 
 pub fn merge_remaining_declared(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
@@ -137,7 +137,7 @@ pub fn merge_remaining_declared(declared_sigs: Rc<HashMap<String, Rc<DeclaredFun
     let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
     Rc::new(__values_3)
 }).iter().cloned() {
-        __acc_4 = if __elem_5.return_type.clone().is_some() {
+        __acc_4 = if __elem_5.inferred.clone().is_some() {
     {
     let __rc_7 = __acc_4;
     let mut __map_ins_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
@@ -183,7 +183,7 @@ pub fn topo_resolve_loop(remaining: Rc<Vec<String>>, resolved: Rc<HashMap<String
     let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
     Rc::new(__values_3)
 }).iter().cloned() {
-        __acc_4 = if __elem_5.return_type.clone().is_some() {
+        __acc_4 = if __elem_5.inferred.clone().is_some() {
     {
     let __rc_7 = __acc_4;
     let mut __map_ins_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
@@ -253,7 +253,7 @@ if __cond {
     for __elem_20 in remaining.iter().cloned() {
         __acc_19 = match declared_sigs.clone().get(&__elem_20).cloned() {
     Some(dsig) => {
-        if dsig.return_type.clone().is_some() {
+        if dsig.inferred.clone().is_some() {
     Rc::new(SigsAccum { signatures: {
     let __rc_22 = std::mem::take(&mut Rc::make_mut(&mut __acc_19).signatures);
     let mut __map_ins_21 = Rc::try_unwrap(__rc_22).unwrap_or_else(|rc| (*rc).clone());
@@ -286,7 +286,7 @@ if __cond {
     let __values_28 = __entries_27.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
     Rc::new(__values_28)
 }).iter().cloned() {
-        __acc_29 = if __elem_30.return_type.clone().is_some() {
+        __acc_29 = if __elem_30.inferred.clone().is_some() {
     {
     let __rc_32 = __acc_29;
     let mut __map_ins_31 = Rc::try_unwrap(__rc_32).unwrap_or_else(|rc| (*rc).clone());
@@ -306,7 +306,7 @@ if __cond {
     for __elem_35 in ready.iter().cloned() {
         __acc_34 = match declared_sigs.clone().get(&__elem_35.clone()).cloned() {
     Some(dsig) => {
-        if dsig.return_type.clone().is_some() {
+        if dsig.inferred.clone().is_some() {
     Rc::new(SigsAccum { signatures: {
     let __rc_37 = std::mem::take(&mut Rc::make_mut(&mut __acc_34).signatures);
     let mut __map_ins_36 = Rc::try_unwrap(__rc_37).unwrap_or_else(|rc| (*rc).clone());
@@ -417,7 +417,7 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
         __acc_13 = if emit_map_has(local_func_set.clone(), &__elem_14.name) {
     __acc_13.clone()
 } else {
-    if __elem_14.return_type.clone().is_some() {
+    if __elem_14.inferred.clone().is_some() {
     {
     let __rc_16 = __acc_13;
     let mut __map_ins_15 = Rc::try_unwrap(__rc_16).unwrap_or_else(|rc| (*rc).clone());

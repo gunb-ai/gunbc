@@ -140,7 +140,7 @@ type TestProjection {
   module_name: String
   service_name: String
   operation_name: String
-  return_type: Node
+  inferred: Node
   params: List<Param>
   mock_field_inits: List<FieldInit>
 }
@@ -161,7 +161,7 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
             module_name: tm.module.name,
             service_name: item.name,
             operation_name: c.name,
-            return_type: rt_type(n: c),
+            inferred: rt_type(n: c),
             params: c.params,
             mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name))
           })
@@ -275,7 +275,7 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 }
 
 // scope_after_expr: extend scope with let-binding type for bodyless lets.
-// After Expr->Node dissolution, resolved type is on Node.return_type.
+// After Expr->Node dissolution, resolved type is on Node.inferred.
 fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
     ExprLet { name: name, value: value, body: body } =>
@@ -763,7 +763,7 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
   if n.name == "Callable" && n.params |> count > 0 {
     let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
-    let ret_str = match n.return_type {
+    let ret_str = match n.inferred {
       Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: target, rc_types: rc_types)
       _ => match target { Go => ""  Python => "None"  _ => "()" }
     }
@@ -844,10 +844,10 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       None => n.name
     }
   } else if n.name == "Tuple" {
-    // Tuple children may have return_type set — unwrap to get the actual type.
+    // Tuple children may have inferred set — unwrap to get the actual type.
     let first_str = match n.children |> first {
       Some { value: c } =>
-        if c.return_type != none {
+        if c.inferred != none {
           emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
         } else {
           emit_node_type_rc(n: c, target: target, rc_types: rc_types)
@@ -856,7 +856,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     }
     let second_str = match skip(n.children, 1) |> first {
       Some { value: c } =>
-        if c.return_type != none {
+        if c.inferred != none {
           emit_node_type_rc(n: rt_type(n: c), target: target, rc_types: rc_types)
         } else {
           emit_node_type_rc(n: c, target: target, rc_types: rc_types)
@@ -883,19 +883,19 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         // Single-field anonymous product — unwrap the field type.
         match n.children |> first {
           Some { value: field_node } =>
-            if field_node.return_type != none {
+            if field_node.inferred != none {
               emit_node_type_rc(n: rt_type(n: field_node), target: target, rc_types: rc_types)
             } else {
-              "compile_error!(\"anonymous product field missing return_type\")"
+              "compile_error!(\"anonymous product field missing inferred\")"
             }
           None => "compile_error!(\"anonymous product reached Node emitter\")"
         }
       } else {
         // Multi-field anonymous product → Rust tuple type.
         let field_types = n.children |> map(child =>
-          if child.return_type != none {
+          if child.inferred != none {
             emit_node_type_rc(n: rt_type(n: child), target: target, rc_types: rc_types)
-          } else { "compile_error!(\"anonymous product field missing return_type\")" }
+          } else { "compile_error!(\"anonymous product field missing inferred\")" }
         )
         let result = concat("(", field_types |> join(separator: ", "), ")")
         result
@@ -1032,7 +1032,7 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     TypedItemServiceDef
   } else if (item.transport == none && item.children |> count > 0) || (item.transport == none && item.children |> count == 0 && item.properties |> count > 0 && item.body == none) {
     // Resources: either with capabilities (children > 0) or without (have properties but no body/transport/children).
-    // Note: return_type may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
+    // Note: inferred may be Some { value: Unit } because the reconciler defaults pass-through items to Unit.
     TypedItemResourceDef
   } else if item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0 {
     // Bare parameterized type declaration (e.g., type List<element>).

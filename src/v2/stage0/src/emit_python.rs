@@ -255,7 +255,7 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
     }
     __joined_2
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Signature: ".to_string(), sanitize_service_name(&projection.service_name)), ".".to_string()), projection.operation_name.clone()), "(".to_string()), params_str.clone()), ") -> ".to_string()), emit_node_type(projection.return_type.clone(), RenderTarget::Python))
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("# Signature: ".to_string(), sanitize_service_name(&projection.service_name)), ".".to_string()), projection.operation_name.clone()), "(".to_string()), params_str.clone()), ") -> ".to_string()), emit_node_type(projection.inferred.clone(), RenderTarget::Python))
 }
 
 pub fn emit_py_test_file(module_name: &str, projections: Rc<Vec<Rc<TestProjection>>>) -> Rc<TextFile> {
@@ -466,7 +466,7 @@ pub fn emit_py_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 } else {
     if kind.clone() == TypedItemKind::TypedItemExternFunc {
     let params_str = emit_py_params(item.params.clone());
-    let ret_str = emit_py_return_type(rt_type(item.clone()));
+    let ret_str = emit_py_inferred(rt_type(item.clone()));
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(&item.name, RenderTarget::Python)), "(".to_string()), params_str), ")".to_string()), ret_str), ":\n".to_string()), "    raise NotImplementedError(\"extern func\")".to_string())
 } else {
     v2_rt::concat("# unhandled node: ".to_string(), item.name.clone())
@@ -639,10 +639,10 @@ pub fn emit_py_variant_class_from_child(parent_name: &str, child: Rc<Node>) -> S
 }
 }
 
-pub fn emit_py_fn_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<Node>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
+pub fn emit_py_fn_def(name: &str, params: Rc<Vec<Rc<Param>>>, inferred: Rc<Node>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     let depth = 0_i64;
     let params_str = emit_py_params(params.clone());
-    let ret_str = emit_py_return_type(return_type.clone());
+    let ret_str = emit_py_inferred(inferred.clone());
     let body_scope = build_params_scope(scope.clone(), params.clone());
     let use_tco = is_tco_eligible(&name, body.clone(), registry.clone());
     if use_tco {
@@ -654,7 +654,7 @@ pub fn emit_py_fn_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<No
 }
 }
 
-pub fn emit_py_func_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<Node>, uses: Rc<Vec<Rc<ResourceUse>>>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
+pub fn emit_py_func_def(name: &str, params: Rc<Vec<Rc<Param>>>, inferred: Rc<Node>, uses: Rc<Vec<Rc<ResourceUse>>>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     let depth = 0_i64;
     let service_names = match lookup_item(registry.clone(), &name) {
     Some(info) => {
@@ -665,7 +665,7 @@ pub fn emit_py_func_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<
     }
 };
     let params_str = emit_py_func_params(params.clone(), uses.clone(), service_names.clone());
-    let ret_str = emit_py_return_type(return_type.clone());
+    let ret_str = emit_py_inferred(inferred.clone());
     let body_scope = build_params_scope(scope.clone(), params.clone());
     let body_str = emit_py_typed_func_body(body.clone(), registry.clone(), body_scope.clone(), depth.clone() + 1_i64);
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(&name, RenderTarget::Python)), "(".to_string()), params_str), ")".to_string()), ret_str), ":\n".to_string()), make_indent(depth.clone() + 1_i64)), body_str)
@@ -735,8 +735,8 @@ pub fn emit_py_param(param: Rc<Param>) -> String {
     v2_rt::concat(v2_rt::concat(emit_ident(&param.name, RenderTarget::Python), ": ".to_string()), ty)
 }
 
-pub fn emit_py_return_type(return_type: Rc<Node>) -> String {
-    v2_rt::concat(" -> ".to_string(), emit_node_type(return_type.clone(), RenderTarget::Python))
+pub fn emit_py_inferred(inferred: Rc<Node>) -> String {
+    v2_rt::concat(" -> ".to_string(), emit_node_type(inferred.clone(), RenderTarget::Python))
 }
 
 pub fn emit_py_pattern(pattern: Rc<MatchPattern>) -> String {

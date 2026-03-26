@@ -81,7 +81,7 @@ pub struct TestProjection {
     pub module_name: String,
     pub service_name: String,
     pub operation_name: String,
-    pub return_type: Rc<Node>,
+    pub inferred: Rc<Node>,
     pub params: Rc<Vec<Rc<Param>>>,
     pub mock_field_inits: Rc<Vec<Rc<FieldInit>>>,
 }
@@ -132,7 +132,7 @@ if __cond {
     }
     Rc::new(__filtered_6)
 }).iter().cloned() {
-        __mapped_10.push(Rc::new(TestProjection { module_name: __elem_1.module.name.clone(), service_name: __elem_5.name.clone(), operation_name: __elem_11.name.clone(), return_type: rt_type(__elem_11.clone()), params: __elem_11.params.clone(), mock_field_inits: {
+        __mapped_10.push(Rc::new(TestProjection { module_name: __elem_1.module.name.clone(), service_name: __elem_5.name.clone(), operation_name: __elem_11.name.clone(), inferred: rt_type(__elem_11.clone()), params: __elem_11.params.clone(), mock_field_inits: {
     let mut __filtered_12 = Vec::new();
     for __elem_13 in __elem_11.properties.iter().cloned() {
         if has_mock_prefix(&__elem_13.name) {
@@ -1462,7 +1462,7 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
     }
     __joined_3
 };
-    let ret_str = match n.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+    let ret_str = match n.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
         emit_node_type_rc(rt.clone(), target.clone(), rc_types.clone())
     }
@@ -1620,7 +1620,7 @@ pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
     if n.name.clone() == "Tuple" {
     let first_str = match n.children.clone().first().cloned() {
     Some(c) => {
-        if c.return_type.clone().is_some() {
+        if c.inferred.clone().is_some() {
     emit_node_type_rc(rt_type(c.clone()), target.clone(), rc_types.clone())
 } else {
     emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())
@@ -1632,7 +1632,7 @@ pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
 };
     let second_str = match n.children.clone().get((1_i64) as usize).cloned() {
     Some(c) => {
-        if c.return_type.clone().is_some() {
+        if c.inferred.clone().is_some() {
     emit_node_type_rc(rt_type(c.clone()), target.clone(), rc_types.clone())
 } else {
     emit_node_type_rc(c.clone(), target.clone(), rc_types.clone())
@@ -1676,10 +1676,10 @@ pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
 }) == 1_i64 {
     match n.children.clone().first().cloned() {
     Some(field_node) => {
-        if field_node.return_type.clone().is_some() {
+        if field_node.inferred.clone().is_some() {
     emit_node_type_rc(rt_type(field_node.clone()), target.clone(), rc_types.clone())
 } else {
-    "compile_error!(\"anonymous product field missing return_type\")".to_string()
+    "compile_error!(\"anonymous product field missing inferred\")".to_string()
 }
     }
     None => {
@@ -1690,10 +1690,10 @@ pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
     let field_types = {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in n.children.iter().cloned() {
-        __mapped_0.push(if __elem_1.return_type.clone().is_some() {
+        __mapped_0.push(if __elem_1.inferred.clone().is_some() {
     emit_node_type_rc(rt_type(__elem_1.clone()), target.clone(), rc_types.clone())
 } else {
-    "compile_error!(\"anonymous product field missing return_type\")".to_string()
+    "compile_error!(\"anonymous product field missing inferred\")".to_string()
 });
     }
     Rc::new(__mapped_0)

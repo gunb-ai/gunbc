@@ -189,12 +189,12 @@ fn is_kernel_textual(name: String) -> Bool {
 // When inference fails, the result is structurally distinct from a type node.
 // Error and Dynamic type sentinels become CompilerError variants.
 //
-// Migration: Node.return_type will change from Node? to InferredNode?.
+// Migration: Node.inferred will change from Node? to InferredNode?.
 // Until the atomic migration, these types and helpers are defined but not yet
 // wired into Node. The migration is one atomic commit that:
-// (1) changes Node.return_type to InferredNode?
-// (2) wraps all return_type construction in Resolved { node: ... }
-// (3) replaces all .return_type.value access with inferred_return_type_node()
+// (1) changes Node.inferred to InferredNode?
+// (2) wraps all inferred construction in Resolved { node: ... }
+// (3) replaces all .inferred.value access with inferred_inferred_node()
 // (4) node_is_error_type() and node_is_dynamic() deleted; inline checks remain until rt_node stops fabricating sentinels
 type InferredNode
   = Resolved { node: Node }
@@ -219,28 +219,28 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
 // Three-way result for extracting a Node's return type.
 // Typed: successfully resolved type node.
 // InferError: type inference failed (error already reported as diagnostic).
-// Untyped: no return_type set (statements, unprocessed nodes).
+// Untyped: no inferred set (statements, unprocessed nodes).
 type NodeType
   = Typed { node: Node }
   | InferError { message: String, span: SourceSpan }
   | Untyped
 
-// Extract the type Node from a Node's return_type field.
+// Extract the type Node from a Node's inferred field.
 // Returns Typed/InferError/Untyped so callers can distinguish
 // "no type" from "type inference failed".
 fn rt_node(n: Node) -> NodeType {
-  if n.return_type == none { Untyped }
+  if n.inferred == none { Untyped }
   else {
-    match n.return_type.value {
+    match n.inferred.value {
       Resolved { node: rt } => Typed { node: rt }
       CompilerError { message: m, span: s } => InferError { message: m, span: s }
     }
   }
 }
 
-// Check if a Node has a return_type set (regardless of Resolved or CompilerError).
-fn has_return_type(n: Node) -> Bool {
-  n.return_type != none
+// Check if a Node has a inferred set (regardless of Resolved or CompilerError).
+fn has_inferred(n: Node) -> Bool {
+  n.inferred != none
 }
 
 type IntrinsicMethod
@@ -336,7 +336,7 @@ type ConfigPropertyKey
 
 // ExprData -- expression discriminator for Node-embedded expressions.
 // When a Node carries computation (expr_data != NoExprData), the Node's
-// return_type and span provide the resolved type and source location.
+// inferred and span provide the resolved type and source location.
 // Sub-expressions are Node values (not Expr).
 type ExprData
   = NoExprData
@@ -407,7 +407,7 @@ type ServiceConfig {
 }
 
 // OperationDef: parse-intermediate type. The parser reads operations using this
-// shape, then dissolves fields into Node properties and return_type.
+// shape, then dissolves fields into Node properties and inferred.
 type OperationDef {
   name: String
   inputs: List<Field>
@@ -468,7 +468,7 @@ type Severity = Error | Warning
 type DeclaredFuncSig {
   name: String
   params: List<Param>
-  return_type: Node?
+  inferred: Node?
   is_async: Bool
 }
 
@@ -485,7 +485,7 @@ type DeclaredFuncEnv {
 // on node properties -- never asks "what keyword?"
 //
 // The type is self-referential: children: List<Node>. An operation is a
-// Node with params and return_type. A capability is a Node with
+// Node with params and inferred. A capability is a Node with
 // input/output ports. OperationDef and CapabilityDef dissolve into Node.
 // =========================================================================
 
@@ -498,7 +498,7 @@ type Node {
   connective: Connective?
   // Ports -- what flows in and out
   params: List<Param>
-  return_type: InferredNode?
+  inferred: InferredNode?
   return_cardinality: Cardinality
   uses: List<ResourceUse>
   // Computation -- how it executes (none = externally provided)
@@ -515,11 +515,11 @@ type Node {
 }
 
 // Construct a Node carrying expression data (the Node-embedded form).
-// Accepts InferredNode? for return_type and passes it through directly.
-fn make_expr_node(expr_data: ExprData, return_type: InferredNode?, span: SourceSpan) -> Node {
+// Accepts InferredNode? for inferred and passes it through directly.
+fn make_expr_node(expr_data: ExprData, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: [], connective: none,
-    params: [], return_type: return_type, return_cardinality: Required,
+    params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, config: none, is_self_recursive: false,
     has_non_tail_self_call: false, expr_data: expr_data
@@ -529,7 +529,7 @@ fn make_expr_node(expr_data: ExprData, return_type: InferredNode?, span: SourceS
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: [], connective: none,
-    params: [], return_type: Some { value: CompilerError { message: message, span: span } },
+    params: [], inferred: Some { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none, config: none,
     is_self_recursive: false, has_non_tail_self_call: false,
@@ -547,7 +547,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 fn make_transport_node(name: String, properties: List<FieldInit>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
     name: name, span: span, children: children, connective: none,
-    params: [], return_type: none, return_cardinality: Required,
+    params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, config: none, is_self_recursive: false,
     has_non_tail_self_call: false, expr_data: NoExprData
@@ -735,7 +735,7 @@ fn with_expr_data(node: Node, expr_data: ExprData) -> Node {
     children: node.children,
     connective: node.connective,
     params: node.params,
-    return_type: node.return_type,
+    inferred: node.inferred,
     return_cardinality: node.return_cardinality,
     uses: node.uses,
     body: node.body,
@@ -955,14 +955,14 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
 
 fn diagnostic_node(severity: Severity, message: String, span: SourceSpan, module_name: String?) -> Node {
   let sev_name = match severity { Error => "error"  Warning => "warning" }
-  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: sev_name } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }
+  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: sev_name } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   let mod_prop = match module_name {
-    Some { value: mn } => [FieldInit { name: "module_name", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: mn } }, return_type: none, span: SourceSpan { start: 0, end: 0 }) }]
+    Some { value: mn } => [FieldInit { name: "module_name", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: mn } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
     None => []
   }
   Node {
     name: message, span: span, children: [], connective: none,
-    params: [], return_type: none, return_cardinality: Required,
+    params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none,
     properties: concat([sev_prop], mod_prop), type_annotation: none,
     config: none, is_self_recursive: false, has_non_tail_self_call: false,

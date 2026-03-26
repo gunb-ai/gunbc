@@ -93,7 +93,7 @@ pub fn build_struct_field_summaries(children: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<S
     {
     let mut __acc_0: Rc<std::collections::HashMap<String, Rc<FieldSummary>>> = Rc::new(std::collections::HashMap::new());
     for __elem_1 in children.iter().cloned() {
-        __acc_0 = if __elem_1.return_type.clone().is_none() {
+        __acc_0 = if __elem_1.inferred.clone().is_none() {
     __acc_0.clone()
 } else {
     let style = if is_pair.clone() {
@@ -177,7 +177,7 @@ pub fn enum_field_type_consistent(variants: Rc<Vec<Rc<Node>>>, field_name: &str,
     __found_4
 } {
     Some(field_child) => {
-        node_type_equals(child_return_type_or_name(field_child.clone()), expected.clone())
+        node_type_equals(child_inferred_or_name(field_child.clone()), expected.clone())
     }
     None => {
         false
@@ -220,7 +220,7 @@ pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<Str
     for __elem_5 in shared.iter().cloned() {
         if match find_first_enum_field_node(variants.clone(), &__elem_5) {
     Some(first_field) => {
-        enum_field_type_consistent(variants.clone(), &__elem_5, child_return_type_or_name(first_field.clone()))
+        enum_field_type_consistent(variants.clone(), &__elem_5, child_inferred_or_name(first_field.clone()))
     }
     None => {
         false
@@ -239,7 +239,7 @@ pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<Str
         {
     let __rc_9 = __acc_6;
     let mut __map_ins_8 = Rc::try_unwrap(__rc_9).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_8.insert(__elem_7.clone(), Rc::new(FieldSummary { access_style: FieldAccessStyle::EnumAccessor, value_shape: field_value_shape_from_type_node(child_return_type_or_name(first_field.clone())) }));
+    __map_ins_8.insert(__elem_7.clone(), Rc::new(FieldSummary { access_style: FieldAccessStyle::EnumAccessor, value_shape: field_value_shape_from_type_node(child_inferred_or_name(first_field.clone())) }));
     Rc::new(__map_ins_8)
 }
     }
@@ -371,7 +371,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
         {
     let mut __acc_17 = state.field_type_names.clone();
     for __elem_18 in item.children.iter().cloned() {
-        __acc_17 = match __elem_18.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+        __acc_17 = match __elem_18.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ft, .. }) => {
         {
     let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
@@ -402,7 +402,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
         __acc_21 = {
     let mut __acc_23 = __acc_21.clone();
     for __elem_24 in __elem_22.children.iter().cloned() {
-        __acc_23 = match __elem_24.return_type.as_ref().map(|__rc| __rc.as_ref()) {
+        __acc_23 = match __elem_24.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ft, .. }) => {
         {
     let resolved_name = normalize_access_type_node(ft.clone()).name.clone();

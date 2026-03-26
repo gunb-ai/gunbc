@@ -234,7 +234,7 @@ fn python_test_signature_comment(projection: TestProjection) -> String {
     "(",
     params_str,
     ") -> ",
-    emit_node_type(n: projection.return_type, target: Python))
+    emit_node_type(n: projection.inferred, target: Python))
 }
 
 fn emit_py_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
@@ -351,9 +351,9 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_py_func_def(name: item.name, params: item.params, return_type: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_py_func_def(name: item.name, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_py_fn_def(name: item.name, params: item.params, return_type: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
+      emit_py_fn_def(name: item.name, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
   } else if (kind == TypedItemDataDef) {
     emit_py_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
@@ -363,7 +363,7 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     emit_py_resource_def(item: item)
   } else if (kind == TypedItemExternFunc) {
     let params_str = emit_py_params(params: item.params)
-    let ret_str = emit_py_return_type(return_type: rt_type(n: item))
+    let ret_str = emit_py_inferred(inferred: rt_type(n: item))
     concat("def ", emit_ident(name: item.name, target: Python), "(", params_str, ")", ret_str, ":\n",
       "    raise NotImplementedError(\"extern func\")")
   } else {
@@ -377,7 +377,7 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // Type structure is encoded as:
 //   Records: connective=Conj, children = one Node per field
 //   Sums:    connective=Disj, children = one Node per variant
-//   Aliases: connective=none, return_type carries the aliased type
+//   Aliases: connective=none, inferred carries the aliased type
 // =========================================================================
 
 fn emit_py_type_def_from_connective(item: Node) -> String {
@@ -455,10 +455,10 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node) -> String 
 // Pure function (fn) emission
 // =========================================================================
 
-fn emit_py_fn_def(name: String, params: List<Param>, return_type: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_py_fn_def(name: String, params: List<Param>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let depth = 0
   let params_str = emit_py_params(params: params)
-  let ret_str = emit_py_return_type(return_type: return_type)
+  let ret_str = emit_py_inferred(inferred: inferred)
   let body_scope = build_params_scope(scope: scope, params: params)
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
   if use_tco {
@@ -479,7 +479,7 @@ fn emit_py_fn_def(name: String, params: List<Param>, return_type: Node, body: No
 fn emit_py_func_def(
   name: String,
   params: List<Param>,
-  return_type: Node,
+  inferred: Node,
   uses: List<ResourceUse>,
   body: Node,
   registry: Map<String, ItemInfo>,
@@ -491,7 +491,7 @@ fn emit_py_func_def(
     None => []
   }
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names)
-  let ret_str = emit_py_return_type(return_type: return_type)
+  let ret_str = emit_py_inferred(inferred: inferred)
   let body_scope = build_params_scope(scope: scope, params: params)
   let body_str = emit_py_typed_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("async def ", emit_ident(name: name, target: Python), "(", params_str, ")", ret_str, ":\n",
@@ -524,8 +524,8 @@ fn emit_py_param(param: Param) -> String {
   concat(emit_ident(name: param.name, target: Python), ": ", ty)
 }
 
-fn emit_py_return_type(return_type: Node) -> String {
-  concat(" -> ", emit_node_type(n: return_type, target: Python))
+fn emit_py_inferred(inferred: Node) -> String {
+  concat(" -> ", emit_node_type(n: inferred, target: Python))
 }
 fn emit_py_pattern(pattern: MatchPattern) -> String {
   match pattern {
@@ -979,7 +979,7 @@ fn emit_py_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
 // Node TCO -- Python rendering
 //
 // TCO functions that work on Node.expr_data,
-// reading return_type from sub-expressions instead of cache lookups.
+// reading inferred from sub-expressions instead of cache lookups.
 // =========================================================================
 
 fn emit_py_typed_tco_body(texpr: Node, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {

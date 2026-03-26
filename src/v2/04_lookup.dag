@@ -22,7 +22,7 @@ import v2.std.core {
   FieldSummary
 }
 import v2.compiler.infer_types {
-  child_return_type_or_name,
+  child_inferred_or_name,
   leaf_node, with_optional_cardinality, with_required_cardinality,
   error_type_node,
   node_is_optional, node_is_map,
@@ -93,7 +93,7 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
     if node_is_product(n: n) {
       match n.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
-          Some { value: child_return_type_or_name(ch: field_child) }
+          Some { value: child_inferred_or_name(ch: field_child) }
         None => none
       }
     } else {
@@ -115,7 +115,7 @@ fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) 
   } else { none }
   match first_field {
     Some { value: field_child } =>
-      Some { value: child_return_type_or_name(ch: field_child) }
+      Some { value: child_inferred_or_name(ch: field_child) }
     None => none
   }
 }
@@ -137,11 +137,11 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   let normed = normalize_access_type_node(n: n)
   if node_has_structure(n: normed) == false && normed.children |> count == 0 {
     let canonical = normalize_type_name(name: normed.name)
-    if normed.return_type != none {
+    if normed.inferred != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match rt_node(n: normed) {
         Typed { node: target } =>
-          if target.name == normed.name && target.return_type == none && node_has_structure(n: target) == false && target.children |> count == 0 {
+          if target.name == normed.name && target.inferred == none && node_has_structure(n: target) == false && target.children |> count == 0 {
             normed
           } else {
             resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
@@ -155,7 +155,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match lookup_type(env: env, name: normed.name) {
         Some { value: resolved } =>
-          if resolved.name == normed.name && resolved.return_type == none && node_has_structure(n: resolved) == false && resolved.children |> count == 0 {
+          if resolved.name == normed.name && resolved.inferred == none && node_has_structure(n: resolved) == false && resolved.children |> count == 0 {
             normed
           } else {
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)

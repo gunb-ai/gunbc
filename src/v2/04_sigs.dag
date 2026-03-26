@@ -1,7 +1,7 @@
 // SCC-aware function signature resolution.
 //
-// Converts DeclaredFuncSig (optional return_type) to ResolvedFuncSig
-// (concrete return_type) using topological ordering of the call graph.
+// Converts DeclaredFuncSig (optional inferred) to ResolvedFuncSig
+// (concrete inferred) using topological ordering of the call graph.
 // Self-/mutual-recursive functions without annotations produce diagnostics.
 //
 // Dependency chain:
@@ -31,7 +31,7 @@ import v2.compiler.infer_types { emit_map_has }
 type ResolvedFuncSig {
   name: String
   params: List<Param>
-  return_type: Node
+  inferred: Node
   is_async: Bool
 }
 
@@ -107,16 +107,16 @@ fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, 
 // Signature resolution
 // =========================================================================
 
-// Convert a single DeclaredFuncSig with return_type: Some to ResolvedFuncSig.
-// Caller must ensure return_type is not None.
+// Convert a single DeclaredFuncSig with inferred: Some to ResolvedFuncSig.
+// Caller must ensure inferred is not None.
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
-  ResolvedFuncSig { name: dsig.name, params: dsig.params, return_type: dsig.return_type.value, is_async: dsig.is_async }
+  ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async }
 }
 
-// Merge all remaining declared sigs (with return_type: Some) into a resolved map.
+// Merge all remaining declared sigs (with inferred: Some) into a resolved map.
 fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
-    if dsig.return_type != none {
+    if dsig.inferred != none {
       map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
     } else { acc }
   )
@@ -134,9 +134,9 @@ fn topo_resolve_loop(
     diagnostics: List<Diagnostic>
 ) -> ResolveFuncSigsResult {
   if remaining |> count == 0 {
-    // Include non-local (parent) sigs -- they have return_type: Some from conversion.
+    // Include non-local (parent) sigs -- they have inferred: Some from conversion.
     let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
-      if dsig.return_type != none {
+      if dsig.inferred != none {
         map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
       } else { acc }
     )
@@ -160,7 +160,7 @@ fn topo_resolve_loop(
     let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
       match map_get(declared_sigs, fn_name) {
         Some { value: dsig } =>
-          if dsig.return_type != none {
+          if dsig.inferred != none {
             SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
           } else {
             SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
@@ -176,7 +176,7 @@ fn topo_resolve_loop(
     )
     // Terminate with cycle results
     let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
-      if dsig.return_type != none {
+      if dsig.inferred != none {
         map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
       } else { acc }
     )
@@ -190,7 +190,7 @@ fn topo_resolve_loop(
   let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Some { value: dsig } =>
-        if dsig.return_type != none {
+        if dsig.inferred != none {
           SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
         } else {
           SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, Diagnostic {
@@ -221,7 +221,7 @@ fn topo_resolve_loop(
 }
 
 // Main entry: resolve declared function signatures to resolved ones.
-// Converts DeclaredFuncSig (return_type: Node?) to ResolvedFuncSig (return_type: Node)
+// Converts DeclaredFuncSig (inferred: Node?) to ResolvedFuncSig (inferred: Node)
 // using SCC-aware topological ordering of the call graph.
 fn resolve_func_sigs(
     declared_sigs: Map<String, DeclaredFuncSig>,
@@ -240,7 +240,7 @@ fn resolve_func_sigs(
   let parent_resolved = fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
     if emit_map_has(m: local_func_set, key: dsig.name) {
       acc
-    } else if dsig.return_type != none {
+    } else if dsig.inferred != none {
       map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
     } else {
       acc
