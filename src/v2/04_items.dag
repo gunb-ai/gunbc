@@ -69,14 +69,14 @@ type ResolvedGraph {
 // Functions
 // =========================================================================
 
-// Derive outputs from a Node's return_type.
-// Outputs live in return_type:
-//   - Single output: return_type is the Node directly
-//   - Multiple outputs: return_type is Conj Node with field children
-//   - No outputs: return_type is none
-fn return_type_to_outputs(return_type: InferredNode?, span: SourceSpan) -> List<Field> {
-  if return_type == none { [] }
-  else { match return_type.value {
+// Derive outputs from a Node's inferred.
+// Outputs live in inferred:
+//   - Single output: inferred is the Node directly
+//   - Multiple outputs: inferred is Conj Node with field children
+//   - No outputs: inferred is none
+fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field> {
+  if inferred == none { [] }
+  else { match inferred.value {
     CompilerError { message: _, span: _ } => []
     Resolved { node: rt } =>
         if node_has_structure(n: rt) {
@@ -84,7 +84,7 @@ fn return_type_to_outputs(return_type: InferredNode?, span: SourceSpan) -> List<
             if rt.name == "" {
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
-                let child_type = if child.return_type == none { leaf_node(name: child.name) } else { rt_type(n: child) }
+                let child_type = if child.inferred == none { leaf_node(name: child.name) } else { rt_type(n: child) }
                 Field { name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span }
               )
             } else {

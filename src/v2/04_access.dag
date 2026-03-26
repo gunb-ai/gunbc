@@ -27,7 +27,7 @@ import v2.compiler.infer_types {
 // =========================================================================
 
 type AccessCheckResultNode {
-  return_type: InferredNode?
+  inferred: InferredNode?
   diagnostics: List<Diagnostic>
 }
 
@@ -45,10 +45,10 @@ fn access_error(message: String, span: SourceSpan, module_name: String) -> Diagn
   }
 }
 
-fn access_result(return_type: Node, diagnostics: List<Diagnostic>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
+fn access_result(inferred: Node, diagnostics: List<Diagnostic>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
   if count(diagnostics) == 0 {
     AccessCheckResultNode {
-      return_type: Some { value: Resolved { node: return_type } },
+      inferred: Some { value: Resolved { node: inferred } },
       diagnostics: diagnostics
     }
   } else {
@@ -57,7 +57,7 @@ fn access_result(return_type: Node, diagnostics: List<Diagnostic>, span: SourceS
       None => fallback_message
     }
     AccessCheckResultNode {
-      return_type: Some { value: CompilerError { message: message, span: span } },
+      inferred: Some { value: CompilerError { message: message, span: span } },
       diagnostics: diagnostics
     }
   }
@@ -68,7 +68,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
   if node_has_structure(n: normed) == false && normed.children |> count == 0 && normed.name == "String" {
     let diags = if is_int_type_node(n: index_type) { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
-    access_result(return_type: leaf_node(name: "String"), diagnostics: diags, span: span, fallback_message: "invalid string index access")
+    access_result(inferred: leaf_node(name: "String"), diagnostics: diags, span: span, fallback_message: "invalid string index access")
   } else if node_is_map(n: normed) && normed.children |> count >= 2 {
     let key_node = match normed.children |> first {
       Some { value: k } => k
@@ -80,13 +80,13 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     }
     let key_diags = if node_type_equals(left: key_node, right: index_type) { [] }
     else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
-    access_result(return_type: with_optional_cardinality(n: val_node), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
+    access_result(inferred: with_optional_cardinality(n: val_node), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
   } else if node_is_map(n: normed) {
     let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
-    access_result(return_type: leaf_node(name: "Unit"), diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
+    access_result(inferred: leaf_node(name: "Unit"), diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
   } else {
     let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
-    access_result(return_type: leaf_node(name: "Unit"), diagnostics: diags, span: span, fallback_message: "invalid index access")
+    access_result(inferred: leaf_node(name: "Unit"), diagnostics: diags, span: span, fallback_message: "invalid index access")
   }
 }
 
@@ -100,7 +100,7 @@ fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, sp
   else { [access_error(message: "slice end requires an Int index", span: span, module_name: module_name)] }
   let all_diags = concat(base_diags, start_diags, end_diags)
   access_result(
-    return_type: leaf_node(name: "String"),
+    inferred: leaf_node(name: "String"),
     diagnostics: all_diags,
     span: span,
     fallback_message: "invalid slice access"

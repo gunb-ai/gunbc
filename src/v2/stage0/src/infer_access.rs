@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AccessCheckResultNode {
-    pub return_type: Option<Rc<InferredNode>>,
+    pub inferred: Option<Rc<InferredNode>>,
     pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
 }
 
@@ -14,12 +14,12 @@ pub fn access_error(message: &str, span: SourceSpan, module_name: &str) -> Rc<Di
     Rc::new(Diagnostic { severity: Severity::Error, message: message.to_string(), span: Some(span), module_name: Some(module_name.to_string()), category: None })
 }
 
-pub fn access_result(return_type: Rc<Node>, diagnostics: Rc<Vec<Rc<Diagnostic>>>, span: SourceSpan, fallback_message: &str) -> Rc<AccessCheckResultNode> {
+pub fn access_result(inferred: Rc<Node>, diagnostics: Rc<Vec<Rc<Diagnostic>>>, span: SourceSpan, fallback_message: &str) -> Rc<AccessCheckResultNode> {
     if ({
     let __len_0 = diagnostics.clone().len();
     __len_0 as i64
 }) == 0_i64 {
-    Rc::new(AccessCheckResultNode { return_type: Some(Rc::new(InferredNode::Resolved { node: return_type.clone() })), diagnostics: diagnostics.clone() })
+    Rc::new(AccessCheckResultNode { inferred: Some(Rc::new(InferredNode::Resolved { node: inferred.clone() })), diagnostics: diagnostics.clone() })
 } else {
     let message = match diagnostics.clone().first().cloned() {
     Some(diag) => {
@@ -29,7 +29,7 @@ pub fn access_result(return_type: Rc<Node>, diagnostics: Rc<Vec<Rc<Diagnostic>>>
         fallback_message.to_string()
     }
 };
-    Rc::new(AccessCheckResultNode { return_type: Some(Rc::new(InferredNode::CompilerError { message: message.clone(), span })), diagnostics: diagnostics.clone() })
+    Rc::new(AccessCheckResultNode { inferred: Some(Rc::new(InferredNode::CompilerError { message: message.clone(), span })), diagnostics: diagnostics.clone() })
 }
 }
 

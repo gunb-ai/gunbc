@@ -60,7 +60,7 @@ pub fn lookup_field_type_node(n: Rc<Node>, field_name: &str) -> Option<Rc<Node>>
     __found_2
 } {
     Some(field_child) => {
-        Some(child_return_type_or_name(field_child.clone()))
+        Some(child_inferred_or_name(field_child.clone()))
     }
     None => {
         None
@@ -119,7 +119,7 @@ pub fn lookup_coproduct_common_field_node(variants: Rc<Vec<Rc<Node>>>, field_nam
 };
     match first_field.clone() {
     Some(field_child) => {
-        Some(child_return_type_or_name(field_child.clone()))
+        Some(child_inferred_or_name(field_child.clone()))
     }
     None => {
         None
@@ -139,7 +139,7 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
     __len_6 as i64
 }) == 0_i64) {
     let canonical = normalize_type_name(&normed.name);
-    if normed.return_type.clone().is_some() {
+    if normed.inferred.clone().is_some() {
     let next_seen = if canonical.clone() == "" {
     seen.clone()
 } else {
@@ -152,7 +152,7 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
 };
     match rt_node(normed.clone()).as_ref() {
     NodeType::Typed { node: target, .. } => {
-        if (((target.name.clone() == normed.name.clone()) && (target.return_type.clone().is_none())) && (node_has_structure(target.clone()) == false)) && (({
+        if (((target.name.clone() == normed.name.clone()) && (target.inferred.clone().is_none())) && (node_has_structure(target.clone()) == false)) && (({
     let __len_2 = target.children.clone().len();
     __len_2 as i64
 }) == 0_i64) {
@@ -184,7 +184,7 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
 };
     match lookup_type(env.clone(), &normed.name) {
     Some(resolved) => {
-        if (((resolved.name.clone() == normed.name.clone()) && (resolved.return_type.clone().is_none())) && (node_has_structure(resolved.clone()) == false)) && (({
+        if (((resolved.name.clone() == normed.name.clone()) && (resolved.inferred.clone().is_none())) && (node_has_structure(resolved.clone()) == false)) && (({
     let __len_5 = resolved.children.clone().len();
     __len_5 as i64
 }) == 0_i64) {

@@ -334,10 +334,10 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, ser
     Some(Rc::new(ServiceMethodResult { result_type: Rc::new(Node { name: "".to_string(), span: no_span(), children: {
     let mut __mapped_2 = Vec::new();
     for __elem_3 in op.outputs.iter().cloned() {
-        __mapped_2.push(Rc::new(Node { name: __elem_3.name.clone(), span: __elem_3.span.clone(), children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), return_type: Some(Rc::new(InferredNode::Resolved { node: __elem_3.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
+        __mapped_2.push(Rc::new(Node { name: __elem_3.name.clone(), span: __elem_3.span.clone(), children: Rc::new(Vec::new()), connective: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: __elem_3.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
     }
     Rc::new(__mapped_2)
-}, connective: Some(Connective::Conj), params: Rc::new(Vec::new()), return_type: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), op_params: op.params.clone() }))
+}, connective: Some(Connective::Conj), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), op_params: op.params.clone() }))
 }
     }
     None => {
@@ -356,6 +356,6 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, ser
 }
 
 pub fn service_op_entry(child: Rc<Node>) -> Rc<OpEntry> {
-    Rc::new(OpEntry { name: child.name.clone(), outputs: return_type_to_outputs(child.return_type.clone(), child.span.clone()), params: child.params.clone() })
+    Rc::new(OpEntry { name: child.name.clone(), outputs: inferred_to_outputs(child.inferred.clone(), child.span.clone()), params: child.params.clone() })
 }
 

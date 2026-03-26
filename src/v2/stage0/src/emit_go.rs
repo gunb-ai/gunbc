@@ -253,7 +253,7 @@ pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
     }
     __joined_2
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Signature: ".to_string(), sanitize_service_name(&projection.service_name)), ".".to_string()), projection.operation_name.clone()), "(".to_string()), params_str.clone()), ") ".to_string()), emit_node_type(projection.return_type.clone(), RenderTarget::Go))
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Signature: ".to_string(), sanitize_service_name(&projection.service_name)), ".".to_string()), projection.operation_name.clone()), "(".to_string()), params_str.clone()), ") ".to_string()), emit_node_type(projection.inferred.clone(), RenderTarget::Go))
 }
 
 pub fn emit_go_test_file(module_name: &str, projections: Rc<Vec<Rc<TestProjection>>>) -> Rc<TextFile> {
@@ -489,7 +489,7 @@ pub fn emit_go_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 } else {
     if kind.clone() == TypedItemKind::TypedItemExternFunc {
     let params_str = emit_go_params(item.params.clone());
-    let ret_str = emit_go_return_type(rt_type(item.clone()));
+    let ret_str = emit_go_inferred(rt_type(item.clone()));
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func ".to_string(), go_export_ident(&item.name)), "(".to_string()), params_str), ")".to_string()), ret_str), " {\n".to_string()), "	panic(\"extern func not implemented\")\n}".to_string())
 } else {
     v2_rt::concat("// unhandled node: ".to_string(), item.name.clone())
@@ -658,9 +658,9 @@ pub fn emit_go_type_alias(name: &str, base: Rc<Node>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat("type ".to_string(), name.to_string()), " = ".to_string()), emit_node_type(base.clone(), RenderTarget::Go))
 }
 
-pub fn emit_go_fn_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<Node>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
+pub fn emit_go_fn_def(name: &str, params: Rc<Vec<Rc<Param>>>, inferred: Rc<Node>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     let params_str = emit_go_params(params.clone());
-    let ret_str = emit_go_return_type(return_type.clone());
+    let ret_str = emit_go_inferred(inferred.clone());
     let body_scope = build_params_scope(scope.clone(), params.clone());
     let use_tco = is_tco_eligible(&name, body.clone(), registry.clone());
     if use_tco {
@@ -672,7 +672,7 @@ pub fn emit_go_fn_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<No
 }
 }
 
-pub fn emit_go_func_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<Node>, uses: Rc<Vec<Rc<ResourceUse>>>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
+pub fn emit_go_func_def(name: &str, params: Rc<Vec<Rc<Param>>>, inferred: Rc<Node>, uses: Rc<Vec<Rc<ResourceUse>>>, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>, scope: Rc<InferScope>) -> String {
     let service_names = match lookup_item(registry.clone(), &name) {
     Some(info) => {
         info.service_names.clone()
@@ -682,7 +682,7 @@ pub fn emit_go_func_def(name: &str, params: Rc<Vec<Rc<Param>>>, return_type: Rc<
     }
 };
     let params_str = emit_go_func_params(params.clone(), uses.clone(), service_names.clone());
-    let ret_type = emit_node_type(return_type.clone(), RenderTarget::Go);
+    let ret_type = emit_node_type(inferred.clone(), RenderTarget::Go);
     let body_scope = build_params_scope(scope.clone(), params.clone());
     let body_str = emit_go_typed_func_body(body.clone(), registry.clone(), body_scope.clone(), 1_i64);
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func ".to_string(), go_export_ident(&name)), "(".to_string()), params_str), ") (".to_string()), ret_type), ", error) {\n".to_string()), body_str), "\n}".to_string())
@@ -752,8 +752,8 @@ pub fn emit_go_param(param: Rc<Param>) -> String {
     v2_rt::concat(v2_rt::concat(emit_ident(&param.name, RenderTarget::Go), " ".to_string()), ty)
 }
 
-pub fn emit_go_return_type(return_type: Rc<Node>) -> String {
-    let ty = emit_node_type(return_type.clone(), RenderTarget::Go);
+pub fn emit_go_inferred(inferred: Rc<Node>) -> String {
+    let ty = emit_node_type(inferred.clone(), RenderTarget::Go);
     if ty.clone() == "struct{}" {
     "".to_string()
 } else {

@@ -237,7 +237,7 @@ fn go_test_signature_comment(projection: TestProjection) -> String {
     "(",
     params_str,
     ") ",
-    emit_node_type(n: projection.return_type, target: Go))
+    emit_node_type(n: projection.inferred, target: Go))
 }
 
 fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
@@ -358,9 +358,9 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_go_func_def(name: item.name, params: item.params, return_type: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_go_func_def(name: item.name, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_go_fn_def(name: item.name, params: item.params, return_type: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
+      emit_go_fn_def(name: item.name, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
   } else if (kind == TypedItemDataDef) {
     emit_go_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
@@ -370,7 +370,7 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     emit_go_resource_def(item: item)
   } else if (kind == TypedItemExternFunc) {
     let params_str = emit_go_params(params: item.params)
-    let ret_str = emit_go_return_type(return_type: rt_type(n: item))
+    let ret_str = emit_go_inferred(inferred: rt_type(n: item))
     concat("func ", go_export_ident(name: item.name), "(", params_str, ")", ret_str, " {\n",
       "\tpanic(\"extern func not implemented\")\n}")
   } else {
@@ -471,9 +471,9 @@ fn emit_go_type_alias(name: String, base: Node) -> String {
 // Go naming: exported functions are PascalCase.
 // =========================================================================
 
-fn emit_go_fn_def(name: String, params: List<Param>, return_type: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_fn_def(name: String, params: List<Param>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let params_str = emit_go_params(params: params)
-  let ret_str = emit_go_return_type(return_type: return_type)
+  let ret_str = emit_go_inferred(inferred: inferred)
   let body_scope = build_params_scope(scope: scope, params: params)
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
   if use_tco {
@@ -497,7 +497,7 @@ fn emit_go_fn_def(name: String, params: List<Param>, return_type: Node, body: No
 fn emit_go_func_def(
   name: String,
   params: List<Param>,
-  return_type: Node,
+  inferred: Node,
   uses: List<ResourceUse>,
   body: Node,
   registry: Map<String, ItemInfo>,
@@ -508,7 +508,7 @@ fn emit_go_func_def(
     None => []
   }
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names)
-  let ret_type = emit_node_type(n: return_type, target: Go)
+  let ret_type = emit_node_type(n: inferred, target: Go)
   let body_scope = build_params_scope(scope: scope, params: params)
   let body_str = emit_go_typed_func_body(body: body, registry: registry, scope: body_scope, depth: 1)
   concat("func ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
@@ -542,8 +542,8 @@ fn emit_go_param(param: Param) -> String {
   concat(emit_ident(name: param.name, target: Go), " ", ty)
 }
 
-fn emit_go_return_type(return_type: Node) -> String {
-  let ty = emit_node_type(n: return_type, target: Go)
+fn emit_go_inferred(inferred: Node) -> String {
+  let ty = emit_node_type(n: inferred, target: Go)
   if ty == "struct{}" {
     ""
   } else {
@@ -1012,7 +1012,7 @@ fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
 // TCO -- Go rendering
 //
 // Typed versions of the TCO functions that work directly on Node,
-// reading return_type from sub-expressions instead of cache lookups.
+// reading inferred from sub-expressions instead of cache lookups.
 // =========================================================================
 
 fn emit_go_typed_tco_body(texpr: Node, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -1187,7 +1187,7 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
   )
   let params_str = input_params |> join(separator: ", ")
   let receiver = concat("(c *", service_name, ")")
-  // After dissolution, return_type on the child node IS the output type
+  // After dissolution, inferred on the child node IS the output type
   let ret_type = emit_node_type(n: rt_type(n: op_node), target: Go)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let body = emit_go_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry, depth: 1)
@@ -1296,7 +1296,7 @@ fn emit_go_capability_method(cap_node: Node, depth: Int) -> String {
     concat(emit_ident(name: p.name, target: Go), " ", emit_node_type(n: p.type_expr, target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
-  // After dissolution, return_type on the child node IS the output type
+  // After dissolution, inferred on the child node IS the output type
   let ret = emit_node_type(n: rt_type(n: cap_node), target: Go)
   concat(make_indent(level: depth), go_export_ident(name: cap_node.name), "(", params_str, ") (", ret, ", error)")
 }

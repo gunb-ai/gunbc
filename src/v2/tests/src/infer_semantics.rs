@@ -28,8 +28,8 @@ fn variant_arm(name: &str) -> Rc<MatchArm> {
     })
 }
 
-fn assert_compiler_error(return_type: &Option<Rc<InferredNode>>, message_fragment: &str) {
-    match return_type.as_ref().expect("expected return_type").as_ref() {
+fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: &str) {
+    match inferred.as_ref().expect("expected inferred").as_ref() {
         InferredNode::CompilerError { message, .. } => {
             assert!(
                 message.contains(message_fragment),
@@ -50,7 +50,7 @@ fn invalid_list_index_returns_compiler_error_type() {
     );
 
     assert_eq!(result.diagnostics.len(), 1);
-    assert_compiler_error(&result.return_type, "indexing is only supported");
+    assert_compiler_error(&result.inferred, "indexing is only supported");
 }
 
 #[test]
@@ -63,7 +63,7 @@ fn malformed_map_index_returns_compiler_error_type() {
     );
 
     assert_eq!(result.diagnostics.len(), 1);
-    assert_compiler_error(&result.return_type, "malformed Map type");
+    assert_compiler_error(&result.inferred, "malformed Map type");
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn invalid_slice_returns_compiler_error_type() {
     );
 
     assert_eq!(result.diagnostics.len(), 1);
-    assert_compiler_error(&result.return_type, "slice is only supported");
+    assert_compiler_error(&result.inferred, "slice is only supported");
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn valid_map_index_preserves_optional_value_type() {
     );
 
     assert!(result.diagnostics.is_empty());
-    match result.return_type.as_ref().expect("expected return type").as_ref() {
+    match result.inferred.as_ref().expect("expected return type").as_ref() {
         InferredNode::Resolved { node, .. } => {
             assert_eq!(node.name, "Int");
             assert!(matches!(node.return_cardinality, Cardinality::CardOptional));

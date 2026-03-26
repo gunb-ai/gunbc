@@ -51,11 +51,11 @@ pub struct ResolvedGraph {
     pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
 }
 
-pub fn return_type_to_outputs(return_type: Option<Rc<InferredNode>>, span: SourceSpan) -> Rc<Vec<Rc<Field>>> {
-    if return_type.clone().is_none() {
+pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: SourceSpan) -> Rc<Vec<Rc<Field>>> {
+    if inferred.clone().is_none() {
     Rc::new(Vec::new())
 } else {
-    match return_type.clone().unwrap().as_ref() {
+    match inferred.clone().unwrap().as_ref() {
     InferredNode::CompilerError { message: _, span: _, .. } => {
         Rc::new(Vec::new())
     }
@@ -67,7 +67,7 @@ pub fn return_type_to_outputs(return_type: Option<Rc<InferredNode>>, span: Sourc
     let mut __mapped_0 = Vec::new();
     for __elem_1 in rt.children.iter().cloned() {
         __mapped_0.push({
-    let child_type = if __elem_1.return_type.clone().is_none() {
+    let child_type = if __elem_1.inferred.clone().is_none() {
     leaf_node(&__elem_1.name)
 } else {
     rt_type(__elem_1.clone())

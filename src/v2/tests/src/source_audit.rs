@@ -305,7 +305,7 @@ fn final_cleanup_removes_parser_and_cli_fabrication_fallbacks() {
     );
     assert!(
         !parse_source.contains(
-            "make_expr_node(expr_data: ExprLiteral { value: LitNull }, return_type: none, span: SourceSpan { start: 0, end: 0 })"
+            "make_expr_node(expr_data: ExprLiteral { value: LitNull }, inferred: none, span: SourceSpan { start: 0, end: 0 })"
         ),
         "02_parse.dag should NOT contain fabricated null literal fallback"
     );

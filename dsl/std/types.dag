@@ -56,7 +56,7 @@ type Char = Int where brand("Char"), range(min: 0, max: 1114111)
 // --- Container types (parameterized) -----------------------------------
 // Bare declarations with type parameters. The compiler reads arity from
 // params and renders to target-language containers. The algebraic
-// structure (Nil|Cons for List, etc.) is denotational — not compiled.
+// structure (Nil|Cons for List, etc.) is denotational -- not compiled.
 type List<element>
 type Set<element>
 type Map<key, value>

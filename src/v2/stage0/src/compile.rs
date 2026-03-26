@@ -778,7 +778,7 @@ pub fn serialize_node(node: Rc<Node>) -> String {
         __mapped_6.push(serialize_param(__elem_7.clone()));
     }
     Rc::new(__mapped_6)
-})), ", \"return_type\": ".to_string()), json_optional_inferred_node(node.return_type.clone())), ", \"return_cardinality\": ".to_string()), json_quote(&cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list({
+})), ", \"inferred\": ".to_string()), json_optional_inferred_node(node.inferred.clone())), ", \"return_cardinality\": ".to_string()), json_quote(&cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list({
     let mut __mapped_10 = Vec::new();
     for __elem_11 in node.uses.iter().cloned() {
         __mapped_10.push(serialize_resource_use(__elem_11.clone()));
