@@ -342,6 +342,14 @@ type TopoResult {
   cycle_error: Diagnostic?
 }
 
+fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String, to_module: String) -> Map<String, List<String>> {
+  let existing = match map_get(adjacency, from_module) {
+    Some { value: lst } => lst
+    None => []
+  }
+  map_insert(adjacency, from_module, list_push(existing, to_module))
+}
+
 fn topological_sort(modules: List<Module>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
 
@@ -350,13 +358,9 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
   // to_module's in-degree decreases.
   let adjacency = modules |> flat_map(m =>
     m.imports |> map(imp => DepEdge { from_module: imp.module_path, to_module: m.name })
-  ) |> fold(init: empty_map(), f: fn(acc, edge) {
-    let existing = match map_get(acc, edge.from_module) {
-      Some { value: lst } => lst
-      None => []
-    }
-    map_insert(acc, edge.from_module, list_push(existing, edge.to_module))
-  })
+  ) |> fold(init: empty_map(), f: (acc, edge) =>
+    adjacency_add_edge(adjacency: acc, from_module: edge.from_module, to_module: edge.to_module)
+  )
 
   // Compute initial in-degrees directly from import counts.
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>

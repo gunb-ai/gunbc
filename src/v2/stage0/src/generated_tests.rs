@@ -8292,6 +8292,14 @@ type TopoResult {
   cycle_error: Diagnostic?
 }
 
+fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String, to_module: String) -> Map<String, List<String>> {
+  let existing = match map_get(adjacency, from_module) {
+    Some { value: lst } => lst
+    None => []
+  }
+  map_insert(adjacency, from_module, list_push(existing, to_module))
+}
+
 fn topological_sort(modules: List<Module>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
 
@@ -8300,13 +8308,9 @@ fn topological_sort(modules: List<Module>) -> TopoResult {
   // to_module's in-degree decreases.
   let adjacency = modules |> flat_map(m =>
     m.imports |> map(imp => DepEdge { from_module: imp.module_path, to_module: m.name })
-  ) |> fold(init: empty_map(), f: fn(acc, edge) {
-    let existing = match map_get(acc, edge.from_module) {
-      Some { value: lst } => lst
-      None => []
-    }
-    map_insert(acc, edge.from_module, list_push(existing, edge.to_module))
-  })
+  ) |> fold(init: empty_map(), f: (acc, edge) =>
+    adjacency_add_edge(adjacency: acc, from_module: edge.from_module, to_module: edge.to_module)
+  )
 
   // Compute initial in-degrees directly from import counts.
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
@@ -13043,7 +13047,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
     ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
     ExprFieldAccess { base: base, field: field, summary: summary } =>
       let r = resolve_expr_types(texpr: base, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprCall { func: func, args: args, call_semantics: cs } =>
       let ar = map(args, arg => resolve_named_arg(arg: arg, env: env, module_name: module_name))
       ExprResolveResult { expr: make_expr_node(expr_data: ExprCall { func: func, args: map(ar, a => a.arg), call_semantics: cs }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(ar, a => a.diagnostics) }
@@ -13076,10 +13080,10 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       ExprResolveResult { expr: make_expr_node(expr_data: ExprBinOp { op: op, left: lr.expr, right: rr.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
     ExprUnaryOp { op: op, operand: o } =>
       let r = resolve_expr_types(texpr: o, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprLambda { params: p, body: b, semantics: s } =>
       let r = resolve_expr_types(texpr: b, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     ExprStringInterp { parts: parts } =>
       let pr = map(parts, part => resolve_string_part(part: part, env: env, module_name: module_name))
       ExprResolveResult { expr: make_expr_node(expr_data: ExprStringInterp { parts: map(pr, p => p.part) }, inferred: texpr.inferred, span: texpr.span), diagnostics: flat_map(pr, p => p.diagnostics) }
@@ -13105,7 +13109,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       ExprResolveResult { expr: make_expr_node(expr_data: ExprSlice { base: br.expr, start: sr.expr, end: er.expr }, inferred: texpr.inferred, span: texpr.span), diagnostics: concat(br.diagnostics, sr.diagnostics, er.diagnostics) }
     ExprReturn { value: inner } =>
       let r = resolve_expr_types(texpr: inner, env: env, module_name: module_name)
-      ExprResolveResult { expr: map_expr_children(node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
+      ExprResolveResult { expr: map_expr_children(expr_node: texpr, transform: child => r.expr), diagnostics: r.diagnostics }
     NoExprData => ExprResolveResult { expr: texpr, diagnostics: [] }
   }
 }
@@ -14225,7 +14229,7 @@ import v2.std.core {
   LiteralValue,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
-  BinOpKind, NullCoalesce,
+  BinOpKind, UnaryOpKind, NullCoalesce,
   ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
@@ -14250,7 +14254,7 @@ import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
-import v2.compiler.infer_service { UniqueAccum }
+import v2.compiler.infer_service { UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name }
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
@@ -18453,7 +18457,7 @@ import v2.compiler.infer_emit_info {
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput,
+  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
@@ -20184,17 +20188,7 @@ fn is_map_typed_expr(texpr: Node) -> Bool {
 
 fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let call_str = if func == "empty_map" {
-    match inferred {
-      Some { value: Resolved { node: ret_type } } =>
-        let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
-        let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-        if type_str != "" && type_str != "Dynamic" {
-          concat("<", type_str, ">::new()")
-        } else {
-          "compile_error!(\"empty_map requires a concrete result type\")"
-        }
-      _ => "compile_error!(\"empty_map missing resolved return type\")"
-    }
+    "BTreeMap::new()"
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   }
@@ -20224,17 +20218,20 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   // Built-in: get(list, index) -> list[index as usize].clone()
   if func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
-    match get_args |> first {
+    let get_list = get_args |> first
+    let get_idx = get_args |> skip(1) |> first
+    let get_result = match get_list {
       Some { value: list_arg } =>
-        match get_args |> skip(1) |> first {
+        match get_idx {
           Some { value: idx_arg } =>
             let list_str = emit_typed_expr(texpr: list_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
             let index_str = emit_typed_expr(texpr: idx_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            return concat(list_str, ".get((", index_str, ") as usize).cloned()")
-          None => return "compile_error!(\"get call missing index argument\")"
+            concat(list_str, ".get((", index_str, ") as usize).cloned()")
+          None => "compile_error!(\"get call missing index argument\")"
         }
-      None => return "compile_error!(\"get call missing list argument\")"
+      None => "compile_error!(\"get call missing list argument\")"
     }
+    return get_result
   }
   // Built-in: with(struct, { field: value }) -> StructName { field: value, ..struct.clone() }
   if func == "with" {
@@ -20265,11 +20262,12 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   }
   if func == "to_string" {
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
-    match to_string_args |> first {
+    let ts_result = match to_string_args |> first {
       Some { value: value_arg } =>
-        return concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
-      None => return "compile_error!(\"to_string call missing value argument\")"
+        concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
+      None => "compile_error!(\"to_string call missing value argument\")"
     }
+    return ts_result
   }
   // For collection functions (map, filter, flat_map, fold), extend scope with the
   // lambda parameter bound to the collection element type. This enables Optional
@@ -20633,7 +20631,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       }
       let acc_type_node = match fold_accumulator_type {
         Some { value: acc_type } =>
-          if node_is_map(n: acc_type) && acc_type.children |> count == 0 {
+          let acc_children_have_unit = acc_type.children |> any(c => c.name == "Unit" || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
+          if node_is_map(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit) {
             match contextual_acc_type {
               Some { value: concrete_type } => concrete_type
               None => acc_type
@@ -20656,12 +20655,17 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           }
       }
       let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
+      // Check if the acc type has any Unit/empty children (incomplete type inference)
+      let acc_has_unit_child = acc_type_node.children |> any(c => c.name == "Unit" || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
       let init_str = match args |> first {
         Some { value: init_arg } =>
           match init_arg.value.expr_data {
             ExprCall { func: init_func, args: _, call_semantics: _ } =>
-              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" {
+              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" && !acc_has_unit_child {
                 concat("<", acc_type_str, ">::new()")
+              } else if init_func == "empty_map" {
+                // Partial turbofish: tell Rust the key type, infer value type from context
+                "<BTreeMap<String, _>>::new()"
               } else {
                 emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               }
@@ -24590,7 +24594,7 @@ import extdeps.languages.python.emit {
 import extdeps.languages.go.emit {
   go_type_map, go_keywords, go_container_templates,
   go_reserved, go_reserved_escape_suffix,
-  go_source_extension, go_manifest_file
+  go_manifest_file
 }
 
 type ReservedWordStrategy
@@ -24644,17 +24648,17 @@ type LanguageSpec {
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "rust",
-    reserved_words: {
+    reserved_words: ReservedWords {
       keywords: rust_reserved,
       strategy: PrefixEscape { prefix: rust_reserved_escape_prefix }
     },
-    scaffold: {
+    scaffold: ProjectScaffold {
       manifest_file: "Cargo.toml",
       module_init_file: null,
       source_file_extension: rust_source_extension,
       source_dir: rust_source_dir
     },
-    serialization: {
+    serialization: SerializationSpec {
       struct_derives: rust_struct_derives,
       struct_derives_copy: rust_struct_derives_copy,
       enum_derives: rust_enum_derives,
@@ -24664,7 +24668,7 @@ fn rust_spec() -> LanguageSpec {
       derive_attribute: null,
       default_value: null
     },
-    test_conventions: {
+    test_conventions: TestConventions {
       file_prefix: "",
       file_suffix: "_test",
       file_dir: "tests/",
@@ -24679,17 +24683,17 @@ fn rust_spec() -> LanguageSpec {
 fn python_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "python",
-    reserved_words: {
+    reserved_words: ReservedWords {
       keywords: python_reserved,
       strategy: SuffixEscape { suffix: python_reserved_escape_suffix }
     },
-    scaffold: {
+    scaffold: ProjectScaffold {
       manifest_file: "requirements.txt",
       module_init_file: python_module_init,
       source_file_extension: python_source_extension,
       source_dir: null
     },
-    serialization: {
+    serialization: SerializationSpec {
       struct_derives: null,
       struct_derives_copy: null,
       enum_derives: null,
@@ -24699,7 +24703,7 @@ fn python_spec() -> LanguageSpec {
       derive_attribute: python_derive_attribute,
       default_value: python_default_value
     },
-    test_conventions: {
+    test_conventions: TestConventions {
       file_prefix: "test_",
       file_suffix: "",
       file_dir: "tests/",
@@ -24714,17 +24718,17 @@ fn python_spec() -> LanguageSpec {
 fn go_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "go",
-    reserved_words: {
+    reserved_words: ReservedWords {
       keywords: go_reserved,
       strategy: SuffixEscape { suffix: go_reserved_escape_suffix }
     },
-    scaffold: {
-      manifest_file: go_manifest_file,
+    scaffold: ProjectScaffold {
+      manifest_file: "go.mod",
       module_init_file: null,
-      source_file_extension: go_source_extension,
+      source_file_extension: ".go",
       source_dir: null
     },
-    serialization: {
+    serialization: SerializationSpec {
       struct_derives: null,
       struct_derives_copy: null,
       enum_derives: null,
@@ -24734,7 +24738,7 @@ fn go_spec() -> LanguageSpec {
       derive_attribute: null,
       default_value: null
     },
-    test_conventions: {
+    test_conventions: TestConventions {
       file_prefix: "",
       file_suffix: "_test",
       file_dir: null,

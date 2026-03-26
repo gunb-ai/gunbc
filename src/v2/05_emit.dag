@@ -33,7 +33,7 @@ import v2.std.core {
   LiteralValue,
   TextFile, Diagnostic, SourceSpan,
   ResourceUse,
-  BinOpKind, NullCoalesce,
+  BinOpKind, UnaryOpKind, NullCoalesce,
   ServiceConfig,
   DeclaredFuncSig,
   IntrinsicMethod,
@@ -58,7 +58,7 @@ import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
-import v2.compiler.infer_service { UniqueAccum }
+import v2.compiler.infer_service { UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name }
 import v2.compiler.infer {
   InferScope,
   build_params_scope, extend_scope

@@ -102,7 +102,7 @@ import v2.compiler.infer_emit_info {
 }
 
 import v2.compiler.emit {
-  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput,
+  EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
   TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
   TypeStructureKind, TypeLeaf, TypeConj, TypeDisj,
@@ -1833,17 +1833,7 @@ fn is_map_typed_expr(texpr: Node) -> Bool {
 
 fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let call_str = if func == "empty_map" {
-    match inferred {
-      Some { value: Resolved { node: ret_type } } =>
-        let resolved_ret = resolve_scrutinee_type_node(env: scope.type_env, n: ret_type)
-        let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-        if type_str != "" && type_str != "Dynamic" {
-          concat("<", type_str, ">::new()")
-        } else {
-          "compile_error!(\"empty_map requires a concrete result type\")"
-        }
-      _ => "compile_error!(\"empty_map missing resolved return type\")"
-    }
+    "BTreeMap::new()"
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   }
@@ -1873,17 +1863,20 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   // Built-in: get(list, index) -> list[index as usize].clone()
   if func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
-    match get_args |> first {
+    let get_list = get_args |> first
+    let get_idx = get_args |> skip(1) |> first
+    let get_result = match get_list {
       Some { value: list_arg } =>
-        match get_args |> skip(1) |> first {
+        match get_idx {
           Some { value: idx_arg } =>
             let list_str = emit_typed_expr(texpr: list_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
             let index_str = emit_typed_expr(texpr: idx_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            return concat(list_str, ".get((", index_str, ") as usize).cloned()")
-          None => return "compile_error!(\"get call missing index argument\")"
+            concat(list_str, ".get((", index_str, ") as usize).cloned()")
+          None => "compile_error!(\"get call missing index argument\")"
         }
-      None => return "compile_error!(\"get call missing list argument\")"
+      None => "compile_error!(\"get call missing list argument\")"
     }
+    return get_result
   }
   // Built-in: with(struct, { field: value }) -> StructName { field: value, ..struct.clone() }
   if func == "with" {
@@ -1914,11 +1907,12 @@ fn emit_typed_call(func: String, args: List<NamedArg>, registry: Map<String, Ite
   }
   if func == "to_string" {
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
-    match to_string_args |> first {
+    let ts_result = match to_string_args |> first {
       Some { value: value_arg } =>
-        return concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
-      None => return "compile_error!(\"to_string call missing value argument\")"
+        concat("(", emit_typed_expr(texpr: value_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ").to_string()")
+      None => "compile_error!(\"to_string call missing value argument\")"
     }
+    return ts_result
   }
   // For collection functions (map, filter, flat_map, fold), extend scope with the
   // lambda parameter bound to the collection element type. This enables Optional
@@ -2282,7 +2276,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       }
       let acc_type_node = match fold_accumulator_type {
         Some { value: acc_type } =>
-          if node_is_map(n: acc_type) && acc_type.children |> count == 0 {
+          let acc_children_have_unit = acc_type.children |> any(c => c.name == "Unit" || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
+          if node_is_map(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit) {
             match contextual_acc_type {
               Some { value: concrete_type } => concrete_type
               None => acc_type
@@ -2305,12 +2300,17 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           }
       }
       let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
+      // Check if the acc type has any Unit/empty children (incomplete type inference)
+      let acc_has_unit_child = acc_type_node.children |> any(c => c.name == "Unit" || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
       let init_str = match args |> first {
         Some { value: init_arg } =>
           match init_arg.value.expr_data {
             ExprCall { func: init_func, args: _, call_semantics: _ } =>
-              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" {
+              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" && !acc_has_unit_child {
                 concat("<", acc_type_str, ">::new()")
+              } else if init_func == "empty_map" {
+                // Partial turbofish: tell Rust the key type, infer value type from context
+                "<BTreeMap<String, _>>::new()"
               } else {
                 emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               }
