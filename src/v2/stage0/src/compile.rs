@@ -1062,6 +1062,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     eprintln!("  phase: frontend    {:>10.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
     match frontend.graph.as_ref().map(|__rc| __rc.as_ref()) {
     None => {
+        eprintln!("  phase: total       {:>10.1}ms (frontend error)", t_total.elapsed().as_secs_f64() * 1000.0);
         Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: frontend.diagnostics.clone(), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() })
     }
     Some(graph) => {
@@ -1081,6 +1082,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_2 = resolve_errors.clone().len();
     __len_2 as i64
 }) > 0_i64 {
+    eprintln!("  phase: total       {:>10.1}ms (resolve error)", t_total.elapsed().as_secs_f64() * 1000.0);
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: frontend.diagnostics.clone(), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
     let t1 = Instant::now();
@@ -1100,6 +1102,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_5 = norm_errors.clone().len();
     __len_5 as i64
 }) > 0_i64 {
+    eprintln!("  phase: total       {:>10.1}ms (normalize error)", t_total.elapsed().as_secs_f64() * 1000.0);
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
     let t2 = Instant::now();
@@ -1123,6 +1126,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let __len_8 = typecheck_errors.clone().len();
     __len_8 as i64
 }) > 0_i64 {
+    eprintln!("  phase: total       {:>10.1}ms (typecheck error)", t_total.elapsed().as_secs_f64() * 1000.0);
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity: complexity.clone(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
 };
     let t4 = Instant::now();
