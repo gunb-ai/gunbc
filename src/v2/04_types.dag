@@ -16,7 +16,8 @@ import v2.std.core {
   CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral,
-  make_expr_node,
+  ExprErrorKind, SemanticExprError,
+  make_expr_node, make_expr_error_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
@@ -95,7 +96,10 @@ fn callable_inferred(n: Node) -> Node {
 }
 
 fn error_type_node() -> Node {
-  leaf_node(name: "Error")
+  // Returns a node with CompilerError in its inferred field.
+  // Downstream code uses rt_node() which returns InferError —
+  // no name check on "Error" needed.
+  make_expr_error_node(kind: SemanticExprError, message: "unresolved type", span: no_span())
 }
 
 // no_span moved to 00_core.dag (C1 — timeless node vocabulary).

@@ -28,6 +28,7 @@ import v2.std.core {
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
+  ExprErrorKind, SemanticExprError,
   make_expr_node, make_expr_error_node, map_children,
   make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
@@ -417,8 +418,11 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
     match n.value {
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
       CompilerError { message: msg, span: sp } =>
+        // Preserve CompilerError structurally instead of converting to
+        // leaf_node(name: "Error"). Downstream code uses rt_node() which
+        // returns InferError for CompilerError — no name check needed.
         NodeResolveResult {
-          resolved: leaf_node(name: "Error"),
+          resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
           diagnostics: [diagnostic_node(severity: "error", message: msg, span: sp, module_name: Some { value: module_name }, category: none)]
         }
     }

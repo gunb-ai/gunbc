@@ -88,7 +88,7 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn error_type_node() -> Rc<Node> {
-    leaf_node("Error")
+    make_expr_error_node(ExprErrorKind::SemanticExprError, "unresolved type", SourceSpan { start: 0, end: 0 })
 }
 
 pub fn normalize_access_type_node(n: Rc<Node>) -> Rc<Node> {
