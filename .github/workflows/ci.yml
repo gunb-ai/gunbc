@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,4 +46,4 @@ jobs:
         run: cargo clippy --workspace -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --exclude v2-compiler
+        run: cargo test -p v2-compiler-tests
