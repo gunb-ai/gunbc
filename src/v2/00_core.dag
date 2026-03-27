@@ -1158,6 +1158,18 @@ fn leaf_node(name: String) -> Node {
   Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
+// Kernel type constants — single-authority definitions for built-in types.
+// Use these instead of leaf_node(name: "...") for kernel types.
+// Each constant encodes the structural form once; callers reference it.
+// Unit is the terminal object (empty product: Conj + 0 children).
+// All others are bare leaves until std declarations carry richer structure.
+data unit_type: Node = Node { name: "Unit", span: SourceSpan { start: 0, end: 0 }, children: [], connective: Conj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data bool_type: Node = Node { name: "Bool", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data string_type: Node = Node { name: "String", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data int_type: Node = Node { name: "Int", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data float_type: Node = Node { name: "Float", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data none_type: Node = Node { name: "None", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
 fn no_span() -> SourceSpan {
   SourceSpan { start: 0, end: 0 }
 }

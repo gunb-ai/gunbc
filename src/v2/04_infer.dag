@@ -75,7 +75,8 @@ import v2.std.core {
   Text, Interpolation,
   leaf_node, with_optional_cardinality, with_required_cardinality,
   ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
-  no_span
+  no_span,
+  unit_type, bool_type, string_type, int_type, float_type, none_type
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
@@ -953,7 +954,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
-      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => leaf_node(name: "Unit") }
+      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => unit_type }
       let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_rt)
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
@@ -1094,7 +1095,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         // Tier 2: try bridging to method call on first argument
         let first_arg_type = match typed_args |> first {
           Some { value: ta } => rt_type(n: ta.value)
-          None => leaf_node(name: "Unit")
+          None => unit_type
         }
         let method_receiver = match typed_args |> first {
           Some { value: ta } => ta.value
@@ -1384,7 +1385,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             diagnostics: concat(cond_diags, then_diags, else_diags, branch_diags)
           }
         None =>
-          let if_texpr2 = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed], inferred: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span)
+          let if_texpr2 = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed], inferred: Some { value: Resolved { node: unit_type } }, span: span)
           InferResult {
             typed: if_texpr2,
             diagnostics: concat(cond_diags, then_diags)
@@ -1434,10 +1435,10 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let elem_type_node = if count(elem_results) > 0 {
         match first(elem_results) {
           Some { value: r } => rt_type(n: r.typed)
-          None => leaf_node(name: "Unit")
+          None => unit_type
         }
       } else {
-        leaf_node(name: "Unit")
+        unit_type
       }
       let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Some { value: Resolved { node: container_node(kind_name: "List", element: elem_type_node) } }, span: span)
       InferResult {
@@ -1529,7 +1530,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             }
         }
       )
-      let si_texpr = make_expr_node(expr_data: ExprStringInterp, children: typed_part_nodes, inferred: Some { value: Resolved { node: leaf_node(name: "String") } }, span: span)
+      let si_texpr = make_expr_node(expr_data: ExprStringInterp, children: typed_part_nodes, inferred: Some { value: Resolved { node: string_type } }, span: span)
       InferResult {
         typed: si_texpr,
         diagnostics: interp_diags
@@ -1543,7 +1544,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         let state = infer_block_stmts(
           remaining: stmts, scope: scope,
           typed_stmts: [], diag_chunks: [],
-          last_type: leaf_node(name: "Unit")
+          last_type: unit_type
         )
         let blk_texpr = make_expr_node(expr_data: ExprBlock, children: state.typed_stmts, inferred: Some { value: Resolved { node: state.last_type } }, span: span)
         InferResult {
@@ -1551,7 +1552,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           diagnostics: flat_map(state.diag_chunks, c => c)
         }
       } else {
-        ok_infer(texpr: make_expr_node(expr_data: ExprBlock, children: [], inferred: Some { value: Resolved { node: leaf_node(name: "Unit") } }, span: span))
+        ok_infer(texpr: make_expr_node(expr_data: ExprBlock, children: [], inferred: Some { value: Resolved { node: unit_type } }, span: span))
       }
 
     ExprCast =>
@@ -1841,7 +1842,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
-        inferred: Some { value: Resolved { node: leaf_node(name: "Unit") } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
+        inferred: Some { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: item.transport,
         collection_kind: item.collection_kind,
         properties: item.properties, type_annotation: typed_anno,
@@ -1915,7 +1916,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Extern func: has params but no body
   else if item.params |> count > 0 && item.body == none {
-    let resolved_ret = if item.inferred == none { leaf_node(name: "Unit") } else { rt_type(n: item) }
+    let resolved_ret = if item.inferred == none { unit_type } else { rt_type(n: item) }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
@@ -1930,7 +1931,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   // Service/Resource/other: pass through
   else {
-    let resolved_ret = if item.inferred == none { leaf_node(name: "Unit") } else { rt_type(n: item) }
+    let resolved_ret = if item.inferred == none { unit_type } else { rt_type(n: item) }
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
@@ -2004,7 +2005,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // RecordLit and pattern matching resolve variant constructors correctly.
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Disj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, none_type], connective: Disj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
 
@@ -2133,7 +2134,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let some_value_field = Node { name: "value", span: zero_span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Disj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, none_type], connective: Disj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
   let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })

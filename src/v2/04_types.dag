@@ -23,7 +23,8 @@ import v2.std.core {
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   InferredNode, Resolved, CompilerError, TypeVariable, rt_node, has_inferred, is_compiler_error,
   NodeType, Typed, InferError, InferVariable, Untyped,
-  leaf_node, no_span, with_optional_cardinality, with_required_cardinality
+  leaf_node, no_span, with_optional_cardinality, with_required_cardinality,
+  unit_type, bool_type, string_type, int_type, float_type, none_type
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -52,9 +53,9 @@ fn child_inferred_or_name(ch: Node) -> Node {
 fn rt_type(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
-    InferError { message: _, span: _ } => leaf_node(name: "Unit")
-    InferVariable { id: _ } => leaf_node(name: "Unit")
-    Untyped => leaf_node(name: "Unit")
+    InferError { message: _, span: _ } => unit_type
+    InferVariable { id: _ } => unit_type
+    Untyped => unit_type
   }
 }
 
@@ -424,11 +425,11 @@ fn node_type_deps(n: Node) -> List<String> {
 
 fn infer_literal_node(lit: LiteralValue) -> Node {
   match lit {
-    LitStr { value: _ } => leaf_node(name: "String")
-    LitInt { value: _ } => leaf_node(name: "Int")
-    LitFloat { value: _ } => leaf_node(name: "Float")
-    LitBool { value: _ } => leaf_node(name: "Bool")
-    LitNull => with_optional_cardinality(n: leaf_node(name: "Unit"))
+    LitStr { value: _ } => string_type
+    LitInt { value: _ } => int_type
+    LitFloat { value: _ } => float_type
+    LitBool { value: _ } => bool_type
+    LitNull => with_optional_cardinality(n: unit_type)
   }
 }
 
@@ -488,14 +489,14 @@ fn binop_algebra_field(op: BinOpKind) -> String {
 fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
   // Comparison and boolean ops always return Bool
   match op {
-    BinEq => leaf_node(name: "Bool")
-    BinNe => leaf_node(name: "Bool")
-    BinLt => leaf_node(name: "Bool")
-    BinGt => leaf_node(name: "Bool")
-    BinLe => leaf_node(name: "Bool")
-    BinGe => leaf_node(name: "Bool")
-    BinAnd => leaf_node(name: "Bool")
-    BinOr => leaf_node(name: "Bool")
+    BinEq => bool_type
+    BinNe => bool_type
+    BinLt => bool_type
+    BinGt => bool_type
+    BinLe => bool_type
+    BinGe => bool_type
+    BinAnd => bool_type
+    BinOr => bool_type
     NullCoalesce => extract_optional_inner_node(n: left_type)
     _ =>
       // Arithmetic ops: try structural lookup on the receiver type.
@@ -531,7 +532,7 @@ fn for_each_element_type_node(n: Node) -> Node {
   match extracted {
     Some { value: el } => el
     None =>
-      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && normed.name == "String" { leaf_node(name: "String") }
+      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && normed.name == "String" { string_type }
       else { normed }
   }
 }

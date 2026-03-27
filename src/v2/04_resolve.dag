@@ -37,7 +37,8 @@ import v2.std.core {
   leaf_node, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
-  CardOptional, no_span
+  CardOptional, no_span,
+  unit_type, string_type
 }
 import v2.compiler.infer_types {
   rt_type, collection_kind_for_name
@@ -339,11 +340,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       // Map: recurse on both key and value children
       let key_child = match n.children |> first {
         Some { value: k } => k
-        None => leaf_node(name: "String")
+        None => string_type
       }
       let val_child = match skip(n.children, 1) |> first {
         Some { value: v } => v
-        None => leaf_node(name: "Unit")
+        None => unit_type
       }
       let key_result = resolve_node_bounded(n: key_child, env: env, module_name: module_name, depth: depth + 1)
       let key_resolved = key_result.resolved
@@ -424,7 +425,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
 }
 
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  if n == none { NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+  if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
     match n.value {
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
@@ -438,7 +439,7 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
         }
       TypeVariable { id: _ } =>
         // TypeVariable: unresolved type variable, preserve structurally.
-        NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
+        NodeResolveResult { resolved: unit_type, diagnostics: [] }
     }
   }
 }
@@ -800,7 +801,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       // children: [expr, target_type]
       let ch = texpr.children
       let r = match ch |> first { Some { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      let tr = match ch |> skip(1) |> first { Some { value: target } => resolve_node(n: target, env: env, module_name: module_name)  None => NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+      let tr = match ch |> skip(1) |> first { Some { value: target } => resolve_node(n: target, env: env, module_name: module_name)  None => NodeResolveResult { resolved: unit_type, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprCast, children: [r.expr, tr.resolved], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
     ExprForEach { variable: variable } =>
       // children: [collection, body]
@@ -864,7 +865,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
-    NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
+    NodeResolveResult { resolved: unit_type, diagnostics: [] }
   } else {
     resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }

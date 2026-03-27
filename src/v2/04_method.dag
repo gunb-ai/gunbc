@@ -28,7 +28,8 @@ import v2.std.core {
   BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower,
   BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap,
   BridgeContains, BridgeReverse, BridgeLookup,
-  leaf_node, with_optional_cardinality
+  leaf_node, with_optional_cardinality,
+  unit_type, bool_type, string_type, int_type, float_type, none_type
 }
 import v2.compiler.infer_types {
   container_node, tuple_node, error_type_node,
@@ -108,22 +109,22 @@ fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMet
   match intrinsic {
     MethodMap => Some { value: receiver_type }
     MethodFilter => Some { value: receiver_type }
-    MethodEnumerate => Some { value: container_node(kind_name: "List", element: tuple_node(first: leaf_node(name: "Int"), second: elem_node)) }
+    MethodEnumerate => Some { value: container_node(kind_name: "List", element: tuple_node(first: int_type, second: elem_node)) }
     MethodFirst => Some { value: with_optional_cardinality(n: elem_node) }
     MethodLast => Some { value: with_optional_cardinality(n: elem_node) }
-    MethodCount => Some { value: leaf_node(name: "Int") }
-    MethodJoin => Some { value: leaf_node(name: "String") }
-    MethodAny => Some { value: leaf_node(name: "Bool") }
-    MethodAll => Some { value: leaf_node(name: "Bool") }
-    MethodSplit => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    MethodChars => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
+    MethodCount => Some { value: int_type }
+    MethodJoin => Some { value: string_type }
+    MethodAny => Some { value: bool_type }
+    MethodAll => Some { value: bool_type }
+    MethodSplit => Some { value: container_node(kind_name: "List", element: string_type) }
+    MethodChars => Some { value: container_node(kind_name: "List", element: string_type) }
     MethodFlatMap => Some { value: receiver_type }
     MethodSkip => Some { value: receiver_type }
     MethodTake => Some { value: receiver_type }
     MethodFold => fold_accumulator_type
     MethodSortBy => Some { value: receiver_type }
     MethodAppend => Some { value: receiver_type }
-    MethodStringContains => Some { value: leaf_node(name: "Bool") }
+    MethodStringContains => Some { value: bool_type }
     MethodConcat => Some { value: receiver_type }
   }
 }
@@ -137,25 +138,25 @@ fn infer_runtime_bridge_method_type_node(receiver_type: Node, method: RuntimeBri
     BridgeMapInsert => Some { value: receiver_type }
     BridgeMapMerge => Some { value: receiver_type }
     BridgeMapGet => Some { value: with_optional_cardinality(n: elem_node) }
-    BridgeMapHas => Some { value: leaf_node(name: "Bool") }
-    BridgeEmitMapHas => Some { value: leaf_node(name: "Bool") }
-    BridgeMapContainsKey => Some { value: leaf_node(name: "Bool") }
-    BridgeContains => Some { value: leaf_node(name: "Bool") }
+    BridgeMapHas => Some { value: bool_type }
+    BridgeEmitMapHas => Some { value: bool_type }
+    BridgeMapContainsKey => Some { value: bool_type }
+    BridgeContains => Some { value: bool_type }
     BridgeMapValues => Some { value: container_node(kind_name: "List", element: elem_node) }
-    BridgeMapKeys => Some { value: container_node(kind_name: "List", element: leaf_node(name: "String")) }
-    BridgeCharAt => Some { value: leaf_node(name: "String") }
-    BridgeStringAt => Some { value: leaf_node(name: "String") }
-    BridgeStringLength => Some { value: leaf_node(name: "Int") }
-    BridgeLength => Some { value: leaf_node(name: "Int") }
-    BridgeStartsWith => Some { value: leaf_node(name: "Bool") }
-    BridgeEndsWith => Some { value: leaf_node(name: "Bool") }
-    BridgeToString => Some { value: leaf_node(name: "String") }
-    BridgeTrim => Some { value: leaf_node(name: "String") }
-    BridgeToLower => Some { value: leaf_node(name: "String") }
-    BridgeToUpper => Some { value: leaf_node(name: "String") }
-    BridgeReplace => Some { value: leaf_node(name: "String") }
-    BridgeSubstring => Some { value: leaf_node(name: "String") }
-    BridgeToInt => Some { value: leaf_node(name: "Int") }
+    BridgeMapKeys => Some { value: container_node(kind_name: "List", element: string_type) }
+    BridgeCharAt => Some { value: string_type }
+    BridgeStringAt => Some { value: string_type }
+    BridgeStringLength => Some { value: int_type }
+    BridgeLength => Some { value: int_type }
+    BridgeStartsWith => Some { value: bool_type }
+    BridgeEndsWith => Some { value: bool_type }
+    BridgeToString => Some { value: string_type }
+    BridgeTrim => Some { value: string_type }
+    BridgeToLower => Some { value: string_type }
+    BridgeToUpper => Some { value: string_type }
+    BridgeReplace => Some { value: string_type }
+    BridgeSubstring => Some { value: string_type }
+    BridgeToInt => Some { value: int_type }
     BridgeEmptyMap => Some { value: bare_map_node() }
     BridgeLookup => Some { value: with_optional_cardinality(n: elem_node) }
     BridgeReverse => Some { value: receiver_type }
@@ -172,19 +173,19 @@ fn type_variable_node(id: String) -> Node {
 
 fn infer_builtin_call_type(name: String) -> Node? {
   if name == "string_length" || name == "code_point" || name == "to_int" {
-    Some { value: leaf_node(name: "Int") }
+    Some { value: int_type }
   } else if name == "parse_int" {
-    Some { value: with_optional_cardinality(n: leaf_node(name: "Int")) }
+    Some { value: with_optional_cardinality(n: int_type) }
   } else if name == "char_at" || name == "substring" || name == "from_code_point" || name == "to_string" || name == "concat" {
-    Some { value: leaf_node(name: "String") }
+    Some { value: string_type }
   } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
-    Some { value: leaf_node(name: "Int") }
+    Some { value: int_type }
   } else if name == "lookup" || name == "map_get" {
     Some { value: with_optional_cardinality(n: type_variable_node(id: "map_value")) }
   } else if name == "map_insert" || name == "map_merge" || name == "with" {
     Some { value: bare_map_node() }
   } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
-    Some { value: leaf_node(name: "Bool") }
+    Some { value: bool_type }
   } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
     Some { value: container_node(kind_name: "List", element: type_variable_node(id: "collection_element")) }
   } else if name == "Some" {
@@ -197,7 +198,7 @@ fn infer_builtin_call_type(name: String) -> Node? {
 fn resolve_builtin_call_type(name: String) -> Node {
   match infer_builtin_call_type(name: name) {
     Some { value: v } => v
-    None => leaf_node(name: "Unit")
+    None => unit_type
   }
 }
 
