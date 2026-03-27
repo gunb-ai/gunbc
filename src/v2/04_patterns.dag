@@ -12,7 +12,7 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node,
   ExprData, NoExprData,
-  InferredNode, Resolved,
+  InferredNode, Resolved, CompilerError, is_compiler_error,
   NodeType, Typed, InferError, Untyped,
   Cardinality, Required,
   Connective, Disj, NoConnective,
@@ -67,9 +67,10 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
+  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if n.name == "Dynamic" {
     PatternDynamic { span: n.span }
-  } else if n.name == "Error" {
+  } else if n_is_error {
     PatternLookupBlocked
   } else {
     PatternResolved { node: n }

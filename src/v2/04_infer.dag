@@ -35,7 +35,7 @@ import v2.std.core {
   make_expr_node, make_expr_error_node,
   make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name,
-  rt_node, has_inferred, InferredNode, Resolved, CompilerError,
+  rt_node, has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError,
   NodeType, Typed, InferError, Untyped,
   Cardinality, Required, CardOptional,
   diagnostic_node,
@@ -948,7 +948,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let base_diags = base_result.diagnostics
       let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => leaf_node(name: "Unit") }
       let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_rt)
-      if resolved_base.name == "Error" {
+      let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
+      if resolved_base_is_error {
         InferResult {
           typed: make_expr_error_node(kind: SemanticExprError, message: "error type cascade", span: span),
           diagnostics: base_diags

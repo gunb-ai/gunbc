@@ -37,7 +37,7 @@ pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
     if n.name == "Dynamic" {
     Rc::new(PatternSubject::PatternDynamic { span: n.span.clone() })
 } else {
-    if n.name == "Error" {
+    if node_has_compiler_error(&n) {
     Rc::new(PatternSubject::PatternLookupBlocked)
 } else {
     Rc::new(PatternSubject::PatternResolved { node: n.clone() })

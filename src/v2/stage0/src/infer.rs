@@ -1249,7 +1249,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     }
 };
     let resolved_base = resolve_scrutinee_type_node(scope.type_env.clone(), base_rt.clone());
-    if resolved_base.name.clone() == "Error" {
+    if node_has_compiler_error(&resolved_base) {
     Rc::new(InferResult { typed: make_expr_error_node(ExprErrorKind::SemanticExprError, "error type cascade", span.clone()), diagnostics: base_diags.clone() })
 } else {
     match lookup_field_type_node(resolved_base.clone(), &field_name) {

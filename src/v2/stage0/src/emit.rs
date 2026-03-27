@@ -1422,7 +1422,7 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
         false
     }
 };
-        if ((n.name.clone() == "Dynamic") || (n.name.clone() == "Error")) && (({
+        if ((n.name.clone() == "Dynamic") || node_has_compiler_error(&n)) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) == 0_i64) {

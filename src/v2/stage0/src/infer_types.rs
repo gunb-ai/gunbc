@@ -195,7 +195,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
             let right = __tco_p_right;
             let left_opt = left.return_cardinality == Cardinality::CardOptional ;
             let right_opt = right.return_cardinality == Cardinality::CardOptional ;
-            if (left.name == "Error") || (right.name == "Error") {
+            if node_has_compiler_error(&left) || node_has_compiler_error(&right) {
     break true;
 } else {
     if (left.name == "Dynamic") || (right.name == "Dynamic") {
@@ -315,7 +315,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
         let right_leaf = right.connective == Connective::NoConnective && right.children.len() == 0 && right.properties.len() == 0 ;
         let left_struct = left.connective != Connective::NoConnective ;
         let right_struct = right.connective != Connective::NoConnective ;
-        if (left.name == "Error") || (right.name == "Error") {
+        if node_has_compiler_error(&left) || node_has_compiler_error(&right) {
     true
 } else {
     if (left.name == "Dynamic") && (right.name == "Dynamic") {

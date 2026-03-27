@@ -280,6 +280,10 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
 }
 }
 
+pub fn node_has_compiler_error(n: &Node) -> bool {
+    matches!(n.inferred.as_ref().map(|rc| rc.as_ref()), Some(InferredNode::CompilerError { .. }))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NodeType {
     Typed { node: Rc<Node> },

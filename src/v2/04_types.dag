@@ -21,7 +21,7 @@ import v2.std.core {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
-  InferredNode, Resolved, CompilerError, rt_node, has_inferred,
+  InferredNode, Resolved, CompilerError, rt_node, has_inferred, is_compiler_error,
   NodeType, Typed, InferError, Untyped,
   leaf_node, no_span, with_optional_cardinality, with_required_cardinality
 }
@@ -174,16 +174,15 @@ fn node_type_shape(n: Node) -> String {
 }
 
 fn node_type_compatible(left: Node, right: Node) -> Bool {
-  // Remaining `04_types` bridge audit:
-  // - Error compatibility still suppresses cascade comparisons on residual
-  //   name-level error nodes that survive outside explicit CompilerError paths.
-  // - Dynamic compatibility still supports audited polymorphic placeholder
-  //   sites pending type-variable infrastructure.
-  // Access and pattern lookup no longer lean on these rules for malformed or
-  // upstream-failed expressions; deletion still belongs to the Phase 5 L1 work.
+  // CompilerError nodes are compatible with anything — prevents cascade comparisons
+  // on failed inference results.
+  // Dynamic compatibility still supports audited polymorphic placeholder
+  // sites pending type-variable infrastructure.
+  let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
+  let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
-  if left.name == "Error" || right.name == "Error" { true }
+  if left_err || right_err { true }
   else if left.name == "Dynamic" || right.name == "Dynamic" { true }
   else if left_opt && right.name == "Unit" { true }
   else if left.name == "Unit" && right_opt { true }
@@ -245,16 +244,17 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
 }
 
 fn node_type_equals(left: Node, right: Node) -> Bool {
-  // Same bridge audit as node_type_compatible(): keep the residual name-based
-  // sentinel behavior explicit until the last comparison callers stop routing
-  // failed inference through type nodes.
+  // CompilerError nodes are equal to anything — prevents cascade comparisons
+  // on failed inference results.
+  let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
+  let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
   let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
   let left_struct = left.connective != NoConnective
   let right_struct = right.connective != NoConnective
-  if left.name == "Error" || right.name == "Error" { true }
+  if left_err || right_err { true }
   else if left.name == "Dynamic" && right.name == "Dynamic" { true }
   else if left.name == "Dynamic" || right.name == "Dynamic" { false }
   else if left_opt && right.name == "Unit" { true }

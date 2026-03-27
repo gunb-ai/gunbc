@@ -15,7 +15,7 @@
 module v2.compiler.emit_rust
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError,
+  Node, InferredNode, Resolved, CompilerError, is_compiler_error,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   Param, LiteralValue,
   ExprData, NoExprData,
@@ -1442,8 +1442,9 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
   } else { inferred_node }
   let is_product = n.connective == Conj
   let is_coproduct = n.connective == Disj
+  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if n.name == "__EmitTypeCacheMiss" { type_name }
-    else if n.name == "Error" { type_name }
+    else if n_is_error { type_name }
     else if is_product {
       if n.name == "" { type_name } else { Some { value: n.name } }
     } else if is_coproduct {
@@ -2169,10 +2170,11 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: lambda_semantics } =>
         match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: param_type } =>
-            // Dynamic audit: correct guard — filter Dynamic/Error sentinels from
+            // Dynamic audit: correct guard — filter Dynamic/CompilerError sentinels from
             // rendered lambda param type annotations. Falls back to caller-provided
             // fallback_types (typically elem_type_str or "_"), letting Rust infer.
-            if param_type.name == "Dynamic" || param_type.name == "Error" {
+            let param_is_error = if param_type.inferred != none { is_compiler_error(inferred: param_type.inferred.value) } else { false }
+            if param_type.name == "Dynamic" || param_is_error {
               none
             } else {
               Some { value: emit_node_type_rc(n: param_type, target: Rust, rc_types: rc_types) }
@@ -2443,7 +2445,8 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
     let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let type_name = match receiver.inferred {
       Some { value: Resolved { node: rt } } =>
-        if rt.name == "Error" || rt.name == "" {
+        let rt_is_error = if rt.inferred != none { is_compiler_error(inferred: rt.inferred.value) } else { false }
+        if rt_is_error || rt.name == "" {
           "compile_error!(\"with method missing resolved record type\")"
         } else { rt.name }
       _ => "compile_error!(\"with method missing resolved record type\")"

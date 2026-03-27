@@ -16,7 +16,7 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node, Field, Param,
   NodeType, Typed, InferError, Untyped, rt_node,
-  InferredNode, Resolved, CompilerError,
+  InferredNode, Resolved, CompilerError, is_compiler_error,
   diagnostic_node,
   Cardinality, Required,
   NoCollection,
@@ -395,7 +395,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
-          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
+          let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
+          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n_is_error || n.name == "Callable" {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {

@@ -2402,7 +2402,7 @@ pub fn explicit_record_struct_name(type_name: Option<String>, inferred_node: Rc<
     if n.name.clone() == "__EmitTypeCacheMiss" {
     type_name.clone()
 } else {
-    if n.name.clone() == "Error" {
+    if node_has_compiler_error(&n) {
     type_name.clone()
 } else {
     if is_product {
@@ -3643,7 +3643,7 @@ pub fn lambda_param_type_strs(params: Rc<Vec<String>>, semantics: Option<Rc<Lamb
         let lambda_semantics = Rc::new(lambda_semantics.clone());
         match lambda_semantics.param_types.clone().get((idx.clone()) as usize).cloned() {
     Some(param_type) => {
-        if (param_type.name.clone() == "Dynamic") || (param_type.name.clone() == "Error") {
+        if (param_type.name.clone() == "Dynamic") || node_has_compiler_error(&param_type) {
     None
 } else {
     Some(emit_node_type_rc(param_type.clone(), RenderTarget::Rust, rc_types.clone()))
@@ -4206,7 +4206,7 @@ pub fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Rc
     let base_str = emit_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
     let type_name = match receiver.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        if (rt.name.clone() == "Error") || (rt.name.clone() == "") {
+        if node_has_compiler_error(&rt) || (rt.name.clone() == "") {
     "compile_error!(\"with method missing resolved record type\")".to_string()
 } else {
     rt.name.clone()
@@ -4879,7 +4879,7 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<FieldI
         Some(vtoe_parent.clone())
     }
     None => {
-        if (((resolved_type.name.clone() != "") && (resolved_type.name.clone() != tn.clone())) && (resolved_type.name.clone() != "Dynamic")) && (resolved_type.name.clone() != "Error") {
+        if (((resolved_type.name.clone() != "") && (resolved_type.name.clone() != tn.clone())) && (resolved_type.name.clone() != "Dynamic")) && !node_has_compiler_error(&resolved_type) {
     Some(resolved_type.name.clone())
 } else {
     parent_enum.clone()
