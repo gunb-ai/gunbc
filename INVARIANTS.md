@@ -77,7 +77,7 @@ it was lost, (4) fix the rendering to exploit the guarantee.
 | FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **FIXED.** Indexed Kahn with in-degree map + reverse adjacency + queue drain. |
 | FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
 | FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
-| FF-8 | Tokenize cost (unknown root cause) | .dag source | Unknown — `char_at` allocation is ~15ms, not the 4.87s bottleneck | Unknown | Tokenize 4.87s (75% of pipeline) | **OPEN — needs flamegraph profiling.** Initial hypothesis (char_at heap allocation) was wrong by ~300x. The real cost is elsewhere in the tokenizer. Candidates: `source.to_string()` per-file copy, Rc::try_unwrap failures on token list, `string_length` per-iteration, or an algorithmic issue. Use `cargo flamegraph` or the complexity analysis stage to identify. |
+| FF-8 | Token/source operational contract | `.dag` tokenizer/parser design (`01_tokenize.dag`, `02_parse.dag`) | Stage0 Rust lowering and runtime boundary | Generated code reintroduces whole-Vec clones, repeated Unicode rescans, and by-value token-stream passing | Large-module compiles regressed from expected seconds to hangs / tens of seconds; live samples pinned in tokenize and parser hot paths | **ROOT-CAUSED (2026-03-27), class still OPEN.** The local emergency fix on `perf/v2-tokenizer-root-cause` cut isolated probes sharply (`02_parse.dag`: ~37.2s → ~0.43s, `04_infer.dag`: ~7.18s → ~0.06s, `--source-dir src/v2`: hang/minutes → ~0.65s returning diagnostics). But the underlying debt remains until the codegen/runtime boundary models these operational guarantees directly and compiler-sized perf ratchets enforce them. |
 
 #### The fan-out fix (FF-1) in detail
 
@@ -108,24 +108,41 @@ Reconcile: ~20 minutes → 244ms (release mode).
 **Status: FIXED (2026-03-26).** `04_cycle.dag` rewritten with indexed
 in-degree map + reverse adjacency + queue drain. O(V+E), single pass.
 
-#### Tokenize bottleneck (FF-8) — needs profiling
+#### Generated boundary regression (FF-8)
 
-Tokenize takes 4.87s (75% of the 6.47s pipeline). Initial hypothesis
-was `char_at` heap allocation, but back-of-envelope math shows that's
-~15ms — off by 300x. The real root cause is unknown.
+The 2026-03-27 v2 performance incident is now root-caused.
 
-Candidates to investigate with flamegraph profiling:
-- `source.to_string()` in `tokenize()` — copies entire source file
-  into a new String per call (line 44 of tokenize.rs)
-- Rc::try_unwrap failures on the token list accumulation — would
-  cause O(n²) deep-clone per token, same class as the reconcile fix
-- `string_length` called per-iteration in the loop guard — O(n) for
-  the string even on ASCII (function call overhead)
-- Algorithmic issue in `skip_spaces_and_comments` or `scan_token`
+The source-level intent was already present:
+- `01_tokenize.dag` explicitly threads `tokens` separately so append
+  stays O(1) and wraps `source` so reassignment becomes cheap sharing.
+- Parser/token helpers conceptually operate on indexed streams and
+  immutable source text.
 
-The value-representation principle (immutable strings should be
-zero-copy reads) is correct but applies to ~15ms of the cost.
-The dominant cost is something else. Profile first, theorize second.
+But those guarantees were not preserved compositionally in generated
+stage0 Rust. The generated boundary reintroduced compensating work:
+- tokenizer token accumulation cloned the full token vector in the hot
+  path instead of mutating one accumulator
+- tokenizer Unicode access fell back to repeated `chars().nth()` /
+  `skip()` rescans for any file containing non-ASCII text, including
+  comments
+- parser helpers passed the token stream by value, so helper traffic
+  cloned the whole token vector instead of sharing it
+
+This is the key lesson: **comments in `.dag` are not enforcement.**
+If the operational contract matters, the lowering/runtime boundary must
+make the cheap representation the default representation.
+
+The emergency branch `perf/v2-tokenizer-root-cause` proved the class:
+- `02_parse.dag` single-file probe: ~37.2s → ~0.43s
+- `04_infer.dag` single-file probe: ~7.18s → ~0.06s
+- `target/debug/v2-compiler compile --source-dir src/v2 ...`:
+  hang/minutes → ~0.65s returning diagnostics
+
+The invariant is not "remember to optimize generated Rust later." The
+invariant is: **the stage boundary must preserve the source cost model.**
+If a source guarantee (immutable text, indexed stream, lexical fan-out)
+is lost at lowering time and recovered with a compensation, the design
+is incomplete even if the output is semantically correct.
 
 #### Ratchet
 
@@ -145,6 +162,17 @@ After all open instances are fixed:
    Release-mode baseline (2026-03-26): **6.47s total pipeline**
    (Tokenize 4.87s, Parse 78ms, Resolve 1ms, Reconcile 244ms,
    Emit 1.27s). Target: <2s total.
+
+4. **Generated-boundary ratchet.** Compiler-sized probes must run
+   through the live generated stage0 binary, not just smoke DAGs.
+   At minimum, keep a ratchet on:
+   - `target/debug/v2-compiler compile --source-dir src/v2 ...`
+   - isolated large modules such as `src/v2/02_parse.dag` and
+     `src/v2/04_infer.dag`
+   - a curated bootstrap-style bundle that includes `src/v2/*.dag`
+     plus the std/extdep modules they depend on
+   If only tiny DAGs are timed, codegen/runtime regressions can re-enter
+   while all smoke tests still pass.
 
 ## Sustainability Invariants
 
