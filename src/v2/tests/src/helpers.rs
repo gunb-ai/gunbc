@@ -71,6 +71,142 @@ pub fn assert_parses_strict(relative_path: &str) {
     );
 }
 
+// ── Import-driven source resolution (FF-9) ──────────────────────────────
+//
+// The compiler takes a flat List<SourceFile>. This layer resolves imports
+// transitively: parse the entry source, discover its imports, load them
+// from source roots, recurse. Each module is loaded exactly once (memoized
+// by module path). The result is the minimal transitive closure.
+
+use std::collections::HashMap;
+
+/// Source roots where .dag files can be found. Module path segments map
+/// to directory structure: `std.types` → `<root>/std/types.dag`.
+fn source_roots() -> Vec<std::path::PathBuf> {
+    let ws = workspace_root();
+    vec![
+        ws.join("dsl"),       // std.types → dsl/std/types.dag
+        ws.join("src/v2"),    // v2.std.core → src/v2/00_core.dag (needs index)
+    ]
+}
+
+/// Build an index of module_path → file_path by scanning source roots.
+/// Only reads the `module` declaration line from each file — O(files) I/O,
+/// one line per file.
+fn build_module_index() -> HashMap<String, std::path::PathBuf> {
+    let mut index = HashMap::new();
+    for root in source_roots() {
+        if root.exists() {
+            scan_dag_files(&root, &mut index);
+        }
+    }
+    index
+}
+
+fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_dag_files(&path, index);
+        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            if let Some(module_path) = extract_module_declaration(&path) {
+                index.insert(module_path, path);
+            }
+        }
+    }
+}
+
+/// Read just the `module` declaration from a .dag file. Scans for the
+/// first line matching `module <path>` — O(1) lines for well-formed files.
+fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("module ") {
+            return Some(trimmed["module ".len()..].trim().to_string());
+        }
+        // Skip comments and blank lines
+        if !trimmed.is_empty() && !trimmed.starts_with("//") {
+            break; // module declaration must come before any other content
+        }
+    }
+    None
+}
+
+/// Extract import module paths from source text. Scans for `import <path> {`.
+fn extract_imports(source: &str) -> Vec<String> {
+    let mut imports = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("import ") {
+            // import std.types { ... } → extract "std.types"
+            let rest = trimmed["import ".len()..].trim();
+            if let Some(space_pos) = rest.find(|c: char| c == ' ' || c == '{') {
+                imports.push(rest[..space_pos].trim().to_string());
+            }
+        }
+    }
+    imports
+}
+
+/// Resolve imports transitively from an entry source. Returns the minimal
+/// set of SourceFiles needed — each module loaded exactly once.
+fn resolve_imports_transitively(
+    entry_path: &str,
+    entry_content: &str,
+    index: &HashMap<String, std::path::PathBuf>,
+) -> Vec<Rc<SourceFile>> {
+    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
+
+    // Seed with the entry
+    queue.push((entry_path.to_string(), entry_content.to_string()));
+
+    while let Some((path, content)) = queue.pop() {
+        let imports = extract_imports(&content);
+        for module_path in imports {
+            if seen.contains_key(&module_path) {
+                continue; // already loaded — O(1) check
+            }
+            if let Some(file_path) = index.get(&module_path) {
+                if let Ok(file_content) = std::fs::read_to_string(file_path) {
+                    let rel_path = file_path
+                        .strip_prefix(workspace_root())
+                        .unwrap_or(file_path)
+                        .to_string_lossy()
+                        .to_string();
+                    let source = Rc::new(SourceFile {
+                        path: rel_path.clone(),
+                        content: file_content.clone(),
+                    });
+                    seen.insert(module_path.clone(), source);
+                    queue.push((rel_path, file_content));
+                }
+            }
+            // If not found in index, the compiler's resolve stage will
+            // report the unresolved import — no silent fallback.
+        }
+    }
+
+    // Return: dependencies first (they'll be sorted by resolve_modules anyway),
+    // then the entry source last.
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    sources.push(Rc::new(SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    }));
+    sources
+}
+
+// Lazily built module index — shared across all tests in a run.
+use std::sync::OnceLock;
+static MODULE_INDEX: OnceLock<HashMap<String, std::path::PathBuf>> = OnceLock::new();
+
+fn module_index() -> &'static HashMap<String, std::path::PathBuf> {
+    MODULE_INDEX.get_or_init(build_module_index)
+}
+
 // ── Full pipeline ────────────────────────────────────────────────────────
 
 pub fn compile_dag(source: &str) -> Rc<PipelineResult> {
@@ -86,10 +222,7 @@ pub fn compile_dag_named(
     source: &str,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
-    let sources = vec![Rc::new(SourceFile {
-        path: filename.to_string(),
-        content: source.to_string(),
-    })];
+    let sources = resolve_imports_transitively(filename, source, module_index());
     v2_compiler::v2_compiler_compile::compile_sources(sources, target)
 }
 
@@ -98,29 +231,17 @@ pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
 }
 
 pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<PipelineResult> {
-    let sources: Vec<Rc<SourceFile>> = files
-        .iter()
-        .map(|(path, content)| {
-            Rc::new(SourceFile {
-                path: path.to_string(),
-                content: content.to_string(),
-            })
-        })
-        .collect();
+    // For multi-file compilations, resolve imports from all entry files.
+    let index = module_index();
+    let mut all_sources: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    for (path, content) in files {
+        let resolved = resolve_imports_transitively(path, content, index);
+        for src in resolved {
+            all_sources.entry(src.path.clone()).or_insert(src);
+        }
+    }
+    let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
     v2_compiler::v2_compiler_compile::compile_sources(sources, target)
-}
-
-/// Compile with real std modules (algebra.dag, types.dag) so types resolve
-/// through .dag declarations instead of the kernel seed's bare leaves.
-/// Use for tests that exercise structural method resolution (Tier 0).
-pub fn compile_with_std(source: &str) -> Rc<PipelineResult> {
-    let algebra = read_v2_file("dsl/std/algebra.dag");
-    let types = read_v2_file("dsl/std/types.dag");
-    compile_multi(&[
-        ("dsl/std/algebra.dag", &algebra),
-        ("dsl/std/types.dag", &types),
-        ("test.dag", source),
-    ])
 }
 
 // ── Result inspection ────────────────────────────────────────────────────

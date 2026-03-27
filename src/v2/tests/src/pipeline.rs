@@ -1212,7 +1212,7 @@ fn has_key(m: Map<String, Int>) -> Bool { m |> has("key") }
 fn all_keys(m: Map<String, Int>) -> List<String> { m |> keys }
 fn all_vals(m: Map<String, Int>) -> List<Int> { m |> values }
 "#;
-    let result = compile_with_std(user);
+    let result = compile_dag(user);
     let msgs = diagnostic_messages(&result);
     assert!(
         msgs.is_empty(),
