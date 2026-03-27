@@ -16,7 +16,8 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
-  leaf_node, no_span, node_has_structure
+  leaf_node, no_span, node_has_structure,
+  field_access_base, method_receiver
 }
 import v2.compiler.infer_types {
   emit_map_has

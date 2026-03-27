@@ -17,7 +17,12 @@ import v2.std.core {
   ExprData, NoExprData, ExprError,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn,
-  arg_value, arm_body
+  arg_value, arm_body,
+  field_access_base,
+  if_condition, if_then_branch, if_else_branch,
+  let_value, let_body,
+  match_scrutinee, match_arm_nodes,
+  method_receiver, method_arg_nodes
 }
 
 // =========================================================================

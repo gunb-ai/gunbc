@@ -28,7 +28,13 @@ import v2.std.core {
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
-  RuntimeBridgeMethod, BridgeReverse
+  RuntimeBridgeMethod, BridgeReverse,
+  binop_left, binop_right,
+  foreach_collection, foreach_body,
+  if_condition, if_then_branch, if_else_branch,
+  let_value, let_body,
+  match_scrutinee, match_arm_nodes,
+  method_receiver, method_arg_nodes
 }
 
 // =========================================================================

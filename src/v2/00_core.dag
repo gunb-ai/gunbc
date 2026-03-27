@@ -617,7 +617,7 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 
 // Required child at position. Returns error node if missing.
 fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
-  match texpr.children |> drop(index) |> first {
+  match texpr.children |> skip(index) |> first {
     Some { value: v } => v
     None => make_expr_error_node(kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
   }
@@ -665,11 +665,11 @@ fn field_init_node_value(n: Node) -> Node {
 // -- ExprIf --
 fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
 fn if_then_branch(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
-fn if_else_branch(texpr: Node) -> Node? { texpr.children |> drop(2) |> first }
+fn if_else_branch(texpr: Node) -> Node? { texpr.children |> skip(2) |> first }
 
 // -- ExprMatch --
 fn match_scrutinee(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
-fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> drop(1) }
+fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 
 // -- ExprBinOp --
 fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
@@ -683,7 +683,7 @@ fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0
 
 // -- ExprMethodCall --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
-fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> drop(1) }
+fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 
 // -- ExprCall --
 fn call_arg_nodes(texpr: Node) -> List<Node> { texpr.children }
@@ -693,7 +693,7 @@ fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role
 
 // -- ExprLet --
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
-fn let_body(texpr: Node) -> Node? { texpr.children |> drop(1) |> first }
+fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
 
 // -- ExprCast --
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
