@@ -2784,6 +2784,51 @@ types themselves (Bit → compositions → types). When types compose from
 the fundamental unit and `.inferred` carries that composition, the
 compiler processes structure end-to-end.
 
+### Phase 5 Parallel: Fan-Out Preservation (Rendering Correctness)
+
+**Motivation:** The .dag language is pure-functional with lexical scope.
+Every property needed for optimal target-language rendering is already
+expressed by the source. The compiler must not lose these facts during
+rendering. See INVARIANTS.md "Facts Flow Forward" for the full pattern.
+
+**The governing fact:** binding fan-out. In a pure-functional language,
+a binding's fan-out (number of consumers) is a syntactic property —
+count the name references in its scope. The rendering contract:
+
+- Fan-out = 0 → dead code, don't emit
+- Fan-out = 1 → move (target-language ownership transfer)
+- Fan-out > 1 → duplicate at the fork point
+
+The rendering transformation must be **use-count-preserving**: each
+.dag consumption maps to exactly one target-language move. Rendering-
+introduced references (field access, auto-deref) are borrows, not moves.
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| FO-1 | Fold accumulator fan-out fix | **Done (2026-03-26)** | Skip Rc clone for fold accums with use-count ≤ 1. 3.2x speedup (1373s → 431s). |
+| FO-2 | Kahn cycle detection O(V+E) | **Done (2026-03-26)** | Indexed in-degree + reverse adjacency + queue drain. Replaces O(n²×d) filter scan. |
+| FO-3 | v1 emitter rendering audit | Open | ~50 sites where rendering introduces non-preserving Rust references. One bug (transformation isn't preserving), not 50 bugs. |
+| FO-4 | v2 emitter fan-out fact | Open | Compute `binding_fan_out` during or after inference. Single pass: count name references per binding in body. Emit rule: fan-out=1 → owned T (move), fan-out>1 → Rc<T> at binding site + clone at uses. |
+| FO-5 | Fan-out preservation ratchet | Blocked on FO-3 | Count `.clone()` in stage0 where source binding has fan-out=1. Target: 0. Self-compile time ratchet. |
+
+**FO-4 design (v2 emitter):** The v2 emitter (`05_emit_rust.dag`)
+currently inherits whatever rendering the v1 emitter produced in stage0.
+When the v2 compiler self-hosts, the v2 emitter needs fan-out as a
+first-class fact:
+
+1. Compute fan-out per binding in a single AST pass (count name
+   occurrences in the binding's scope, with branch-max for exclusive
+   arms and weight-2 for loop bodies).
+2. Attach as a structural property on let-bindings and function params.
+3. Emission reads the fact: fan-out=1 → emit bare `T`, fan-out>1 →
+   emit `Rc<T>` at binding site, `.clone()` at non-final uses.
+4. Fold accumulators: fan-out is always 1 by construction (the fold
+   contract guarantees linearity).
+
+This is the v1 retirement path for rendering: once the v2 emitter
+implements fan-out natively, the v1 emitter's Rc-wrapping decisions
+are no longer needed.
+
 ### Beyond Phase 5: Bit-Graph Model
 
 The full algebraic vision — machine primitives grounded in
