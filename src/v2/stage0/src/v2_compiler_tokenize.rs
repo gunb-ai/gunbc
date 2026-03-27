@@ -136,9 +136,141 @@ pub struct ScanResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceRef {
     pub text: String,
+    pub char_starts: Option<Vec<usize>>,
 }
 
-fn char_at_ref(s: &str, pos: i64) -> String {
+fn char_at_ref(source: &SourceRef, pos: i64) -> String {
+    let pos = pos.max(0) as usize;
+    if source.char_starts.is_none() {
+        let bytes = source.text.as_bytes();
+        if pos >= bytes.len() {
+            return String::new();
+        }
+        return String::from(bytes[pos] as char);
+    }
+    let char_starts = source.char_starts.as_ref().unwrap();
+    if pos >= char_starts.len() {
+        return String::new();
+    }
+    let start = char_starts[pos];
+    let end = char_starts
+        .get(pos + 1)
+        .copied()
+        .unwrap_or(source.text.len());
+    source.text[start..end].to_string()
+}
+
+fn string_length_ref(source: &SourceRef) -> i64 {
+    if let Some(char_starts) = &source.char_starts {
+        char_starts.len() as i64
+    } else {
+        source.text.len() as i64
+    }
+}
+
+fn substring_ref(source: &SourceRef, start: i64, end: i64) -> String {
+    let start = start.max(0) as usize;
+    let end = end.max(0) as usize;
+    if end <= start {
+        return String::new();
+    }
+    if source.char_starts.is_none() {
+        let len = source.text.len();
+        if start >= len {
+            return String::new();
+        }
+        return source.text[start..end.min(len)].to_string();
+    }
+    let char_starts = source.char_starts.as_ref().unwrap();
+    if start >= char_starts.len() {
+        return String::new();
+    }
+    let start_byte = char_starts[start];
+    let end_byte = if end >= char_starts.len() {
+        source.text.len()
+    } else {
+        char_starts[end]
+    };
+    source.text[start_byte..end_byte].to_string()
+}
+
+fn scan_while_ref(source: &SourceRef, start: i64, pred: impl Fn(String) -> bool) -> i64 {
+    let start = start.max(0) as usize;
+    if source.char_starts.is_none() {
+        let bytes = source.text.as_bytes();
+        let mut pos = start.min(bytes.len());
+        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
+            pos += 1;
+        }
+        return pos as i64;
+    }
+    let char_starts = source.char_starts.as_ref().unwrap();
+    let char_len = char_starts.len();
+    let start = start.min(char_len);
+    let start_byte = char_starts.get(start).copied().unwrap_or(source.text.len());
+    let mut pos = start;
+    for ch in source.text[start_byte..].chars() {
+        if pred(ch.to_string()) {
+            pos += 1;
+        } else {
+            break;
+        }
+    }
+    pos as i64
+}
+
+fn skip_horizontal_ws_ref(source: &SourceRef, start: i64) -> i64 {
+    let start = start.max(0) as usize;
+    if source.char_starts.is_none() {
+        let bytes = source.text.as_bytes();
+        let mut pos = start.min(bytes.len());
+        while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') {
+            pos += 1;
+        }
+        return pos as i64;
+    }
+    let char_starts = source.char_starts.as_ref().unwrap();
+    let char_len = char_starts.len();
+    let start = start.min(char_len);
+    let start_byte = char_starts.get(start).copied().unwrap_or(source.text.len());
+    let mut pos = start;
+    for ch in source.text[start_byte..].chars() {
+        if ch == ' ' || ch == '\t' {
+            pos += 1;
+        } else {
+            break;
+        }
+    }
+    pos as i64
+}
+
+fn scan_to_eol_ref(source: &SourceRef, start: i64) -> i64 {
+    let start = start.max(0) as usize;
+    if source.char_starts.is_none() {
+        let bytes = source.text.as_bytes();
+        let start = start.min(bytes.len());
+        for (offset, byte) in bytes[start..].iter().enumerate() {
+            if *byte == b'\n' {
+                return (start + offset) as i64;
+            }
+        }
+        return bytes.len() as i64;
+    }
+    let char_starts = source.char_starts.as_ref().unwrap();
+    let char_len = char_starts.len();
+    let start = start.min(char_len);
+    let start_byte = char_starts.get(start).copied().unwrap_or(source.text.len());
+    let mut pos = start;
+    for ch in source.text[start_byte..].chars() {
+        if ch == '\n' {
+            return pos as i64;
+        }
+        pos += 1;
+    }
+    pos as i64
+}
+
+fn char_at_text_ref(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();
@@ -153,101 +285,12 @@ fn char_at_ref(s: &str, pos: i64) -> String {
         .unwrap_or_default()
 }
 
-fn string_length_ref(s: &str) -> i64 {
+fn string_length_text_ref(s: &str) -> i64 {
     if s.is_ascii() {
         s.len() as i64
     } else {
         s.chars().count() as i64
     }
-}
-
-fn substring_ref(s: &str, start: i64, end: i64) -> String {
-    let start = start.max(0) as usize;
-    let end = end.max(0) as usize;
-    if end <= start {
-        return String::new();
-    }
-    if s.is_ascii() {
-        let len = s.len();
-        if start >= len {
-            return String::new();
-        }
-        return s[start..end.min(len)].to_string();
-    }
-    s.chars()
-        .skip(start)
-        .take(end.saturating_sub(start))
-        .collect()
-}
-
-fn scan_while_ref(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
-    let start = start.max(0) as usize;
-    if s.is_ascii() {
-        let bytes = s.as_bytes();
-        let mut pos = start.min(bytes.len());
-        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
-            pos += 1;
-        }
-        return pos as i64;
-    }
-    let char_len = s.chars().count();
-    let start = start.min(char_len);
-    let mut pos = start;
-    for ch in s.chars().skip(start) {
-        if pred(ch.to_string()) {
-            pos += 1;
-        } else {
-            break;
-        }
-    }
-    pos as i64
-}
-
-fn skip_horizontal_ws_ref(s: &str, start: i64) -> i64 {
-    let start = start.max(0) as usize;
-    if s.is_ascii() {
-        let bytes = s.as_bytes();
-        let mut pos = start.min(bytes.len());
-        while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') {
-            pos += 1;
-        }
-        return pos as i64;
-    }
-    let char_len = s.chars().count();
-    let start = start.min(char_len);
-    let mut pos = start;
-    for ch in s.chars().skip(start) {
-        if ch == ' ' || ch == '\t' {
-            pos += 1;
-        } else {
-            break;
-        }
-    }
-    pos as i64
-}
-
-fn scan_to_eol_ref(s: &str, start: i64) -> i64 {
-    let start = start.max(0) as usize;
-    if s.is_ascii() {
-        let bytes = s.as_bytes();
-        let start = start.min(bytes.len());
-        for (offset, byte) in bytes[start..].iter().enumerate() {
-            if *byte == b'\n' {
-                return (start + offset) as i64;
-            }
-        }
-        return bytes.len() as i64;
-    }
-    let char_len = s.chars().count();
-    let start = start.min(char_len);
-    let mut pos = start;
-    for ch in s.chars().skip(start) {
-        if ch == '\n' {
-            return pos as i64;
-        }
-        pos += 1;
-    }
-    pos as i64
 }
 
 pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
@@ -260,8 +303,14 @@ pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<T
 
 pub fn tokenize(source: String) -> Vec<Rc<Token>> {
     {
+        let char_starts = if source.is_ascii() {
+            None
+        } else {
+            Some(source.char_indices().map(|(idx, _)| idx).collect())
+        };
         let src = Rc::new(SourceRef {
     text: source.clone(),
+    char_starts: char_starts.clone(),
 });
 let initial = Rc::new(TokPos {
     pos: 0,
@@ -277,7 +326,6 @@ v2_rt::list_push(final_state.tokens.clone(), make_token("".to_string(), eof_span
 }
 
 pub fn tokenize_loop(source: Rc<SourceRef>, tokens: Vec<Rc<Token>>, pos: Rc<TokPos>) -> Rc<TokenizerState> {
-    let text = source.text.as_str();
     let mut tokens = tokens;
     let mut pos_value = pos.pos;
     let mut interp_depth = pos.interp_depth.clone();
@@ -291,7 +339,7 @@ pub fn tokenize_loop(source: Rc<SourceRef>, tokens: Vec<Rc<Token>>, pos: Rc<TokP
             }),
         );
 
-        if s.pos >= string_length_ref(text) {
+        if s.pos >= string_length_ref(source.as_ref()) {
             return Rc::new(TokenizerState {
                 pos: s.pos,
                 tokens,
@@ -299,7 +347,7 @@ pub fn tokenize_loop(source: Rc<SourceRef>, tokens: Vec<Rc<Token>>, pos: Rc<TokP
             });
         }
 
-        let ch = char_at_ref(text, s.pos);
+        let ch = char_at_ref(source.as_ref(), s.pos);
         if ch == "\n".to_string() {
             tokens.push(make_token(
                 "\n".to_string(),
@@ -368,8 +416,8 @@ if is_digit(ch.clone()) {
 if is_ident_start(ch.clone()) {
             return scan_ident(source.clone(), pos.clone())
 }
-let next_ch = if ((pos.pos.clone() + 1) < v2_rt::string_length(source.text.clone())) {
-            v2_rt::char_at(source.text.clone(), (pos.pos.clone() + 1))
+let next_ch = if ((pos.pos.clone() + 1) < string_length_ref(source.as_ref())) {
+            char_at_ref(source.as_ref(), (pos.pos.clone() + 1))
 } else {
             "".to_string()
 };
@@ -481,8 +529,8 @@ Rc::new(ScanResult {
 
 pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let end = scan_while_ref(source.text.as_str(), pos.pos.clone(), is_ident_char);
-let text = substring_ref(source.text.as_str(), pos.pos.clone(), end.clone());
+        let end = scan_while_ref(source.as_ref(), pos.pos.clone(), is_ident_char);
+let text = substring_ref(source.as_ref(), pos.pos.clone(), end.clone());
 let shape = match v2_rt::lookup(&KEYWORDS, text.clone()) {
     Some(sh) => sh.clone(),
     None => TokenShape::ShIdent,
@@ -501,12 +549,11 @@ Rc::new(ScanResult {
 
 pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let text = source.text.as_str();
-let int_end = scan_while_ref(text, pos.pos.clone(), is_digit);
-if ((((int_end.clone() + 1) < string_length_ref(text)) && (char_at_ref(text, int_end.clone()) == ".".to_string())) && is_digit(char_at_ref(text, (int_end.clone() + 1)))) {
+        let int_end = scan_while_ref(source.as_ref(), pos.pos.clone(), is_digit);
+if ((((int_end.clone() + 1) < string_length_ref(source.as_ref())) && (char_at_ref(source.as_ref(), int_end.clone()) == ".".to_string())) && is_digit(char_at_ref(source.as_ref(), (int_end.clone() + 1)))) {
             {
-                let frac_end = scan_while_ref(text, (int_end.clone() + 1), is_digit);
-let number_text = substring_ref(text, pos.pos.clone(), frac_end.clone());
+                let frac_end = scan_while_ref(source.as_ref(), (int_end.clone() + 1), is_digit);
+let number_text = substring_ref(source.as_ref(), pos.pos.clone(), frac_end.clone());
 let token = make_token(number_text.clone(), Rc::new(SourceSpan {
     start: pos.pos.clone(),
     end: frac_end.clone(),
@@ -518,7 +565,7 @@ return Rc::new(ScanResult {
 })
 }
 }
-let text = substring_ref(text, pos.pos.clone(), int_end.clone());
+let text = substring_ref(source.as_ref(), pos.pos.clone(), int_end.clone());
 let parsed = v2_rt::parse_int(text.clone());
 let shape = match parsed.clone() {
     Some(_) => TokenShape::ShLitInt,
@@ -659,15 +706,14 @@ Rc::new(ScanResult {
 }
 
 pub fn scan_string_body(mut source: Rc<SourceRef>, mut pos: i64, mut acc: Vec<String>) -> Rc<StringScanResult> {
-    let text = source.text.as_str();
     loop {
-        if (pos.clone() >= string_length_ref(text)) {
+        if (pos.clone() >= string_length_ref(source.as_ref())) {
             break Rc::new(StringScanResult::UnterminatedString {
     content: acc.join(&"".to_string()),
     end_pos: pos.clone(),
 });
 } else {
-            let ch = char_at_ref(text, pos.clone());
+            let ch = char_at_ref(source.as_ref(), pos.clone());
 if (ch.clone() == "\"".to_string()) {
                 break Rc::new(StringScanResult::ClosedString {
     content: acc.join(&"".to_string()),
@@ -675,8 +721,8 @@ if (ch.clone() == "\"".to_string()) {
 });
 } else {
                 if (ch.clone() == "\\".to_string()) {
-                    if ((pos.clone() + 1) < string_length_ref(text)) {
-                        let escaped = char_at_ref(text, (pos.clone() + 1));
+                    if ((pos.clone() + 1) < string_length_ref(source.as_ref())) {
+                        let escaped = char_at_ref(source.as_ref(), (pos.clone() + 1));
                         acc.push("\\".to_string());
                         acc.push(escaped);
                         pos += 2;
@@ -714,12 +760,11 @@ if (ch.clone() == "\"".to_string()) {
 }
 
 pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
-    let text = source.text.as_str();
-    if ((pos.clone() + 1) >= string_length_ref(text)) {
+    if ((pos.clone() + 1) >= string_length_ref(source.as_ref())) {
         false
 } else {
         {
-            let next = char_at_ref(text, (pos.clone() + 1));
+            let next = char_at_ref(source.as_ref(), (pos.clone() + 1));
 (((is_ident_start(next.clone()) || (next.clone() == "(".to_string())) || (next.clone() == "!".to_string())) || (next.clone() == "-".to_string()))
 }
 }
@@ -732,12 +777,12 @@ pub fn process_escapes(raw: String) -> String {
 pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Vec<String>) -> String {
     let text = source.as_str();
     loop {
-        if (pos.clone() >= string_length_ref(text)) {
+        if (pos.clone() >= string_length_text_ref(text)) {
             break acc.join(&"".to_string());
 } else {
-            let ch = char_at_ref(text, pos.clone());
-if ((ch.clone() == "\\".to_string()) && ((pos.clone() + 1) < string_length_ref(text))) {
-                let next = char_at_ref(text, (pos.clone() + 1));
+            let ch = char_at_text_ref(text, pos.clone());
+if ((ch.clone() == "\\".to_string()) && ((pos.clone() + 1) < string_length_text_ref(text))) {
+                let next = char_at_text_ref(text, (pos.clone() + 1));
 let resolved = if (next.clone() == "\"".to_string()) {
                     "\"".to_string()
 } else {
@@ -785,19 +830,18 @@ pub fn replace_last(stack: Vec<i64>, value: i64) -> Vec<i64> {
 }
 
 pub fn skip_spaces_and_comments(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
-    let text = source.text.as_str();
-    let len = string_length_ref(text);
+    let len = string_length_ref(source.as_ref());
     let mut p = pos.pos;
     loop {
-        p = skip_horizontal_ws_ref(text, p);
+        p = skip_horizontal_ws_ref(source.as_ref(), p);
         if p + 1 >= len {
             return Rc::new(TokPos {
                 pos: p,
                 interp_depth: pos.interp_depth.clone(),
             });
         }
-        if char_at_ref(text, p) == "/".to_string() && char_at_ref(text, p + 1) == "/".to_string() {
-            p = scan_to_eol_ref(text, p);
+        if char_at_ref(source.as_ref(), p) == "/".to_string() && char_at_ref(source.as_ref(), p + 1) == "/".to_string() {
+            p = scan_to_eol_ref(source.as_ref(), p);
             continue;
         }
         return Rc::new(TokPos {
