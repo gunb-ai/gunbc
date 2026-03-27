@@ -63,7 +63,10 @@ BattleResult = Union[BattleResultVictory, BattleResultDefeat, BattleResultFled]
 def calc_damage(attacker: Stats, defender: Stats, skill_power: int) -> int:
     raw = (attacker.attack * skill_power)
     reduced = (raw - (defender.defense * 2))
-    return (1) if ((reduced < 1)) else (reduced)
+    if (reduced < 1):
+        return 1
+    else:
+        return reduced
 
 
 def is_alive(member: PartyMember) -> bool:
@@ -86,7 +89,13 @@ def survival_chance(member: PartyMember) -> int:
     hp_ratio = ((member.stats.hp * 100) // member.stats.max_hp)
     defense_bonus = (member.stats.defense * 2)
     raw = (hp_ratio + defense_bonus)
-    return (100) if ((raw > 100)) else ((0) if ((raw < 0)) else (raw))
+    if (raw > 100):
+        return 100
+    else:
+        if (raw < 0):
+            return 0
+        else:
+            return raw
 
 
 def expected_total_damage(damage_per_round: int, rounds: int) -> int:
@@ -112,10 +121,10 @@ def level_up(member: PartyMember) -> PartyMember:
 
 
 def describe_result(result: BattleResult) -> str:
-    return match result:
+    match result:
         case Victory(xp_gained=xp):
-            "Victory! Gained " + xp
+            return "Victory! Gained " + xp
         case Defeat():
-            "The party was wiped out..."
+            return "The party was wiped out..."
         case Fled():
-            "Ran away successfully!"
+            return "Ran away successfully!"

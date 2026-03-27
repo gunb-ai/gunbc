@@ -497,11 +497,44 @@ fn emit_py_fn_body(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
           concat(let_line, "\n", emit_py_fn_body(texpr: bd, registry: registry, scope: next_scope, depth: depth))
         None => let_line
       }
+    ExprMatch =>
+      // Python match is a statement, not an expression -- each arm gets its own `return`.
+      let s = match_scrutinee(texpr: texpr)
+      let arm_list = match_arm_nodes(texpr: texpr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let scrut_str = emit_py_typed_expr(texpr: s, registry: registry, scope: scope, depth: depth)
+      let arm_strs = arm_list |> map(arm => emit_py_fn_body_match_arm(arm: arm, registry: registry, scope: scope, depth: depth))
+      let arms_str = arm_strs |> join(separator: "\n")
+      concat(make_indent(level: depth), "match ", scrut_str, ":\n", arms_str)
+    ExprIf =>
+      // Multi-line if/elif at tail position -- each branch gets `return`.
+      let c = if_condition(texpr: texpr)
+      let t = if_then_branch(texpr: texpr)
+      let e = if_else_branch(texpr: texpr)
+      let cond_str = emit_py_typed_expr(texpr: c, registry: registry, scope: scope, depth: depth)
+      let then_str = emit_py_fn_body(texpr: t, registry: registry, scope: scope, depth: depth + 1)
+      match e {
+        Some { value: eb } =>
+          let else_str = emit_py_fn_body(texpr: eb, registry: registry, scope: scope, depth: depth + 1)
+          concat(make_indent(level: depth), "if ", cond_str, ":\n", then_str, "\n",
+            make_indent(level: depth), "else:\n", else_str)
+        None =>
+          concat(make_indent(level: depth), "if ", cond_str, ":\n", then_str)
+      }
     _ =>
       let expr_str = emit_py_typed_expr(texpr: texpr, registry: registry, scope: scope, depth: depth)
       concat(make_indent(level: depth), "return ", expr_str)
   }
 }
+
+// Emit a match arm where the body is in return position.
+fn emit_py_fn_body_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let pat_str = emit_py_pattern(pattern: arm.pattern)
+  let guard_str = match arm.guard {
+    Some { value: g } => concat(" if ", emit_py_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth))
+    None => ""
+  }
+  let body_str = emit_py_fn_body(texpr: arm.body, registry: registry, scope: scope, depth: depth + 2)
+  concat(make_indent(level: depth + 1), "case ", pat_str, guard_str, ":\n", body_str)
 
 // Emit a list of block statements: let-bindings become assignments, the last gets `return`.
 fn emit_py_fn_body_stmts(stmts: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {

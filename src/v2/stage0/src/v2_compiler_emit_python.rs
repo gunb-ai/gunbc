@@ -522,11 +522,69 @@ let bd = texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_
             None => let_line,
         }
     },
+    ExprData::ExprMatch => {
+        // Python match is a statement -- each arm gets its own `return`.
+        let s = match texpr.children.clone().first().cloned() {
+            Some(val) => val.clone(),
+            None => texpr.clone(),
+        };
+        let arm_nodes: Vec<Rc<Node>> = texpr.children.clone().iter().cloned().skip(1 as usize).collect();
+        let arm_list: Vec<Rc<MatchArm>> = arm_nodes.iter().map(|a| Rc::new(MatchArm {
+            pattern: arm_pattern(a.clone()),
+            guard: arm_guard(a.clone()),
+            body: arm_body(a.clone()),
+        })).collect();
+        let scrut_str = emit_py_typed_expr(s.clone(), registry.clone(), scope.clone(), depth.clone());
+        let arm_strs: Vec<String> = arm_list.iter().map(|arm| {
+            emit_py_fn_body_match_arm(arm.clone(), registry.clone(), scope.clone(), depth.clone())
+        }).collect();
+        let arms_str = arm_strs.join("\n");
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+            make_indent(depth.clone()), "match ".to_string()), scrut_str), ":\n".to_string()), arms_str)
+    },
+    ExprData::ExprIf => {
+        // Multi-line if/elif at tail position -- each branch gets `return`.
+        let c = match texpr.children.clone().first().cloned() {
+            Some(val) => val.clone(),
+            None => texpr.clone(),
+        };
+        let t = match texpr.children.clone().get(1).cloned() {
+            Some(val) => val.clone(),
+            None => texpr.clone(),
+        };
+        let e: Option<Rc<Node>> = texpr.children.clone().get(2).cloned();
+        let cond_str = emit_py_typed_expr(c.clone(), registry.clone(), scope.clone(), depth.clone());
+        let then_str = emit_py_fn_body(t.clone(), registry.clone(), scope.clone(), depth.clone() + 1);
+        match e {
+            Some(eb) => {
+                let else_str = emit_py_fn_body(eb.clone(), registry.clone(), scope.clone(), depth.clone() + 1);
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+                    make_indent(depth.clone()), "if ".to_string()), cond_str), ":\n".to_string()), then_str), "\n".to_string()),
+                    v2_rt::concat(make_indent(depth.clone()), "else:\n".to_string())), else_str)
+            },
+            None => {
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+                    make_indent(depth.clone()), "if ".to_string()), cond_str), ":\n".to_string()), then_str)
+            },
+        }
+    },
     _ => {
         let expr_str = emit_py_typed_expr(texpr.clone(), registry.clone(), scope.clone(), depth.clone());
         v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), "return ".to_string()), expr_str)
     },
 }
+}
+
+// Emit a match arm where the body is in return position.
+fn emit_py_fn_body_match_arm(arm: Rc<MatchArm>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+    let pat_str = emit_py_pattern(arm.pattern.clone());
+    let guard_str = match arm.guard.clone() {
+        Some(g) => v2_rt::concat(" if ".to_string(), emit_py_typed_expr(g.clone(), registry.clone(), scope.clone(), depth.clone())),
+        None => "".to_string(),
+    };
+    let body_str = emit_py_fn_body(arm.body.clone(), registry.clone(), scope.clone(), depth.clone() + 2);
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+        make_indent(depth.clone() + 1), "case ".to_string()), pat_str), guard_str), ":\n".to_string()), body_str)
 }
 
 // Emit a list of block statements: let-bindings become assignments, the last statement gets `return`.
