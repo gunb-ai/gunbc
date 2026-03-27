@@ -1057,7 +1057,7 @@ fn emit_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
 }
 
 fn emit_rust_param_type(n: Node, rc_types: Map<String, Bool>) -> String {
-  if n.name == "Callable" && n.params |> count > 0 {
+  if n.params |> count > 0 {
     let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {

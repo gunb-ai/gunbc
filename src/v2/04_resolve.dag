@@ -396,7 +396,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n_is_error || n.name == "Callable" {
+          let n_is_callable = n.params |> count > 0
+          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {

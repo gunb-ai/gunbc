@@ -1726,10 +1726,7 @@ pub fn emit_params(params: Rc<Vec<Rc<Param>>>, rc_types: Rc<HashMap<String, bool
 }
 
 pub fn emit_rust_param_type(n: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> String {
-    if (n.name.clone() == "Callable") && (({
-    let __len_5 = n.params.clone().len();
-    __len_5 as i64
-}) > 0_i64) {
+    if !n.params.is_empty() {
     let param_types = {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in n.params.iter().cloned() {

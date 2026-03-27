@@ -236,6 +236,10 @@ type BooleanAlgebra<T> {
 type FreeMonoid<T> {
   concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
   empty: FreeMonoid<T>
+  // Positional access — falls out of the carrier being Fin(n) → T
+  index: fn(Int) -> T
+  slice: fn(Int, Int) -> FreeMonoid<T>
+  length: fn() -> Int
 }
 
 // PartialFunction<K, V>: finite partial function (Map algebra).

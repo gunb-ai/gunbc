@@ -779,8 +779,8 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
       return concat("__EMIT_BUG_UNRESOLVED_", sentinel_label, "__")
     }
   }
-  // Callable: function type rendering
-  if n.name == "Callable" && n.params |> count > 0 {
+  // Callable: function type rendering (structural — has params)
+  if n.params |> count > 0 {
     let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {

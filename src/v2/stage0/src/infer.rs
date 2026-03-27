@@ -1373,7 +1373,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
         leaf_node("Dynamic")
     }
 };
-    let is_callable_formal = formal_param_type.name.clone() == "Callable";
+    let is_callable_formal = !formal_param_type.params.is_empty();
     if is_lambda_expr(a.value.clone()) && is_callable_formal.clone() {
     infer_lambda_with_callable_type(a.value.clone(), formal_param_type.clone(), a.name.clone(), scope.clone())
 } else {
@@ -1490,7 +1490,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
 } else {
     let callable_local = match scope.locals.clone().get(&func_name.clone()).cloned() {
     Some(binding) => {
-        if binding.resolved.name.clone() == "Callable" {
+        if !binding.resolved.params.is_empty() {
     Some(binding.resolved.clone())
 } else {
     None

@@ -70,7 +70,7 @@ pub fn callable_node(func_params: Rc<Vec<Rc<Param>>>, ret: Rc<Node>) -> Rc<Node>
 }
 
 pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
-    if n.name.clone() == "Callable" {
+    if !n.params.is_empty() {
     match n.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ret, .. }) => {
         ret.clone()
@@ -451,7 +451,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     false
 }
 } else {
-    if (left.name.clone() == "Callable") && (right.name.clone() == "Callable") {
+    if !left.params.is_empty() && !right.params.is_empty() {
     if ({
     let __len_14 = left.params.clone().len();
     __len_14 as i64

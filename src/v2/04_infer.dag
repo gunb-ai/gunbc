@@ -1055,7 +1055,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             Some { value: p } => p.type_expr
             None => leaf_node(name: "Dynamic")
           }
-          let is_callable_formal = formal_param_type.name == "Callable"
+          let is_callable_formal = formal_param_type.params |> count > 0
           if is_lambda_expr(e: a.value) && is_callable_formal {
             infer_lambda_with_callable_type(lambda_expr: a.value, callable_type: formal_param_type, arg_name: a.name, scope: scope)
           } else {
@@ -1167,7 +1167,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           // Tier 2c: callable-typed local (e.g. parameter `recurse: fn(Node) -> String`)
           let callable_local = match map_get(scope.locals, func_name) {
             Some { value: binding } =>
-              if binding.resolved.name == "Callable" { Some { value: binding.resolved } }
+              if binding.resolved.params |> count > 0 { Some { value: binding.resolved } }
               else { none }
             None => none
           }

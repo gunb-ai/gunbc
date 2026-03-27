@@ -1432,10 +1432,7 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
     v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), n.name.clone()), "__".to_string())
 };
 };
-        if (n.name.clone() == "Callable") && (({
-    let __len_6 = n.params.clone().len();
-    __len_6 as i64
-}) > 0_i64) {
+        if !n.params.is_empty() {
     let param_types = {
     let mut __mapped_1 = Vec::new();
     for __elem_2 in n.params.iter().cloned() {
