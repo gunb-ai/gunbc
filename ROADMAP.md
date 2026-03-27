@@ -2572,6 +2572,22 @@ match succeeds.
 - Each convergence step survives re-bootstrap and fixed-point verification
 - The compiler is in a clean place to start real L2 work
 
+### Phase 5 Milestones (2026-03-27)
+
+- **Diagnostic ratchet: 0.** The v2 compiler compiles its own .dag source
+  with zero type errors or warnings.
+- **Fixed-point: PASSES.** Stage0 → stage1 → stage2 converges. The v2
+  compiler can reproduce itself.
+- **Self-compile: 6.47s** (release mode). Down from ~20 minutes.
+  Breakdown: Tokenize 4.87s, Parse 78ms, Resolve 1ms, Reconcile 244ms,
+  Emit 1.27s.
+- **v1 retirement: structurally unblocked.** Fixed-point passing means
+  the v2 compiler can replace the v1 emitter for stage0 generation.
+  Remaining work: v2 emitter output compatibility with the workspace
+  (package name, dependencies, module naming). The v2 emitter generates
+  a standalone crate that works in isolation but isn't yet drop-in
+  compatible with the workspace's `v2-compiler` package structure.
+
 ### Phase 5 Parallel: Compositional Pipeline (Performance through Fact Composition)
 
 **Motivation:** The compiler works, but its pipeline has compensating
