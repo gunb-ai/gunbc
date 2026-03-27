@@ -45,29 +45,39 @@ consumers are visible in the syntax tree, named composition means the
 data-flow graph IS the program text. If the compiler needs to guess,
 a fact was lost.
 
-**The governing rule:** if a fact exists at one stage of the pipeline,
-every downstream stage that needs it reads the fact — it never
-recomputes it. If a downstream stage contains an analysis pass, a
-heuristic, or a conservative fallback, there is a missing fact
-upstream. Produce the fact upstream; don't improve the downstream
-heuristic.
+**The governing rule:** the rendering must preserve the cost model of
+the source language. Every guarantee the source provides — purity,
+immutability, lexical scope, structural composition — must be
+exploited in the rendering to maintain O(1) where the source says O(1).
+
+If the rendering assigns higher cost to an operation than the source
+intent, there is a guarantee being ignored. The fix is to exploit the
+guarantee, not to optimize the compensation.
+
+| .dag guarantee | What it means | Rendering should exploit | Conservative fallback |
+|---|---|---|---|
+| **Purity** | Values never mutated | Read = borrow, no copy | Read = clone (defensive) |
+| **Lexical scope** | Lifetime = scope | Move semantics, stack alloc | Rc heap allocation |
+| **Immutable strings** | Characters are views | `&str` slice (zero-copy) | `String` allocation (heap) |
+| **Structural composition** | Graphs have indexed structure | Indexed O(1) lookup | Linear scan |
 
 **Diagnosis:** when you encounter a performance issue or a compensating
-mechanism: (1) identify the fact being recomputed, (2) find where it
-was first available, (3) trace where it was lost, (4) fix the
-transformation to preserve the fact.
+mechanism: (1) identify the fact being recomputed or the guarantee
+being ignored, (2) find where it was first available, (3) trace where
+it was lost, (4) fix the rendering to exploit the guarantee.
 
 #### Known instances
 
 | # | Fact | Computed at | Lost during | Compensation | Cost | Status |
 |---|------|-------------|-------------|--------------|------|--------|
-| FF-1 | Binding fan-out (use-count) | .dag AST (lexical scope) | v1 emitter rendering to Rust | Rc-wrap all types, clone every use | Every fold O(n²). 20-min self-compile. | **Fold accumulators fixed (3x speedup).** Broader fix: ~50 use-count sites where rendering introduces non-preserving references. These are one bug (transformation isn't preserving), not 50 bugs. |
+| FF-1 | Binding fan-out (use-count) | .dag AST (lexical scope) | v1 emitter rendering to Rust | Rc-wrap all types, clone every use | Every fold O(n²). 20-min self-compile. | **FIXED.** Match-arm count bug (max→add) was root cause of ~50 false single-use classifications. Full fan-out model: clone only at fan-out > 1. Reconcile: 20min → 244ms. |
 | FF-2 | Resolved structural type | Infer (`.inferred`) | Bare name references at stage boundary | Emit re-resolves through TypeEnv | 12+ re-resolution sites | **FIXED** (C-series) |
 | FF-3 | Expression children | Parse (construction) | ExprData variant fields | 12 manual walks (~1800 lines) | Every analysis needs full ExprData match | **FIXED** (P5.11) |
 | FF-4 | Module dependency order | Resolve (topo sort) | `dep_order` field + re-sort | Extra field, unnecessary sort pass | Minor | **FIXED** (P5.2) |
-| FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **OPEN** |
+| FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **FIXED.** Indexed Kahn with in-degree map + reverse adjacency + queue drain. |
 | FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
 | FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
+| FF-8 | Value representation cost | .dag source (immutable strings) | v1 runtime `char_at` → `String` allocation | Heap-allocate per character read | Tokenize 4.87s (75% of pipeline) | **OPEN.** `char_at`, `scan_while`, `substring` allocate `String` for read-only character access. Source strings are immutable — character reads should be `&str` slices (zero-copy). Applies to all string-read operations in the runtime. |
 
 #### The fan-out fix (FF-1) in detail
 
@@ -85,19 +95,35 @@ introduced references (field access, auto-deref, method dispatch) are
 borrows, not moves. The emitter must not introduce move-sites that
 weren't in the source.
 
-Current state: fold accumulators are exempted from the Rc-clone
-override (the targeted fix). The full fix requires making the rendering
-transformation use-count-preserving at all sites, which means the ~50
-sites where the v1 emitter introduces non-preserving Rust references
-need to be audited and fixed. In the v2 emitter, fan-out is a
-structural fact on bindings from the start.
+**Status: FIXED (2026-03-26).** The full fan-out model is active.
+The match-arm use-count bug (`current.max(max_in_arms)` → `current +
+max_in_arms`) was the single root cause of ~50 false single-use
+classifications. With that fixed, the Rc-type clone overrides
+(`is_rc_named`, `is_rc_collection`, `assume_rc`) were removed.
+Clone decision is now purely fan-out + match-bound-var status.
+Reconcile: ~20 minutes → 244ms (release mode).
 
-#### Kahn cycle detection fix (FF-5) in detail
+#### Kahn cycle detection fix (FF-5)
 
-`kahn_remove_loop` in `04_cycle.dag` re-scans all remaining items
-each iteration to find ready items. Proper Kahn's algorithm: build
-indexed adjacency list + in-degree counter once, process ready items
-via queue, decrement neighbors' in-degree. O(V+E), single pass.
+**Status: FIXED (2026-03-26).** `04_cycle.dag` rewritten with indexed
+in-degree map + reverse adjacency + queue drain. O(V+E), single pass.
+
+#### Value representation cost (FF-8)
+
+The .dag language guarantees string immutability. Character reads
+should be zero-copy views into the source string, not heap allocations.
+The v1 runtime (`v2_rt.rs`) renders `char_at(s, pos)` as
+`String::from(bytes[pos] as char)` — heap allocation per character.
+The tokenizer calls this ~500K times → 500K heap allocations → 4.87s.
+
+The fix: `char_at` returns `&str` (slice into source) or `char`
+(stack value). `scan_while` predicates take `&str`/`char` instead of
+owned `String`. `substring` for read-only checks uses slices.
+
+This is the same principle as FF-1: the source says "read" (O(1), no
+allocation), the rendering says "create" (O(1) amortized, but 100x+
+constant factor from heap allocation). The rendering must distinguish
+reads from creates, just as it distinguishes single-use from multi-use.
 
 #### Ratchet
 
@@ -113,8 +139,10 @@ After all open instances are fixed:
    fan-out=1 binding is a violation. Target: 0 violations.
 
 3. **Performance ratchet.** Self-compile time is a ratchet value.
-   Regressions indicate a new lost-fact instance. Baseline: 431s
-   (test suite, 2026-03-26). Target: <60s pipeline, <2s per-module.
+   Regressions indicate a new lost-fact instance.
+   Release-mode baseline (2026-03-26): **6.47s total pipeline**
+   (Tokenize 4.87s, Parse 78ms, Resolve 1ms, Reconcile 244ms,
+   Emit 1.27s). Target: <2s total.
 
 ## Sustainability Invariants
 
