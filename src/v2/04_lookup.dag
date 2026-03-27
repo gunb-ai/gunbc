@@ -267,10 +267,19 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   // Tier 0: Structural field lookup on the resolved type.
   // If the receiver's type declaration has a field matching the method name
   // (e.g., OrderedRing<T>.add), use its signature directly.
+  // Populate semantics from Tier 2/3 classifiers so emit can still dispatch
+  // on method_semantics for target-specific rendering patterns.
   match lookup_structural_method(receiver_type: receiver_type, method_name: method_name) {
     Some { value: result_type } =>
+      let tier0_semantics = match classify_reconciled_intrinsic_method(method: method_name) {
+        Some { value: intrinsic } => Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } }
+        None => match classify_runtime_bridge_method(method: method_name) {
+          Some { value: bridge_method } => Some { value: RuntimeBridgeSemantics { method: bridge_method } }
+          None => none
+        }
+      }
       KnownMethodResolution {
-        semantics: none,
+        semantics: tier0_semantics,
         result_type: Some { value: result_type }
       }
     None =>
