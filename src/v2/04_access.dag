@@ -75,12 +75,15 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     let key_diags = if node_type_equals(left: key_node, right: index_type) { [] }
     else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
     access_result(inferred: with_optional_cardinality(n: val_node), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
-  } else if normed.collection_kind == MapKind {
-    let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
-    access_result(inferred: leaf_node(name: "Unit"), diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
   } else {
-    let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
-    access_result(inferred: leaf_node(name: "Unit"), diagnostics: diags, span: span, fallback_message: "invalid index access")
+    let is_map = normed.collection_kind == MapKind
+    if is_map {
+      let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
+      access_result(inferred: leaf_node(name: "Unit"), diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
+    } else {
+      let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
+      access_result(inferred: leaf_node(name: "Unit"), diagnostics: diags, span: span, fallback_message: "invalid index access")
+    }
   }
 }
 

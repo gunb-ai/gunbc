@@ -178,7 +178,8 @@ fn check_match_exhaustiveness(
   // Preserve Optional cardinality: lookup returns the type definition which
   // has Required cardinality, but the scrutinee may be T? (CardOptional).
   let scrut_is_optional = scrutinee_type.return_cardinality == CardOptional
-  let resolved_raw = if scrutinee_type.connective != NoConnective {
+  let has_structure = scrutinee_type.connective != NoConnective
+  let resolved_raw = if has_structure {
     scrutinee_type
   } else {
     match lookup_type(env: env, name: scrutinee_type.name) {
@@ -188,11 +189,13 @@ fn check_match_exhaustiveness(
   }
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
-  if resolved.connective == Disj || resolved.return_cardinality == CardOptional {
+  let is_coproduct = resolved.connective == Disj
+  let resolved_is_optional = resolved.return_cardinality == CardOptional
+  if is_coproduct || resolved_is_optional {
     // Optional is represented as [inner_type, None] — the first child
     // is the inner type, not a "Some" variant. Normalize to ["Some", "None"]
     // so patterns `Some { value: x } => ... None => ...` are recognized.
-    let variant_names = if resolved.return_cardinality == CardOptional {
+    let variant_names = if resolved_is_optional {
       ["Some", "None"]
     } else {
       resolved.children |> map(c => c.name)

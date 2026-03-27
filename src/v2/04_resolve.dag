@@ -126,8 +126,10 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 // True when the node has children (type args) and its name resolves to a
 // type declaration with params that's NOT a built-in parameterized type.
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
-  if n.connective != NoConnective { false }
-  else if n.collection_kind == MapKind { false }
+  let has_structure = n.connective != NoConnective
+  let is_map = n.collection_kind == MapKind
+  if has_structure { false }
+  else if is_map { false }
   else {
     let ck = n.collection_kind
     let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
@@ -193,15 +195,17 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   }
   // Normalize collection_kind: parser-produced nodes have collection_kind: none.
   // Derive from name so downstream structural checks (collection_kind == MapKind, etc.) work.
-  let n = if n.collection_kind == NoCollection {
+  let no_collection = n.collection_kind == NoCollection
+  let n = if no_collection {
     let ck = collection_kind_for_name(name: n.name)
-    match ck {
-      Some { value: _ } => Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: ck, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
-      None => n
-    }
+    let has_ck = ck != NoCollection
+    if has_ck { Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: ck, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+    } else { n }
   } else { n }
-  if n.connective != NoConnective {
-    if n.connective == Conj {
+  let has_structure = n.connective != NoConnective
+  if has_structure {
+    let is_product = n.connective == Conj
+    if is_product {
       if n.name == "Refined" {
         // Refined: recurse on first child (base type)
         match n.children |> first {
@@ -239,7 +243,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         }
       }
     } else {
-      if n.return_cardinality == CardOptional {
+      let is_optional = n.return_cardinality == CardOptional
+      if is_optional {
         let inner = with_required_cardinality(n: n)
         let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1)
         let inner_resolved = inner_result.resolved
@@ -320,27 +325,29 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       diagnostics: concat(arity_diags, arg_diags)
     }
     result
-  } else if n.collection_kind == MapKind {
-    // Map: recurse on both key and value children
-    let key_child = match n.children |> first {
-      Some { value: k } => k
-      None => leaf_node(name: "String")
-    }
-    let val_child = match skip(n.children, 1) |> first {
-      Some { value: v } => v
-      None => leaf_node(name: "Unit")
-    }
-    let key_result = resolve_node_bounded(n: key_child, env: env, module_name: module_name, depth: depth + 1)
-    let key_resolved = key_result.resolved
-    let key_diags = key_result.diagnostics
-    let val_result = resolve_node_bounded(n: val_child, env: env, module_name: module_name, depth: depth + 1)
-    let val_resolved = val_result.resolved
-    let val_diags = val_result.diagnostics
-    NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: [key_resolved, val_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-      diagnostics: concat(key_diags, val_diags)
-    }
-  } else if n.children |> count == 1 {
+  } else {
+    let is_map = n.collection_kind == MapKind
+    if is_map {
+      // Map: recurse on both key and value children
+      let key_child = match n.children |> first {
+        Some { value: k } => k
+        None => leaf_node(name: "String")
+      }
+      let val_child = match skip(n.children, 1) |> first {
+        Some { value: v } => v
+        None => leaf_node(name: "Unit")
+      }
+      let key_result = resolve_node_bounded(n: key_child, env: env, module_name: module_name, depth: depth + 1)
+      let key_resolved = key_result.resolved
+      let key_diags = key_result.diagnostics
+      let val_result = resolve_node_bounded(n: val_child, env: env, module_name: module_name, depth: depth + 1)
+      let val_resolved = val_result.resolved
+      let val_diags = val_result.diagnostics
+      NodeResolveResult {
+        resolved: Node { name: n.name, span: n.span, children: [key_resolved, val_resolved], connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        diagnostics: concat(key_diags, val_diags)
+      }
+    } else if n.children |> count == 1 {
     // Container (List, Set, etc.): recurse on single child (element type)
     match n.children |> first {
       Some { value: el } =>
@@ -383,7 +390,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
               Untyped => resolved
             }
           } else { resolved }
-          let final_resolved = if n.return_cardinality == CardOptional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
+          let is_optional = n.return_cardinality == CardOptional
+          let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
           if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {
@@ -396,9 +404,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           }
       }
     }
-  } else {
-    // Unknown structure -- pass through
-    NodeResolveResult { resolved: n, diagnostics: [] }
+    } else {
+      // Unknown structure -- pass through
+      NodeResolveResult { resolved: n, diagnostics: [] }
+    }
   }
 }
 

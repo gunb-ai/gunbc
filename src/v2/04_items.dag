@@ -79,8 +79,10 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field>
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
     Resolved { node: rt } =>
-        if rt.connective != NoConnective {
-          if rt.connective == Conj {
+        let has_structure = rt.connective != NoConnective
+        if has_structure {
+          let is_product = rt.connective == Conj
+          if is_product {
             if rt.name == "" {
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
@@ -124,7 +126,8 @@ fn item_kind(item: Node) -> ItemKind {
 // C2.1: variant locals carry the structural parent node, not leaf_node(name).
 fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
-    if item.connective == Disj {
+    let is_coproduct = item.connective == Disj
+    if is_coproduct {
       fold(item.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,

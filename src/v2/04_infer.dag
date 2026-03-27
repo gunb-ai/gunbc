@@ -425,7 +425,8 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
     Some { value: binding } =>
       match lookup_type(env: scope.type_env, name: binding.resolved.name) {
         Some { value: parent } =>
-          if parent.connective == Disj {
+          let is_coproduct = parent.connective == Disj
+          if is_coproduct {
             if parent.children |> any(child => child.name == name) {
               Some { value: binding.resolved.name }
             } else { none }
@@ -495,9 +496,12 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternResolved { node: resolved_scrut_node } =>
           if resolved_scrut_node.return_cardinality == CardOptional && (variant_name == "Some" || variant_name == "None") {
             Some { value: "Optional" }
-          } else if resolved_scrut_node.connective == Disj {
-            Some { value: resolved_scrut_node.name }
-          } else { none }
+          } else {
+            let is_coproduct = resolved_scrut_node.connective == Disj
+            if is_coproduct {
+              Some { value: resolved_scrut_node.name }
+            } else { none }
+          }
         PatternDynamic { span: _ } => none
         PatternLookupBlocked => none
       }
@@ -2003,7 +2007,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Nodes with capabilities are registered as nominal types so they can be
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    if item.connective != NoConnective {
+    let has_structure = item.connective != NoConnective
+    if has_structure {
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
         connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
@@ -2117,7 +2122,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    if item.connective != NoConnective {
+    let has_structure = item.connective != NoConnective
+    if has_structure {
       let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
@@ -2290,7 +2296,8 @@ fn build_module_context(contributions: List<ItemContribution>,
   // through TypeEnv. binding.resolved.name still returns the enum's name for
   // lookup_variant_parent_enum and record lit inference.
   let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
-    if binding.resolved.connective == Disj {
+    let is_coproduct = binding.resolved.connective == Disj
+    if is_coproduct {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,

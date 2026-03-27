@@ -76,7 +76,8 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
-  if normed.return_cardinality == CardOptional { OptionalValue }
+  let is_optional = normed.return_cardinality == CardOptional
+  if is_optional { OptionalValue }
   else { PlainValue }
 }
 
@@ -179,7 +180,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   if item.connective == NoConnective || item.transport != none {
     return none
   }
-  if item.connective == Conj {
+  let is_product = item.connective == Conj
+  if is_product {
     Some { value: TypeSummary {
       name: item.name,
       repr: StructRepr,

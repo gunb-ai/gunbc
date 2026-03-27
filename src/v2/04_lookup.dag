@@ -80,7 +80,8 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 // =========================================================================
 
 fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
-  if n.return_cardinality == CardOptional {
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
       Some { value: inner }
@@ -90,17 +91,21 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
         None => none
       }
     }
-  } else if n.connective != NoConnective {
-    if n.connective == Conj {
-      match n.children |> filter(c => c.name == field_name) |> first {
-        Some { value: field_child } =>
-          Some { value: child_inferred_or_name(ch: field_child) }
-        None => none
+  } else {
+    let has_structure = n.connective != NoConnective
+    if has_structure {
+      let is_product = n.connective == Conj
+      if is_product {
+        match n.children |> filter(c => c.name == field_name) |> first {
+          Some { value: field_child } =>
+            Some { value: child_inferred_or_name(ch: field_child) }
+          None => none
+        }
+      } else {
+        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
       }
-    } else {
-      lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
-    }
-  } else { none }
+    } else { none }
+  }
 }
 
 fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) -> Node? {
@@ -162,7 +167,8 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
             // Preserve Optional scrutinee shape during alias/type-env lookup
             // until Optional itself becomes fully structural in the lookup path.
-            if normed.return_cardinality == CardOptional { with_optional_cardinality(n: result) } else { result }
+            let is_optional = normed.return_cardinality == CardOptional
+            if is_optional { with_optional_cardinality(n: result) } else { result }
           }
         None => normed
       }
@@ -201,10 +207,12 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
       None => none
     }
   } else {
-    if resolved.connective == NoConnective {
+    let no_structure = resolved.connective == NoConnective
+    if no_structure {
       none
     } else {
-      if resolved.connective == Conj {
+      let is_product = resolved.connective == Conj
+      if is_product {
         map_get(build_struct_field_summaries(children: resolved.children), field)
       } else {
         map_get(build_enum_field_summaries(variants: resolved.children), field)

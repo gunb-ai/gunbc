@@ -376,21 +376,25 @@ fn has_nested_records_node(n: Node) -> Bool {
     // may not carry the struct name.
     true
   } else if is_coproduct {
-    if n.return_cardinality == CardOptional {
+    let is_optional = n.return_cardinality == CardOptional
+    if is_optional {
       has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
-  } else if n.collection_kind == MapKind {
-    match skip(n.children, 1) |> first {
-      Some { value: val_child } => has_nested_records_node(n: val_child)
-      None => false
-    }
-  } else if n.children |> count == 1 {
-    match n.children |> first {
-      Some { value: el } => has_nested_records_node(n: el)
-      None => false
-    }
   } else {
-    false
+    let is_map = n.collection_kind == MapKind
+    if is_map {
+      match skip(n.children, 1) |> first {
+        Some { value: val_child } => has_nested_records_node(n: val_child)
+        None => false
+      }
+    } else if n.children |> count == 1 {
+      match n.children |> first {
+        Some { value: el } => has_nested_records_node(n: el)
+        None => false
+      }
+    } else {
+      false
+    }
   }
 }
 
@@ -787,17 +791,20 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
       Rust => concat("Rc<dyn Fn(", param_str, ") -> ", ret_str, ">")
       _ => concat("Fn(", param_str, ") -> ", ret_str)
     }
-  } else if n.return_cardinality == CardOptional {
-    emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
   } else {
-    let is_conj = n.connective == Conj
-    let is_disj = n.connective == Disj
-    if is_conj == false && is_disj == false {
-      emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
-    } else if is_conj {
-      emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
+    let is_optional = n.return_cardinality == CardOptional
+    if is_optional {
+      emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
     } else {
-      emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
+      let is_conj = n.connective == Conj
+      let is_disj = n.connective == Disj
+      if is_conj == false && is_disj == false {
+        emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
+      } else if is_conj {
+        emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
+      } else {
+        emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
+      }
     }
   }
 }
@@ -819,19 +826,21 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     } else {
       base
     }
-  } else if n.collection_kind == MapKind {
-    // After resolution, Map nodes always have 2 children (key + value).
-    // None branches are structurally required by match but unreachable.
-    let k = match n.children |> first {
-      Some { value: kn } => emit_node_type_rc(n: kn, target: target, rc_types: rc_types)
-      None => "__EMIT_BUG_MISSING_MAP_KEY__"
-    }
-    let v = match skip(n.children, 1) |> first {
-      Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
-      None => "__EMIT_BUG_MISSING_MAP_VALUE__"
-    }
-    emit_map_type(key_type: k, val_type: v, target: target)
-  } else if n.children |> count == 1 {
+  } else {
+    let is_map = n.collection_kind == MapKind
+    if is_map {
+      // After resolution, Map nodes always have 2 children (key + value).
+      // None branches are structurally required by match but unreachable.
+      let k = match n.children |> first {
+        Some { value: kn } => emit_node_type_rc(n: kn, target: target, rc_types: rc_types)
+        None => "__EMIT_BUG_MISSING_MAP_KEY__"
+      }
+      let v = match skip(n.children, 1) |> first {
+        Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
+        None => "__EMIT_BUG_MISSING_MAP_VALUE__"
+      }
+      emit_map_type(key_type: k, val_type: v, target: target)
+    } else if n.children |> count == 1 {
     // Single-child container. count == 1 guarantees first succeeds.
     let inner = match n.children |> first {
       Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
@@ -845,8 +854,9 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       if is_rust { "non_empty_set" } else { "set" }
     } else { to_snake(name: n.name) }
     emit_container(kind: container_kind, inner: inner, target: target)
-  } else {
-    n.name
+    } else {
+      n.name
+    }
   }
 }
 

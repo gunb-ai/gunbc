@@ -15,10 +15,7 @@ module v2.compiler.infer_sigs
 import v2.std.core {
   Node, Param,
   ExprData, ExprCall,
-  expr_children,
   diagnostic_node, no_span,
-  Diagnostic, Severity, Error,
-  ErrorCategory, TypeMismatch,
   DeclaredFuncSig
 }
 import v2.compiler.infer_types { emit_map_has }

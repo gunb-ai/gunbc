@@ -4,9 +4,13 @@
 # Counts compiler-side type knowledge that should eventually live in .dag.
 # Run after any .dag change to ensure L1 violations don't increase.
 #
+# Two sections:
+#   L1 violations — type-world knowledge the compiler should not have
+#   Structural primitives — graph primitives that are permanent (not violations)
+#
 # Usage: scripts/l1-ratchet.sh [--check]
 #   Without --check: prints counts
-#   With --check: prints counts and fails if total exceeds ratchet
+#   With --check: prints counts and fails if L1 total exceeds ratchet
 
 set -euo pipefail
 
@@ -20,53 +24,58 @@ count_matches() {
     echo "$n"
 }
 
-# Category 1a: .connective direct field access
-connective_field_count=$(count_matches '\.connective\b')
+# ── L1 Violations (target: 0) ──────────────────────────────────────────
 
-# Category 1b: Conj/Disj references (connective shape matching)
-conj_disj_count=$(count_matches '\b(Conj|Disj)\b')
-
-# Category 2: Type constructors (leaf_node, optional_node, container_node, tuple_node, etc.)
+# Type constructors (leaf_node, container_node, map_node, tuple_node, etc.)
 constructor_count=$(count_matches '\b(leaf_node|optional_node|container_node|tuple_node|pair_node|callable_node|error_type_node)\b')
 
-# Category 3: Type-name string comparisons
+# Type-name string comparisons (.name == "Optional", "Map", etc.)
 typename_count=$(count_matches '\.name == "(Optional|Map|List|Set|Dynamic|Error|Int|String|Bool|Float|Unit|Bytes|Json|Secret|Tuple|Callable|None|Some)"')
 
-# Category 4: node_is_* predicate calls
-predicate_count=$(count_matches '\bnode_is_\w+\b')
+l1_total=$((constructor_count + typename_count))
 
-# Category 5: classify_type_structure calls in emit
-classify_count=$(count_matches '\bclassify_type_structure\b')
+# ── Structural Primitives (permanent, not violations) ───────────────────
 
-# Category 6: builtin_type_kind() calls (target: 0, achieved)
-builtin_count=$(count_matches '\bbuiltin_type_kind\b')
+# .connective direct field access (graph primitive per P5.10)
+connective_field_count=$(count_matches '\.connective\b')
 
-total=$((connective_field_count + conj_disj_count + constructor_count + typename_count + predicate_count + classify_count + builtin_count))
+# Conj/Disj/NoConnective references (graph primitive per P5.10)
+conj_disj_count=$(count_matches '\b(Conj|Disj|NoConnective)\b')
 
-echo "L1 Type Knowledge Violations"
-echo "============================"
-echo "  .connective direct access:     $connective_field_count"
-echo "  Conj/Disj references:          $conj_disj_count"
+# CollectionKind references (bridge — will dissolve when method algebras land)
+collection_kind_count=$(count_matches '\b(collection_kind|ListKind|SetKind|NonEmptyListKind|NonEmptySetKind|MapKind|NoCollection)\b')
+
+structural_total=$((connective_field_count + conj_disj_count + collection_kind_count))
+
+echo "L1 Type Knowledge Ratchet"
+echo "========================="
+echo ""
+echo "  L1 Violations (target: 0)"
+echo "  -------------------------"
 echo "  Type constructors:             $constructor_count"
 echo "  Type-name comparisons:         $typename_count"
-echo "  node_is_* predicates:          $predicate_count"
-echo "  classify_type_structure calls:  $classify_count"
-echo "  builtin_type_kind() calls:     $builtin_count"
 echo "  ---"
-echo "  Total:                         $total"
+echo "  L1 Total:                      $l1_total"
+echo ""
+echo "  Structural Primitives (permanent)"
+echo "  ---------------------------------"
+echo "  .connective access:            $connective_field_count"
+echo "  Conj/Disj/NoConnective:        $conj_disj_count"
+echo "  CollectionKind:                $collection_kind_count"
+echo "  ---"
+echo "  Structural Total:              $structural_total"
 
-# Ratchet: total must not exceed this value.
-# Categories and total are aligned with ROADMAP.md § Architectural Ratchet.
-L1_RATCHET=389
+# Ratchet: L1 violations must not exceed this value.
+L1_RATCHET=202
 
 if [[ "${1:-}" == "--check" ]]; then
-    if (( total > L1_RATCHET )); then
+    if (( l1_total > L1_RATCHET )); then
         echo ""
-        echo "FAIL: L1 ratchet exceeded ($total > $L1_RATCHET)"
+        echo "FAIL: L1 ratchet exceeded ($l1_total > $L1_RATCHET)"
         echo "Lower the ratchet or fix violations before committing."
         exit 1
     else
         echo ""
-        echo "OK: $total <= $L1_RATCHET ratchet"
+        echo "OK: L1 $l1_total <= $L1_RATCHET ratchet"
     fi
 fi

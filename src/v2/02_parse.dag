@@ -2627,8 +2627,10 @@ fn node_to_name_str(n: Node) -> String {
     if has_children { concat("List_", node_to_name_str(n: first_child_or_self(n: n))) }
     else { n.name }
   } else if n.name == "" {
-    if n.connective == Conj { "Record" }
-    else if n.connective == Disj { "Union" }
+    let is_conj = n.connective == Conj
+    let is_disj = n.connective == Disj
+    if is_conj { "Record" }
+    else if is_disj { "Union" }
     else { n.name }
   } else {
     n.name

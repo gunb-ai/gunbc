@@ -706,10 +706,13 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
   if n.children |> count == 0 {
     if emit_map_has(m: rc_types, key: n.name) { false }
     else { emit_map_has(m: recursive_types, key: n.name) }
-  } else if n.return_cardinality == CardOptional {
-    needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, rc_types: rc_types)
   } else {
-    false
+    let is_optional = n.return_cardinality == CardOptional
+    if is_optional {
+      needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, rc_types: rc_types)
+    } else {
+      false
+    }
   }
 }
 
@@ -1400,12 +1403,14 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
 fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types: Map<String, Bool>) -> String? {
   // Optional records (Some { value: x }) must keep struct name "Some"
   // so the emitter triggers the Some(x) rendering path.
-  if inferred_node.return_cardinality == CardOptional {
+  let is_optional = inferred_node.return_cardinality == CardOptional
+  if is_optional {
     let result = type_name
     return result
   }
   // Normalize: unwrap Refined nodes to their base
-  let n = if inferred_node.name == "Refined" && inferred_node.connective != NoConnective {
+  let has_structure = inferred_node.connective != NoConnective
+  let n = if inferred_node.name == "Refined" && has_structure {
     match inferred_node.children |> first {
       Some { value: base } => base
       None => inferred_node
@@ -1615,7 +1620,8 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
 fn rust_map_value_type(receiver_type: Node, scope: InferScope) -> Node? {
   let resolved = normalize_access_type_node(n: receiver_type)
   let map_type = normalize_access_type_node(n: resolved)
-  if map_type.collection_kind == MapKind {
+  let is_map = map_type.collection_kind == MapKind
+  if is_map {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -1883,7 +1889,8 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNo
       match inferred {
         Some { value: Resolved { node: ret_type } } =>
           let resolved_ret = ret_type
-          if resolved_ret.return_cardinality == CardOptional {
+          let is_optional = resolved_ret.return_cardinality == CardOptional
+          if is_optional {
             type_needs_rc(type_node: with_required_cardinality(n: resolved_ret))
           } else { false }
         _ => false
@@ -2072,9 +2079,10 @@ fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, sc
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
+  let is_map = base_node.collection_kind == MapKind
   if is_string_type_node(n: base_node) {
     concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
-  } else if base_node.collection_kind == MapKind {
+  } else if is_map {
     concat("(", base_str, ").get(&", index_str, ").cloned()")
   } else {
     "panic!(\"internal error: unsupported index base in emitter\")"
@@ -2482,7 +2490,8 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
   // For Optional<T>, unwrap to get T so inner patterns qualify correctly.
   let scrut_type = match scrutinee.inferred {
     Some { value: Resolved { node: rt } } =>
-      if rt.return_cardinality == CardOptional {
+      let is_optional = rt.return_cardinality == CardOptional
+      if is_optional {
         with_required_cardinality(n: rt).name
       } else { rt.name }
     _ => ""
@@ -2882,7 +2891,8 @@ fn is_string_comparison(op: BinOpKind, left: Node, right: Node) -> Bool {
 fn is_string_typed_expr(e: Node) -> Bool {
   match e.inferred {
     Some { value: Resolved { node: rt } } =>
-      let inner = if rt.return_cardinality == CardOptional { with_required_cardinality(n: rt) } else { rt }
+      let is_optional = rt.return_cardinality == CardOptional
+      let inner = if is_optional { with_required_cardinality(n: rt) } else { rt }
       is_string_type_node(n: inner)
     _ => false
   }
@@ -3024,7 +3034,8 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, re
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let tco_scrut_type = match s.inferred {
         Some { value: Resolved { node: rt } } =>
-          if rt.return_cardinality == CardOptional {
+          let is_optional = rt.return_cardinality == CardOptional
+          if is_optional {
             with_required_cardinality(n: rt).name
           } else { rt.name }
         _ => ""
@@ -3451,7 +3462,9 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",
       "}")
-  } else if type_node.collection_kind == MapKind {
+  } else {
+    let is_map = type_node.collection_kind == MapKind
+    if is_map {
     // Map data: emit as lazy_static with explicit insert() calls.
     // The value is a RecordLit whose field names are map keys and field values are map values.
     match value.expr_data {
@@ -3474,12 +3487,13 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
           "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
           "}")
     }
-  } else {
-    // Complex types use lazy_static for heap-allocated values
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
-    concat("lazy_static::lazy_static! {\n",
-      "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
-      "}")
+    } else {
+      // Complex types use lazy_static for heap-allocated values
+      let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+      concat("lazy_static::lazy_static! {\n",
+        "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+        "}")
+    }
   }
 }
 
@@ -3799,9 +3813,11 @@ fn emit_subcommand_field(param: Param) -> String {
 // Bool -> bool, String -> String, Int -> i64, etc.
 // Optional types get wrapped in Option<>.
 fn emit_cli_param_type_node(n: Node) -> String {
-  if n.return_cardinality == CardOptional {
+  let is_optional = n.return_cardinality == CardOptional
+  let has_structure = n.connective != NoConnective
+  if is_optional {
     concat("Option<", emit_cli_param_type_node(n: with_required_cardinality(n: n)), ">")
-  } else if n.connective != NoConnective {
+  } else if has_structure {
     "String"
   } else if n.children |> count == 0 {
     if is_bool_type_node(n: n) { "bool" }

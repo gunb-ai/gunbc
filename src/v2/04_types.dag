@@ -105,7 +105,8 @@ fn error_type_node() -> Node {
 // =========================================================================
 
 fn normalize_access_type_node(n: Node) -> Node {
-  let unwrapped = if n.name == "Refined" && n.connective != NoConnective {
+  let has_structure = n.connective != NoConnective
+  let unwrapped = if n.name == "Refined" && has_structure {
     n.children |> first
   } else { none }
   match unwrapped {
@@ -138,26 +139,32 @@ fn node_type_shape(n: Node) -> String {
     } else {
       concat("Primitive(", n.name, ")")
     }
-  } else if n.connective == Conj {
-    if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
-  } else if n.connective == Disj {
-    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
   } else {
-    let ck = n.collection_kind
-    let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
-    if __is_container {
-      let elem_shape = match n.children |> first {
-        Some { value: el } => node_type_shape(n: el)
-        None => "?"
-      }
-      concat("Container(", n.name, ",", elem_shape, ")")
-    } else if n.return_cardinality == CardOptional {
-      let inner_shape = node_type_shape(n: with_required_cardinality(n: n))
-      concat("Optional(", inner_shape, ")")
-    } else if n.collection_kind == MapKind {
-      "Map(...)"
+    let is_product = n.connective == Conj
+    let is_coproduct = n.connective == Disj
+    if is_product {
+      if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
+    } else if is_coproduct {
+      if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
     } else {
-      concat("Node(", n.name, ")")
+      let ck = n.collection_kind
+      let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
+      let is_optional = n.return_cardinality == CardOptional
+      let is_map = n.collection_kind == MapKind
+      if __is_container {
+        let elem_shape = match n.children |> first {
+          Some { value: el } => node_type_shape(n: el)
+          None => "?"
+        }
+        concat("Container(", n.name, ",", elem_shape, ")")
+      } else if is_optional {
+        let inner_shape = node_type_shape(n: with_required_cardinality(n: n))
+        concat("Optional(", inner_shape, ")")
+      } else if is_map {
+        "Map(...)"
+      } else {
+        concat("Node(", n.name, ")")
+      }
     }
   }
 }
@@ -223,9 +230,10 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
   } else { false }
   let right_ck = right.collection_kind
   let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
+  let right_is_optional = right.return_cardinality == CardOptional
   let same_kind = if left_is_container && right_is_container {
     left_norm_name == right.name
-  } else if left_is_optional && right.return_cardinality == CardOptional {
+  } else if left_is_optional && right_is_optional {
     true
   } else { false }
   if same_kind && left_is_unit_inner { right }
@@ -290,7 +298,9 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     else if left_opt && right_opt {
       node_type_equals(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
     }
-    else if left.collection_kind == MapKind && right.collection_kind == MapKind {
+    else {
+      let both_maps = left.collection_kind == MapKind && right.collection_kind == MapKind
+      if both_maps {
       if left.children |> count == 2 && right.children |> count == 2 {
         let left_first = match left.children |> first { Some { value: v } => v, None => left }
         let right_first = match right.children |> first { Some { value: v } => v, None => right }
@@ -300,34 +310,35 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
       } else {
         false
       }
-    }
-    else if left.name == "Callable" && right.name == "Callable" {
-      if left.params |> count != right.params |> count { false }
-      else {
-        let params_eq = left.params |> enumerate |> all(pair =>
-          match right.params |> skip(pair.first) |> first {
-            Some { value: right_param } =>
-              node_type_equals(left: pair.second.type_expr, right: right_param.type_expr)
-            None => false
-          }
-        )
-        if params_eq == false { false }
+      }
+      else if left.name == "Callable" && right.name == "Callable" {
+        if left.params |> count != right.params |> count { false }
         else {
-          match left.inferred {
-            Some { value: Resolved { node: left_ret } } =>
-              match right.inferred {
-                Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret)
-                None => false
-                _ => false
-              }
-            None => right.inferred == none
-            _ => false
+          let params_eq = left.params |> enumerate |> all(pair =>
+            match right.params |> skip(pair.first) |> first {
+              Some { value: right_param } =>
+                node_type_equals(left: pair.second.type_expr, right: right_param.type_expr)
+              None => false
+            }
+          )
+          if params_eq == false { false }
+          else {
+            match left.inferred {
+              Some { value: Resolved { node: left_ret } } =>
+                match right.inferred {
+                  Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret)
+                  None => false
+                  _ => false
+                }
+              None => right.inferred == none
+              _ => false
+            }
           }
         }
       }
-    }
-    else {
-      false
+      else {
+        false
+      }
     }
   }
 }
@@ -348,9 +359,10 @@ fn node_type_deps(n: Node) -> List<String> {
       Untyped => false
     }
   }
+  let has_structure = n.connective != NoConnective
   if __is_named_ref {
     match rt_node(n: n) { Typed { node: rt } => [rt.name]  InferError { message: _, span: _ } => []  Untyped => [] }
-  } else if n.connective != NoConnective {
+  } else if has_structure {
     flat_map(n.children, child =>
       if child.inferred != none {
         match rt_node(n: child) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
@@ -423,18 +435,22 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
       Some { value: el } => el
       None => receiver_type
     }
-  } else if normed.collection_kind == MapKind {
-    match normed.children |> skip(1) |> first {
-      Some { value: val_type } => val_type
-      None => receiver_type
-    }
   } else {
-    receiver_type
+    let is_map = normed.collection_kind == MapKind
+    if is_map {
+      match normed.children |> skip(1) |> first {
+        Some { value: val_type } => val_type
+        None => receiver_type
+      }
+    } else {
+      receiver_type
+    }
   }
 }
 
 fn extract_optional_inner_node(n: Node) -> Node {
-  if n.return_cardinality == CardOptional { with_required_cardinality(n: n) }
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional { with_required_cardinality(n: n) }
   else { n }
 }
 
