@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
 lazy_static::lazy_static! {
     pub static ref RUST_TYPE_MAP: HashMap<String, String> = {
@@ -125,27 +100,27 @@ lazy_static::lazy_static! {
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]".to_string();
+    pub static ref RUST_STRUCT_DERIVES: String = "#[derive(Debug, Clone, PartialEq)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]".to_string();
+    pub static ref RUST_STRUCT_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]".to_string();
+    pub static ref RUST_ENUM_DERIVES: String = "#[derive(Debug, Clone, PartialEq)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]".to_string();
+    pub static ref RUST_ENUM_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_SERDE_TAG: String = "#[serde(tag = \"_variant\")]".to_string();
+    pub static ref RUST_SERDE_TAG: String = "".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_SERDE_RENAME_TEMPLATE: String = "#[serde(rename = \"{0}\")]".to_string();
+    pub static ref RUST_SERDE_RENAME_TEMPLATE: String = "".to_string();
 }
 
 lazy_static::lazy_static! {

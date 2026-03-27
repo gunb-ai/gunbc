@@ -3,75 +3,28 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
     pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyVec requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
+        if items.is_empty() { Err("NonEmptyVec requires at least one element") } else { Ok(Self(items)) }
     }
-
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
-    pub fn into_vec(self) -> Vec<T> {
-        self.0
-    }
+    pub fn as_slice(&self) -> &[T] { &self.0 }
+    pub fn into_vec(self) -> Vec<T> { self.0 }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
     pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-        if items.is_empty() {
-            Err("NonEmptyBTreeSet requires at least one element")
-        } else {
-            Ok(Self(items))
-        }
+        if items.is_empty() { Err("NonEmptyBTreeSet requires at least one element") } else { Ok(Self(items)) }
     }
-
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-        &self.0
-    }
-
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-        self.0
-    }
-}
-
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
+    pub fn as_set(&self) -> &std::collections::BTreeSet<T> { &self.0 }
+    pub fn into_set(self) -> std::collections::BTreeSet<T> { self.0 }
 }
 pub use crate::v2_std_core::{Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, Param, LiteralValue, ExprData, make_expr_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, IntrinsicMethod, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding, TextFile, diagnostic_node, SourceSpan, ResourceUse, BinOpKind, UnaryOpKind, StringPart, TransportKind, is_transport_kind, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, leaf_node, with_required_cardinality, node_has_structure, node_is_product, node_is_coproduct, FieldAccessStyle, FieldValueShape};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
@@ -125,42 +78,42 @@ pub fn rust_visibility_prefix() -> String {
 pub fn rust_struct_derives_text() -> String {
     match serialization_for_target(RenderTarget::Rust).struct_derives.clone() {
     Some(derives) => derives.clone(),
-    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]".to_string(),
+    None => "#[derive(Debug, Clone, PartialEq)]".to_string(),
 }
 }
 
 pub fn rust_struct_derives_copy_text() -> String {
     match serialization_for_target(RenderTarget::Rust).struct_derives_copy.clone() {
     Some(derives) => derives.clone(),
-    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]".to_string(),
+    None => "#[derive(Debug, Clone, Copy, PartialEq)]".to_string(),
 }
 }
 
 pub fn rust_enum_derives_text() -> String {
     match serialization_for_target(RenderTarget::Rust).enum_derives.clone() {
     Some(derives) => derives.clone(),
-    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]".to_string(),
+    None => "#[derive(Debug, Clone, PartialEq)]".to_string(),
 }
 }
 
 pub fn rust_enum_derives_copy_text() -> String {
     match serialization_for_target(RenderTarget::Rust).enum_derives_copy.clone() {
     Some(derives) => derives.clone(),
-    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]".to_string(),
+    None => "#[derive(Debug, Clone, Copy, PartialEq)]".to_string(),
 }
 }
 
 pub fn rust_serde_tag_attr() -> String {
     match serialization_for_target(RenderTarget::Rust).tag_attribute.clone() {
     Some(attr) => attr.clone(),
-    None => "#[serde(tag = \"_variant\")]".to_string(),
+    None => "".to_string(),
 }
 }
 
 pub fn rust_serde_rename_template_text() -> String {
     match serialization_for_target(RenderTarget::Rust).rename_attribute_template.clone() {
     Some(template) => template.clone(),
-    None => "#[serde(rename = \"{0}\")]".to_string(),
+    None => "".to_string(),
 }
 }
 
@@ -562,11 +515,9 @@ all_lines.clone().join(&"
 
 pub fn emit_prelude() -> String {
     {
-        let serde_import = v2_rt::concat("use serde::{".to_string(), "Serialize, Deserialize};".to_string());
-let imports = v2_rt::concat(v2_rt::concat("use std::collections::HashMap;
+        let imports = "use std::collections::HashMap;
 use std::rc::Rc;
-".to_string(), serde_import.clone()), "
-use crate::v2_rt;".to_string());
+use crate::v2_rt;".to_string();
 v2_rt::concat(v2_rt::concat(imports.clone(), "
 
 ".to_string()), emit_non_empty_wrappers())
@@ -575,7 +526,7 @@ v2_rt::concat(v2_rt::concat(imports.clone(), "
 
 pub fn emit_non_empty_wrappers() -> String {
     {
-        let vec_wrapper = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, PartialEq, Serialize)]
+        let vec_wrapper = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, PartialEq)]
 ".to_string(), "pub struct NonEmptyVec<T>(Vec<T>);
 
 ".to_string()), "impl<T> NonEmptyVec<T> {
@@ -608,7 +559,7 @@ pub fn emit_non_empty_wrappers() -> String {
 ".to_string()), "        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
 ".to_string()), "    }
 ".to_string()), "}".to_string());
-let set_wrapper = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, PartialEq, Serialize)]
+let set_wrapper = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, PartialEq)]
 ".to_string(), "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 ".to_string()), "impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -1209,7 +1160,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(qualified.clone(), " { ".to_string()),
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RcPatternAnalysis {
     pub matches_rc_variant: bool,
     pub matches_option_rc_variant: bool,
@@ -1217,7 +1168,7 @@ pub struct RcPatternAnalysis {
     pub ref_bound_fields: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RcMatchAnalysis {
     pub needs_option_deref: bool,
     pub needs_deref: bool,
@@ -3984,7 +3935,7 @@ Rc::new(TextFile {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WorkflowFunc {
     pub name: String,
     pub module_name: String,

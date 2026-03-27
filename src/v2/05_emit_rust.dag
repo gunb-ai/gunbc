@@ -159,42 +159,42 @@ fn rust_visibility_prefix() -> String {
 fn rust_struct_derives_text() -> String {
   match serialization_for_target(target: Rust).struct_derives {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, PartialEq)]"
   }
 }
 
 fn rust_struct_derives_copy_text() -> String {
   match serialization_for_target(target: Rust).struct_derives_copy {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, Copy, PartialEq)]"
   }
 }
 
 fn rust_enum_derives_text() -> String {
   match serialization_for_target(target: Rust).enum_derives {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, PartialEq)]"
   }
 }
 
 fn rust_enum_derives_copy_text() -> String {
   match serialization_for_target(target: Rust).enum_derives_copy {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, Copy, PartialEq)]"
   }
 }
 
 fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
-    None => "#[serde(tag = \"_variant\")]"
+    None => ""
   }
 }
 
 fn rust_serde_rename_template_text() -> String {
   match serialization_for_target(target: Rust).rename_attribute_template {
     Some { value: template } => template
-    None => "#[serde(rename = \"{0}\")]"
+    None => ""
   }
 }
 
@@ -600,7 +600,7 @@ fn emit_prelude() -> String {
 // These validate non-emptiness at construction time.
 fn emit_non_empty_wrappers() -> String {
   let vec_wrapper = concat(
-    "#[derive(Debug, Clone, PartialEq, Serialize)]\n",
+    "#[derive(Debug, Clone, PartialEq)]\n",
     "pub struct NonEmptyVec<T>(Vec<T>);\n\n",
     "impl<T> NonEmptyVec<T> {\n",
     "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n",
@@ -616,22 +616,10 @@ fn emit_non_empty_wrappers() -> String {
     "    pub fn into_vec(self) -> Vec<T> {\n",
     "        self.0\n",
     "    }\n",
-    "}\n\n",
-    "impl<'de, T> Deserialize<'de> for NonEmptyVec<T>\n",
-    "where\n",
-    "    T: Deserialize<'de>,\n",
-    "{\n",
-    "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>\n",
-    "    where\n",
-    "        D: serde::Deserializer<'de>,\n",
-    "    {\n",
-    "        let items = Vec::<T>::deserialize(deserializer)?;\n",
-    "        NonEmptyVec::new(items).map_err(serde::de::Error::custom)\n",
-    "    }\n",
     "}"
   )
   let set_wrapper = concat(
-    "#[derive(Debug, Clone, PartialEq, Serialize)]\n",
+    "#[derive(Debug, Clone, PartialEq)]\n",
     "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n",
     "impl<T: Ord> NonEmptyBTreeSet<T> {\n",
     "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n",
@@ -646,18 +634,6 @@ fn emit_non_empty_wrappers() -> String {
     "    }\n\n",
     "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n",
     "        self.0\n",
-    "    }\n",
-    "}\n\n",
-    "impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>\n",
-    "where\n",
-    "    T: Ord + Deserialize<'de>,\n",
-    "{\n",
-    "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>\n",
-    "    where\n",
-    "        D: serde::Deserializer<'de>,\n",
-    "    {\n",
-    "        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;\n",
-    "        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)\n",
     "    }\n",
     "}"
   )

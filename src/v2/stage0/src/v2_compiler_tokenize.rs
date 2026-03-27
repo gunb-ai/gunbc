@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::std_types::{SourceSpan};
 pub use crate::v2_std_core::{Token, TokenShape};
 use crate::v2_std_core::TokenShape::{ShKwModule, ShKwImport, ShKwType, ShKwFn, ShKwFunc, ShKwService, ShKwResource, ShKwData, ShKwExtern, ShKwInterface, ShKwPipeline, ShKwProfile, ShKwPattern, ShKwLet, ShKwReturn, ShKwMatch, ShKwIf, ShKwElse, ShKwFor, ShKwIn, ShKwWhere, ShKwWith, ShKwTrue, ShKwFalse, ShKwNone, ShKwAcquire, ShKwRelease, ShKwCapability, ShKwOperation, ShKwInput, ShKwOutput, ShKwIdempotent, ShKwReadonly, ShKwHermetic, ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket, ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow, ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe, ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr, ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow, ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShStrBegin, ShStrMid, ShStrEnd, ShNewline, ShEof, ShUnknown};
@@ -138,27 +113,27 @@ lazy_static::lazy_static! {
     };
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenizerState {
     pub pos: i64,
     pub tokens: Vec<Rc<Token>>,
     pub interp_depth: Vec<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokPos {
     pub pos: i64,
     pub interp_depth: Vec<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ScanResult {
     pub pos: i64,
     pub token: Rc<Token>,
     pub interp_depth: Vec<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SourceRef {
     pub text: String,
 }
@@ -433,8 +408,7 @@ Rc::new(ScanResult {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StringScanResult {
     ClosedString {
         content: String,

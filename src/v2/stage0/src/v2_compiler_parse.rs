@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, NodeType, rt_node, Connective, Field, Variant, Param, ResourceUse, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, diagnostic_node, node_is_product, node_is_coproduct, with_required_cardinality};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
@@ -89,164 +64,164 @@ use crate::v2_std_core::OperationModifier::{Idempotent, Readonly, Hermetic};
 use crate::v2_std_core::TokenShape::{ShKwModule, ShKwImport, ShKwType, ShKwFn, ShKwFunc, ShKwService, ShKwResource, ShKwData, ShKwExtern, ShKwInterface, ShKwPipeline, ShKwProfile, ShKwPattern, ShKwLet, ShKwReturn, ShKwMatch, ShKwIf, ShKwElse, ShKwFor, ShKwIn, ShKwWhere, ShKwWith, ShKwTrue, ShKwFalse, ShKwNone, ShKwAcquire, ShKwRelease, ShKwCapability, ShKwOperation, ShKwInput, ShKwOutput, ShKwIdempotent, ShKwReadonly, ShKwHermetic, ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket, ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow, ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe, ShPlus, ShMinus, ShStar, ShSlash, ShPercent, ShBang, ShAnd, ShOr, ShQuestion, ShNullCoalesce, ShPipe, ShPipeArrow, ShLitStr, ShLitInt, ShLitFloat, ShIdent, ShStrBegin, ShStrMid, ShStrEnd, ShNewline, ShEof, ShUnknown};
 use ExpectedToken::*;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParserState {
     pub pos: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParseResult {
     pub module: Option<Rc<Node>>,
     pub error: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AdvanceResult {
     pub token: Rc<Token>,
     pub state: Rc<ParserState>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EatResult {
     pub consumed: bool,
     pub state: Rc<ParserState>,
     pub token: Option<Rc<Token>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TokenResult {
     pub token: Rc<Token>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NameResult {
     pub name: String,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExprResult {
     pub expr: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ItemResult {
     pub item: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
     pub type_expr: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModuleResult {
     pub module: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImportResult {
     pub import: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariantResult {
     pub variant: Rc<Variant>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PredResult {
     pub predicate: Rc<FieldInit>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParamResult {
     pub param: Rc<Param>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransportResult {
     pub transport: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OpResult {
     pub operation: Rc<OperationDef>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CapResult {
     pub capability: Rc<CapabilityDef>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PatternResult {
     pub pattern: Rc<MatchPattern>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArmResult {
     pub arm: Rc<MatchArm>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArgResult {
     pub arg: Rc<NamedArg>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldResult {
     pub field: Rc<Field>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldInitResult {
     pub field: Rc<FieldInit>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResUseResult {
     pub resource_use: Rc<ResourceUse>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ServiceConfig {
     pub endpoint: Rc<Node>,
     pub auth: Option<Rc<Node>>,
@@ -254,21 +229,20 @@ pub struct ServiceConfig {
     pub retry: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConfigResult {
     pub config: Rc<ServiceConfig>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BindingPower {
     pub left: i64,
     pub right: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ExpectedToken {
     ExpectKwModule,
     ExpectKwImport,
@@ -308,105 +282,105 @@ pub enum ExpectedToken {
     ExpectPipe,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImportsResult {
     pub imports: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ItemsResult {
     pub items: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NamesResult {
     pub names: Vec<String>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldsResult {
     pub fields: Vec<Rc<Field>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldInitsResult {
     pub fields: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariantsResult {
     pub variants: Vec<Rc<Variant>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PredsResult {
     pub predicates: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParamsResult {
     pub params: Vec<Rc<Param>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UsesResult {
     pub uses: Vec<Rc<ResourceUse>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArgsResult {
     pub args: Vec<Rc<NamedArg>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StmtsResult {
     pub stmts: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExprsResult {
     pub exprs: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArmsResult {
     pub arms: Vec<Rc<MatchArm>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModsResult {
     pub modifiers: Vec<OperationModifier>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BindingsResult {
     pub field_bindings: Vec<Rc<FieldBinding>>,
     pub state: Rc<ParserState>,
@@ -424,28 +398,28 @@ pub fn parse_recovery_placeholder() -> Rc<Node> {
 }), "parser recovery placeholder".to_string())
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OptRetResult {
     pub inferred: Option<Rc<InferredNode>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GuardResult {
     pub guard: Option<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FromKeyResult {
     pub from_key: Option<String>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PostfixResult {
     pub expr: Rc<Node>,
     pub changed: bool,
@@ -453,7 +427,7 @@ pub struct PostfixResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LambdaCheckResult {
     pub is_lambda: bool,
     pub params: Vec<String>,
@@ -461,7 +435,7 @@ pub struct LambdaCheckResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IdentCollectResult {
     pub success: bool,
     pub params: Vec<String>,
@@ -469,7 +443,7 @@ pub struct IdentCollectResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RangeArgsResult {
     pub min_val: Option<i64>,
     pub max_val: Option<i64>,
@@ -477,7 +451,7 @@ pub struct RangeArgsResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NamedIntResult {
     pub arg_name: String,
     pub arg_value: i64,
@@ -485,7 +459,7 @@ pub struct NamedIntResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ServiceBodyResult {
     pub config: Option<Rc<ServiceConfig>>,
     pub transport: Rc<Node>,
@@ -494,7 +468,7 @@ pub struct ServiceBodyResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IOResult {
     pub inputs: Vec<Rc<Field>>,
     pub outputs: Vec<Rc<Field>>,
@@ -502,7 +476,7 @@ pub struct IOResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResPropResult {
     pub properties: Vec<Rc<FieldInit>>,
     pub capabilities: Vec<Rc<CapabilityDef>>,
@@ -510,42 +484,42 @@ pub struct ResPropResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResponsesResult {
     pub responses: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MocksResult {
     pub mocks: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExitEntriesResult {
     pub entries: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RespEntriesResult {
     pub entries: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MockEntriesResult {
     pub entries: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OpBodyResult {
     pub inputs: Vec<Rc<Field>>,
     pub outputs: Vec<Rc<Field>>,
@@ -558,13 +532,13 @@ pub struct OpBodyResult {
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnitResult {
     pub state: Rc<ParserState>,
     pub err: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescResult {
     pub desc: Option<String>,
     pub state: Rc<ParserState>,
@@ -3629,7 +3603,7 @@ maybe_optional(tokens.clone(), state.clone(), te.clone(), start_span.clone())
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeParamsResult {
     pub params: Vec<Rc<Param>>,
     pub state: Rc<ParserState>,
@@ -3694,7 +3668,7 @@ continue;
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeArgsResult {
     pub args: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,

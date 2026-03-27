@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, Param, MatchArm, MatchPattern, FieldBinding, LiteralValue, TextFile, SourceSpan, ResourceUse, BinOpKind, UnaryOpKind, StringPart, NamedArg, FieldInit, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};

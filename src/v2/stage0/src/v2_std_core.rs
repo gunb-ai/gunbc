@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use TokenShape::*;
 use Connective::*;
@@ -98,15 +73,14 @@ use UnaryOpKind::*;
 use StringPart::*;
 use OperationModifier::*;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub text: String,
     pub span: Rc<SourceSpan>,
     pub shape: TokenShape,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenShape {
     ShKwModule,
     ShKwImport,
@@ -185,22 +159,19 @@ pub enum TokenShape {
     ShUnknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Connective {
     Conj,
     Disj,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Cardinality {
     Required,
     CardOptional,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CollectionKind {
     ListKind,
     SetKind,
@@ -209,7 +180,7 @@ pub enum CollectionKind {
     MapKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     pub name: String,
     pub type_expr: Rc<Node>,
@@ -219,14 +190,14 @@ pub struct Field {
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Variant {
     pub name: String,
     pub fields: Vec<Rc<Field>>,
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     pub name: String,
     pub type_expr: Rc<Node>,
@@ -234,15 +205,14 @@ pub struct Param {
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResourceUse {
     pub name: String,
     pub resource: Rc<Node>,
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FieldAccessStyle {
     StoredField,
     EnumAccessor,
@@ -251,14 +221,13 @@ pub enum FieldAccessStyle {
     TupleSecond,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FieldValueShape {
     PlainValue,
     OptionalValue,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldSummary {
     pub access_style: FieldAccessStyle,
     pub value_shape: FieldValueShape,
@@ -280,8 +249,7 @@ pub fn is_kernel_textual(name: String) -> bool {
     ((name.clone() == "String".to_string()) || (name.clone() == "Secret".to_string()))
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InferredNode {
     Resolved {
         node: Rc<Node>,
@@ -306,8 +274,7 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NodeType {
     Typed {
         node: Rc<Node>,
@@ -339,8 +306,7 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
     (n.inferred.clone() != None)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntrinsicMethod {
     MethodCount,
     MethodJoin,
@@ -363,8 +329,7 @@ pub enum IntrinsicMethod {
     MethodAppend,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VarBindingKind {
     LocalValueBinding,
     FunctionValueBinding,
@@ -382,20 +347,18 @@ impl VarBindingKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CallSemantics {
     PlainCallSemantics,
     LookupCallSemantics,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LambdaSemantics {
     pub param_types: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RuntimeBridgeMethod {
     BridgeGet,
     BridgeWith,
@@ -427,8 +390,7 @@ pub enum RuntimeBridgeMethod {
     BridgeLookup,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MethodSemantics {
     PlainMethodSemantics,
     IntrinsicMethodSemantics {
@@ -444,16 +406,14 @@ pub enum MethodSemantics {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ExprErrorKind {
     ParseRecoveryError,
     SemanticExprError,
     InternalExprError,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TransportKind {
     LocalTransport,
     RestTransport,
@@ -475,8 +435,7 @@ impl TransportKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConfigPropertyKey {
     ConfigBaseUrl,
     ConfigBasePath,
@@ -500,8 +459,7 @@ impl ConfigPropertyKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExprData {
     NoExprData,
     ExprLiteral {
@@ -558,27 +516,26 @@ pub enum ExprData {
     ExprReturn,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NamedArg {
     pub name: Option<String>,
     pub value: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatchArm {
     pub pattern: Rc<MatchPattern>,
     pub guard: Option<Rc<Node>>,
     pub body: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldInit {
     pub name: String,
     pub value: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MatchPattern {
     Bind {
         name: String,
@@ -594,14 +551,13 @@ pub enum MatchPattern {
     Wildcard,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldBinding {
     pub field_name: String,
     pub binding: Rc<MatchPattern>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LiteralValue {
     LitStr {
         value: String,
@@ -618,8 +574,7 @@ pub enum LiteralValue {
     LitNull,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOpKind {
     Add,
     Sub,
@@ -637,15 +592,13 @@ pub enum BinOpKind {
     NullCoalesce,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnaryOpKind {
     Not,
     Neg,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StringPart {
     Text {
         value: String,
@@ -655,7 +608,7 @@ pub enum StringPart {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OperationDef {
     pub name: String,
     pub inputs: Vec<Rc<Field>>,
@@ -668,15 +621,14 @@ pub struct OperationDef {
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OperationModifier {
     Idempotent,
     Readonly,
     Hermetic,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CapabilityDef {
     pub name: String,
     pub inputs: Vec<Rc<Field>>,
@@ -684,19 +636,19 @@ pub struct CapabilityDef {
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompileResult {
     pub files: Vec<Rc<TextFile>>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextFile {
     pub path: String,
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeclaredFuncSig {
     pub name: String,
     pub params: Vec<Rc<Param>>,
@@ -704,12 +656,12 @@ pub struct DeclaredFuncSig {
     pub is_async: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeclaredFuncEnv {
     pub signatures: HashMap<String, Rc<DeclaredFuncSig>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub name: String,
     pub span: Rc<SourceSpan>,

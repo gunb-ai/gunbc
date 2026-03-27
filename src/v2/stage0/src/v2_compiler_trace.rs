@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,30 +48,17 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{SourceSpan};
 use TraceEvent::*;
 use TraceFilter::*;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SpanMapping {
     pub generated_line: i64,
     pub source_span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TraceEvent {
     TraceEnter {
         node_id: String,
@@ -119,14 +93,14 @@ impl TraceEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TraceFrame {
     pub func_name: String,
     pub span: Rc<SourceSpan>,
     pub bindings: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
     pub events: Vec<Rc<TraceEvent>>,
     pub stack: Vec<Rc<TraceFrame>>,
@@ -179,8 +153,7 @@ pub fn event_node_id(event: Rc<TraceEvent>) -> String {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TraceFilter {
     FilterByFunc {
         func_name: String,
@@ -226,7 +199,7 @@ pub fn format_trace(trace: Rc<Trace>) -> Vec<String> {
     { let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { __result.push(format_trace_event(e.clone())); } __result }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReproCase {
     pub func_name: String,
     pub inputs: HashMap<String, String>,
@@ -243,7 +216,7 @@ pub fn capture_repro(func_name: String, inputs: HashMap<String, String>, trace: 
 })
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SourceMap {
     pub generated_file: String,
     pub mappings: Vec<Rc<SpanMapping>>,

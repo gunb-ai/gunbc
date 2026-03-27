@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::std_types::{SourceSpan};
 pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Field, Variant, Param, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, CollectionKind, diagnostic_is_error, rt_node, has_inferred, InferredNode, NodeType, Cardinality, diagnostic_node, ResourceUse, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -112,7 +87,7 @@ use crate::v2_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v2_compiler_infer_lookup::{KnownMethodResolution, resolve_known_method_node, resolve_scrutinee_type_node, field_summary_for_type, lookup_field_type_node, lookup_coproduct_common_field_node, map_value_type_in_env, lookup_in_scope, lookup_func_sig};
 pub use crate::v2_compiler_infer_access::{AccessCheckResultNode, check_index_access_node, check_slice_access_node};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ItemContribution {
     pub resolved_item: Rc<Node>,
     pub resolve_diagnostics: Vec<Rc<Node>>,
@@ -122,7 +97,7 @@ pub struct ItemContribution {
     pub item_info: Rc<ItemInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModuleContext {
     pub resolved_items: Vec<Rc<Node>>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -132,7 +107,7 @@ pub struct ModuleContext {
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -142,13 +117,13 @@ pub struct InferScope {
     pub item_registry: HashMap<String, Rc<ItemInfo>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InferResult {
     pub typed: Rc<Node>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockInferState {
     pub scope: Rc<InferScope>,
     pub diag_chunks: Vec<Vec<Rc<Node>>>,
@@ -187,76 +162,76 @@ continue;
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypedItemResult {
     pub item: Rc<Node>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArmInferResult {
     pub typed_arm: Rc<MatchArm>,
     pub diagnostics: Vec<Rc<Node>>,
     pub body_type: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PatternScopeResult {
     pub scope: Rc<InferScope>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StringPartInferResult {
     pub typed_part: Rc<StringPart>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ArgInferResult {
     pub typed_arg: Rc<NamedArg>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldInferResult {
     pub typed_field: Rc<FieldInit>,
     pub infer_result: Rc<InferResult>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BuildTypeEnvResult {
     pub env: Rc<TypeEnv>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParentModulesResult {
     pub modules: Vec<Rc<TypedModule>>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VariantResult {
     pub variant: Rc<Variant>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CycleDetectState {
     pub recursive_names: HashMap<String, bool>,
     pub global_visited: HashMap<String, bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InferScopeComponents {
     pub func_sigs: HashMap<String, Rc<DeclaredFuncSig>>,
     pub svc_registry: HashMap<String, Vec<Rc<OpEntry>>>,
     pub svc_locals: HashMap<String, Rc<TypeBinding>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LocalContributionState {
     pub resolved_items: Vec<Rc<Node>>,
     pub func_sigs: HashMap<String, Rc<DeclaredFuncSig>>,
@@ -2808,7 +2783,7 @@ Rc::new(ModuleContext {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypecheckModuleResult {
     pub typed: Rc<TypedModule>,
     pub diagnostics: Vec<Rc<Node>>,
@@ -2869,19 +2844,19 @@ Rc::new(TypecheckModuleResult {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnvResolveResult {
     pub env: Rc<TypeEnv>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BindingResult {
     pub binding: Rc<TypeBinding>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BindingsAccum {
     pub bindings: HashMap<String, Rc<TypeBinding>>,
     pub diagnostics: Vec<Rc<Node>>,

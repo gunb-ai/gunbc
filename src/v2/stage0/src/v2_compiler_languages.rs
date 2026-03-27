@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust, Python, Go, Dag};
 pub use crate::extdeps_languages_rust_emit::{RUST_TYPE_MAP, RUST_KEYWORDS, RUST_CONTAINER_TEMPLATES, RUST_RESERVED, RUST_RESERVED_ESCAPE_PREFIX, RUST_STRUCT_DERIVES, RUST_STRUCT_DERIVES_COPY, RUST_ENUM_DERIVES, RUST_ENUM_DERIVES_COPY, RUST_SERDE_TAG, RUST_SERDE_RENAME_TEMPLATE, RUST_SOURCE_EXTENSION, RUST_SOURCE_DIR, RUST_VISIBILITY};
@@ -81,8 +56,7 @@ pub use crate::extdeps_languages_go_emit::{GO_TYPE_MAP, GO_KEYWORDS, GO_CONTAINE
 use ReservedWordStrategy::*;
 use TestNameStyle::*;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReservedWordStrategy {
     PrefixEscape {
         prefix: String,
@@ -93,13 +67,13 @@ pub enum ReservedWordStrategy {
     NoEscape,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReservedWords {
     pub keywords: Vec<String>,
     pub strategy: Rc<ReservedWordStrategy>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProjectScaffold {
     pub manifest_file: Option<String>,
     pub module_init_file: Option<String>,
@@ -107,7 +81,7 @@ pub struct ProjectScaffold {
     pub source_dir: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SerializationSpec {
     pub struct_derives: Option<String>,
     pub struct_derives_copy: Option<String>,
@@ -119,14 +93,13 @@ pub struct SerializationSpec {
     pub default_value: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TestNameStyle {
     SnakeCaseTestNames,
     PascalCaseTestNames,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TestConventions {
     pub file_prefix: String,
     pub file_suffix: String,
@@ -136,7 +109,7 @@ pub struct TestConventions {
     pub async_decorator: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,

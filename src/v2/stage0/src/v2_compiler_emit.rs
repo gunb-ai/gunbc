@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{Node, InferredNode, module_imports, module_items, Connective, Field, Param, ExprData, NamedArg, MatchArm, FieldInit, StringPart, LiteralValue, TextFile, SourceSpan, ResourceUse, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -102,34 +77,33 @@ use ExprCategory::*;
 use FuncBodyShape::*;
 use TcoExprShape::*;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EmitResult {
     pub files: Vec<Rc<TextFile>>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockEmitState {
     pub text: Vec<String>,
     pub scope: Rc<InferScope>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TcoFrame {
     pub expr: Rc<Node>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TcoReassignInput {
     pub args: Vec<Rc<NamedArg>>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TypedItemKind {
     TypedItemTypeDef,
     TypedItemTypeAlias,
@@ -142,8 +116,7 @@ pub enum TypedItemKind {
     TypedItemUnhandled,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BackendCapability {
     CapServiceEmit,
     CapAsyncTransport,
@@ -152,13 +125,13 @@ pub enum BackendCapability {
     CapRcOwnership,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BackendInfo {
     pub target_name: String,
     pub capabilities: Vec<BackendCapability>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TestProjection {
     pub module_name: String,
     pub service_name: String,
@@ -187,7 +160,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Vec<Rc<TestProjecti
 })); } __result }); } __result }); } __result }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InterpPart {
     pub format_segment: String,
     pub arg_expr: String,
@@ -1096,8 +1069,7 @@ kind.clone()
 }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ExprCategory {
     ExprCatLeaf,
     ExprCatCompound,
@@ -1135,8 +1107,7 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FuncBodyShape {
     FuncBodyLet {
         name: String,
@@ -1171,8 +1142,7 @@ Rc::new(FuncBodyShape::FuncBodyLet {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TcoExprShape {
     TcoCall {
         func: String,

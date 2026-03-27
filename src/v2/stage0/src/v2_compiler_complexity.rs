@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{Node, ExprData, Param, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, NamedArg, diagnostic_is_error};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
@@ -84,8 +59,7 @@ use Certainty::*;
 use CostShape::*;
 use RecursionPattern::*;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SizeExpr {
     SizeConst {
         value: i64,
@@ -106,8 +80,7 @@ pub enum SizeExpr {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CostExpr {
     CostConst {
         value: i64,
@@ -134,16 +107,14 @@ pub enum CostExpr {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Certainty {
     Proven,
     Conservative,
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CostShape {
     ShapeConstant,
     ShapeLinearScan {
@@ -223,7 +194,7 @@ pub fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> Rc<CostShape> {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ComplexitySummary {
     pub work: Rc<CostExpr>,
     pub span: Rc<CostExpr>,
@@ -231,7 +202,7 @@ pub struct ComplexitySummary {
     pub certainty: Certainty,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CostInternTable {
     pub summaries: HashMap<String, Rc<ComplexitySummary>>,
 }
@@ -252,8 +223,7 @@ pub fn lookup_summary(table: Rc<CostInternTable>, func_name: String) -> Option<R
     v2_rt::map_get(&table.summaries.clone(), func_name.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RecursionPattern {
     LinearRecursion {
         iteration_var: String,
@@ -510,14 +480,14 @@ Rc::new(SummaryResult {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
     pub summary: Option<Rc<ComplexitySummary>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ComplexityReport {
     pub function_summaries: HashMap<String, Rc<ComplexitySummary>>,
     pub violations: Vec<Rc<ComplexityViolation>>,
@@ -783,7 +753,7 @@ pub fn collect_size_vars(expr: Rc<CostExpr>) -> Vec<String> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeduplicateAcc {
     pub seen: HashMap<String, bool>,
     pub out: Vec<String>,
@@ -843,20 +813,20 @@ lines.clone().join(&"
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FuncEntry {
     pub name: String,
     pub body: Rc<Node>,
     pub params: Vec<Rc<Param>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SummaryResult {
     pub summary: Rc<ComplexitySummary>,
     pub table: Rc<CostInternTable>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatchCostAccum {
     pub result: Rc<SummaryResult>,
     pub branch_costs: Vec<Rc<CostExpr>>,

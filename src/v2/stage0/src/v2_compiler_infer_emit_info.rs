@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, node_has_structure, node_is_product, with_required_cardinality};
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
@@ -80,8 +55,7 @@ use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 pub use crate::v2_compiler_infer_types::{node_is_optional, normalize_access_type_node, rt_type, child_inferred_or_name, node_type_equals};
 use TypeRepr::*;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "_variant")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeRepr {
     StructRepr,
     EnumRepr {
@@ -97,14 +71,14 @@ impl TypeRepr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeSummary {
     pub name: String,
     pub repr: Rc<TypeRepr>,
     pub field_summaries: HashMap<String, Rc<FieldSummary>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EmitGraphInfo {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
     pub variant_to_enum: HashMap<String, String>,
@@ -113,7 +87,7 @@ pub struct EmitGraphInfo {
     pub recursive_type_set: HashMap<String, bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EmitInfoBuildState {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
     pub variant_to_enum: HashMap<String, String>,

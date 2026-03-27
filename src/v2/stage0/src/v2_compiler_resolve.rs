@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,46 +48,34 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{Node, Connective, SourceSpan, diagnostic_node, no_span, KERNEL_TYPES, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node};
 use crate::v2_std_core::Connective::{Conj, Disj};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModuleGraph {
     pub modules: Vec<Rc<ResolvedModule>>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedModule {
     pub module: Rc<Node>,
     pub resolved_imports: Vec<Rc<ResolvedImport>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedImport {
     pub module_path: String,
     pub target_span: Option<Rc<SourceSpan>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DepEdge {
     pub from_module: String,
     pub to_module: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResolveAccum {
     pub imports_by_name: HashMap<String, Vec<Rc<ResolvedImport>>>,
     pub diagnostics: Vec<Rc<Node>>,
@@ -161,7 +136,7 @@ pub fn find_module(module_index: HashMap<String, Rc<Node>>, path: String) -> Opt
     v2_rt::map_get(&module_index, path.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModuleResolveResult {
     pub resolved_imports: Vec<Rc<ResolvedImport>>,
     pub diagnostics: Vec<Rc<Node>>,
@@ -179,7 +154,7 @@ Rc::new(ModuleResolveResult {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImportResolveResult {
     pub resolved: Rc<ResolvedImport>,
     pub diagnostics: Vec<Rc<Node>>,
@@ -249,7 +224,7 @@ if is_coproduct.clone() {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DuplicateCheckState {
     pub seen_names: HashMap<String, bool>,
     pub diagnostics: Vec<Rc<Node>>,
@@ -278,7 +253,7 @@ result.diagnostics.clone()
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TopoResult {
     pub sorted: Vec<String>,
     pub cycle_error: Option<Rc<Node>>,
@@ -327,7 +302,7 @@ Rc::new(TopoResult {
 }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KahnDrainState {
     pub sorted: Vec<String>,
     pub in_degree_map: HashMap<String, i64>,

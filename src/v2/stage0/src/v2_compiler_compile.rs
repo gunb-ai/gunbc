@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, diagnostic_node, diagnostic_is_error, diagnostic_severity, diagnostic_message, diagnostic_module_name, diagnostic_category, diagnostic_span, no_span, Connective, Cardinality, Field, Param, ResourceUse, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
@@ -106,13 +81,13 @@ use crate::v2_compiler_ownership::OwnershipDecision::{SharedError};
 pub use crate::v2_compiler_artifact::{ArtifactPlan, Artifact, RenderTarget, default_artifact_plan};
 use crate::v2_compiler_artifact::RenderTarget::{Dag};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SourceFile {
     pub path: String,
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PipelineResult {
     pub files: Vec<Rc<TextFile>>,
     pub diagnostics: Vec<Rc<Node>>,
@@ -121,7 +96,7 @@ pub struct PipelineResult {
     pub artifact_plan: Rc<ArtifactPlan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FrontendResult {
     pub graph: Option<Rc<ModuleGraph>>,
     pub diagnostics: Vec<Rc<Node>>,

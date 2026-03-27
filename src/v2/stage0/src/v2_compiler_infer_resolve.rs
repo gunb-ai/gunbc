@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use serde::{Serialize, Deserialize};
 use crate::v2_rt;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
 impl<T> NonEmptyVec<T> {
@@ -27,20 +26,8 @@ impl<T> NonEmptyVec<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<T>::deserialize(deserializer)?;
-        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-    }
-}
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
@@ -61,18 +48,6 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-where
-    T: Ord + Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-    }
-}
 pub use crate::std_types::{SourceSpan};
 pub use crate::v2_std_core::{Node, Field, Param, NodeType, rt_node, InferredNode, diagnostic_node, Cardinality, ResourceUse, MatchArm, FieldInit, NamedArg, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
@@ -85,67 +60,67 @@ use crate::v2_std_core::TransportKind::{LocalTransport};
 pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, node_is_container, rt_type, collection_kind_for_name};
 pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type, is_recursive_type};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NodeResolveResult {
     pub resolved: Rc<Node>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ItemResult {
     pub item: Rc<Node>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldResult {
     pub field: Rc<Field>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExprResolveResult {
     pub expr: Rc<Node>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NamedArgResolveResult {
     pub arg: Rc<NamedArg>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatchArmResolveResult {
     pub arm: Rc<MatchArm>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldInitResolveResult {
     pub field_init: Rc<FieldInit>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StringPartResolveResult {
     pub part: Rc<StringPart>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TransportResolveResult {
     pub transport: Rc<Node>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParamResult {
     pub param: Rc<Param>,
     pub diagnostics: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResourceUseResult {
     pub resource_use: Rc<ResourceUse>,
     pub diagnostics: Vec<Rc<Node>>,
