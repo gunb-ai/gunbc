@@ -508,7 +508,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: ExprError { kind: kind, message: message }
+    match_pattern: none, expr_data: ExprError { kind: kind, message: message }
   }
 }
 

@@ -45,7 +45,7 @@ import v2.std.core {
   foreach_collection, foreach_body,
   index_base, index_expr, slice_base, slice_start, slice_end,
   cast_target, cast_expr, return_value, unaryop_operand,
-  CollectionKind,
+  CollectionKind, diagnostic_is_error,
   rt_node, has_inferred, InferredNode, Resolved, CompilerError,
   NodeType, Typed, InferError, Untyped,
   Cardinality, Required, CardOptional,
@@ -1863,7 +1863,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
         properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
-        expr_data: NoExprData
+        match_pattern: none, expr_data: NoExprData
       },
       diagnostics: body_diags
     }
