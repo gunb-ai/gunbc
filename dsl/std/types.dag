@@ -43,23 +43,43 @@ module std.types
 //   Unit   = Dag{Identity}      [Unit]   = {} (bottom, _|_)
 //   Json   = Dag{Identity}      [Json]   = [Bool] U [Int] U ... U {null} (top, T)
 //
-// Kernel type declarations. These are compiled as regular .dag types and
-// override the compiler's bootstrap kernel seed (leaf nodes) via the normal
-// merge order (kernel < imports < local). The compiler reads structural
-// properties from these declarations instead of hardcoding name checks.
+// Kernel type declarations with algebraic inhabitation.
+//
+// Each type declares the algebraic structure it inhabits. Operations
+// emerge from the algebra — the compiler reads inhabitation to derive
+// capabilities, not type names.
+//
+// The compiler's bootstrap kernel seed (leaf nodes) provides fallback
+// bindings for isolated tests. These declarations override the seed via
+// the normal merge order (kernel < imports < local).
 
+// Bool inhabits BooleanAlgebra.
+// Operations that emerge: and (meet), or (join), not (complement).
+// The compiler derives "this is a boolean" from: Disj + 2 unit variants.
 type Bool = True | False
 
+// Unit is the terminal object (zero-field product, single inhabitant).
+// Denotationally: |Unit| = 1 (exactly one value).
+// The compiler derives "this is empty" from: NoConnective + 0 children.
 type Unit
 
+// Secret is a String with security policy (no logging, no display).
+// Inhabits FreeMonoid<Char> like String, but rendering is redacted.
 type Secret
 
+// Json is the top type for structured values.
+// Denotationally: [Json] = [Bool] ∪ [Int] ∪ [Float] ∪ [String] ∪ [List<Json>] ∪ [Map<String, Json>] ∪ {null}
 type Json
 
+// Bytes is a sequence of octets. Inhabits FreeMonoid<Byte>.
 type Bytes
 
-// Int, Float, String are declared in their respective std modules
-// (integer.dag, float.dag, string_type.dag).
+// Int inhabits OrderedRing (see std/integer.dag).
+//   → add, subtract, multiply, negate, abs, compare, min, max
+// Float inhabits approximate Field (see std/float.dag).
+//   → all Ring ops + divide, reciprocal
+// String inhabits FreeMonoid<Char> (see std/string_type.dag).
+//   → concat, empty, length, index, slice, map, fold
 
 // --- Char type (structural primitive) ----------------------------------
 // Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
@@ -70,9 +90,18 @@ type Bytes
 type Char = Int where brand("Char"), range(min: 0, max: 1114111)
 
 // --- Container types (parameterized) -----------------------------------
-// Bare declarations with type parameters. The compiler reads arity from
-// params and renders to target-language containers. The algebraic
-// structure (Nil|Cons for List, etc.) is denotational -- not compiled.
+// Each container inhabits a specific algebraic structure from which its
+// operations emerge (see std/algebra.dag).
+//
+// Denotational equations (from Collection Denotational Model in ROADMAP):
+//   List<A>  = Σ n. Fin(n) → A         (positional, ordered, duplicates OK)
+//   Set<A>   = A → Bool                 (membership, unordered, unique)
+//   Map<K,V> = K → (1 + V)             (keyed partial function)
+//
+// Algebraic inhabitation:
+//   List<T>  inhabits FreeMonoid<T>     → append, empty, length, map, fold, filter
+//   Set<A>   inhabits BooleanAlgebra<A> → union, intersect, diff, member
+//   Map<K,V> inhabits PartialFunction<K,V> → lookup, insert, delete, merge
 type List<element>
 type Set<element>
 type Map<key, value>

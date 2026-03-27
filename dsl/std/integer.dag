@@ -1,24 +1,35 @@
-// std/integer.dag -- Syllogistic integer type hierarchy.
+// std/integer.dag -- Integer type hierarchy.
 //
-// Integers are structurally defined from bit-level types with
-// signedness and width predicates. Int and UInt are aliases for
-// their 64-bit variants (matching Rust's i64/u64 defaults).
+// Integers are structurally defined from bit-level types. Their algebraic
+// operations emerge from inhabiting an ordered commutative ring:
+//
+//   Int inhabits OrderedRing
+//     → add, subtract, multiply (from Ring)
+//     → negate, abs, min, max (from Ring + Order)
+//     → compare, less_than, greater_than (from Order)
+//     → zero, one (from Ring identity elements)
+//
+// Unsigned integers inhabit CommutativeSemiring (no negate/subtract).
+//
+// The compiler derives arithmetic capability from the algebraic structure,
+// not from the type name. is_kernel_numeric(n) dissolves into
+// inhabits_ring(n) — a structural scope query.
 
 module std.integer
 
 import std.bit { Byte, Word16, Word32, Word64 }
 
-// Unsigned integers
-type UInt8 = Byte where unsigned, arithmetic
-type UInt16 = Word16 where unsigned, arithmetic
-type UInt32 = Word32 where unsigned, arithmetic
-type UInt64 = Word64 where unsigned, arithmetic
+// Unsigned integers: semiring (add + mul, no subtraction)
+type UInt8 = Byte where unsigned, semiring
+type UInt16 = Word16 where unsigned, semiring
+type UInt32 = Word32 where unsigned, semiring
+type UInt64 = Word64 where unsigned, semiring
 
-// Signed integers
-type Int8 = Byte where signed, arithmetic
-type Int16 = Word16 where signed, arithmetic
-type Int32 = Word32 where signed, arithmetic
-type Int64 = Word64 where signed, arithmetic
+// Signed integers: ordered ring (add + negate + mul + compare)
+type Int8 = Byte where signed, ordered_ring
+type Int16 = Word16 where signed, ordered_ring
+type Int32 = Word32 where signed, ordered_ring
+type Int64 = Word64 where signed, ordered_ring
 
 // Default aliases
 type Int = Int64
