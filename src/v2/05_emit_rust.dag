@@ -3582,7 +3582,13 @@ fn emit_rust_default_value(param: Param) -> String {
   else if type_name == "Int" { "0" }
   else if type_name == "Bool" { "false" }
   else if type_name == "Float" { "0.0" }
-  else { concat("Default::default()") }
+  else {
+    // Custom types derive Deserialize — use JSON deserialization from empty object.
+    // This works for structs (fields get defaults) and is safe for dry-run
+    // since the service ignores params and returns mock data.
+    concat("serde_json::from_str::<", emit_node_type(n: param.type_expr, target: Rust), ">(\"{}\")",
+      ".expect(\"test param default\")")
+  }
 }
 
 fn emit_mock_prop_setup(mock_prop: FieldInit, depth: Int) -> String {
