@@ -39,7 +39,8 @@ pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: 
     let __len_1 = normed.children.clone().len();
     __len_1 as i64
 }) == 0_i64)) && (normed.name.clone() == "String") {
-    let diags = if index_type.name == "Int" {
+    let normed_index = normalize_access_type_node(index_type.clone());
+    let diags = if normed_index.name == "Int" {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("string index requires an Int index", span.clone(), &module_name)))
@@ -85,18 +86,21 @@ pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: 
 }
 
 pub fn check_slice_access_node(base_type: Rc<Node>, start_type: Rc<Node>, end_type: Rc<Node>, span: SourceSpan, module_name: &str) -> Rc<AccessCheckResultNode> {
-    let base_is_string = base_type.name == "String";
+    let normed_base = normalize_access_type_node(base_type.clone());
+    let base_is_string = normed_base.name == "String";
     let base_diags = if base_is_string {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("slice is only supported for String values", span.clone(), &module_name)))
 };
-    let start_diags = if start_type.name == "Int" {
+    let normed_start = normalize_access_type_node(start_type.clone());
+    let start_diags = if normed_start.name == "Int" {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("slice start requires an Int index", span.clone(), &module_name)))
 };
-    let end_diags = if end_type.name == "Int" {
+    let normed_end = normalize_access_type_node(end_type.clone());
+    let end_diags = if normed_end.name == "Int" {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("slice end requires an Int index", span.clone(), &module_name)))

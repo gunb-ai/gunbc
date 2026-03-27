@@ -14,5 +14,6 @@ import std.algebra { FreeMonoid }
 // under concatenation with empty string as identity.
 type String = FreeMonoid<Char>
 
-// Char: Unicode scalar value
-type Char { codepoint: Int }
+// Char is declared in std/types.dag as:
+//   type Char = Int where brand("Char"), range(min: 0, max: 1114111)
+// Single authority — not redeclared here.

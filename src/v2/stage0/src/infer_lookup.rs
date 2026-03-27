@@ -281,7 +281,18 @@ pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: &str) -> O
             Some(field) => {
                 match field.inferred.as_ref().map(|__rc| __rc.as_ref()) {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
-                        Some(rt.clone())
+                        if rt.params.len() > 0 {
+                            match rt.inferred.as_ref().map(|__rc| __rc.as_ref()) {
+                                Some(InferredNode::Resolved { node: return_type, .. }) => {
+                                    Some(return_type.clone())
+                                }
+                                _ => {
+                                    Some(rt.clone())
+                                }
+                            }
+                        } else {
+                            Some(rt.clone())
+                        }
                     }
                     _ => {
                         None

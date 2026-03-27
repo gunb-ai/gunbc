@@ -761,7 +761,18 @@ pub fn infer_binop_type_node(op: BinOpKind, left_type: Rc<Node>) -> Rc<Node> {
                 Some(field) => {
                     match field.inferred.as_ref().map(|__rc| __rc.as_ref()) {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
-                            rt.clone()
+                            if rt.params.len() > 0 {
+                                match rt.inferred.as_ref().map(|__rc| __rc.as_ref()) {
+                                    Some(InferredNode::Resolved { node: return_type, .. }) => {
+                                        return_type.clone()
+                                    }
+                                    _ => {
+                                        rt.clone()
+                                    }
+                                }
+                            } else {
+                                rt.clone()
+                            }
                         }
                         _ => {
                             left_type.clone()

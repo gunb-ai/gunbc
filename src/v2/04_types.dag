@@ -476,7 +476,14 @@ fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
         match matching |> first {
           Some { value: field } =>
             match field.inferred {
-              Some { value: Resolved { node: rt } } => rt
+              Some { value: Resolved { node: rt } } =>
+                // Extract the callable's return type, not the callable itself
+                if rt.params |> count > 0 {
+                  match rt.inferred {
+                    Some { value: Resolved { node: return_type } } => return_type
+                    _ => left_type
+                  }
+                } else { rt }
               _ => left_type
             }
           None => left_type

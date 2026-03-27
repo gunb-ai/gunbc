@@ -227,8 +227,8 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 
 // Structural field lookup: check if the receiver type's declaration has
 // a child with the requested method name (e.g., OrderedRing<T>.add).
-// This is how the compiler resolves methods from algebraic compositions
-// without name-checking the type.
+// Returns the RETURN TYPE of calling that method, not the method's
+// signature. For add: fn(T,T)->T, returns T (the call result type).
 fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
   let is_product = receiver_type.connective == Conj
   if is_product {
@@ -236,9 +236,21 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
     match matching |> first {
       Some { value: field } =>
         // Found a structural field matching the method name.
-        // Return its inferred type (the method's signature).
+        // The field's inferred type is the method's signature.
+        // If it's a callable (has params), extract its return type.
+        // If it's a non-callable (e.g., zero: T), return its type directly.
         match field.inferred {
-          Some { value: Resolved { node: rt } } => Some { value: rt }
+          Some { value: Resolved { node: rt } } =>
+            if rt.params |> count > 0 {
+              // Callable field: return type is the callable's own inferred type
+              match rt.inferred {
+                Some { value: Resolved { node: return_type } } => Some { value: return_type }
+                _ => Some { value: rt }
+              }
+            } else {
+              // Non-callable field (e.g., zero: T, one: T): return type directly
+              Some { value: rt }
+            }
           _ => none
         }
       None => none

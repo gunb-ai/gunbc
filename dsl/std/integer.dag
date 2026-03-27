@@ -1,11 +1,25 @@
-// std/integer.dag -- Integer types as algebraic compositions.
+// std/integer.dag -- Integer types as carrier + algebra witness.
 //
-// Int IS an OrderedRing over Word64. Arithmetic operations (add, subtract,
-// multiply, negate, abs, compare) emerge from the ring structure — the
-// compiler reads them from the resolved type's fields, not from the name "Int".
+// MODELING NOTE: A value of type Int is NOT an OrderedRing record.
+// Int is a CARRIER (Word64) with EVIDENCE that it inhabits OrderedRing.
+// The algebra record is the witness — it tells the compiler what
+// operations are valid on Int values. Values are Word64; operations
+// come from the ring structure.
 //
-// The signed/unsigned distinction comes from the algebra:
-//   OrderedRing has negate (signed arithmetic)
+// Current representation: Int = OrderedRing<Word64>
+// This conflates carrier with witness (the reviewer correctly noted
+// this). The end-state model separates them:
+//
+//   type Int64 = Carrier<Word64> with OrderedRing
+//   -- or --
+//   type Int64 { carrier: Word64, algebra: OrderedRing<Word64> }
+//
+// Until the language supports trait/witness syntax, the direct alias
+// is the honest intermediate. The compiler's structural field lookup
+// works the same either way — it finds "add" on the resolved type.
+//
+// Signed/unsigned distinction comes from the algebra:
+//   OrderedRing has negate (signed arithmetic — additive inverse)
 //   Semiring has no negate (unsigned — only add and mul)
 
 module std.integer

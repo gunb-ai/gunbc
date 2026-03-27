@@ -2679,10 +2679,13 @@ of algebra types. Then refactor inference to resolve methods from type
 structure instead of string dispatch.
 
 Concretely:
-1. Rewrite `integer.dag`: `type Int = OrderedRing<Word64>` (requires v2
-   parser to handle the composition — currently uses v1-era `where` syntax)
-2. Rewrite `float.dag`: `type Float = Field<Word64>`
-3. Rewrite `string_type.dag`: `type String = FreeMonoid<Char>`
+1. Rewrite `integer.dag`: `type Int = OrderedRing<Word64>` — **done** (B1)
+2. Rewrite `float.dag`: `type Float = Field<Word64>` — **done** (B1)
+3. Rewrite `string_type.dag`: `type String = FreeMonoid<Char>` — **done** (B1)
+   Note: these currently conflate carrier with algebra witness
+   (`Int64 = OrderedRing<Word64>` makes Int look like the record).
+   End-state: separate carrier from witness (e.g., `Carrier<Word64>
+   with OrderedRing`). See integer.dag comments.
 4. Refactor `04_method.dag`/`04_infer.dag`: when the compiler sees `a + b`,
    resolve `+` to the `add` field of `a`'s type's algebraic composition.
    Currently uses ~60 string branches in `classify_reconciled_intrinsic_method`.
