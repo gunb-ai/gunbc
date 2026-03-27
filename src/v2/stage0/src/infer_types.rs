@@ -12,7 +12,7 @@ pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
-    match rt_node(n.clone()).as_ref() {
+    match rt_node(n).as_ref() {
     NodeType::Typed { node: rt, .. } => {
         rt.clone()
     }
@@ -50,15 +50,15 @@ pub fn collection_kind_for_name(name: &str) -> Option<CollectionKind> {
 }
 
 pub fn container_node(kind_name: &str, element: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element.clone())), connective: None, collection_kind: collection_kind_for_name(&kind_name), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element)), connective: None, collection_kind: collection_kind_for_name(&kind_name), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Tuple".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(Rc::new(Node { name: "first".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: first.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }), Rc::new(Node { name: "second".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: second.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }))), connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Tuple".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(Rc::new(Node { name: "first".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: first })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }), Rc::new(Node { name: "second".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: second })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }))), connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(key.clone(), value.clone())), connective: None, collection_kind: Some(CollectionKind::MapKind), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(key, value)), connective: None, collection_kind: Some(CollectionKind::MapKind), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn bare_map_node() -> Rc<Node> {
@@ -66,7 +66,7 @@ pub fn bare_map_node() -> Rc<Node> {
 }
 
 pub fn callable_node(func_params: Rc<Vec<Rc<Param>>>, ret: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Callable".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: func_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: ret.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Callable".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: func_params, inferred: Some(Rc::new(InferredNode::Resolved { node: ret })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
@@ -132,7 +132,7 @@ pub fn node_is_optional(n: Rc<Node>) -> bool {
 
 pub fn node_is_map(n: Rc<Node>) -> bool {
     let is_map = n.collection_kind.clone() == Some(CollectionKind::MapKind);
-    is_map.clone()
+    is_map
 }
 
 pub fn node_is_leaf(n: Rc<Node>) -> bool {
@@ -176,10 +176,10 @@ pub fn normalize_access_type_node(n: Rc<Node>) -> Rc<Node> {
 } else {
     None
 };
-            match unwrapped.clone() {
+            match unwrapped {
     Some(base) => {
          {
-            let __tco_0 = base.clone();
+            let __tco_0 = base;
             __tco_p_n = __tco_0;
             continue;
         }
@@ -219,13 +219,13 @@ pub fn node_type_shape(n: Rc<Node>) -> String {
     if node_is_container(n.clone()) {
     let elem_shape = match n.children.clone().first().cloned() {
     Some(el) => {
-        node_type_shape(el.clone())
+        node_type_shape(el)
     }
     None => {
         "?".to_string()
     }
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Container(".to_string(), n.name.clone()), ",".to_string()), elem_shape.clone()), ")".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Container(".to_string(), n.name.clone()), ",".to_string()), elem_shape), ")".to_string())
 } else {
     if node_is_optional(n.clone()) {
     let inner_shape = node_type_shape(with_required_cardinality(n.clone()));
@@ -334,7 +334,7 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
     let left_first_child = left.children.clone().first().cloned();
     let left_norm_name = left.name.clone();
     let left_is_unit_inner = if left_is_container.clone() {
-    match left_first_child.clone() {
+    match left_first_child {
     Some(el) => {
         el.name.clone() == "Unit"
     }
@@ -358,7 +358,7 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
     false
 }
 };
-    if same_kind.clone() && left_is_unit_inner.clone() {
+    if same_kind && left_is_unit_inner {
     right.clone()
 } else {
     left.clone()
@@ -448,7 +448,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     Some(left_el) => {
         match right.children.clone().first().cloned() {
     Some(right_el) => {
-        node_type_equals(left_el.clone(), right_el.clone())
+        node_type_equals(left_el, right_el)
     }
     None => {
         false
@@ -504,7 +504,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
         right.clone()
     }
 };
-    node_type_equals(left_first.clone(), right_first.clone()) && node_type_equals(left_second.clone(), right_second.clone())
+    node_type_equals(left_first, right_first) && node_type_equals(left_second, right_second)
 } else {
     false
 }
@@ -542,7 +542,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     }
     __all_12
 };
-    if params_eq.clone() == false {
+    if params_eq == false {
     false
 } else {
     match left.inferred.as_ref().map(|__rc| __rc.as_ref()) {
@@ -649,9 +649,9 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
     Rc::new(__flat_mapped_2)
 };
     if (n.name.clone() != "") && (is_kernel_type(&n.name) == false) {
-    v2_rt::concat(Rc::new(vec!(n.name.clone())), child_deps.clone())
+    v2_rt::concat(Rc::new(vec!(n.name.clone())), child_deps)
 } else {
-    child_deps.clone()
+    child_deps
 }
 } else {
     if (is_kernel_type(&n.name) || (n.name.clone() == "None")) || (n.name.clone() == "") {
@@ -667,22 +667,22 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
 }
 
 pub fn is_int_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
+    let normed = normalize_access_type_node(n);
     (normed.name.clone() == "Int") && node_is_leaf(normed.clone())
 }
 
 pub fn is_string_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
+    let normed = normalize_access_type_node(n);
     (normed.name.clone() == "String") && node_is_leaf(normed.clone())
 }
 
 pub fn is_bool_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
+    let normed = normalize_access_type_node(n);
     (normed.name.clone() == "Bool") && node_is_leaf(normed.clone())
 }
 
 pub fn is_float_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
+    let normed = normalize_access_type_node(n);
     (normed.name.clone() == "Float") && node_is_leaf(normed.clone())
 }
 
@@ -714,7 +714,7 @@ pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
 }) == 1_i64) {
     match normed.children.clone().first().cloned() {
     Some(el) => {
-        el.clone()
+        el
     }
     None => {
         receiver_type.clone()
@@ -724,7 +724,7 @@ pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
     if node_is_map(normed.clone()) {
     match normed.children.clone().get((1_i64) as usize).cloned() {
     Some(val_type) => {
-        val_type.clone()
+        val_type
     }
     None => {
         receiver_type.clone()
@@ -780,19 +780,19 @@ pub fn infer_binop_type_node(op: BinOpKind, left_type: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
-    let normed = normalize_access_type_node(n.clone());
+    let normed = normalize_access_type_node(n);
     let is_single_child = (node_has_structure(normed.clone()) == false) && (({
     let __len_0 = normed.children.clone().len();
     __len_0 as i64
 }) == 1_i64);
-    let extracted = if is_single_child.clone() {
+    let extracted = if is_single_child {
     normed.children.clone().first().cloned()
 } else {
     None
 };
-    match extracted.clone() {
+    match extracted {
     Some(el) => {
-        el.clone()
+        el
     }
     None => {
         if node_is_leaf(normed.clone()) && (normed.name.clone() == "String") {
@@ -805,7 +805,7 @@ pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: &str) -> bool {
-    match m.clone().get(&key.to_string()).cloned() {
+    match m.get(&key.to_string()).cloned() {
     Some(_) => {
         true
     }

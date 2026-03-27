@@ -246,7 +246,7 @@ pub fn infer_intrinsic_method_type_node(receiver_type: Rc<Node>, intrinsic: Intr
         Some(receiver_type.clone())
     }
     IntrinsicMethod::MethodFold => {
-        fold_accumulator_type.clone()
+        fold_accumulator_type
     }
     IntrinsicMethod::MethodSortBy => {
         Some(receiver_type.clone())
@@ -396,7 +396,7 @@ pub fn infer_builtin_call_type(name: &str) -> Option<Rc<Node>> {
 pub fn resolve_builtin_call_type(name: &str) -> Rc<Node> {
     match infer_builtin_call_type(&name) {
     Some(v) => {
-        v.clone()
+        v
     }
     None => {
         leaf_node("Unit")

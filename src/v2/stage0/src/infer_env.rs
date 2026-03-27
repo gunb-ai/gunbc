@@ -71,6 +71,6 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     }
     __acc_6
 };
-    Rc::new(TypeEnv { bindings: merged_bindings.clone(), recursive_types: merged_recursive.clone(), recursive_type_set: merged_recursive_set.clone() })
+    Rc::new(TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set })
 }
 

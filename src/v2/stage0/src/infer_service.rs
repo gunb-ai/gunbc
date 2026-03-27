@@ -80,7 +80,7 @@ pub fn extract_typed_service_name(receiver: Rc<Node>) -> Option<String> {
 }
 
 pub fn collect_typed_service_calls(texpr: Rc<Node>) -> Rc<Vec<String>> {
-    let result = collect_typed_service_calls_into(texpr.clone(), Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) }));
+    let result = collect_typed_service_calls_into(texpr, Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) }));
     result.result.clone()
 }
 
@@ -123,13 +123,13 @@ pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -
     }
 };
         let result = {
-    let mut __acc_4 = this_acc.clone();
+    let mut __acc_4 = this_acc;
     for __elem_5 in texpr.children.iter().cloned() {
-        __acc_4 = collect_typed_service_calls_into(__elem_5.clone(), __acc_4);
+        __acc_4 = collect_typed_service_calls_into(__elem_5, __acc_4);
     }
     __acc_4
 };
-        result.clone()
+        result
     })
 }
 
@@ -158,18 +158,18 @@ pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> 
     }
 };
         let result = {
-    let mut __acc_4 = this_acc.clone();
+    let mut __acc_4 = this_acc;
     for __elem_5 in texpr.children.iter().cloned() {
-        __acc_4 = collect_called_func_names_into(__elem_5.clone(), __acc_4);
+        __acc_4 = collect_called_func_names_into(__elem_5, __acc_4);
     }
     __acc_4
 };
-        result.clone()
+        result
     })
 }
 
 pub fn collect_called_func_names(texpr: Rc<Node>) -> Rc<Vec<String>> {
-    let result = collect_called_func_names_into(texpr.clone(), Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) }));
+    let result = collect_called_func_names_into(texpr, Rc::new(UniqueAccum { seen: Rc::new(std::collections::HashMap::new()), result: Rc::new(Vec::new()) }));
     result.result.clone()
 }
 
@@ -182,7 +182,7 @@ pub fn expand_transitive_services_once(modules: Rc<Vec<Rc<TypedModule>>>, regist
     Rc::new(__flat_mapped_0)
 };
     {
-    let mut __acc_2 = registry.clone();
+    let mut __acc_2 = registry;
     for __elem_3 in all_items.iter().cloned() {
         __acc_2 = match __acc_2.clone().get(&__elem_3.name.clone()).cloned() {
     Some(info) => {
@@ -272,7 +272,7 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
     {
     let mut __acc_4 = 0_i64;
     for __elem_5 in ({
-    let __rc_0 = registry.clone();
+    let __rc_0 = registry;
     let __map_unwrapped_1 = Rc::try_unwrap(__rc_0).unwrap_or_else(|rc| (*rc).clone());
     let mut __entries_2 = __map_unwrapped_1.into_iter().collect::<Vec<_>>();
     __entries_2.sort_by(|a, b| a.0.cmp(&b.0));
@@ -328,7 +328,7 @@ pub fn check_service_field_access_node(base_type: Rc<Node>, field: &str, service
     __len_0 as i64
 }) == 0_i64) {
     let path = v2_rt::concat(v2_rt::concat(base_type.name.clone(), ".".to_string()), field.to_string());
-    match service_registry.clone().get(&path.clone()).cloned() {
+    match service_registry.get(&path.clone()).cloned() {
     Some(_) => {
         Some(leaf_node(&path))
     }
@@ -346,7 +346,7 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, ser
     let __len_5 = receiver_type.children.clone().len();
     __len_5 as i64
 }) == 0_i64) {
-    match service_registry.clone().get(&receiver_type.name.clone()).cloned() {
+    match service_registry.get(&receiver_type.name.clone()).cloned() {
     Some(ops) => {
         {
     let matching = {
@@ -358,7 +358,7 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, ser
     }
     Rc::new(__filtered_0)
 };
-    match matching.clone().first().cloned() {
+    match matching.first().cloned() {
     Some(op) => {
         if ({
     let __len_4 = op.outputs.clone().len();

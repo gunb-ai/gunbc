@@ -1015,8 +1015,11 @@ fn count_ident_uses_expr(expr: &ast::Expr, counts: &mut HashMap<String, usize>, 
                         .map(|m| m.get(name).copied().unwrap_or(0))
                         .max()
                         .unwrap_or(0);
-                    // Only add the max (not sum) since arms are exclusive
-                    counts.insert(name.clone(), current.max(max_in_arms));
+                    // Arms are exclusive: take max across arms (not sum).
+                    // Add to current (pre-match uses), don't max with it —
+                    // a variable used before the match AND inside an arm
+                    // has fan-out = pre-match + max(arms), not max(pre-match, arms).
+                    counts.insert(name.clone(), current + max_in_arms);
                 }
             }
         }
@@ -2476,39 +2479,18 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             // - Non-Rc single-use: move (zero cost)
             // - Non-Rc multi-use: clone
             //
-            // EXCEPTION: Fold accumulators with count=1 skip the Rc clone.
-            // Fold guarantees the accumulator is linear (consumed once per
-            // iteration, rebound). Moving keeps Rc refcount=1, so
-            // Rc::try_unwrap succeeds and list_push/map_insert/concat
-            // are O(1) instead of O(n). Without this, every fold is O(n²).
-            let is_fold_accum = ctx
-                .fold_accum_name
-                .as_deref()
-                .is_some_and(|accum| accum == name);
-            let ir_type = ctx.ir_scope.get(name);
-            let named = ir_type
-                .and_then(named_type_from_ir)
-                .or_else(|| ctx.param_types.get(name).cloned());
-            let is_rc_named = named
-                .as_ref()
-                .is_some_and(|ty_name| ctx.rc_wrapped_types.contains(ty_name));
-            // List and Map types are always Rc-wrapped (Rc<Vec<T>>, Rc<HashMap<K,V>>).
-            let is_rc_collection = ir_type
-                .is_some_and(|ty| matches!(ty, IrType::Generic(n, _) if n == "List" || n == "Map"));
-            // If type is completely unknown and Rc types exist, assume Rc (conservative).
-            let assume_rc =
-                named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
-            // Fold accumulators with single use: move (preserves refcount=1).
-            // All other Rc-typed variables: clone (safety net for use-count gaps).
-            let needs_clone = if is_fold_accum && count <= 1 {
-                false
-            } else {
-                count > 1
-                    || ctx.match_bound_vars.contains(name)
-                    || is_rc_named
-                    || is_rc_collection
-                    || assume_rc
-            };
+            // Fan-out clone: duplicate only when a binding feeds multiple
+            // consumers (count > 1) or is a reference from a match arm.
+            // Single-use bindings move — even Rc-wrapped ones. Moving an
+            // Rc keeps refcount=1, so downstream Rc::try_unwrap succeeds
+            // and fold/map/list operations are O(1) instead of O(n).
+            //
+            // This relies on count_ident_uses being correct. The match-arm
+            // bug (max instead of add) was the root cause of ~50 false
+            // single-use classifications. With that fixed, the use-count
+            // analysis is the authority — no Rc-type safety net needed.
+            let needs_clone = count > 1
+                || ctx.match_bound_vars.contains(name);
             if needs_clone {
                 code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::Var(escaped)),
