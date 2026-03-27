@@ -38,6 +38,7 @@ fn prepare_sources(sources_dir: &std::path::Path) {
     let dst_dir = sources_dir.join("dsl/std");
     std::fs::create_dir_all(&dst_dir).unwrap();
     let std_files = [
+        "constructors",
         "types", "algebra", "containers",
         "logic", "bit", "integer", "float", "string_type",
         "encoding",
