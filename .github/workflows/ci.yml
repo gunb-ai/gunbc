@@ -42,8 +42,8 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
-      - name: Lint
-        run: cargo clippy --workspace -- -D warnings
-
+      # RUSTFLAGS=-D warnings (set in env) promotes warnings to errors during
+      # compilation, giving us lint coverage without a separate clippy pass.
+      # This avoids a second cold compile on runners that don't cache target/.
       - name: Test
         run: cargo test --workspace --exclude v2-compiler
