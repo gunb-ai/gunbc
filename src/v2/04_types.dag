@@ -22,7 +22,8 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError, rt_node, has_inferred,
   NodeType, Typed, InferError, Untyped,
   leaf_node, no_span, with_optional_cardinality, with_required_cardinality,
-  node_is_product, node_is_coproduct, node_has_structure
+  node_is_product, node_is_coproduct, node_has_structure,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind
 }
 
 // =========================================================================

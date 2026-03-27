@@ -35,6 +35,7 @@ import v2.std.core {
   make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
   field_init_node_name, field_init_node_value,
   map_children, arg_value, arg_name,
+  arm_body, arm_pattern, arm_guard,
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
