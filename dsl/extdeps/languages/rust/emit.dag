@@ -56,18 +56,19 @@ data rust_reserved: List<String> = [
 // Mirrors rust_reserved_words.strategy.prefix from std.languages.
 data rust_reserved_escape_prefix: String = "r#"
 
-// -- Serialization -------------------------------------------------------
-// Ref: serde_derive docs (serde.rs), Rust derive macros
-// Mirrors rust_serialization from std.languages.
-data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+// -- Derives --------------------------------------------------------------
+// Ref: Rust derive macros. Serde removed — compilation cost (372 derives)
+// outweighs benefit for the self-hosting use case. Add back when the DAG
+// backend needs serialization.
+data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq)]"
 // Copy variant: value-semantic types that don't need Rc wrapping.
-data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
-data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq)]"
+data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq)]"
 // Copy variant: simple enums (all-unit variants).
-data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
-data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
+data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq)]"
+data rust_serde_tag: String = ""
 // {0} = field key name
-data rust_serde_rename_template: String = "#[serde(rename = \"{0}\")]"
+data rust_serde_rename_template: String = ""
 
 // -- Project scaffold ----------------------------------------------------
 // Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)

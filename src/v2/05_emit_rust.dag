@@ -592,8 +592,7 @@ fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<St
 // =========================================================================
 
 fn emit_prelude() -> String {
-  let serde_import = concat("use serde::{", "Serialize, Deserialize};")
-  let imports = concat("use std::collections::HashMap;\nuse std::rc::Rc;\n", serde_import, "\nuse crate::v2_rt;")
+  let imports = concat("use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;")
   concat(imports, "\n\n", emit_non_empty_wrappers())
 }
 
