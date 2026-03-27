@@ -1472,7 +1472,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let operand_typed = operand_result.typed
       let operand_diags = operand_result.diagnostics
       let result_type = match op {
-        Not => leaf_node(name: "Bool")
+        Not => bool_type
         Neg => rt_type(n: operand_typed)
       }
       let uo_texpr = make_expr_node(expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Some { value: Resolved { node: result_type } }, span: span)
