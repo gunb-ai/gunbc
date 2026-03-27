@@ -1,0 +1,178 @@
+// rpg_actuary.dag -- A JRPG party system with actuarial survival math.
+//
+// This demo shows how the DAG compiler works:
+//   1. You define TYPES (data shapes) and FUNCTIONS (pure logic)
+//   2. The compiler typechecks everything, then emits Python (or Rust, Go...)
+//   3. Types compose from primitives -- Int isn't magic, it's built from
+//      algebra (OrderedRing) over machine words (Word64). The compiler
+//      knows what operations are valid because of the algebra, not because
+//      "Int" is a special keyword.
+//
+// Theme: You're an actuary who fell into a JRPG. You can't help but
+// calculate survival probabilities for your party.
+
+module rpg_actuary
+
+// ── Element system (a simple enum -- like Python's Enum) ────────────────
+
+type Element = Fire | Ice | Lightning | Heal
+
+// ── Character stats (a record -- like Python's @dataclass) ──────────────
+//
+// Each field has a type. Int, String, Bool are all structurally defined
+// upstream: Int = OrderedRing<Word64>, String = FreeMonoid<Char>, etc.
+// The compiler resolves these to their algebraic structure, which tells
+// it what operations are legal (you can add Ints, concat Strings, etc.)
+
+type Stats {
+  hp: Int
+  max_hp: Int
+  attack: Int
+  defense: Int
+  magic: Int
+  level: Int
+}
+
+// ── A party member (composition of types) ───────────────────────────────
+
+type PartyMember {
+  name: String
+  stats: Stats
+  element: Element
+  alive: Bool
+}
+
+// ── Skill: what a character can do in battle ────────────────────────────
+
+type Skill {
+  name: String
+  power: Int
+  element: Element
+  mp_cost: Int
+}
+
+// ── Battle outcome (a sum type -- like a tagged union) ──────────────────
+// Each variant carries different data. The compiler ensures you handle
+// every case in a match expression -- no missing branches.
+
+type BattleResult
+  = Victory { xp_gained: Int }
+  | Defeat
+  | Fled
+
+// ── Pure functions -- no side effects, no I/O ───────────────────────────
+
+// Calculate raw damage. The compiler knows `*` and `-` are valid on Int
+// because Int inhabits OrderedRing, which provides mul and negate (subtract).
+fn calc_damage(attacker: Stats, defender: Stats, skill_power: Int) -> Int {
+  let raw = attacker.attack * skill_power
+  let reduced = raw - defender.defense * 2
+  if reduced < 1 { 1 } else { reduced }
+}
+
+// Is this character still standing?
+fn is_alive(member: PartyMember) -> Bool {
+  member.stats.hp > 0
+}
+
+// Apply damage to a party member (returns a NEW member -- immutable data)
+fn take_damage(member: PartyMember, damage: Int) -> PartyMember {
+  let new_hp = member.stats.hp - damage
+  let clamped = if new_hp < 0 { 0 } else { new_hp }
+  PartyMember {
+    name: member.name,
+    stats: Stats {
+      hp: clamped,
+      max_hp: member.stats.max_hp,
+      attack: member.stats.attack,
+      defense: member.stats.defense,
+      magic: member.stats.magic,
+      level: member.stats.level
+    },
+    element: member.element,
+    alive: clamped > 0
+  }
+}
+
+// Heal a party member (clamped to max HP)
+fn heal(member: PartyMember, amount: Int) -> PartyMember {
+  let new_hp = member.stats.hp + amount
+  let clamped = if new_hp > member.stats.max_hp { member.stats.max_hp } else { new_hp }
+  PartyMember {
+    name: member.name,
+    stats: Stats {
+      hp: clamped,
+      max_hp: member.stats.max_hp,
+      attack: member.stats.attack,
+      defense: member.stats.defense,
+      magic: member.stats.magic,
+      level: member.stats.level
+    },
+    element: member.element,
+    alive: true
+  }
+}
+
+// ── Actuarial survival functions ────────────────────────────────────────
+//
+// An actuary thinks about risk. Here: "what's the chance my party
+// survives this fight?" We model survival as integer percentages (0-100)
+// to keep the math simple and avoid floating point.
+
+// Survival probability for one character (integer percentage 0-100).
+// Based on HP ratio and defense. An actuary's gut formula.
+fn survival_chance(member: PartyMember) -> Int {
+  let hp_ratio = member.stats.hp * 100 / member.stats.max_hp
+  let defense_bonus = member.stats.defense * 2
+  let raw = hp_ratio + defense_bonus
+  if raw > 100 { 100 } else { if raw < 0 { 0 } else { raw } }
+}
+
+// Expected damage over N rounds (simple model: constant damage per round)
+fn expected_total_damage(damage_per_round: Int, rounds: Int) -> Int {
+  damage_per_round * rounds
+}
+
+// Can the character survive N rounds of the given damage?
+fn can_survive_rounds(member: PartyMember, damage_per_round: Int, rounds: Int) -> Bool {
+  let total = expected_total_damage(damage_per_round: damage_per_round, rounds: rounds)
+  member.stats.hp > total
+}
+
+// Party strength: sum of all members' survival chances
+fn party_strength(members: List<PartyMember>) -> Int {
+  fold(members, 0, fn(total, m) { total + survival_chance(member: m) })
+}
+
+// ── XP and leveling ─────────────────────────────────────────────────────
+
+fn xp_to_next_level(current_level: Int) -> Int {
+  current_level * current_level * 100
+}
+
+fn level_up(member: PartyMember) -> PartyMember {
+  let new_level = member.stats.level + 1
+  PartyMember {
+    name: member.name,
+    stats: Stats {
+      hp: member.stats.max_hp + 10,
+      max_hp: member.stats.max_hp + 10,
+      attack: member.stats.attack + 3,
+      defense: member.stats.defense + 2,
+      magic: member.stats.magic + 2,
+      level: new_level
+    },
+    element: member.element,
+    alive: true
+  }
+}
+
+// ── Summary: describe a battle result ───────────────────────────────────
+
+fn describe_result(result: BattleResult) -> String {
+  match result {
+    Victory { xp_gained: xp } => concat("Victory! Gained ", xp, " XP!")
+    Defeat => "The party was wiped out..."
+    Fled => "Ran away successfully!"
+  }
+}
