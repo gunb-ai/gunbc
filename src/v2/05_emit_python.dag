@@ -1239,7 +1239,7 @@ fn emit_py_headers_dict(transport: Node) -> String {
   } else { "" }
   let hdrs = transport_headers(t: transport)
   let header_entries = hdrs |> map(h =>
-    concat("\"", h.name, "\": _unimplemented(\"header value emission for '", h.name, "'\")")
+    concat("\"", h.name, "\": ", emit_simple_expr(expr: h.value, target: Python))
   )
   let all_entries = if auth_entry == "" {
     header_entries |> join(separator: ", ")
@@ -1252,7 +1252,7 @@ fn emit_py_headers_dict(transport: Node) -> String {
 fn emit_py_shell_call(op_name: String, transport: Node) -> String {
   let envs = transport_env(t: transport)
   let env_dict_entries = envs |> map(e =>
-    concat("\"", e.name, "\": _unimplemented(\"env value emission for '", e.name, "'\")")
+    concat("\"", e.name, "\": ", emit_simple_expr(expr: e.value, target: Python))
   )
   let env_str = concat("{", env_dict_entries |> join(separator: ", "), "}")
   concat(
