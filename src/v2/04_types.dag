@@ -24,7 +24,8 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable, rt_node, has_inferred, is_compiler_error,
   NodeType, Typed, InferError, InferVariable, Untyped,
   leaf_node, no_span, with_optional_cardinality, with_required_cardinality,
-  unit_type, bool_type, string_type, int_type, float_type, none_type
+  unit_type, bool_type, string_type, int_type, float_type, none_type,
+  error_type
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -99,19 +100,13 @@ fn callable_inferred(n: Node) -> Node {
   if is_callable {
     match n.inferred {
       Some { value: Resolved { node: ret } } => ret
-      None => error_type_node()
-      _ => error_type_node()
+      None => error_type
+      _ => error_type
     }
   } else { n }
 }
 
-fn error_type_node() -> Node {
-  // Returns a node with CompilerError in its inferred field.
-  // Downstream code uses rt_node() which returns InferError —
-  // no name check on "Error" needed.
-  make_expr_error_node(kind: SemanticExprError, message: "unresolved type", span: no_span())
-}
-
+// error_type_node() moved to 00_core.dag as data constant error_type.
 // no_span moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // =========================================================================

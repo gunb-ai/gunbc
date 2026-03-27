@@ -32,7 +32,7 @@ import v2.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type
 }
 import v2.compiler.infer_types {
-  container_node, tuple_node, error_type_node,
+  container_node, tuple_node,
   bare_map_node,
   method_receiver_element_node
 }

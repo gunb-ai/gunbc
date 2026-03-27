@@ -76,7 +76,8 @@ import v2.std.core {
   leaf_node, with_optional_cardinality, with_required_cardinality,
   ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
   no_span,
-  unit_type, bool_type, string_type, int_type, float_type, none_type
+  unit_type, bool_type, string_type, int_type, float_type, none_type,
+  error_type
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
@@ -84,7 +85,6 @@ import v2.compiler.infer_types {
   container_node,
   map_node, bare_map_node,
   tuple_node, callable_node, callable_inferred,
-  error_type_node,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps, collection_kind_for_name,
@@ -484,7 +484,7 @@ fn lambda_param_types_from_scope(scope: InferScope, params: List<String>) -> Lis
   params |> map(param_name =>
     match map_get(scope.locals, param_name) {
       Some { value: binding } => binding.resolved
-      None => error_type_node()
+      None => error_type
     }
   )
 }
@@ -934,7 +934,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
               let err_texpr = make_expr_node(
                 expr_data: ExprVar { name: name, binding_kind: none },
                 children: [],
-                inferred: Some { value: Resolved { node: error_type_node() } },
+                inferred: Some { value: Resolved { node: error_type } },
                 span: span
               )
               InferResult {
@@ -954,7 +954,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
-      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => unit_type }
+      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => unit_type }
       let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_rt)
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
@@ -1036,8 +1036,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let call_method_args = call_args |> skip(1)
       let call_fold_info = extract_fold_init_info(method_name: func_name, method_args: call_method_args, min_args: 2, scope: scope)
       let call_fold_acc_type = match call_fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => error_type_node() }
-        None => error_type_node()
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
+        None => error_type
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
         // Collection method bridge path (no known sig — bridge to method call)
@@ -1080,7 +1080,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         // Tier 1: known function signature
         let resolved_type = match sig {
           Some { value: s } => s.inferred
-          None => error_type_node()
+          None => error_type
         }
         InferResult {
           typed: make_expr_node(
@@ -1115,7 +1115,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let remaining = typed_args |> skip(1)
           let base_result_type = match method_resolution.result_type {
             Some { value: mt } => mt
-            None => error_type_node()
+            None => error_type
           }
           let bridge_result_type = refine_collection_result_type(method_name: func_name, typed_args: remaining, receiver_type: first_arg_type, fallback: base_result_type)
           let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: ta.name, value: ta.value, span: span))
@@ -1182,7 +1182,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           if callable_local != none {
             let callable_type = match callable_local {
               Some { value: ct } => ct
-              None => error_type_node()
+              None => error_type
             }
             let resolved_type = callable_inferred(n: callable_type)
             InferResult {
@@ -1199,7 +1199,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let type_match = lookup_type(env: scope.type_env, name: func_name)
           let resolved_type = match type_match {
             Some { value: tn } => tn
-            None => error_type_node()
+            None => error_type
           }
           let call_diags = match type_match {
             Some { value: _ } => []
@@ -1236,8 +1236,8 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       let fold_info = extract_fold_init_info(method_name: method_name, method_args: mc_args, min_args: 2, scope: scope)
       let fold_acc_type = match fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => error_type_node() }
-        None => error_type_node()
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
+        None => error_type
       }
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
@@ -1798,7 +1798,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     }
     let raw_resolved = match effective_lookup {
       Some { value: tn } => tn
-      None => error_type_node()
+      None => error_type
     }
     let expected_optional_parent = Some { value: "Optional" }
     let is_some_ctor = type_name.value == "Some" && local_variant_parent == expected_optional_parent

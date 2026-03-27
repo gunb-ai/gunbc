@@ -21,11 +21,10 @@ import v2.std.core {
   diagnostic_node,
   MatchArm, MatchPattern,
   leaf_node, with_optional_cardinality,
-  none_type
+  none_type, error_type
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  error_type_node,
   extract_optional_inner_node,
   emit_map_has
 }
@@ -119,8 +118,8 @@ fn lookup_result_subject(result: NodeLookupResult) -> PatternSubject {
 fn pattern_binding_type(subject: PatternSubject) -> Node {
   match subject {
     PatternResolved { node: resolved } => resolved
-    PatternDynamic { span: _ } => error_type_node()
-    PatternLookupBlocked => error_type_node()
+    PatternDynamic { span: _ } => error_type
+    PatternLookupBlocked => error_type
   }
 }
 

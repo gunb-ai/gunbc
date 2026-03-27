@@ -27,7 +27,6 @@ import v2.std.core {
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  error_type_node,
   normalize_access_type_node,
   rt_type, rt_node,
   emit_map_has
