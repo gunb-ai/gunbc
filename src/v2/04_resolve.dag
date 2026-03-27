@@ -136,18 +136,26 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 // type declaration with params that's NOT a built-in parameterized type.
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
-  let is_map = n.collection_kind == MapKind
   if has_structure { false }
-  else if is_map { false }
   else {
-    let ck = n.collection_kind
-    let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
-    if __is_container { false }
-    else {
-      match lookup_type(env: env, name: n.name) {
-        Some { value: decl } => decl.params |> count > 0
-        None => false
-      }
+    match lookup_type(env: env, name: n.name) {
+      Some { value: decl } =>
+        if decl.params |> count > 0 {
+          // Parameterized alias (e.g., List<T> = FreeMonoid<T>): treat as
+          // generic use site so the alias chain is followed and the structural
+          // Conj definition (with method children) is produced via substitution.
+          if decl.inferred != none { true }
+          // Bare parameterized stub (no alias): only treat as generic use site
+          // if NOT a known container (containers have their own resolution path).
+          else {
+            let is_map = n.collection_kind == MapKind
+            let ck = n.collection_kind
+            let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
+            if is_map || __is_container { false }
+            else { true }
+          }
+        } else { false }
+      None => false
     }
   }
 }
@@ -323,17 +331,37 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         None => acc
       }
     )
-    let substituted_children = decl.children |> map(child =>
-      substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: n.name)
-    )
-    let is_recursive = is_recursive_type(env: env, name: n.name)
-    // Derive collection_kind from name (declarations from parser don't carry it;
-    // collection_kind_for_name is the single authority for name → CollectionKind)
-    let result = NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: collection_kind_for_name(name: n.name), params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
-      diagnostics: concat(arity_diags, arg_diags)
+    // For parameterized aliases (e.g., List<element> = FreeMonoid<element>),
+    // follow the alias target and resolve it with substituted slot bindings.
+    // This produces the structural Conj definition with method children.
+    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+    if is_parameterized_alias {
+      // Extract the alias target (e.g., FreeMonoid<element>), substitute
+      // slots (element → Int), then resolve the result to expand the
+      // structural definition.
+      let alias_target = match rt_node(n: decl) {
+        Typed { node: target } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: n.name)
+        InferError { message: _, span: _ } => n
+        InferVariable { id: _ } => n
+        Untyped => n
+      }
+      let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
+      let is_recursive = is_recursive_type(env: env, name: n.name)
+      let resolved_node = Node { name: n.name, span: n.span, children: target_result.resolved.children, connective: target_result.resolved.connective, collection_kind: collection_kind_for_name(name: n.name), params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+      NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
+    } else {
+      let substituted_children = decl.children |> map(child =>
+        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: n.name)
+      )
+      let is_recursive = is_recursive_type(env: env, name: n.name)
+      // Derive collection_kind from name (declarations from parser don't carry it;
+      // collection_kind_for_name is the single authority for name → CollectionKind)
+      let result = NodeResolveResult {
+        resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: collection_kind_for_name(name: n.name), params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
+        diagnostics: concat(arity_diags, arg_diags)
+      }
+      result
     }
-    result
   } else {
     let is_map = n.collection_kind == MapKind
     if is_map {

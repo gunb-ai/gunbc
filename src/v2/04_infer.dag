@@ -2061,11 +2061,13 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
     } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
-      // Bare parameterized type declaration (e.g., type List<element>, type Map<key, value>).
+      // Parameterized type declaration (e.g., type List<element> = FreeMonoid<element>).
       // Register as a nominal type with params so generics can find the declaration.
+      // Preserve .inferred so alias chains (List → FreeMonoid) survive into the
+      // TypeEnv for structural resolution (Phase 2 alias following).
       let bare_node = Node {
         name: item.name, span: item.span, children: [],
-        connective: NoConnective, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
+        connective: NoConnective, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: item.inferred,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
