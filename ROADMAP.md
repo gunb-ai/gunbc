@@ -3290,15 +3290,57 @@ Generated tests are a first-class output of the compiler. They must:
    must produce structurally equivalent tests for all three languages.
    Same operations tested, same mock data used, same assertion shape.
 
+**Structural prerequisite: enrich TestProjection (TG-0).**
+
+The current `TestProjection` loses facts that are available at extraction
+time. It carries `service_name` and `params` but not the service's
+transport kind or the structural type of each parameter. Downstream
+consumers (test emitters) must fabricate values or skip invocation because
+the projection doesn't compose these facts forward.
+
+This is a **layer downgrade**: the emitter re-derives "how to construct
+this service" and "what default value is valid for this param type" from
+names, when inference already resolved those facts structurally.
+
+**Fix:** `TestProjection` should be a view over the service's already-
+resolved structural facts, not a hand-picked field subset:
+
+```
+type TestProjection {
+  module_name: String
+  service_name: String
+  operation_name: String
+  inferred: Node              // return type (already structural)
+  params: List<Param>         // operation params
+  mock_field_inits: List<FieldInit>
+  transport_kind: TransportKind   // NEW: service transport
+  service_has_auth: Bool          // NEW: whether constructor needs auth
+}
+```
+
+With transport facts on the projection, test emitters can construct
+services with appropriate defaults (REST: empty base_url, Shell: None,
+File: ".") without fabrication. Param default values still need
+structural type info on `Param.type_expr` — that's already a Node with
+`.connective`, `.children`, `.name`, which the emitter should read
+structurally instead of branching on `.name == "String"`.
+
+**Lesson learned (2026-03-27):** When a projection type forces downstream
+consumers to fabricate or re-derive facts, the projection is incomplete.
+The fix is always to compose the fact at the extraction site where the
+source data is available — not to add workarounds downstream. This
+applies to every pipeline boundary, not just TestProjection.
+
 Work items to reach these criteria:
 
 | ID | Item | Status | Notes |
 |----|------|--------|-------|
-| TG-5 | Go test file syntax gate | Planned | `go vet` or `go build` on emitted test files |
-| TG-6 | Python test file syntax gate | Planned | `ast.parse` on emitted test files |
-| TG-7 | Rust test invocation: call operation with mock data | Planned | Extend `emit_operation_test` to instantiate service, call op, assert result |
-| TG-8 | Go test invocation | Planned | Same for Go backend |
-| TG-9 | Python test invocation | Planned | Same for Python backend |
+| TG-0 | Enrich TestProjection with transport + structural facts | Planned | Prerequisite for TG-7/8/9. Add `transport_kind`, `service_has_auth` to TestProjection. Read structural type facts on params instead of name-branching. |
+| TG-5 | Go test file syntax gate | **Done** | Structural syntax validation test added |
+| TG-6 | Python test file syntax gate | **Done** | `ast.parse` validation test added |
+| TG-7 | Rust test invocation: call operation with mock data | **Partial** | Service instantiated with DryRunMode(true), op called, Ok asserted. Param defaults use serde fallback — proper fix is TG-0. |
+| TG-8 | Go test invocation | **Partial** | Zero-value struct instantiation. Full invocation needs TG-0 + Go dry-run. |
+| TG-9 | Python test invocation | **Partial** | Mock data setup only. Full invocation needs TG-0 + Python dry-run. |
 | TG-10 | Cross-target parity test | Planned | Same `.dag` source → same test structure across all 3 targets |
 
 **Scrambled-name test design:** Rename all type names to arbitrary strings
