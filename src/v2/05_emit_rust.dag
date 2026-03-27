@@ -3377,7 +3377,9 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 fn emit_shell_return(inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
   let is_product = effective.connective == Conj
-  if effective.name == "Bool" || effective.name == "bool" {
+  // Bool = True | False: structural check (Disj + 2 children)
+  let is_bool = effective.connective == Disj && effective.children |> count == 2
+  if is_bool {
     "Ok(output.status.success())"
   } else {
     let eff_ck = effective.collection_kind
