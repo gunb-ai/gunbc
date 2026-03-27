@@ -263,14 +263,17 @@ fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> 
 
 fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = go_test_name(projection: projection)
+  let struct_name = sanitize_service_name(name: projection.service_name)
+  let indent = make_indent(level: depth + 1)
   let mock_setup = projection.mock_field_inits
     |> map(mp => emit_go_mock_prop_setup(mock_prop: mp, depth: depth + 1))
     |> join(separator: "\n")
   concat(
     "func ", test_name, "(t *testing.T) {\n",
-    make_indent(level: depth + 1), go_test_signature_comment(projection: projection), "\n",
-    make_indent(level: depth + 1), mock_setup, "\n",
-    make_indent(level: depth + 1), "t.Helper()\n",
+    indent, go_test_signature_comment(projection: projection), "\n",
+    indent, "_ = ", struct_name, "{}\n",
+    indent, mock_setup, "\n",
+    indent, "// TODO: add dry-run support to Go service emission for full invocation tests\n",
     "}")
 }
 
@@ -377,7 +380,7 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     concat("func ", go_export_ident(name: item.name), "(", params_str, ")", ret_str, " {\n",
       "\tpanic(\"extern func not implemented\")\n}")
   } else {
-    concat("// unhandled node: ", item.name)
+    concat("func init() { panic(\"EMIT BUG: unhandled item: ", item.name, "\") }")
   }
 }
 
@@ -1264,7 +1267,7 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {
   } else { "" }
   let hdrs = transport_headers(t: transport)
   let header_lines = hdrs |> map(h =>
-    concat(prefix, "panic(\"header value emission not implemented for '", h.name, "'\")")
+    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: h.value, target: Go), ")")
   )
   let send_lines = concat(
     prefix, "resp, err := http.DefaultClient.Do(req)\n",
@@ -1289,7 +1292,7 @@ fn emit_go_shell_call(op_name: String, transport: Node, depth: Int) -> String {
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
   let envs = transport_env(t: transport)
   let env_lines = envs |> map(e =>
-    concat(prefix, "panic(\"env value emission not implemented for '", e.name, "'\")")
+    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: e.value, target: Go), ")")
   )
   let run_lines = concat(
     prefix, "output, err := cmd.Output()\n",

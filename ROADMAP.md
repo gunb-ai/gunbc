@@ -2328,7 +2328,7 @@ See Active Temporary Bridges table.
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
 | P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) ✓ | ~129 match sites, ~141 construction sites across all .dag files | **Done (2026-03-26).** ExprData slimmed to pure operator metadata. All Node-valued fields removed. Children in `node.children` as compositional Nodes. Bridge functions deleted. ~300 lines of walker boilerplate eliminated. Diagnostic ratchet at 0. |
-| P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | **Stream 2.** Validate whether `ExprData` should dissolve into a more structural expression-kind property on Node, or remain as a closed semantic tag where that is the right exhaustiveness device. The goal is structural clarity, not dogmatic deletion. |
+| P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | **Done (2026-03-27). Verdict: RETAIN as closed semantic tag.** 143 match sites across 13 files provide compiler-enforced exhaustiveness. 160+ construction sites, zero string comparisons. Post P5.11, ExprData is pure operator metadata — the right design. Enum principle applies: enum over language constructs stays. |
 
 ### P5.11 Design: ExprData Child Dissolution
 
@@ -3126,6 +3126,8 @@ current phase order.
 | TCO backend contract | Should be cleaned up during/after shared emit extraction | Stream 2 |
 | SCC-aware return type resolution | Not currently blocking bootstrap | — |
 | `assemble_stage0` fixups (5 known issues) | Not blocking active phases. 5 post-regeneration manual corrections needed each time. | Stream 2 |
+| Statement/expression emit classification | Python (and partially Go) are statement-oriented; emit assumes expression-orientation. Three symptoms: `return let` at block tail, incomplete `functools.reduce` fold, `return match` as expression. Root cause: emit boundary loses statement/expression structural distinction. Fix: pre-emit metadata tags bindings vs tail expression in blocks; backends render the structural fact. Relates to FO-* (fan-out preservation) and P5.11 (ExprData dissolution). | Stream 2 |
+| Cross-language test generation parity | Generated tests must cover all target languages equally. Currently Rust test generation is most complete; Go and Python test emission needs parity audit and gaps filled. | Stream 2 |
 
 ### Open Invariant Violations (grouped by root cause)
 
@@ -3262,7 +3264,84 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 | Gist pipeline | `cargo test -p v2-compiler-tests v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | After any `.dag` change (goal: 0) |
 | Testgen gate | `cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust` | After P1.21; verifies generated test files are non-empty and syntactically valid |
+| Testgen parity | `cargo test -p v2-compiler-tests testgen_parity` | Roadmap exit; generated tests compile and exercise operations for all three targets |
 | Scrambled-name tests | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | After P1.16; verifies name opacity |
+
+### Test Generation Exit Criteria (Roadmap-Level)
+
+Generated tests are a first-class output of the compiler. They must:
+
+1. **Exist for all three targets.** Every service operation with mock data
+   produces a test file for Rust, Go, and Python. (Currently met at
+   scaffold level via shared `extract_test_projections`.)
+
+2. **Compile/parse in the target language.** Rust test files pass
+   `rustc --edition 2021`, Go test files pass `go vet`, Python test
+   files pass `python3 -c "import ast; ast.parse(...)"`. (Rust met
+   via `testgen_emits_valid_rust`; Go and Python not yet gated.)
+
+3. **Exercise the operation.** Each generated test must instantiate
+   mock data, call the service operation (or its dry-run equivalent),
+   and assert the return value matches the mock response. The current
+   tests set up mock data but do not invoke the operation or assert
+   results — this is the gap.
+
+4. **Parity across targets.** The same service module with mock data
+   must produce structurally equivalent tests for all three languages.
+   Same operations tested, same mock data used, same assertion shape.
+
+**Structural prerequisite: enrich TestProjection (TG-0).**
+
+The current `TestProjection` loses facts that are available at extraction
+time. It carries `service_name` and `params` but not the service's
+transport kind or the structural type of each parameter. Downstream
+consumers (test emitters) must fabricate values or skip invocation because
+the projection doesn't compose these facts forward.
+
+This is a **layer downgrade**: the emitter re-derives "how to construct
+this service" and "what default value is valid for this param type" from
+names, when inference already resolved those facts structurally.
+
+**Fix:** `TestProjection` should be a view over the service's already-
+resolved structural facts, not a hand-picked field subset:
+
+```
+type TestProjection {
+  module_name: String
+  service_name: String
+  operation_name: String
+  inferred: Node              // return type (already structural)
+  params: List<Param>         // operation params
+  mock_field_inits: List<FieldInit>
+  transport_kind: TransportKind   // NEW: service transport
+  service_has_auth: Bool          // NEW: whether constructor needs auth
+}
+```
+
+With transport facts on the projection, test emitters can construct
+services with appropriate defaults (REST: empty base_url, Shell: None,
+File: ".") without fabrication. Param default values still need
+structural type info on `Param.type_expr` — that's already a Node with
+`.connective`, `.children`, `.name`, which the emitter should read
+structurally instead of branching on `.name == "String"`.
+
+**Lesson learned (2026-03-27):** When a projection type forces downstream
+consumers to fabricate or re-derive facts, the projection is incomplete.
+The fix is always to compose the fact at the extraction site where the
+source data is available — not to add workarounds downstream. This
+applies to every pipeline boundary, not just TestProjection.
+
+Work items to reach these criteria:
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| TG-0 | Enrich TestProjection with transport + structural facts | Planned | Prerequisite for TG-7/8/9. Add `transport_kind`, `service_has_auth` to TestProjection. Read structural type facts on params instead of name-branching. |
+| TG-5 | Go test file syntax gate | **Done** | Structural syntax validation test added |
+| TG-6 | Python test file syntax gate | **Done** | `ast.parse` validation test added |
+| TG-7 | Rust test invocation: call operation with mock data | **Partial** | Service instantiated with DryRunMode(true), op called, Ok asserted. Param defaults use serde fallback — proper fix is TG-0. |
+| TG-8 | Go test invocation | **Partial** | Zero-value struct instantiation. Full invocation needs TG-0 + Go dry-run. |
+| TG-9 | Python test invocation | **Partial** | Mock data setup only. Full invocation needs TG-0 + Python dry-run. |
+| TG-10 | Cross-target parity test | Planned | Same `.dag` source → same test structure across all 3 targets |
 
 **Scrambled-name test design:** Rename all type names to arbitrary strings
 (consistently across declarations and references), run through inference,
