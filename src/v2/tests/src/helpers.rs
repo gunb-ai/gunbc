@@ -71,6 +71,28 @@ pub fn assert_parses_strict(relative_path: &str) {
     );
 }
 
+// ── Standard library loading ─────────────────────────────────────────────
+
+/// Load std modules (algebra.dag, types.dag) so types resolve through
+/// real .dag declarations instead of the kernel seed's bare leaves.
+/// The kernel < imports < local merge order means std overrides kernel
+/// automatically — no changes needed to .dag import statements.
+fn std_sources() -> Vec<Rc<SourceFile>> {
+    let std_files = &[
+        "dsl/std/algebra.dag",
+        "dsl/std/types.dag",
+    ];
+    std_files
+        .iter()
+        .map(|path| {
+            Rc::new(SourceFile {
+                path: path.to_string(),
+                content: read_v2_file(path),
+            })
+        })
+        .collect()
+}
+
 // ── Full pipeline ────────────────────────────────────────────────────────
 
 pub fn compile_dag(source: &str) -> Rc<PipelineResult> {
@@ -86,10 +108,11 @@ pub fn compile_dag_named(
     source: &str,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
-    let sources = vec![Rc::new(SourceFile {
+    let mut sources = std_sources();
+    sources.push(Rc::new(SourceFile {
         path: filename.to_string(),
         content: source.to_string(),
-    })];
+    }));
     v2_compiler::v2_compiler_compile::compile_sources(sources, target)
 }
 
@@ -98,15 +121,13 @@ pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
 }
 
 pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<PipelineResult> {
-    let sources: Vec<Rc<SourceFile>> = files
-        .iter()
-        .map(|(path, content)| {
-            Rc::new(SourceFile {
-                path: path.to_string(),
-                content: content.to_string(),
-            })
+    let mut sources = std_sources();
+    sources.extend(files.iter().map(|(path, content)| {
+        Rc::new(SourceFile {
+            path: path.to_string(),
+            content: content.to_string(),
         })
-        .collect();
+    }));
     v2_compiler::v2_compiler_compile::compile_sources(sources, target)
 }
 
