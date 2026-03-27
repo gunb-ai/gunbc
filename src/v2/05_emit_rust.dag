@@ -1196,7 +1196,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   // RC1: Qualify variant names with parent enum using scrutinee type.
   // Some/None are Rust builtins -- never qualify. For all others, use the
   // scrutinee type so that variant name collisions (e.g. LitStr in both
-  // TokenKind and LiteralValue) are resolved correctly.
+  // TokenShape and LiteralValue) are resolved correctly.
   let qualified = if name == "Some" || name == "None" { name }
     else {
       match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
@@ -1473,7 +1473,7 @@ fn is_primitive_numeric_node(n: Node) -> Bool {
 // =========================================================================
 
 // RC1: Emit a Var reference. For unit variants of enums, qualify with parent
-// enum name to avoid name collisions (e.g. NullCoalesce in both TokenKind and
+// enum name to avoid name collisions (e.g. NullCoalesce in both TokenShape and
 // BinOpKind). Wrap in Rc::new() if parent enum is Rc-wrapped.
 // For `none`, emit `None`.
 fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
@@ -2680,7 +2680,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 
 // RC2: Look up the expected type of a field from the struct's type node children.
 // Used to disambiguate variant constructors that exist in multiple enums
-// (e.g. LitStr in both TokenKind and LiteralValue).
+// (e.g. LitStr in both TokenShape and LiteralValue).
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
 fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
@@ -2790,7 +2790,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
       }
     Some { value: tn } =>
       // RC1: Qualify variant names with parent enum to avoid name collisions
-      // (e.g. LitFloat exists in both TokenKind and LiteralValue).
+      // (e.g. LitFloat exists in both TokenShape and LiteralValue).
       // Resolution order:
       // 1. contextual enum authority (explicit parent_enum / resolved_type membership)
       // 2. module-corrected vtoe map
