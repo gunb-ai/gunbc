@@ -1307,7 +1307,7 @@ fn variant_to_child_node(variant: Variant) -> Node {
   let children = variant.fields |> map(f => field_to_child_node(field: f))
   Node { name: variant.name, span: variant.span,
     children: children,
-    connective: if variant.fields |> count > 0 { Some { value: Conj } } else { none },
+    connective: if variant.fields |> count > 0 { Conj } else { NoConnective },
     collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none,

@@ -34,7 +34,7 @@ typename_count=$(count_matches '\.name == "(Optional|Map|List|Set|Dynamic|Error|
 
 l1_total=$((constructor_count + typename_count))
 
-# ── Structural Primitives (permanent, not violations) ───────────────────
+# ── Graph Primitives (permanent, not violations) ────────────────────────
 
 # .connective direct field access (graph primitive per P5.10)
 connective_field_count=$(count_matches '\.connective\b')
@@ -42,10 +42,12 @@ connective_field_count=$(count_matches '\.connective\b')
 # Conj/Disj/NoConnective references (graph primitive per P5.10)
 conj_disj_count=$(count_matches '\b(Conj|Disj|NoConnective)\b')
 
-# CollectionKind references (bridge — will dissolve when method algebras land)
-collection_kind_count=$(count_matches '\b(collection_kind|ListKind|SetKind|NonEmptyListKind|NonEmptySetKind|MapKind|NoCollection)\b')
+graph_primitive_total=$((connective_field_count + conj_disj_count))
 
-structural_total=$((connective_field_count + conj_disj_count + collection_kind_count))
+# ── Bridge Debt (tracked, has deletion point) ───────────────────────────
+
+# CollectionKind references (bridge — dissolves when method algebras land)
+collection_kind_count=$(count_matches '\b(collection_kind|ListKind|SetKind|NonEmptyListKind|NonEmptySetKind|MapKind|NoCollection)\b')
 
 echo "L1 Type Knowledge Ratchet"
 echo "========================="
@@ -57,13 +59,16 @@ echo "  Type-name comparisons:         $typename_count"
 echo "  ---"
 echo "  L1 Total:                      $l1_total"
 echo ""
-echo "  Structural Primitives (permanent)"
-echo "  ---------------------------------"
+echo "  Graph Primitives (permanent)"
+echo "  ----------------------------"
 echo "  .connective access:            $connective_field_count"
 echo "  Conj/Disj/NoConnective:        $conj_disj_count"
-echo "  CollectionKind:                $collection_kind_count"
 echo "  ---"
-echo "  Structural Total:              $structural_total"
+echo "  Graph Primitive Total:         $graph_primitive_total"
+echo ""
+echo "  Bridge Debt (has deletion point)"
+echo "  --------------------------------"
+echo "  CollectionKind:                $collection_kind_count"
 
 # Ratchet: L1 violations must not exceed this value.
 L1_RATCHET=198
