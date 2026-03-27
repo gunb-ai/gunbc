@@ -1192,15 +1192,27 @@ fn structural_method_resolution_with_std() {
     let algebra = read_v2_file("dsl/std/algebra.dag");
     let types = read_v2_file("dsl/std/types.dag");
     let user = r#"module user_test
-import std.types { List }
+import std.types { List, Map }
 
-fn double_all(xs: List<Int>) -> List<Int> {
-  xs |> map(x => x)
-}
+// FreeMonoid methods on List
+fn identity(xs: List<Int>) -> List<Int> { xs |> map(x => x) }
+fn evens(xs: List<Int>) -> List<Int> { xs |> filter(x => x == 0) }
+fn total(xs: List<Int>) -> Int { xs |> count }
+fn has_any(xs: List<Int>) -> Bool { xs |> any(x => x == 0) }
+fn has_all(xs: List<Int>) -> Bool { xs |> all(x => x == 0) }
+fn head(xs: List<Int>) -> Int? { xs |> first }
+fn tail_el(xs: List<Int>) -> Int? { xs |> last }
+fn prefix(xs: List<Int>) -> List<Int> { xs |> take(3) }
+fn suffix(xs: List<Int>) -> List<Int> { xs |> skip(1) }
+fn flipped(xs: List<Int>) -> List<Int> { xs |> reverse }
+fn with_el(xs: List<Int>) -> List<Int> { xs |> append(42) }
+fn has_it(xs: List<Int>) -> Bool { xs |> contains(1) }
 
-fn total(xs: List<Int>) -> Int {
-  xs |> count
-}
+// PartialFunction methods on Map
+fn lookup_key(m: Map<String, Int>) -> Int? { m |> get("key") }
+fn has_key(m: Map<String, Int>) -> Bool { m |> has("key") }
+fn all_keys(m: Map<String, Int>) -> List<String> { m |> keys }
+fn all_vals(m: Map<String, Int>) -> List<Int> { m |> values }
 "#;
     let result = compile_multi(&[
         ("dsl/std/algebra.dag", &algebra),
