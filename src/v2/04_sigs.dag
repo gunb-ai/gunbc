@@ -5,7 +5,7 @@
 // Self-/mutual-recursive functions without annotations produce diagnostics.
 //
 // Dependency chain:
-//   v2.std.core (DeclaredFuncSig, Node, ExprCall, expr_children)
+//   v2.std.core (DeclaredFuncSig, Node, ExprCall)
 //     -> v2.compiler.infer_types (emit_map_has)
 //       -> v2.compiler.infer_sigs (resolve_func_sigs, ResolvedFuncSig, ResolvedFuncEnv)
 //         -> v2.compiler.infer (typecheck pipeline)
@@ -15,10 +15,7 @@ module v2.compiler.infer_sigs
 import v2.std.core {
   Node, Param,
   ExprData, ExprCall,
-  expr_children,
   diagnostic_node, no_span,
-  Diagnostic, Severity, Error,
-  ErrorCategory, TypeMismatch,
   DeclaredFuncSig
 }
 import v2.compiler.infer_types { emit_map_has }

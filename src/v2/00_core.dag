@@ -893,7 +893,7 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
     return_cardinality: node.return_cardinality, uses: node.uses,
     body: node.body, transport: node.transport,
     properties: node.properties, type_annotation: node.type_annotation,
-    config: node.config, is_self_recursive: node.is_self_recursive,
+    is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call,
     match_pattern: node.match_pattern, expr_data: node.expr_data
   }

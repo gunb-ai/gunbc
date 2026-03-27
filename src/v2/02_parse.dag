@@ -1795,7 +1795,7 @@ fn collect_type_args(tokens: List<Token>, state: ParserState, args: List<Node>) 
 fn maybe_optional(tokens: List<Token>, state: ParserState, te: Node, start_span: SourceSpan) -> TypeResult {
   let e = eat(tokens: tokens, state: state, expected: ExpectQuestion)
   if e.consumed {
-    let ote = Node { name: te.name, span: te.span, children: te.children, connective: te.connective, collection_kind: te.collection_kind, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, config: te.config, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
+    let ote = Node { name: te.name, span: te.span, children: te.children, connective: te.connective, collection_kind: te.collection_kind, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
     TypeResult { type_expr: ote, state: e.state, err: none }
   } else {
     TypeResult { type_expr: te, state: state, err: none }
