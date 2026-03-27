@@ -138,6 +138,118 @@ pub struct SourceRef {
     pub text: String,
 }
 
+fn char_at_ref(s: &str, pos: i64) -> String {
+    let pos = pos.max(0) as usize;
+    if s.is_ascii() {
+        let bytes = s.as_bytes();
+        if pos >= bytes.len() {
+            return String::new();
+        }
+        return String::from(bytes[pos] as char);
+    }
+    s.chars()
+        .nth(pos)
+        .map(|ch| ch.to_string())
+        .unwrap_or_default()
+}
+
+fn string_length_ref(s: &str) -> i64 {
+    if s.is_ascii() {
+        s.len() as i64
+    } else {
+        s.chars().count() as i64
+    }
+}
+
+fn substring_ref(s: &str, start: i64, end: i64) -> String {
+    let start = start.max(0) as usize;
+    let end = end.max(0) as usize;
+    if end <= start {
+        return String::new();
+    }
+    if s.is_ascii() {
+        let len = s.len();
+        if start >= len {
+            return String::new();
+        }
+        return s[start..end.min(len)].to_string();
+    }
+    s.chars()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .collect()
+}
+
+fn scan_while_ref(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
+    let start = start.max(0) as usize;
+    if s.is_ascii() {
+        let bytes = s.as_bytes();
+        let mut pos = start.min(bytes.len());
+        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
+            pos += 1;
+        }
+        return pos as i64;
+    }
+    let char_len = s.chars().count();
+    let start = start.min(char_len);
+    let mut pos = start;
+    for ch in s.chars().skip(start) {
+        if pred(ch.to_string()) {
+            pos += 1;
+        } else {
+            break;
+        }
+    }
+    pos as i64
+}
+
+fn skip_horizontal_ws_ref(s: &str, start: i64) -> i64 {
+    let start = start.max(0) as usize;
+    if s.is_ascii() {
+        let bytes = s.as_bytes();
+        let mut pos = start.min(bytes.len());
+        while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') {
+            pos += 1;
+        }
+        return pos as i64;
+    }
+    let char_len = s.chars().count();
+    let start = start.min(char_len);
+    let mut pos = start;
+    for ch in s.chars().skip(start) {
+        if ch == ' ' || ch == '\t' {
+            pos += 1;
+        } else {
+            break;
+        }
+    }
+    pos as i64
+}
+
+fn scan_to_eol_ref(s: &str, start: i64) -> i64 {
+    let start = start.max(0) as usize;
+    if s.is_ascii() {
+        let bytes = s.as_bytes();
+        let start = start.min(bytes.len());
+        for (offset, byte) in bytes[start..].iter().enumerate() {
+            if *byte == b'\n' {
+                return (start + offset) as i64;
+            }
+        }
+        return bytes.len() as i64;
+    }
+    let char_len = s.chars().count();
+    let start = start.min(char_len);
+    let mut pos = start;
+    for ch in s.chars().skip(start) {
+        if ch == '\n' {
+            return pos as i64;
+        }
+        pos += 1;
+    }
+    pos as i64
+}
+
 pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
     Rc::new(Token {
     text: text.clone(),
@@ -165,69 +277,84 @@ v2_rt::list_push(final_state.tokens.clone(), make_token("".to_string(), eof_span
 }
 
 pub fn tokenize_loop(source: Rc<SourceRef>, tokens: Vec<Rc<Token>>, pos: Rc<TokPos>) -> Rc<TokenizerState> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let s = skip_spaces_and_comments(source.clone(), pos.clone());
-if (s.pos.clone() >= v2_rt::string_length(source.text.clone())) {
-                return Rc::new(TokenizerState {
-    pos: s.pos.clone(),
-    tokens: tokens.clone(),
-    interp_depth: s.interp_depth.clone(),
-})
-}
-let ch = v2_rt::char_at(source.text.clone(), s.pos.clone());
-if (ch.clone() == "
-".to_string()) {
-                {
-                    let tok = make_token("
-".to_string(), Rc::new(SourceSpan {
-    start: s.pos.clone(),
-    end: (s.pos.clone() + 1),
-}), TokenShape::ShNewline);
-return tokenize_loop(source.clone(), v2_rt::list_push(tokens.clone(), tok.clone()), Rc::new(TokPos {
-    pos: (s.pos.clone() + 1),
-    interp_depth: s.interp_depth.clone(),
-}))
-}
-}
-if ((ch.clone() == "}".to_string()) && ((s.interp_depth.clone().len() as i64) > 0)) {
-                {
-                    let top = s.interp_depth.clone().last().cloned().clone().unwrap();
-if (top.clone() == 0) {
-                        {
-                            let popped = drop_last(s.interp_depth.clone());
-let cont_pos = Rc::new(TokPos {
-    pos: (s.pos.clone() + 1),
-    interp_depth: popped.clone(),
-});
-let result = scan_str_cont(source.clone(), cont_pos.clone(), s.pos.clone());
-return tokenize_loop(source.clone(), v2_rt::list_push(tokens.clone(), result.token.clone()), Rc::new(TokPos {
-    pos: result.pos.clone(),
-    interp_depth: result.interp_depth.clone(),
-}))
-}
-} else {
-                        {
-                            let new_depth = replace_last(s.interp_depth.clone(), (top.clone() - 1));
-let tok = make_token("}".to_string(), Rc::new(SourceSpan {
-    start: s.pos.clone(),
-    end: (s.pos.clone() + 1),
-}), TokenShape::ShRBrace);
-return tokenize_loop(source.clone(), v2_rt::list_push(tokens.clone(), tok.clone()), Rc::new(TokPos {
-    pos: (s.pos.clone() + 1),
-    interp_depth: new_depth.clone(),
-}))
-}
-}
-}
-}
-let result = scan_token(source.clone(), s.clone(), ch.clone());
-tokenize_loop(source.clone(), v2_rt::list_push(tokens.clone(), result.token.clone()), Rc::new(TokPos {
-    pos: result.pos.clone(),
-    interp_depth: result.interp_depth.clone(),
-}))
-}
-    })
+    let text = source.text.as_str();
+    let mut tokens = tokens;
+    let mut pos_value = pos.pos;
+    let mut interp_depth = pos.interp_depth.clone();
+
+    loop {
+        let s = skip_spaces_and_comments(
+            source.clone(),
+            Rc::new(TokPos {
+                pos: pos_value,
+                interp_depth: interp_depth.clone(),
+            }),
+        );
+
+        if s.pos >= string_length_ref(text) {
+            return Rc::new(TokenizerState {
+                pos: s.pos,
+                tokens,
+                interp_depth: s.interp_depth.clone(),
+            });
+        }
+
+        let ch = char_at_ref(text, s.pos);
+        if ch == "\n".to_string() {
+            tokens.push(make_token(
+                "\n".to_string(),
+                Rc::new(SourceSpan {
+                    start: s.pos,
+                    end: s.pos + 1,
+                }),
+                TokenShape::ShNewline,
+            ));
+            pos_value = s.pos + 1;
+            interp_depth = s.interp_depth.clone();
+            continue;
+        }
+
+        if ch == "}".to_string() && !s.interp_depth.is_empty() {
+            let top = *s.interp_depth.last().unwrap();
+            if top == 0 {
+                let mut popped = s.interp_depth.clone();
+                popped.pop();
+                let result = scan_str_cont(
+                    source.clone(),
+                    Rc::new(TokPos {
+                        pos: s.pos + 1,
+                        interp_depth: popped,
+                    }),
+                    s.pos,
+                );
+                tokens.push(result.token.clone());
+                pos_value = result.pos;
+                interp_depth = result.interp_depth.clone();
+                continue;
+            }
+
+            let mut new_depth = s.interp_depth.clone();
+            if let Some(last) = new_depth.last_mut() {
+                *last -= 1;
+            }
+            tokens.push(make_token(
+                "}".to_string(),
+                Rc::new(SourceSpan {
+                    start: s.pos,
+                    end: s.pos + 1,
+                }),
+                TokenShape::ShRBrace,
+            ));
+            pos_value = s.pos + 1;
+            interp_depth = new_depth;
+            continue;
+        }
+
+        let result = scan_token(source.clone(), s.clone(), ch);
+        tokens.push(result.token.clone());
+        pos_value = result.pos;
+        interp_depth = result.interp_depth.clone();
+    }
 }
 
 pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: String) -> Rc<ScanResult> {
@@ -354,8 +481,8 @@ Rc::new(ScanResult {
 
 pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let end = v2_rt::scan_while(source.text.clone(), pos.pos.clone(), is_ident_char);
-let text = v2_rt::substring(source.text.clone(), pos.pos.clone(), end.clone());
+        let end = scan_while_ref(source.text.as_str(), pos.pos.clone(), is_ident_char);
+let text = substring_ref(source.text.as_str(), pos.pos.clone(), end.clone());
 let shape = match v2_rt::lookup(&KEYWORDS, text.clone()) {
     Some(sh) => sh.clone(),
     None => TokenShape::ShIdent,
@@ -374,12 +501,13 @@ Rc::new(ScanResult {
 
 pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
-        let int_end = v2_rt::scan_while(source.text.clone(), pos.pos.clone(), is_digit);
-if ((((int_end.clone() + 1) < v2_rt::string_length(source.text.clone())) && (v2_rt::char_at(source.text.clone(), int_end.clone()) == ".".to_string())) && is_digit(v2_rt::char_at(source.text.clone(), (int_end.clone() + 1)))) {
+        let text = source.text.as_str();
+let int_end = scan_while_ref(text, pos.pos.clone(), is_digit);
+if ((((int_end.clone() + 1) < string_length_ref(text)) && (char_at_ref(text, int_end.clone()) == ".".to_string())) && is_digit(char_at_ref(text, (int_end.clone() + 1)))) {
             {
-                let frac_end = v2_rt::scan_while(source.text.clone(), (int_end.clone() + 1), is_digit);
-let text = v2_rt::substring(source.text.clone(), pos.pos.clone(), frac_end.clone());
-let token = make_token(text.clone(), Rc::new(SourceSpan {
+                let frac_end = scan_while_ref(text, (int_end.clone() + 1), is_digit);
+let number_text = substring_ref(text, pos.pos.clone(), frac_end.clone());
+let token = make_token(number_text.clone(), Rc::new(SourceSpan {
     start: pos.pos.clone(),
     end: frac_end.clone(),
 }), TokenShape::ShLitFloat);
@@ -390,7 +518,7 @@ return Rc::new(ScanResult {
 })
 }
 }
-let text = v2_rt::substring(source.text.clone(), pos.pos.clone(), int_end.clone());
+let text = substring_ref(text, pos.pos.clone(), int_end.clone());
 let parsed = v2_rt::parse_int(text.clone());
 let shape = match parsed.clone() {
     Some(_) => TokenShape::ShLitInt,
@@ -531,35 +659,34 @@ Rc::new(ScanResult {
 }
 
 pub fn scan_string_body(mut source: Rc<SourceRef>, mut pos: i64, mut acc: Vec<String>) -> Rc<StringScanResult> {
+    let text = source.text.as_str();
     loop {
-        if (pos.clone() >= v2_rt::string_length(source.text.clone())) {
+        if (pos.clone() >= string_length_ref(text)) {
             break Rc::new(StringScanResult::UnterminatedString {
-    content: acc.clone().join(&"".to_string()),
+    content: acc.join(&"".to_string()),
     end_pos: pos.clone(),
 });
 } else {
-            let ch = v2_rt::char_at(source.text.clone(), pos.clone());
+            let ch = char_at_ref(text, pos.clone());
 if (ch.clone() == "\"".to_string()) {
                 break Rc::new(StringScanResult::ClosedString {
-    content: acc.clone().join(&"".to_string()),
+    content: acc.join(&"".to_string()),
     end_pos: pos.clone(),
 });
 } else {
                 if (ch.clone() == "\\".to_string()) {
-                    if ((pos.clone() + 1) < v2_rt::string_length(source.text.clone())) {
-                        let escaped = v2_rt::char_at(source.text.clone(), (pos.clone() + 1));
-{
-                            let __tco_0 = source.clone();
-let __tco_1 = (pos.clone() + 2);
-let __tco_2 = v2_rt::list_push(v2_rt::list_push(acc.clone(), "\\".to_string()), escaped.clone());
-source = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
+                    if ((pos.clone() + 1) < string_length_ref(text)) {
+                        let escaped = char_at_ref(text, (pos.clone() + 1));
+                        acc.push("\\".to_string());
+                        acc.push(escaped);
+                        pos += 2;
+                        continue;
 } else {
                         break Rc::new(StringScanResult::UnterminatedString {
-    content: v2_rt::list_push(acc.clone(), "\\".to_string()).join(&"".to_string()),
+    content: {
+        acc.push("\\".to_string());
+        acc.join(&"".to_string())
+    },
     end_pos: (pos.clone() + 1),
 });
 }
@@ -567,30 +694,18 @@ continue;
                     if (ch.clone() == "{".to_string()) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
-    content: acc.clone().join(&"".to_string()),
+    content: acc.join(&"".to_string()),
     end_pos: pos.clone(),
 });
 } else {
-                            {
-                                let __tco_0 = source.clone();
-let __tco_1 = (pos.clone() + 1);
-let __tco_2 = v2_rt::list_push(acc.clone(), "{".to_string());
-source = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
+                            acc.push("{".to_string());
+                            pos += 1;
+                            continue;
 }
 } else {
-                        {
-                            let __tco_0 = source.clone();
-let __tco_1 = (pos.clone() + 1);
-let __tco_2 = v2_rt::list_push(acc.clone(), ch.clone());
-source = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
+                        acc.push(ch);
+                        pos += 1;
+                        continue;
 }
 }
 }
@@ -599,11 +714,12 @@ continue;
 }
 
 pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
-    if ((pos.clone() + 1) >= v2_rt::string_length(source.text.clone())) {
+    let text = source.text.as_str();
+    if ((pos.clone() + 1) >= string_length_ref(text)) {
         false
 } else {
         {
-            let next = v2_rt::char_at(source.text.clone(), (pos.clone() + 1));
+            let next = char_at_ref(text, (pos.clone() + 1));
 (((is_ident_start(next.clone()) || (next.clone() == "(".to_string())) || (next.clone() == "!".to_string())) || (next.clone() == "-".to_string()))
 }
 }
@@ -614,13 +730,14 @@ pub fn process_escapes(raw: String) -> String {
 }
 
 pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Vec<String>) -> String {
+    let text = source.as_str();
     loop {
-        if (pos.clone() >= v2_rt::string_length(source.clone())) {
-            break acc.clone().join(&"".to_string());
+        if (pos.clone() >= string_length_ref(text)) {
+            break acc.join(&"".to_string());
 } else {
-            let ch = v2_rt::char_at(source.clone(), pos.clone());
-if ((ch.clone() == "\\".to_string()) && ((pos.clone() + 1) < v2_rt::string_length(source.clone()))) {
-                let next = v2_rt::char_at(source.clone(), (pos.clone() + 1));
+            let ch = char_at_ref(text, pos.clone());
+if ((ch.clone() == "\\".to_string()) && ((pos.clone() + 1) < string_length_ref(text))) {
+                let next = char_at_ref(text, (pos.clone() + 1));
 let resolved = if (next.clone() == "\"".to_string()) {
                     "\"".to_string()
 } else {
@@ -639,67 +756,55 @@ let resolved = if (next.clone() == "\"".to_string()) {
 }
 }
 };
-{
-                    let __tco_0 = source.clone();
-let __tco_1 = (pos.clone() + 2);
-let __tco_2 = v2_rt::list_push(acc.clone(), resolved.clone());
-source = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
+                acc.push(resolved);
+                pos += 2;
+                continue;
 } else {
-                {
-                    let __tco_0 = source.clone();
-let __tco_1 = (pos.clone() + 1);
-let __tco_2 = v2_rt::list_push(acc.clone(), ch.clone());
-source = __tco_0;
-pos = __tco_1;
-acc = __tco_2;
-continue;
-}
+                acc.push(ch);
+                pos += 1;
+                continue;
 }
 }
 }
 }
 
 pub fn drop_last(stack: Vec<i64>) -> Vec<i64> {
-    {
-        let len = (stack.clone().len() as i64);
-stack.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned().fold(vec![], |result: _, pair: (i64, i64)| if (pair.0.clone() < (len.clone() - 1)) {
-            v2_rt::list_push(result.clone(), pair.1.clone())
-} else {
-            result.clone()
-})
-}
+    let mut stack = stack;
+    stack.pop();
+    stack
 }
 
 pub fn replace_last(stack: Vec<i64>, value: i64) -> Vec<i64> {
-    {
-        let prefix = drop_last(stack.clone());
-v2_rt::list_push(prefix.clone(), value.clone())
-}
+    let mut stack = stack;
+    if let Some(last) = stack.last_mut() {
+        *last = value;
+    } else {
+        stack.push(value);
+    }
+    stack
 }
 
 pub fn skip_spaces_and_comments(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let p = v2_rt::skip_horizontal_ws(source.text.clone(), pos.pos.clone());
-if ((((p.clone() + 1) < v2_rt::string_length(source.text.clone())) && (v2_rt::char_at(source.text.clone(), p.clone()) == "/".to_string())) && (v2_rt::char_at(source.text.clone(), (p.clone() + 1)) == "/".to_string())) {
-                {
-                    let eol = v2_rt::scan_to_eol(source.text.clone(), p.clone());
-return skip_spaces_and_comments(source.clone(), Rc::new(TokPos {
-    pos: eol.clone(),
-    interp_depth: pos.interp_depth.clone(),
-}))
-}
-}
-Rc::new(TokPos {
-    pos: p.clone(),
-    interp_depth: pos.interp_depth.clone(),
-})
-}
-    })
+    let text = source.text.as_str();
+    let len = string_length_ref(text);
+    let mut p = pos.pos;
+    loop {
+        p = skip_horizontal_ws_ref(text, p);
+        if p + 1 >= len {
+            return Rc::new(TokPos {
+                pos: p,
+                interp_depth: pos.interp_depth.clone(),
+            });
+        }
+        if char_at_ref(text, p) == "/".to_string() && char_at_ref(text, p + 1) == "/".to_string() {
+            p = scan_to_eol_ref(text, p);
+            continue;
+        }
+        return Rc::new(TokPos {
+            pos: p,
+            interp_depth: pos.interp_depth.clone(),
+        });
+    }
 }
 
 pub fn is_digit(ch: String) -> bool {
