@@ -19,6 +19,8 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError,
   diagnostic_node,
   Cardinality, Required, CardOptional,
+  Connective, NoConnective,
+  CollectionKind, NoCollection,
   ResourceUse,
   MatchArm, FieldInit, NamedArg, StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
@@ -136,7 +138,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
 }
 
 fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String) -> Node {
-  let is_slot = n.children |> count == 0 && n.connective == none && n.body == none && n.inferred == none
+  let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
     match map_get(slot_bindings, n.name) {
       Some { value: concrete } => concrete
@@ -187,7 +189,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   }
   // Normalize collection_kind: parser-produced nodes have collection_kind: none.
   // Derive from name so downstream structural checks (node_is_map, node_is_container) work.
-  let n = if n.collection_kind == none {
+  let n = if n.collection_kind == NoCollection {
     let ck = collection_kind_for_name(name: n.name)
     match ck {
       Some { value: _ } => Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: ck, params: n.params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }

@@ -229,6 +229,9 @@ pub fn connective_name(value: Connective) -> String {
     Connective::Disj => {
         "Disj".to_string()
     }
+    Connective::NoConnective => {
+        "NoConnective".to_string()
+    }
 }
 }
 
@@ -766,10 +769,13 @@ pub fn serialize_node(node: Rc<Node>) -> String {
     }
     Rc::new(__mapped_2)
 })), ", \"connective\": ".to_string()), match node.connective.clone() {
-    Some(inner) => {
-        json_quote(&connective_name(inner))
+    Connective::Conj => {
+        json_quote(&connective_name(Connective::Conj))
     }
-    None => {
+    Connective::Disj => {
+        json_quote(&connective_name(Connective::Disj))
+    }
+    Connective::NoConnective => {
         "null".to_string()
     }
 }), ", \"params\": ".to_string()), json_list({

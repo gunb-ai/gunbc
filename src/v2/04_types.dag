@@ -12,7 +12,8 @@ module v2.compiler.infer_types
 import std.types { SourceSpan }
 import v2.std.core {
   Node, FieldInit, Param,
-  Connective, Conj, Disj,
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral,
   make_expr_node,
@@ -49,39 +50,39 @@ fn rt_type(n: Node) -> Node {
   }
 }
 
-fn collection_kind_for_name(name: String) -> CollectionKind? {
-  if name == "List" { Some { value: ListKind } }
-  else if name == "Set" { Some { value: SetKind } }
-  else if name == "NonEmptyList" { Some { value: NonEmptyListKind } }
-  else if name == "NonEmptySet" { Some { value: NonEmptySetKind } }
-  else if name == "Map" { Some { value: MapKind } }
-  else { none }
+fn collection_kind_for_name(name: String) -> CollectionKind {
+  if name == "List" { ListKind }
+  else if name == "Set" { SetKind }
+  else if name == "NonEmptyList" { NonEmptyListKind }
+  else if name == "NonEmptySet" { NonEmptySetKind }
+  else if name == "Map" { MapKind }
+  else { NoCollection }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, collection_kind: collection_kind_for_name(name: kind_name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: NoConnective, collection_kind: collection_kind_for_name(name: kind_name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
-    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: Some { value: Conj }, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: Conj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, collection_kind: Some { value: MapKind }, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: NoConnective, collection_kind: MapKind, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: Some { value: MapKind }, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: MapKind, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
 // checked via declaration params in the type environment, not hardcoded names.
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
-  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn callable_inferred(n: Node) -> Node {
@@ -121,10 +122,10 @@ fn node_is_bridge_dynamic_name(n: Node) -> Bool {
 fn node_is_container(n: Node) -> Bool {
   // Container = List, Set, NonEmptyList, NonEmptySet (NOT Map — handled by node_is_map)
   match n.collection_kind {
-    Some { value: ListKind } => true
-    Some { value: SetKind } => true
-    Some { value: NonEmptyListKind } => true
-    Some { value: NonEmptySetKind } => true
+    ListKind => true
+    SetKind => true
+    NonEmptyListKind => true
+    NonEmptySetKind => true
     _ => false
   }
 }
@@ -137,12 +138,12 @@ fn node_is_optional(n: Node) -> Bool {
 }
 
 fn node_is_map(n: Node) -> Bool {
-  let is_map = n.collection_kind == Some { value: MapKind }
+  let is_map = n.collection_kind == MapKind
   is_map
 }
 
 fn node_is_leaf(n: Node) -> Bool {
-  n.connective == none && node_has_structure(n: n) == false && n.children |> count == 0 && n.properties |> count == 0
+  n.connective == NoConnective && node_has_structure(n: n) == false && n.children |> count == 0 && n.properties |> count == 0
 }
 
 fn node_is_named_ref(n: Node) -> Bool {

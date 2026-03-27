@@ -112,7 +112,7 @@ pub fn substitute_type_slots(n: Rc<Node>, slot_bindings: Rc<HashMap<String, Rc<N
         let is_slot = (((({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
-}) == 0_i64) && (n.connective.clone().is_none())) && (n.body.clone().is_none())) && (n.inferred.clone().is_none());
+}) == 0_i64) && (n.connective.clone() == Connective::NoConnective)) && (n.body.clone().is_none())) && (n.inferred.clone().is_none());
         if is_slot.clone() {
     match slot_bindings.clone().get(&n.name.clone()).cloned() {
     Some(concrete) => {
@@ -157,16 +157,13 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
         if depth.clone() > 100_i64 {
     return Rc::new(NodeResolveResult { resolved: n.clone(), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat(v2_rt::concat("internal: type resolution exceeded depth 100 for '".to_string(), n.name.clone()), "'".to_string()), span: Some(n.span.clone()), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::InvalidOperation) }))) });
 };
-        let n = if n.collection_kind.clone().is_none() {
+        let n = if n.collection_kind.clone() == CollectionKind::NoCollection {
     let ck = collection_kind_for_name(&n.name);
-    match ck {
-    Some(_) => {
+    if ck != CollectionKind::NoCollection {
         Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), collection_kind: ck, params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
-    }
-    None => {
+    } else {
         n.clone()
     }
-}
 } else {
     n.clone()
 };

@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Node, Connective, Conj, Disj, diagnostic_node, no_span, kernel_types, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
+import v2.std.core { Node, Connective, Conj, Disj, NoConnective, CollectionKind, NoCollection, diagnostic_node, no_span, kernel_types, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
 
 // =========================================================================
 // Output types
@@ -262,7 +262,7 @@ fn get_item_name(item: Node) -> String {
 // For sum types (disjunction), each child node is a variant whose name
 // is importable. For other items, returns an empty list.
 fn get_variant_names(item: Node) -> List<String> {
-  let is_coproduct = item.connective != none && item.connective == Some { value: Disj }
+  let is_coproduct = item.connective == Disj
   if is_coproduct { item.children |> map(c => c.name) }
   else { [] }
 }

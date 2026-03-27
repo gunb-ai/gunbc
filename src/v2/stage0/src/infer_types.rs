@@ -25,23 +25,23 @@ pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn collection_kind_for_name(name: &str) -> Option<CollectionKind> {
+pub fn collection_kind_for_name(name: &str) -> CollectionKind {
     if name == "List" {
-    Some(CollectionKind::ListKind)
+    CollectionKind::ListKind
 } else {
     if name == "Set" {
-    Some(CollectionKind::SetKind)
+    CollectionKind::SetKind
 } else {
     if name == "NonEmptyList" {
-    Some(CollectionKind::NonEmptyListKind)
+    CollectionKind::NonEmptyListKind
 } else {
     if name == "NonEmptySet" {
-    Some(CollectionKind::NonEmptySetKind)
+    CollectionKind::NonEmptySetKind
 } else {
     if name == "Map" {
-    Some(CollectionKind::MapKind)
+    CollectionKind::MapKind
 } else {
-    None
+    CollectionKind::NoCollection
 }
 }
 }
@@ -50,23 +50,23 @@ pub fn collection_kind_for_name(name: &str) -> Option<CollectionKind> {
 }
 
 pub fn container_node(kind_name: &str, element: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element.clone())), connective: None, collection_kind: collection_kind_for_name(&kind_name), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: kind_name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(element.clone())), connective: Connective::NoConnective, collection_kind: collection_kind_for_name(&kind_name), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Tuple".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(Rc::new(Node { name: "first".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: first.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), Rc::new(Node { name: "second".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: second.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }))), connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Tuple".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(Rc::new(Node { name: "first".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: first.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), Rc::new(Node { name: "second".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: second.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }))), connective: Connective::Conj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(key.clone(), value.clone())), connective: None, collection_kind: Some(CollectionKind::MapKind), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(vec!(key.clone(), value.clone())), connective: Connective::NoConnective, collection_kind: CollectionKind::MapKind, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn bare_map_node() -> Rc<Node> {
-    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: Some(CollectionKind::MapKind), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Map".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::MapKind, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn callable_node(func_params: Rc<Vec<Rc<Param>>>, ret: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node { name: "Callable".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: func_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: ret.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "Callable".to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: func_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: ret.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
@@ -101,16 +101,16 @@ pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
 
 pub fn node_is_container(n: Rc<Node>) -> bool {
     match n.collection_kind.clone() {
-    Some(CollectionKind::ListKind) => {
+    CollectionKind::ListKind => {
         true
     }
-    Some(CollectionKind::SetKind) => {
+    CollectionKind::SetKind => {
         true
     }
-    Some(CollectionKind::NonEmptyListKind) => {
+    CollectionKind::NonEmptyListKind => {
         true
     }
-    Some(CollectionKind::NonEmptySetKind) => {
+    CollectionKind::NonEmptySetKind => {
         true
     }
     _ => {
@@ -131,12 +131,12 @@ pub fn node_is_optional(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_map(n: Rc<Node>) -> bool {
-    let is_map = n.collection_kind.clone() == Some(CollectionKind::MapKind);
+    let is_map = n.collection_kind.clone() == CollectionKind::MapKind;
     is_map.clone()
 }
 
 pub fn node_is_leaf(n: Rc<Node>) -> bool {
-    (((n.connective.clone().is_none()) && (node_has_structure(n.clone()) == false)) && (({
+    ((((n.connective.clone() == Connective::NoConnective)) && (node_has_structure(n.clone()) == false)) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) == 0_i64)) && (({

@@ -772,3 +772,65 @@ fn strict_complexity_violation_count() {
         violation_count, COMPLEXITY_RATCHET
     );
 }
+
+// ── Serialization fidelity tests ──────────────────────────────────────
+//
+// Verify that serialize_expr_data preserves full kind fidelity for
+// every expression variant (not collapsed to ExprOther).
+
+#[test]
+fn serialized_if_match_block_preserve_kind() {
+    let source = "module ser_test\n\nfn demo(x: Int) -> Int {\n  if x > 0 {\n    match x {\n      1 => 10\n      _ => 20\n    }\n  } else {\n    let y = x + 1\n    y\n  }\n}\n";
+    let result = compile_dag_named("ser_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let json = find_file(&result, "dag-artifact.json");
+    assert!(json.contains("\"kind\": \"ExprIf\""), "serialized graph must preserve ExprIf kind, not ExprOther");
+    assert!(json.contains("\"kind\": \"ExprMatch\""), "serialized graph must preserve ExprMatch kind");
+    assert!(json.contains("\"kind\": \"ExprBlock\""), "serialized graph must preserve ExprBlock kind");
+    assert!(json.contains("\"kind\": \"ExprLet\""), "serialized graph must preserve ExprLet kind");
+    assert!(json.contains("\"kind\": \"ExprBinOp\""), "serialized graph must preserve ExprBinOp kind");
+    assert!(!json.contains("\"kind\": \"ExprOther\""), "no expression variant should be collapsed to ExprOther");
+}
+
+#[test]
+fn serialized_list_string_interp_preserve_kind() {
+    let source = "module ser_test2\n\nfn demo(name: String) -> String {\n  let items = [1, 2, 3]\n  \"hello ${name}\"\n}\n";
+    let result = compile_dag_named("ser_test2.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let json = find_file(&result, "dag-artifact.json");
+    assert!(json.contains("\"kind\": \"ExprListLit\""), "serialized graph must preserve ExprListLit kind");
+    assert!(json.contains("\"kind\": \"ExprStringInterp\""), "serialized graph must preserve ExprStringInterp kind");
+}
+
+#[test]
+fn serialized_cast_index_return_preserve_kind() {
+    let source = "module ser_test3\n\nfn demo(items: Map<String, Int>, key: String) -> Int? {\n  let x = items[key]\n  return x\n}\n";
+    let result = compile_dag_named("ser_test3.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let json = find_file(&result, "dag-artifact.json");
+    assert!(json.contains("\"kind\": \"ExprIndex\""), "serialized graph must preserve ExprIndex kind");
+    assert!(json.contains("\"kind\": \"ExprReturn\""), "serialized graph must preserve ExprReturn kind");
+}
+
+// ── TCO through wrapper nodes ─────────────────────────────────────────
+//
+// Verify that tail-call optimization works correctly through the new
+// NoExprData wrapper nodes (args, arms, field-inits).
+
+#[test]
+fn tco_through_if_branches() {
+    let source = "module tco_test\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { countdown(n: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/tco_test.rs");
+    assert!(content.contains("loop {"), "self-recursive if/else should use TCO loop");
+}
+
+#[test]
+fn tco_through_match_arms() {
+    let source = "module tco_match\n\nfn process(x: Int) -> Int {\n  match x {\n    0 => 0\n    _ => process(x: x - 1)\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/tco_match.rs");
+    assert!(content.contains("loop {"), "self-recursive match should use TCO loop");
+}

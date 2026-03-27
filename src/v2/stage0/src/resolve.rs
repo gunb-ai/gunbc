@@ -304,7 +304,7 @@ pub fn get_item_name(item: Rc<Node>) -> String {
 }
 
 pub fn get_variant_names(item: Rc<Node>) -> Rc<Vec<String>> {
-    let is_coproduct = (item.connective.clone().is_some()) && (item.connective.clone() == Some(Connective::Disj));
+    let is_coproduct = item.connective.clone() == Connective::Disj;
     if is_coproduct.clone() {
     {
     let mut __mapped_0 = Vec::new();

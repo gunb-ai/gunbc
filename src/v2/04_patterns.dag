@@ -15,6 +15,8 @@ import v2.std.core {
   InferredNode, Resolved,
   NodeType, Typed, InferError, Untyped,
   Cardinality, Required,
+  Connective, NoConnective,
+  CollectionKind, NoCollection,
   diagnostic_node,
   MatchArm, MatchPattern,
   leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality
@@ -60,8 +62,8 @@ type PatternSubject
 // pattern lookup gains a fully structural Optional subject.
 fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
-  let value_field = Node { name: "value", span: scrut.span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let some_node = Node { name: "Some", span: scrut.span, children: [value_field], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let value_field = Node { name: "value", span: scrut.span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let some_node = Node { name: "Some", span: scrut.span, children: [value_field], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   some_node
 }
 
