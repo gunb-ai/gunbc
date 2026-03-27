@@ -3,10 +3,10 @@
 //! All helpers call stage0 functions directly — no v1 interpreter, no Value wrapping.
 
 use std::rc::Rc;
-use v2_compiler::artifact::RenderTarget;
-use v2_compiler::compile::{PipelineResult, SourceFile};
-use v2_compiler::parse::ParseResult;
-use v2_compiler::v2_core::Token;
+use v2_compiler::v2_compiler_artifact::RenderTarget;
+use v2_compiler::v2_compiler_compile::{PipelineResult, SourceFile};
+use v2_compiler::v2_compiler_parse::ParseResult;
+use v2_compiler::v2_std_core::Token;
 
 // ── Workspace helpers ────────────────────────────────────────────────────
 
@@ -27,13 +27,13 @@ pub fn read_v2_file(relative_path: &str) -> String {
 
 // ── Tokenize + Parse ─────────────────────────────────────────────────────
 
-pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
-    v2_compiler::tokenize::tokenize(source)
+pub fn tokenize(source: &str) -> Vec<Rc<Token>> {
+    v2_compiler::v2_compiler_tokenize::tokenize(source.to_string())
 }
 
 pub fn parse_source(source: &str) -> Rc<ParseResult> {
     let tokens = tokenize(source);
-    v2_compiler::parse::parse(tokens)
+    v2_compiler::v2_compiler_parse::parse(tokens)
 }
 
 pub fn assert_parses(source: &str, label: &str) {
@@ -86,11 +86,11 @@ pub fn compile_dag_named(
     source: &str,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
-    let sources = Rc::new(vec![Rc::new(SourceFile {
+    let sources = vec![Rc::new(SourceFile {
         path: filename.to_string(),
         content: source.to_string(),
-    })]);
-    v2_compiler::compile::compile_sources(sources, target)
+    })];
+    v2_compiler::v2_compiler_compile::compile_sources(sources, target)
 }
 
 pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
@@ -98,18 +98,16 @@ pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
 }
 
 pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<PipelineResult> {
-    let sources = Rc::new(
-        files
-            .iter()
-            .map(|(path, content)| {
-                Rc::new(SourceFile {
-                    path: path.to_string(),
-                    content: content.to_string(),
-                })
+    let sources: Vec<Rc<SourceFile>> = files
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
             })
-            .collect(),
-    );
-    v2_compiler::compile::compile_sources(sources, target)
+        })
+        .collect();
+    v2_compiler::v2_compiler_compile::compile_sources(sources, target)
 }
 
 // ── Result inspection ────────────────────────────────────────────────────

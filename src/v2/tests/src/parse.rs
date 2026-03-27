@@ -5,7 +5,7 @@
 //! All tests call stage0 functions directly.
 
 use crate::helpers::*;
-use v2_compiler::v2_core::TokenShape;
+use v2_compiler::v2_std_core::TokenShape;
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 

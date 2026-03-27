@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
-use v2_compiler::infer_access;
-use v2_compiler::infer_env::TypeEnv;
-use v2_compiler::infer_patterns::{self, NodeLookupStatus};
-use v2_compiler::infer_types::{
+use v2_compiler::v2_compiler_infer_access;
+use v2_compiler::v2_compiler_infer_env::TypeEnv;
+use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
+use v2_compiler::v2_compiler_infer_types::{
     bare_map_node, container_node, map_node,
 };
-use v2_compiler::v2_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan, leaf_node, with_optional_cardinality};
+use v2_compiler::v2_std_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan, leaf_node, with_optional_cardinality};
 
 fn zero_span() -> SourceSpan {
     SourceSpan { start: 0, end: 0 }

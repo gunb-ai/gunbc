@@ -1,7 +1,7 @@
 #![allow(clippy::disallowed_macros)]
 
 use crate::helpers::*;
-use v2_compiler::artifact::RenderTarget;
+use v2_compiler::v2_compiler_artifact::RenderTarget;
 use serde_json::Value;
 
 // ── Basic pipeline tests ────────────────────────────────────────────────
