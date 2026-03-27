@@ -320,8 +320,9 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("from ".to_string(), mod_name.clone())
 
 pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
     {
-        let base_imports = v2_rt::concat(v2_rt::concat(v2_rt::concat("from __future__ import annotations
-".to_string(), "from dataclasses import dataclass, field
+        let base_imports = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("from __future__ import annotations
+".to_string(), "import functools
+".to_string()), "from dataclasses import dataclass, field
 ".to_string()), "from enum import Enum, auto
 ".to_string()), "from typing import Optional, Union
 ".to_string());
@@ -489,12 +490,79 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 } else {
             {
-                let body_str = emit_py_typed_expr(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1));
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":
-".to_string()), make_indent((depth.clone() + 1))), "return ".to_string()), body_str.clone())
+                let body_str = emit_py_fn_body(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1));
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":
+".to_string()), body_str.clone())
 }
 }
 }
+}
+
+// Walk a function body and emit let-bindings as Python statements, with `return` on the final expression.
+// Handles ExprBlock (list of statements) and ExprLet (chained let-body) at the top level.
+pub fn emit_py_fn_body(texpr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+    match (*texpr.expr_data.clone()).clone() {
+    ExprData::ExprBlock => {
+        let stmts = texpr.children.clone();
+        emit_py_fn_body_stmts(stmts, registry, scope, depth)
+    },
+    ExprData::ExprLet { name: n, .. } => {
+        let v = match texpr.children.clone().first().cloned() {
+    Some(val) => val.clone(),
+    None => texpr.clone(),
+};
+let bd = texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned();
+        let val_str = emit_py_typed_expr(v.clone(), registry.clone(), scope.clone(), depth.clone());
+        let let_line = v2_rt::concat(make_indent(depth.clone()), emit_let_binding(n.clone(), val_str.clone(), RenderTarget::Python));
+        match bd.clone() {
+            Some(bd_node) => {
+                let next_scope = extend_scope(scope.clone(), n.clone(), rt_type(v.clone()));
+                v2_rt::concat(v2_rt::concat(let_line, "\n".to_string()), emit_py_fn_body(bd_node, registry, next_scope, depth))
+            },
+            None => let_line,
+        }
+    },
+    _ => {
+        let expr_str = emit_py_typed_expr(texpr.clone(), registry.clone(), scope.clone(), depth.clone());
+        v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), "return ".to_string()), expr_str)
+    },
+}
+}
+
+// Emit a list of block statements: let-bindings become assignments, the last statement gets `return`.
+fn emit_py_fn_body_stmts(stmts: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+    if stmts.is_empty() {
+        return v2_rt::concat(make_indent(depth), "pass".to_string());
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut current_scope = scope;
+    let last_idx = stmts.len() - 1;
+    for (i, stmt) in stmts.iter().enumerate() {
+        if i == last_idx {
+            // Last statement: emit with return (recursing into emit_py_fn_body handles nested let/block)
+            lines.push(emit_py_fn_body(stmt.clone(), registry.clone(), current_scope.clone(), depth));
+        } else {
+            // Non-last statement: emit as a statement (let-binding or expression)
+            match (*stmt.expr_data.clone()).clone() {
+                ExprData::ExprLet { name: n, .. } => {
+                    let v = match stmt.children.clone().first().cloned() {
+                        Some(val) => val.clone(),
+                        None => stmt.clone(),
+                    };
+                    let val_str = emit_py_typed_expr(v.clone(), registry.clone(), current_scope.clone(), depth);
+                    let let_line = v2_rt::concat(make_indent(depth), emit_let_binding(n.clone(), val_str, RenderTarget::Python));
+                    lines.push(let_line);
+                    current_scope = extend_scope(current_scope, n.clone(), rt_type(v));
+                },
+                _ => {
+                    let expr_str = emit_py_typed_expr(stmt.clone(), registry.clone(), current_scope.clone(), depth);
+                    lines.push(v2_rt::concat(make_indent(depth), expr_str));
+                    current_scope = scope_after_expr(stmt.clone(), current_scope);
+                },
+            }
+        }
+    }
+    lines.join("\n")
 }
 
 pub fn emit_py_func_def(name: String, params: Vec<Rc<Param>>, inferred: Rc<Node>, uses: Vec<Rc<ResourceUse>>, body: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
@@ -886,7 +954,14 @@ match intrinsic.clone() {
     IntrinsicMethod::MethodFlatMap => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("[y for x in ".to_string(), recv_str.clone()), " for y in ".to_string()), first_arg_str.clone()), "(x)]".to_string()),
     IntrinsicMethod::MethodSkip => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[".to_string()), first_arg_str.clone()), ":]".to_string()),
     IntrinsicMethod::MethodTake => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[:".to_string()), first_arg_str.clone()), "]".to_string()),
-    IntrinsicMethod::MethodFold => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("functools.reduce(".to_string(), first_arg_str.clone()), ", ".to_string()), recv_str.clone()), ")".to_string()),
+    IntrinsicMethod::MethodFold => {
+        let init_str = first_arg_str.clone();
+        let fold_fn_str = match args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
+            Some(a) => emit_py_typed_expr(a.value.clone(), registry.clone(), scope.clone(), depth.clone()),
+            None => "lambda acc, x: acc".to_string(),
+        };
+        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("functools.reduce(".to_string(), fold_fn_str), ", ".to_string()), recv_str.clone()), ", ".to_string()), init_str), ")".to_string())
+    },
     IntrinsicMethod::MethodSortBy => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("sorted(".to_string(), recv_str.clone()), ", key=".to_string()), first_arg_str.clone()), ")".to_string()),
     IntrinsicMethod::MethodAppend => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), " + [".to_string()), first_arg_str.clone()), "]".to_string()),
 }
@@ -999,7 +1074,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_py_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let val_str = emit_py_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone());
-let let_line = emit_let_binding(name.clone(), val_str.clone(), RenderTarget::Python);
+let let_line = v2_rt::concat(make_indent(depth.clone()), emit_let_binding(name.clone(), val_str.clone(), RenderTarget::Python));
 match body.clone() {
     Some(bd) => {
             let next_scope = extend_scope(scope.clone(), name.clone(), rt_type(value.clone()));

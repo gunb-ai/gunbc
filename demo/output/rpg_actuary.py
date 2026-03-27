@@ -2,6 +2,7 @@
 # Source module: rpg_actuary
 
 from __future__ import annotations
+import functools
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Optional, Union
@@ -60,9 +61,9 @@ BattleResult = Union[BattleResultVictory, BattleResultDefeat, BattleResultFled]
 
 
 def calc_damage(attacker: Stats, defender: Stats, skill_power: int) -> int:
-    return raw = (attacker.attack * skill_power)
-reduced = (raw - (defender.defense * 2))
-(1) if ((reduced < 1)) else (reduced)
+    raw = (attacker.attack * skill_power)
+    reduced = (raw - (defender.defense * 2))
+    return (1) if ((reduced < 1)) else (reduced)
 
 
 def is_alive(member: PartyMember) -> bool:
@@ -70,22 +71,22 @@ def is_alive(member: PartyMember) -> bool:
 
 
 def take_damage(member: PartyMember, damage: int) -> PartyMember:
-    return new_hp = (member.stats.hp - damage)
-clamped = (0) if ((new_hp < 0)) else (new_hp)
-PartyMember(name=member.name, stats=Stats(hp=clamped, max_hp=member.stats.max_hp, attack=member.stats.attack, defense=member.stats.defense, magic=member.stats.magic, level=member.stats.level), element=member.element, alive=(clamped > 0))
+    new_hp = (member.stats.hp - damage)
+    clamped = (0) if ((new_hp < 0)) else (new_hp)
+    return PartyMember(name=member.name, stats=Stats(hp=clamped, max_hp=member.stats.max_hp, attack=member.stats.attack, defense=member.stats.defense, magic=member.stats.magic, level=member.stats.level), element=member.element, alive=(clamped > 0))
 
 
 def heal(member: PartyMember, amount: int) -> PartyMember:
-    return new_hp = (member.stats.hp + amount)
-clamped = (member.stats.max_hp) if ((new_hp > member.stats.max_hp)) else (new_hp)
-PartyMember(name=member.name, stats=Stats(hp=clamped, max_hp=member.stats.max_hp, attack=member.stats.attack, defense=member.stats.defense, magic=member.stats.magic, level=member.stats.level), element=member.element, alive=True)
+    new_hp = (member.stats.hp + amount)
+    clamped = (member.stats.max_hp) if ((new_hp > member.stats.max_hp)) else (new_hp)
+    return PartyMember(name=member.name, stats=Stats(hp=clamped, max_hp=member.stats.max_hp, attack=member.stats.attack, defense=member.stats.defense, magic=member.stats.magic, level=member.stats.level), element=member.element, alive=True)
 
 
 def survival_chance(member: PartyMember) -> int:
-    return hp_ratio = ((member.stats.hp * 100) // member.stats.max_hp)
-defense_bonus = (member.stats.defense * 2)
-raw = (hp_ratio + defense_bonus)
-(100) if ((raw > 100)) else ((0) if ((raw < 0)) else (raw))
+    hp_ratio = ((member.stats.hp * 100) // member.stats.max_hp)
+    defense_bonus = (member.stats.defense * 2)
+    raw = (hp_ratio + defense_bonus)
+    return (100) if ((raw > 100)) else ((0) if ((raw < 0)) else (raw))
 
 
 def expected_total_damage(damage_per_round: int, rounds: int) -> int:
@@ -93,12 +94,12 @@ def expected_total_damage(damage_per_round: int, rounds: int) -> int:
 
 
 def can_survive_rounds(member: PartyMember, damage_per_round: int, rounds: int) -> bool:
-    return total = expected_total_damage(damage_per_round, rounds)
-(member.stats.hp > total)
+    total = expected_total_damage(damage_per_round, rounds)
+    return (member.stats.hp > total)
 
 
 def party_strength(members: list[PartyMember]) -> int:
-    return functools.reduce(0, members)
+    return functools.reduce(lambda total, m: (total + survival_chance(m)), members, 0)
 
 
 def xp_to_next_level(current_level: int) -> int:
@@ -106,8 +107,8 @@ def xp_to_next_level(current_level: int) -> int:
 
 
 def level_up(member: PartyMember) -> PartyMember:
-    return new_level = (member.stats.level + 1)
-PartyMember(name=member.name, stats=Stats(hp=(member.stats.max_hp + 10), max_hp=(member.stats.max_hp + 10), attack=(member.stats.attack + 3), defense=(member.stats.defense + 2), magic=(member.stats.magic + 2), level=new_level), element=member.element, alive=True)
+    new_level = (member.stats.level + 1)
+    return PartyMember(name=member.name, stats=Stats(hp=(member.stats.max_hp + 10), max_hp=(member.stats.max_hp + 10), attack=(member.stats.attack + 3), defense=(member.stats.defense + 2), magic=(member.stats.magic + 2), level=new_level), element=member.element, alive=True)
 
 
 def describe_result(result: BattleResult) -> str:
