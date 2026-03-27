@@ -172,7 +172,7 @@ pub fn cost_conditional(condition: Rc<CostExpr>, branches: Rc<Vec<Rc<CostExpr>>>
     let max_branch = {
     let mut __acc_0 = Rc::new(CostExpr::CostConst { value: 0_i64 });
     for __elem_1 in branches.iter().cloned() {
-        __acc_0 = Rc::new(CostExpr::CostMax { left: __acc_0.clone(), right: __elem_1.clone() });
+        __acc_0 = Rc::new(CostExpr::CostMax { left: __acc_0, right: __elem_1.clone() });
     }
     __acc_0
 };
@@ -225,11 +225,20 @@ pub fn receiver_size_var(recv: Rc<Node>) -> Rc<SizeExpr> {
     ExprData::ExprVar { name: vname, .. } => {
         break Rc::new(SizeExpr::SizeLen { collection: vname.clone() });
     }
-    ExprData::ExprFieldAccess { base: _, field: fname, .. } => {
+    ExprData::ExprFieldAccess { field: fname, .. } => {
         break Rc::new(SizeExpr::SizeLen { collection: fname.clone() });
     }
-    ExprData::ExprMethodCall { receiver: inner_recv, method: _, args: _, method_semantics, .. } => {
-        if method_preserves_collection_size(method_semantics.clone()) {
+    ExprData::ExprMethodCall { method: _, method_semantics, .. } => {
+        {
+    let inner_recv = match recv.children.clone().first().cloned() {
+    Some(r) => {
+        r.clone()
+    }
+    None => {
+        recv.clone()
+    }
+};
+    if method_preserves_collection_size(method_semantics.clone()) {
      {
         let __tco_0 = inner_recv.clone();
         __tco_p_recv = __tco_0;
@@ -238,6 +247,7 @@ pub fn receiver_size_var(recv: Rc<Node>) -> Rc<SizeExpr> {
 
 } else {
     break Rc::new(SizeExpr::SizeLen { collection: "__expr".to_string() });
+};
 };
     }
     _ => {
@@ -262,11 +272,11 @@ pub fn size_binder_name(size: Rc<SizeExpr>) -> String {
 }
 }
 
-pub fn resolve_lambda_arg(mc_args: Rc<Vec<Rc<NamedArg>>>) -> Option<Rc<Node>> {
+pub fn resolve_lambda_arg(mc_arg_nodes: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
     let f_arg = {
     let mut __found_2 = None;
-    for __elem_3 in mc_args.iter().cloned() {
-        if __elem_3.name.clone() == Some("f".to_string()) {
+    for __elem_3 in mc_arg_nodes.iter().cloned() {
+        if __elem_3.name.clone() == "f" {
     __found_2 = Some(__elem_3);
     break;
 };
@@ -275,13 +285,13 @@ pub fn resolve_lambda_arg(mc_args: Rc<Vec<Rc<NamedArg>>>) -> Option<Rc<Node>> {
 };
     match f_arg.clone() {
     Some(fa) => {
-        Some(fa.value.clone())
+        Some(arg_value(fa.clone()))
     }
     None => {
         ({
     let mut __mapped_4 = Vec::new();
-    for __elem_5 in mc_args.iter().cloned() {
-        __mapped_4.push(__elem_5.value.clone());
+    for __elem_5 in mc_arg_nodes.iter().cloned() {
+        __mapped_4.push(arg_value(__elem_5.clone()));
     }
     Rc::new(__mapped_4)
 }).first().cloned()
@@ -317,7 +327,7 @@ pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryRes
     })
 }
 
-pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, mc_args: Rc<Vec<Rc<NamedArg>>>, size: Rc<SizeExpr>, binder: &str, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Rc<SummaryResult> {
+pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, mc_args: Rc<Vec<Rc<Node>>>, size: Rc<SizeExpr>, binder: &str, func_index: Rc<HashMap<String, Rc<FuncEntry>>>) -> Rc<SummaryResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match shape.as_ref() {
     CostShape::ShapeIterateBody { produces_collection: pc, .. } => {
@@ -865,14 +875,16 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     ExprData::ExprVar { name: _, .. } => {
         Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 1_i64 }), span: Rc::new(CostExpr::CostConst { value: 1_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() })
     }
-    ExprData::ExprBinOp { op: _, left: l, right: r, .. } => {
+    ExprData::ExprBinOp { op: _, .. } => {
         {
+    let l = binop_left(texpr.clone());
+    let r = binop_right(texpr.clone());
     let lr = cost_of_expr(l.clone(), func_index.clone(), table.clone());
     let rr = cost_of_expr(r.clone(), func_index.clone(), lr.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(lr.summary.work.clone(), cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), rr.summary.work.clone())), span: cost_seq(lr.summary.span.clone(), cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), rr.summary.span.clone())), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: rr.table.clone() })
 }
     }
-    ExprData::ExprCall { func: fname, args: call_args, .. } => {
+    ExprData::ExprCall { func: fname, .. } => {
         {
     let callee_result = match func_index.clone().get(&fname.clone()).cloned() {
     Some(entry) => {
@@ -884,9 +896,9 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
 };
     let args_result = {
     let mut __acc_0 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: callee_result.table.clone() });
-    for __elem_1 in call_args.iter().cloned() {
+    for __elem_1 in texpr.children.iter().cloned() {
         __acc_0 = {
-    let ar = cost_of_expr(__elem_1.value.clone(), func_index.clone(), __acc_0.table.clone());
+    let ar = cost_of_expr(arg_value(__elem_1.clone()), func_index.clone(), __acc_0.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_0.summary.work.clone(), ar.summary.work.clone()), span: cost_seq(__acc_0.summary.span.clone(), ar.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: ar.table.clone() })
 };
     }
@@ -895,8 +907,10 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(args_result.summary.work.clone(), callee_result.summary.work.clone()), span: cost_seq(args_result.summary.span.clone(), callee_result.summary.span.clone()), output_size: callee_result.summary.output_size.clone(), certainty: callee_result.summary.certainty.clone() }), table: args_result.table.clone() })
 }
     }
-    ExprData::ExprMethodCall { receiver: recv, method: mname, args: mc_args, method_semantics: ms, .. } => {
+    ExprData::ExprMethodCall { method: mname, method_semantics: ms, .. } => {
         {
+    let recv = method_receiver(texpr.clone());
+    let mc_args = method_arg_nodes(texpr.clone());
     let recv_r = cost_of_expr(recv.clone(), func_index.clone(), table.clone());
     let size = receiver_size_var(recv.clone());
     let binder = size_binder_name(size.clone());
@@ -928,7 +942,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let mut __acc_2 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: recv_r.table.clone() });
     for __elem_3 in mc_args.iter().cloned() {
         __acc_2 = {
-    let ar = cost_of_expr(__elem_3.value.clone(), func_index.clone(), __acc_2.table.clone());
+    let ar = cost_of_expr(arg_value(__elem_3.clone()), func_index.clone(), __acc_2.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_2.summary.work.clone(), ar.summary.work.clone()), span: cost_seq(__acc_2.summary.span.clone(), ar.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: ar.table.clone() })
 };
     }
@@ -940,14 +954,16 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
 }
 }
     }
-    ExprData::ExprMatch { scrutinee: s, arms: arm_list, .. } => {
+    ExprData::ExprMatch => {
         {
-    let s_r = cost_of_expr(s.clone(), func_index.clone(), table.clone());
+    let scrut = match_scrutinee(texpr.clone());
+    let arm_nodes = match_arm_nodes(texpr.clone());
+    let s_r = cost_of_expr(scrut.clone(), func_index.clone(), table.clone());
     let arms_accum = {
     let mut __acc_4 = Rc::new(MatchCostAccum { result: Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: s_r.table.clone() }), branch_costs: Rc::new(Vec::new()) });
-    for __elem_5 in arm_list.iter().cloned() {
+    for __elem_5 in arm_nodes.iter().cloned() {
         __acc_4 = {
-    let ar = cost_of_expr(__elem_5.body.clone(), func_index.clone(), __acc_4.result.table.clone());
+    let ar = cost_of_expr(arm_body(__elem_5.clone()), func_index.clone(), __acc_4.result.table.clone());
     Rc::new(MatchCostAccum { result: Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_par(__acc_4.result.summary.work.clone(), ar.summary.work.clone()), span: cost_par(__acc_4.result.summary.span.clone(), ar.summary.span.clone()), output_size: ar.summary.output_size.clone(), certainty: ar.summary.certainty.clone() }), table: ar.table.clone() }), branch_costs: {
     let __rc_7 = std::mem::take(&mut Rc::make_mut(&mut __acc_4).branch_costs);
     let mut __appended_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
@@ -961,13 +977,14 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_conditional(s_r.summary.work.clone(), arms_accum.branch_costs.clone()), span: cost_conditional(s_r.summary.span.clone(), Rc::new(vec!(arms_accum.result.summary.span.clone()))), output_size: arms_accum.result.summary.output_size.clone(), certainty: arms_accum.result.summary.certainty.clone() }), table: arms_accum.result.table.clone() })
 }
     }
-    ExprData::ExprIf { condition: c, then_branch: t, else_branch: e, .. } => {
+    ExprData::ExprIf => {
         {
+    let c = if_condition(texpr.clone());
+    let t = if_then_branch(texpr.clone());
     let c_r = cost_of_expr(c.clone(), func_index.clone(), table.clone());
     let t_r = cost_of_expr(t.clone(), func_index.clone(), c_r.table.clone());
-    let e_result = match e.as_ref().map(|__rc| __rc.as_ref()) {
+    let e_result = match if_else_branch(texpr.clone()) {
     Some(eb) => {
-        let eb = Rc::new(eb.clone());
         {
     let er = cost_of_expr(eb.clone(), func_index.clone(), t_r.table.clone());
     Rc::new(SummaryResult { summary: er.summary.clone(), table: er.table.clone() })
@@ -980,12 +997,12 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_conditional(c_r.summary.work.clone(), Rc::new(vec!(t_r.summary.work.clone(), e_result.summary.work.clone()))), span: cost_conditional(c_r.summary.span.clone(), Rc::new(vec!(t_r.summary.span.clone(), e_result.summary.span.clone()))), output_size: t_r.summary.output_size.clone(), certainty: Certainty::Proven }), table: e_result.table.clone() })
 }
     }
-    ExprData::ExprLet { name: _, value: v, body: bd, .. } => {
+    ExprData::ExprLet { name: _, .. } => {
         {
+    let v = let_value(texpr.clone());
     let v_r = cost_of_expr(v.clone(), func_index.clone(), table.clone());
-    match bd.as_ref().map(|__rc| __rc.as_ref()) {
+    match let_body(texpr.clone()) {
     Some(b) => {
-        let b = Rc::new(b.clone());
         {
     let b_r = cost_of_expr(b.clone(), func_index.clone(), v_r.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(v_r.summary.work.clone(), b_r.summary.work.clone()), span: cost_seq(v_r.summary.span.clone(), b_r.summary.span.clone()), output_size: b_r.summary.output_size.clone(), certainty: b_r.summary.certainty.clone() }), table: b_r.table.clone() })
@@ -997,10 +1014,10 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
 }
 }
     }
-    ExprData::ExprBlock { stmts: ss, .. } => {
+    ExprData::ExprBlock => {
         {
     let mut __acc_8 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
-    for __elem_9 in ss.iter().cloned() {
+    for __elem_9 in texpr.children.iter().cloned() {
         __acc_8 = {
     let sr = cost_of_expr(__elem_9.clone(), func_index.clone(), __acc_8.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_8.summary.work.clone(), sr.summary.work.clone()), span: cost_seq(__acc_8.summary.span.clone(), sr.summary.span.clone()), output_size: sr.summary.output_size.clone(), certainty: sr.summary.certainty.clone() }), table: sr.table.clone() })
@@ -1009,8 +1026,10 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     __acc_8
 }
     }
-    ExprData::ExprForEach { variable: _, collection: c, body: bd, .. } => {
+    ExprData::ExprForEach { variable: _, .. } => {
         {
+    let c = foreach_collection(texpr.clone());
+    let bd = foreach_body(texpr.clone());
     let c_r = cost_of_expr(c.clone(), func_index.clone(), table.clone());
     let bd_r = cost_of_expr(bd.clone(), func_index.clone(), c_r.table.clone());
     let size = receiver_size_var(c.clone());
@@ -1019,84 +1038,29 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(c_r.summary.work.clone(), loop_work.clone()), span: cost_seq(c_r.summary.span.clone(), loop_work.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: bd_r.summary.certainty.clone() }), table: bd_r.table.clone() })
 }
     }
-    ExprData::ExprReturn { value: v, .. } => {
-        cost_of_expr(v.clone(), func_index.clone(), table.clone())
-    }
-    ExprData::ExprFieldAccess { base: b, field: _, .. } => {
-        cost_of_expr(b.clone(), func_index.clone(), table.clone())
-    }
-    ExprData::ExprUnaryOp { op: _, operand: e, .. } => {
+    ExprData::NoExprData => {
         {
-    let er = cost_of_expr(e.clone(), func_index.clone(), table.clone());
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), er.summary.work.clone()), span: cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), er.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: er.summary.certainty.clone() }), table: er.table.clone() })
-}
-    }
-    ExprData::ExprLambda { params: _, body: bd, .. } => {
-        cost_of_expr(bd.clone(), func_index.clone(), table.clone())
-    }
-    ExprData::ExprRecordLit { type_name: _, fields: fs, .. } => {
-        {
-    let mut __acc_10 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 1_i64 }), span: Rc::new(CostExpr::CostConst { value: 1_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
-    for __elem_11 in fs.iter().cloned() {
+    let mut __acc_10 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
+    for __elem_11 in texpr.children.iter().cloned() {
         __acc_10 = {
-    let fr = cost_of_expr(__elem_11.value.clone(), func_index.clone(), __acc_10.table.clone());
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_10.summary.work.clone(), fr.summary.work.clone()), span: cost_seq(__acc_10.summary.span.clone(), fr.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: fr.summary.certainty.clone() }), table: fr.table.clone() })
+    let cr = cost_of_expr(__elem_11.clone(), func_index.clone(), __acc_10.table.clone());
+    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_10.summary.work.clone(), cr.summary.work.clone()), span: cost_seq(__acc_10.summary.span.clone(), cr.summary.span.clone()), output_size: cr.summary.output_size.clone(), certainty: cr.summary.certainty.clone() }), table: cr.table.clone() })
 };
     }
     __acc_10
 }
     }
-    ExprData::ExprListLit { elements: els, .. } => {
+    _ => {
         {
     let mut __acc_12 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 1_i64 }), span: Rc::new(CostExpr::CostConst { value: 1_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
-    for __elem_13 in els.iter().cloned() {
+    for __elem_13 in texpr.children.iter().cloned() {
         __acc_12 = {
-    let er = cost_of_expr(__elem_13.clone(), func_index.clone(), __acc_12.table.clone());
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_12.summary.work.clone(), er.summary.work.clone()), span: cost_seq(__acc_12.summary.span.clone(), er.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: er.summary.certainty.clone() }), table: er.table.clone() })
+    let cr = cost_of_expr(__elem_13.clone(), func_index.clone(), __acc_12.table.clone());
+    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_12.summary.work.clone(), cr.summary.work.clone()), span: cost_seq(__acc_12.summary.span.clone(), cr.summary.span.clone()), output_size: cr.summary.output_size.clone(), certainty: cr.summary.certainty.clone() }), table: cr.table.clone() })
 };
     }
     __acc_12
 }
-    }
-    ExprData::ExprStringInterp { parts: ps, .. } => {
-        {
-    let mut __acc_14 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 1_i64 }), span: Rc::new(CostExpr::CostConst { value: 1_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
-    for __elem_15 in ps.iter().cloned() {
-        __acc_14 = match __elem_15.as_ref() {
-    StringPart::Interpolation { expr: e, .. } => {
-        {
-    let er = cost_of_expr(e.clone(), func_index.clone(), __acc_14.table.clone());
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_14.summary.work.clone(), er.summary.work.clone()), span: cost_seq(__acc_14.summary.span.clone(), er.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: er.summary.certainty.clone() }), table: er.table.clone() })
-}
-    }
-    StringPart::Text { value: _, .. } => {
-        __acc_14.clone()
-    }
-};
-    }
-    __acc_14
-}
-    }
-    ExprData::ExprCast { expr: e, target: _, .. } => {
-        cost_of_expr(e.clone(), func_index.clone(), table.clone())
-    }
-    ExprData::ExprIndex { base: b, index: i, .. } => {
-        {
-    let br = cost_of_expr(b.clone(), func_index.clone(), table.clone());
-    let ir = cost_of_expr(i.clone(), func_index.clone(), br.table.clone());
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(br.summary.work.clone(), cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), ir.summary.work.clone())), span: cost_seq(br.summary.span.clone(), cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), ir.summary.span.clone())), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: ir.table.clone() })
-}
-    }
-    ExprData::ExprSlice { base: b, start: s, end: e, .. } => {
-        {
-    let br = cost_of_expr(b.clone(), func_index.clone(), table.clone());
-    let sr = cost_of_expr(s.clone(), func_index.clone(), br.table.clone());
-    let er = cost_of_expr(e.clone(), func_index.clone(), sr.table.clone());
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(br.summary.work.clone(), cost_seq(sr.summary.work.clone(), er.summary.work.clone())), span: cost_seq(br.summary.span.clone(), cost_seq(sr.summary.span.clone(), er.summary.span.clone())), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: er.table.clone() })
-}
-    }
-    ExprData::NoExprData => {
-        Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() })
     }
 }
     })
@@ -1107,99 +1071,12 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
         if budget.clone() <= 0_i64 {
     0_i64
 } else {
-    match texpr.expr_data.as_ref() {
-    ExprData::ExprBlock { stmts: ss, .. } => {
-        {
-    let mut __acc_0 = budget.clone();
-    for __elem_1 in ss.iter().cloned() {
-        __acc_0 = estimate_expr_size(__elem_1.clone(), __acc_0.clone());
+    {
+    let mut __acc_0 = budget.clone() - 1_i64;
+    for __elem_1 in texpr.children.iter().cloned() {
+        __acc_0 = estimate_expr_size(__elem_1.clone(), __acc_0);
     }
     __acc_0
-}
-    }
-    ExprData::ExprBinOp { op: _, left: l, right: r, .. } => {
-        {
-    let s1 = estimate_expr_size(l.clone(), budget.clone() - 1_i64);
-    estimate_expr_size(r.clone(), s1)
-}
-    }
-    ExprData::ExprIf { condition: c, then_branch: t, else_branch: e, .. } => {
-        {
-    let s1 = estimate_expr_size(c.clone(), budget.clone() - 1_i64);
-    let s2 = estimate_expr_size(t.clone(), s1);
-    match e.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(eb) => {
-        let eb = Rc::new(eb.clone());
-        estimate_expr_size(eb.clone(), s2)
-    }
-    None => {
-        s2
-    }
-}
-}
-    }
-    ExprData::ExprLet { name: _, value: v, body: b, .. } => {
-        {
-    let s1 = estimate_expr_size(v.clone(), budget.clone() - 1_i64);
-    match b.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(bd) => {
-        let bd = Rc::new(bd.clone());
-        estimate_expr_size(bd.clone(), s1)
-    }
-    None => {
-        s1
-    }
-}
-}
-    }
-    ExprData::ExprMatch { scrutinee: s, arms, .. } => {
-        {
-    let s1 = estimate_expr_size(s.clone(), budget.clone() - 1_i64);
-    {
-    let mut __acc_2 = s1;
-    for __elem_3 in arms.iter().cloned() {
-        __acc_2 = estimate_expr_size(__elem_3.body.clone(), __acc_2.clone());
-    }
-    __acc_2
-}
-}
-    }
-    ExprData::ExprForEach { variable: _, collection: c, body: b, .. } => {
-        {
-    let s1 = estimate_expr_size(c.clone(), budget.clone() - 1_i64);
-    estimate_expr_size(b.clone(), s1)
-}
-    }
-    ExprData::ExprCall { func: _, args: a, .. } => {
-        {
-    let mut __acc_4 = budget.clone() - 1_i64;
-    for __elem_5 in a.iter().cloned() {
-        __acc_4 = estimate_expr_size(__elem_5.value.clone(), __acc_4.clone());
-    }
-    __acc_4
-}
-    }
-    ExprData::ExprMethodCall { receiver: r, method: _, args: a, .. } => {
-        {
-    let s1 = estimate_expr_size(r.clone(), budget.clone() - 1_i64);
-    {
-    let mut __acc_6 = s1;
-    for __elem_7 in a.iter().cloned() {
-        __acc_6 = estimate_expr_size(__elem_7.value.clone(), __acc_6.clone());
-    }
-    __acc_6
-}
-}
-    }
-    ExprData::ExprLambda { params: _, body: b, .. } => {
-        estimate_expr_size(b.clone(), budget.clone() - 1_i64)
-    }
-    ExprData::ExprReturn { value: v, .. } => {
-        estimate_expr_size(v.clone(), budget.clone() - 1_i64)
-    }
-    _ => {
-        budget.clone() - 1_i64
-    }
 }
 }
     })

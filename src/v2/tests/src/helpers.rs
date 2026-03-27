@@ -39,7 +39,7 @@ pub fn parse_source(source: &str) -> Rc<ParseResult> {
 pub fn assert_parses(source: &str, label: &str) {
     let result = parse_source(source);
     if let Some(ref err) = result.error {
-        panic!("{} had parse error: {}", label, err.message);
+        panic!("{} had parse error: {}", label, err.name);
     }
     assert!(result.module.is_some(), "{} produced no module", label);
 }
@@ -48,19 +48,20 @@ pub fn assert_parses_strict(relative_path: &str) {
     let source = read_v2_file(relative_path);
     let result = parse_source(&source);
     if let Some(ref err) = result.error {
-        let span = err.span.as_ref().map(|s| {
+        let span = {
+            let s = &err.span;
             let line = source[..s.start.max(0) as usize]
                 .chars()
                 .filter(|c| *c == '\n')
                 .count()
                 + 1;
             format!(" (line {})", line)
-        });
+        };
         panic!(
             "{} had parse error: {}{}",
             relative_path,
-            err.message,
-            span.unwrap_or_default()
+            err.name,
+            span
         );
     }
     assert!(
@@ -114,7 +115,7 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
 // ── Result inspection ────────────────────────────────────────────────────
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
-    result.diagnostics.iter().map(|d| d.message.clone()).collect()
+    result.diagnostics.iter().map(|d| d.name.clone()).collect()
 }
 
 pub fn assert_no_diagnostics(result: &PipelineResult) {

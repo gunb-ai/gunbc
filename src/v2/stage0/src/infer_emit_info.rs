@@ -91,7 +91,7 @@ pub fn build_struct_field_summaries(children: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<S
     let mut __acc_0: Rc<std::collections::HashMap<String, Rc<FieldSummary>>> = Rc::new(std::collections::HashMap::new());
     for __elem_1 in children.iter().cloned() {
         __acc_0 = if __elem_1.inferred.clone().is_none() {
-    __acc_0.clone()
+    __acc_0
 } else {
     let style = if is_pair.clone() {
     pair_access_style(&__elem_1.name)
@@ -241,7 +241,7 @@ pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<Str
 }
     }
     None => {
-        __acc_6.clone()
+        __acc_6
     }
 };
     }
@@ -293,7 +293,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     Rc::new(__map_ins_2)
 }
 } else {
-    __acc_0.clone()
+    __acc_0
 };
     }
     __acc_0
@@ -314,10 +314,10 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
         {
     let mut __acc_7 = state.variant_to_enum.clone();
     for __elem_8 in item.children.iter().cloned() {
-        __acc_7 = match __acc_7.clone().get(&__elem_8.name.clone()).cloned() {
+        __acc_7 = match __acc_7.get(&__elem_8.name.clone()).cloned() {
     Some(existing) => {
         if existing.clone() == summary.name.clone() {
-    __acc_7.clone()
+    __acc_7
 } else {
     {
     let __rc_10 = __acc_7;
@@ -380,12 +380,12 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     Rc::new(__map_ins_19)
 }
 } else {
-    __acc_17.clone()
+    __acc_17
 }
 }
     }
     _ => {
-        __acc_17.clone()
+        __acc_17
     }
 };
     }
@@ -397,7 +397,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     let mut __acc_21 = state.field_type_names.clone();
     for __elem_22 in item.children.iter().cloned() {
         __acc_21 = {
-    let mut __acc_23 = __acc_21.clone();
+    let mut __acc_23 = __acc_21;
     for __elem_24 in __elem_22.children.iter().cloned() {
         __acc_23 = match __elem_24.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: ft, .. }) => {
@@ -411,12 +411,12 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     Rc::new(__map_ins_25)
 }
 } else {
-    __acc_23.clone()
+    __acc_23
 }
 }
     }
     _ => {
-        __acc_23.clone()
+        __acc_23
     }
 };
     }

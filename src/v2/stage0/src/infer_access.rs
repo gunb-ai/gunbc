@@ -7,14 +7,14 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AccessCheckResultNode {
     pub inferred: Option<Rc<InferredNode>>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+    pub diagnostics: Rc<Vec<Rc<Node>>>,
 }
 
-pub fn access_error(message: &str, span: SourceSpan, module_name: &str) -> Rc<Diagnostic> {
-    Rc::new(Diagnostic { severity: Severity::Error, message: message.to_string(), span: Some(span), module_name: Some(module_name.to_string()), category: None })
+pub fn access_error(message: &str, span: SourceSpan, module_name: &str) -> Rc<Node> {
+    diagnostic_node("error", &message, span, Some(module_name.to_string()), None)
 }
 
-pub fn access_result(inferred: Rc<Node>, diagnostics: Rc<Vec<Rc<Diagnostic>>>, span: SourceSpan, fallback_message: &str) -> Rc<AccessCheckResultNode> {
+pub fn access_result(inferred: Rc<Node>, diagnostics: Rc<Vec<Rc<Node>>>, span: SourceSpan, fallback_message: &str) -> Rc<AccessCheckResultNode> {
     if ({
     let __len_0 = diagnostics.clone().len();
     __len_0 as i64
@@ -23,7 +23,7 @@ pub fn access_result(inferred: Rc<Node>, diagnostics: Rc<Vec<Rc<Diagnostic>>>, s
 } else {
     let message = match diagnostics.clone().first().cloned() {
     Some(diag) => {
-        diag.message.clone()
+        diagnostic_message(diag.clone())
     }
     None => {
         fallback_message.to_string()

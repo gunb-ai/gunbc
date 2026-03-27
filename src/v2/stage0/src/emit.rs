@@ -15,7 +15,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EmitResult {
     pub files: Rc<Vec<Rc<TextFile>>>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+    pub diagnostics: Rc<Vec<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -162,8 +162,10 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
     ExprData::ExprVar { name: n, binding_kind: _, .. } => {
         emit_ident(&n, target.clone())
     }
-    ExprData::ExprFieldAccess { base: b, field: f, summary: _, .. } => {
-        if is_typed_service_call_receiver(expr.clone()) {
+    ExprData::ExprFieldAccess { field: f, summary: _, .. } => {
+        {
+    let b = field_access_base(expr.clone());
+    if is_typed_service_call_receiver(expr.clone()) {
     match extract_typed_service_name(expr.clone()) {
     Some(svc_name) => {
         service_var_name(&svc_name)
@@ -175,9 +177,27 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
 } else {
     v2_rt::concat(v2_rt::concat(emit_simple_expr(b.clone(), target.clone()), ".".to_string()), emit_ident(&f, target.clone()))
 }
+}
     }
-    ExprData::ExprStringInterp { parts: ps, .. } => {
-        emit_simple_string_interp(ps.clone(), target.clone())
+    ExprData::ExprStringInterp => {
+        {
+    let ps = {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in expr.children.iter().cloned() {
+        __mapped_0.push(match __elem_1.expr_data.as_ref() {
+    ExprData::ExprLiteral { ref value, .. } => {
+        let LiteralValue::LitStr { value: text, .. } = value.as_ref() else { unreachable!() };
+        Rc::new(StringPart::Text { value: text.clone() })
+    }
+    _ => {
+        Rc::new(StringPart::Interpolation { expr: arg_value(__elem_1.clone()) })
+    }
+});
+    }
+    Rc::new(__mapped_0)
+};
+    emit_simple_string_interp(ps.clone(), target.clone())
+}
     }
     _ => {
         emit_error_expr("unsupported simple expr in test/mock binding", target.clone())
@@ -450,11 +470,19 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
 
 pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
     match texpr.expr_data.as_ref() {
-    ExprData::ExprLet { name, value, body, .. } => {
-        if body.clone().is_none() {
+    ExprData::ExprLet { name, .. } => {
+        {
+    let ch = texpr.children.clone();
+    let has_body = ({
+    let __len_0 = ch.clone().len();
+    __len_0 as i64
+}) > 1_i64;
+    if has_body.clone() == false {
+    let value = let_value(texpr.clone());
     extend_scope(scope.clone(), &name, rt_type(value.clone()))
 } else {
     scope.clone()
+}
 }
     }
     _ => {
@@ -510,7 +538,7 @@ pub fn order_typed_call_args(args: Rc<Vec<Rc<NamedArg>>>, func: &str, scope: Rc<
     Rc::new(__map_ins_4)
 }
 } else {
-    __acc_2.clone()
+    __acc_2
 };
     }
     __acc_2
@@ -676,11 +704,11 @@ pub fn emit_data_value_json(value: Rc<Node>) -> String {
     }
 }
     }
-    ExprData::ExprListLit { elements: els, .. } => {
+    ExprData::ExprListLit => {
         {
     let el_strs = {
     let mut __mapped_0 = Vec::new();
-    for __elem_1 in els.iter().cloned() {
+    for __elem_1 in value.children.iter().cloned() {
         __mapped_0.push(emit_data_value_json(__elem_1.clone()));
     }
     Rc::new(__mapped_0)
@@ -699,12 +727,12 @@ pub fn emit_data_value_json(value: Rc<Node>) -> String {
 }), "]".to_string())
 }
     }
-    ExprData::ExprRecordLit { type_name: _, fields: fs, parent_enum: _, .. } => {
+    ExprData::ExprRecordLit { type_name: _, parent_enum: _, .. } => {
         {
     let field_strs = {
     let mut __mapped_5 = Vec::new();
-    for __elem_6 in fs.iter().cloned() {
-        __mapped_5.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(&__elem_6.name)), "\": ".to_string()), emit_data_value_json(__elem_6.value.clone())));
+    for __elem_6 in value.children.iter().cloned() {
+        __mapped_5.push(v2_rt::concat(v2_rt::concat(v2_rt::concat("\"".to_string(), escape_json_string(&field_init_node_name(__elem_6.clone()))), "\": ".to_string()), emit_data_value_json(field_init_node_value(__elem_6.clone()))));
     }
     Rc::new(__mapped_5)
 };
@@ -1944,58 +1972,58 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
     ExprData::ExprVar { name: _, binding_kind: _, .. } => {
         ExprCategory::ExprCatLeaf
     }
-    ExprData::ExprFieldAccess { base: _, field: _, summary: _, .. } => {
+    ExprData::ExprFieldAccess { field: _, summary: _, .. } => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprCall { func: _, args: _, call_semantics: _, .. } => {
+    ExprData::ExprCall { func: _, call_semantics: _, .. } => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _, .. } => {
+    ExprData::ExprMethodCall { method: _, method_semantics: _, .. } => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprRecordLit { type_name: _, fields: _, parent_enum: _, .. } => {
+    ExprData::ExprRecordLit { type_name: _, parent_enum: _, .. } => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprListLit { elements: _, .. } => {
+    ExprData::ExprListLit => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprBinOp { op: _, left: _, right: _, .. } => {
+    ExprData::ExprBinOp { op: _, .. } => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprUnaryOp { op: _, operand: _, .. } => {
+    ExprData::ExprUnaryOp { op: _, .. } => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprLambda { params: _, body: _, semantics: _, .. } => {
+    ExprData::ExprLambda { params: _, semantics: _, .. } => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprStringInterp { parts: _, .. } => {
+    ExprData::ExprStringInterp => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprCast { expr: _, target: _, .. } => {
+    ExprData::ExprCast => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprIndex { base: _, index: _, .. } => {
+    ExprData::ExprIndex => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprSlice { base: _, start: _, end: _, .. } => {
+    ExprData::ExprSlice => {
         ExprCategory::ExprCatCompound
     }
-    ExprData::ExprMatch { scrutinee: _, arms: _, .. } => {
+    ExprData::ExprMatch => {
         ExprCategory::ExprCatControlFlow
     }
-    ExprData::ExprIf { condition: _, then_branch: _, else_branch: _, .. } => {
+    ExprData::ExprIf => {
         ExprCategory::ExprCatControlFlow
     }
-    ExprData::ExprForEach { variable: _, collection: _, body: _, .. } => {
+    ExprData::ExprForEach { variable: _, .. } => {
         ExprCategory::ExprCatControlFlow
     }
-    ExprData::ExprBlock { stmts: _, .. } => {
+    ExprData::ExprBlock => {
         ExprCategory::ExprCatControlFlow
     }
-    ExprData::ExprLet { name: _, value: _, body: _, .. } => {
+    ExprData::ExprLet { name: _, .. } => {
         ExprCategory::ExprCatBinding
     }
-    ExprData::ExprReturn { value: _, .. } => {
+    ExprData::ExprReturn => {
         ExprCategory::ExprCatControlFlow
     }
     ExprData::NoExprData => {
@@ -2022,11 +2050,15 @@ impl Default for FuncBodyShape {
 
 pub fn classify_func_body(body: Rc<Node>) -> Rc<FuncBodyShape> {
     match body.expr_data.as_ref() {
-    ExprData::ExprLet { name: n, value: v, body: rest, .. } => {
-        Rc::new(FuncBodyShape::FuncBodyLet { name: n.clone(), value: v.clone(), rest: rest.clone() })
+    ExprData::ExprLet { name: n, .. } => {
+        {
+    let v = let_value(body.clone());
+    let rest = let_body(body.clone());
+    Rc::new(FuncBodyShape::FuncBodyLet { name: n.clone(), value: v.clone(), rest: rest.clone() })
+}
     }
-    ExprData::ExprBlock { stmts: ss, .. } => {
-        Rc::new(FuncBodyShape::FuncBodyBlock { stmts: ss.clone() })
+    ExprData::ExprBlock => {
+        Rc::new(FuncBodyShape::FuncBodyBlock { stmts: body.children.clone() })
     }
     _ => {
         Rc::new(FuncBodyShape::FuncBodyExpr { expr: body.clone() })
@@ -2052,20 +2084,48 @@ impl Default for TcoExprShape {
 
 pub fn classify_tco_expr(texpr: Rc<Node>) -> Rc<TcoExprShape> {
     match texpr.expr_data.as_ref() {
-    ExprData::ExprCall { func: f, args: a, call_semantics: _, .. } => {
-        Rc::new(TcoExprShape::TcoCall { func: f.clone(), args: a.clone() })
+    ExprData::ExprCall { func: f, call_semantics: _, .. } => {
+        {
+    let a = {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in texpr.children.iter().cloned() {
+        __mapped_0.push(Rc::new(NamedArg { name: arg_name(__elem_1.clone()), value: arg_value(__elem_1.clone()) }));
     }
-    ExprData::ExprIf { condition: c, then_branch: t, else_branch: e, .. } => {
-        Rc::new(TcoExprShape::TcoIf { condition: c.clone(), then_branch: t.clone(), else_branch: e.clone() })
+    Rc::new(__mapped_0)
+};
+    Rc::new(TcoExprShape::TcoCall { func: f.clone(), args: a.clone() })
+}
     }
-    ExprData::ExprMatch { scrutinee: s, arms: arm_list, .. } => {
-        Rc::new(TcoExprShape::TcoMatch { scrutinee: s.clone(), arms: arm_list.clone() })
+    ExprData::ExprIf => {
+        {
+    let c = if_condition(texpr.clone());
+    let t = if_then_branch(texpr.clone());
+    let e = if_else_branch(texpr.clone());
+    Rc::new(TcoExprShape::TcoIf { condition: c.clone(), then_branch: t.clone(), else_branch: e.clone() })
+}
     }
-    ExprData::ExprLet { name: n, value: v, body: bd, .. } => {
-        Rc::new(TcoExprShape::TcoLet { name: n.clone(), value: v.clone(), body: bd.clone() })
+    ExprData::ExprMatch => {
+        {
+    let scrut = match_scrutinee(texpr.clone());
+    let arm_list = {
+    let mut __mapped_2 = Vec::new();
+    for __elem_3 in match_arm_nodes(texpr.clone()).iter().cloned() {
+        __mapped_2.push(Rc::new(MatchArm { pattern: arm_pattern(__elem_3.clone()), guard: arm_guard(__elem_3.clone()), body: arm_body(__elem_3.clone()) }));
     }
-    ExprData::ExprBlock { stmts: ss, .. } => {
-        Rc::new(TcoExprShape::TcoBlock { stmts: ss.clone() })
+    Rc::new(__mapped_2)
+};
+    Rc::new(TcoExprShape::TcoMatch { scrutinee: scrut.clone(), arms: arm_list.clone() })
+}
+    }
+    ExprData::ExprLet { name: n, .. } => {
+        {
+    let v = let_value(texpr.clone());
+    let bd = let_body(texpr.clone());
+    Rc::new(TcoExprShape::TcoLet { name: n.clone(), value: v.clone(), body: bd.clone() })
+}
+    }
+    ExprData::ExprBlock => {
+        Rc::new(TcoExprShape::TcoBlock { stmts: texpr.children.clone() })
     }
     _ => {
         Rc::new(TcoExprShape::TcoOther { expr: texpr.clone() })
@@ -2141,23 +2201,30 @@ pub fn tco_reassign_core(ordered_args: Rc<Vec<String>>, param_names: Rc<Vec<Stri
 
 pub fn emit_shared_tco_expr(frame: Rc<TcoFrame>, fn_name: &str, emit_self_call_reassign: impl Fn(Rc<TcoReassignInput>) -> String, emit_non_self_call: impl Fn(Rc<TcoFrame>) -> String, emit_if: impl Fn(Rc<TcoFrame>) -> String, emit_match: impl Fn(Rc<TcoFrame>) -> String, emit_let: impl Fn(Rc<TcoFrame>) -> String, emit_block: impl Fn(Rc<TcoFrame>) -> String, emit_default_return: impl Fn(Rc<TcoFrame>) -> String) -> String {
     match frame.expr.expr_data.as_ref() {
-    ExprData::ExprCall { func: f, args: a, call_semantics: _, .. } => {
+    ExprData::ExprCall { func: f, call_semantics: _, .. } => {
         if f.clone() == fn_name {
+    let a = {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in frame.expr.children.iter().cloned() {
+        __mapped_0.push(Rc::new(NamedArg { name: arg_name(__elem_1.clone()), value: arg_value(__elem_1.clone()) }));
+    }
+    Rc::new(__mapped_0)
+};
     emit_self_call_reassign(Rc::new(TcoReassignInput { args: a.clone(), scope: frame.scope.clone(), depth: frame.depth.clone() }))
 } else {
     emit_non_self_call(frame.clone())
 }
     }
-    ExprData::ExprIf { condition: _, then_branch: _, else_branch: _, .. } => {
+    ExprData::ExprIf => {
         emit_if(frame.clone())
     }
-    ExprData::ExprMatch { scrutinee: _, arms: _, .. } => {
+    ExprData::ExprMatch => {
         emit_match(frame.clone())
     }
-    ExprData::ExprLet { name: _, value: _, body: _, .. } => {
+    ExprData::ExprLet { name: _, .. } => {
         emit_let(frame.clone())
     }
-    ExprData::ExprBlock { stmts: _, .. } => {
+    ExprData::ExprBlock => {
         emit_block(frame.clone())
     }
     _ => {
@@ -2169,25 +2236,28 @@ pub fn emit_shared_tco_expr(frame: Rc<TcoFrame>, fn_name: &str, emit_self_call_r
 pub fn is_tco_candidate(texpr: Rc<Node>, func_name: &str) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match texpr.expr_data.as_ref() {
-    ExprData::ExprCall { func: f, args: _, call_semantics: _, .. } => {
+    ExprData::ExprCall { func: f, call_semantics: _, .. } => {
         f.clone() == func_name
     }
-    ExprData::ExprIf { condition: _, then_branch: t, else_branch: e, .. } => {
-        is_tco_candidate(t.clone(), &func_name) || (match e.as_ref().map(|__rc| __rc.as_ref()) {
-    Some(eb) => {
-        let eb = Rc::new(eb.clone());
-        is_tco_candidate(eb.clone(), &func_name)
+    ExprData::ExprIf => {
+        {
+    let then_cand = is_tco_candidate(if_then_branch(texpr.clone()), &func_name);
+    let else_cand = match if_else_branch(texpr.clone()) {
+    Some(e) => {
+        is_tco_candidate(e.clone(), &func_name)
     }
     None => {
         false
     }
-})
+};
+    then_cand || else_cand.clone()
+}
     }
-    ExprData::ExprMatch { scrutinee: _, arms: arm_list, .. } => {
+    ExprData::ExprMatch => {
         {
     let mut __any_0 = false;
-    for __elem_1 in arm_list.iter().cloned() {
-        if is_tco_candidate(__elem_1.body.clone(), &func_name) {
+    for __elem_1 in match_arm_nodes(texpr.clone()).iter().cloned() {
+        if is_tco_candidate(arm_body(__elem_1.clone()), &func_name) {
     __any_0 = true;
     break;
 };
@@ -2195,10 +2265,9 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: &str) -> bool {
     __any_0
 }
     }
-    ExprData::ExprLet { name: _, value: _, body: bd, .. } => {
-        match bd.as_ref().map(|__rc| __rc.as_ref()) {
+    ExprData::ExprLet { name: _, .. } => {
+        match let_body(texpr.clone()) {
     Some(b) => {
-        let b = Rc::new(b.clone());
         is_tco_candidate(b.clone(), &func_name)
     }
     None => {
@@ -2206,16 +2275,10 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: &str) -> bool {
     }
 }
     }
-    ExprData::ExprBlock { stmts: ss, .. } => {
-        if ({
-    let __len_4 = ss.clone().len();
-    __len_4 as i64
-}) == 0_i64 {
-    false
-} else {
-    {
+    ExprData::ExprBlock => {
+        {
     let mut __any_2 = false;
-    for __elem_3 in ss.iter().cloned() {
+    for __elem_3 in texpr.children.iter().cloned() {
         if is_tco_candidate(__elem_3.clone(), &func_name) {
     __any_2 = true;
     break;
@@ -2223,6 +2286,17 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: &str) -> bool {
     }
     __any_2
 }
+    }
+    ExprData::NoExprData => {
+        {
+    let mut __any_4 = false;
+    for __elem_5 in texpr.children.iter().cloned() {
+        if is_tco_candidate(__elem_5.clone(), &func_name) {
+    __any_4 = true;
+    break;
+};
+    }
+    __any_4
 }
     }
     _ => {
@@ -2575,29 +2649,31 @@ pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, wrap_result: impl
     ExprData::ExprVar { name: _, binding_kind: _, .. } => {
         emit_var(texpr.clone())
     }
-    ExprData::ExprFieldAccess { base: _, field: _, summary: _, .. } => {
+    ExprData::ExprFieldAccess { field: _, summary: _, .. } => {
         emit_field_access(texpr.clone())
     }
-    ExprData::ExprCall { func: _, args: _, call_semantics: _, .. } => {
+    ExprData::ExprCall { func: _, call_semantics: _, .. } => {
         emit_call(texpr.clone())
     }
-    ExprData::ExprMethodCall { receiver: _, method: _, args: _, method_semantics: _, .. } => {
+    ExprData::ExprMethodCall { method: _, method_semantics: _, .. } => {
         emit_method_call(texpr.clone())
     }
-    ExprData::ExprMatch { scrutinee: _, arms: _, .. } => {
+    ExprData::ExprMatch => {
         emit_match(texpr.clone())
     }
-    ExprData::ExprIf { condition: _, then_branch: _, else_branch: _, .. } => {
+    ExprData::ExprIf => {
         emit_if(texpr.clone())
     }
-    ExprData::ExprLet { name: _, value: _, body: _, .. } => {
+    ExprData::ExprLet { name: _, .. } => {
         emit_let(texpr.clone())
     }
-    ExprData::ExprRecordLit { type_name: _, fields: _, parent_enum: _, .. } => {
+    ExprData::ExprRecordLit { type_name: _, parent_enum: _, .. } => {
         emit_record_lit(texpr.clone())
     }
-    ExprData::ExprBinOp { op, left, right, .. } => {
+    ExprData::ExprBinOp { op, .. } => {
         {
+    let left = binop_left(texpr.clone());
+    let right = binop_right(texpr.clone());
     let left_str = recurse(left.clone());
     let right_str = recurse(right.clone());
     if is_null_coalesce(op.clone()) {
@@ -2608,41 +2684,50 @@ pub fn emit_shared_expr(texpr: Rc<Node>, target: RenderTarget, wrap_result: impl
 }
 }
     }
-    ExprData::ExprUnaryOp { op, operand, .. } => {
-        wrap_result(emit_unary_op(op.clone(), &recurse(operand.clone()), target.clone()))
+    ExprData::ExprUnaryOp { op, .. } => {
+        {
+    let operand = unaryop_operand(texpr.clone());
+    wrap_result(emit_unary_op(op.clone(), &recurse(operand.clone()), target.clone()))
+}
     }
-    ExprData::ExprLambda { params, body, semantics: _, .. } => {
-        wrap_result(emit_lambda(&emit_lambda_params(params.clone(), target.clone()), &recurse(body.clone()), target.clone()))
+    ExprData::ExprLambda { params, semantics: _, .. } => {
+        {
+    let body = lambda_body(texpr.clone());
+    wrap_result(emit_lambda(&emit_lambda_params(params.clone(), target.clone()), &recurse(body.clone()), target.clone()))
+}
     }
-    ExprData::ExprStringInterp { parts: _, .. } => {
+    ExprData::ExprStringInterp => {
         emit_string_interp(texpr.clone())
     }
-    ExprData::ExprBlock { stmts: _, .. } => {
+    ExprData::ExprBlock => {
         emit_block(texpr.clone())
     }
-    ExprData::ExprCast { expr: _, target: _, .. } => {
+    ExprData::ExprCast => {
         emit_cast(texpr.clone())
     }
-    ExprData::ExprForEach { variable: _, collection: _, body: _, .. } => {
+    ExprData::ExprForEach { variable: _, .. } => {
         emit_for_each(texpr.clone())
     }
-    ExprData::ExprIndex { base: _, index: _, .. } => {
+    ExprData::ExprIndex => {
         emit_index(texpr.clone())
     }
-    ExprData::ExprSlice { base: _, start: _, end: _, .. } => {
+    ExprData::ExprSlice => {
         emit_slice(texpr.clone())
     }
-    ExprData::ExprListLit { elements, .. } => {
+    ExprData::ExprListLit => {
         wrap_result(emit_list_lit_expr({
     let mut __mapped_6 = Vec::new();
-    for __elem_7 in elements.iter().cloned() {
+    for __elem_7 in texpr.children.iter().cloned() {
         __mapped_6.push(recurse(__elem_7.clone()));
     }
     Rc::new(__mapped_6)
 }, target.clone()))
     }
-    ExprData::ExprReturn { value, .. } => {
-        wrap_result(emit_return(&recurse(value.clone()), target.clone()))
+    ExprData::ExprReturn => {
+        {
+    let ret_val = return_value(texpr.clone());
+    wrap_result(emit_return(&recurse(ret_val.clone()), target.clone()))
+}
     }
     ExprData::NoExprData => {
         wrap_result("".to_string())

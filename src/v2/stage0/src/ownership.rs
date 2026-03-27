@@ -111,7 +111,7 @@ pub fn merge_branch_usages(base: Rc<UsageAccum>, branches: Rc<Vec<Rc<UsageAccum>
     let mut __acc_0 = base.clone();
     for __elem_1 in branches.iter().cloned() {
         __acc_0 = {
-    let mut __acc_6 = __acc_0.clone();
+    let mut __acc_6 = __acc_0;
     for __elem_7 in ({
     let __rc_2 = __elem_1.bindings.clone();
     let __map_unwrapped_3 = Rc::try_unwrap(__rc_2).unwrap_or_else(|rc| (*rc).clone());
@@ -162,22 +162,25 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
     ExprData::ExprLiteral { value: _, .. } => {
         accum.clone()
     }
-    ExprData::ExprFieldAccess { base: b, field: f, .. } => {
-        match b.expr_data.as_ref() {
+    ExprData::ExprFieldAccess { field: f, .. } => {
+        {
+    let base_node = field_access_base(texpr.clone());
+    match base_node.expr_data.as_ref() {
     ExprData::ExprVar { name: vn, .. } => {
         record_use(accum.clone(), &vn, EdgeKind::Projected, &v2_rt::concat(".".to_string(), f.clone()))
     }
     _ => {
-        walk_expr(accum.clone(), b.clone(), false)
+        walk_expr(accum.clone(), base_node.clone(), false)
     }
 }
+}
     }
-    ExprData::ExprCall { func: fname, args: call_args, .. } => {
+    ExprData::ExprCall { func: fname, .. } => {
         if fname.clone() == "fold" {
     let init_arg = {
     let mut __found_2 = None;
-    for __elem_3 in call_args.iter().cloned() {
-        if __elem_3.name.clone() == Some("init".to_string()) {
+    for __elem_3 in texpr.children.iter().cloned() {
+        if __elem_3.name.clone() == "init" {
     __found_2 = Some(__elem_3);
     break;
 };
@@ -186,13 +189,16 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
 };
     let threaded_accum = match init_arg.clone() {
     Some(ia) => {
-        match ia.value.expr_data.as_ref() {
+        {
+    let ia_val = arg_value(ia.clone());
+    match ia_val.expr_data.as_ref() {
     ExprData::ExprVar { name: vn, .. } => {
         record_use(accum.clone(), &vn, EdgeKind::Threaded, "fold_init")
     }
     _ => {
-        walk_expr(accum.clone(), ia.value.clone(), false)
+        walk_expr(accum.clone(), ia_val.clone(), false)
     }
+}
 }
     }
     None => {
@@ -201,8 +207,8 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
 };
     let non_init = {
     let mut __filtered_4 = Vec::new();
-    for __elem_5 in call_args.iter().cloned() {
-        if __elem_5.name.clone() != Some("init".to_string()) {
+    for __elem_5 in texpr.children.iter().cloned() {
+        if __elem_5.name.clone() != "init" {
     __filtered_4.push(__elem_5);
 };
     }
@@ -211,27 +217,30 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
     {
     let mut __acc_6 = threaded_accum.clone();
     for __elem_7 in non_init.iter().cloned() {
-        __acc_6 = walk_expr(__acc_6.clone(), __elem_7.value.clone(), false);
+        __acc_6 = walk_expr(__acc_6, arg_value(__elem_7.clone()), false);
     }
     __acc_6
 }
 } else {
     {
     let mut __acc_8 = accum.clone();
-    for __elem_9 in call_args.iter().cloned() {
-        __acc_8 = walk_expr(__acc_8.clone(), __elem_9.value.clone(), false);
+    for __elem_9 in texpr.children.iter().cloned() {
+        __acc_8 = walk_expr(__acc_8, arg_value(__elem_9.clone()), false);
     }
     __acc_8
 }
 }
     }
-    ExprData::ExprMethodCall { receiver: recv, method: mname, args: mc_args, .. } => {
-        if mname.clone() == "fold" {
+    ExprData::ExprMethodCall { method: mname, .. } => {
+        {
+    let recv = method_receiver(texpr.clone());
+    let mc_args = method_arg_nodes(texpr.clone());
+    if mname.clone() == "fold" {
     let recv_accum = walk_expr(accum.clone(), recv.clone(), false);
     let init_arg = {
     let mut __found_12 = None;
     for __elem_13 in mc_args.iter().cloned() {
-        if __elem_13.name.clone() == Some("init".to_string()) {
+        if __elem_13.name.clone() == "init" {
     __found_12 = Some(__elem_13);
     break;
 };
@@ -240,13 +249,16 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
 };
     let threaded_accum = match init_arg.clone() {
     Some(ia) => {
-        match ia.value.expr_data.as_ref() {
+        {
+    let ia_val = arg_value(ia.clone());
+    match ia_val.expr_data.as_ref() {
     ExprData::ExprVar { name: vn, .. } => {
         record_use(recv_accum.clone(), &vn, EdgeKind::Threaded, "fold_init")
     }
     _ => {
-        walk_expr(recv_accum.clone(), ia.value.clone(), false)
+        walk_expr(recv_accum.clone(), ia_val.clone(), false)
     }
+}
 }
     }
     None => {
@@ -256,7 +268,7 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
     let non_init = {
     let mut __filtered_14 = Vec::new();
     for __elem_15 in mc_args.iter().cloned() {
-        if __elem_15.name.clone() != Some("init".to_string()) {
+        if __elem_15.name.clone() != "init" {
     __filtered_14.push(__elem_15);
 };
     }
@@ -265,7 +277,7 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
     {
     let mut __acc_16 = threaded_accum.clone();
     for __elem_17 in non_init.iter().cloned() {
-        __acc_16 = walk_expr(__acc_16.clone(), __elem_17.value.clone(), false);
+        __acc_16 = walk_expr(__acc_16, arg_value(__elem_17.clone()), false);
     }
     __acc_16
 }
@@ -274,32 +286,36 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
     {
     let mut __acc_18 = recv_accum.clone();
     for __elem_19 in mc_args.iter().cloned() {
-        __acc_18 = walk_expr(__acc_18.clone(), __elem_19.value.clone(), false);
+        __acc_18 = walk_expr(__acc_18, arg_value(__elem_19.clone()), false);
     }
     __acc_18
 }
 }
+}
     }
-    ExprData::ExprMatch { scrutinee: s, arms: arm_list, .. } => {
+    ExprData::ExprMatch => {
         {
-    let s_accum = walk_expr(accum.clone(), s.clone(), false);
+    let scrut = match_scrutinee(texpr.clone());
+    let arm_nodes = match_arm_nodes(texpr.clone());
+    let s_accum = walk_expr(accum.clone(), scrut.clone(), false);
     let branch_accums = {
     let mut __mapped_20 = Vec::new();
-    for __elem_21 in arm_list.iter().cloned() {
-        __mapped_20.push(walk_expr(s_accum.clone(), __elem_21.body.clone(), in_tail.clone()));
+    for __elem_21 in arm_nodes.iter().cloned() {
+        __mapped_20.push(walk_expr(s_accum.clone(), arm_body(__elem_21.clone()), in_tail.clone()));
     }
     Rc::new(__mapped_20)
 };
     merge_branch_usages(s_accum.clone(), branch_accums.clone())
 }
     }
-    ExprData::ExprIf { condition: c, then_branch: t, else_branch: e, .. } => {
+    ExprData::ExprIf => {
         {
+    let c = if_condition(texpr.clone());
+    let t = if_then_branch(texpr.clone());
     let c_accum = walk_expr(accum.clone(), c.clone(), false);
     let t_accum = walk_expr(c_accum.clone(), t.clone(), in_tail.clone());
-    let e_accum = match e.as_ref().map(|__rc| __rc.as_ref()) {
+    let e_accum = match if_else_branch(texpr.clone()) {
     Some(eb) => {
-        let eb = Rc::new(eb.clone());
         walk_expr(c_accum.clone(), eb.clone(), in_tail.clone())
     }
     None => {
@@ -309,12 +325,12 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
     merge_branch_usages(c_accum.clone(), Rc::new(vec!(t_accum.clone(), e_accum.clone())))
 }
     }
-    ExprData::ExprLet { name: _, value: v, body: bd, .. } => {
+    ExprData::ExprLet { name: _, .. } => {
         {
+    let v = let_value(texpr.clone());
     let v_accum = walk_expr(accum.clone(), v.clone(), false);
-    match bd.as_ref().map(|__rc| __rc.as_ref()) {
+    match let_body(texpr.clone()) {
     Some(b) => {
-        let b = Rc::new(b.clone());
         walk_expr(v_accum.clone(), b.clone(), in_tail.clone())
     }
     None => {
@@ -323,8 +339,9 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
 }
 }
     }
-    ExprData::ExprBlock { stmts: ss, .. } => {
+    ExprData::ExprBlock => {
         {
+    let ss = texpr.children.clone();
     let ss_count = {
     let __len_22 = ss.clone().len();
     __len_22 as i64
@@ -349,7 +366,7 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
     }
     Rc::new(__filtered_26)
 }).iter().cloned() {
-        __acc_28 = walk_expr(__acc_28.clone(), __elem_29.1.clone(), false);
+        __acc_28 = walk_expr(__acc_28, __elem_29.1.clone(), false);
     }
     __acc_28
 };
@@ -364,82 +381,23 @@ pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<Us
 }
 }
     }
-    ExprData::ExprBinOp { op: _, left: l, right: r, .. } => {
-        {
-    let l_accum = walk_expr(accum.clone(), l.clone(), false);
-    walk_expr(l_accum.clone(), r.clone(), false)
-}
-    }
-    ExprData::ExprUnaryOp { op: _, operand: e, .. } => {
-        walk_expr(accum.clone(), e.clone(), false)
-    }
-    ExprData::ExprLambda { params: _, body: bd, .. } => {
-        walk_expr(accum.clone(), bd.clone(), false)
-    }
-    ExprData::ExprRecordLit { type_name: _, fields: fs, .. } => {
+    ExprData::ExprReturn => {
         {
     let mut __acc_30 = accum.clone();
-    for __elem_31 in fs.iter().cloned() {
-        __acc_30 = walk_expr(__acc_30.clone(), __elem_31.value.clone(), false);
+    for __elem_31 in texpr.children.iter().cloned() {
+        __acc_30 = walk_expr(__acc_30, __elem_31.clone(), true);
     }
     __acc_30
 }
     }
-    ExprData::ExprListLit { elements: els, .. } => {
+    _ => {
         {
     let mut __acc_32 = accum.clone();
-    for __elem_33 in els.iter().cloned() {
-        __acc_32 = walk_expr(__acc_32.clone(), __elem_33.clone(), false);
+    for __elem_33 in texpr.children.iter().cloned() {
+        __acc_32 = walk_expr(__acc_32, __elem_33.clone(), false);
     }
     __acc_32
 }
-    }
-    ExprData::ExprStringInterp { parts: ps, .. } => {
-        {
-    let mut __acc_34 = accum.clone();
-    for __elem_35 in ps.iter().cloned() {
-        __acc_34 = match __elem_35.as_ref() {
-    StringPart::Interpolation { expr: e, .. } => {
-        walk_expr(__acc_34.clone(), e.clone(), false)
-    }
-    StringPart::Text { value: _, .. } => {
-        __acc_34.clone()
-    }
-};
-    }
-    __acc_34
-}
-    }
-    ExprData::ExprCast { expr: e, target: _, .. } => {
-        walk_expr(accum.clone(), e.clone(), false)
-    }
-    ExprData::ExprForEach { variable: _, collection: c, body: bd, .. } => {
-        {
-    let c_accum = walk_expr(accum.clone(), c.clone(), false);
-    walk_expr(c_accum.clone(), bd.clone(), false)
-}
-    }
-    ExprData::ExprIndex { base: b, index: i, .. } => {
-        {
-    let b_accum = walk_expr(accum.clone(), b.clone(), false);
-    walk_expr(b_accum.clone(), i.clone(), false)
-}
-    }
-    ExprData::ExprSlice { base: b, start: s, end: e, .. } => {
-        {
-    let b_accum = walk_expr(accum.clone(), b.clone(), false);
-    let s_accum = walk_expr(b_accum.clone(), s.clone(), false);
-    walk_expr(s_accum.clone(), e.clone(), false)
-}
-    }
-    ExprData::ExprReturn { value: v, .. } => {
-        walk_expr(accum.clone(), v.clone(), true)
-    }
-    ExprData::ExprError { kind: _, message: _, .. } => {
-        accum.clone()
-    }
-    ExprData::NoExprData => {
-        accum.clone()
     }
 }
     })

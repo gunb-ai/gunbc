@@ -2,6 +2,7 @@ use crate::v2_core::*;
 use crate::infer_types::*;
 use crate::infer_env::*;
 use crate::infer_sigs::*;
+use crate::infer_emit_info::*;
 use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -30,7 +31,7 @@ pub struct ItemInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TypedModule {
-    pub module: Rc<Module>,
+    pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -41,14 +42,15 @@ pub struct TypedModule {
 pub struct TypedGraph {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+    pub diagnostics: Rc<Vec<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ResolvedGraph {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+    pub diagnostics: Rc<Vec<Rc<Node>>>,
+    pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 
 pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: SourceSpan) -> Rc<Vec<Rc<Field>>> {
@@ -139,7 +141,7 @@ pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<Stri
     for __elem_1 in items.iter().cloned() {
         __acc_0 = if node_is_coproduct(__elem_1.clone()) {
     {
-    let mut __acc_2 = __acc_0.clone();
+    let mut __acc_2 = __acc_0;
     for __elem_3 in __elem_1.children.iter().cloned() {
         __acc_2 = {
     let __rc_5 = __acc_2;
@@ -151,7 +153,7 @@ pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<Stri
     __acc_2
 }
 } else {
-    __acc_0.clone()
+    __acc_0
 };
     }
     __acc_0

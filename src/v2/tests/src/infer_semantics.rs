@@ -122,9 +122,9 @@ fn pattern_lookup_reports_dynamic_scrutinee_explicitly() {
     assert!(matches!(lookup.status.as_ref(), NodeLookupStatus::LookupFailed));
     assert_eq!(lookup.diagnostics.len(), 1);
     assert!(
-        lookup.diagnostics[0].message.contains("Dynamic scrutinee"),
+        lookup.diagnostics[0].name.contains("Dynamic scrutinee"),
         "expected targeted Dynamic diagnostic, got {:?}",
-        lookup.diagnostics[0].message
+        lookup.diagnostics[0].name
     );
 }
 
@@ -154,8 +154,8 @@ fn optional_match_exhaustiveness_reports_missing_none() {
     );
 
     assert_eq!(diags.len(), 1);
-    assert!(diags[0].message.contains("non-exhaustive"));
-    assert!(diags[0].message.contains("None"));
+    assert!(diags[0].name.contains("non-exhaustive"));
+    assert!(diags[0].name.contains("None"));
 }
 
 #[test]

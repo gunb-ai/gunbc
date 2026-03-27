@@ -20,13 +20,13 @@ pub struct ResolvedFuncEnv {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ResolveFuncSigsResult {
     pub func_env: Rc<ResolvedFuncEnv>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+    pub diagnostics: Rc<Vec<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SigsAccum {
     pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+    pub diagnostics: Rc<Vec<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -55,7 +55,7 @@ pub fn collect_func_call_edges(items: Rc<Vec<Rc<Node>>>, local_func_set: Rc<Hash
 pub fn collect_calls_in_expr(caller: &str, texpr: Rc<Node>, local_func_set: Rc<HashMap<String, bool>>) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_edges = match texpr.expr_data.as_ref() {
-    ExprData::ExprCall { func: f, args: _, call_semantics: _, .. } => {
+    ExprData::ExprCall { func: f, call_semantics: _, .. } => {
         if emit_map_has(local_func_set.clone(), &f) {
     Rc::new(vec!(Rc::new(CallEdge { caller: caller.to_string(), callee: f.clone() })))
 } else {
@@ -68,7 +68,7 @@ pub fn collect_calls_in_expr(caller: &str, texpr: Rc<Node>, local_func_set: Rc<H
 };
         let child_edges = {
     let mut __flat_mapped_0 = Vec::new();
-    for __elem_1 in expr_children(texpr.clone()).iter().cloned() {
+    for __elem_1 in texpr.children.iter().cloned() {
         __flat_mapped_0.extend(collect_calls_in_expr(&caller, __elem_1.clone(), local_func_set.clone()).iter().cloned());
     }
     Rc::new(__flat_mapped_0)
@@ -145,14 +145,14 @@ pub fn merge_remaining_declared(declared_sigs: Rc<HashMap<String, Rc<DeclaredFun
     Rc::new(__map_ins_6)
 }
 } else {
-    __acc_4.clone()
+    __acc_4
 };
     }
     __acc_4
 }
 }
 
-pub fn topo_resolve_loop(remaining: Rc<Vec<String>>, resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, call_edges: Rc<Vec<Rc<CallEdge>>>, local_func_set: Rc<HashMap<String, bool>>, module_name: &str, diagnostics: Rc<Vec<Rc<Diagnostic>>>) -> Rc<ResolveFuncSigsResult> {
+pub fn topo_resolve_loop(remaining: Rc<Vec<String>>, resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, call_edges: Rc<Vec<Rc<CallEdge>>>, local_func_set: Rc<HashMap<String, bool>>, module_name: &str, diagnostics: Rc<Vec<Rc<Node>>>) -> Rc<ResolveFuncSigsResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let mut __tco_p_remaining = remaining;
         let mut __tco_p_resolved = resolved;
@@ -191,7 +191,7 @@ pub fn topo_resolve_loop(remaining: Rc<Vec<String>>, resolved: Rc<HashMap<String
     Rc::new(__map_ins_6)
 }
 } else {
-    __acc_4.clone()
+    __acc_4
 };
     }
     __acc_4
@@ -264,7 +264,7 @@ if __cond {
     Rc::new(SigsAccum { signatures: __acc_19.signatures.clone(), diagnostics: {
     let __rc_24 = std::mem::take(&mut Rc::make_mut(&mut __acc_19).diagnostics);
     let mut __appended_23 = Rc::try_unwrap(__rc_24).unwrap_or_else(|rc| (*rc).clone());
-    __appended_23.push(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat(v2_rt::concat("recursive function '".to_string(), __elem_20), "' requires return type annotation".to_string()), span: None, module_name: Some(module_name.to_string()), category: Some(ErrorCategory::TypeMismatch) }));
+    __appended_23.push(diagnostic_node("error", &v2_rt::concat(v2_rt::concat("recursive function '".to_string(), __elem_20), "' requires return type annotation".to_string()), no_span(), Some(module_name.to_string()), Some("type_mismatch".to_string())));
     Rc::new(__appended_23)
 } })
 }
@@ -294,7 +294,7 @@ if __cond {
     Rc::new(__map_ins_31)
 }
 } else {
-    __acc_29.clone()
+    __acc_29
 };
     }
     __acc_29
@@ -317,7 +317,7 @@ if __cond {
     Rc::new(SigsAccum { signatures: __acc_34.signatures.clone(), diagnostics: {
     let __rc_39 = std::mem::take(&mut Rc::make_mut(&mut __acc_34).diagnostics);
     let mut __appended_38 = Rc::try_unwrap(__rc_39).unwrap_or_else(|rc| (*rc).clone());
-    __appended_38.push(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat(v2_rt::concat("function '".to_string(), __elem_35.clone()), "' requires return type annotation".to_string()), span: None, module_name: Some(module_name.to_string()), category: Some(ErrorCategory::TypeMismatch) }));
+    __appended_38.push(diagnostic_node("error", &v2_rt::concat(v2_rt::concat("function '".to_string(), __elem_35.clone()), "' requires return type annotation".to_string()), no_span(), Some(module_name.to_string()), Some("type_mismatch".to_string())));
     Rc::new(__appended_38)
 } })
 }
@@ -415,7 +415,7 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
     Rc::new(__values_12)
 }).iter().cloned() {
         __acc_13 = if emit_map_has(local_func_set.clone(), &__elem_14.name) {
-    __acc_13.clone()
+    __acc_13
 } else {
     if __elem_14.inferred.clone().is_some() {
     {
@@ -425,7 +425,7 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
     Rc::new(__map_ins_15)
 }
 } else {
-    __acc_13.clone()
+    __acc_13
 }
 };
     }

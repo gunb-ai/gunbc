@@ -10,8 +10,8 @@ pub struct ParserState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParseResult {
-    pub module: Option<Rc<Module>>,
-    pub error: Option<Rc<Diagnostic>>,
+    pub module: Option<Rc<Node>>,
+    pub error: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -31,140 +31,148 @@ pub struct EatResult {
 pub struct TokenResult {
     pub token: Rc<Token>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NameResult {
     pub name: String,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ExprResult {
     pub expr: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ItemResult {
     pub item: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TypeResult {
     pub type_expr: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ModuleResult {
-    pub module: Rc<Module>,
+    pub module: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImportResult {
-    pub import: Rc<Import>,
+    pub import: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VariantResult {
     pub variant: Rc<Variant>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PredResult {
     pub predicate: Rc<FieldInit>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParamResult {
     pub param: Rc<Param>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TransportResult {
     pub transport: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OpResult {
     pub operation: Rc<OperationDef>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CapResult {
     pub capability: Rc<CapabilityDef>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PatternResult {
     pub pattern: Rc<MatchPattern>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ArmResult {
     pub arm: Rc<MatchArm>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ArgResult {
     pub arg: Rc<NamedArg>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FieldResult {
     pub field: Rc<Field>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FieldInitResult {
     pub field: Rc<FieldInit>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ResUseResult {
     pub resource_use: Rc<ResourceUse>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ServiceConfig {
+    pub endpoint: Rc<Node>,
+    pub auth: Option<Rc<Node>>,
+    pub rate_limit: Option<Rc<Node>>,
+    pub retry: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConfigResult {
     pub config: Rc<ServiceConfig>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -216,107 +224,107 @@ pub enum ExpectedToken {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImportsResult {
-    pub imports: Rc<Vec<Rc<Import>>>,
+    pub imports: Rc<Vec<Rc<Node>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ItemsResult {
     pub items: Rc<Vec<Rc<Node>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NamesResult {
     pub names: Rc<Vec<String>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FieldsResult {
     pub fields: Rc<Vec<Rc<Field>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FieldInitsResult {
     pub fields: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct VariantsResult {
     pub variants: Rc<Vec<Rc<Variant>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PredsResult {
     pub predicates: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ParamsResult {
     pub params: Rc<Vec<Rc<Param>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UsesResult {
     pub uses: Rc<Vec<Rc<ResourceUse>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ArgsResult {
     pub args: Rc<Vec<Rc<NamedArg>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StmtsResult {
     pub stmts: Rc<Vec<Rc<Node>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ExprsResult {
     pub exprs: Rc<Vec<Rc<Node>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ArmsResult {
     pub arms: Rc<Vec<Rc<MatchArm>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ModsResult {
     pub modifiers: Rc<Vec<OperationModifier>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BindingsResult {
     pub field_bindings: Rc<Vec<Rc<FieldBinding>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 pub fn parse_recovery_expr(span: SourceSpan, message: &str) -> Rc<Node> {
@@ -331,21 +339,21 @@ pub fn parse_recovery_placeholder() -> Rc<Node> {
 pub struct OptRetResult {
     pub inferred: Option<Rc<InferredNode>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct GuardResult {
     pub guard: Option<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FromKeyResult {
     pub from_key: Option<String>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -353,7 +361,7 @@ pub struct PostfixResult {
     pub expr: Rc<Node>,
     pub changed: bool,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -361,7 +369,7 @@ pub struct LambdaCheckResult {
     pub is_lambda: bool,
     pub params: Rc<Vec<String>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -369,7 +377,7 @@ pub struct IdentCollectResult {
     pub success: bool,
     pub params: Rc<Vec<String>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -377,7 +385,7 @@ pub struct RangeArgsResult {
     pub min_val: Option<i64>,
     pub max_val: Option<i64>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -385,7 +393,7 @@ pub struct NamedIntResult {
     pub arg_name: String,
     pub arg_value: i64,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -394,7 +402,7 @@ pub struct ServiceBodyResult {
     pub transport: Rc<Node>,
     pub operations: Rc<Vec<Rc<OperationDef>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -402,7 +410,7 @@ pub struct IOResult {
     pub inputs: Rc<Vec<Rc<Field>>>,
     pub outputs: Rc<Vec<Rc<Field>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -410,42 +418,42 @@ pub struct ResPropResult {
     pub properties: Rc<Vec<Rc<FieldInit>>>,
     pub capabilities: Rc<Vec<Rc<CapabilityDef>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ResponsesResult {
     pub responses: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MocksResult {
     pub mocks: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ExitEntriesResult {
     pub entries: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RespEntriesResult {
     pub entries: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MockEntriesResult {
     pub entries: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -458,13 +466,13 @@ pub struct OpBodyResult {
     pub response_props: Rc<Vec<Rc<FieldInit>>>,
     pub mock_props: Rc<Vec<Rc<FieldInit>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UnitResult {
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -529,11 +537,11 @@ pub fn advance(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Advance
 }
 }
 
-pub fn parse_error(msg: &str, span: SourceSpan) -> Rc<Diagnostic> {
-    Rc::new(Diagnostic { severity: Severity::Error, message: msg.to_string(), span: Some(span), module_name: None, category: None })
+pub fn parse_error(msg: &str, span: SourceSpan) -> Rc<Node> {
+    diagnostic_node("error", &msg, span, None, None)
 }
 
-pub fn has_err(err: Option<Rc<Diagnostic>>) -> bool {
+pub fn has_err(err: Option<Rc<Node>>) -> bool {
     match err.as_ref().map(|__rc| __rc.as_ref()) {
     Some(_) => {
         true
@@ -2823,7 +2831,7 @@ pub fn is_keyword_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bo
 }
 
 pub fn leaf_type_node(name: &str, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: name.to_string(), span, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: name.to_string(), span, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn is_conj_with_children(n: Rc<Node>) -> bool {
@@ -2920,28 +2928,28 @@ pub fn parse_module(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Mo
     let start_span = current_span(tokens.clone(), s.clone());
     let r = expect(tokens.clone(), s.clone(), ExpectedToken::ExpectKwModule);
     if has_err(r.err.clone()) {
-    return Rc::new(ModuleResult { module: Rc::new(Module { name: "".to_string(), imports: Rc::new(Vec::new()), items: Rc::new(Vec::new()), span: start_span.clone() }), state: r.state.clone(), err: r.err.clone() });
+    return Rc::new(ModuleResult { module: module_node("", Rc::new(Vec::new()), Rc::new(Vec::new()), start_span.clone()), state: r.state.clone(), err: r.err.clone() });
 };
     let s = r.state.clone();
     let r = parse_dotted_ident(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
-    return Rc::new(ModuleResult { module: Rc::new(Module { name: "".to_string(), imports: Rc::new(Vec::new()), items: Rc::new(Vec::new()), span: start_span.clone() }), state: r.state.clone(), err: r.err.clone() });
+    return Rc::new(ModuleResult { module: module_node("", Rc::new(Vec::new()), Rc::new(Vec::new()), start_span.clone()), state: r.state.clone(), err: r.err.clone() });
 };
     let mod_name = r.name.clone();
     let s = skip_newlines(tokens.clone(), r.state.clone());
     let r = parse_imports(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
-    return Rc::new(ModuleResult { module: Rc::new(Module { name: "".to_string(), imports: Rc::new(Vec::new()), items: Rc::new(Vec::new()), span: start_span.clone() }), state: r.state.clone(), err: r.err.clone() });
+    return Rc::new(ModuleResult { module: module_node("", Rc::new(Vec::new()), Rc::new(Vec::new()), start_span.clone()), state: r.state.clone(), err: r.err.clone() });
 };
     let imports = r.imports.clone();
     let s = r.state.clone();
     let r = parse_items(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
-    return Rc::new(ModuleResult { module: Rc::new(Module { name: "".to_string(), imports: Rc::new(Vec::new()), items: Rc::new(Vec::new()), span: start_span.clone() }), state: r.state.clone(), err: r.err.clone() });
+    return Rc::new(ModuleResult { module: module_node("", Rc::new(Vec::new()), Rc::new(Vec::new()), start_span.clone()), state: r.state.clone(), err: r.err.clone() });
 };
     let items = r.items.clone();
     let s = r.state.clone();
-    let r#mod = Rc::new(Module { name: mod_name, imports: imports.clone(), items: items.clone(), span: start_span.clone() });
+    let r#mod = module_node(&mod_name, imports.clone(), items.clone(), start_span.clone());
     Rc::new(ModuleResult { module: r#mod.clone(), state: s.clone(), err: None })
 }
 
@@ -2949,7 +2957,7 @@ pub fn parse_imports(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<I
     parse_imports_acc(tokens.clone(), state.clone(), Rc::new(Vec::new()))
 }
 
-pub fn parse_imports_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, acc: Rc<Vec<Rc<Import>>>) -> Rc<ImportsResult> {
+pub fn parse_imports_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, acc: Rc<Vec<Rc<Node>>>) -> Rc<ImportsResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let mut __tco_p_tokens = tokens;
         let mut __tco_p_state = state;
@@ -3029,7 +3037,7 @@ pub fn parse_items_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, acc: 
 
 pub fn parse_import(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ImportResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let err_import = Rc::new(Import { module_path: "".to_string(), names: Rc::new(ImportNames::ImportSpecific { names: Rc::new(Vec::new()) }), span: start_span.clone() });
+    let err_import = import_node("", false, Rc::new(Vec::new()), start_span.clone());
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwImport);
     if has_err(r.err.clone()) {
     return Rc::new(ImportResult { import: err_import.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -3054,11 +3062,11 @@ pub fn parse_import(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Im
     return Rc::new(ImportResult { import: err_import.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let s = skip_newlines(tokens.clone(), r.state.clone());
-    let imp = Rc::new(Import { module_path: mod_path, names: Rc::new(ImportNames::ImportSpecific { names: names.clone() }), span: start_span.clone() });
+    let imp = import_node(&mod_path, false, names.clone(), start_span.clone());
     Rc::new(ImportResult { import: imp.clone(), state: s.clone(), err: None })
 } else {
     let s = skip_newlines(tokens.clone(), s.clone());
-    let imp = Rc::new(Import { module_path: mod_path, names: Rc::new(ImportNames::ImportAll), span: start_span.clone() });
+    let imp = import_node(&mod_path, true, Rc::new(Vec::new()), start_span.clone());
     Rc::new(ImportResult { import: imp.clone(), state: s.clone(), err: None })
 }
 }
@@ -3144,7 +3152,7 @@ pub fn parse_item(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Item
         parse_func_def(tokens.clone(), s.clone())
     }
     _ => {
-        Rc::new(ItemResult { item: Rc::new(Node { name: "<unknown>".to_string(), span: current_span(tokens.clone(), s.clone()), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), state: s.clone(), err: Some(parse_error("expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", current_span(tokens.clone(), s.clone()))) })
+        Rc::new(ItemResult { item: Rc::new(Node { name: "<unknown>".to_string(), span: current_span(tokens.clone(), s.clone()), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }), state: s.clone(), err: Some(parse_error("expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", current_span(tokens.clone(), s.clone()))) })
     }
 }
 }
@@ -3153,13 +3161,13 @@ pub fn field_to_child_node(field: Rc<Field>) -> Rc<Node> {
     let ret_type = field.type_expr.clone();
     let props = match field.from_key.clone() {
     Some(key) => {
-        Rc::new(vec!(Rc::new(FieldInit { name: "from_key".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: key }) }), None, field.span.clone()) })))
+        Rc::new(vec!(Rc::new(FieldInit { name: "from_key".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: key }) }), Rc::new(Vec::new()), None, field.span.clone()) })))
     }
     None => {
         Rc::new(Vec::new())
     }
 };
-    Rc::new(Node { name: field.name.clone(), span: field.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: ret_type.clone() })), return_cardinality: field.cardinality.clone(), uses: Rc::new(Vec::new()), body: field.default_value.clone(), transport: None, properties: props.clone(), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: field.name.clone(), span: field.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: ret_type.clone() })), return_cardinality: field.cardinality.clone(), uses: Rc::new(Vec::new()), body: field.default_value.clone(), transport: None, properties: props.clone(), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn variant_to_child_node(variant: Rc<Variant>) -> Rc<Node> {
@@ -3177,7 +3185,7 @@ pub fn variant_to_child_node(variant: Rc<Variant>) -> Rc<Node> {
     Some(Connective::Conj)
 } else {
     None
-}, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+}, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn outputs_to_inferred(outputs: Rc<Vec<Rc<Field>>>, span: SourceSpan) -> Option<Rc<InferredNode>> {
@@ -3191,7 +3199,7 @@ pub fn outputs_to_inferred(outputs: Rc<Vec<Rc<Field>>>, span: SourceSpan) -> Opt
         __mapped_0.push(field_to_child_node(__elem_1.clone()));
     }
     Rc::new(__mapped_0)
-}, connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }))
+}, connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }) }))
 } else {
     None
 }
@@ -3199,7 +3207,7 @@ pub fn outputs_to_inferred(outputs: Rc<Vec<Rc<Field>>>, span: SourceSpan) -> Opt
 
 pub fn parse_type_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwType);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -3215,7 +3223,7 @@ pub fn parse_type_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     let e = eat(tokens.clone(), s.clone(), ExpectedToken::ExpectLBrace);
     if e.consumed.clone() {
     let r = parse_field_list(tokens.clone(), skip_newlines(tokens.clone(), e.state.clone()));
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
@@ -3231,7 +3239,7 @@ pub fn parse_type_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     }
     Rc::new(__mapped_0)
 };
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: type_children.clone(), connective: Some(Connective::Conj), collection_kind: None, params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: type_children.clone(), connective: Some(Connective::Conj), collection_kind: None, params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), r2.state.clone()), err: None })
 } else {
     let eq = eat(tokens.clone(), s.clone(), ExpectedToken::ExpectEq);
@@ -3239,14 +3247,14 @@ pub fn parse_type_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     let s = skip_newlines(tokens.clone(), eq.state.clone());
     parse_type_body_after_eq(tokens.clone(), s.clone(), &name, start_span.clone(), type_params.clone())
 } else {
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: type_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_type_node(&name, start_span.clone()) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: type_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_type_node(&name, start_span.clone()) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: s.clone(), err: None })
 }
 }
 }
 
 pub fn parse_type_body_after_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, name: &str, start_span: SourceSpan, type_params: Rc<Vec<Rc<Param>>>) -> Rc<ItemResult> {
-    let dummy = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     if is_ident(tokens.clone(), state.clone()) {
     let r = expect_ident(tokens.clone(), state.clone());
     if has_err(r.err.clone()) {
@@ -3272,7 +3280,7 @@ pub fn parse_type_body_after_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     }
     Rc::new(__mapped_0)
 };
-    let item = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: type_children.clone(), connective: Some(Connective::Disj), collection_kind: None, params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: type_children.clone(), connective: Some(Connective::Disj), collection_kind: None, params: type_params.clone(), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), rest.state.clone()), err: None })
 } else {
     let r = finish_type_expr_from_name(tokens.clone(), s.clone(), &first_name, start_span.clone());
@@ -3283,7 +3291,7 @@ pub fn parse_type_body_after_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     if has_err(wr.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: wr.state.clone(), err: wr.err.clone() });
 };
-    let item = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: type_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: wr.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: type_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: wr.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), wr.state.clone()), err: None })
 }
 } else {
@@ -3295,7 +3303,7 @@ pub fn parse_type_body_after_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     if has_err(wr.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: wr.state.clone(), err: wr.err.clone() });
 };
-    let item = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: type_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: wr.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: type_params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: wr.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), wr.state.clone()), err: None })
 }
 }
@@ -3307,7 +3315,7 @@ pub fn try_where_clause(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, base
     if has_err(r.err.clone()) {
     return Rc::new(TypeResult { type_expr: base_te.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-    let refined = Rc::new(Node { name: "Refined".to_string(), span: start_span, children: Rc::new(vec!(base_te.clone())), connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: r.predicates.clone(), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let refined = Rc::new(Node { name: "Refined".to_string(), span: start_span, children: Rc::new(vec!(base_te.clone())), connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: r.predicates.clone(), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(TypeResult { type_expr: refined.clone(), state: r.state.clone(), err: None })
 } else {
     Rc::new(TypeResult { type_expr: base_te.clone(), state: state.clone(), err: None })
@@ -3358,7 +3366,7 @@ pub fn parse_predicates_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
 
 pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<PredResult> {
     let zero_span = SourceSpan { start: 0_i64, end: 0_i64 };
-    let dummy_pred = Rc::new(FieldInit { name: "".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: false }) }), None, zero_span.clone()) });
+    let dummy_pred = Rc::new(FieldInit { name: "".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: false }) }), Rc::new(Vec::new()), None, zero_span.clone()) });
     let r = expect_name(tokens.clone(), state.clone());
     if has_err(r.err.clone()) {
     return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -3381,7 +3389,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     match r2.expr.expr_data.as_ref() {
     ExprData::ExprLiteral { ref value, .. } => {
         let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() };
-        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Pattern".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: s.clone() }) }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
+        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Pattern".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: s.clone() }) }), Rc::new(Vec::new()), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
     }
     _ => {
         Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: Some(parse_error("pattern() requires a string literal argument", current_span(tokens.clone(), r3.state.clone()))) })
@@ -3399,7 +3407,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     if has_err(r3.err.clone()) {
     return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: r3.err.clone() });
 };
-    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Format".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: r2.name.clone() }) }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
+    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Format".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: r2.name.clone() }) }), Rc::new(Vec::new()), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
 }
     }
     "brand" => {
@@ -3415,7 +3423,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     match r2.expr.expr_data.as_ref() {
     ExprData::ExprLiteral { ref value, .. } => {
         let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() };
-        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Brand".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: s.clone() }) }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
+        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Brand".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: s.clone() }) }), Rc::new(Vec::new()), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
     }
     _ => {
         Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: Some(parse_error("brand() requires a string literal argument", current_span(tokens.clone(), r3.state.clone()))) })
@@ -3433,7 +3441,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     if has_err(r3.err.clone()) {
     return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: r3.err.clone() });
 };
-    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "ContentEncoding".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: r2.name.clone() }) }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
+    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "ContentEncoding".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: r2.name.clone() }) }), Rc::new(Vec::new()), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
 }
     }
     "domain" => {
@@ -3446,7 +3454,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     if has_err(r3.err.clone()) {
     return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: r3.err.clone() });
 };
-    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Domain".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: r2.name.clone() }) }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
+    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Domain".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: r2.name.clone() }) }), Rc::new(Vec::new()), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
 }
     }
     "range" => {
@@ -3460,16 +3468,22 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: r3.err.clone() });
 };
     let min_fields = if r2.min_val.clone().is_some() {
-    Rc::new(vec!(Rc::new(FieldInit { name: "min".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: r2.min_val.clone().unwrap() }) }), None, zero_span.clone()) })))
+    Rc::new(vec!(Rc::new(FieldInit { name: "min".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: r2.min_val.clone().unwrap() }) }), Rc::new(Vec::new()), None, zero_span.clone()) })))
 } else {
     Rc::new(Vec::new())
 };
     let max_fields = if r2.max_val.clone().is_some() {
-    Rc::new(vec!(Rc::new(FieldInit { name: "max".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: r2.max_val.clone().unwrap() }) }), None, zero_span.clone()) })))
+    Rc::new(vec!(Rc::new(FieldInit { name: "max".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: r2.max_val.clone().unwrap() }) }), Rc::new(Vec::new()), None, zero_span.clone()) })))
 } else {
     Rc::new(Vec::new())
 };
-    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Range".to_string(), value: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: v2_rt::concat(min_fields.clone(), max_fields.clone()), parent_enum: None }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
+    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Range".to_string(), value: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, parent_enum: None }), {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in v2_rt::concat(min_fields.clone(), max_fields.clone()).iter().cloned() {
+        __mapped_0.push(make_field_init_node(&__elem_1.name, __elem_1.value.clone(), zero_span.clone()));
+    }
+    Rc::new(__mapped_0)
+}, None, zero_span.clone()) }), state: r3.state.clone(), err: None })
 }
     }
     _ => {
@@ -3479,7 +3493,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
 } else {
     match pred_name.as_str() {
     "non_empty" => {
-        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "NonEmpty".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, zero_span.clone()) }), state: s.clone(), err: None })
+        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "NonEmpty".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), Rc::new(Vec::new()), None, zero_span.clone()) }), state: s.clone(), err: None })
     }
     _ => {
         Rc::new(PredResult { predicate: dummy_pred.clone(), state: s.clone(), err: Some(parse_error(&v2_rt::concat(v2_rt::concat("unknown where predicate `".to_string(), pred_name), "`".to_string()), current_span(tokens.clone(), s.clone()))) })
@@ -3660,7 +3674,7 @@ pub fn parse_type_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
         __mapped_0.push(field_to_child_node(__elem_1.clone()));
     }
     Rc::new(__mapped_0)
-}, connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+}, connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(TypeResult { type_expr: te.clone(), state: r2.state.clone(), err: None })
 }
     }
@@ -3715,7 +3729,7 @@ pub fn parse_callable_type_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
         if has_err(ret.err.clone()) {
     return Rc::new(TypeResult { type_expr: dummy_te.clone(), state: ret.state.clone(), err: ret.err.clone() });
 };
-        let te = Rc::new(Node { name: "Callable".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: params_result.params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: ret.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+        let te = Rc::new(Node { name: "Callable".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: params_result.params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: ret.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
         maybe_optional(tokens.clone(), ret.state.clone(), te.clone(), start_span.clone())
     })
 }
@@ -3783,7 +3797,7 @@ pub fn finish_type_expr_from_name(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
     if has_err(r3.err.clone()) {
     return Rc::new(TypeResult { type_expr: dummy_te.clone(), state: r3.state.clone(), err: r3.err.clone() });
 };
-    let te = Rc::new(Node { name: type_name.to_string(), span: start_span.clone(), children: type_args.args.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let te = Rc::new(Node { name: type_name.to_string(), span: start_span.clone(), children: type_args.args.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     maybe_optional(tokens.clone(), r3.state.clone(), te.clone(), start_span.clone())
 } else {
     let te = leaf_type_node(&type_name, start_span.clone());
@@ -3854,7 +3868,7 @@ pub fn collect_type_param_names(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
 pub struct TypeArgsResult {
     pub args: Rc<Vec<Rc<Node>>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Diagnostic>>,
+    pub err: Option<Rc<Node>>,
 }
 
 pub fn collect_type_args(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, args: Rc<Vec<Rc<Node>>>) -> Rc<TypeArgsResult> {
@@ -3897,7 +3911,7 @@ pub fn collect_type_args(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, arg
 pub fn maybe_optional(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, te: Rc<Node>, start_span: SourceSpan) -> Rc<TypeResult> {
     let e = eat(tokens.clone(), state.clone(), ExpectedToken::ExpectQuestion);
     if e.consumed.clone() {
-    let ote = Rc::new(Node { name: te.name.clone(), span: te.span.clone(), children: te.children.clone(), connective: te.connective.clone(), collection_kind: None, params: te.params.clone(), inferred: te.inferred.clone(), return_cardinality: Cardinality::CardOptional, uses: te.uses.clone(), body: te.body.clone(), transport: te.transport.clone(), properties: te.properties.clone(), type_annotation: te.type_annotation.clone(), config: te.config.clone(), is_self_recursive: te.is_self_recursive.clone(), has_non_tail_self_call: te.has_non_tail_self_call.clone(), expr_data: te.expr_data.clone() });
+    let ote = Rc::new(Node { name: te.name.clone(), span: te.span.clone(), children: te.children.clone(), connective: te.connective.clone(), collection_kind: te.collection_kind.clone(), params: te.params.clone(), inferred: te.inferred.clone(), return_cardinality: Cardinality::CardOptional, uses: te.uses.clone(), body: te.body.clone(), transport: te.transport.clone(), properties: te.properties.clone(), type_annotation: te.type_annotation.clone(), is_self_recursive: te.is_self_recursive.clone(), has_non_tail_self_call: te.has_non_tail_self_call.clone(), match_pattern: te.match_pattern.clone(), expr_data: te.expr_data.clone() });
     Rc::new(TypeResult { type_expr: ote.clone(), state: e.state.clone(), err: None })
 } else {
     Rc::new(TypeResult { type_expr: te.clone(), state: state.clone(), err: None })
@@ -4044,7 +4058,7 @@ pub fn parse_optional_from_key(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState
 
 pub fn parse_fn_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwFn);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -4054,7 +4068,7 @@ pub fn parse_fn_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<It
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let name = r.name.clone();
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = parse_params(tokens.clone(), r.state.clone());
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -4072,13 +4086,13 @@ pub fn parse_fn_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<It
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let body = r.expr.clone();
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: Some(body.clone()), collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: Some(body.clone()), collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), r.state.clone()), err: None })
 }
 
 pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let sh = peek_shape(tokens.clone(), state.clone());
     let r = match sh {
     Some(TokenShape::ShKwFunc) => {
@@ -4102,7 +4116,7 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let name = r.name.clone();
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = parse_params(tokens.clone(), r.state.clone());
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -4126,7 +4140,7 @@ pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let body = r.expr.clone();
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: uses.clone(), body: Some(body.clone()), collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: uses.clone(), body: Some(body.clone()), collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), r.state.clone()), err: None })
 }
 
@@ -4232,7 +4246,7 @@ pub fn parse_optional_inferred(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState
 
 pub fn parse_service_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwService);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -4244,7 +4258,7 @@ pub fn parse_service_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
     let namespace_root = r_ns.name.clone();
     let r = parse_dotted_ident_rest(tokens.clone(), r_ns.state.clone(), &namespace_root);
     let name = r.name.clone();
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), r.state.clone(), ExpectedToken::ExpectLBrace);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -4270,13 +4284,22 @@ pub fn parse_service_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
         __mapped_2.push(Rc::new(Param { name: __elem_3.name.clone(), type_expr: __elem_3.type_expr.clone(), default_value: __elem_3.default_value.clone(), span: __elem_3.span.clone() }));
     }
     Rc::new(__mapped_2)
-}, inferred: outputs_to_inferred(__elem_1.outputs.clone(), __elem_1.span.clone()), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: __elem_1.transport.clone(), properties: all_props.clone(), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+}, inferred: outputs_to_inferred(__elem_1.outputs.clone(), __elem_1.span.clone()), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: __elem_1.transport.clone(), properties: all_props.clone(), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 });
     }
     Rc::new(__mapped_0)
 };
-    let ns_prop = Rc::new(FieldInit { name: "namespace_root".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: namespace_root.clone() }) }), None, start_span.clone()) });
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: op_children.clone(), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: Some(r.transport.clone()), properties: Rc::new(vec!(ns_prop.clone())), type_annotation: None, config: r.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let ns_prop = Rc::new(FieldInit { name: "namespace_root".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: namespace_root.clone() }) }), Rc::new(Vec::new()), None, start_span.clone()) });
+    let svc_props = match r.config.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(cfg) => {
+        let cfg = Rc::new(cfg.clone());
+        service_config_properties(cfg.endpoint.clone(), cfg.auth.clone(), cfg.rate_limit.clone(), cfg.retry.clone())
+    }
+    None => {
+        Rc::new(Vec::new())
+    }
+};
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: op_children.clone(), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: Some(r.transport.clone()), properties: v2_rt::concat(Rc::new(vec!(ns_prop.clone())), svc_props.clone()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), r2.state.clone()), err: None })
 }
 
@@ -4434,12 +4457,12 @@ pub fn parse_config_fields(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, e
         e.clone()
     }
     None => {
-        make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), None, SourceSpan { start: 0_i64, end: 0_i64 })
+        make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), Rc::new(Vec::new()), None, SourceSpan { start: 0_i64, end: 0_i64 })
     }
 }, auth: auth.clone(), rate_limit: rate_limit.clone(), retry: retry.clone() });
     break Rc::new(ConfigResult { config: cfg.clone(), state: s.clone(), err: None });
 } else {
-    let dummy_cfg = Rc::new(ServiceConfig { endpoint: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), None, SourceSpan { start: 0_i64, end: 0_i64 }), auth: None, rate_limit: None, retry: None });
+    let dummy_cfg = Rc::new(ServiceConfig { endpoint: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), Rc::new(Vec::new()), None, SourceSpan { start: 0_i64, end: 0_i64 }), auth: None, rate_limit: None, retry: None });
     let r = expect_ident(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
     break Rc::new(ConfigResult { config: dummy_cfg.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -4663,7 +4686,7 @@ pub fn parse_rest_fields(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, bas
         e.clone()
     }
     None => {
-        make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), None, SourceSpan { start: 0_i64, end: 0_i64 })
+        make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), Rc::new(Vec::new()), None, SourceSpan { start: 0_i64, end: 0_i64 })
     }
 };
     break Rc::new(TransportResult { transport: rest_transport_node(bu.clone(), Rc::new(Vec::new()), Rc::new(Vec::new()), span.clone()), state: s.clone(), err: None });
@@ -4832,7 +4855,7 @@ pub fn parse_file_fields(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, bas
         e.clone()
     }
     None => {
-        make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), None, SourceSpan { start: 0_i64, end: 0_i64 })
+        make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "".to_string() }) }), Rc::new(Vec::new()), None, SourceSpan { start: 0_i64, end: 0_i64 })
     }
 };
     break Rc::new(TransportResult { transport: file_transport_node(bp.clone(), span.clone()), state: s.clone(), err: None });
@@ -5380,7 +5403,7 @@ pub fn parse_op_body_entries(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>,
 }
 
 pub fn modifier_to_prop(name: &str, span: SourceSpan) -> Rc<FieldInit> {
-    Rc::new(FieldInit { name: name.to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, span) })
+    Rc::new(FieldInit { name: name.to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), Rc::new(Vec::new()), None, span) })
 }
 
 pub fn modifiers_to_props(modifiers: Rc<Vec<OperationModifier>>, span: SourceSpan) -> Rc<Vec<Rc<FieldInit>>> {
@@ -5650,7 +5673,7 @@ pub fn parse_exit_entries_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     let code_str = status_expr_to_str(code.clone());
     let type_name = node_to_name_str(r3.type_expr.clone());
     let prop_name = v2_rt::concat("exit_".to_string(), code_str);
-    let entry = Rc::new(FieldInit { name: prop_name.clone(), value: make_expr_node(Rc::new(ExprData::ExprVar { name: type_name, binding_kind: None }), None, r3.type_expr.span.clone()) });
+    let entry = Rc::new(FieldInit { name: prop_name.clone(), value: make_expr_node(Rc::new(ExprData::ExprVar { name: type_name, binding_kind: None }), Rc::new(Vec::new()), None, r3.type_expr.span.clone()) });
     let e = eat(tokens.clone(), desc_r.state.clone(), ExpectedToken::ExpectComma);
     let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
     e.state.clone()
@@ -5780,7 +5803,9 @@ pub fn parse_status_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) 
         v.clone()
     }
     None => {
-        0_i64
+        {
+    return Rc::new(ExprResult { expr: make_expr_error_node(ExprErrorKind::InternalExprError, &v2_rt::concat(v2_rt::concat("internal: ShLitInt token text not parseable as int: '".to_string(), tok.clone().unwrap().text.clone()), "'".to_string()), current_span(tokens.clone(), state.clone())), state: state.clone(), err: None })
+}
     }
 };
     if (state.pos.clone() + 1_i64) < ({
@@ -5794,25 +5819,25 @@ pub fn parse_status_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) 
     let span = current_span(tokens.clone(), state.clone());
     let adv = advance(tokens.clone(), state.clone());
     let adv2 = advance(tokens.clone(), adv.state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: format!("{}xx", n.clone()) }) }), None, span), state: adv2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: format!("{}xx", n.clone()) }) }), Rc::new(Vec::new()), None, span), state: adv2.state.clone(), err: None })
 } else {
     let span = current_span(tokens.clone(), state.clone());
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), None, span), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), Rc::new(Vec::new()), None, span), state: adv.state.clone(), err: None })
 }
     }
     None => {
         {
     let span = current_span(tokens.clone(), state.clone());
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), None, span), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), Rc::new(Vec::new()), None, span), state: adv.state.clone(), err: None })
 }
     }
 }
 } else {
     let span = current_span(tokens.clone(), state.clone());
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), None, span), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), Rc::new(Vec::new()), None, span), state: adv.state.clone(), err: None })
 }
 }
     }
@@ -5821,14 +5846,14 @@ pub fn parse_status_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) 
     let id = tok.clone().unwrap().text.clone();
     let span = current_span(tokens.clone(), state.clone());
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: id }) }), None, span), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: id }) }), Rc::new(Vec::new()), None, span), state: adv.state.clone(), err: None })
 }
     }
     _ => {
         {
     let span = current_span(tokens.clone(), state.clone());
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "_".to_string() }) }), None, span), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "_".to_string() }) }), Rc::new(Vec::new()), None, span), state: adv.state.clone(), err: None })
 }
     }
 }
@@ -5898,7 +5923,7 @@ pub fn parse_response_entries_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
     let status_str = status_expr_to_str(status.clone());
     let type_name = node_to_name_str(r3.type_expr.clone());
     let prop_name = v2_rt::concat("response_".to_string(), status_str);
-    let entry = Rc::new(FieldInit { name: prop_name.clone(), value: make_expr_node(Rc::new(ExprData::ExprVar { name: type_name, binding_kind: None }), None, r3.type_expr.span.clone()) });
+    let entry = Rc::new(FieldInit { name: prop_name.clone(), value: make_expr_node(Rc::new(ExprData::ExprVar { name: type_name, binding_kind: None }), Rc::new(Vec::new()), None, r3.type_expr.span.clone()) });
     let e = eat(tokens.clone(), r3.state.clone(), ExpectedToken::ExpectComma);
     let s2 = skip_newlines(tokens.clone(), if e.consumed.clone() {
     e.state.clone()
@@ -6040,7 +6065,7 @@ pub fn parse_mock_response_entries_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<Par
 
 pub fn parse_resource_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwResource);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -6050,7 +6075,7 @@ pub fn parse_resource_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let name = r.name.clone();
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), r.state.clone(), ExpectedToken::ExpectLBrace);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -6072,11 +6097,11 @@ pub fn parse_resource_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
         __mapped_2.push(Rc::new(Param { name: __elem_3.name.clone(), type_expr: __elem_3.type_expr.clone(), default_value: __elem_3.default_value.clone(), span: __elem_3.span.clone() }));
     }
     Rc::new(__mapped_2)
-}, inferred: outputs_to_inferred(__elem_1.outputs.clone(), __elem_1.span.clone()), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
+}, inferred: outputs_to_inferred(__elem_1.outputs.clone(), __elem_1.span.clone()), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }));
     }
     Rc::new(__mapped_0)
 };
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: cap_children.clone(), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: None, properties: r.properties.clone(), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: cap_children.clone(), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, connective: None, collection_kind: None, transport: None, properties: r.properties.clone(), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), r2.state.clone()), err: None })
 }
 
@@ -6407,7 +6432,7 @@ pub fn parse_io_blocks_acc(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, i
 
 pub fn parse_data_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwData);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -6417,7 +6442,7 @@ pub fn parse_data_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let name = r.name.clone();
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), r.state.clone(), ExpectedToken::ExpectColon);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -6435,13 +6460,13 @@ pub fn parse_data_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: Some(r.expr.clone()), collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: Some(te.clone()), config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: Some(r.expr.clone()), collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: Some(te.clone()), is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), r.state.clone()), err: None })
 }
 
 pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ItemResult> {
     let start_span = current_span(tokens.clone(), state.clone());
-    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let dummy = Rc::new(Node { name: "".to_string(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwExtern);
     if has_err(r.err.clone()) {
     return Rc::new(ItemResult { item: dummy.clone(), state: r.state.clone(), err: r.err.clone() });
@@ -6456,7 +6481,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
     return Rc::new(ItemResult { item: dummy.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
     let name = r2.name.clone();
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r3 = parse_params(tokens.clone(), r2.state.clone());
     if has_err(r3.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r3.state.clone(), err: r3.err.clone() });
@@ -6470,7 +6495,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 } else {
     Some(Rc::new(InferredNode::Resolved { node: leaf_type_node("Unit", start_span.clone()) }))
 };
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: r3.params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: r3.params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), ret.state.clone()), err: None })
 }
     }
@@ -6482,7 +6507,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
     return Rc::new(ItemResult { item: dummy.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
     let name = r2.name.clone();
-    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let named_dummy = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     let r3 = parse_params(tokens.clone(), r2.state.clone());
     if has_err(r3.err.clone()) {
     return Rc::new(ItemResult { item: named_dummy.clone(), state: r3.state.clone(), err: r3.err.clone() });
@@ -6496,7 +6521,7 @@ pub fn parse_extern_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 } else {
     Some(Rc::new(InferredNode::Resolved { node: leaf_type_node("Unit", start_span.clone()) }))
 };
-    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: r3.params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let item = Rc::new(Node { name: name.clone(), span: start_span.clone(), children: Rc::new(Vec::new()), params: r3.params.clone(), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, collection_kind: None, connective: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
     Rc::new(ItemResult { item: item.clone(), state: skip_newlines(tokens.clone(), ret.state.clone()), err: None })
 }
     }
@@ -6633,7 +6658,7 @@ pub fn parse_block(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Exp
     Rc::new(ExprResult { expr: stmts.clone().first().cloned().unwrap(), state: r.state.clone(), err: None })
 } else {
     let span = current_span(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock { stmts: stmts.clone() }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock), stmts.clone(), None, span), state: r.state.clone(), err: None })
 }
     })
 }
@@ -6741,7 +6766,7 @@ pub fn parse_bare_assignment(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>)
         if has_err(r3.err.clone()) {
     return r3.clone();
 };
-        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLet { name, value: r3.expr.clone(), body: None }), None, span), state: r3.state.clone(), err: None })
+        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLet { name }), Rc::new(vec!(r3.expr.clone())), None, span), state: r3.state.clone(), err: None })
     })
 }
 
@@ -6810,7 +6835,7 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
     break Rc::new(ExprResult { expr: lhs.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let span = current_span(tokens.clone(), state.clone());
-    let new_lhs = make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: lhs.clone(), field: r.name.clone(), summary: None }), None, span);
+    let new_lhs = make_expr_node(Rc::new(ExprData::ExprFieldAccess { field: r.name.clone(), summary: None }), Rc::new(vec!(lhs.clone())), None, span);
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = r.state.clone();
@@ -6850,7 +6875,7 @@ pub fn parse_expr_loop(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: 
 };
     let span = current_span(tokens.clone(), state.clone());
     let binop = token_to_binop(adv.token.shape.clone());
-    let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp { op: binop, left: lhs.clone(), right: r.expr.clone() }), None, span);
+    let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp { op: binop }), Rc::new(vec!(lhs.clone(), r.expr.clone())), None, span);
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = r.state.clone();
@@ -7000,9 +7025,15 @@ pub fn parse_pipe_rhs(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, receiv
     if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMethodCall { receiver: receiver.clone(), method, args: r2.args.clone(), method_semantics: None }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMethodCall { method, method_semantics: None }), v2_rt::concat(Rc::new(vec!(receiver.clone())), {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in r2.args.iter().cloned() {
+        __mapped_0.push(make_arg_node(__elem_1.name.clone(), __elem_1.value.clone(), span.clone()));
+    }
+    Rc::new(__mapped_0)
+}), None, span.clone()), state: r2.state.clone(), err: None })
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMethodCall { receiver: receiver.clone(), method, args: Rc::new(Vec::new()), method_semantics: None }), None, span), state: s.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMethodCall { method, method_semantics: None }), Rc::new(vec!(receiver.clone())), None, span.clone()), state: s.clone(), err: None })
 }
     })
 }
@@ -7019,7 +7050,7 @@ pub fn parse_prefix(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Ex
     if has_err(r.err.clone()) {
     return Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprUnaryOp { op: UnaryOpKind::Not, operand: r.expr.clone() }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprUnaryOp { op: UnaryOpKind::Not }), Rc::new(vec!(r.expr.clone())), None, span), state: r.state.clone(), err: None })
 }
     }
     Some(TokenShape::ShMinus) => {
@@ -7030,7 +7061,7 @@ pub fn parse_prefix(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Ex
     if has_err(r.err.clone()) {
     return Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprUnaryOp { op: UnaryOpKind::Neg, operand: r.expr.clone() }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprUnaryOp { op: UnaryOpKind::Neg }), Rc::new(vec!(r.expr.clone())), None, span), state: r.state.clone(), err: None })
 }
     }
     _ => {
@@ -7057,19 +7088,19 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<E
     Some(TokenShape::ShKwTrue) => {
         {
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, span.clone()), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), Rc::new(Vec::new()), None, span.clone()), state: adv.state.clone(), err: None })
 }
     }
     Some(TokenShape::ShKwFalse) => {
         {
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: false }) }), None, span.clone()), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: false }) }), Rc::new(Vec::new()), None, span.clone()), state: adv.state.clone(), err: None })
 }
     }
     Some(TokenShape::ShKwNone) => {
         {
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitNull) }), None, span.clone()), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitNull) }), Rc::new(Vec::new()), None, span.clone()), state: adv.state.clone(), err: None })
 }
     }
     Some(TokenShape::ShLitInt) => {
@@ -7080,25 +7111,27 @@ pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<E
         v.clone()
     }
     None => {
-        0_i64
+        {
+    return Rc::new(ExprResult { expr: make_expr_error_node(ExprErrorKind::InternalExprError, &v2_rt::concat(v2_rt::concat("internal: ShLitInt token text not parseable as int: '".to_string(), tok.clone().unwrap().text.clone()), "'".to_string()), current_span(tokens.clone(), state.clone())), state: state.clone(), err: None })
+}
     }
 };
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), None, span.clone()), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitInt { value: n.clone() }) }), Rc::new(Vec::new()), None, span.clone()), state: adv.state.clone(), err: None })
 }
     }
     Some(TokenShape::ShLitFloat) => {
         {
     let f = tok.clone().unwrap().text.clone();
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitFloat { value: f }) }), None, span.clone()), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitFloat { value: f }) }), Rc::new(Vec::new()), None, span.clone()), state: adv.state.clone(), err: None })
 }
     }
     Some(TokenShape::ShLitStr) => {
         {
     let s = tok.clone().unwrap().text.clone();
     let adv = advance(tokens.clone(), state.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: s }) }), None, span.clone()), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: s }) }), Rc::new(Vec::new()), None, span.clone()), state: adv.state.clone(), err: None })
 }
     }
     Some(TokenShape::ShStrBegin) => {
@@ -7191,7 +7224,7 @@ pub fn parse_lambda_body(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> 
 }) == 1_i64 {
     Rc::new(ExprResult { expr: r.stmts.clone().first().cloned().unwrap(), state: r.state.clone(), err: None })
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock { stmts: r.stmts.clone() }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock), r.stmts.clone(), None, span), state: r.state.clone(), err: None })
 }
 } else {
     parse_expr(tokens.clone(), s.clone())
@@ -7247,12 +7280,12 @@ pub fn parse_ident_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, name
     if has_err(r.err.clone()) {
     return r.clone();
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: Rc::new(vec!(name.to_string())), body: r.expr.clone(), semantics: None }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: Rc::new(vec!(name.to_string())), semantics: None }), Rc::new(vec!(r.expr.clone())), None, span), state: r.state.clone(), err: None })
 } else {
     if is_uppercase_start(&name) && peek_is_lbrace(tokens.clone(), s.clone()) {
     parse_record_literal(tokens.clone(), s.clone(), &name, span)
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprVar { name: name.to_string(), binding_kind: None }), None, span), state: s.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprVar { name: name.to_string(), binding_kind: None }), Rc::new(Vec::new()), None, span), state: s.clone(), err: None })
 }
 }
     })
@@ -7299,7 +7332,7 @@ pub fn try_postfix(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: Rc<N
     if has_err(r.err.clone()) {
     return Rc::new(PostfixResult { expr: lhs.clone(), changed: false, state: r.state.clone(), err: r.err.clone() });
 };
-    Rc::new(PostfixResult { expr: make_expr_node(Rc::new(ExprData::ExprCast { expr: lhs.clone(), target: r.type_expr.clone() }), None, span), changed: true, state: r.state.clone(), err: None })
+    Rc::new(PostfixResult { expr: make_expr_node(Rc::new(ExprData::ExprCast), Rc::new(vec!(lhs.clone(), r.type_expr.clone())), None, span), changed: true, state: r.state.clone(), err: None })
 }
 } else {
     Rc::new(PostfixResult { expr: lhs.clone(), changed: false, state: state.clone(), err: None })
@@ -7346,15 +7379,22 @@ pub fn try_postfix(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, lhs: Rc<N
 }
 
 pub fn make_call_expr(lhs: Rc<Node>, args: Rc<Vec<Rc<NamedArg>>>, span: SourceSpan) -> Rc<Node> {
+    let arg_children = {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in args.iter().cloned() {
+        __mapped_0.push(make_arg_node(__elem_1.name.clone(), __elem_1.value.clone(), span.clone()));
+    }
+    Rc::new(__mapped_0)
+};
     match lhs.expr_data.as_ref() {
     ExprData::ExprVar { name: n, binding_kind: _, .. } => {
-        make_expr_node(Rc::new(ExprData::ExprCall { func: n.clone(), args: args.clone(), call_semantics: None }), None, span)
+        make_expr_node(Rc::new(ExprData::ExprCall { func: n.clone(), call_semantics: None }), arg_children.clone(), None, span.clone())
     }
-    ExprData::ExprFieldAccess { base: b, field: f, summary: _, .. } => {
-        make_expr_node(Rc::new(ExprData::ExprMethodCall { receiver: b.clone(), method: f.clone(), args: args.clone(), method_semantics: None }), None, span)
+    ExprData::ExprFieldAccess { field: f, summary: _, .. } => {
+        make_expr_node(Rc::new(ExprData::ExprMethodCall { method: f.clone(), method_semantics: None }), v2_rt::concat(Rc::new(vec!(lhs.children.clone().first().cloned().unwrap())), arg_children.clone()), None, span.clone())
     }
     _ => {
-        make_expr_node(Rc::new(ExprData::ExprCall { func: "<expr>".to_string(), args: args.clone(), call_semantics: None }), None, span)
+        make_expr_node(Rc::new(ExprData::ExprCall { func: "<expr>".to_string(), call_semantics: None }), arg_children.clone(), None, span.clone())
     }
 }
 }
@@ -7385,13 +7425,13 @@ pub fn parse_index_or_slice(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
     if has_err(r.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprSlice { base: base.clone(), start: first_expr.clone(), end: end_expr.clone() }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprSlice), Rc::new(vec!(base.clone(), first_expr.clone(), end_expr.clone())), None, span), state: r.state.clone(), err: None })
 } else {
     let r = expect(tokens.clone(), s.clone(), ExpectedToken::ExpectRBracket);
     if has_err(r.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIndex { base: base.clone(), index: first_expr.clone() }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIndex), Rc::new(vec!(base.clone(), first_expr.clone())), None, span), state: r.state.clone(), err: None })
 }
     })
 }
@@ -7542,7 +7582,13 @@ pub fn parse_match(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Exp
         if has_err(r.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMatch { scrutinee: scrutinee.clone(), arms: arms.clone() }), None, span), state: r.state.clone(), err: None })
+        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprMatch), v2_rt::concat(Rc::new(vec!(scrutinee.clone())), {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in arms.iter().cloned() {
+        __mapped_0.push(make_arm_node(__elem_1.pattern.clone(), __elem_1.guard.clone(), __elem_1.body.clone(), span.clone()));
+    }
+    Rc::new(__mapped_0)
+}), None, span.clone()), state: r.state.clone(), err: None })
     })
 }
 
@@ -7631,7 +7677,7 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     break Rc::new(ExprResult { expr: lhs.clone(), state: r.state.clone(), err: r.err.clone() });
 };
     let span = current_span(tokens.clone(), s.clone());
-    let new_lhs = make_expr_node(Rc::new(ExprData::ExprFieldAccess { base: lhs.clone(), field: r.name.clone(), summary: None }), None, span);
+    let new_lhs = make_expr_node(Rc::new(ExprData::ExprFieldAccess { field: r.name.clone(), summary: None }), Rc::new(vec!(lhs.clone())), None, span);
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = r.state.clone();
@@ -7671,7 +7717,7 @@ pub fn parse_expr_loop_no_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
 };
     let span = current_span(tokens.clone(), s.clone());
     let binop = token_to_binop(adv.token.shape.clone());
-    let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp { op: binop, left: lhs.clone(), right: r.expr.clone() }), None, span);
+    let new_lhs = make_expr_node(Rc::new(ExprData::ExprBinOp { op: binop }), Rc::new(vec!(lhs.clone(), r.expr.clone())), None, span);
      {
         let __tco_0 = tokens.clone();
         let __tco_1 = r.state.clone();
@@ -7807,7 +7853,7 @@ pub fn parse_match_arm_body(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) 
 }) == 1_i64 {
     Rc::new(ExprResult { expr: r.stmts.clone().first().cloned().unwrap(), state: r.state.clone(), err: None })
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock { stmts: r.stmts.clone() }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock), r.stmts.clone(), None, span), state: r.state.clone(), err: None })
 }
 } else {
     parse_expr(tokens.clone(), state.clone())
@@ -8098,7 +8144,9 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<P
         v.clone()
     }
     None => {
-        0_i64
+        {
+    return Rc::new(PatternResult { pattern: Rc::new(MatchPattern::LitPattern { value: Rc::new(LiteralValue::LitInt { value: 0_i64 }) }), state: state.clone(), err: Some(parse_error(&v2_rt::concat(v2_rt::concat("internal: ShLitInt token text not parseable as int: '".to_string(), tok.clone().unwrap().text.clone()), "'".to_string()), current_span(tokens.clone(), state.clone()))) })
+}
     }
 };
     let adv = advance(tokens.clone(), state.clone());
@@ -8248,16 +8296,16 @@ pub fn parse_if(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExprRe
     if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: r2.expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIf { condition: condition.clone(), then_branch: then_branch.clone(), else_branch: Some(r2.expr.clone()) }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIf), Rc::new(vec!(condition.clone(), then_branch.clone(), r2.expr.clone())), None, span), state: r2.state.clone(), err: None })
 } else {
     let r2 = parse_block(tokens.clone(), s.clone());
     if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: r2.expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIf { condition: condition.clone(), then_branch: then_branch.clone(), else_branch: Some(r2.expr.clone()) }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIf), Rc::new(vec!(condition.clone(), then_branch.clone(), r2.expr.clone())), None, span), state: r2.state.clone(), err: None })
 }
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIf { condition: condition.clone(), then_branch: then_branch.clone(), else_branch: None }), None, span), state: s.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprIf), Rc::new(vec!(condition.clone(), then_branch.clone())), None, span), state: s.clone(), err: None })
 }
     })
 }
@@ -8283,7 +8331,7 @@ pub fn parse_let(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExprR
         if has_err(r.err.clone()) {
     return r.clone();
 };
-        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLet { name, value: r.expr.clone(), body: None }), None, span), state: r.state.clone(), err: None })
+        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLet { name }), Rc::new(vec!(r.expr.clone())), None, span), state: r.state.clone(), err: None })
     })
 }
 
@@ -8299,7 +8347,7 @@ pub fn parse_return(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Ex
         if has_err(r.err.clone()) {
     return r.clone();
 };
-        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprReturn { value: r.expr.clone() }), None, span), state: r.state.clone(), err: None })
+        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprReturn), Rc::new(vec!(r.expr.clone())), None, span), state: r.state.clone(), err: None })
     })
 }
 
@@ -8330,7 +8378,7 @@ pub fn parse_for(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExprR
     return Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
         let body = r.expr.clone();
-        let for_expr = make_expr_node(Rc::new(ExprData::ExprForEach { variable: var_name, collection: collection.clone(), body: body.clone() }), None, span);
+        let for_expr = make_expr_node(Rc::new(ExprData::ExprForEach { variable: var_name }), Rc::new(vec!(collection.clone(), body.clone())), None, span);
         Rc::new(ExprResult { expr: for_expr.clone(), state: r.state.clone(), err: None })
     })
 }
@@ -8352,7 +8400,13 @@ pub fn parse_record_literal(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, 
         if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
-        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: Some(name.to_string()), fields: r.fields.clone(), parent_enum: None }), None, span), state: r2.state.clone(), err: None })
+        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: Some(name.to_string()), parent_enum: None }), {
+    let mut __mapped_0 = Vec::new();
+    for __elem_1 in r.fields.iter().cloned() {
+        __mapped_0.push(make_field_init_node(&__elem_1.name, __elem_1.value.clone(), span.clone()));
+    }
+    Rc::new(__mapped_0)
+}, None, span.clone()), state: r2.state.clone(), err: None })
     })
 }
 
@@ -8423,7 +8477,7 @@ pub fn parse_field_init(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     let fi = Rc::new(FieldInit { name: n.clone(), value: r.expr.clone() });
     Rc::new(FieldInitResult { field: fi.clone(), state: r.state.clone(), err: None })
 } else {
-    let fi = Rc::new(FieldInit { name: n.clone(), value: make_expr_node(Rc::new(ExprData::ExprVar { name: n.clone(), binding_kind: None }), None, current_span(tokens.clone(), state.clone())) });
+    let fi = Rc::new(FieldInit { name: n.clone(), value: make_expr_node(Rc::new(ExprData::ExprVar { name: n.clone(), binding_kind: None }), Rc::new(Vec::new()), None, current_span(tokens.clone(), state.clone())) });
     Rc::new(FieldInitResult { field: fi.clone(), state: name_r.state.clone(), err: None })
 }
 } else {
@@ -8474,7 +8528,7 @@ pub fn parse_list_literal(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
         if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
-        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprListLit { elements: r.exprs.clone() }), None, span), state: r2.state.clone(), err: None })
+        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprListLit), r.exprs.clone(), None, span), state: r2.state.clone(), err: None })
     })
 }
 
@@ -8550,7 +8604,7 @@ pub fn parse_paren_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
         let s = skip_newlines(tokens.clone(), r.state.clone());
         if peek_is_rparen(tokens.clone(), s.clone()) {
     let adv = advance(tokens.clone(), s.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: Rc::new(Vec::new()), parent_enum: None }), None, span), state: adv.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, parent_enum: None }), Rc::new(Vec::new()), None, span), state: adv.state.clone(), err: None })
 } else {
     let lambda_r = try_lambda_params(tokens.clone(), s.clone());
     if lambda_r.is_lambda.clone() {
@@ -8558,7 +8612,7 @@ pub fn parse_paren_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     if has_err(r.err.clone()) {
     return Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: lambda_r.params.clone(), body: r.expr.clone(), semantics: None }), None, span), state: r.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: lambda_r.params.clone(), semantics: None }), Rc::new(vec!(r.expr.clone())), None, span), state: r.state.clone(), err: None })
 } else {
     let r = parse_expr(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
@@ -8597,7 +8651,7 @@ pub fn parse_fn_lambda(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
         if has_err(body_r.err.clone()) {
     return body_r.clone();
 };
-        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: params_r.params.clone(), body: body_r.expr.clone(), semantics: None }), None, span), state: body_r.state.clone(), err: None })
+        Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprLambda { params: params_r.params.clone(), semantics: None }), Rc::new(vec!(body_r.expr.clone())), None, span), state: body_r.state.clone(), err: None })
     })
 }
 
@@ -8801,7 +8855,7 @@ pub fn parse_interp_parts(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, pa
         let __tco_0 = tokens.clone();
         let __tco_1 = adv.state.clone();
         let __tco_2 = mid_parts.clone();
-        let __tco_3 = span;
+        let __tco_3 = span.clone();
         __tco_p_tokens = __tco_0;
         __tco_p_state = __tco_1;
         __tco_p_parts = __tco_2;
@@ -8825,11 +8879,37 @@ pub fn parse_interp_parts(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, pa
 } else {
     new_parts.clone()
 };
-    break Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprStringInterp { parts: final_parts.clone() }), None, span), state: adv.state.clone(), err: None });
+    break Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprStringInterp), {
+    let mut __mapped_6 = Vec::new();
+    for __elem_7 in final_parts.iter().cloned() {
+        __mapped_6.push(match __elem_7.as_ref() {
+    StringPart::Text { value: v, .. } => {
+        make_text_part_node(&v, span.clone())
+    }
+    StringPart::Interpolation { expr: e, .. } => {
+        make_interp_part_node(e.clone(), span.clone())
+    }
+});
+    }
+    Rc::new(__mapped_6)
+}, None, span.clone()), state: adv.state.clone(), err: None });
 };
     }
     _ => {
-        break Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprStringInterp { parts: new_parts.clone() }), None, span), state: s.clone(), err: None });
+        break Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprStringInterp), {
+    let mut __mapped_8 = Vec::new();
+    for __elem_9 in new_parts.iter().cloned() {
+        __mapped_8.push(match __elem_9.as_ref() {
+    StringPart::Text { value: v, .. } => {
+        make_text_part_node(&v, span.clone())
+    }
+    StringPart::Interpolation { expr: e, .. } => {
+        make_interp_part_node(e.clone(), span.clone())
+    }
+});
+    }
+    Rc::new(__mapped_8)
+}, None, span.clone()), state: s.clone(), err: None });
     }
 };
         }
@@ -8844,7 +8924,7 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
         let s = skip_newlines(tokens.clone(), adv.state.clone());
         if peek_is_rbrace(tokens.clone(), s.clone()) {
     let adv2 = advance(tokens.clone(), s.clone());
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: Rc::new(Vec::new()), parent_enum: None }), None, span), state: adv2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, parent_enum: None }), Rc::new(Vec::new()), None, span.clone()), state: adv2.state.clone(), err: None })
 } else {
     let sh = peek_shape(tokens.clone(), s.clone());
     match sh {
@@ -8865,7 +8945,7 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
 }) == 1_i64 {
     Rc::new(ExprResult { expr: r.stmts.clone().first().cloned().unwrap(), state: r2.state.clone(), err: None })
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock { stmts: r.stmts.clone() }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock), r.stmts.clone(), None, span.clone()), state: r2.state.clone(), err: None })
 }
 }
     }
@@ -8886,7 +8966,7 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
 }) == 1_i64 {
     Rc::new(ExprResult { expr: r.stmts.clone().first().cloned().unwrap(), state: r2.state.clone(), err: None })
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock { stmts: r.stmts.clone() }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock), r.stmts.clone(), None, span.clone()), state: r2.state.clone(), err: None })
 }
 }
     }
@@ -8903,7 +8983,13 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: r.fields.clone(), parent_enum: None }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, parent_enum: None }), {
+    let mut __mapped_2 = Vec::new();
+    for __elem_3 in r.fields.iter().cloned() {
+        __mapped_2.push(make_field_init_node(&__elem_3.name, __elem_3.value.clone(), span.clone()));
+    }
+    Rc::new(__mapped_2)
+}, None, span.clone()), state: r2.state.clone(), err: None })
 } else {
     if peek_is_lit_str(tokens.clone(), s.clone()) && peek_is_colon_after_ident(tokens.clone(), s.clone()) {
     let r = parse_field_init_list(tokens.clone(), s.clone());
@@ -8915,7 +9001,13 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     if has_err(r2.err.clone()) {
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: r.fields.clone(), parent_enum: None }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, parent_enum: None }), {
+    let mut __mapped_4 = Vec::new();
+    for __elem_5 in r.fields.iter().cloned() {
+        __mapped_4.push(make_field_init_node(&__elem_5.name, __elem_5.value.clone(), span.clone()));
+    }
+    Rc::new(__mapped_4)
+}, None, span.clone()), state: r2.state.clone(), err: None })
 } else {
     let r = parse_stmts(tokens.clone(), s.clone());
     if has_err(r.err.clone()) {
@@ -8927,12 +9019,12 @@ pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
     if ({
-    let __len_2 = r.stmts.clone().len();
-    __len_2 as i64
+    let __len_6 = r.stmts.clone().len();
+    __len_6 as i64
 }) == 1_i64 {
     Rc::new(ExprResult { expr: r.stmts.clone().first().cloned().unwrap(), state: r2.state.clone(), err: None })
 } else {
-    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock { stmts: r.stmts.clone() }), None, span), state: r2.state.clone(), err: None })
+    Rc::new(ExprResult { expr: make_expr_node(Rc::new(ExprData::ExprBlock), r.stmts.clone(), None, span.clone()), state: r2.state.clone(), err: None })
 }
 }
 }

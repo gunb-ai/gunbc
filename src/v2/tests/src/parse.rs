@@ -275,7 +275,7 @@ fn parse_real_source() {
     let result = parse_source(source);
     assert!(result.error.is_none(), "should parse multi-item source");
     let module = result.module.as_ref().expect("should produce module");
-    assert!(!module.items.is_empty(), "should have items");
+    assert!(!module.children.is_empty(), "should have items");
 }
 
 #[test]

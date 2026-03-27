@@ -7,7 +7,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NormalizeResult {
     pub graph: Rc<ModuleGraph>,
-    pub diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+    pub diagnostics: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn normalize_graph(graph: Rc<ModuleGraph>) -> Rc<NormalizeResult> {

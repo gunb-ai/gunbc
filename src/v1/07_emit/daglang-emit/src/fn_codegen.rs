@@ -2475,6 +2475,16 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             //   move-across-branch errors from branch-aware use counting)
             // - Non-Rc single-use: move (zero cost)
             // - Non-Rc multi-use: clone
+            //
+            // EXCEPTION: Fold accumulators with count=1 skip the Rc clone.
+            // Fold guarantees the accumulator is linear (consumed once per
+            // iteration, rebound). Moving keeps Rc refcount=1, so
+            // Rc::try_unwrap succeeds and list_push/map_insert/concat
+            // are O(1) instead of O(n). Without this, every fold is O(n²).
+            let is_fold_accum = ctx
+                .fold_accum_name
+                .as_deref()
+                .is_some_and(|accum| accum == name);
             let ir_type = ctx.ir_scope.get(name);
             let named = ir_type
                 .and_then(named_type_from_ir)
@@ -2488,11 +2498,17 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             // If type is completely unknown and Rc types exist, assume Rc (conservative).
             let assume_rc =
                 named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
-            let needs_clone = count > 1
-                || ctx.match_bound_vars.contains(name)
-                || is_rc_named
-                || is_rc_collection
-                || assume_rc;
+            // Fold accumulators with single use: move (preserves refcount=1).
+            // All other Rc-typed variables: clone (safety net for use-count gaps).
+            let needs_clone = if is_fold_accum && count <= 1 {
+                false
+            } else {
+                count > 1
+                    || ctx.match_bound_vars.contains(name)
+                    || is_rc_named
+                    || is_rc_collection
+                    || assume_rc
+            };
             if needs_clone {
                 code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::Var(escaped)),
@@ -3380,8 +3396,8 @@ fn compile_intrinsic_call(
         // Fuses first(filter(list, pred)) → find loop — avoids materializing filtered list.
         "first" if args.len() == 1 => {
             if let ast::Expr::Call(inner_name, inner_args) = &args[0].1 {
-                // first(skip(list, n)) → list.get(n as usize).cloned()
-                if inner_name == "skip" && inner_args.len() == 2 {
+                // first(skip/drop(list, n)) → list.get(n as usize).cloned()
+                if (inner_name == "skip" || inner_name == "drop") && inner_args.len() == 2 {
                     let list = clone_if_needed(
                         compile_expr(&inner_args[0].1, ctx, counter),
                         ctx.fold_accum_name.as_deref(),
@@ -3683,8 +3699,8 @@ fn compile_intrinsic_call(
             method: "is_empty".to_string(),
             args: vec![],
         }),
-        // skip(list, n) → Rc::new(list[min(n, len)..].to_vec())
-        "skip" if args.len() == 2 => {
+        // skip/drop(list, n) → Rc::new(list[min(n, len)..].to_vec())
+        "skip" | "drop" if args.len() == 2 => {
             let n = compile_call_arg(args, 1, ctx, counter);
             Some(code_ir::Expr::RawCode(format!(
                 "{{ let __s = {}; let __n = ({}) as usize; Rc::new(__s[__n.min(__s.len())..].to_vec()) }}",

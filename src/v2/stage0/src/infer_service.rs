@@ -26,8 +26,10 @@ pub struct ServiceMethodResult {
 
 pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
     match receiver.expr_data.as_ref() {
-    ExprData::ExprFieldAccess { base: b, field: f, summary: _, .. } => {
-        match b.expr_data.as_ref() {
+    ExprData::ExprFieldAccess { field: f, summary: _, .. } => {
+        {
+    let b = field_access_base(receiver.clone());
+    match b.expr_data.as_ref() {
     ExprData::ExprVar { name: _, binding_kind: _, .. } => {
         match ({
     let mut __chars_0 = Vec::new();
@@ -48,6 +50,7 @@ pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
         false
     }
 }
+}
     }
     _ => {
         false
@@ -57,14 +60,17 @@ pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
 
 pub fn extract_typed_service_name(receiver: Rc<Node>) -> Option<String> {
     match receiver.expr_data.as_ref() {
-    ExprData::ExprFieldAccess { base: b, field: f, summary: _, .. } => {
-        match b.expr_data.as_ref() {
+    ExprData::ExprFieldAccess { field: f, summary: _, .. } => {
+        {
+    let b = field_access_base(receiver.clone());
+    match b.expr_data.as_ref() {
     ExprData::ExprVar { name: ns, binding_kind: _, .. } => {
         Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone()))
     }
     _ => {
         None
     }
+}
 }
     }
     _ => {
@@ -81,8 +87,10 @@ pub fn collect_typed_service_calls(texpr: Rc<Node>) -> Rc<Vec<String>> {
 pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match texpr.expr_data.as_ref() {
-    ExprData::ExprMethodCall { receiver: r, method: _, args: _, method_semantics: _, .. } => {
-        if is_typed_service_call_receiver(r.clone()) {
+    ExprData::ExprMethodCall { method: _, method_semantics: _, .. } => {
+        {
+    let r = method_receiver(texpr.clone());
+    if is_typed_service_call_receiver(r.clone()) {
     match extract_typed_service_name(r.clone()) {
     Some(service_name) => {
         if emit_map_has(acc.seen.clone(), &service_name) {
@@ -108,6 +116,7 @@ pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -
 } else {
     acc.clone()
 }
+}
     }
     _ => {
         acc.clone()
@@ -115,8 +124,8 @@ pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -
 };
         let result = {
     let mut __acc_4 = this_acc.clone();
-    for __elem_5 in expr_children(texpr.clone()).iter().cloned() {
-        __acc_4 = collect_typed_service_calls_into(__elem_5.clone(), __acc_4.clone());
+    for __elem_5 in texpr.children.iter().cloned() {
+        __acc_4 = collect_typed_service_calls_into(__elem_5.clone(), __acc_4);
     }
     __acc_4
 };
@@ -127,7 +136,7 @@ pub fn collect_typed_service_calls_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -
 pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match texpr.expr_data.as_ref() {
-    ExprData::ExprCall { func: f, args: _, call_semantics: _, .. } => {
+    ExprData::ExprCall { func: f, call_semantics: _, .. } => {
         if emit_map_has(acc.seen.clone(), &f) {
     acc.clone()
 } else {
@@ -150,8 +159,8 @@ pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> 
 };
         let result = {
     let mut __acc_4 = this_acc.clone();
-    for __elem_5 in expr_children(texpr.clone()).iter().cloned() {
-        __acc_4 = collect_called_func_names_into(__elem_5.clone(), __acc_4.clone());
+    for __elem_5 in texpr.children.iter().cloned() {
+        __acc_4 = collect_called_func_names_into(__elem_5.clone(), __acc_4);
     }
     __acc_4
 };
@@ -270,10 +279,10 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
     let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
     Rc::new(__values_3)
 }).iter().cloned() {
-        __acc_4 = __acc_4.clone() + ({
+        __acc_4 += {
     let __len_6 = __elem_5.service_names.clone().len();
     __len_6 as i64
-});
+};
     }
     __acc_4
 }
@@ -360,10 +369,10 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, ser
     Some(Rc::new(ServiceMethodResult { result_type: Rc::new(Node { name: "".to_string(), span: no_span(), children: {
     let mut __mapped_2 = Vec::new();
     for __elem_3 in op.outputs.iter().cloned() {
-        __mapped_2.push(Rc::new(Node { name: __elem_3.name.clone(), span: __elem_3.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: __elem_3.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
+        __mapped_2.push(Rc::new(Node { name: __elem_3.name.clone(), span: __elem_3.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: __elem_3.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }));
     }
     Rc::new(__mapped_2)
-}, connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), op_params: op.params.clone() }))
+}, connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) }), op_params: op.params.clone() }))
 }
     }
     None => {
