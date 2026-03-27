@@ -30,12 +30,19 @@ fn prepare_sources(sources_dir: &std::path::Path) {
         }
     }
 
-    // Copy std types
-    let std_types = ws.join("dsl/std/types.dag");
-    if std_types.exists() {
-        let dst_dir = sources_dir.join("dsl/std");
-        std::fs::create_dir_all(&dst_dir).unwrap();
-        std::fs::copy(&std_types, dst_dir.join("types.dag")).unwrap();
+    // Copy std modules (types, algebra, primitives, and compositional chain)
+    let dst_dir = sources_dir.join("dsl/std");
+    std::fs::create_dir_all(&dst_dir).unwrap();
+    let std_files = [
+        "types", "algebra", "containers",
+        "logic", "bit", "integer", "float", "string_type",
+        "encoding",
+    ];
+    for name in &std_files {
+        let src = ws.join(format!("dsl/std/{}.dag", name));
+        if src.exists() {
+            std::fs::copy(&src, dst_dir.join(format!("{}.dag", name))).unwrap();
+        }
     }
 }
 
