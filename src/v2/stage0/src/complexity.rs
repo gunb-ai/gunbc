@@ -134,7 +134,7 @@ pub fn cache_summary(table: Rc<CostInternTable>, func_name: &str, summary: Rc<Co
     Rc::new(CostInternTable { summaries: {
     let __rc_1 = table.summaries.clone();
     let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_0.insert(func_name.to_string(), summary);
+    __map_ins_0.insert(func_name.to_string(), summary.clone());
     Rc::new(__map_ins_0)
 } })
 }
@@ -157,41 +157,41 @@ impl Default for RecursionPattern {
 }
 
 pub fn cost_seq(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
-    Rc::new(CostExpr::CostAdd { left: a, right: b })
+    Rc::new(CostExpr::CostAdd { left: a.clone(), right: b.clone() })
 }
 
 pub fn cost_par(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
-    Rc::new(CostExpr::CostMax { left: a, right: b })
+    Rc::new(CostExpr::CostMax { left: a.clone(), right: b.clone() })
 }
 
 pub fn cost_loop(binder: &str, iterations: Rc<SizeExpr>, body: Rc<CostExpr>) -> Rc<CostExpr> {
-    Rc::new(CostExpr::CostSum { binder: binder.to_string(), upper: iterations, body })
+    Rc::new(CostExpr::CostSum { binder: binder.to_string(), upper: iterations.clone(), body: body.clone() })
 }
 
 pub fn cost_conditional(condition: Rc<CostExpr>, branches: Rc<Vec<Rc<CostExpr>>>) -> Rc<CostExpr> {
     let max_branch = {
     let mut __acc_0 = Rc::new(CostExpr::CostConst { value: 0_i64 });
     for __elem_1 in branches.iter().cloned() {
-        __acc_0 = Rc::new(CostExpr::CostMax { left: __acc_0, right: __elem_1 });
+        __acc_0 = Rc::new(CostExpr::CostMax { left: __acc_0, right: __elem_1.clone() });
     }
     __acc_0
 };
-    Rc::new(CostExpr::CostAdd { left: condition, right: max_branch })
+    Rc::new(CostExpr::CostAdd { left: condition.clone(), right: max_branch.clone() })
 }
 
 pub fn collection_output(binder: &str, size: Rc<SizeExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
     let result = {
     let __rc_1 = Rc::new(std::collections::HashMap::new());
     let mut __map_ins_0 = Rc::try_unwrap(__rc_1).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_0.insert("result".to_string(), cost_loop(&binder, size, Rc::new(CostExpr::CostConst { value: 1_i64 })));
+    __map_ins_0.insert("result".to_string(), cost_loop(&binder, size.clone(), Rc::new(CostExpr::CostConst { value: 1_i64 })));
     Rc::new(__map_ins_0)
 };
-    result
+    result.clone()
 }
 
 pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
     let result = Rc::new(std::collections::HashMap::new());
-    result
+    result.clone()
 }
 
 pub fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> bool {
@@ -232,7 +232,7 @@ pub fn receiver_size_var(recv: Rc<Node>) -> Rc<SizeExpr> {
         {
     let inner_recv = match recv.children.clone().first().cloned() {
     Some(r) => {
-        r
+        r.clone()
     }
     None => {
         recv.clone()
@@ -240,7 +240,7 @@ pub fn receiver_size_var(recv: Rc<Node>) -> Rc<SizeExpr> {
 };
     if method_preserves_collection_size(method_semantics.clone()) {
      {
-        let __tco_0 = inner_recv;
+        let __tco_0 = inner_recv.clone();
         __tco_p_recv = __tco_0;
         continue;
     }
@@ -283,9 +283,9 @@ pub fn resolve_lambda_arg(mc_arg_nodes: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
     }
     __found_2
 };
-    match f_arg {
+    match f_arg.clone() {
     Some(fa) => {
-        Some(arg_value(fa))
+        Some(arg_value(fa.clone()))
     }
     None => {
         ({
@@ -346,7 +346,7 @@ pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, 
 };
     r.clone()
 };
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(recv_r.summary.work.clone(), loop_work.clone()), span: cost_seq(recv_r.summary.span.clone(), loop_work.clone()), output_size: os, certainty: body_result.summary.certainty.clone() }), table: body_result.table.clone() })
+    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(recv_r.summary.work.clone(), loop_work.clone()), span: cost_seq(recv_r.summary.span.clone(), loop_work.clone()), output_size: os.clone(), certainty: body_result.summary.certainty.clone() }), table: body_result.table.clone() })
 }
     }
     CostShape::ShapeSortBody => {
@@ -368,7 +368,7 @@ pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, 
     __map_ins_2.insert("result".to_string(), cost_loop(&binder, size.clone(), Rc::new(CostExpr::CostConst { value: 1_i64 })));
     Rc::new(__map_ins_2)
 };
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(recv_r.summary.work.clone(), sort_work.clone()), span: cost_seq(recv_r.summary.span.clone(), sort_work.clone()), output_size: sort_os, certainty: Certainty::Conservative }), table: key_result.table.clone() })
+    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(recv_r.summary.work.clone(), sort_work.clone()), span: cost_seq(recv_r.summary.span.clone(), sort_work.clone()), output_size: sort_os.clone(), certainty: Certainty::Conservative }), table: key_result.table.clone() })
 }
     }
     CostShape::ShapeLinearScan { produces_collection: pc, .. } => {
@@ -386,7 +386,7 @@ pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, 
     let r = Rc::new(std::collections::HashMap::new());
     r.clone()
 };
-    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(recv_r.summary.work.clone(), loop_work.clone()), span: cost_seq(recv_r.summary.span.clone(), loop_work.clone()), output_size: scan_os, certainty: recv_r.summary.certainty.clone() }), table: recv_r.table.clone() })
+    Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(recv_r.summary.work.clone(), loop_work.clone()), span: cost_seq(recv_r.summary.span.clone(), loop_work.clone()), output_size: scan_os.clone(), certainty: recv_r.summary.certainty.clone() }), table: recv_r.table.clone() })
 }
     }
     CostShape::ShapeConstant => {
@@ -626,7 +626,7 @@ pub fn cost_sum_depth(expr: Rc<CostExpr>) -> i64 {
 
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let s = simplify_cost(expr);
+        let s = simplify_cost(expr.clone());
         match s.as_ref() {
     CostExpr::CostConst { value: _, .. } => {
         "O(1)".to_string()
@@ -680,7 +680,7 @@ pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     v2_rt::concat(v2_rt::concat(lc.clone(), " * ".to_string()), rc.clone())
 }
 };
-    combined
+    combined.clone()
 }
     }
     CostExpr::CostMax { left: l, right: r, .. } => {
@@ -783,7 +783,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 }
 
 pub fn format_space_class(expr: Rc<CostExpr>) -> String {
-    let space_class = classify_complexity(expr);
+    let space_class = classify_complexity(expr.clone());
     if space_class.clone() == "O(1)" {
     "".to_string()
 } else {
@@ -806,13 +806,13 @@ pub fn format_func_complexity(name: &str, summary: Rc<ComplexitySummary>) -> Str
 };
     let space_str = match summary.output_size.clone().get(&"result".to_string()).cloned() {
     Some(size_expr) => {
-        format_space_class(size_expr)
+        format_space_class(size_expr.clone())
     }
     _ => {
         "".to_string()
     }
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(name.to_string(), ": ".to_string()), marker), class), space_str)
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(name.to_string(), ": ".to_string()), marker.clone()), class), space_str.clone())
 }
 
 pub fn format_complexity_report(entries: Rc<Vec<Rc<FuncEntry>>>, summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>) -> String {
@@ -879,8 +879,8 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
         {
     let l = binop_left(texpr.clone());
     let r = binop_right(texpr.clone());
-    let lr = cost_of_expr(l, func_index.clone(), table.clone());
-    let rr = cost_of_expr(r, func_index.clone(), lr.table.clone());
+    let lr = cost_of_expr(l.clone(), func_index.clone(), table.clone());
+    let rr = cost_of_expr(r.clone(), func_index.clone(), lr.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(lr.summary.work.clone(), cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), rr.summary.work.clone())), span: cost_seq(lr.summary.span.clone(), cost_seq(Rc::new(CostExpr::CostConst { value: 1_i64 }), rr.summary.span.clone())), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: rr.table.clone() })
 }
     }
@@ -898,7 +898,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let mut __acc_0 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: callee_result.table.clone() });
     for __elem_1 in texpr.children.iter().cloned() {
         __acc_0 = {
-    let ar = cost_of_expr(arg_value(__elem_1), func_index.clone(), __acc_0.table.clone());
+    let ar = cost_of_expr(arg_value(__elem_1.clone()), func_index.clone(), __acc_0.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_0.summary.work.clone(), ar.summary.work.clone()), span: cost_seq(__acc_0.summary.span.clone(), ar.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: ar.table.clone() })
 };
     }
@@ -921,7 +921,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     MethodSemantics::IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _, .. } => {
         {
     let shape = intrinsic_method_cost_shape(im.clone());
-    Some(cost_of_method_by_shape(shape, recv_r.clone(), mc_args.clone(), size.clone(), &binder, func_index.clone()))
+    Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), &binder, func_index.clone()))
 }
     }
     MethodSemantics::RuntimeBridgeSemantics { method: _, .. } => {
@@ -932,9 +932,9 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     }
 }
 };
-    match method_cost_result {
+    match method_cost_result.clone() {
     Some(result) => {
-        result
+        result.clone()
     }
     _ => {
         {
@@ -942,7 +942,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let mut __acc_2 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: recv_r.table.clone() });
     for __elem_3 in mc_args.iter().cloned() {
         __acc_2 = {
-    let ar = cost_of_expr(arg_value(__elem_3), func_index.clone(), __acc_2.table.clone());
+    let ar = cost_of_expr(arg_value(__elem_3.clone()), func_index.clone(), __acc_2.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_2.summary.work.clone(), ar.summary.work.clone()), span: cost_seq(__acc_2.summary.span.clone(), ar.summary.span.clone()), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: ar.table.clone() })
 };
     }
@@ -958,12 +958,12 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
         {
     let scrut = match_scrutinee(texpr.clone());
     let arm_nodes = match_arm_nodes(texpr.clone());
-    let s_r = cost_of_expr(scrut, func_index.clone(), table.clone());
+    let s_r = cost_of_expr(scrut.clone(), func_index.clone(), table.clone());
     let arms_accum = {
     let mut __acc_4 = Rc::new(MatchCostAccum { result: Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: s_r.table.clone() }), branch_costs: Rc::new(Vec::new()) });
     for __elem_5 in arm_nodes.iter().cloned() {
         __acc_4 = {
-    let ar = cost_of_expr(arm_body(__elem_5), func_index.clone(), __acc_4.result.table.clone());
+    let ar = cost_of_expr(arm_body(__elem_5.clone()), func_index.clone(), __acc_4.result.table.clone());
     Rc::new(MatchCostAccum { result: Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_par(__acc_4.result.summary.work.clone(), ar.summary.work.clone()), span: cost_par(__acc_4.result.summary.span.clone(), ar.summary.span.clone()), output_size: ar.summary.output_size.clone(), certainty: ar.summary.certainty.clone() }), table: ar.table.clone() }), branch_costs: {
     let __rc_7 = std::mem::take(&mut Rc::make_mut(&mut __acc_4).branch_costs);
     let mut __appended_6 = Rc::try_unwrap(__rc_7).unwrap_or_else(|rc| (*rc).clone());
@@ -982,11 +982,11 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let c = if_condition(texpr.clone());
     let t = if_then_branch(texpr.clone());
     let c_r = cost_of_expr(c.clone(), func_index.clone(), table.clone());
-    let t_r = cost_of_expr(t, func_index.clone(), c_r.table.clone());
+    let t_r = cost_of_expr(t.clone(), func_index.clone(), c_r.table.clone());
     let e_result = match if_else_branch(texpr.clone()) {
     Some(eb) => {
         {
-    let er = cost_of_expr(eb, func_index.clone(), t_r.table.clone());
+    let er = cost_of_expr(eb.clone(), func_index.clone(), t_r.table.clone());
     Rc::new(SummaryResult { summary: er.summary.clone(), table: er.table.clone() })
 }
     }
@@ -1000,11 +1000,11 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     ExprData::ExprLet { name: _, .. } => {
         {
     let v = let_value(texpr.clone());
-    let v_r = cost_of_expr(v, func_index.clone(), table.clone());
+    let v_r = cost_of_expr(v.clone(), func_index.clone(), table.clone());
     match let_body(texpr.clone()) {
     Some(b) => {
         {
-    let b_r = cost_of_expr(b, func_index.clone(), v_r.table.clone());
+    let b_r = cost_of_expr(b.clone(), func_index.clone(), v_r.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(v_r.summary.work.clone(), b_r.summary.work.clone()), span: cost_seq(v_r.summary.span.clone(), b_r.summary.span.clone()), output_size: b_r.summary.output_size.clone(), certainty: b_r.summary.certainty.clone() }), table: b_r.table.clone() })
 }
     }
@@ -1019,7 +1019,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let mut __acc_8 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
     for __elem_9 in texpr.children.iter().cloned() {
         __acc_8 = {
-    let sr = cost_of_expr(__elem_9, func_index.clone(), __acc_8.table.clone());
+    let sr = cost_of_expr(__elem_9.clone(), func_index.clone(), __acc_8.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_8.summary.work.clone(), sr.summary.work.clone()), span: cost_seq(__acc_8.summary.span.clone(), sr.summary.span.clone()), output_size: sr.summary.output_size.clone(), certainty: sr.summary.certainty.clone() }), table: sr.table.clone() })
 };
     }
@@ -1031,7 +1031,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let c = foreach_collection(texpr.clone());
     let bd = foreach_body(texpr.clone());
     let c_r = cost_of_expr(c.clone(), func_index.clone(), table.clone());
-    let bd_r = cost_of_expr(bd, func_index.clone(), c_r.table.clone());
+    let bd_r = cost_of_expr(bd.clone(), func_index.clone(), c_r.table.clone());
     let size = receiver_size_var(c.clone());
     let binder = size_binder_name(size.clone());
     let loop_work = cost_loop(&binder, size.clone(), bd_r.summary.work.clone());
@@ -1043,7 +1043,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let mut __acc_10 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 0_i64 }), span: Rc::new(CostExpr::CostConst { value: 0_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
     for __elem_11 in texpr.children.iter().cloned() {
         __acc_10 = {
-    let cr = cost_of_expr(__elem_11, func_index.clone(), __acc_10.table.clone());
+    let cr = cost_of_expr(__elem_11.clone(), func_index.clone(), __acc_10.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_10.summary.work.clone(), cr.summary.work.clone()), span: cost_seq(__acc_10.summary.span.clone(), cr.summary.span.clone()), output_size: cr.summary.output_size.clone(), certainty: cr.summary.certainty.clone() }), table: cr.table.clone() })
 };
     }
@@ -1055,7 +1055,7 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: Rc<HashMap<String, Rc<FuncEntry
     let mut __acc_12 = Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostConst { value: 1_i64 }), span: Rc::new(CostExpr::CostConst { value: 1_i64 }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Proven }), table: table.clone() });
     for __elem_13 in texpr.children.iter().cloned() {
         __acc_12 = {
-    let cr = cost_of_expr(__elem_13, func_index.clone(), __acc_12.table.clone());
+    let cr = cost_of_expr(__elem_13.clone(), func_index.clone(), __acc_12.table.clone());
     Rc::new(SummaryResult { summary: Rc::new(ComplexitySummary { work: cost_seq(__acc_12.summary.work.clone(), cr.summary.work.clone()), span: cost_seq(__acc_12.summary.span.clone(), cr.summary.span.clone()), output_size: cr.summary.output_size.clone(), certainty: cr.summary.certainty.clone() }), table: cr.table.clone() })
 };
     }
@@ -1074,7 +1074,7 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
     {
     let mut __acc_0 = budget.clone() - 1_i64;
     for __elem_1 in texpr.children.iter().cloned() {
-        __acc_0 = estimate_expr_size(__elem_1, __acc_0);
+        __acc_0 = estimate_expr_size(__elem_1.clone(), __acc_0);
     }
     __acc_0
 }
@@ -1086,7 +1086,7 @@ pub fn get_or_compute_summary(func_name: &str, func_index: Rc<HashMap<String, Rc
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match lookup_summary(table.clone(), &func_name) {
     Some(cached) => {
-        Rc::new(SummaryResult { summary: cached, table: table.clone() })
+        Rc::new(SummaryResult { summary: cached.clone(), table: table.clone() })
     }
     None => {
         match func_index.clone().get(&func_name.to_string()).cloned() {
@@ -1096,21 +1096,21 @@ pub fn get_or_compute_summary(func_name: &str, func_index: Rc<HashMap<String, Rc
     if body_budget <= 0_i64 {
     let too_large = Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("body too large: ".to_string(), func_name.to_string()) }), span: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("body too large: ".to_string(), func_name.to_string()) }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Unknown });
     let guarded_table = cache_summary(table.clone(), &func_name, too_large.clone());
-    Rc::new(SummaryResult { summary: too_large.clone(), table: guarded_table })
+    Rc::new(SummaryResult { summary: too_large.clone(), table: guarded_table.clone() })
 } else {
     let placeholder = Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("computing: ".to_string(), func_name.to_string()) }), span: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("computing: ".to_string(), func_name.to_string()) }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Unknown });
-    let table_with_placeholder = cache_summary(table.clone(), &func_name, placeholder);
-    let result = cost_of_expr(entry.body.clone(), func_index.clone(), table_with_placeholder);
+    let table_with_placeholder = cache_summary(table.clone(), &func_name, placeholder.clone());
+    let result = cost_of_expr(entry.body.clone(), func_index.clone(), table_with_placeholder.clone());
     let simplified = Rc::new(ComplexitySummary { work: simplify_cost(result.summary.work.clone()), span: simplify_cost(result.summary.span.clone()), output_size: result.summary.output_size.clone(), certainty: result.summary.certainty.clone() });
     let final_table = cache_summary(result.table.clone(), &func_name, simplified.clone());
-    Rc::new(SummaryResult { summary: simplified.clone(), table: final_table })
+    Rc::new(SummaryResult { summary: simplified.clone(), table: final_table.clone() })
 }
 }
     }
     None => {
         {
     let unknown_summary = Rc::new(ComplexitySummary { work: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("function not found: ".to_string(), func_name.to_string()) }), span: Rc::new(CostExpr::CostUnknown { reason: v2_rt::concat("function not found: ".to_string(), func_name.to_string()) }), output_size: Rc::new(std::collections::HashMap::new()), certainty: Certainty::Unknown });
-    Rc::new(SummaryResult { summary: unknown_summary, table: table.clone() })
+    Rc::new(SummaryResult { summary: unknown_summary.clone(), table: table.clone() })
 }
     }
 }
@@ -1194,6 +1194,6 @@ pub fn build_complexity_report(func_entries: Rc<Vec<Rc<FuncEntry>>>) -> Rc<Compl
     Rc::new(__mapped_8)
 };
     let formatted = format_complexity_report(func_entries.clone(), summaries_map.clone());
-    Rc::new(ComplexityReport { function_summaries: summaries_map.clone(), violations, intern_table: result.table.clone(), formatted })
+    Rc::new(ComplexityReport { function_summaries: summaries_map.clone(), violations: violations.clone(), intern_table: result.table.clone(), formatted })
 }
 

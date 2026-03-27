@@ -28,9 +28,9 @@ pub enum PatternSubject {
 
 pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
     let inner = extract_optional_inner_node(scrut.clone());
-    let value_field = Rc::new(Node { name: "value".to_string(), span: scrut.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: inner })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
-    let some_node = Rc::new(Node { name: "Some".to_string(), span: scrut.span.clone(), children: Rc::new(vec!(value_field)), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
-    some_node
+    let value_field = Rc::new(Node { name: "value".to_string(), span: scrut.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: inner.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
+    let some_node = Rc::new(Node { name: "Some".to_string(), span: scrut.span.clone(), children: Rc::new(vec!(value_field.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) });
+    some_node.clone()
 }
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
@@ -60,11 +60,11 @@ pub fn pattern_subject_from_node_type(n: Rc<NodeType>) -> Rc<PatternSubject> {
 }
 
 pub fn node_lookup_resolved(node: Rc<Node>) -> Rc<NodeLookupResult> {
-    Rc::new(NodeLookupResult { status: Rc::new(NodeLookupStatus::LookupResolved { node }), diagnostics: Rc::new(Vec::new()) })
+    Rc::new(NodeLookupResult { status: Rc::new(NodeLookupStatus::LookupResolved { node: node.clone() }), diagnostics: Rc::new(Vec::new()) })
 }
 
 pub fn node_lookup_failed(diagnostics: Rc<Vec<Rc<Node>>>) -> Rc<NodeLookupResult> {
-    Rc::new(NodeLookupResult { status: Rc::new(NodeLookupStatus::LookupFailed), diagnostics })
+    Rc::new(NodeLookupResult { status: Rc::new(NodeLookupStatus::LookupFailed), diagnostics: diagnostics.clone() })
 }
 
 pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject> {
@@ -132,12 +132,12 @@ pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: &str, mod
     variant_not_found_result(scrut_node.clone(), &variant_name, &module_name)
 }
 };
-    match direct_match {
+    match direct_match.clone() {
     Some(v) => {
-        node_lookup_resolved(v)
+        node_lookup_resolved(v.clone())
     }
     None => {
-        fallback
+        fallback.clone()
     }
 }
 }
@@ -167,8 +167,8 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: &str, mo
 } {
     Some(field_child) => {
         {
-    let resolved = child_inferred_or_name(field_child);
-    node_lookup_resolved(resolved)
+    let resolved = child_inferred_or_name(field_child.clone());
+    node_lookup_resolved(resolved.clone())
 }
     }
     None => {
@@ -184,9 +184,9 @@ pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Matc
     let resolved_raw = if node_has_structure(scrutinee_type.clone()) {
     scrutinee_type.clone()
 } else {
-    match lookup_type(env, &scrutinee_type.name) {
+    match lookup_type(env.clone(), &scrutinee_type.name) {
     Some(def) => {
-        def
+        def.clone()
     }
     None => {
         scrutinee_type.clone()
@@ -194,9 +194,9 @@ pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Matc
 }
 };
     let resolved = if scrut_is_optional {
-    with_optional_cardinality(resolved_raw)
+    with_optional_cardinality(resolved_raw.clone())
 } else {
-    resolved_raw
+    resolved_raw.clone()
 };
     if node_is_coproduct(resolved.clone()) || node_is_optional(resolved.clone()) {
     let variant_names = if node_is_optional(resolved.clone()) {
@@ -230,7 +230,7 @@ pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Matc
     }
     __any_2
 };
-    if has_catch_all {
+    if has_catch_all.clone() {
     Rc::new(Vec::new())
 } else {
     let covered_set = {
@@ -246,7 +246,7 @@ pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Matc
 }
     }
     _ => {
-        __acc_4.clone()
+        __acc_4
     }
 };
     }

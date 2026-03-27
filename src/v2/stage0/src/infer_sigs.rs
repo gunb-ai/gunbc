@@ -73,8 +73,8 @@ pub fn collect_calls_in_expr(caller: &str, texpr: Rc<Node>, local_func_set: Rc<H
     }
     Rc::new(__flat_mapped_0)
 };
-        let result = v2_rt::concat(this_edges, child_edges);
-        result
+        let result = v2_rt::concat(this_edges.clone(), child_edges.clone());
+        result.clone()
     })
 }
 
@@ -128,9 +128,9 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
 
 pub fn merge_remaining_declared(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>, resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
     {
-    let mut __acc_4 = resolved;
+    let mut __acc_4 = resolved.clone();
     for __elem_5 in ({
-    let __rc_0 = declared_sigs;
+    let __rc_0 = declared_sigs.clone();
     let __map_unwrapped_1 = Rc::try_unwrap(__rc_0).unwrap_or_else(|rc| (*rc).clone());
     let mut __entries_2 = __map_unwrapped_1.into_iter().collect::<Vec<_>>();
     __entries_2.sort_by(|a, b| a.0.cmp(&b.0));
@@ -251,20 +251,20 @@ if __cond {
     let cycle_accum = {
     let mut __acc_19 = Rc::new(SigsAccum { signatures: resolved.clone(), diagnostics: Rc::new(Vec::new()) });
     for __elem_20 in remaining.iter().cloned() {
-        __acc_19 = match declared_sigs.clone().get(&__elem_20.clone()).cloned() {
+        __acc_19 = match declared_sigs.clone().get(&__elem_20).cloned() {
     Some(dsig) => {
         if dsig.inferred.clone().is_some() {
     Rc::new(SigsAccum { signatures: {
     let __rc_22 = std::mem::take(&mut Rc::make_mut(&mut __acc_19).signatures);
     let mut __map_ins_21 = Rc::try_unwrap(__rc_22).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_21.insert(__elem_20.clone(), declared_to_resolved(dsig.clone()));
+    __map_ins_21.insert(__elem_20, declared_to_resolved(dsig.clone()));
     Rc::new(__map_ins_21)
 }, diagnostics: __acc_19.diagnostics.clone() })
 } else {
     Rc::new(SigsAccum { signatures: __acc_19.signatures.clone(), diagnostics: {
     let __rc_24 = std::mem::take(&mut Rc::make_mut(&mut __acc_19).diagnostics);
     let mut __appended_23 = Rc::try_unwrap(__rc_24).unwrap_or_else(|rc| (*rc).clone());
-    __appended_23.push(diagnostic_node("error", &v2_rt::concat(v2_rt::concat("recursive function '".to_string(), __elem_20.clone()), "' requires return type annotation".to_string()), no_span(), Some(module_name.to_string()), Some("type_mismatch".to_string())));
+    __appended_23.push(diagnostic_node("error", &v2_rt::concat(v2_rt::concat("recursive function '".to_string(), __elem_20), "' requires return type annotation".to_string()), no_span(), Some(module_name.to_string()), Some("type_mismatch".to_string())));
     Rc::new(__appended_23)
 } })
 }
@@ -335,7 +335,7 @@ if __cond {
         __acc_40 = {
     let __rc_43 = __acc_40;
     let mut __map_ins_42 = Rc::try_unwrap(__rc_43).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_42.insert(__elem_41, true);
+    __map_ins_42.insert(__elem_41.clone(), true);
     Rc::new(__map_ins_42)
 };
     }
@@ -351,7 +351,7 @@ if __cond {
     Rc::new(__filtered_44)
 };
              {
-                let __tco_0 = next_remaining;
+                let __tco_0 = next_remaining.clone();
                 let __tco_1 = ready_accum.signatures.clone();
                 let __tco_2 = declared_sigs.clone();
                 let __tco_3 = call_edges.clone();
@@ -397,7 +397,7 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
         __acc_5 = {
     let __rc_8 = __acc_5;
     let mut __map_ins_7 = Rc::try_unwrap(__rc_8).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_7.insert(__elem_6, true);
+    __map_ins_7.insert(__elem_6.clone(), true);
     Rc::new(__map_ins_7)
 };
     }
@@ -431,6 +431,6 @@ pub fn resolve_func_sigs(declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>
     }
     __acc_13
 };
-    topo_resolve_loop(local_func_names.clone(), parent_resolved, declared_sigs.clone(), call_edges, local_func_set.clone(), &module_name, Rc::new(Vec::new()))
+    topo_resolve_loop(local_func_names.clone(), parent_resolved.clone(), declared_sigs.clone(), call_edges.clone(), local_func_set.clone(), &module_name, Rc::new(Vec::new()))
 }
 

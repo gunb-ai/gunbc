@@ -34,7 +34,7 @@ pub struct ResolveAccum {
 }
 
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: &str) -> bool {
-    match m.get(&key.to_string()).cloned() {
+    match m.clone().get(&key.to_string()).cloned() {
     Some(_) => {
         true
     }
@@ -134,11 +134,11 @@ pub fn resolve_modules(modules: Rc<Vec<Rc<Node>>>) -> Rc<ModuleGraph> {
     }
     Rc::new(__flat_mapped_16)
 };
-    Rc::new(ModuleGraph { modules: acyclic_resolved, diagnostics: v2_rt::concat(v2_rt::concat(dup_diags, import_diags), topo_diags) })
+    Rc::new(ModuleGraph { modules: acyclic_resolved.clone(), diagnostics: v2_rt::concat(v2_rt::concat(dup_diags.clone(), import_diags.clone()), topo_diags.clone()) })
 }
 
 pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: &str) -> Option<Rc<Node>> {
-    module_index.get(&path.to_string()).cloned()
+    module_index.clone().get(&path.to_string()).cloned()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -180,7 +180,7 @@ pub fn resolve_module_imports(module: Rc<Node>, module_index: Rc<HashMap<String,
     }
     Rc::new(__flat_mapped_7)
 };
-    Rc::new(ModuleResolveResult { resolved_imports: resolved, diagnostics: diags })
+    Rc::new(ModuleResolveResult { resolved_imports: resolved.clone(), diagnostics: diags.clone() })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -190,20 +190,20 @@ pub struct ImportResolveResult {
 }
 
 pub fn resolve_import(import: Rc<Node>, module_index: Rc<HashMap<String, Rc<Node>>>, importing_module: &str, export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>) -> Rc<ImportResolveResult> {
-    let target = find_module(module_index, &import.name);
+    let target = find_module(module_index.clone(), &import.name);
     match target.as_ref().map(|__rc| __rc.as_ref()) {
     None => {
         {
     let diag = diagnostic_node("error", &v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("unresolved import: module '".to_string(), import.name.clone()), "' not found (imported by '".to_string()), importing_module.to_string()), "')".to_string()), import.span.clone(), Some(importing_module.to_string()), Some("unresolved_name".to_string()));
-    Rc::new(ImportResolveResult { resolved: Rc::new(ResolvedImport { module_path: import.name.clone(), target_span: None }), diagnostics: Rc::new(vec!(diag)) })
+    Rc::new(ImportResolveResult { resolved: Rc::new(ResolvedImport { module_path: import.name.clone(), target_span: None }), diagnostics: Rc::new(vec!(diag.clone())) })
 }
     }
     Some(target_mod) => {
         let target_mod = Rc::new(target_mod.clone());
         {
-    let exported_set = match export_sets.get(&import.name.clone()).cloned() {
+    let exported_set = match export_sets.clone().get(&import.name.clone()).cloned() {
     Some(set) => {
-        set
+        set.clone()
     }
     None => {
         Rc::new(std::collections::HashMap::new())
@@ -228,7 +228,7 @@ pub fn resolve_import(import: Rc<Node>, module_index: Rc<HashMap<String, Rc<Node
     Rc::new(__mapped_2)
 }
 };
-    Rc::new(ImportResolveResult { resolved: Rc::new(ResolvedImport { module_path: import.name.clone(), target_span: Some(target_mod.span.clone()) }), diagnostics: name_diags })
+    Rc::new(ImportResolveResult { resolved: Rc::new(ResolvedImport { module_path: import.name.clone(), target_span: Some(target_mod.span.clone()) }), diagnostics: name_diags.clone() })
 }
     }
 }
@@ -260,7 +260,7 @@ pub fn get_exported_names(module: Rc<Node>) -> Rc<Vec<String>> {
     }
     Rc::new(__flat_mapped_4)
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(item_names, variant_names), imported_names), Rc::new(KERNEL_TYPES.iter().map(|s| s.to_string()).collect::<Vec<_>>()))
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(item_names.clone(), variant_names.clone()), imported_names.clone()), Rc::new(KERNEL_TYPES.iter().map(|s| s.to_string()).collect::<Vec<_>>()))
 }
 
 pub fn get_item_name(item: Rc<Node>) -> String {
@@ -269,7 +269,7 @@ pub fn get_item_name(item: Rc<Node>) -> String {
 
 pub fn get_variant_names(item: Rc<Node>) -> Rc<Vec<String>> {
     let is_coproduct = (item.connective.clone().is_some()) && (item.connective.clone() == Some(Connective::Disj));
-    if is_coproduct {
+    if is_coproduct.clone() {
     {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in item.children.iter().cloned() {
@@ -325,7 +325,7 @@ pub struct TopoResult {
 pub fn adjacency_add_edge(adjacency: Rc<HashMap<String, Rc<Vec<String>>>>, from_module: &str, to_module: &str) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     let existing = match adjacency.clone().get(&from_module.to_string()).cloned() {
     Some(lst) => {
-        lst
+        lst.clone()
     }
     None => {
         Rc::new(Vec::new())
@@ -407,7 +407,7 @@ pub fn topological_sort(modules: Rc<Vec<Rc<Node>>>) -> Rc<TopoResult> {
     __sorted_15.sort_by_key(|name| name.clone());
     Rc::new(__sorted_15)
 };
-    let result = kahn_drain(initial_queue, Rc::new(Vec::new()), in_degree_map.clone(), adjacency);
+    let result = kahn_drain(initial_queue.clone(), Rc::new(Vec::new()), in_degree_map.clone(), adjacency.clone());
     let module_count = {
     let __len_17 = modules.clone().len();
     __len_17 as i64
@@ -415,7 +415,7 @@ pub fn topological_sort(modules: Rc<Vec<Rc<Node>>>) -> Rc<TopoResult> {
     if ({
     let __len_27 = result.sorted.clone().len();
     __len_27 as i64
-}) == module_count {
+}) == module_count.clone() {
     Rc::new(TopoResult { sorted: result.sorted.clone(), cycle_error: None })
 } else {
     let sorted_set = {
@@ -451,7 +451,7 @@ pub fn topological_sort(modules: Rc<Vec<Rc<Node>>>) -> Rc<TopoResult> {
     }
     __joined_24
 };
-    Rc::new(TopoResult { sorted: result.sorted.clone(), cycle_error: Some(diagnostic_node("error", &v2_rt::concat("circular dependency detected: ".to_string(), cycle_desc), no_span(), None, Some("invalid_operation".to_string()))) })
+    Rc::new(TopoResult { sorted: result.sorted.clone(), cycle_error: Some(diagnostic_node("error", &v2_rt::concat("circular dependency detected: ".to_string(), cycle_desc.clone()), no_span(), None, Some("invalid_operation".to_string()))) })
 }
 }
 
@@ -557,7 +557,7 @@ pub fn kahn_drain(queue: Rc<Vec<String>>, sorted: Rc<Vec<String>>, in_degree_map
         __acc_13 = {
     let __rc_16 = __acc_13;
     let mut __map_ins_15 = Rc::try_unwrap(__rc_16).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_15.insert(__elem_14, true);
+    __map_ins_15.insert(__elem_14.clone(), true);
     Rc::new(__map_ins_15)
 };
     }
@@ -565,7 +565,7 @@ pub fn kahn_drain(queue: Rc<Vec<String>>, sorted: Rc<Vec<String>>, in_degree_map
 };
             let new_zero = {
     let __rc_21 = {
-    let __rc_17 = new_zero_set;
+    let __rc_17 = new_zero_set.clone();
     let __map_unwrapped_18 = Rc::try_unwrap(__rc_17).unwrap_or_else(|rc| (*rc).clone());
     let mut __keys_19 = __map_unwrapped_18.into_keys().collect::<Vec<_>>();
     __keys_19.sort();
@@ -576,7 +576,7 @@ pub fn kahn_drain(queue: Rc<Vec<String>>, sorted: Rc<Vec<String>>, in_degree_map
     Rc::new(__sorted_20)
 };
              {
-                let __tco_0 = new_zero;
+                let __tco_0 = new_zero.clone();
                 let __tco_1 = batch_result.sorted.clone();
                 let __tco_2 = batch_result.in_degree_map.clone();
                 let __tco_3 = adjacency.clone();

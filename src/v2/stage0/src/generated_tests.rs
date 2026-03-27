@@ -25834,7 +25834,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Should have zero error diagnostics
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 assert!(
                     errors.is_empty(),
@@ -25974,7 +25974,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -25983,7 +25983,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     error_count, result.files.len(), source_count
                 );
                 for (i, e) in errors.iter().enumerate() {
-                    eprintln!("  error[{}]: {} (module: {:?})", i, e.message, e.module_name);
+                    eprintln!("  error[{}]: {}", i, e.name);
                 }
 
                 // Bootstrap ratchet: track error count but don't assert zero.
@@ -26149,7 +26149,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 // resources, patterns, func) that the v2 compiler's own source
                 // does not cover.
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -26196,7 +26196,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -26304,7 +26304,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let graph = crate::resolve::resolve_modules(std::rc::Rc::new(modules));
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 eprintln!("  RESOLVE TOTAL:  {:?}  ({} errors)\n", resolve_total, errors.len());
 
@@ -26467,7 +26467,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let graph = crate::resolve::resolve_modules(std::rc::Rc::new(modules));
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .count();
                 let rss_after_resolve = get_rss_bytes();
                 eprintln!("  RESOLVE TOTAL:  {:?}  | RSS: {}  | diags: {}\n",
@@ -26478,7 +26478,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let typed = crate::infer::reconcile(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .count();
                 let rss_after_reconcile = get_rss_bytes();
                 eprintln!("  RECONCILE TOTAL: {:?}  | RSS: {}  | diags: {}\n",
@@ -26489,7 +26489,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let emit_result = crate::emit_rust::emit_rust(typed);
                 let emit_total = t_stage.elapsed();
                 let phase5_diags: usize = emit_result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                     .count();
                 let emitted_files = emit_result.files.len();
                 let emitted_bytes: usize = emit_result.files.iter()
@@ -26602,7 +26602,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
-                    let item_count = resolved.module.items.len();
+                    let item_count = crate::v2_core::module_items(resolved.module.clone()).len();
                     let rss_before = get_rss_bytes();
 
                     // Print BEFORE typecheck so we know which module crashed on SIGKILL
@@ -26637,7 +26637,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     let rss_after_env = get_rss_bytes();
                     let env_delta = rss_after_env.saturating_sub(rss_before);
                     let env_errs: usize = env_result.diagnostics.iter()
-                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                         .count();
 
                     eprint!("env={:>8.2?}(+{},e={}) ", env_elapsed, format_bytes(env_delta), env_errs);
@@ -26661,7 +26661,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     let rss_after = get_rss_bytes();
                     let delta = rss_after.saturating_sub(rss_before);
                     let diag_count: usize = tc_result.diagnostics.iter()
-                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .filter(|d| crate::v2_core::diagnostic_is_error((*d).clone()))
                         .count();
 
                     eprintln!("full={:>8.2?}  | RSS: {} (+{})  | errs: {}",

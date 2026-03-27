@@ -88,6 +88,6 @@ pub struct ArtifactOutput {
 }
 
 pub fn default_artifact_plan(root_modules: Rc<Vec<String>>, target: RenderTarget) -> Rc<ArtifactPlan> {
-    plan_artifacts(Rc::new(PartitionRule::Explicit { artifacts: Rc::new(vec!(Rc::new(Artifact { name: "default".to_string(), kind: ArtifactKind::ServiceBinary, target, entry_modules: root_modules, dependencies: Rc::new(Vec::new()) }))) }))
+    plan_artifacts(Rc::new(PartitionRule::Explicit { artifacts: Rc::new(vec!(Rc::new(Artifact { name: "default".to_string(), kind: ArtifactKind::ServiceBinary, target, entry_modules: root_modules.clone(), dependencies: Rc::new(Vec::new()) }))) }))
 }
 
