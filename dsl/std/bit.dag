@@ -1,34 +1,20 @@
 // std/bit.dag -- Bit-level structural types.
 //
 // Machine-width types built from Classical truth values.
-// Width constraints encode the exact number of bits.
+// These are the carriers for numeric types — OrderedRing<Word64> gives
+// you Int, Field<Word64> gives you Float.
 
 module std.bit
 
 import std.logic { Classical }
 
-type Bit = Classical where width(1)
+// Bit: single Classical truth value
+type Bit = Classical
 
-type Nibble {
-    bits: List<Bit> where length(4)
-}
-
-type Byte {
-    bits: List<Bit> where length(8)
-}
-
-type Word16 {
-    bytes: List<Byte> where length(2)
-}
-
-type Word32 {
-    bytes: List<Byte> where length(4)
-}
-
-type Word64 {
-    bytes: List<Byte> where length(8)
-}
-
-type Word128 {
-    bytes: List<Byte> where length(16)
-}
+// Fixed-width byte/word types (structural carriers for numeric algebras)
+type Nibble { bits: List<Bit> }
+type Byte { bits: List<Bit> }
+type Word16 { bytes: List<Byte> }
+type Word32 { bytes: List<Byte> }
+type Word64 { bytes: List<Byte> }
+type Word128 { bytes: List<Byte> }

@@ -2615,9 +2615,10 @@ fn is_container_name(name: String) -> Bool {
 fn node_to_name_str(n: Node) -> String {
   let has_children = n.children |> count > 0
   let is_optional = n.return_cardinality == CardOptional
+  let is_map_collection = n.collection_kind == MapKind
   if is_optional {
     concat("Optional_", node_to_name_str(n: with_required_cardinality(n: n)))
-  } else if n.collection_kind == MapKind {
+  } else if is_map_collection {
     if n.children |> count > 1 { concat("Map_", node_to_name_str(n: last_child_or_self(n: n))) }
     else { n.name }
   } else if n.name == "Refined" {

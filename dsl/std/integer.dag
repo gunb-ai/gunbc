@@ -1,24 +1,29 @@
-// std/integer.dag -- Syllogistic integer type hierarchy.
+// std/integer.dag -- Integer types as algebraic compositions.
 //
-// Integers are structurally defined from bit-level types with
-// signedness and width predicates. Int and UInt are aliases for
-// their 64-bit variants (matching Rust's i64/u64 defaults).
+// Int IS an OrderedRing over Word64. Arithmetic operations (add, subtract,
+// multiply, negate, abs, compare) emerge from the ring structure — the
+// compiler reads them from the resolved type's fields, not from the name "Int".
+//
+// The signed/unsigned distinction comes from the algebra:
+//   OrderedRing has negate (signed arithmetic)
+//   Semiring has no negate (unsigned — only add and mul)
 
 module std.integer
 
+import std.algebra { OrderedRing, Semiring }
 import std.bit { Byte, Word16, Word32, Word64 }
 
-// Unsigned integers
-type UInt8 = Byte where unsigned, arithmetic
-type UInt16 = Word16 where unsigned, arithmetic
-type UInt32 = Word32 where unsigned, arithmetic
-type UInt64 = Word64 where unsigned, arithmetic
+// Signed integers: ordered rings (add + negate + mul + compare)
+type Int8 = OrderedRing<Byte>
+type Int16 = OrderedRing<Word16>
+type Int32 = OrderedRing<Word32>
+type Int64 = OrderedRing<Word64>
 
-// Signed integers
-type Int8 = Byte where signed, arithmetic
-type Int16 = Word16 where signed, arithmetic
-type Int32 = Word32 where signed, arithmetic
-type Int64 = Word64 where signed, arithmetic
+// Unsigned integers: semirings (add + mul, no negate)
+type UInt8 = Semiring<Byte>
+type UInt16 = Semiring<Word16>
+type UInt32 = Semiring<Word32>
+type UInt64 = Semiring<Word64>
 
 // Default aliases
 type Int = Int64

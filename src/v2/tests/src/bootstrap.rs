@@ -39,6 +39,8 @@ fn prepare_sources(sources_dir: &std::path::Path) {
     std::fs::create_dir_all(&dst_dir).unwrap();
     let std_files = [
         "types", "algebra", "containers",
+        "logic", "bit", "integer", "float", "string_type",
+        "encoding",
     ];
     for name in &std_files {
         let src = ws.join(format!("dsl/std/{}.dag", name));

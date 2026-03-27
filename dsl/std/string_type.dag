@@ -1,16 +1,18 @@
-// std/string_type.dag -- Syllogistic string type.
+// std/string_type.dag -- String as FreeMonoid<Char>.
 //
-// A string is structurally a sequence of bytes with an encoding.
-// Char is an integer in the Unicode scalar value range.
+// String operations (concat, length, index, map, fold) emerge from
+// the FreeMonoid structure. The compiler sees String as a monoid and
+// derives sequence operations from the algebra.
+//
+// Char is a Unicode scalar value (integer in range 0..1114111).
 
 module std.string_type
 
-import std.bit { Byte }
-import std.encoding { Encoding }
+import std.algebra { FreeMonoid }
 
-type String {
-    bytes: List<Byte>
-    encoding: Encoding
-}
+// String is the free monoid over Char — a sequence of characters
+// under concatenation with empty string as identity.
+type String = FreeMonoid<Char>
 
-type Char = Int where range(min: 0, max: 1114111), brand("Char")
+// Char: Unicode scalar value
+type Char { codepoint: Int }
