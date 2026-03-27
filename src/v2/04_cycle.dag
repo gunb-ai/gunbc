@@ -37,43 +37,98 @@ fn compute_in_graph_deps(
   result
 }
 
-// Count how many of a name's local_deps are in the removed_set.
-fn kahn_count_removed_deps(
-    name: String,
-    local_deps: Map<String, List<String>>,
-    removed_set: Map<String, Bool>
-) -> Int {
-  let result = match map_get(local_deps, name) {
-    Some { value: deps } => filter(deps, d => set_has(m: removed_set, key: d)) |> count
-    None => 0
-  }
-  result
+// Build reverse adjacency: for each edge A→B in local_deps, record B→A.
+// Used by Kahn's to find which nodes' in-degree to decrement when a node
+// is removed.
+fn build_reverse_adj(
+    all_names: List<String>,
+    local_deps: Map<String, List<String>>
+) -> Map<String, List<String>> {
+  fold(all_names, init: empty_map(), f: (acc, name) =>
+    match map_get(local_deps, name) {
+      Some { value: deps } =>
+        fold(deps, init: acc, f: (inner_acc, dep) =>
+          let existing = match map_get(inner_acc, dep) { Some { value: v } => v  None => [] }
+          map_insert(inner_acc, dep, list_push(existing, name))
+        )
+      None => acc
+    }
+  )
 }
 
-// Check if a name has zero in-degree (no remaining deps in the current set).
-fn kahn_is_ready(name: String, local_deps: Map<String, List<String>>, remaining_set: Map<String, Bool>) -> Bool {
-  kahn_count_removed_deps(name: name, local_deps: local_deps, removed_set: remaining_set) == 0
+// Build in-degree map: count how many in-graph deps each node has.
+fn build_in_degree(
+    all_names: List<String>,
+    local_deps: Map<String, List<String>>
+) -> Map<String, Int> {
+  fold(all_names, init: empty_map(), f: (acc, name) =>
+    let deg = match map_get(local_deps, name) { Some { value: deps } => deps |> count  None => 0 }
+    map_insert(acc, name, deg)
+  )
 }
 
-// Iterative Kahn's removal: peel off zero-in-degree nodes until stuck.
-// Whatever remains is in cycles. Recomputes readiness each iteration
-// from local_deps, avoiding the need for a reverse adjacency map.
+// Kahn's algorithm: process zero-in-degree nodes via queue, decrement
+// neighbors' in-degree. O(V+E). Whatever remains has in-degree > 0
+// and participates in a cycle.
 fn kahn_remove_loop(
     remaining: List<String>,
     local_deps: Map<String, List<String>>
 ) -> List<String> {
-  let remaining_set = fold(remaining, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
-  let ready = filter(remaining, name => kahn_is_ready(name: name, local_deps: local_deps, remaining_set: remaining_set))
-  if ready |> count == 0 {
-    return remaining
+  let reverse_adj = build_reverse_adj(all_names: remaining, local_deps: local_deps)
+  let in_degree = build_in_degree(all_names: remaining, local_deps: local_deps)
+  // Seed queue with zero-in-degree nodes.
+  let initial_queue = filter(remaining, n =>
+    match map_get(in_degree, n) { Some { value: d } => d == 0  None => true }
+  )
+  // Process queue: for each removed node, decrement dependents' in-degree.
+  // Newly zero-in-degree nodes are added to the next queue.
+  let final_state = kahn_cycle_drain(queue: initial_queue, in_degree: in_degree, reverse_adj: reverse_adj, removed_count: 0)
+  // If all nodes were removed, no cycles. Otherwise, remaining nodes are cycle members.
+  if final_state.removed_count == (remaining |> count) {
+    []
+  } else {
+    filter(remaining, n =>
+      match map_get(final_state.in_degree, n) { Some { value: d } => d > 0  None => false }
+    )
   }
-  let ready_set = fold(ready, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
-  let next_remaining = filter(remaining, n => set_has(m: ready_set, key: n) == false)
-  kahn_remove_loop(remaining: next_remaining, local_deps: local_deps)
 }
 
-// Detect cycle-participating types using Kahn's topological removal -- O(V+E).
-// Replaces per-type DFS which was O(N^2*D).
+type KahnState {
+  in_degree: Map<String, Int>
+  removed_count: Int
+}
+
+fn kahn_cycle_drain(
+    queue: List<String>,
+    in_degree: Map<String, Int>,
+    reverse_adj: Map<String, List<String>>,
+    removed_count: Int
+) -> KahnState {
+  if queue |> count == 0 {
+    return KahnState { in_degree: in_degree, removed_count: removed_count }
+  }
+  // Process all nodes in queue: decrement dependents' in-degree, collect newly ready.
+  let result = fold(queue, init: KahnState { in_degree: in_degree, removed_count: removed_count }, f: (state, node) =>
+    let dependents = match map_get(reverse_adj, node) { Some { value: v } => v  None => [] }
+    let new_deg = fold(dependents, init: state.in_degree, f: (deg_acc, dep) =>
+      let old = match map_get(deg_acc, dep) { Some { value: d } => d  None => 0 }
+      map_insert(deg_acc, dep, old - 1)
+    )
+    KahnState { in_degree: new_deg, removed_count: state.removed_count + 1 }
+  )
+  // Collect newly zero-in-degree nodes (were > 0 before, now 0).
+  let next_queue = fold(queue, init: [], f: (acc, node) =>
+    let dependents = match map_get(reverse_adj, node) { Some { value: v } => v  None => [] }
+    fold(dependents, init: acc, f: (inner_acc, dep) =>
+      let deg = match map_get(result.in_degree, dep) { Some { value: d } => d  None => 0 }
+      if deg == 0 { list_push(inner_acc, dep) } else { inner_acc }
+    )
+  )
+  kahn_cycle_drain(queue: next_queue, in_degree: result.in_degree, reverse_adj: reverse_adj, removed_count: result.removed_count)
+}
+
+// Detect cycle-participating types using indexed Kahn's algorithm — O(V+E).
+// Builds in-degree map + reverse adjacency once, processes via queue drain.
 fn detect_type_cycles_kahn(
     deps_map: Map<String, List<String>>,
     bindings: Map<String, TypeBinding>

@@ -1348,7 +1348,7 @@ fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String
 
 fn emit_return(value: String, target: RenderTarget) -> String {
   match target {
-    Rust => concat("return ", value, ";")
+    Rust => concat("return ", value)
     Go => concat("return ", value)
     Python => concat("return ", value)
     Dag => concat("return ", value)

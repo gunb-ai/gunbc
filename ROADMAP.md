@@ -2248,9 +2248,9 @@ can interleave with either track.
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.2 | Module/import dissolution | — | ~459 lines (`03_resolve.dag`) | Dissolve `Module`, `Import`, and `ImportNames` into `Node` compositions |
-| P5.3 | Diagnostic / compile-output dissolution | — | Moderate | Dissolve `Diagnostic`, `Severity`, `CompileResult`, and `TextFile` where it is still valuable. `InferredNode` (P1.9) already handles error representation. |
-| P5.4 | Service/support type dissolution | — | Small | Verify which service-layer types still need to move. Service nodes already use `Node` composition for operations/transports. |
+| P5.2 | Module/import dissolution | — | ~459 lines (`03_resolve.dag`) | **Done (2026-03-26).** Dead fields trimmed: `is_all`, `specific_names`, `target_module`→`target_span`, `dep_order` removed from stage boundary types. `build_emit_graph_info` moved from emit to reconcile boundary (`ResolvedGraph.emit_graph_info`). Remaining wrappers (`ModuleGraph`, `ResolvedGraph`, `TypedModule`) are genuine output contracts carrying stage-local metadata (`type_env`, `func_env`, `item_registry`). |
+| P5.3 | Diagnostic / compile-output dissolution | — | Moderate | **Done (2026-03-26, audit).** Already dissolved: `diagnostic_node()` is the unified constructor; no `Diagnostic`, `Severity`, or `ErrorCategory` types exist. `CompileResult`/`PipelineResult`/`TextFile` are output contracts, not dissolvable. |
+| P5.4 | Service/support type dissolution | — | Small | **Done (2026-03-26, audit).** Already dissolved: `OperationDef`/`ServiceConfig` dissolved into Node in parser. `TransportKind` → Node.name. Remaining types (`ItemInfo`, `OpEntry`, `ServiceMethodResult`) are compiler-analysis artifacts, not Node duplicates. |
 | P5.5 | Residual semantic enum cleanup | P5.2-P5.4 | Small | Move remaining compiler-only semantic types toward `.dag` or `Node`-based representation. Depends on prior dissolutions to identify what's left. |
 
 #### Track C: L1 final deletions (the L1=0 gate)
@@ -2739,6 +2739,22 @@ category of type-name comparisons after Error/Dynamic (Root Cause II).
 - Each convergence step survives re-bootstrap and fixed-point verification
 - The compiler is in a clean place to start real L2 work
 
+### Phase 5 Milestones (2026-03-27)
+
+- **Diagnostic ratchet: 0.** The v2 compiler compiles its own .dag source
+  with zero type errors or warnings.
+- **Fixed-point: PASSES.** Stage0 → stage1 → stage2 converges. The v2
+  compiler can reproduce itself.
+- **Self-compile: 6.47s** (release mode). Down from ~20 minutes.
+  Breakdown: Tokenize 4.87s, Parse 78ms, Resolve 1ms, Reconcile 244ms,
+  Emit 1.27s.
+- **v1 retirement: structurally unblocked.** Fixed-point passing means
+  the v2 compiler can replace the v1 emitter for stage0 generation.
+  Remaining work: v2 emitter output compatibility with the workspace
+  (package name, dependencies, module naming). The v2 emitter generates
+  a standalone crate that works in isolation but isn't yet drop-in
+  compatible with the workspace's `v2-compiler` package structure.
+
 ### Phase 5 Parallel: Compositional Pipeline (Performance through Fact Composition)
 
 **Motivation:** The compiler works, but its pipeline has compensating
@@ -2950,6 +2966,51 @@ composition — the same principle that the algebraic vision applies to
 types themselves (Bit → compositions → types). When types compose from
 the fundamental unit and `.inferred` carries that composition, the
 compiler processes structure end-to-end.
+
+### Phase 5 Parallel: Fan-Out Preservation (Rendering Correctness)
+
+**Motivation:** The .dag language is pure-functional with lexical scope.
+Every property needed for optimal target-language rendering is already
+expressed by the source. The compiler must not lose these facts during
+rendering. See INVARIANTS.md "Facts Flow Forward" for the full pattern.
+
+**The governing fact:** binding fan-out. In a pure-functional language,
+a binding's fan-out (number of consumers) is a syntactic property —
+count the name references in its scope. The rendering contract:
+
+- Fan-out = 0 → dead code, don't emit
+- Fan-out = 1 → move (target-language ownership transfer)
+- Fan-out > 1 → duplicate at the fork point
+
+The rendering transformation must be **use-count-preserving**: each
+.dag consumption maps to exactly one target-language move. Rendering-
+introduced references (field access, auto-deref) are borrows, not moves.
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| FO-1 | Fold accumulator fan-out fix | **Done (2026-03-26)** | Skip Rc clone for fold accums with use-count ≤ 1. 3.2x speedup (1373s → 431s). |
+| FO-2 | Kahn cycle detection O(V+E) | **Done (2026-03-26)** | Indexed in-degree + reverse adjacency + queue drain. Replaces O(n²×d) filter scan. |
+| FO-3 | v1 emitter rendering audit | Open | ~50 sites where rendering introduces non-preserving Rust references. One bug (transformation isn't preserving), not 50 bugs. |
+| FO-4 | v2 emitter fan-out fact | Open | Compute `binding_fan_out` during or after inference. Single pass: count name references per binding in body. Emit rule: fan-out=1 → owned T (move), fan-out>1 → Rc<T> at binding site + clone at uses. |
+| FO-5 | Fan-out preservation ratchet | Blocked on FO-3 | Count `.clone()` in stage0 where source binding has fan-out=1. Target: 0. Self-compile time ratchet. |
+
+**FO-4 design (v2 emitter):** The v2 emitter (`05_emit_rust.dag`)
+currently inherits whatever rendering the v1 emitter produced in stage0.
+When the v2 compiler self-hosts, the v2 emitter needs fan-out as a
+first-class fact:
+
+1. Compute fan-out per binding in a single AST pass (count name
+   occurrences in the binding's scope, with branch-max for exclusive
+   arms and weight-2 for loop bodies).
+2. Attach as a structural property on let-bindings and function params.
+3. Emission reads the fact: fan-out=1 → emit bare `T`, fan-out>1 →
+   emit `Rc<T>` at binding site, `.clone()` at non-final uses.
+4. Fold accumulators: fan-out is always 1 by construction (the fold
+   contract guarantees linearity).
+
+This is the v1 retirement path for rendering: once the v2 emitter
+implements fan-out natively, the v1 emitter's Rc-wrapping decisions
+are no longer needed.
 
 ### Beyond Phase 5: Bit-Graph Model
 

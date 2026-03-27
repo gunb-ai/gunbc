@@ -1,19 +1,19 @@
 use std::rc::Rc;
 
-use v2_compiler::infer_access;
-use v2_compiler::infer_env::TypeEnv;
-use v2_compiler::infer_patterns::{self, NodeLookupStatus};
-use v2_compiler::infer_types::{
+use v2_compiler::v2_compiler_infer_access;
+use v2_compiler::v2_compiler_infer_env::TypeEnv;
+use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
+use v2_compiler::v2_compiler_infer_types::{
     bare_map_node, container_node, map_node,
 };
-use v2_compiler::v2_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan, leaf_node, with_optional_cardinality};
+use v2_compiler::v2_std_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan, leaf_node, with_optional_cardinality};
 
-fn zero_span() -> SourceSpan {
-    SourceSpan { start: 0, end: 0 }
+fn zero_span() -> Rc<SourceSpan> {
+    Rc::new(SourceSpan { start: 0, end: 0 })
 }
 
 fn unit_expr() -> Rc<Node> {
-    leaf_node("Unit")
+    leaf_node("Unit".to_string())
 }
 
 fn variant_arm(name: &str) -> Rc<MatchArm> {
@@ -21,7 +21,7 @@ fn variant_arm(name: &str) -> Rc<MatchArm> {
         pattern: Rc::new(MatchPattern::VariantPattern {
             name: name.to_string(),
             parent_enum: None,
-            field_bindings: Rc::new(Vec::new()),
+            field_bindings: Vec::new(),
         }),
         guard: None,
         body: unit_expr(),
@@ -42,11 +42,11 @@ fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: 
 
 #[test]
 fn invalid_list_index_returns_compiler_error_type() {
-    let result = infer_access::check_index_access_node(
-        container_node("List", leaf_node("Int")),
-        leaf_node("Int"),
+    let result = v2_compiler_infer_access::check_index_access_node(
+        container_node("List".to_string(), leaf_node("Int".to_string())),
+        leaf_node("Int".to_string()),
         zero_span(),
-        "test",
+        "test".to_string(),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -55,11 +55,11 @@ fn invalid_list_index_returns_compiler_error_type() {
 
 #[test]
 fn malformed_map_index_returns_compiler_error_type() {
-    let result = infer_access::check_index_access_node(
+    let result = v2_compiler_infer_access::check_index_access_node(
         bare_map_node(),
-        leaf_node("String"),
+        leaf_node("String".to_string()),
         zero_span(),
-        "test",
+        "test".to_string(),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -68,12 +68,12 @@ fn malformed_map_index_returns_compiler_error_type() {
 
 #[test]
 fn invalid_slice_returns_compiler_error_type() {
-    let result = infer_access::check_slice_access_node(
-        container_node("List", leaf_node("Int")),
-        leaf_node("Int"),
-        leaf_node("Int"),
+    let result = v2_compiler_infer_access::check_slice_access_node(
+        container_node("List".to_string(), leaf_node("Int".to_string())),
+        leaf_node("Int".to_string()),
+        leaf_node("Int".to_string()),
         zero_span(),
-        "test",
+        "test".to_string(),
     );
 
     assert_eq!(result.diagnostics.len(), 1);
@@ -82,11 +82,11 @@ fn invalid_slice_returns_compiler_error_type() {
 
 #[test]
 fn valid_map_index_preserves_optional_value_type() {
-    let result = infer_access::check_index_access_node(
-        map_node(leaf_node("String"), leaf_node("Int")),
-        leaf_node("String"),
+    let result = v2_compiler_infer_access::check_index_access_node(
+        map_node(leaf_node("String".to_string()), leaf_node("Int".to_string())),
+        leaf_node("String".to_string()),
         zero_span(),
-        "test",
+        "test".to_string(),
     );
 
     assert!(result.diagnostics.is_empty());
@@ -101,11 +101,11 @@ fn valid_map_index_preserves_optional_value_type() {
 
 #[test]
 fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
-    let subject = infer_patterns::pattern_subject_from_node_type(Rc::new(NodeType::InferError {
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node_type(Rc::new(NodeType::InferError {
         message: "upstream failure".to_string(),
         span: zero_span(),
     }));
-    let lookup = infer_patterns::lookup_variant_in_type(subject, "Some", "test");
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(subject, "Some".to_string(), "test".to_string());
 
     assert!(matches!(lookup.status.as_ref(), NodeLookupStatus::LookupFailed));
     assert!(
@@ -116,22 +116,22 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
 
 #[test]
 fn pattern_lookup_reports_dynamic_scrutinee_explicitly() {
-    let subject = infer_patterns::pattern_subject_from_node(leaf_node("Dynamic"));
-    let lookup = infer_patterns::lookup_variant_in_type(subject, "Some", "test");
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(leaf_node("Dynamic".to_string()));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(subject, "Some".to_string(), "test".to_string());
 
     assert!(matches!(lookup.status.as_ref(), NodeLookupStatus::LookupFailed));
     assert_eq!(lookup.diagnostics.len(), 1);
     assert!(
-        lookup.diagnostics[0].message.contains("Dynamic scrutinee"),
+        lookup.diagnostics[0].name.contains("Dynamic scrutinee"),
         "expected targeted Dynamic diagnostic, got {:?}",
-        lookup.diagnostics[0].message
+        lookup.diagnostics[0].name
     );
 }
 
 #[test]
 fn optional_pattern_lookup_still_resolves_some_variant() {
-    let subject = infer_patterns::pattern_subject_from_node(with_optional_cardinality(leaf_node("String")));
-    let lookup = infer_patterns::lookup_variant_in_type(subject, "Some", "test");
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(leaf_node("String".to_string())));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(subject, "Some".to_string(), "test".to_string());
 
     match lookup.status.as_ref() {
         NodeLookupStatus::LookupResolved { node, .. } => {
@@ -145,27 +145,27 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
 
 #[test]
 fn optional_match_exhaustiveness_reports_missing_none() {
-    let diags = infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String")),
-        Rc::new(vec![variant_arm("Some")]),
-        Rc::new(TypeEnv::default()),
+    let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
+        with_optional_cardinality(leaf_node("String".to_string())),
+        vec![variant_arm("Some")],
+        Rc::new(TypeEnv { bindings: std::collections::HashMap::new(), recursive_types: vec![], recursive_type_set: std::collections::HashMap::new() }),
         zero_span(),
-        "test",
+        "test".to_string(),
     );
 
     assert_eq!(diags.len(), 1);
-    assert!(diags[0].message.contains("non-exhaustive"));
-    assert!(diags[0].message.contains("None"));
+    assert!(diags[0].name.contains("non-exhaustive"));
+    assert!(diags[0].name.contains("None"));
 }
 
 #[test]
 fn optional_match_exhaustiveness_accepts_some_and_none() {
-    let diags = infer_patterns::check_match_exhaustiveness(
-        with_optional_cardinality(leaf_node("String")),
-        Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
-        Rc::new(TypeEnv::default()),
+    let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
+        with_optional_cardinality(leaf_node("String".to_string())),
+        vec![variant_arm("Some"), variant_arm("None")],
+        Rc::new(TypeEnv { bindings: std::collections::HashMap::new(), recursive_types: vec![], recursive_type_set: std::collections::HashMap::new() }),
         zero_span(),
-        "test",
+        "test".to_string(),
     );
 
     assert!(

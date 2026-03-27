@@ -30,6 +30,122 @@ target bound directly. Prefer one-time indexing over repeated lookup,
 single-pass structural walks over nested rescans, and data ownership
 that avoids whole-structure cloning in loops.
 
+### Facts Flow Forward (2026-03-26)
+
+Every performance regression in this compiler traces to one structural
+pattern: **a fact is computed at stage X, lost during transformation to
+stage Y, and Y compensates with a conservative strategy that is correct
+but suboptimal.** The fix is never "optimize the compensation." The fix
+is always "stop losing the fact."
+
+The .dag language is pure-functional with lexical scope. In this model,
+every property needed for optimal rendering is already expressed by the
+source: purity means no aliasing, lexical scope means every binding's
+consumers are visible in the syntax tree, named composition means the
+data-flow graph IS the program text. If the compiler needs to guess,
+a fact was lost.
+
+**The governing rule:** the rendering must preserve the cost model of
+the source language. Every guarantee the source provides — purity,
+immutability, lexical scope, structural composition — must be
+exploited in the rendering to maintain O(1) where the source says O(1).
+
+If the rendering assigns higher cost to an operation than the source
+intent, there is a guarantee being ignored. The fix is to exploit the
+guarantee, not to optimize the compensation.
+
+| .dag guarantee | What it means | Rendering should exploit | Conservative fallback |
+|---|---|---|---|
+| **Purity** | Values never mutated | Read = borrow, no copy | Read = clone (defensive) |
+| **Lexical scope** | Lifetime = scope | Move semantics, stack alloc | Rc heap allocation |
+| **Immutable strings** | Characters are views | `&str` slice (zero-copy) | `String` allocation (heap) |
+| **Structural composition** | Graphs have indexed structure | Indexed O(1) lookup | Linear scan |
+
+**Diagnosis:** when you encounter a performance issue or a compensating
+mechanism: (1) identify the fact being recomputed or the guarantee
+being ignored, (2) find where it was first available, (3) trace where
+it was lost, (4) fix the rendering to exploit the guarantee.
+
+#### Known instances
+
+| # | Fact | Computed at | Lost during | Compensation | Cost | Status |
+|---|------|-------------|-------------|--------------|------|--------|
+| FF-1 | Binding fan-out (use-count) | .dag AST (lexical scope) | v1 emitter rendering to Rust | Rc-wrap all types, clone every use | Every fold O(n²). 20-min self-compile. | **FIXED.** Match-arm count bug (max→add) was root cause of ~50 false single-use classifications. Full fan-out model: clone only at fan-out > 1. Reconcile: 20min → 244ms. |
+| FF-2 | Resolved structural type | Infer (`.inferred`) | Bare name references at stage boundary | Emit re-resolves through TypeEnv | 12+ re-resolution sites | **FIXED** (C-series) |
+| FF-3 | Expression children | Parse (construction) | ExprData variant fields | 12 manual walks (~1800 lines) | Every analysis needs full ExprData match | **FIXED** (P5.11) |
+| FF-4 | Module dependency order | Resolve (topo sort) | `dep_order` field + re-sort | Extra field, unnecessary sort pass | Minor | **FIXED** (P5.2) |
+| FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **FIXED.** Indexed Kahn with in-degree map + reverse adjacency + queue drain. |
+| FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
+| FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
+| FF-8 | Tokenize cost (unknown root cause) | .dag source | Unknown — `char_at` allocation is ~15ms, not the 4.87s bottleneck | Unknown | Tokenize 4.87s (75% of pipeline) | **OPEN — needs flamegraph profiling.** Initial hypothesis (char_at heap allocation) was wrong by ~300x. The real cost is elsewhere in the tokenizer. Candidates: `source.to_string()` per-file copy, Rc::try_unwrap failures on token list, `string_length` per-iteration, or an algorithmic issue. Use `cargo flamegraph` or the complexity analysis stage to identify. |
+
+#### The fan-out fix (FF-1) in detail
+
+The .dag language guarantees that fan-out is a syntactic property —
+count the name references in a binding's scope. The rendering
+transformation must preserve this:
+
+- Fan-out = 0 → dead code, don't emit
+- Fan-out = 1 → move (the binding is consumed exactly once)
+- Fan-out > 1 → duplicate at the fork point
+
+The v1 emitter's contract for use-count preservation: **each .dag
+consumption maps to exactly one target-language move.** Rendering-
+introduced references (field access, auto-deref, method dispatch) are
+borrows, not moves. The emitter must not introduce move-sites that
+weren't in the source.
+
+**Status: FIXED (2026-03-26).** The full fan-out model is active.
+The match-arm use-count bug (`current.max(max_in_arms)` → `current +
+max_in_arms`) was the single root cause of ~50 false single-use
+classifications. With that fixed, the Rc-type clone overrides
+(`is_rc_named`, `is_rc_collection`, `assume_rc`) were removed.
+Clone decision is now purely fan-out + match-bound-var status.
+Reconcile: ~20 minutes → 244ms (release mode).
+
+#### Kahn cycle detection fix (FF-5)
+
+**Status: FIXED (2026-03-26).** `04_cycle.dag` rewritten with indexed
+in-degree map + reverse adjacency + queue drain. O(V+E), single pass.
+
+#### Tokenize bottleneck (FF-8) — needs profiling
+
+Tokenize takes 4.87s (75% of the 6.47s pipeline). Initial hypothesis
+was `char_at` heap allocation, but back-of-envelope math shows that's
+~15ms — off by 300x. The real root cause is unknown.
+
+Candidates to investigate with flamegraph profiling:
+- `source.to_string()` in `tokenize()` — copies entire source file
+  into a new String per call (line 44 of tokenize.rs)
+- Rc::try_unwrap failures on the token list accumulation — would
+  cause O(n²) deep-clone per token, same class as the reconcile fix
+- `string_length` called per-iteration in the loop guard — O(n) for
+  the string even on ASCII (function call overhead)
+- Algorithmic issue in `skip_spaces_and_comments` or `scan_token`
+
+The value-representation principle (immutable strings should be
+zero-copy reads) is correct but applies to ~15ms of the cost.
+The dominant cost is something else. Profile first, theorize second.
+
+#### Ratchet
+
+After all open instances are fixed:
+
+1. **No downstream recomputation.** For each stage boundary, the
+   downstream stage does not import analysis functions from upstream.
+   Import across a stage boundary = potential recomputation = potential
+   lost fact.
+
+2. **Fan-out preservation.** Each `.clone()` in generated stage0
+   corresponds to a source binding with fan-out > 1. Any clone on a
+   fan-out=1 binding is a violation. Target: 0 violations.
+
+3. **Performance ratchet.** Self-compile time is a ratchet value.
+   Regressions indicate a new lost-fact instance.
+   Release-mode baseline (2026-03-26): **6.47s total pipeline**
+   (Tokenize 4.87s, Parse 78ms, Resolve 1ms, Reconcile 244ms,
+   Emit 1.27s). Target: <2s total.
+
 ## Sustainability Invariants
 
 The governing metric for this codebase is **cost of change**: when the

@@ -489,7 +489,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false,
-    expr_data: ExprError { kind: kind, message: message }
+    match_pattern: none, expr_data: ExprError { kind: kind, message: message }
   }
 }
 
@@ -598,7 +598,7 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 
 // Required child at position. Returns error node if missing.
 fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
-  match texpr.children |> drop(index) |> first {
+  match texpr.children |> skip(index) |> first {
     Some { value: v } => v
     None => make_expr_error_node(kind: InternalExprError, message: concat("malformed node: missing ", role), span: texpr.span)
   }
@@ -646,11 +646,11 @@ fn field_init_node_value(n: Node) -> Node {
 // -- ExprIf --
 fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
 fn if_then_branch(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "if then-branch") }
-fn if_else_branch(texpr: Node) -> Node? { texpr.children |> drop(2) |> first }
+fn if_else_branch(texpr: Node) -> Node? { texpr.children |> skip(2) |> first }
 
 // -- ExprMatch --
 fn match_scrutinee(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "match scrutinee") }
-fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> drop(1) }
+fn match_arm_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 
 // -- ExprBinOp --
 fn binop_left(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "binop left") }
@@ -664,14 +664,14 @@ fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0
 
 // -- ExprMethodCall --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
-fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> drop(1) }
+fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 
 // -- ExprLambda --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
 
 // -- ExprLet --
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
-fn let_body(texpr: Node) -> Node? { texpr.children |> drop(1) |> first }
+fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
 
 // -- ExprCast --
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
@@ -865,7 +865,7 @@ fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
     return_cardinality: node.return_cardinality, uses: node.uses,
     body: node.body, transport: node.transport,
     properties: node.properties, type_annotation: node.type_annotation,
-    config: node.config, is_self_recursive: node.is_self_recursive,
+    is_self_recursive: node.is_self_recursive,
     has_non_tail_self_call: node.has_non_tail_self_call,
     match_pattern: node.match_pattern, expr_data: node.expr_data
   }
@@ -960,13 +960,13 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
 //   span = the diagnostic's source span.
 
 fn diagnostic_node(severity: String, message: String, span: SourceSpan, module_name: String?, category: String?) -> Node {
-  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: severity } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+  let sev_prop = FieldInit { name: "severity", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: severity } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   let mod_prop = match module_name {
-    Some { value: mn } => [FieldInit { name: "module_name", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: mn } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
+    Some { value: mn } => [FieldInit { name: "module_name", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: mn } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
     None => []
   }
   let cat_prop = match category {
-    Some { value: cat } => [FieldInit { name: "category", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: cat } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
+    Some { value: cat } => [FieldInit { name: "category", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: cat } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
     None => []
   }
   Node {
@@ -1080,7 +1080,7 @@ fn service_config_retry(n: Node) -> Node? {
 // ImportAll: property "__import_all" = true. ImportSpecific: children named per import.
 
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
-  let marker = FieldInit { name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+  let marker = FieldInit { name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   Node {
     name: name, span: span, children: concat(imports, items), connective: NoConnective,
     collection_kind: NoCollection,
@@ -1092,9 +1092,9 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
 }
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<String>, span: SourceSpan) -> Node {
-  let import_prop = FieldInit { name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }
+  let import_prop = FieldInit { name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   let all_prop = if is_all {
-    [FieldInit { name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
+    [FieldInit { name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
   } else { [] }
   let name_children = specific_names |> map(n => Node {
     name: n, span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective,

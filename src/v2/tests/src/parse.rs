@@ -5,7 +5,7 @@
 //! All tests call stage0 functions directly.
 
 use crate::helpers::*;
-use v2_compiler::v2_core::TokenShape;
+use v2_compiler::v2_std_core::TokenShape;
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 
@@ -275,7 +275,7 @@ fn parse_real_source() {
     let result = parse_source(source);
     assert!(result.error.is_none(), "should parse multi-item source");
     let module = result.module.as_ref().expect("should produce module");
-    assert!(!module.items.is_empty(), "should have items");
+    assert!(!module.children.is_empty(), "should have items");
 }
 
 #[test]

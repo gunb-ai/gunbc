@@ -1795,7 +1795,7 @@ fn collect_type_args(tokens: List<Token>, state: ParserState, args: List<Node>) 
 fn maybe_optional(tokens: List<Token>, state: ParserState, te: Node, start_span: SourceSpan) -> TypeResult {
   let e = eat(tokens: tokens, state: state, expected: ExpectQuestion)
   if e.consumed {
-    let ote = Node { name: te.name, span: te.span, children: te.children, connective: te.connective, collection_kind: te.collection_kind, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, config: te.config, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
+    let ote = Node { name: te.name, span: te.span, children: te.children, connective: te.connective, collection_kind: te.collection_kind, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
     TypeResult { type_expr: ote, state: e.state, err: none }
   } else {
     TypeResult { type_expr: te, state: state, err: none }
@@ -4132,7 +4132,7 @@ fn parse_pattern(tokens: List<Token>, state: ParserState) -> PatternResult {
     }
     Some { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
-      let n = match n_opt { Some { value: v } => v  None => { return ExprResult { expr: make_expr_error_node(kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: current_span(tokens: tokens, state: state)), state: state, err: none } } }
+      let n = match n_opt { Some { value: v } => v  None => { return PatternResult { pattern: Wildcard, state: state, err: Some { value: parse_error(msg: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: current_span(tokens: tokens, state: state)) } } } }
       let adv = advance(tokens: tokens, state: state)
       PatternResult { pattern: LitPattern { value: LitInt { value: n } }, state: adv.state, err: none }
     }
@@ -4201,11 +4201,11 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let condition = r.expr
 
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-  if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let then_branch = r.expr
   let s = skip_newlines(tokens: tokens, state: r.state)
 

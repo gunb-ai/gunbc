@@ -177,28 +177,28 @@ fn rust_visibility_prefix() -> String {
 fn rust_struct_derives_text() -> String {
   match serialization_for_target(target: Rust).struct_derives {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, PartialEq)]"
   }
 }
 
 fn rust_struct_derives_copy_text() -> String {
   match serialization_for_target(target: Rust).struct_derives_copy {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, Copy, PartialEq)]"
   }
 }
 
 fn rust_enum_derives_text() -> String {
   match serialization_for_target(target: Rust).enum_derives {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, PartialEq)]"
   }
 }
 
 fn rust_enum_derives_copy_text() -> String {
   match serialization_for_target(target: Rust).enum_derives_copy {
     Some { value: derives } => derives
-    None => "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
+    None => "#[derive(Debug, Clone, Copy, PartialEq)]"
   }
 }
 
@@ -611,7 +611,7 @@ fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<St
 
 fn emit_prelude() -> String {
   let serde_import = concat("use serde::{", "Serialize, Deserialize};")
-  let imports = concat("use std::collections::BTreeMap;\nuse std::rc::Rc;\n", serde_import, "\nuse crate::v2_rt;")
+  let imports = concat("use std::collections::HashMap;\nuse std::rc::Rc;\n", serde_import, "\nuse crate::v2_rt;")
   concat(imports, "\n\n", emit_non_empty_wrappers())
 }
 
@@ -1096,7 +1096,7 @@ fn emit_inferred(inferred: Node, rc_types: Map<String, Bool>) -> String {
 
 // Determine if a type should be passed by reference (Node-based).
 // Primitives like i64, bool, f64, () are Copy -- pass by value.
-// Everything else (String, Vec, BTreeMap, structs) -- pass by reference.
+// Everything else (String, Vec, HashMap, structs) -- pass by reference.
 // A leaf Node with no connective and no children whose name is a
 // primitive maps to a Copy type; everything else is by-reference.
 fn needs_reference_node(n: Node) -> Bool {
@@ -2384,7 +2384,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
                 concat("<", acc_type_str, ">::new()")
               } else if init_func == "empty_map" {
                 // Partial turbofish: tell Rust the key type, infer value type from context
-                "<BTreeMap<String, _>>::new()"
+                "<HashMap<String, _>>::new()"
               } else {
                 emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               }
@@ -3496,7 +3496,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
         let inserts_str = inserts |> join(separator: "\n")
         concat("lazy_static::lazy_static! {\n",
           "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = {\n",
-          "        let mut __m = BTreeMap::new();\n",
+          "        let mut __m = HashMap::new();\n",
           inserts_str, "\n",
           "        __m\n",
           "    };\n",

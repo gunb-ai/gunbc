@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod generated_tests {
-    use crate::tokenize::tokenize;
+    use crate::v2_compiler_tokenize::tokenize;
 
     const DSL_EXTDEPS_CLOUD_CLOUD_DAG_SOURCE: &str = r##"// extdeps/cloud/core.dag -- "What is a cloud provider?"
 //
@@ -25730,7 +25730,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         let tokens = tokenize("type Foo { x: Int }");
         let last = tokens.last().expect("should have tokens");
         assert!(
-            matches!(last.shape, crate::v2_core::TokenShape::ShEof),
+            matches!(last.shape, crate::v2_std_core::TokenShape::ShEof),
             "last token should be Eof, got {:?}",
             last.shape
         );
@@ -25742,7 +25742,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         // Should have at least KwFn and Eof
         assert!(tokens.len() >= 2, "expected at least 2 tokens, got {}", tokens.len());
         assert!(
-            matches!(tokens[0].shape, crate::v2_core::TokenShape::ShKwFn),
+            matches!(tokens[0].shape, crate::v2_std_core::TokenShape::ShKwFn),
             "first token should be KwFn, got {:?}",
             tokens[0].shape
         );
@@ -25758,7 +25758,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
     #[test]
     fn parse_trivial_module() {
         let tokens = tokenize("module test\ntype Foo { x: Int }\n");
-        let result = crate::parse::parse(tokens);
+        let result = crate::v2_compiler_parse::parse(tokens);
         // ParseResult should have a module
         assert!(result.module.is_some(), "valid module should parse successfully");
     }
@@ -25782,13 +25782,13 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 // Should end with Eof
                 let last = tokens.last().expect("should have tokens");
                 assert!(
-                    matches!(last.shape, crate::v2_core::TokenShape::ShEof),
+                    matches!(last.shape, crate::v2_std_core::TokenShape::ShEof),
                     "last token should be Eof, got {:?}",
                     last.shape
                 );
 
                 // Parse the tokens
-                let result = crate::parse::parse(tokens);
+                let result = crate::v2_compiler_parse::parse(tokens);
 
                 // Parse should succeed with a module
                 assert!(
@@ -25820,11 +25820,11 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
-                let source = std::rc::Rc::new(crate::compile::SourceFile {
+                let source = std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::compile::compile_sources(std::rc::Rc::new(vec![source]), crate::artifact::RenderTarget::Rust);
+                let result = crate::v2_compiler_compile::compile_sources(std::rc::Rc::new(vec![source]), crate::v2_compiler_artifact::RenderTarget::Rust);
 
                 // Should produce at least one output file
                 assert!(
@@ -25834,7 +25834,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Should have zero error diagnostics
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 assert!(
                     errors.is_empty(),
@@ -25902,10 +25902,10 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                         "{} should produce tokens", file
                     );
                     assert!(
-                        matches!(tokens.last().unwrap().shape, crate::v2_core::TokenShape::ShEof),
+                        matches!(tokens.last().unwrap().shape, crate::v2_std_core::TokenShape::ShEof),
                         "{} should end with Eof", file
                     );
-                    let result = crate::parse::parse(tokens);
+                    let result = crate::v2_compiler_parse::parse(tokens);
                     assert!(
                         result.module.is_some(),
                         "{} should parse successfully, error: {:?}", file, result.error
@@ -25931,50 +25931,50 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
+                let sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = vec![
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
                 ];
 
                 let source_count = sources.len();
-                let result = crate::compile::compile_sources(
+                let result = crate::v2_compiler_compile::compile_sources(
                     std::rc::Rc::new(sources),
-                    crate::artifact::RenderTarget::Rust,
+                    crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -25983,7 +25983,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     error_count, result.files.len(), source_count
                 );
                 for (i, e) in errors.iter().enumerate() {
-                    eprintln!("  error[{}]: {} (module: {:?})", i, e.message, e.module_name);
+                    eprintln!("  error[{}]: {}", i, e.name);
                 }
 
                 // Bootstrap ratchet: track error count but don't assert zero.
@@ -26023,45 +26023,45 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
+                let sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = vec![
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
                 ];
 
-                let result = crate::compile::compile_sources(
+                let result = crate::v2_compiler_compile::compile_sources(
                     std::rc::Rc::new(sources),
-                    crate::artifact::RenderTarget::Rust,
+                    crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
                 assert!(!result.files.is_empty(), "self-compile produced no files");
@@ -26127,20 +26127,20 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
                 // Gist's transitive source closure, derived from imports.
-                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/cloud/cloud.dag".to_string(), content: DSL_EXTDEPS_CLOUD_CLOUD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/cloud/gcp/gcp.dag".to_string(), content: DSL_EXTDEPS_CLOUD_GCP_GCP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/git.dag".to_string(), content: DSL_EXTDEPS_GIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/auth.dag".to_string(), content: DSL_EXTDEPS_GITHUB_AUTH_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/gists.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GISTS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/github.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GITHUB_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "gunbc/auth/credentials.dag".to_string(), content: DSL_GUNBC_AUTH_CREDENTIALS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "gunbc/tools/gist.dag".to_string(), content: DSL_GUNBC_TOOLS_GIST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/errors.dag".to_string(), content: DSL_STD_ERRORS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/resources.dag".to_string(), content: DSL_STD_RESOURCES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
+                let sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = vec![
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/cloud/cloud.dag".to_string(), content: DSL_EXTDEPS_CLOUD_CLOUD_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/cloud/gcp/gcp.dag".to_string(), content: DSL_EXTDEPS_CLOUD_GCP_GCP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/git.dag".to_string(), content: DSL_EXTDEPS_GIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/auth.dag".to_string(), content: DSL_EXTDEPS_GITHUB_AUTH_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/gists.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GISTS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/github.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GITHUB_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "gunbc/auth/credentials.dag".to_string(), content: DSL_GUNBC_AUTH_CREDENTIALS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "gunbc/tools/gist.dag".to_string(), content: DSL_GUNBC_TOOLS_GIST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/errors.dag".to_string(), content: DSL_STD_ERRORS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/resources.dag".to_string(), content: DSL_STD_RESOURCES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
                 ];
-                let result = crate::compile::resolve_sources(
+                let result = crate::v2_compiler_compile::resolve_sources(
                     std::rc::Rc::new(sources),
                 );
 
@@ -26149,7 +26149,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 // resources, patterns, func) that the v2 compiler's own source
                 // does not cover.
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -26177,26 +26177,26 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/cloud/cloud.dag".to_string(), content: DSL_EXTDEPS_CLOUD_CLOUD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/cloud/gcp/gcp.dag".to_string(), content: DSL_EXTDEPS_CLOUD_GCP_GCP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/git.dag".to_string(), content: DSL_EXTDEPS_GIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/auth.dag".to_string(), content: DSL_EXTDEPS_GITHUB_AUTH_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/gists.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GISTS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/github.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GITHUB_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "gunbc/auth/credentials.dag".to_string(), content: DSL_GUNBC_AUTH_CREDENTIALS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "gunbc/tools/gist.dag".to_string(), content: DSL_GUNBC_TOOLS_GIST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/errors.dag".to_string(), content: DSL_STD_ERRORS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/resources.dag".to_string(), content: DSL_STD_RESOURCES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
+                let sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = vec![
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/cloud/cloud.dag".to_string(), content: DSL_EXTDEPS_CLOUD_CLOUD_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/cloud/gcp/gcp.dag".to_string(), content: DSL_EXTDEPS_CLOUD_GCP_GCP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/git.dag".to_string(), content: DSL_EXTDEPS_GIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/auth.dag".to_string(), content: DSL_EXTDEPS_GITHUB_AUTH_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/gists.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GISTS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/github.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GITHUB_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "gunbc/auth/credentials.dag".to_string(), content: DSL_GUNBC_AUTH_CREDENTIALS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "gunbc/tools/gist.dag".to_string(), content: DSL_GUNBC_TOOLS_GIST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/errors.dag".to_string(), content: DSL_STD_ERRORS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/resources.dag".to_string(), content: DSL_STD_RESOURCES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
                 ];
-                let result = crate::compile::compile_sources(
+                let result = crate::v2_compiler_compile::compile_sources(
                     std::rc::Rc::new(sources),
-                    crate::artifact::RenderTarget::Rust,
+                    crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -26226,8 +26226,8 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
     fn type_size_regression_check() {
         // Prevent silent type size regressions in generated v2 types.
         // These bounds assume Node.transport and Node.config are boxed (R2).
-        let node_size = std::mem::size_of::<crate::v2_core::Node>();
-        let expr_size = std::mem::size_of::<crate::v2_core::ExprData>();
+        let node_size = std::mem::size_of::<crate::v2_std_core::Node>();
+        let expr_size = std::mem::size_of::<crate::v2_std_core::ExprData>();
         assert!(
             node_size <= 176,
             "Node size regression: {} bytes (limit: 176). Check for unboxed rare fields.",
@@ -26253,18 +26253,18 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
             .spawn(|| {
                 use std::time::Instant;
 
-                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/cloud/cloud.dag".to_string(), content: DSL_EXTDEPS_CLOUD_CLOUD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/cloud/gcp/gcp.dag".to_string(), content: DSL_EXTDEPS_CLOUD_GCP_GCP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/git.dag".to_string(), content: DSL_EXTDEPS_GIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/auth.dag".to_string(), content: DSL_EXTDEPS_GITHUB_AUTH_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/gists.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GISTS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "extdeps/github/github.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GITHUB_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "gunbc/auth/credentials.dag".to_string(), content: DSL_GUNBC_AUTH_CREDENTIALS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "gunbc/tools/gist.dag".to_string(), content: DSL_GUNBC_TOOLS_GIST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/errors.dag".to_string(), content: DSL_STD_ERRORS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/resources.dag".to_string(), content: DSL_STD_RESOURCES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
+                let sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = vec![
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/cloud/cloud.dag".to_string(), content: DSL_EXTDEPS_CLOUD_CLOUD_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/cloud/gcp/gcp.dag".to_string(), content: DSL_EXTDEPS_CLOUD_GCP_GCP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/git.dag".to_string(), content: DSL_EXTDEPS_GIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/auth.dag".to_string(), content: DSL_EXTDEPS_GITHUB_AUTH_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/gists.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GISTS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "extdeps/github/github.dag".to_string(), content: DSL_EXTDEPS_GITHUB_GITHUB_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "gunbc/auth/credentials.dag".to_string(), content: DSL_GUNBC_AUTH_CREDENTIALS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "gunbc/tools/gist.dag".to_string(), content: DSL_GUNBC_TOOLS_GIST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/errors.dag".to_string(), content: DSL_STD_ERRORS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/resources.dag".to_string(), content: DSL_STD_RESOURCES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
                 ];
 
                 eprintln!("\n=== GIST PIPELINE PROFILE ({} sources) ===\n", sources.len());
@@ -26274,7 +26274,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let mut token_lists = Vec::new();
                 for source in &sources {
                     let t = Instant::now();
-                    let tokens = crate::tokenize::tokenize(&source.content);
+                    let tokens = crate::v2_compiler_tokenize::tokenize(&source.content);
                     let elapsed = t.elapsed();
                     eprintln!("  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>5} chars)",
                         source.path, elapsed, tokens.len(), source.content.len());
@@ -26288,7 +26288,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let mut modules = Vec::new();
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::parse::parse(tokens.clone());
+                    let result = crate::v2_compiler_parse::parse(tokens.clone());
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     eprintln!("  parse   {:>40}: {:>8.2?}  (ok={})", sources[i].path, elapsed, ok);
@@ -26301,10 +26301,10 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Stage 3: Resolve module graph
                 let t_stage = Instant::now();
-                let graph = crate::resolve::resolve_modules(std::rc::Rc::new(modules));
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .collect();
                 eprintln!("  RESOLVE TOTAL:  {:?}  ({} errors)\n", resolve_total, errors.len());
 
@@ -26381,40 +26381,40 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
             .spawn(|| {
                 use std::time::Instant;
 
-                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
+                let sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = vec![
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
                 ];
 
                 let source_count = sources.len();
@@ -26428,7 +26428,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let mut phase1_diags = 0usize;
                 for source in &sources {
                     let t = Instant::now();
-                    let tokens = crate::tokenize::tokenize(&source.content);
+                    let tokens = crate::v2_compiler_tokenize::tokenize(&source.content);
                     let elapsed = t.elapsed();
                     eprintln!("  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>6} chars)",
                         source.path, elapsed, tokens.len(), source.content.len());
@@ -26445,7 +26445,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let mut phase2_diags = 0usize;
                 for (i, tokens) in token_lists.iter().enumerate() {
                     let t = Instant::now();
-                    let result = crate::parse::parse(tokens.clone());
+                    let result = crate::v2_compiler_parse::parse(tokens.clone());
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
                     if result.error.is_some() {
@@ -26464,10 +26464,10 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 3: Resolve module graph
                 let t_stage = Instant::now();
-                let graph = crate::resolve::resolve_modules(std::rc::Rc::new(modules));
+                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .count();
                 let rss_after_resolve = get_rss_bytes();
                 eprintln!("  RESOLVE TOTAL:  {:?}  | RSS: {}  | diags: {}\n",
@@ -26475,10 +26475,10 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
-                let typed = crate::infer::reconcile(graph);
+                let typed = crate::v2_compiler_infer::reconcile(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .count();
                 let rss_after_reconcile = get_rss_bytes();
                 eprintln!("  RECONCILE TOTAL: {:?}  | RSS: {}  | diags: {}\n",
@@ -26486,10 +26486,10 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 5: Emit (Rust target)
                 let t_stage = Instant::now();
-                let emit_result = crate::emit_rust::emit_rust(typed);
+                let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed);
                 let emit_total = t_stage.elapsed();
                 let phase5_diags: usize = emit_result.diagnostics.iter()
-                    .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                     .count();
                 let emitted_files = emit_result.files.len();
                 let emitted_bytes: usize = emit_result.files.iter()
@@ -26539,40 +26539,40 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 use std::time::Instant;
                 use std::collections::HashMap;
 
-                let sources: Vec<std::rc::Rc<crate::compile::SourceFile>> = vec![
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
-                    std::rc::Rc::new(crate::compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
+                let sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = vec![
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/go/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_GO_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/python/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_PYTHON_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/extdeps/languages/rust/emit.dag".to_string(), content: DSL_EXTDEPS_LANGUAGES_RUST_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "dsl/std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/00_core.dag".to_string(), content: SRC_V2_00_CORE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/01_tokenize.dag".to_string(), content: SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/02_parse.dag".to_string(), content: SRC_V2_02_PARSE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_normalize.dag".to_string(), content: SRC_V2_03_NORMALIZE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/03_resolve.dag".to_string(), content: SRC_V2_03_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_access.dag".to_string(), content: SRC_V2_04_ACCESS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_cycle.dag".to_string(), content: SRC_V2_04_CYCLE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_emit_info.dag".to_string(), content: SRC_V2_04_EMIT_INFO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_env.dag".to_string(), content: SRC_V2_04_ENV_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_infer.dag".to_string(), content: SRC_V2_04_INFER_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_items.dag".to_string(), content: SRC_V2_04_ITEMS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_lookup.dag".to_string(), content: SRC_V2_04_LOOKUP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_method.dag".to_string(), content: SRC_V2_04_METHOD_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_patterns.dag".to_string(), content: SRC_V2_04_PATTERNS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_resolve.dag".to_string(), content: SRC_V2_04_RESOLVE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_service.dag".to_string(), content: SRC_V2_04_SERVICE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_sigs.dag".to_string(), content: SRC_V2_04_SIGS_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/04_types.dag".to_string(), content: SRC_V2_04_TYPES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit.dag".to_string(), content: SRC_V2_05_EMIT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_go.dag".to_string(), content: SRC_V2_05_EMIT_GO_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_python.dag".to_string(), content: SRC_V2_05_EMIT_PYTHON_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/05_emit_rust.dag".to_string(), content: SRC_V2_05_EMIT_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/artifact.dag".to_string(), content: SRC_V2_ARTIFACT_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/compile.dag".to_string(), content: SRC_V2_COMPILE_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/complexity.dag".to_string(), content: SRC_V2_COMPLEXITY_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/languages.dag".to_string(), content: SRC_V2_LANGUAGES_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/ownership.dag".to_string(), content: SRC_V2_OWNERSHIP_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/runtime_rust.dag".to_string(), content: SRC_V2_RUNTIME_RUST_DAG_SOURCE.to_string() }),
+                    std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "src/v2/trace.dag".to_string(), content: SRC_V2_TRACE_DAG_SOURCE.to_string() }),
                 ];
 
                 eprintln!("\n=== PER-MODULE RECONCILE PROFILE ({} sources) ===", sources.len());
@@ -26581,15 +26581,15 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let t0 = Instant::now();
                 let mut modules = Vec::new();
                 for source in &sources {
-                    let tokens = crate::tokenize::tokenize(&source.content);
-                    let result = crate::parse::parse(tokens);
+                    let tokens = crate::v2_compiler_tokenize::tokenize(&source.content);
+                    let result = crate::v2_compiler_parse::parse(tokens);
                     if let Some(m) = result.module.clone() {
                         modules.push(m);
                     } else {
                         eprintln!("  WARN: parse failed for {}", source.path);
                     }
                 }
-                let graph = crate::resolve::resolve_modules(
+                let graph = crate::v2_compiler_resolve::resolve_modules(
                     std::rc::Rc::new(modules)
                 );
                 let setup_time = t0.elapsed();
@@ -26598,11 +26598,11 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::infer_items::TypedModule>>::new();
+                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::v2_compiler_infer_items::TypedModule>>::new();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
-                    let item_count = resolved.module.items.len();
+                    let item_count = crate::v2_std_core::module_items(resolved.module.clone()).len();
                     let rss_before = get_rss_bytes();
 
                     // Print BEFORE typecheck so we know which module crashed on SIGKILL
@@ -26612,7 +26612,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
-                    let _unres = crate::infer::build_type_env_unresolved(
+                    let _unres = crate::v2_compiler_infer::build_type_env_unresolved(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -26629,7 +26629,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
-                    let env_result = crate::infer::build_type_env(
+                    let env_result = crate::v2_compiler_infer::build_type_env(
                         resolved.clone(),
                         module_index.clone()
                     );
@@ -26637,7 +26637,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     let rss_after_env = get_rss_bytes();
                     let env_delta = rss_after_env.saturating_sub(rss_before);
                     let env_errs: usize = env_result.diagnostics.iter()
-                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                         .count();
 
                     eprint!("env={:>8.2?}(+{},e={}) ", env_elapsed, format_bytes(env_delta), env_errs);
@@ -26653,7 +26653,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                     // Sub-step 2: full typecheck_module
                     let t_full = Instant::now();
-                    let tc_result = crate::infer::typecheck_module(
+                    let tc_result = crate::v2_compiler_infer::typecheck_module(
                         resolved.clone(),
                         module_index
                     );
@@ -26661,7 +26661,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     let rss_after = get_rss_bytes();
                     let delta = rss_after.saturating_sub(rss_before);
                     let diag_count: usize = tc_result.diagnostics.iter()
-                        .filter(|d| matches!(d.severity, crate::v2_core::Severity::Error))
+                        .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
                         .count();
 
                     eprintln!("full={:>8.2?}  | RSS: {} (+{})  | errs: {}",

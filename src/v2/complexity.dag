@@ -28,7 +28,14 @@ import v2.std.core {
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
-  RuntimeBridgeMethod, BridgeReverse
+  RuntimeBridgeMethod, BridgeReverse,
+  binop_left, binop_right,
+  foreach_collection, foreach_body,
+  if_condition, if_then_branch, if_else_branch,
+  let_value, let_body,
+  match_scrutinee, match_arm_nodes,
+  method_receiver, method_arg_nodes,
+  NamedArg, diagnostic_is_error
 }
 
 // =========================================================================
@@ -331,7 +338,7 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
   }
 }
 
-fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<NamedArg>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>) -> SummaryResult {
+fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>) -> SummaryResult {
   match shape {
     ShapeIterateBody { produces_collection: pc } =>
       let lambda_arg = resolve_lambda_arg(mc_args: mc_args)

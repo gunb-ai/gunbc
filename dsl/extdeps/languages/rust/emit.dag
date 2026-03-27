@@ -31,11 +31,11 @@ data rust_keywords: Map<String, String> = {
 
 // -- Container type templates --------------------------------------------
 // {0} = element type, {1} = second type (maps).
-// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::BTreeMap
+// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::HashMap
 data rust_container_templates: Map<String, String> = {
   "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
   "non_empty_list": "NonEmptyVec<{0}>", "non_empty_set": "NonEmptyBTreeSet<{0}>",
-  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
+  "optional": "Option<{0}>", "map": "HashMap<{0}, {1}>"
 }
 
 // -- Reserved words ------------------------------------------------------
@@ -66,18 +66,19 @@ data rust_value_types: List<String> = ["Int", "Bool", "Float"]
 // Types that render as Rust &str/.as_str() for comparison operations.
 data rust_string_types: List<String> = ["String", "Secret"]
 
-// -- Serialization -------------------------------------------------------
-// Ref: serde_derive docs (serde.rs), Rust derive macros
-// Mirrors rust_serialization from std.languages.
-data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+// -- Derives --------------------------------------------------------------
+// Ref: Rust derive macros. Serde removed — compilation cost (372 derives)
+// outweighs benefit for the self-hosting use case. Add back when the DAG
+// backend needs serialization.
+data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq)]"
 // Copy variant: value-semantic types that don't need Rc wrapping.
-data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
-data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
+data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq)]"
+data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq)]"
 // Copy variant: simple enums (all-unit variants).
-data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]"
-data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
+data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq)]"
+data rust_serde_tag: String = ""
 // {0} = field key name
-data rust_serde_rename_template: String = "#[serde(rename = \"{0}\")]"
+data rust_serde_rename_template: String = ""
 
 // -- Project scaffold ----------------------------------------------------
 // Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)

@@ -1,9 +1,0 @@
-[package]
-name = "gunbc-cli"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "CLI argument parser library for gunbc tools"
-
-[dependencies]
-gunbc-ir = { path = "../../00_foundation/ir" }
