@@ -1181,3 +1181,37 @@ fn sh4_resolved_graph_completeness() {
         assert!(items_field.is_some(), "typed module should have 'items' field");
     }
 }
+
+// ── Structural method resolution (Tier 0) ───────────────────────────────
+
+#[test]
+fn structural_method_resolution_with_std() {
+    // Load real std modules so types resolve through algebra declarations.
+    // List<Int> → FreeMonoid<Int> → Conj { map, filter, count, ... }
+    // Method calls should resolve via lookup_structural_method (Tier 0).
+    let algebra = read_v2_file("dsl/std/algebra.dag");
+    let types = read_v2_file("dsl/std/types.dag");
+    let user = r#"module user_test
+import std.types { List }
+
+fn double_all(xs: List<Int>) -> List<Int> {
+  xs |> map(x => x)
+}
+
+fn total(xs: List<Int>) -> Int {
+  xs |> count
+}
+"#;
+    let result = compile_multi(&[
+        ("dsl/std/algebra.dag", &algebra),
+        ("dsl/std/types.dag", &types),
+        ("user_test.dag", user),
+    ]);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "structural method resolution should produce 0 diagnostics, got {}: {:?}",
+        msgs.len(),
+        msgs,
+    );
+}
