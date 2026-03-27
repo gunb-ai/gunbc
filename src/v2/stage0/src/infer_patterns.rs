@@ -28,16 +28,16 @@ pub enum PatternSubject {
 
 pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
     let inner = extract_optional_inner_node(scrut.clone());
-    let value_field = Rc::new(Node { name: "value".to_string(), span: scrut.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: inner.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
-    let some_node = Rc::new(Node { name: "Some".to_string(), span: scrut.span.clone(), children: Rc::new(vec!(value_field.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let value_field = Rc::new(Node { name: "value".to_string(), span: scrut.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: inner.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let some_node = Rc::new(Node { name: "Some".to_string(), span: scrut.span.clone(), children: Rc::new(vec!(value_field.clone())), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     some_node.clone()
 }
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
-    if node_is_bridge_dynamic_name(n.clone()) {
+    if n.name == "Dynamic" {
     Rc::new(PatternSubject::PatternDynamic { span: n.span.clone() })
 } else {
-    if node_is_bridge_error_name(n.clone()) {
+    if node_has_compiler_error(&n) {
     Rc::new(PatternSubject::PatternLookupBlocked)
 } else {
     Rc::new(PatternSubject::PatternResolved { node: n.clone() })
@@ -51,6 +51,9 @@ pub fn pattern_subject_from_node_type(n: Rc<NodeType>) -> Rc<PatternSubject> {
         pattern_subject_from_node(resolved.clone())
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        Rc::new(PatternSubject::PatternLookupBlocked)
+    }
+    NodeType::InferVariable { .. } => {
         Rc::new(PatternSubject::PatternLookupBlocked)
     }
     NodeType::Untyped => {
@@ -106,8 +109,8 @@ pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: &str, mod
     }
     PatternSubject::PatternResolved { node: scrut_node, .. } => {
         {
-    let scrut_opt = node_is_optional(scrut_node.clone());
-    if ((node_has_structure(scrut_node.clone()) == false) && (({
+    let scrut_opt = scrut_node.return_cardinality == Cardinality::CardOptional;
+    if (((scrut_node.connective != Connective::NoConnective) == false) && (({
     let __len_4 = scrut_node.children.clone().len();
     __len_4 as i64
 }) == 0_i64)) && (scrut_opt.clone() == false) {
@@ -180,8 +183,8 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: &str, mo
 }
 
 pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<MatchArm>>>, env: Rc<TypeEnv>, span: SourceSpan, module_name: &str) -> Rc<Vec<Rc<Diagnostic>>> {
-    let scrut_is_optional = node_is_optional(scrutinee_type.clone());
-    let resolved_raw = if node_has_structure(scrutinee_type.clone()) {
+    let scrut_is_optional = scrutinee_type.return_cardinality == Cardinality::CardOptional;
+    let resolved_raw = if scrutinee_type.connective != Connective::NoConnective {
     scrutinee_type.clone()
 } else {
     match lookup_type(env.clone(), &scrutinee_type.name) {
@@ -198,8 +201,8 @@ pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Rc<Vec<Rc<Matc
 } else {
     resolved_raw.clone()
 };
-    if node_is_coproduct(resolved.clone()) || node_is_optional(resolved.clone()) {
-    let variant_names = if node_is_optional(resolved.clone()) {
+    if resolved.connective == Connective::Disj || resolved.return_cardinality == Cardinality::CardOptional {
+    let variant_names = if resolved.return_cardinality == Cardinality::CardOptional {
     Rc::new(vec!("Some".to_string(), "None".to_string()))
 } else {
     {

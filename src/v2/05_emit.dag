@@ -18,9 +18,8 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError,
+  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  Connective, Conj, Disj,
   Field, Param,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -52,11 +51,14 @@ import v2.std.core {
   is_transport_kind,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
-  leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality
+  leaf_node, with_required_cardinality,
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
+  CardOptional
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { node_is_optional, node_is_map, rt_type, emit_map_has }
+import v2.compiler.infer_types { rt_type, emit_map_has }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -76,6 +78,13 @@ import v2.compiler.languages {
   language_spec_for_target,
   test_conventions_for_target,
   target_keyword, target_primitive_type, target_container_template
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
 }
 
 // =========================================================================
@@ -184,7 +193,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget) -> String {
       emit_error_expr(message: message, target: target)
     ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: target)
     ExprFieldAccess { field: f, summary: _ } =>
-      let b = match expr.children |> first { Some { value: v } => v  None => expr }
+      let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
@@ -196,7 +205,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget) -> String {
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
         ExprLiteral { value: LitStr { value: text } } => Text { value: text }
-        _ => Interpolation { expr: match child.children |> first { Some { value: e } => e  None => child } }
+        _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_simple_string_interp(parts: ps, target: target)
     _ => emit_error_expr(message: "unsupported simple expr in test/mock binding", target: target)
@@ -290,7 +299,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
       let ch = texpr.children
       let has_body = (ch |> count) > 1
       if has_body == false {
-        let value = match ch |> first { Some { value: v } => v  None => texpr }
+        let value = let_value(texpr: texpr)
         extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
       } else {
         scope
@@ -366,29 +375,33 @@ fn unique_strings(items: List<String>) -> List<String> {
 // Nested record detection -- for data definition edge cases.
 // Anonymous product = Conj connective with empty name.
 fn has_nested_records_node(n: Node) -> Bool {
-  let is_product = node_is_product(n: n)
-  let is_coproduct = node_is_coproduct(n: n)
+  let is_product = n.connective == Conj
+  let is_coproduct = n.connective == Disj
   if is_product {
     // Any record type in data value position needs serde: both anonymous
     // records (name == "") and named records (name != "") whose literals
     // may not carry the struct name.
     true
   } else if is_coproduct {
-    if node_is_optional(n: n) {
+    let is_optional = n.return_cardinality == CardOptional
+    if is_optional {
       has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
-  } else if node_is_map(n: n) {
-    match skip(n.children, 1) |> first {
-      Some { value: val_child } => has_nested_records_node(n: val_child)
-      None => false
-    }
-  } else if n.children |> count == 1 {
-    match n.children |> first {
-      Some { value: el } => has_nested_records_node(n: el)
-      None => false
-    }
   } else {
-    false
+    let is_map = n.collection_kind == MapKind
+    if is_map {
+      match skip(n.children, 1) |> first {
+        Some { value: val_child } => has_nested_records_node(n: val_child)
+        None => false
+      }
+    } else if n.children |> count == 1 {
+      match n.children |> first {
+        Some { value: el } => has_nested_records_node(n: el)
+        None => false
+      }
+    } else {
+      false
+    }
   }
 }
 
@@ -762,17 +775,20 @@ fn emit_node_type(n: Node, target: RenderTarget) -> String {
 }
 
 fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
-  // Dynamic/Error: inference failures that leaked to emit.
+  // TypeVariable/CompilerError: inference failures that leaked to emit.
   let is_rust = match target { Rust => true  _ => false }
-  if (n.name == "Dynamic" || n.name == "Error") && n.children |> count == 0 {
+  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  let sentinel_label = if n_is_error { "CompilerError" } else if n_is_type_var { "TypeVariable" } else { n.name }
+  if (n_is_type_var || n_is_error) && n.children |> count == 0 {
     if is_rust {
-      return concat("compile_error!(\"unresolved ", n.name, " type reached emit\")")
+      return concat("compile_error!(\"unresolved ", sentinel_label, " type reached emit\")")
     } else {
-      return concat("__EMIT_BUG_UNRESOLVED_", n.name, "__")
+      return concat("__EMIT_BUG_UNRESOLVED_", sentinel_label, "__")
     }
   }
-  // Callable: function type rendering
-  if n.name == "Callable" && n.params |> count > 0 {
+  // Callable: function type rendering (structural — has params)
+  if n.params |> count > 0 {
     let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
@@ -785,17 +801,20 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
       Rust => concat("Rc<dyn Fn(", param_str, ") -> ", ret_str, ">")
       _ => concat("Fn(", param_str, ") -> ", ret_str)
     }
-  } else if node_is_optional(n: n) {
-    emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
   } else {
-    let is_conj = node_is_product(n: n)
-    let is_disj = node_is_coproduct(n: n)
-    if is_conj == false && is_disj == false {
-      emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
-    } else if is_conj {
-      emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
+    let is_optional = n.return_cardinality == CardOptional
+    if is_optional {
+      emit_container(kind: "optional", inner: emit_node_type_rc(n: with_required_cardinality(n: n), target: target, rc_types: rc_types), target: target)
     } else {
-      emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
+      let is_conj = n.connective == Conj
+      let is_disj = n.connective == Disj
+      if is_conj == false && is_disj == false {
+        emit_node_type_leaf_rc(n: n, target: target, rc_types: rc_types)
+      } else if is_conj {
+        emit_node_type_conj_rc(n: n, target: target, rc_types: rc_types)
+      } else {
+        emit_node_type_disj_rc(n: n, target: target, rc_types: rc_types)
+      }
     }
   }
 }
@@ -804,9 +823,12 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   if n.children |> count == 0 {
     // Bare container nodes (from empty_map(), etc.) need container templates
     // even without children — emit with "_" placeholders.
-    let base = if n.name == "Map" {
+    let bare_is_map = n.collection_kind == MapKind
+    let bare_ck = n.collection_kind
+    let bare_is_collection = bare_ck == ListKind || bare_ck == SetKind || bare_ck == NonEmptyListKind || bare_ck == NonEmptySetKind
+    let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
-    } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
+    } else if bare_is_collection {
       emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
     } else {
       emit_primitive_type(name: n.name, target: target)
@@ -817,19 +839,21 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     } else {
       base
     }
-  } else if node_is_map(n: n) {
-    // After resolution, Map nodes always have 2 children (key + value).
-    // None branches are structurally required by match but unreachable.
-    let k = match n.children |> first {
-      Some { value: kn } => emit_node_type_rc(n: kn, target: target, rc_types: rc_types)
-      None => "__EMIT_BUG_MISSING_MAP_KEY__"
-    }
-    let v = match skip(n.children, 1) |> first {
-      Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
-      None => "__EMIT_BUG_MISSING_MAP_VALUE__"
-    }
-    emit_map_type(key_type: k, val_type: v, target: target)
-  } else if n.children |> count == 1 {
+  } else {
+    let is_map = n.collection_kind == MapKind
+    if is_map {
+      // After resolution, Map nodes always have 2 children (key + value).
+      // None branches are structurally required by match but unreachable.
+      let k = match n.children |> first {
+        Some { value: kn } => emit_node_type_rc(n: kn, target: target, rc_types: rc_types)
+        None => "__EMIT_BUG_MISSING_MAP_KEY__"
+      }
+      let v = match skip(n.children, 1) |> first {
+        Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
+        None => "__EMIT_BUG_MISSING_MAP_VALUE__"
+      }
+      emit_map_type(key_type: k, val_type: v, target: target)
+    } else if n.children |> count == 1 {
     // Single-child container. count == 1 guarantees first succeeds.
     let inner = match n.children |> first {
       Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
@@ -837,14 +861,15 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     }
     // NonEmpty variants: Rust uses distinct types, others map to base container
     let is_rust = match target { Rust => true  _ => false }
-    let container_kind = if n.name == "NonEmptyList" {
+    let container_kind = if n.collection_kind == NonEmptyListKind {
       if is_rust { "non_empty_list" } else { "list" }
-    } else if n.name == "NonEmptySet" {
+    } else if n.collection_kind == NonEmptySetKind {
       if is_rust { "non_empty_set" } else { "set" }
     } else { to_snake(name: n.name) }
     emit_container(kind: container_kind, inner: inner, target: target)
-  } else {
-    n.name
+    } else {
+      n.name
+    }
   }
 }
 
@@ -1030,7 +1055,7 @@ fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
-  let item_has_structure = node_has_structure(n: item)
+  let item_has_structure = item.connective != NoConnective
   let kind = if item_has_structure && item.transport == none {
     TypedItemTypeDef
   } else if item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
@@ -1114,9 +1139,8 @@ type FuncBodyShape
 fn classify_func_body(body: Node) -> FuncBodyShape {
   match body.expr_data {
     ExprLet { name: n } =>
-      let ch = body.children
-      let v = match ch |> first { Some { value: val } => val  None => body }
-      let rest = ch |> drop(1) |> first
+      let v = let_value(texpr: body)
+      let rest = let_body(texpr: body)
       FuncBodyLet { name: n, value: v, rest: rest }
     ExprBlock =>
       FuncBodyBlock { stmts: body.children }
@@ -1139,19 +1163,17 @@ fn classify_tco_expr(texpr: Node) -> TcoExprShape {
       let a = texpr.children |> map(a => NamedArg { name: arg_name(n: a), value: arg_value(n: a) })
       TcoCall { func: f, args: a }
     ExprIf =>
-      let ch = texpr.children
-      let c = match ch |> first { Some { value: v } => v  None => texpr }
-      let t = match ch |> drop(1) |> first { Some { value: v } => v  None => texpr }
-      let e = ch |> drop(2) |> first
+      let c = if_condition(texpr: texpr)
+      let t = if_then_branch(texpr: texpr)
+      let e = if_else_branch(texpr: texpr)
       TcoIf { condition: c, then_branch: t, else_branch: e }
     ExprMatch =>
-      let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
-      let arm_list = texpr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let scrut = match_scrutinee(texpr: texpr)
+      let arm_list = match_arm_nodes(texpr: texpr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
       TcoMatch { scrutinee: scrut, arms: arm_list }
     ExprLet { name: n } =>
-      let ch = texpr.children
-      let v = match ch |> first { Some { value: val } => val  None => texpr }
-      let bd = ch |> drop(1) |> first
+      let v = let_value(texpr: texpr)
+      let bd = let_body(texpr: texpr)
       TcoLet { name: n, value: v, body: bd }
     ExprBlock =>
       TcoBlock { stmts: texpr.children }
@@ -1262,16 +1284,13 @@ fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
     ExprCall { func: f, call_semantics: _ } => f == func_name
     ExprIf =>
       // children = [condition, then, else?]. Check branches.
-      let ch = texpr.children
-      let then_cand = match ch |> drop(1) |> first { Some { value: t } => is_tco_candidate(texpr: t, func_name: func_name)  None => false }
-      let else_cand = match ch |> drop(2) |> first { Some { value: e } => is_tco_candidate(texpr: e, func_name: func_name)  None => false }
+      let then_cand = is_tco_candidate(texpr: if_then_branch(texpr: texpr), func_name: func_name)
+      let else_cand = match if_else_branch(texpr: texpr) { Some { value: e } => is_tco_candidate(texpr: e, func_name: func_name)  None => false }
       then_cand || else_cand
     ExprMatch =>
-      // children = [scrutinee, arm0, arm1, ...]. Check arm bodies.
-      texpr.children |> drop(1) |> any(arm_node => is_tco_candidate(texpr: arm_body(n: arm_node), func_name: func_name))
+      match_arm_nodes(texpr: texpr) |> any(arm_node => is_tco_candidate(texpr: arm_body(n: arm_node), func_name: func_name))
     ExprLet { name: _ } =>
-      // children = [value, body?]. Check body.
-      match texpr.children |> drop(1) |> first { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
+      match let_body(texpr: texpr) { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
     ExprBlock =>
       // children = [stmt0, stmt1, ...].
       texpr.children |> any(s => is_tco_candidate(texpr: s, func_name: func_name))
@@ -1455,8 +1474,8 @@ fn emit_shared_expr(
     ExprRecordLit { type_name: _, parent_enum: _ } =>
       emit_record_lit(texpr)
     ExprBinOp { op: op } =>
-      let left = match texpr.children |> first { Some { value: v } => v  None => texpr }
-      let right = match texpr.children |> drop(1) |> first { Some { value: v } => v  None => texpr }
+      let left = binop_left(texpr: texpr)
+      let right = binop_right(texpr: texpr)
       let left_str = recurse(left)
       let right_str = recurse(right)
       if is_null_coalesce(op: op) {
@@ -1466,10 +1485,10 @@ fn emit_shared_expr(
         wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
       }
     ExprUnaryOp { op: op } =>
-      let operand = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let operand = unaryop_operand(texpr: texpr)
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
     ExprLambda { params: params, semantics: _ } =>
-      let body = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let body = lambda_body(texpr: texpr)
       wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: params, target: target), body_str: recurse(body), target: target))
     ExprStringInterp =>
       emit_string_interp(texpr)
@@ -1486,7 +1505,7 @@ fn emit_shared_expr(
     ExprListLit =>
       wrap_result(emit_list_lit_expr(element_strs: texpr.children |> map(el => recurse(el)), target: target))
     ExprReturn =>
-      let ret_val = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let ret_val = return_value(texpr: texpr)
       wrap_result(emit_return(value: recurse(ret_val), target: target))
     NoExprData => wrap_result("")
   }

@@ -35,18 +35,19 @@ pub fn access_result(inferred: Rc<Node>, diagnostics: Rc<Vec<Rc<Diagnostic>>>, s
 
 pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: SourceSpan, module_name: &str) -> Rc<AccessCheckResultNode> {
     let normed = normalize_access_type_node(base_type.clone());
-    if ((node_has_structure(normed.clone()) == false) && (({
+    if (((normed.connective != Connective::NoConnective) == false) && (({
     let __len_1 = normed.children.clone().len();
     __len_1 as i64
 }) == 0_i64)) && (normed.name.clone() == "String") {
-    let diags = if is_int_type_node(index_type.clone()) {
+    let normed_index = normalize_access_type_node(index_type.clone());
+    let diags = if normed_index.name == "Int" {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("string index requires an Int index", span.clone(), &module_name)))
 };
     access_result(leaf_node("String"), diags.clone(), span.clone(), "invalid string index access")
 } else {
-    if node_is_map(normed.clone()) && (({
+    if (normed.collection_kind == CollectionKind::MapKind) && (({
     let __len_0 = normed.children.clone().len();
     __len_0 as i64
 }) >= 2_i64) {
@@ -73,7 +74,7 @@ pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: 
 };
     access_result(with_optional_cardinality(val_node.clone()), key_diags.clone(), span.clone(), "invalid map index access")
 } else {
-    if node_is_map(normed.clone()) {
+    if normed.collection_kind == CollectionKind::MapKind  {
     let malformed_diags = Rc::new(vec!(access_error("malformed Map type in index access", span.clone(), &module_name)));
     access_result(leaf_node("Unit"), malformed_diags.clone(), span.clone(), "malformed Map type in index access")
 } else {
@@ -85,18 +86,21 @@ pub fn check_index_access_node(base_type: Rc<Node>, index_type: Rc<Node>, span: 
 }
 
 pub fn check_slice_access_node(base_type: Rc<Node>, start_type: Rc<Node>, end_type: Rc<Node>, span: SourceSpan, module_name: &str) -> Rc<AccessCheckResultNode> {
-    let base_is_string = is_string_type_node(base_type.clone());
+    let normed_base = normalize_access_type_node(base_type.clone());
+    let base_is_string = normed_base.name == "String";
     let base_diags = if base_is_string {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("slice is only supported for String values", span.clone(), &module_name)))
 };
-    let start_diags = if is_int_type_node(start_type.clone()) {
+    let normed_start = normalize_access_type_node(start_type.clone());
+    let start_diags = if normed_start.name == "Int" {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("slice start requires an Int index", span.clone(), &module_name)))
 };
-    let end_diags = if is_int_type_node(end_type.clone()) {
+    let normed_end = normalize_access_type_node(end_type.clone());
+    let end_diags = if normed_end.name == "Int" {
     Rc::new(Vec::new())
 } else {
     Rc::new(vec!(access_error("slice end requires an Int index", span.clone(), &module_name)))

@@ -15,9 +15,8 @@
 module v2.compiler.emit_rust
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError,
+  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
-  Connective, Conj, Disj,
   Param, LiteralValue,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
@@ -59,8 +58,10 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_value,
-  leaf_node, with_required_cardinality, node_has_structure,
-  node_is_product, node_is_coproduct
+  leaf_node, with_required_cardinality,
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
+  Cardinality, Required, CardOptional
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
@@ -69,15 +70,14 @@ import extdeps.languages.rust.emit {
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
-  test_conventions_for_target, top_level_visibility_for_target
+  test_conventions_for_target, top_level_visibility_for_target,
+  is_value_type, is_string_like, target_primitive_type
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
-  node_is_optional, node_is_map, node_is_container,
-  is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   rt_type, emit_map_has
 }
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
@@ -129,6 +129,32 @@ import v2.compiler.emit {
   service_fallback_transport, effective_operation_transport,
   service_uses_transport, service_has_rest_auth,
   extract_modifier_names
+}
+
+fn type_variable_node(id: String) -> Node {
+  Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
+// Emit-side type identity checks. These are rendering decisions
+// Emit-side type checks read from language extdep data, not hardcoded names.
+// is_value_type/is_string_like are defined in v2.compiler.languages and
+// read from rust_value_types/rust_string_types in the Rust extdep.
+
+fn is_rust_value_type(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  is_value_type(target: Rust, name: normed.name)
+}
+
+fn is_rust_string_like(n: Node) -> Bool {
+  let normed = normalize_access_type_node(n: n)
+  is_string_like(target: Rust, name: normed.name)
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -270,7 +296,7 @@ fn emit_rust_init_block_stmts(remaining: List<Node>, text: List<String>,
 fn has_complex_variants(item: Node) -> Bool {
   if item.children |> count == 0 { false }
   else {
-    item.children |> any(c => node_has_structure(n: c))
+    item.children |> any(c => c.connective != NoConnective)
   }
 }
 
@@ -472,7 +498,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // RC1: For enums defined in this module, add `use EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
-    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && node_is_coproduct(n: item))
+    |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Disj)
     |> map(item => concat("use ", item.name, "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -706,15 +732,18 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
   if n.children |> count == 0 {
     if emit_map_has(m: rc_types, key: n.name) { false }
     else { emit_map_has(m: recursive_types, key: n.name) }
-  } else if node_is_optional(n: n) {
-    needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, rc_types: rc_types)
   } else {
-    false
+    let is_optional = n.return_cardinality == CardOptional
+    if is_optional {
+      needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, rc_types: rc_types)
+    } else {
+      false
+    }
   }
 }
 
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
-  let is_product = node_is_product(n: item)
+  let is_product = item.connective == Conj
   if is_product {
     emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   } else {
@@ -869,7 +898,7 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
 // =========================================================================
 
 // Rust type rendering: delegated to shared emit_node_type_rc (P4.1a).
-// Rc wrapping, Dynamic/Error guards, anonymous product handling all
+// Rc wrapping, TypeVariable/Error guards, anonymous product handling all
 // unified in 05_emit.dag. This alias preserves call-site readability.
 
 // =========================================================================
@@ -946,9 +975,8 @@ fn emit_func_def(
 fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match body.expr_data {
     ExprLet { name: n } => {
-      let ch = body.children
-      let v = match ch |> first { Some { value: val } => val  None => body }
-      let inner = ch |> drop(1) |> first
+      let v = let_value(texpr: body)
+      let inner = let_body(texpr: body)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let let_line = emit_let_binding(name: n, value: val_str, target: Rust)
       let next_scope = extend_scope(scope: scope, name: n, resolved: rt_type(n: v))
@@ -969,7 +997,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
         let last_str = match last_stmt {
           Some { value: s } =>
             match s.expr_data {
-              ExprReturn => concat("return Ok(", emit_typed_expr(texpr: match s.children |> first { Some { value: rv } => rv  None => s }, registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
+              ExprReturn => concat("return Ok(", emit_typed_expr(texpr: return_value(texpr: s), registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
               _ => concat("Ok(", emit_typed_expr(texpr: s, registry: registry, scope: init_state.scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
             }
           None => "Ok(())"
@@ -977,7 +1005,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
         if init_state.text |> count == 0 { last_str } else { concat(init_state.text |> join(separator: "\n"), "\n", last_str) }
       }
     }
-    ExprReturn => concat("return Ok(", emit_typed_expr(texpr: match body.children |> first { Some { value: rv } => rv  None => body }, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
+    ExprReturn => concat("return Ok(", emit_typed_expr(texpr: return_value(texpr: body), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
     _ => concat("Ok(", emit_typed_expr(texpr: body, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info), ")")
   }
 }
@@ -1040,7 +1068,7 @@ fn emit_params(params: List<Param>, rc_types: Map<String, Bool>) -> String {
 }
 
 fn emit_rust_param_type(n: Node, rc_types: Map<String, Bool>) -> String {
-  if n.name == "Callable" && n.params |> count > 0 {
+  if n.params |> count > 0 {
     let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: Rust, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
@@ -1072,11 +1100,11 @@ fn emit_inferred(inferred: Node, rc_types: Map<String, Bool>) -> String {
 // A leaf Node with no connective and no children whose name is a
 // primitive maps to a Copy type; everything else is by-reference.
 fn needs_reference_node(n: Node) -> Bool {
-  if node_has_structure(n: n) || n.children |> count > 0 {
+  if n.connective != NoConnective || n.children |> count > 0 {
     true
   } else {
-    let is_copy = is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
-      || (n.name == "Unit" && n.children |> count == 0)
+    let is_copy = is_rust_value_type(n: n)
+      || (n.connective == Conj && n.children |> count == 0)
     is_copy == false
   }
 }
@@ -1290,7 +1318,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<MatchArm>, scrut_type: String, v
     analyze_rc_pattern(pattern: arm.pattern, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   )
   let scrutinee_is_optional = match scrutinee.inferred {
-    Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+    Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
     _ => false
   }
   let scrutinee_is_rc_wrapped = match scrutinee.inferred {
@@ -1401,21 +1429,24 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
 fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types: Map<String, Bool>) -> String? {
   // Optional records (Some { value: x }) must keep struct name "Some"
   // so the emitter triggers the Some(x) rendering path.
-  if node_is_optional(n: inferred_node) {
+  let is_optional = inferred_node.return_cardinality == CardOptional
+  if is_optional {
     let result = type_name
     return result
   }
   // Normalize: unwrap Refined nodes to their base
-  let n = if inferred_node.name == "Refined" && node_has_structure(n: inferred_node) {
+  let has_structure = inferred_node.connective != NoConnective
+  let n = if inferred_node.name == "Refined" && has_structure {
     match inferred_node.children |> first {
       Some { value: base } => base
       None => inferred_node
     }
   } else { inferred_node }
-  let is_product = node_is_product(n: n)
-  let is_coproduct = node_is_coproduct(n: n)
+  let is_product = n.connective == Conj
+  let is_coproduct = n.connective == Disj
+  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if n.name == "__EmitTypeCacheMiss" { type_name }
-    else if n.name == "Error" { type_name }
+    else if n_is_error { type_name }
     else if is_product {
       if n.name == "" { type_name } else { Some { value: n.name } }
     } else if is_coproduct {
@@ -1430,7 +1461,7 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
 
 // Returns true for primitive numeric types where Rust `as` is valid (Node-based).
 fn is_primitive_numeric_node(n: Node) -> Bool {
-  is_int_type_node(n: n) || is_float_type_node(n: n) || is_bool_type_node(n: n)
+  is_rust_value_type(n: n)
 }
 
 // =========================================================================
@@ -1545,7 +1576,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   // translated to the flattened representation.
   let base_is_anon_record = match base.inferred {
     Some { value: Resolved { node: bt } } =>
-      let is_product = node_is_product(n: bt)
+      let is_product = bt.connective == Conj
       if is_product && bt.name == "" { true } else { false }
     _ => false
   }
@@ -1588,8 +1619,8 @@ fn type_needs_rc(type_node: Node) -> Bool {
 
 fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
   let normed = normalize_access_type_node(n: type_node)
-  let is_product = node_is_product(n: normed)
-  let is_coproduct = node_is_coproduct(n: normed)
+  let is_product = normed.connective == Conj
+  let is_coproduct = normed.connective == Disj
   if is_product {
     true
   } else if is_coproduct {
@@ -1604,7 +1635,7 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
     } else {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       let resolved = normed
-      if node_has_structure(n: resolved) == false && resolved.inferred == none && resolved.name == normed.name && resolved.children |> count == 0 {
+      if resolved.connective == NoConnective && resolved.inferred == none && resolved.name == normed.name && resolved.children |> count == 0 {
         false
       } else {
         type_needs_rc_seen(type_node: resolved, seen: next_seen)
@@ -1616,7 +1647,8 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
 fn rust_map_value_type(receiver_type: Node, scope: InferScope) -> Node? {
   let resolved = normalize_access_type_node(n: receiver_type)
   let map_type = normalize_access_type_node(n: resolved)
-  if node_is_map(n: map_type) {
+  let is_map = map_type.collection_kind == MapKind
+  if is_map {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -1667,7 +1699,7 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, vtoe: Map<Str
 fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprFieldAccess { field: f, summary: summary } =>
-      let b = match expr.children |> first { Some { value: v } => v  None => expr }
+      let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
@@ -1692,8 +1724,8 @@ fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: Infer
 fn emit_rust_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprMethodCall { method: m, method_semantics: method_semantics } =>
-      let r = match expr.children |> first { Some { value: v } => v  None => expr }
-      let a = expr.children |> drop(1) |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
+      let r = method_receiver(texpr: expr)
+      let a = method_arg_nodes(texpr: expr) |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
       emit_typed_method_call(receiver: r, method: m, args: a, result_type: expr.inferred, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_method_call expected ExprMethodCall", target: Rust)
   }
@@ -1702,8 +1734,8 @@ fn emit_rust_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope
 fn emit_rust_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprMatch =>
-      let s = match expr.children |> first { Some { value: v } => v  None => expr }
-      let arm_list = expr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let s = match_scrutinee(texpr: expr)
+      let arm_list = match_arm_nodes(texpr: expr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
       emit_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_match expected ExprMatch", target: Rust)
   }
@@ -1712,9 +1744,9 @@ fn emit_rust_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 fn emit_rust_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprIf =>
-      let c = match expr.children |> first { Some { value: v } => v  None => expr }
-      let t = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
-      let e = expr.children |> drop(2) |> first
+      let c = if_condition(texpr: expr)
+      let t = if_then_branch(texpr: expr)
+      let e = if_else_branch(texpr: expr)
       emit_typed_if(condition: c, then_branch: t, else_branch: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_if expected ExprIf", target: Rust)
   }
@@ -1723,8 +1755,8 @@ fn emit_rust_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprLet { name: n } =>
-      let v = match expr.children |> first { Some { value: val } => val  None => expr }
-      let bd = expr.children |> drop(1) |> first
+      let v = let_value(texpr: expr)
+      let bd = let_body(texpr: expr)
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_let expected ExprLet", target: Rust)
   }
@@ -1744,7 +1776,7 @@ fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, sco
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
         ExprLiteral { value: LitStr { value: text } } => Text { value: text }
-        _ => Interpolation { expr: match child.children |> first { Some { value: e } => e  None => child } }
+        _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_string_interp expected ExprStringInterp", target: Rust)
@@ -1762,8 +1794,8 @@ fn emit_rust_expr_block(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprCast =>
-      let e = match expr.children |> first { Some { value: v } => v  None => expr }
-      let t = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
+      let e = cast_expr(texpr: expr)
+      let t = cast_target(texpr: expr)
       emit_typed_cast(expr: e, target: t, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_cast expected ExprCast", target: Rust)
   }
@@ -1772,8 +1804,8 @@ fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: Infer
 fn emit_rust_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprForEach { variable: v } =>
-      let c = match expr.children |> first { Some { value: val } => val  None => expr }
-      let bd = match expr.children |> drop(1) |> first { Some { value: val } => val  None => expr }
+      let c = foreach_collection(texpr: expr)
+      let bd = foreach_body(texpr: expr)
       emit_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_for_each expected ExprForEach", target: Rust)
   }
@@ -1782,8 +1814,8 @@ fn emit_rust_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: I
 fn emit_rust_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprIndex =>
-      let b = match expr.children |> first { Some { value: v } => v  None => expr }
-      let i = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
+      let b = index_base(texpr: expr)
+      let i = index_expr(texpr: expr)
       emit_typed_index(base: b, index: i, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_index expected ExprIndex", target: Rust)
   }
@@ -1792,9 +1824,9 @@ fn emit_rust_expr_index(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprSlice =>
-      let b = match expr.children |> first { Some { value: v } => v  None => expr }
-      let s = match expr.children |> drop(1) |> first { Some { value: v } => v  None => expr }
-      let e = expr.children |> drop(2) |> first
+      let b = slice_base(texpr: expr)
+      let s = slice_start(texpr: expr)
+      let e = slice_end(texpr: expr)
       emit_typed_slice(base: b, start: s, end: e, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_slice expected ExprSlice", target: Rust)
   }
@@ -1853,7 +1885,7 @@ fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolve
 
 fn is_map_typed_expr(texpr: Node) -> Bool {
   match texpr.inferred {
-    Some { value: Resolved { node: n } } => node_is_map(n: n)
+    Some { value: Resolved { node: n } } => n.collection_kind == MapKind
     _ => false
   }
 }
@@ -1864,7 +1896,7 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNo
       Some { value: Resolved { node: ret_type } } =>
         let resolved_ret = ret_type
         let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-        if type_str != "" && type_str != "Dynamic" {
+        if type_str != "" {
           concat("<", type_str, ">::new()")
         } else {
           "compile_error!(\"empty_map requires a concrete result type\")"
@@ -1884,7 +1916,8 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNo
       match inferred {
         Some { value: Resolved { node: ret_type } } =>
           let resolved_ret = ret_type
-          if node_is_optional(n: resolved_ret) {
+          let is_optional = resolved_ret.return_cardinality == CardOptional
+          if is_optional {
             type_needs_rc(type_node: with_required_cardinality(n: resolved_ret))
           } else { false }
         _ => false
@@ -2073,9 +2106,10 @@ fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, sc
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
-  if is_string_type_node(n: base_node) {
+  let is_map = base_node.collection_kind == MapKind
+  if is_rust_string_like(n: base_node) {
     concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
-  } else if node_is_map(n: base_node) {
+  } else if is_map {
     concat("(", base_str, ").get(&", index_str, ").cloned()")
   } else {
     "panic!(\"internal error: unsupported index base in emitter\")"
@@ -2087,7 +2121,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
   let start_str = emit_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let end_str = emit_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
-  if is_string_type_node(n: base_node) {
+  if is_rust_string_like(n: base_node) {
     concat("v2_rt::substring(&", base_str, ", ", start_str, ", ", end_str, ")")
   } else {
     "panic!(\"internal error: unsupported slice base in emitter\")"
@@ -2098,7 +2132,9 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
 fn collection_element_type(receiver_type: InferredNode?, rc_types: Map<String, Bool>) -> String {
   match receiver_type {
     Some { value: Resolved { node: rt } } =>
-      if node_is_container(n: rt) {
+      let rt_ck = rt.collection_kind
+      let __rt_is_container = rt_ck == ListKind || rt_ck == SetKind || rt_ck == NonEmptyListKind || rt_ck == NonEmptySetKind
+      if __rt_is_container {
         match rt.children |> first {
           Some { value: elem_node } => emit_node_type_rc(n: elem_node, target: Rust, rc_types: rc_types)
           None => "_"
@@ -2114,13 +2150,9 @@ fn lambda_scope_from_semantics(scope: InferScope, params: List<String>, semantic
       params |> enumerate |> fold(init: scope, f: (acc, pair) =>
         let idx = pair.first
         let param_name = pair.second
-        // Dynamic audit: correct — scope must have a binding for every lambda param.
-        // When inference didn't resolve a param type, Dynamic is the correct sentinel.
-        // Downstream guards in lambda_param_type_strs filter Dynamic from rendered
-        // type annotations, and emit_node_type_rc catches any remaining leak.
         let param_type = match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: resolved_type } => resolved_type
-          None => leaf_node(name: "Dynamic")
+          None => type_variable_node(id: "lambda_param")
         }
         extend_scope(scope: acc, name: param_name, resolved: param_type)
       )
@@ -2136,10 +2168,9 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: lambda_semantics } =>
         match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: param_type } =>
-            // Dynamic audit: correct guard — filter Dynamic/Error sentinels from
-            // rendered lambda param type annotations. Falls back to caller-provided
-            // fallback_types (typically elem_type_str or "_"), letting Rust infer.
-            if param_type.name == "Dynamic" || param_type.name == "Error" {
+            let param_is_error = if param_type.inferred != none { is_compiler_error(inferred: param_type.inferred.value) } else { false }
+            let param_is_type_var = if param_type.inferred != none { is_type_variable(inferred: param_type.inferred.value) } else { false }
+            if param_is_type_var || param_is_error {
               none
             } else {
               Some { value: emit_node_type_rc(n: param_type, target: Rust, rc_types: rc_types) }
@@ -2165,7 +2196,7 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
 fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda { params: ps, semantics: semantics } =>
-      let bd = match lambda_expr.children |> first { Some { value: v } => v  None => lambda_expr }
+      let bd = lambda_body(texpr: lambda_expr)
       let param_strs = lambda_param_type_strs(params: ps, semantics: semantics, fallback_types: [elem_type_str], rc_types: rc_types)
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2182,7 +2213,7 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda { params: ps, semantics: semantics } =>
-      let bd = match lambda_expr.children |> first { Some { value: v } => v  None => lambda_expr }
+      let bd = lambda_body(texpr: lambda_expr)
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { "_" } else { elem_type_str }
       )
@@ -2218,7 +2249,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       // RC4: If the receiver is Optional, emit .map(|p| body) to preserve Option type.
       // Otherwise use the standard for-loop collect pattern for lists.
       let recv_is_optional = match receiver.inferred {
-        Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+        Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
         _ => false
       }
       if recv_is_optional {
@@ -2321,8 +2352,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       }
       let acc_type_node = match fold_accumulator_type {
         Some { value: acc_type } =>
-          let acc_children_have_unit = acc_type.children |> any(c => c.name == "Unit" || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
-          if node_is_map(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit) {
+          let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
+          if acc_type.collection_kind == MapKind && (acc_type.children |> count == 0 || acc_children_have_unit) {
             match contextual_acc_type {
               Some { value: concrete_type } => concrete_type
               None => acc_type
@@ -2333,25 +2364,23 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             Some { value: concrete_type } => concrete_type
             None =>
               // Fallback: infer accumulator type from init expression's return type.
-              // Dynamic audit: correct — Dynamic leaf_node here is caught by
-              // emit_node_type_rc which renders it as compile_error!.
               match args |> first {
                 Some { value: init_arg } =>
                   if init_arg.value.inferred != none {
                     rt_type(n: init_arg.value)
-                  } else { leaf_node(name: "Dynamic") }
-                None => leaf_node(name: "Dynamic")
+                  } else { type_variable_node(id: "fold_accum") }
+                None => type_variable_node(id: "fold_accum")
               }
           }
       }
       let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
       // Check if the acc type has any Unit/empty children (incomplete type inference)
-      let acc_has_unit_child = acc_type_node.children |> any(c => c.name == "Unit" || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
+      let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
       let init_str = match args |> first {
         Some { value: init_arg } =>
           match init_arg.value.expr_data {
             ExprCall { func: init_func, call_semantics: _ } =>
-              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" && !acc_has_unit_child {
+              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
                 concat("<", acc_type_str, ">::new()")
               } else if init_func == "empty_map" {
                 // Partial turbofish: tell Rust the key type, infer value type from context
@@ -2376,9 +2405,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         Some { value: Resolved { node: rt } } =>
           let resolved = rt
           let elem = for_each_element_type_node(n: resolved)
-          // Dynamic audit: correct guard — if sort_by element type is Dynamic,
-          // fall back to "_" so Rust infers the closure param type.
-          if elem.name != "" && elem.name != "Dynamic" {
+          let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
+          if elem.name != "" && !elem_is_type_var {
             emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
           } else { "_" }
         _ => "_"
@@ -2410,7 +2438,8 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
     let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     let type_name = match receiver.inferred {
       Some { value: Resolved { node: rt } } =>
-        if rt.name == "Error" || rt.name == "" {
+        let rt_is_error = if rt.inferred != none { is_compiler_error(inferred: rt.inferred.value) } else { false }
+        if rt_is_error || rt.name == "" {
           "compile_error!(\"with method missing resolved record type\")"
         } else { rt.name }
       _ => "compile_error!(\"with method missing resolved record type\")"
@@ -2481,7 +2510,8 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
   // For Optional<T>, unwrap to get T so inner patterns qualify correctly.
   let scrut_type = match scrutinee.inferred {
     Some { value: Resolved { node: rt } } =>
-      if node_is_optional(n: rt) {
+      let is_optional = rt.return_cardinality == CardOptional
+      if is_optional {
         with_required_cardinality(n: rt).name
       } else { rt.name }
     _ => ""
@@ -2489,7 +2519,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   let match_result_type = match arms |> first {
     Some { value: first_arm } => rt_type(n: first_arm.body)
-    None => leaf_node(name: "Dynamic")
+    None => type_variable_node(id: "match_result")
   }
   let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type))
   let arms_str = arm_strs |> join(separator: "\n")
@@ -2601,10 +2631,10 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         // then resolve to the definition. resolve_scrutinee_type_node can
         // lose use-site cardinality when resolving to the type definition.
         match texpr.inferred {
-          Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+          Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
           _ =>
             match map_get(scope.locals, n) {
-              Some { value: binding } => node_is_optional(n: binding.resolved)
+              Some { value: binding } => binding.resolved.return_cardinality == CardOptional
               None => false
             }
         }
@@ -2615,7 +2645,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
         None => false
       }
     ExprFieldAccess { field: f, summary: fa_summary } =>
-      let b = match texpr.children |> first { Some { value: v } => v  None => texpr }
+      let b = field_access_base(texpr: texpr)
       // If the base type is known and this field has OptionalValue shape,
       // the result is already Option<T> — don't double-wrap in Some().
       // Check 1: field_summary from reconcile directly says OptionalValue
@@ -2633,20 +2663,20 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
             } else {
               // Fallback: struct may not be in type_summaries; check expression return type
               match texpr.inferred {
-                Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+                Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
                 _ => false
               }
             }
           _ =>
             match texpr.inferred {
-              Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+              Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
               _ => false
             }
         }
       }
     _ =>
       match texpr.inferred {
-        Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+        Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
         _ => false
       }
   }
@@ -2658,15 +2688,13 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
 fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
-  // Dynamic audit (both branches below): correct guards — when a field's type is
-  // Dynamic, return none rather than using "Dynamic" as a parent type qualifier.
-  // The caller falls back to other disambiguation strategies (vtoe, parent_enum).
   // First try: direct children (works for Conj/struct nodes)
   let direct = match struct_node.children |> filter(c => c.name == field_name) |> first {
     Some { value: field_child } =>
       if field_child.inferred != none {
         let field_type = rt_type(n: field_child)
-        if field_type.name != "" && field_type.name != "Dynamic" {
+        let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
+        if field_type.name != "" && !ft_is_type_var {
           Some { value: field_type.name }
         } else { none }
       } else { none }
@@ -2684,7 +2712,8 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
                 Some { value: field_child } =>
                   if field_child.inferred != none {
                     let field_type = rt_type(n: field_child)
-                    if field_type.name != "" && field_type.name != "Dynamic" {
+                    let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
+                    if field_type.name != "" && !ft_is_type_var {
                       Some { value: field_type.name }
                     } else { none }
                   } else { none }
@@ -2745,7 +2774,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
   match qualified_name {
     None =>
       // Anonymous record literal: emit as bare value (single-field) or tuple (multi-field).
-      let is_product = node_is_product(n: resolved_type)
+      let is_product = resolved_type.connective == Conj
       if is_product && resolved_type.name == "" {
         if fields |> count == 1 {
           match fields |> first {
@@ -2781,9 +2810,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           match vtoe_lookup {
             Some { value: vtoe_parent } => Some { value: vtoe_parent }
             None =>
-              // Dynamic audit: correct guard — when resolved_type is Dynamic or Error,
-              // don't use it as the enum parent qualifier. Fall through to parent_enum.
-              if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
+              let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
+              if resolved_type.name != "" && resolved_type.name != tn && !rt_is_type_var && resolved_type.name != "Error" {
                 Some { value: resolved_type.name }
               } else {
                 parent_enum
@@ -2863,7 +2891,7 @@ fn emit_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<Strin
 
 fn is_optional_typed_expr(e: Node) -> Bool {
   match e.inferred {
-    Some { value: Resolved { node: rt } } => node_is_optional(n: rt)
+    Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
     _ => false
   }
 }
@@ -2881,8 +2909,9 @@ fn is_string_comparison(op: BinOpKind, left: Node, right: Node) -> Bool {
 fn is_string_typed_expr(e: Node) -> Bool {
   match e.inferred {
     Some { value: Resolved { node: rt } } =>
-      let inner = if node_is_optional(n: rt) { with_required_cardinality(n: rt) } else { rt }
-      is_string_type_node(n: inner)
+      let is_optional = rt.return_cardinality == CardOptional
+      let inner = if is_optional { with_required_cardinality(n: rt) } else { rt }
+      is_rust_string_like(n: inner)
     _ => false
   }
 }
@@ -2969,7 +2998,7 @@ fn emit_tco_init_block_stmts(remaining: List<Node>, text: List<String>,
 fn emit_tco_init_stmt(stmt: Node, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match stmt.expr_data {
     ExprLet { name: n } =>
-      let v = match stmt.children |> first { Some { value: val } => val  None => stmt }
+      let v = let_value(texpr: stmt)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
@@ -2996,9 +3025,9 @@ fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>,
 fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprIf =>
-      let c = match frame.expr.children |> first { Some { value: v } => v  None => frame.expr }
-      let t = match frame.expr.children |> drop(1) |> first { Some { value: v } => v  None => frame.expr }
-      let e = frame.expr.children |> drop(2) |> first
+      let c = if_condition(texpr: frame.expr)
+      let t = if_then_branch(texpr: frame.expr)
+      let e = if_else_branch(texpr: frame.expr)
       let cond_str = emit_typed_expr(texpr: c, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let then_str = emit_typed_tco_expr(texpr: t, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       match e {
@@ -3018,12 +3047,13 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, regis
 fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprMatch =>
-      let s = match frame.expr.children |> first { Some { value: v } => v  None => frame.expr }
-      let arm_list = frame.expr.children |> drop(1) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let s = match_scrutinee(texpr: frame.expr)
+      let arm_list = match_arm_nodes(texpr: frame.expr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
       let scrut_str = emit_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let tco_scrut_type = match s.inferred {
         Some { value: Resolved { node: rt } } =>
-          if node_is_optional(n: rt) {
+          let is_optional = rt.return_cardinality == CardOptional
+          if is_optional {
             with_required_cardinality(n: rt).name
           } else { rt.name }
         _ => ""
@@ -3049,8 +3079,8 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, re
 fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprLet { name: n } =>
-      let v = match frame.expr.children |> first { Some { value: val } => val  None => frame.expr }
-      let bd = frame.expr.children |> drop(1) |> first
+      let v = let_value(texpr: frame.expr)
+      let bd = let_body(texpr: frame.expr)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let is_param = params |> any(p => p.name == n)
       let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
@@ -3346,20 +3376,26 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
 
 fn emit_shell_return(inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let is_product = node_is_product(n: effective)
-  if effective.name == "Bool" || effective.name == "bool" {
+  let is_product = effective.connective == Conj
+  // Bool = True | False: structural check (Disj + 2 children)
+  let is_bool = effective.connective == Disj && effective.children |> count == 2
+  if is_bool {
     "Ok(output.status.success())"
-  } else if effective.name == "List" || effective.name == "Vec" || node_is_container(n: effective) {
-    "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
-  } else if is_product && effective.children |> count > 1 {
-    concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
   } else {
-    "Ok(stdout)"
+    let eff_ck = effective.collection_kind
+    let __eff_is_container = eff_ck == ListKind || eff_ck == SetKind || eff_ck == NonEmptyListKind || eff_ck == NonEmptySetKind
+    if __eff_is_container {
+      "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
+    } else if is_product && effective.children |> count > 1 {
+      concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")
+    } else {
+      "Ok(stdout)"
+    }
   }
 }
 
 fn unwrap_single_field_product(n: Node) -> Node {
-  let is_product = node_is_product(n: n)
+  let is_product = n.connective == Conj
   if is_product && n.name == "" && n.children |> count == 1 {
     match n.children |> first {
       Some { value: field_node } => rt_type(n: field_node)
@@ -3370,7 +3406,7 @@ fn unwrap_single_field_product(n: Node) -> Node {
 
 fn emit_file_call(op_name: String, inferred: Node) -> String {
   let effective = unwrap_single_field_product(n: inferred)
-  let is_product = node_is_product(n: effective)
+  let is_product = effective.connective == Conj
   let parse_line = if is_product && effective.children |> count > 1 {
     "let parsed: serde_json::Value = serde_json::from_str(&content)?;\nOk(serde_json::from_value(parsed)?)"
   } else {
@@ -3446,7 +3482,9 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",
       "}")
-  } else if node_is_map(n: type_node) {
+  } else {
+    let is_map = type_node.collection_kind == MapKind
+    if is_map {
     // Map data: emit as lazy_static with explicit insert() calls.
     // The value is a RecordLit whose field names are map keys and field values are map values.
     match value.expr_data {
@@ -3469,17 +3507,18 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
           "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
           "}")
     }
-  } else {
-    // Complex types use lazy_static for heap-allocated values
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
-    concat("lazy_static::lazy_static! {\n",
-      "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
-      "}")
+    } else {
+      // Complex types use lazy_static for heap-allocated values
+      let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+      concat("lazy_static::lazy_static! {\n",
+        "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+        "}")
+    }
   }
 }
 
 fn is_simple_type_node(n: Node) -> Bool {
-  is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
+  is_rust_value_type(n: n)
 }
 
 // =========================================================================
@@ -3794,14 +3833,15 @@ fn emit_subcommand_field(param: Param) -> String {
 // Bool -> bool, String -> String, Int -> i64, etc.
 // Optional types get wrapped in Option<>.
 fn emit_cli_param_type_node(n: Node) -> String {
-  if node_is_optional(n: n) {
+  let is_optional = n.return_cardinality == CardOptional
+  let has_structure = n.connective != NoConnective
+  if is_optional {
     concat("Option<", emit_cli_param_type_node(n: with_required_cardinality(n: n)), ">")
-  } else if node_has_structure(n: n) {
+  } else if has_structure {
     "String"
   } else if n.children |> count == 0 {
-    if is_bool_type_node(n: n) { "bool" }
-    else if is_int_type_node(n: n) { "i64" }
-    else if is_float_type_node(n: n) { "f64" }
+    let mapped = target_primitive_type(target: Rust, name: n.name)
+    if mapped != n.name { mapped }
     else { "String" }
   } else {
     "String"

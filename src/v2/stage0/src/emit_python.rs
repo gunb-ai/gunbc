@@ -481,7 +481,7 @@ pub fn emit_py_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 }
 
 pub fn emit_py_type_def_from_connective(item: Rc<Node>) -> String {
-    let is_product = node_is_product(item.clone());
+    let is_product = item.connective == Connective::Conj;
     if is_product {
     emit_py_dataclass_from_children(&item.name, item.children.clone())
 } else {
@@ -521,7 +521,7 @@ pub fn emit_py_dataclass_from_children(name: &str, children: Rc<Vec<Rc<Node>>>) 
 
 pub fn emit_py_dataclass_field_from_child(child: Rc<Node>) -> String {
     let ty = emit_node_type(rt_type(child.clone()), RenderTarget::Python);
-    let is_optional = node_is_optional(rt_type(child.clone()));
+    let is_optional = rt_type(child.clone()).return_cardinality == Cardinality::CardOptional;
     let default_str = if is_optional {
     v2_rt::concat(" = ".to_string(), py_default_value())
 } else {

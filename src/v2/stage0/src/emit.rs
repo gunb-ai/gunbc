@@ -591,13 +591,13 @@ pub fn has_nested_records_node(n: Rc<Node>) -> bool {
         let mut __tco_p_n = n;
         loop {
             let n = __tco_p_n;
-            let is_product = node_is_product(n.clone());
-            let is_coproduct = node_is_coproduct(n.clone());
+            let is_product = n.connective == Connective::Conj;
+            let is_coproduct = n.connective == Connective::Disj;
             if is_product {
     break true;
 } else {
     if is_coproduct {
-    if node_is_optional(n.clone()) {
+    if n.return_cardinality == Cardinality::CardOptional {
      {
         let __tco_0 = with_required_cardinality(n.clone());
         __tco_p_n = __tco_0;
@@ -608,7 +608,7 @@ pub fn has_nested_records_node(n: Rc<Node>) -> bool {
     break false;
 };
 } else {
-    if node_is_map(n.clone()) {
+    if n.collection_kind == CollectionKind::MapKind {
     match n.children.clone().get((1_i64) as usize).cloned() {
     Some(val_child) => {
          {
@@ -1422,7 +1422,7 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
         false
     }
 };
-        if ((n.name.clone() == "Dynamic") || (n.name.clone() == "Error")) && (({
+        if ((n.name.clone() == "Dynamic") || node_has_compiler_error(&n)) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) == 0_i64) {
@@ -1432,10 +1432,7 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
     v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), n.name.clone()), "__".to_string())
 };
 };
-        if (n.name.clone() == "Callable") && (({
-    let __len_6 = n.params.clone().len();
-    __len_6 as i64
-}) > 0_i64) {
+        if !n.params.is_empty() {
     let param_types = {
     let mut __mapped_1 = Vec::new();
     for __elem_2 in n.params.iter().cloned() {
@@ -1492,11 +1489,11 @@ pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap
     }
 }
 } else {
-    if node_is_optional(n.clone()) {
+    if n.return_cardinality == Cardinality::CardOptional {
     emit_container("optional", &emit_node_type_rc(with_required_cardinality(n.clone()), target.clone(), rc_types.clone()), target.clone())
 } else {
-    let is_conj = node_is_product(n.clone());
-    let is_disj = node_is_coproduct(n.clone());
+    let is_conj = n.connective == Connective::Conj;
+    let is_disj = n.connective == Connective::Disj;
     if (is_conj.clone() == false) && (is_disj == false) {
     emit_node_type_leaf_rc(n.clone(), target.clone(), rc_types.clone())
 } else {
@@ -1532,7 +1529,7 @@ pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<Ha
     base.clone()
 }
 } else {
-    if node_is_map(n.clone()) {
+    if n.collection_kind == CollectionKind::MapKind {
     let k = match n.children.clone().first().cloned() {
     Some(kn) => {
         emit_node_type_rc(kn.clone(), target.clone(), rc_types.clone())
@@ -1858,7 +1855,7 @@ pub fn extract_modifier_names(properties: Rc<Vec<Rc<FieldInit>>>) -> Rc<Vec<Stri
 }
 
 pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
-    let item_has_structure = node_has_structure(item.clone());
+    let item_has_structure = item.connective != Connective::NoConnective ;
     let kind = if item_has_structure.clone() && (item.transport.clone().is_none()) {
     TypedItemKind::TypedItemTypeDef
 } else {

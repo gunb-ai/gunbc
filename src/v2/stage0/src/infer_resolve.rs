@@ -82,13 +82,13 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str) -> Rc<Node
 }
 
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if node_has_structure(n.clone()) {
+    if n.connective != Connective::NoConnective {
     false
 } else {
-    if node_is_map(n.clone()) {
+    if n.collection_kind == CollectionKind::MapKind {
     false
 } else {
-    if node_is_container(n.clone()) {
+    if n.collection_kind == CollectionKind::ListKind || n.collection_kind == CollectionKind::SetKind || n.collection_kind == CollectionKind::NonEmptyListKind || n.collection_kind == CollectionKind::NonEmptySetKind {
     false
 } else {
     match lookup_type(env.clone(), &n.name) {
@@ -112,7 +112,7 @@ pub fn substitute_type_slots(n: Rc<Node>, slot_bindings: Rc<HashMap<String, Rc<N
         let is_slot = (((({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
-}) == 0_i64) && (n.connective.clone().is_none())) && (n.body.clone().is_none())) && (n.inferred.clone().is_none());
+}) == 0_i64) && (n.connective.clone() == Connective::NoConnective)) && (n.body.clone().is_none())) && (n.inferred.clone().is_none());
         if is_slot.clone() {
     match slot_bindings.clone().get(&n.name.clone()).cloned() {
     Some(concrete) => {
@@ -157,21 +157,18 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
         if depth.clone() > 100_i64 {
     return Rc::new(NodeResolveResult { resolved: n.clone(), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat(v2_rt::concat("internal: type resolution exceeded depth 100 for '".to_string(), n.name.clone()), "'".to_string()), span: Some(n.span.clone()), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::InvalidOperation) }))) });
 };
-        let n = if n.collection_kind.clone().is_none() {
+        let n = if n.collection_kind.clone() == CollectionKind::NoCollection {
     let ck = collection_kind_for_name(&n.name);
-    match ck {
-    Some(_) => {
+    if ck != CollectionKind::NoCollection {
         Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), collection_kind: ck, params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
-    }
-    None => {
+    } else {
         n.clone()
     }
-}
 } else {
     n.clone()
 };
-        if node_has_structure(n.clone()) {
-    if node_is_product(n.clone()) {
+        if n.connective != Connective::NoConnective {
+    if n.connective == Connective::Conj {
     if n.name.clone() == "Refined" {
     match n.children.clone().first().cloned() {
     Some(base) => {
@@ -219,7 +216,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: resolved_children.clone(), connective: n.connective.clone(), collection_kind: n.collection_kind.clone(), params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: all_diags.clone() })
 }
 } else {
-    if node_is_optional(n.clone()) {
+    if n.return_cardinality == Cardinality::CardOptional {
     let inner = with_required_cardinality(n.clone());
     let inner_result = resolve_node_bounded(inner.clone(), env.clone(), &module_name, depth.clone() + 1_i64);
     let inner_resolved = inner_result.resolved.clone();
@@ -396,7 +393,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     let result = Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: substituted_children.clone(), connective: decl.connective.clone(), collection_kind: collection_kind_for_name(&n.name), params: Rc::new(Vec::new()), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: decl.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() }), diagnostics: v2_rt::concat(arity_diags.clone(), arg_diags.clone()) });
     result.clone()
 } else {
-    if node_is_map(n.clone()) {
+    if n.collection_kind == CollectionKind::MapKind {
     let key_child = match n.children.clone().first().cloned() {
     Some(k) => {
         k.clone()
@@ -449,7 +446,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     match lookup_type(env.clone(), &n.name) {
     Some(resolved) => {
         {
-    let structurally_resolved = if ((node_has_structure(resolved.clone()) == false) && (({
+    let structurally_resolved = if (((resolved.connective != Connective::NoConnective) == false) && (({
     let __len_43 = resolved.children.clone().len();
     __len_43 as i64
 }) == 0_i64)) && (resolved.inferred.clone().is_some()) {
@@ -460,6 +457,9 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     NodeType::InferError { message: _, span: _, .. } => {
         resolved.clone()
     }
+    NodeType::InferVariable { .. } => {
+        resolved.clone()
+    }
     NodeType::Untyped => {
         resolved.clone()
     }
@@ -467,7 +467,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
 } else {
     resolved.clone()
 };
-    let final_resolved = if node_is_optional(n.clone()) {
+    let final_resolved = if n.return_cardinality == Cardinality::CardOptional {
     with_optional_cardinality(structurally_resolved.clone())
 } else {
     structurally_resolved.clone()
@@ -476,7 +476,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
 }
     }
     None => {
-        if ((is_kernel_type(&n.name) || (n.name.clone() == "Dynamic")) || (n.name.clone() == "Error")) || (n.name.clone() == "Callable") {
+        if ((is_kernel_type(&n.name) || (n.name.clone() == "Dynamic")) || node_has_compiler_error(&n)) || !n.params.is_empty() {
     Rc::new(NodeResolveResult { resolved: n.clone(), diagnostics: Rc::new(Vec::new()) })
 } else {
     Rc::new(NodeResolveResult { resolved: n.clone(), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: v2_rt::concat(v2_rt::concat("unresolved type '".to_string(), n.name.clone()), "'".to_string()), span: Some(n.span.clone()), module_name: Some(module_name.to_string()), category: Some(ErrorCategory::UnresolvedName) }))) })
@@ -503,7 +503,10 @@ pub fn resolve_optional_node(n: Option<Rc<InferredNode>>, env: Rc<TypeEnv>, modu
         resolve_node(inner.clone(), env.clone(), &module_name)
     }
     InferredNode::CompilerError { message: msg, span: sp, .. } => {
-        Rc::new(NodeResolveResult { resolved: leaf_node("Error"), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: msg.clone(), span: Some(sp.clone()), module_name: Some(module_name.to_string()), category: None }))) })
+        Rc::new(NodeResolveResult { resolved: make_expr_error_node(ExprErrorKind::SemanticExprError, &msg, sp.clone()), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: msg.clone(), span: Some(sp.clone()), module_name: Some(module_name.to_string()), category: None }))) })
+    }
+    InferredNode::TypeVariable { .. } => {
+        Rc::new(NodeResolveResult { resolved: leaf_node("Unit"), diagnostics: Rc::new(Vec::new()) })
     }
 }
 }

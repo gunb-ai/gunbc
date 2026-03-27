@@ -12,16 +12,24 @@ module v2.compiler.infer_emit_info
 
 import v2.std.core {
   Node,
-  InferredNode, Resolved,
+  InferredNode, Resolved, TypeVariable,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  node_has_structure, node_is_product, with_required_cardinality
+  with_required_cardinality,
+  Connective, Conj, NoConnective,
+  CardOptional
 }
 import v2.compiler.infer_types {
-  node_is_optional,
   normalize_access_type_node,
   rt_type, child_inferred_or_name, node_type_equals
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
 }
 
 // =========================================================================
@@ -75,7 +83,8 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
 
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
-  if node_is_optional(n: normed) { OptionalValue }
+  let is_optional = normed.return_cardinality == CardOptional
+  if is_optional { OptionalValue }
   else { PlainValue }
 }
 
@@ -175,10 +184,11 @@ fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary>
 // =========================================================================
 
 fn build_type_summary(item: Node) -> TypeSummary? {
-  if node_has_structure(n: item) == false || item.transport != none {
+  if item.connective == NoConnective || item.transport != none {
     return none
   }
-  if node_is_product(n: item) {
+  let is_product = item.connective == Conj
+  if is_product {
     Some { value: TypeSummary {
       name: item.name,
       repr: StructRepr,
@@ -247,7 +257,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             match child.inferred {
               Some { value: Resolved { node: ft } } =>
                 let resolved_name = normalize_access_type_node(n: ft).name
-                if resolved_name != "" && resolved_name != "Dynamic" {
+                let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
+                if resolved_name != "" && !ft_is_type_var {
                   map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
                 } else { acc }
               _ => acc
@@ -259,7 +270,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
               match child.inferred {
                 Some { value: Resolved { node: ft } } =>
                   let resolved_name = normalize_access_type_node(n: ft).name
-                  if resolved_name != "" && resolved_name != "Dynamic" {
+                  let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
+                if resolved_name != "" && !ft_is_type_var {
                     map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
                   } else { inner_acc }
                 _ => inner_acc

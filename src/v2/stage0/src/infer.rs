@@ -272,7 +272,7 @@ pub fn merge_scope_from_imports(remaining: Rc<Vec<Rc<ResolvedImport>>>, parent_i
     if ((((__elem_9.body.clone().is_some()) && (({
     let __len_18 = __elem_9.params.clone().len();
     __len_18 as i64
-}) == 0_i64)) && (__elem_9.transport.clone().is_none())) && (node_has_structure(__elem_9.clone()) == false)) && (__elem_9.inferred.clone().is_some()) {
+}) == 0_i64)) && (__elem_9.transport.clone().is_none())) && ((__elem_9.connective != Connective::NoConnective) == false)) && (__elem_9.inferred.clone().is_some()) {
     Rc::new(InferScopeComponents { func_sigs: __acc_8.func_sigs.clone(), svc_registry: __acc_8.svc_registry.clone(), svc_locals: {
     let __rc_17 = std::mem::take(&mut Rc::make_mut(&mut __acc_8).svc_locals);
     let mut __map_ins_16 = Rc::try_unwrap(__rc_17).unwrap_or_else(|rc| (*rc).clone());
@@ -378,7 +378,7 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: &str) -> Option<S
     Some(binding) => {
         match lookup_type(scope.type_env.clone(), &binding.resolved.name) {
     Some(parent) => {
-        if node_is_coproduct(parent.clone()) {
+        if parent.connective == Connective::Disj {
     {
 let __cond = {
     let mut __any_0 = false;
@@ -445,6 +445,9 @@ pub fn inferred_from_node_type(result: Rc<NodeType>, fallback_message: &str, fal
     NodeType::InferError { message, span, .. } => {
         Rc::new(InferredNode::CompilerError { message: message.clone(), span: span.clone() })
     }
+    NodeType::InferVariable { id, .. } => {
+        Rc::new(InferredNode::TypeVariable { id: id.clone() })
+    }
     NodeType::Untyped => {
         Rc::new(InferredNode::CompilerError { message: fallback_message.to_string(), span: fallback_span })
     }
@@ -494,10 +497,10 @@ pub fn annotate_pattern_parent_enums(pattern: Rc<MatchPattern>, scrutinee_subjec
     let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
     let inferred_parent = match resolved_scrut.as_ref() {
     PatternSubject::PatternResolved { node: resolved_scrut_node, .. } => {
-        if node_is_optional(resolved_scrut_node.clone()) && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
+        if resolved_scrut_node.return_cardinality == Cardinality::CardOptional && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
     Some("Optional".to_string())
 } else {
-    if node_is_coproduct(resolved_scrut_node.clone()) {
+    if resolved_scrut_node.connective == Connective::Disj {
     Some(resolved_scrut_node.name.clone())
 } else {
     None
@@ -977,7 +980,7 @@ pub fn infer_lambda_with_callable_type(lambda_expr: Rc<Node>, callable_type: Rc<
 
 pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<NamedArg>>>, receiver_type: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
     let receiver_type_name = receiver_type.name.clone();
-    let receiver_is_map = node_is_map(receiver_type.clone());
+    let receiver_is_map = receiver_type.collection_kind == CollectionKind::MapKind;
     if method_name == "map" {
     match {
     let mut __found_2 = None;
@@ -1019,6 +1022,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
     NodeType::InferError { message: _, span: _, .. } => {
         fallback.clone()
     }
+    NodeType::InferVariable { .. } => {
+        fallback.clone()
+    }
     NodeType::Untyped => {
         fallback.clone()
     }
@@ -1048,6 +1054,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
     NodeType::InferError { message: _, span: _, .. } => {
         fallback.clone()
     }
+    NodeType::InferVariable { .. } => {
+        fallback.clone()
+    }
     NodeType::Untyped => {
         fallback.clone()
     }
@@ -1072,6 +1081,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
         container_node("List", rt.clone())
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        fallback.clone()
+    }
+    NodeType::InferVariable { .. } => {
         fallback.clone()
     }
     NodeType::Untyped => {
@@ -1100,6 +1112,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
     NodeType::InferError { message: _, span: _, .. } => {
         fallback.clone()
     }
+    NodeType::InferVariable { .. } => {
+        fallback.clone()
+    }
     NodeType::Untyped => {
         fallback.clone()
     }
@@ -1116,6 +1131,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
         rt.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        fallback.clone()
+    }
+    NodeType::InferVariable { .. } => {
         fallback.clone()
     }
     NodeType::Untyped => {
@@ -1139,6 +1157,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
         rt.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        receiver_type.clone()
+    }
+    NodeType::InferVariable { .. } => {
         receiver_type.clone()
     }
     NodeType::Untyped => {
@@ -1244,12 +1265,15 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         error_type_node()
     }
+    NodeType::InferVariable { .. } => {
+        error_type_node()
+    }
     NodeType::Untyped => {
         leaf_node("Unit")
     }
 };
     let resolved_base = resolve_scrutinee_type_node(scope.type_env.clone(), base_rt.clone());
-    if resolved_base.name.clone() == "Error" {
+    if node_has_compiler_error(&resolved_base) {
     Rc::new(InferResult { typed: make_expr_error_node(ExprErrorKind::SemanticExprError, "error type cascade", span.clone()), diagnostics: base_diags.clone() })
 } else {
     match lookup_field_type_node(resolved_base.clone(), &field_name) {
@@ -1326,6 +1350,9 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         error_type_node()
     }
+    NodeType::InferVariable { .. } => {
+        error_type_node()
+    }
     NodeType::Untyped => {
         error_type_node()
     }
@@ -1373,7 +1400,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
         leaf_node("Dynamic")
     }
 };
-    let is_callable_formal = formal_param_type.name.clone() == "Callable";
+    let is_callable_formal = !formal_param_type.params.is_empty();
     if is_lambda_expr(a.value.clone()) && is_callable_formal.clone() {
     infer_lambda_with_callable_type(a.value.clone(), formal_param_type.clone(), a.name.clone(), scope.clone())
 } else {
@@ -1490,7 +1517,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
 } else {
     let callable_local = match scope.locals.clone().get(&func_name.clone()).cloned() {
     Some(binding) => {
-        if binding.resolved.name.clone() == "Callable" {
+        if !binding.resolved.params.is_empty() {
     Some(binding.resolved.clone())
 } else {
     None
@@ -1555,6 +1582,9 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
         rt.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        error_type_node()
+    }
+    NodeType::InferVariable { .. } => {
         error_type_node()
     }
     NodeType::Untyped => {
@@ -1951,12 +1981,18 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         None
     }
+    NodeType::InferVariable { .. } => {
+        None
+    }
     NodeType::Untyped => {
         None
     }
 }
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::InferVariable { .. } => {
         None
     }
     NodeType::Untyped => {
@@ -1968,6 +2004,9 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
         index_type_result.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::InferVariable { .. } => {
         base_type_result.clone()
     }
     NodeType::Untyped => {
@@ -2020,12 +2059,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         None
     }
-    NodeType::Untyped => {
-        None
-    }
-}
-    }
-    NodeType::InferError { message: _, span: _, .. } => {
+    NodeType::InferVariable { .. } => {
         None
     }
     NodeType::Untyped => {
@@ -2034,6 +2068,20 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
 }
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::InferVariable { .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::InferVariable { .. } => {
         None
     }
     NodeType::Untyped => {
@@ -2049,12 +2097,18 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         start_type_result.clone()
     }
+    NodeType::InferVariable { .. } => {
+        start_type_result.clone()
+    }
     NodeType::Untyped => {
         start_type_result.clone()
     }
 }
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::InferVariable { .. } => {
         base_type_result.clone()
     }
     NodeType::Untyped => {
@@ -2131,11 +2185,11 @@ pub fn infer_record_lit(type_name: Option<String>, field_inits: Rc<Vec<Rc<FieldI
     let child_nodes = {
     let mut __mapped_6 = Vec::new();
     for __elem_7 in fi_infer_results.iter().cloned() {
-        __mapped_6.push(Rc::new(Node { name: __elem_7.typed_field.name.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: rt_type(__elem_7.infer_result.typed.clone()) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
+        __mapped_6.push(Rc::new(Node { name: __elem_7.typed_field.name.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: rt_type(__elem_7.infer_result.typed.clone()) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
     }
     Rc::new(__mapped_6)
 };
-    let anon_node = Rc::new(Node { name: "".to_string(), span: no_span(), children: child_nodes.clone(), connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let anon_node = Rc::new(Node { name: "".to_string(), span: no_span(), children: child_nodes.clone(), connective: Connective::Conj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     let texpr = make_expr_node(Rc::new(ExprData::ExprRecordLit { type_name: None, fields: typed_fields.clone(), parent_enum: None }), Some(Rc::new(InferredNode::Resolved { node: anon_node.clone() })), span.clone());
     Rc::new(InferResult { typed: texpr.clone(), diagnostics: fi_diags.clone() })
 } else {
@@ -2209,7 +2263,7 @@ pub fn infer_record_lit(type_name: Option<String>, field_inits: Rc<Vec<Rc<FieldI
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let typed_anno = item.type_annotation.clone();
-        if node_has_structure(item.clone()) && (item.transport.clone().is_none()) {
+        if (item.connective != Connective::NoConnective) && (item.transport.clone().is_none()) {
     Rc::new(TypedItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in item.children.iter().cloned() {
@@ -2237,7 +2291,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         __mapped_2.push(infer_item(__elem_3.clone(), scope.clone()).item.clone());
     }
     Rc::new(__mapped_2)
-}, params: item.params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: Some(body_typed.clone()), connective: None, transport: item.transport.clone(), collection_kind: None, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: expr_has_self_call(body_typed.clone(), &item.name), has_non_tail_self_call: expr_has_non_tail_self_call(body_typed.clone(), &item.name, true), expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: body_diags.clone() })
+}, params: item.params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: Some(body_typed.clone()), connective: Connective::NoConnective, transport: item.transport.clone(), collection_kind: CollectionKind::NoCollection, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: expr_has_self_call(body_typed.clone(), &item.name), has_non_tail_self_call: expr_has_non_tail_self_call(body_typed.clone(), &item.name, true), expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: body_diags.clone() })
 } else {
     if ((item.body.clone().is_some()) && (({
     let __len_10 = item.params.clone().len();
@@ -2248,7 +2302,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
     let body_typed = body_result.typed.clone();
     let body_diags = body_result.diagnostics.clone();
     let resolved_ret = rt_type(item.clone());
-    Rc::new(TypedItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: Some(body_typed.clone()), connective: None, transport: item.transport.clone(), collection_kind: None, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: body_diags.clone() })
+    Rc::new(TypedItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: Some(body_typed.clone()), connective: Connective::NoConnective, transport: item.transport.clone(), collection_kind: CollectionKind::NoCollection, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: body_diags.clone() })
 } else {
     if (item.body.clone().is_some()) && (({
     let __len_9 = item.params.clone().len();
@@ -2262,7 +2316,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
 } else {
     item.type_annotation.clone().unwrap()
 };
-    Rc::new(TypedItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: Some(val_typed.clone()), connective: None, transport: item.transport.clone(), collection_kind: None, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: val_diags.clone() })
+    Rc::new(TypedItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: Rc::new(Vec::new()), params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: Some(val_typed.clone()), connective: Connective::NoConnective, transport: item.transport.clone(), collection_kind: CollectionKind::NoCollection, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: val_diags.clone() })
 } else {
     if (({
     let __len_8 = item.params.clone().len();
@@ -2279,7 +2333,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         __mapped_4.push(infer_item(__elem_5.clone(), scope.clone()).item.clone());
     }
     Rc::new(__mapped_4)
-}, params: item.params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: None, connective: None, transport: item.transport.clone(), collection_kind: None, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: Rc::new(Vec::new()) })
+}, params: item.params.clone(), inferred: Some(Rc::new(InferredNode::Resolved { node: resolved_ret.clone() })), return_cardinality: item.return_cardinality.clone(), uses: item.uses.clone(), body: None, connective: Connective::NoConnective, transport: item.transport.clone(), collection_kind: CollectionKind::NoCollection, properties: item.properties.clone(), type_annotation: typed_anno.clone(), config: item.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: Rc::new(Vec::new()) })
 } else {
     let resolved_ret = if item.inferred.clone().is_none() {
     leaf_node("Unit")
@@ -2319,15 +2373,22 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
         __acc_0 = {
     let __rc_3 = __acc_0;
     let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: Rc::new(Node { name: __elem_1.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: None, collection_kind: collection_kind_for_name(&__elem_1), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
+    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: Rc::new(Node { name: __elem_1.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: collection_kind_for_name(&__elem_1), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
     Rc::new(__map_ins_2)
 };
     }
     __acc_0
 };
-    let some_value_field = Rc::new(Node { name: "value".to_string(), span: zero_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node("Dynamic") })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
-    let some_variant = Rc::new(Node { name: "Some".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_value_field.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
-    let kernel_optional = Rc::new(Node { name: "Optional".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_variant.clone(), leaf_node("None"))), connective: Some(Connective::Disj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    // Override Unit with Conj connective (empty product, structurally distinct)
+    let kernel_bindings = {
+    let __rc = kernel_bindings;
+    let mut __map = Rc::try_unwrap(__rc).unwrap_or_else(|rc| (*rc).clone());
+    __map.insert("Unit".to_string(), Rc::new(TypeBinding { name: "Unit".to_string(), resolved: Rc::new(Node { name: "Unit".to_string(), span: no_span(), children: Rc::new(Vec::new()), connective: Connective::Conj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
+    Rc::new(__map)
+};
+    let some_value_field = Rc::new(Node { name: "value".to_string(), span: zero_span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::TypeVariable { id: "some_value".to_string() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let some_variant = Rc::new(Node { name: "Some".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_value_field.clone())), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let kernel_optional = Rc::new(Node { name: "Optional".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_variant.clone(), leaf_node("None"))), connective: Connective::Disj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     let kernel_bindings = {
     let __rc_5 = kernel_bindings;
     let mut __map_ins_4 = Rc::try_unwrap(__rc_5).unwrap_or_else(|rc| (*rc).clone());
@@ -2398,7 +2459,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     let local_bindings = {
     let mut __acc_20: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_21 in module.module.items.iter().cloned() {
-        __acc_20 = if node_has_structure(__elem_21.clone()) {
+        __acc_20 = if __elem_21.connective != Connective::NoConnective {
     let type_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: __elem_21.children.clone(), connective: __elem_21.connective.clone(), collection_kind: collection_kind_for_name(&__elem_21.name), params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_23 = __acc_20;
@@ -2411,7 +2472,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     let __len_36 = __elem_21.params.clone().len();
     __len_36 as i64
 }) == 0_i64)) && (__elem_21.body.clone().is_none()) {
-    let alias_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: __elem_21.inferred.clone(), return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let alias_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: __elem_21.inferred.clone(), return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_25 = __acc_20;
     let mut __map_ins_24 = Rc::try_unwrap(__rc_25).unwrap_or_else(|rc| (*rc).clone());
@@ -2423,7 +2484,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     let __len_35 = __elem_21.children.clone().len();
     __len_35 as i64
 }) > 0_i64) {
-    let ref_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node(&__elem_21.name) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let ref_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node(&__elem_21.name) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_27 = __acc_20;
     let mut __map_ins_26 = Rc::try_unwrap(__rc_27).unwrap_or_else(|rc| (*rc).clone());
@@ -2434,8 +2495,8 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     if (((({
     let __len_34 = __elem_21.params.clone().len();
     __len_34 as i64
-}) > 0_i64) && (node_has_structure(__elem_21.clone()) == false)) && (__elem_21.body.clone().is_none())) && (__elem_21.transport.clone().is_none()) {
-    let bare_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: collection_kind_for_name(&__elem_21.name), params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+}) > 0_i64) && ((__elem_21.connective != Connective::NoConnective) == false)) && (__elem_21.body.clone().is_none())) && (__elem_21.transport.clone().is_none()) {
+    let bare_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: collection_kind_for_name(&__elem_21.name), params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_29 = __acc_20;
     let mut __map_ins_28 = Rc::try_unwrap(__rc_29).unwrap_or_else(|rc| (*rc).clone());
@@ -2446,7 +2507,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     if ((((({
     let __len_32 = __elem_21.properties.clone().len();
     __len_32 as i64
-}) > 0_i64) && (node_has_structure(__elem_21.clone()) == false)) && (__elem_21.transport.clone().is_none())) && (__elem_21.inferred.clone().is_none())) && (({
+}) > 0_i64) && ((__elem_21.connective != Connective::NoConnective) == false)) && (__elem_21.transport.clone().is_none())) && (__elem_21.inferred.clone().is_none())) && (({
     let __len_33 = __elem_21.params.clone().len();
     __len_33 as i64
 }) == 0_i64) {
@@ -2576,15 +2637,15 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
         __acc_0 = {
     let __rc_3 = __acc_0;
     let mut __map_ins_2 = Rc::try_unwrap(__rc_3).unwrap_or_else(|rc| (*rc).clone());
-    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: Rc::new(Node { name: __elem_1.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: None, collection_kind: collection_kind_for_name(&__elem_1), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
+    __map_ins_2.insert(__elem_1.clone(), Rc::new(TypeBinding { name: __elem_1.clone(), resolved: Rc::new(Node { name: __elem_1.clone(), span: no_span(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: collection_kind_for_name(&__elem_1), params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
     Rc::new(__map_ins_2)
 };
     }
     __acc_0
 };
-    let some_value_field = Rc::new(Node { name: "value".to_string(), span: zero_span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node("Dynamic") })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
-    let some_variant = Rc::new(Node { name: "Some".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_value_field.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
-    let kernel_optional = Rc::new(Node { name: "Optional".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_variant.clone(), leaf_node("None"))), connective: Some(Connective::Disj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let some_value_field = Rc::new(Node { name: "value".to_string(), span: zero_span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node("Dynamic") })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let some_variant = Rc::new(Node { name: "Some".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_value_field.clone())), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let kernel_optional = Rc::new(Node { name: "Optional".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_variant.clone(), leaf_node("None"))), connective: Connective::Disj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     let kernel_bindings = {
     let __rc_5 = kernel_bindings;
     let mut __map_ins_4 = Rc::try_unwrap(__rc_5).unwrap_or_else(|rc| (*rc).clone());
@@ -2641,7 +2702,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     let local_bindings = {
     let mut __acc_18: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_19 in module.module.items.iter().cloned() {
-        __acc_18 = if node_has_structure(__elem_19.clone()) {
+        __acc_18 = if __elem_19.connective != Connective::NoConnective {
     let type_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: __elem_19.children.clone(), connective: __elem_19.connective.clone(), collection_kind: collection_kind_for_name(&__elem_19.name), params: Rc::new(Vec::new()), inferred: None, return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_21 = __acc_18;
@@ -2654,7 +2715,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     let __len_31 = __elem_19.params.clone().len();
     __len_31 as i64
 }) == 0_i64)) && (__elem_19.body.clone().is_none()) {
-    let alias_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: __elem_19.inferred.clone(), return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let alias_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: __elem_19.inferred.clone(), return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_23 = __acc_18;
     let mut __map_ins_22 = Rc::try_unwrap(__rc_23).unwrap_or_else(|rc| (*rc).clone());
@@ -2666,7 +2727,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     let __len_30 = __elem_19.children.clone().len();
     __len_30 as i64
 }) > 0_i64) {
-    let ref_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node(&__elem_19.name) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    let ref_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node(&__elem_19.name) })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_25 = __acc_18;
     let mut __map_ins_24 = Rc::try_unwrap(__rc_25).unwrap_or_else(|rc| (*rc).clone());
@@ -2677,7 +2738,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     if ((((({
     let __len_28 = __elem_19.properties.clone().len();
     __len_28 as i64
-}) > 0_i64) && (node_has_structure(__elem_19.clone()) == false)) && (__elem_19.transport.clone().is_none())) && (__elem_19.inferred.clone().is_none())) && (({
+}) > 0_i64) && ((__elem_19.connective != Connective::NoConnective) == false)) && (__elem_19.transport.clone().is_none())) && (__elem_19.inferred.clone().is_none())) && (({
     let __len_29 = __elem_19.params.clone().len();
     __len_29 as i64
 }) == 0_i64) {
@@ -2932,7 +2993,7 @@ pub fn build_module_context(contributions: Rc<Vec<Rc<ItemContribution>>>, parent
     let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
     Rc::new(__values_3)
 }).iter().cloned() {
-        __acc_4 = if node_is_coproduct(__elem_5.resolved.clone()) {
+        __acc_4 = if __elem_5.resolved.connective == Connective::Disj {
     {
     let mut __acc_6 = __acc_4.clone();
     for __elem_7 in __elem_5.resolved.children.iter().cloned() {

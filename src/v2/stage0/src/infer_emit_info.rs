@@ -45,7 +45,7 @@ pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: &str) -
 
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
     let normed = normalize_access_type_node(type_node.clone());
-    if node_is_optional(normed.clone()) {
+    if normed.return_cardinality == Cardinality::CardOptional {
     FieldValueShape::OptionalValue
 } else {
     FieldValueShape::PlainValue
@@ -250,10 +250,10 @@ pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<Str
 }
 
 pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
-    if (node_has_structure(item.clone()) == false) || (item.transport.clone().is_some()) {
+    if ((item.connective != Connective::NoConnective) == false) || (item.transport.clone().is_some()) {
     return None;
 };
-    if node_is_product(item.clone()) {
+    if item.connective == Connective::Conj {
     Some(Rc::new(TypeSummary { name: item.name.clone(), repr: Rc::new(TypeRepr::StructRepr), field_summaries: build_struct_field_summaries(item.children.clone()) }))
 } else {
     let unit_only = {

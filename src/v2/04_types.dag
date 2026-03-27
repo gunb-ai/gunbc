@@ -12,17 +12,25 @@ module v2.compiler.infer_types
 import std.types { SourceSpan }
 import v2.std.core {
   Node, FieldInit, Param,
-  Connective, Conj, Disj,
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral,
-  make_expr_node,
+  ExprErrorKind, SemanticExprError,
+  make_expr_node, make_expr_error_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
-  is_kernel_type, is_kernel_numeric, is_kernel_textual,
+  is_kernel_type,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
-  InferredNode, Resolved, CompilerError, rt_node, has_inferred,
-  NodeType, Typed, InferError, Untyped,
-  leaf_node, no_span, with_optional_cardinality, with_required_cardinality,
-  node_is_product, node_is_coproduct, node_has_structure
+  InferredNode, Resolved, CompilerError, TypeVariable, rt_node, has_inferred, is_compiler_error,
+  NodeType, Typed, InferError, InferVariable, Untyped,
+  leaf_node, no_span, with_optional_cardinality, with_required_cardinality
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
 }
 
 // =========================================================================
@@ -45,47 +53,49 @@ fn rt_type(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
     InferError { message: _, span: _ } => leaf_node(name: "Unit")
+    InferVariable { id: _ } => leaf_node(name: "Unit")
     Untyped => leaf_node(name: "Unit")
   }
 }
 
-fn collection_kind_for_name(name: String) -> CollectionKind? {
-  if name == "List" { Some { value: ListKind } }
-  else if name == "Set" { Some { value: SetKind } }
-  else if name == "NonEmptyList" { Some { value: NonEmptyListKind } }
-  else if name == "NonEmptySet" { Some { value: NonEmptySetKind } }
-  else if name == "Map" { Some { value: MapKind } }
-  else { none }
+fn collection_kind_for_name(name: String) -> CollectionKind {
+  if name == "List" { ListKind }
+  else if name == "Set" { SetKind }
+  else if name == "NonEmptyList" { NonEmptyListKind }
+  else if name == "NonEmptySet" { NonEmptySetKind }
+  else if name == "Map" { MapKind }
+  else { NoCollection }
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: none, collection_kind: collection_kind_for_name(name: kind_name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: NoConnective, collection_kind: collection_kind_for_name(name: kind_name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
-    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: Some { value: Conj }, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: Conj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: none, collection_kind: Some { value: MapKind }, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: NoConnective, collection_kind: MapKind, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: Some { value: MapKind }, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: MapKind, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
 // checked via declaration params in the type environment, not hardcoded names.
 
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
-  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn callable_inferred(n: Node) -> Node {
-  if n.name == "Callable" {
+  let is_callable = n.params |> count > 0
+  if is_callable {
     match n.inferred {
       Some { value: Resolved { node: ret } } => ret
       None => error_type_node()
@@ -95,76 +105,21 @@ fn callable_inferred(n: Node) -> Node {
 }
 
 fn error_type_node() -> Node {
-  leaf_node(name: "Error")
+  // Returns a node with CompilerError in its inferred field.
+  // Downstream code uses rt_node() which returns InferError —
+  // no name check on "Error" needed.
+  make_expr_error_node(kind: SemanticExprError, message: "unresolved type", span: no_span())
 }
 
-// Temporary L1 bridge: these helpers centralize the remaining name-based
-// sentinel checks so the audit surface is explicit. Access/pattern inference
-// now carries explicit failure state, which shrinks the call paths that still
-// depend on these names. Deletion point: P5.6/P5.8 after the final `04_types`
-// audit removes Error/Dynamic from type comparison entirely.
-fn node_is_bridge_error_name(n: Node) -> Bool {
-  n.name == "Error"
-}
-
-fn node_is_bridge_dynamic_name(n: Node) -> Bool {
-  n.name == "Dynamic"
-}
-
-// no_span, node_is_product, node_is_coproduct, node_has_structure
-// moved to 00_core.dag (C1 — timeless node vocabulary).
-
-// =========================================================================
-// Type predicates (name-checking and bridge-era — stay here until L1=0)
-// =========================================================================
-
-fn node_is_container(n: Node) -> Bool {
-  // Container = List, Set, NonEmptyList, NonEmptySet (NOT Map — handled by node_is_map)
-  match n.collection_kind {
-    Some { value: ListKind } => true
-    Some { value: SetKind } => true
-    Some { value: NonEmptyListKind } => true
-    Some { value: NonEmptySetKind } => true
-    _ => false
-  }
-}
-
-fn node_is_optional(n: Node) -> Bool {
-  match n.return_cardinality {
-    CardOptional => true
-    Required => false
-  }
-}
-
-fn node_is_map(n: Node) -> Bool {
-  let is_map = n.collection_kind == Some { value: MapKind }
-  is_map
-}
-
-fn node_is_leaf(n: Node) -> Bool {
-  n.connective == none && node_has_structure(n: n) == false && n.children |> count == 0 && n.properties |> count == 0
-}
-
-fn node_is_named_ref(n: Node) -> Bool {
-  if n.inferred == none { false }
-  else {
-    match rt_node(n: n) {
-      Typed { node: rt } =>
-        node_has_structure(n: rt) == false && rt.children |> count == 0
-          && rt.name != "" && rt.name != "None"
-          && is_kernel_type(name: rt.name) == false
-      InferError { message: _, span: _ } => false
-      Untyped => false
-    }
-  }
-}
+// no_span moved to 00_core.dag (C1 — timeless node vocabulary).
 
 // =========================================================================
 // Normalization
 // =========================================================================
 
 fn normalize_access_type_node(n: Node) -> Node {
-  let unwrapped = if n.name == "Refined" && node_has_structure(n: n) {
+  let has_structure = n.connective != NoConnective
+  let unwrapped = if n.name == "Refined" && has_structure {
     n.children |> first
   } else { none }
   match unwrapped {
@@ -179,87 +134,128 @@ fn normalize_access_type_node(n: Node) -> Node {
 // =========================================================================
 
 fn node_type_shape(n: Node) -> String {
-  if node_is_leaf(n: n) {
-    if node_is_named_ref(n: n) {
+  let __is_leaf = n.connective == NoConnective && n.children |> count == 0 && n.properties |> count == 0
+  if __is_leaf {
+    let __is_named_ref = if n.inferred == none { false }
+    else {
+      match rt_node(n: n) {
+        Typed { node: rt } =>
+          rt.connective == NoConnective && rt.children |> count == 0
+            && rt.name != "" && rt.name != "None"
+            && is_kernel_type(name: rt.name) == false
+        InferError { message: _, span: _ } => false
+        InferVariable { id: _ } => false
+        Untyped => false
+      }
+    }
+    if __is_named_ref {
       concat("Named(", n.name, ")")
     } else {
       concat("Primitive(", n.name, ")")
     }
-  } else if node_is_product(n: n) {
-    if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
-  } else if node_is_coproduct(n: n) {
-    if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
-  } else if node_is_container(n: n) {
-    let elem_shape = match n.children |> first {
-      Some { value: el } => node_type_shape(n: el)
-      None => "?"
-    }
-    concat("Container(", n.name, ",", elem_shape, ")")
-  } else if node_is_optional(n: n) {
-    let inner_shape = node_type_shape(n: with_required_cardinality(n: n))
-    concat("Optional(", inner_shape, ")")
-  } else if node_is_map(n: n) {
-    "Map(...)"
   } else {
-    concat("Node(", n.name, ")")
+    let is_product = n.connective == Conj
+    let is_coproduct = n.connective == Disj
+    if is_product {
+      if n.name == "" { "Product(<anon>)" } else { concat("Product(", n.name, ")") }
+    } else if is_coproduct {
+      if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
+    } else {
+      let ck = n.collection_kind
+      let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
+      let is_optional = n.return_cardinality == CardOptional
+      let is_map = n.collection_kind == MapKind
+      if __is_container {
+        let elem_shape = match n.children |> first {
+          Some { value: el } => node_type_shape(n: el)
+          None => "?"
+        }
+        concat("Container(", n.name, ",", elem_shape, ")")
+      } else if is_optional {
+        let inner_shape = node_type_shape(n: with_required_cardinality(n: n))
+        concat("Optional(", inner_shape, ")")
+      } else if is_map {
+        "Map(...)"
+      } else {
+        concat("Node(", n.name, ")")
+      }
+    }
   }
 }
 
 fn node_type_compatible(left: Node, right: Node) -> Bool {
-  // Remaining `04_types` bridge audit:
-  // - Error compatibility still suppresses cascade comparisons on residual
-  //   name-level error nodes that survive outside explicit CompilerError paths.
-  // - Dynamic compatibility still supports audited polymorphic placeholder
-  //   sites pending type-variable infrastructure.
-  // Access and pattern lookup no longer lean on these rules for malformed or
-  // upstream-failed expressions; deletion still belongs to the Phase 5 L1 work.
-  let left_opt = node_is_optional(n: left)
-  let right_opt = node_is_optional(n: right)
-  if node_is_bridge_error_name(n: left) || node_is_bridge_error_name(n: right) { true }
-  else if node_is_bridge_dynamic_name(n: left) || node_is_bridge_dynamic_name(n: right) { true }
-  else if left_opt && right.name == "Unit" { true }
-  else if left.name == "Unit" && right_opt { true }
-  else if node_is_container(n: left) && node_is_container(n: right) {
-    if left.name != right.name { false }
-    else {
-      match left.children |> first {
-        Some { value: left_el } =>
-          match right.children |> first {
-            Some { value: right_el } =>
-              if left_el.name == "Unit" || right_el.name == "Unit" { true }
-              else { node_type_compatible(left: left_el, right: right_el) }
-            None => true
-          }
-        None => true
+  // CompilerError and TypeVariable nodes are compatible with anything — prevents
+  // cascade comparisons on failed inference or unresolved type variables.
+  let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
+  let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
+  let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
+  let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
+  let left_opt = left.return_cardinality == CardOptional
+  let right_opt = right.return_cardinality == CardOptional
+  if left_err || right_err { true }
+  else if left_tv || right_tv { true }
+  let right_is_unit = right.connective == Conj && right.children |> count == 0
+  let left_is_unit = left.connective == Conj && left.children |> count == 0
+  else if left_opt && right_is_unit { true }
+  else if left_is_unit && right_opt { true }
+  else {
+    let left_ck = left.collection_kind
+    let left_is_container = left_ck == ListKind || left_ck == SetKind || left_ck == NonEmptyListKind || left_ck == NonEmptySetKind
+    let right_ck = right.collection_kind
+    let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
+    if left_is_container && right_is_container {
+      if left.name != right.name { false }
+      else {
+        match left.children |> first {
+          Some { value: left_el } =>
+            match right.children |> first {
+              Some { value: right_el } =>
+                let left_el_is_unit = left_el.connective == Conj && left_el.children |> count == 0
+                let right_el_is_unit = right_el.connective == Conj && right_el.children |> count == 0
+                if left_el_is_unit || right_el_is_unit { true }
+                else { node_type_compatible(left: left_el, right: right_el) }
+              None => true
+            }
+          None => true
+        }
       }
     }
+    else if left_opt && right_opt {
+      let left_inner = with_required_cardinality(n: left)
+      let right_inner = with_required_cardinality(n: right)
+      let left_inner_is_unit = left_inner.connective == Conj && left_inner.children |> count == 0
+      let right_inner_is_unit = right_inner.connective == Conj && right_inner.children |> count == 0
+      if left_inner_is_unit || right_inner_is_unit { true }
+      else { node_type_compatible(left: left_inner, right: right_inner) }
+    }
+    else if left_opt || right_opt { false }
+    else { left.name == right.name }
   }
-  else if left_opt && right_opt {
-    let left_inner = with_required_cardinality(n: left)
-    let right_inner = with_required_cardinality(n: right)
-    if left_inner.name == "Unit" || right_inner.name == "Unit" { true }
-    else { node_type_compatible(left: left_inner, right: right_inner) }
-  }
-  else if left_opt || right_opt { false }
-  else { left.name == right.name }
 }
 
 fn prefer_specific_type(left: Node, right: Node) -> Node {
-  let left_is_container = node_is_container(n: left)
-  let left_is_optional = node_is_optional(n: left)
+  let left_ck = left.collection_kind
+  let left_is_container = left_ck == ListKind || left_ck == SetKind || left_ck == NonEmptyListKind || left_ck == NonEmptySetKind
+  let left_is_optional = left.return_cardinality == CardOptional
   let left_first_child = left.children |> first
   let left_norm_name = left.name
   let left_is_unit_inner = if left_is_container {
     match left_first_child {
-      Some { value: el } => el.name == "Unit"
+      Some { value: el } =>
+        let el_is_unit = el.connective == Conj && el.children |> count == 0
+        el_is_unit
       None => false
     }
   } else if left_is_optional {
-    left.name == "Unit"
+    let left_is_unit = left.connective == Conj && left.children |> count == 0
+    left_is_unit
   } else { false }
-  let same_kind = if left_is_container && node_is_container(n: right) {
+  let right_ck = right.collection_kind
+  let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
+  let right_is_optional = right.return_cardinality == CardOptional
+  let same_kind = if left_is_container && right_is_container {
     left_norm_name == right.name
-  } else if left_is_optional && node_is_optional(n: right) {
+  } else if left_is_optional && right_is_optional {
     true
   } else { false }
   if same_kind && left_is_unit_inner { right }
@@ -267,26 +263,32 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
 }
 
 fn node_type_equals(left: Node, right: Node) -> Bool {
-  // Same bridge audit as node_type_compatible(): keep the residual name-based
-  // sentinel behavior explicit until the last comparison callers stop routing
-  // failed inference through type nodes.
-  let left_opt = node_is_optional(n: left)
-  let right_opt = node_is_optional(n: right)
-  let left_leaf = node_is_leaf(n: left)
-  let right_leaf = node_is_leaf(n: right)
-  let left_struct = node_has_structure(n: left)
-  let right_struct = node_has_structure(n: right)
-  if node_is_bridge_error_name(n: left) || node_is_bridge_error_name(n: right) { true }
-  else if node_is_bridge_dynamic_name(n: left) && node_is_bridge_dynamic_name(n: right) { true }
-  else if node_is_bridge_dynamic_name(n: left) || node_is_bridge_dynamic_name(n: right) { false }
-  else if left_opt && right.name == "Unit" { true }
-  else if left.name == "Unit" && right_opt { true }
+  // CompilerError nodes are equal to anything — prevents cascade comparisons
+  // TypeVariable nodes: two type variables are equal (both unresolved);
+  // a type variable vs a concrete type is not equal.
+  let left_err = if left.inferred != none { is_compiler_error(inferred: left.inferred.value) } else { false }
+  let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
+  let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
+  let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
+  let left_opt = left.return_cardinality == CardOptional
+  let right_opt = right.return_cardinality == CardOptional
+  let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
+  let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
+  let left_struct = left.connective != NoConnective
+  let right_struct = right.connective != NoConnective
+  if left_err || right_err { true }
+  else if left_tv && right_tv { true }
+  else if left_tv || right_tv { false }
+  let right_is_unit_eq = right.connective == Conj && right.children |> count == 0
+  let left_is_unit_eq = left.connective == Conj && left.children |> count == 0
+  else if left_opt && right_is_unit_eq { true }
+  else if left_is_unit_eq && right_opt { true }
   else if left_leaf && right_leaf {
     left.name == right.name
   }
   else if left_struct && right_struct {
     if left.name != right.name { false }
-    else if node_is_product(n: left) != node_is_product(n: right) { false }
+    else if (left.connective == Conj) != (right.connective == Conj) { false }
     else if left.children |> count != right.children |> count { false }
     else {
       left.children |> enumerate |> all(pair =>
@@ -303,60 +305,69 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   else if left_struct && right_leaf {
     left.name == right.name
   }
-  else if node_is_container(n: left) && node_is_container(n: right) {
-    if left.name != right.name { false }
-    else {
-      match left.children |> first {
-        Some { value: left_el } =>
-          match right.children |> first {
-            Some { value: right_el } => node_type_equals(left: left_el, right: right_el)
-            None => false
-          }
-        None => false
-      }
-    }
-  }
-  else if left_opt && right_opt {
-    node_type_equals(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
-  }
-  else if node_is_map(n: left) && node_is_map(n: right) {
-    if left.children |> count == 2 && right.children |> count == 2 {
-      let left_first = match left.children |> first { Some { value: v } => v, None => left }
-      let right_first = match right.children |> first { Some { value: v } => v, None => right }
-      let left_second = match skip(left.children, 1) |> first { Some { value: v } => v, None => left }
-      let right_second = match skip(right.children, 1) |> first { Some { value: v } => v, None => right }
-      node_type_equals(left: left_first, right: right_first) && node_type_equals(left: left_second, right: right_second)
-    } else {
-      false
-    }
-  }
-  else if left.name == "Callable" && right.name == "Callable" {
-    if left.params |> count != right.params |> count { false }
-    else {
-      let params_eq = left.params |> enumerate |> all(pair =>
-        match right.params |> skip(pair.first) |> first {
-          Some { value: right_param } =>
-            node_type_equals(left: pair.second.type_expr, right: right_param.type_expr)
+  else {
+    let left_ck = left.collection_kind
+    let left_is_container = left_ck == ListKind || left_ck == SetKind || left_ck == NonEmptyListKind || left_ck == NonEmptySetKind
+    let right_ck = right.collection_kind
+    let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
+    if left_is_container && right_is_container {
+      if left.name != right.name { false }
+      else {
+        match left.children |> first {
+          Some { value: left_el } =>
+            match right.children |> first {
+              Some { value: right_el } => node_type_equals(left: left_el, right: right_el)
+              None => false
+            }
           None => false
         }
-      )
-      if params_eq == false { false }
-      else {
-        match left.inferred {
-          Some { value: Resolved { node: left_ret } } =>
-            match right.inferred {
-              Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret)
-              None => false
-              _ => false
-            }
-          None => right.inferred == none
-          _ => false
-        }
       }
     }
-  }
-  else {
-    false
+    else if left_opt && right_opt {
+      node_type_equals(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
+    }
+    else {
+      let both_maps = left.collection_kind == MapKind && right.collection_kind == MapKind
+      if both_maps {
+      if left.children |> count == 2 && right.children |> count == 2 {
+        let left_first = match left.children |> first { Some { value: v } => v, None => left }
+        let right_first = match right.children |> first { Some { value: v } => v, None => right }
+        let left_second = match skip(left.children, 1) |> first { Some { value: v } => v, None => left }
+        let right_second = match skip(right.children, 1) |> first { Some { value: v } => v, None => right }
+        node_type_equals(left: left_first, right: right_first) && node_type_equals(left: left_second, right: right_second)
+      } else {
+        false
+      }
+      }
+      else if left.params |> count > 0 && right.params |> count > 0 {
+        if left.params |> count != right.params |> count { false }
+        else {
+          let params_eq = left.params |> enumerate |> all(pair =>
+            match right.params |> skip(pair.first) |> first {
+              Some { value: right_param } =>
+                node_type_equals(left: pair.second.type_expr, right: right_param.type_expr)
+              None => false
+            }
+          )
+          if params_eq == false { false }
+          else {
+            match left.inferred {
+              Some { value: Resolved { node: left_ret } } =>
+                match right.inferred {
+                  Some { value: Resolved { node: right_ret } } => node_type_equals(left: left_ret, right: right_ret)
+                  None => false
+                  _ => false
+                }
+              None => right.inferred == none
+              _ => false
+            }
+          }
+        }
+      }
+      else {
+        false
+      }
+    }
   }
 }
 
@@ -365,18 +376,34 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
 // =========================================================================
 
 fn node_type_deps(n: Node) -> List<String> {
-  if node_is_named_ref(n: n) {
-    match rt_node(n: n) { Typed { node: rt } => [rt.name]  InferError { message: _, span: _ } => []  Untyped => [] }
-  } else if node_has_structure(n: n) {
+  // TypeVariable nodes have no type dependencies — they are unresolved placeholders.
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  if n_is_type_var { return [] }
+  let __is_named_ref = if n.inferred == none { false }
+  else {
+    match rt_node(n: n) {
+      Typed { node: rt } =>
+        rt.connective == NoConnective && rt.children |> count == 0
+          && rt.name != "" && rt.name != "None"
+          && is_kernel_type(name: rt.name) == false
+      InferError { message: _, span: _ } => false
+      InferVariable { id: _ } => false
+      Untyped => false
+    }
+  }
+  let has_structure = n.connective != NoConnective
+  if __is_named_ref {
+    match rt_node(n: n) { Typed { node: rt } => [rt.name]  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
+  } else if has_structure {
     flat_map(n.children, child =>
       if child.inferred != none {
-        match rt_node(n: child) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
+        match rt_node(n: child) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
       } else {
         node_type_deps(n: child)
       }
     )
   } else if n.inferred != none {
-    match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
+    match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
   } else if n.children |> count > 0 {
     // Parameterized type reference (e.g., MyList<T>): the node name IS a
     // dependency (MyList) AND the children (type args like T) may also be.
@@ -389,30 +416,6 @@ fn node_type_deps(n: Node) -> List<String> {
   } else {
     [n.name]
   }
-}
-
-// =========================================================================
-// Primitive type checks
-// =========================================================================
-
-fn is_int_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Int" && node_is_leaf(n: normed)
-}
-
-fn is_string_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "String" && node_is_leaf(n: normed)
-}
-
-fn is_bool_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Bool" && node_is_leaf(n: normed)
-}
-
-fn is_float_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Float" && node_is_leaf(n: normed)
 }
 
 // =========================================================================
@@ -435,27 +438,55 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
 
 fn method_receiver_element_node(receiver_type: Node) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
-  if node_has_structure(n: normed) == false && normed.children |> count == 1 {
+  if normed.connective == NoConnective && normed.children |> count == 1 {
     match normed.children |> first {
       Some { value: el } => el
       None => receiver_type
     }
-  } else if node_is_map(n: normed) {
-    match normed.children |> skip(1) |> first {
-      Some { value: val_type } => val_type
-      None => receiver_type
-    }
   } else {
-    receiver_type
+    let is_map = normed.collection_kind == MapKind
+    if is_map {
+      match normed.children |> skip(1) |> first {
+        Some { value: val_type } => val_type
+        None => receiver_type
+      }
+    } else {
+      receiver_type
+    }
   }
 }
 
 fn extract_optional_inner_node(n: Node) -> Node {
-  if node_is_optional(n: n) { with_required_cardinality(n: n) }
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional { with_required_cardinality(n: n) }
   else { n }
 }
 
+// Map BinOpKind to the algebraic field name on the receiver type.
+// This is a closed structural mapping (enum → field name), not a
+// name check on the type. The compiler knows + means "add"; it
+// doesn't know which types have "add" — that's in the DAG structure.
+fn binop_algebra_field(op: BinOpKind) -> String {
+  match op {
+    Add => "add"
+    Sub => "add"
+    Mul => "mul"
+    Div => "reciprocal"
+    Mod => "add"
+    BinEq => "compare"
+    BinNe => "compare"
+    BinLt => "compare"
+    BinGt => "compare"
+    BinLe => "compare"
+    BinGe => "compare"
+    BinAnd => "meet"
+    BinOr => "join"
+    NullCoalesce => ""
+  }
+}
+
 fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
+  // Comparison and boolean ops always return Bool
   match op {
     BinEq => leaf_node(name: "Bool")
     BinNe => leaf_node(name: "Bool")
@@ -466,18 +497,41 @@ fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
     BinAnd => leaf_node(name: "Bool")
     BinOr => leaf_node(name: "Bool")
     NullCoalesce => extract_optional_inner_node(n: left_type)
-    _ => left_type
+    _ =>
+      // Arithmetic ops: try structural lookup on the receiver type.
+      // If the type's algebra has an "add"/"mul" field, use its return type.
+      // Fall back to left_type (current behavior) if no algebra structure found.
+      let field_name = binop_algebra_field(op: op)
+      let is_product = left_type.connective == Conj
+      if is_product {
+        let matching = left_type.children |> filter(c => c.name == field_name)
+        match matching |> first {
+          Some { value: field } =>
+            match field.inferred {
+              Some { value: Resolved { node: rt } } =>
+                // Extract the callable's return type, not the callable itself
+                if rt.params |> count > 0 {
+                  match rt.inferred {
+                    Some { value: Resolved { node: return_type } } => return_type
+                    _ => left_type
+                  }
+                } else { rt }
+              _ => left_type
+            }
+          None => left_type
+        }
+      } else { left_type }
   }
 }
 
 fn for_each_element_type_node(n: Node) -> Node {
   let normed = normalize_access_type_node(n: n)
-  let is_single_child = node_has_structure(n: normed) == false && normed.children |> count == 1
+  let is_single_child = normed.connective == NoConnective && normed.children |> count == 1
   let extracted = if is_single_child { normed.children |> first } else { none }
   match extracted {
     Some { value: el } => el
     None =>
-      if node_is_leaf(n: normed) && normed.name == "String" { leaf_node(name: "String") }
+      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && normed.name == "String" { leaf_node(name: "String") }
       else { normed }
   }
 }

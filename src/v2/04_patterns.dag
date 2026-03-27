@@ -12,18 +12,19 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node,
   ExprData, NoExprData,
-  InferredNode, Resolved,
-  NodeType, Typed, InferError, Untyped,
+  InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
+  Connective, Disj, NoConnective,
+  CollectionKind, NoCollection,
+  CardOptional,
   diagnostic_node,
   MatchArm, MatchPattern,
-  leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality
+  leaf_node, with_optional_cardinality
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
   error_type_node,
-  node_is_bridge_error_name, node_is_bridge_dynamic_name,
-  node_is_optional,
   extract_optional_inner_node,
   emit_map_has
 }
@@ -50,6 +51,13 @@ type PatternSubject
   | PatternDynamic { span: SourceSpan }
   | PatternLookupBlocked
 
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
 // =========================================================================
 // Variant lookup
 // =========================================================================
@@ -60,15 +68,17 @@ type PatternSubject
 // pattern lookup gains a fully structural Optional subject.
 fn synthesize_optional_some_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
-  let value_field = Node { name: "value", span: scrut.span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let some_node = Node { name: "Some", span: scrut.span, children: [value_field], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let value_field = Node { name: "value", span: scrut.span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let some_node = Node { name: "Some", span: scrut.span, children: [value_field], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   some_node
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
-  if node_is_bridge_dynamic_name(n: n) {
+  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  if n_is_type_var {
     PatternDynamic { span: n.span }
-  } else if node_is_bridge_error_name(n: n) {
+  } else if n_is_error {
     PatternLookupBlocked
   } else {
     PatternResolved { node: n }
@@ -79,6 +89,7 @@ fn pattern_subject_from_node_type(n: NodeType) -> PatternSubject {
   match n {
     Typed { node: resolved } => pattern_subject_from_node(n: resolved)
     InferError { message: _, span: _ } => PatternLookupBlocked
+    InferVariable { id: _ } => PatternLookupBlocked
     Untyped => PatternLookupBlocked
   }
 }
@@ -123,10 +134,10 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
-      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve variant '", concat(variant_name, "' on Dynamic scrutinee")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "variant_not_found" })])
+      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve variant '", concat(variant_name, "' on unresolved type variable")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "variant_not_found" })])
     PatternResolved { node: scrut_node } =>
-      let scrut_opt = node_is_optional(n: scrut_node)
-      if node_has_structure(n: scrut_node) == false && scrut_node.children |> count == 0 && scrut_opt == false {
+      let scrut_opt = scrut_node.return_cardinality == CardOptional
+      if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
         node_lookup_failed(diagnostics: [])
       } else {
@@ -151,7 +162,7 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
-      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve field '", concat(field_name, "' on Dynamic variant")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "field_not_found" })])
+      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve field '", concat(field_name, "' on unresolved type variable")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "field_not_found" })])
     PatternResolved { node: variant_node } =>
       match variant_node.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
@@ -176,8 +187,9 @@ fn check_match_exhaustiveness(
   // Resolve the scrutinee type -- if it's a leaf name, look up its definition.
   // Preserve Optional cardinality: lookup returns the type definition which
   // has Required cardinality, but the scrutinee may be T? (CardOptional).
-  let scrut_is_optional = node_is_optional(n: scrutinee_type)
-  let resolved_raw = if node_has_structure(n: scrutinee_type) {
+  let scrut_is_optional = scrutinee_type.return_cardinality == CardOptional
+  let has_structure = scrutinee_type.connective != NoConnective
+  let resolved_raw = if has_structure {
     scrutinee_type
   } else {
     match lookup_type(env: env, name: scrutinee_type.name) {
@@ -187,11 +199,13 @@ fn check_match_exhaustiveness(
   }
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
-  if node_is_coproduct(n: resolved) || node_is_optional(n: resolved) {
+  let is_coproduct = resolved.connective == Disj
+  let resolved_is_optional = resolved.return_cardinality == CardOptional
+  if is_coproduct || resolved_is_optional {
     // Optional is represented as [inner_type, None] — the first child
     // is the inner type, not a "Some" variant. Normalize to ["Some", "None"]
     // so patterns `Some { value: x } => ... None => ...` are recognized.
-    let variant_names = if node_is_optional(n: resolved) {
+    let variant_names = if resolved_is_optional {
       ["Some", "None"]
     } else {
       resolved.children |> map(c => c.name)

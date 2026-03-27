@@ -32,7 +32,7 @@ pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: &str) -> Option<Rc<R
 
 pub fn lookup_field_type_node(n: Rc<Node>, field_name: &str) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if node_is_optional(n.clone()) {
+        if n.return_cardinality == Cardinality::CardOptional {
     let inner = with_required_cardinality(n.clone());
     if field_name == "value" {
     Some(inner.clone())
@@ -47,8 +47,8 @@ pub fn lookup_field_type_node(n: Rc<Node>, field_name: &str) -> Option<Rc<Node>>
 }
 }
 } else {
-    if node_has_structure(n.clone()) {
-    if node_is_product(n.clone()) {
+    if n.connective != Connective::NoConnective {
+    if n.connective == Connective::Conj {
     match {
     let mut __found_2 = None;
     for __elem_3 in n.children.iter().cloned() {
@@ -134,7 +134,7 @@ pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
 pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<HashMap<String, bool>>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let normed = normalize_access_type_node(n.clone());
-        if (node_has_structure(normed.clone()) == false) && (({
+        if ((normed.connective != Connective::NoConnective) == false) && (({
     let __len_6 = normed.children.clone().len();
     __len_6 as i64
 }) == 0_i64) {
@@ -152,7 +152,7 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
 };
     match rt_node(normed.clone()).as_ref() {
     NodeType::Typed { node: target, .. } => {
-        if (((target.name.clone() == normed.name.clone()) && (target.inferred.clone().is_none())) && (node_has_structure(target.clone()) == false)) && (({
+        if (((target.name.clone() == normed.name.clone()) && (target.inferred.clone().is_none())) && ((target.connective != Connective::NoConnective) == false)) && (({
     let __len_2 = target.children.clone().len();
     __len_2 as i64
 }) == 0_i64) {
@@ -162,6 +162,9 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
 }
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        normed.clone()
+    }
+    NodeType::InferVariable { .. } => {
         normed.clone()
     }
     NodeType::Untyped => {
@@ -184,14 +187,14 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
 };
     match lookup_type(env.clone(), &normed.name) {
     Some(resolved) => {
-        if (((resolved.name.clone() == normed.name.clone()) && (resolved.inferred.clone().is_none())) && (node_has_structure(resolved.clone()) == false)) && (({
+        if (((resolved.name.clone() == normed.name.clone()) && (resolved.inferred.clone().is_none())) && ((resolved.connective != Connective::NoConnective) == false)) && (({
     let __len_5 = resolved.children.clone().len();
     __len_5 as i64
 }) == 0_i64) {
     normed.clone()
 } else {
     let result = resolve_scrutinee_type_node_seen(env.clone(), resolved.clone(), next_seen.clone());
-    if node_is_optional(normed.clone()) {
+    if normed.return_cardinality == Cardinality::CardOptional {
     with_optional_cardinality(result.clone())
 } else {
     result.clone()
@@ -214,7 +217,7 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
     let normed = normalize_access_type_node(type_node.clone());
     let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
     let map_type = normalize_access_type_node(resolved.clone());
-    if node_is_map(map_type.clone()) && (({
+    if (map_type.collection_kind == CollectionKind::MapKind) && (({
     let __len_0 = map_type.children.clone().len();
     __len_0 as i64
 }) >= 2_i64) {
@@ -235,7 +238,7 @@ pub fn field_summary_for_type(base_type: Rc<Node>, env: Rc<TypeEnv>, field: &str
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
         let normed = normalize_access_type_node(resolved.clone());
-        let normed_opt = node_is_optional(normed.clone());
+        let normed_opt = normed.return_cardinality == Cardinality::CardOptional;
         if (field == "value") && normed_opt.clone() {
     Some(Rc::new(FieldSummary { access_style: FieldAccessStyle::OptionalUnwrap, value_shape: FieldValueShape::PlainValue }))
 } else {
@@ -250,10 +253,10 @@ pub fn field_summary_for_type(base_type: Rc<Node>, env: Rc<TypeEnv>, field: &str
     }
 }
 } else {
-    if node_has_structure(resolved.clone()) == false {
+    if (resolved.connective != Connective::NoConnective) == false {
     None
 } else {
-    if node_is_product(resolved.clone()) {
+    if resolved.connective == Connective::Conj {
     build_struct_field_summaries(resolved.children.clone()).get(&field.to_string()).cloned()
 } else {
     build_enum_field_summaries(resolved.children.clone()).get(&field.to_string()).cloned()
@@ -264,8 +267,57 @@ pub fn field_summary_for_type(base_type: Rc<Node>, env: Rc<TypeEnv>, field: &str
     })
 }
 
+pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: &str) -> Option<Rc<Node>> {
+    let is_product = receiver_type.connective == Connective::Conj;
+    if is_product {
+        let matching = {
+            let mut __found_0 = None;
+            for __elem_1 in receiver_type.children.iter().cloned() {
+                if __elem_1.name.clone() == method_name {
+                    __found_0 = Some(__elem_1);
+                    break;
+                };
+            }
+            __found_0
+        };
+        match matching {
+            Some(field) => {
+                match field.inferred.as_ref().map(|__rc| __rc.as_ref()) {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        if rt.params.len() > 0 {
+                            match rt.inferred.as_ref().map(|__rc| __rc.as_ref()) {
+                                Some(InferredNode::Resolved { node: return_type, .. }) => {
+                                    Some(return_type.clone())
+                                }
+                                _ => {
+                                    Some(rt.clone())
+                                }
+                            }
+                        } else {
+                            Some(rt.clone())
+                        }
+                    }
+                    _ => {
+                        None
+                    }
+                }
+            }
+            None => {
+                None
+            }
+        }
+    } else {
+        None
+    }
+}
+
 pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: &str, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Rc<KnownMethodResolution> {
-    match check_service_method_call_node(receiver_type.clone(), &method_name, service_registry.clone()) {
+    match lookup_structural_method(receiver_type.clone(), &method_name) {
+    Some(result_type) => {
+        Rc::new(KnownMethodResolution { semantics: None, result_type: Some(result_type.clone()) })
+    }
+    None => {
+        match check_service_method_call_node(receiver_type.clone(), &method_name, service_registry.clone()) {
     Some(svc_result) => {
         Rc::new(KnownMethodResolution { semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics { service_name: receiver_type.name.clone(), op_params: svc_result.op_params.clone() })), result_type: Some(svc_result.result_type.clone()) })
     }
@@ -281,6 +333,8 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
     }
     None => {
         Rc::new(KnownMethodResolution { semantics: None, result_type: None })
+    }
+}
     }
 }
     }

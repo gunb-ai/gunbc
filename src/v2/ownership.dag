@@ -136,7 +136,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprFieldAccess { field: f } =>
       // children = [base]. Check if base is a variable for projection.
-      let base_node = match texpr.children |> first { Some { value: b } => b  None => texpr }
+      let base_node = field_access_base(texpr: texpr)
       match base_node.expr_data {
         ExprVar { name: vn } =>
           record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f))
@@ -169,8 +169,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprMethodCall { method: mname } =>
       // children = [receiver, arg0_node, arg1_node, ...].
-      let recv = match texpr.children |> first { Some { value: r } => r  None => texpr }
-      let mc_args = texpr.children |> drop(1)
+      let recv = method_receiver(texpr: texpr)
+      let mc_args = method_arg_nodes(texpr: texpr)
       if mname == "fold" {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
         let init_arg = mc_args |> filter(a => a.name == "init") |> first
@@ -197,8 +197,8 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprMatch =>
       // children = [scrutinee, arm0_node, arm1_node, ...].
-      let scrut = match texpr.children |> first { Some { value: s } => s  None => texpr }
-      let arm_nodes = texpr.children |> drop(1)
+      let scrut = match_scrutinee(texpr: texpr)
+      let arm_nodes = match_arm_nodes(texpr: texpr)
       let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false)
       let branch_accums = arm_nodes |> map(arm_node =>
         walk_expr(accum: s_accum, texpr: arm_body(n: arm_node), in_tail: in_tail)
@@ -206,24 +206,20 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
     ExprIf =>
-      // children = [condition, then, else?].
-      let ch = texpr.children
-      let c = match ch |> first { Some { value: v } => v  None => texpr }
-      let t = match ch |> drop(1) |> first { Some { value: v } => v  None => texpr }
+      let c = if_condition(texpr: texpr)
+      let t = if_then_branch(texpr: texpr)
       let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false)
       let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail)
-      let e_accum = match ch |> drop(2) |> first {
+      let e_accum = match if_else_branch(texpr: texpr) {
         Some { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail)
         None => c_accum
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
     ExprLet { name: _ } =>
-      // children = [value, body?].
-      let ch = texpr.children
-      let v = match ch |> first { Some { value: val } => val  None => texpr }
+      let v = let_value(texpr: texpr)
       let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false)
-      match ch |> drop(1) |> first {
+      match let_body(texpr: texpr) {
         Some { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail)
         None => v_accum
       }

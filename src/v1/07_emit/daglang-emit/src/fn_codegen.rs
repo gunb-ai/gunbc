@@ -2475,6 +2475,16 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             //   move-across-branch errors from branch-aware use counting)
             // - Non-Rc single-use: move (zero cost)
             // - Non-Rc multi-use: clone
+            //
+            // EXCEPTION: Fold accumulators with count=1 skip the Rc clone.
+            // Fold guarantees the accumulator is linear (consumed once per
+            // iteration, rebound). Moving keeps Rc refcount=1, so
+            // Rc::try_unwrap succeeds and list_push/map_insert/concat
+            // are O(1) instead of O(n). Without this, every fold is O(n²).
+            let is_fold_accum = ctx
+                .fold_accum_name
+                .as_deref()
+                .is_some_and(|accum| accum == name);
             let ir_type = ctx.ir_scope.get(name);
             let named = ir_type
                 .and_then(named_type_from_ir)
@@ -2488,11 +2498,17 @@ fn compile_ident(name: &str, ctx: &CompileContext) -> code_ir::Expr {
             // If type is completely unknown and Rc types exist, assume Rc (conservative).
             let assume_rc =
                 named.is_none() && ir_type.is_none() && !ctx.rc_wrapped_types.is_empty();
-            let needs_clone = count > 1
-                || ctx.match_bound_vars.contains(name)
-                || is_rc_named
-                || is_rc_collection
-                || assume_rc;
+            // Fold accumulators with single use: move (preserves refcount=1).
+            // All other Rc-typed variables: clone (safety net for use-count gaps).
+            let needs_clone = if is_fold_accum && count <= 1 {
+                false
+            } else {
+                count > 1
+                    || ctx.match_bound_vars.contains(name)
+                    || is_rc_named
+                    || is_rc_collection
+                    || assume_rc
+            };
             if needs_clone {
                 code_ir::Expr::MethodCall {
                     receiver: Box::new(code_ir::Expr::Var(escaped)),

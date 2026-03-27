@@ -314,7 +314,7 @@ pub fn expand_transitive_services(modules: Rc<Vec<Rc<TypedModule>>>, registry: R
 }
 
 pub fn check_service_field_access_node(base_type: Rc<Node>, field: &str, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<Node>> {
-    if (node_has_structure(base_type.clone()) == false) && (({
+    if ((base_type.connective != Connective::NoConnective) == false) && (({
     let __len_0 = base_type.children.clone().len();
     __len_0 as i64
 }) == 0_i64) {
@@ -333,7 +333,7 @@ pub fn check_service_field_access_node(base_type: Rc<Node>, field: &str, service
 }
 
 pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<ServiceMethodResult>> {
-    if (node_has_structure(receiver_type.clone()) == false) && (({
+    if ((receiver_type.connective != Connective::NoConnective) == false) && (({
     let __len_5 = receiver_type.children.clone().len();
     __len_5 as i64
 }) == 0_i64) {
@@ -360,10 +360,10 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, ser
     Some(Rc::new(ServiceMethodResult { result_type: Rc::new(Node { name: "".to_string(), span: no_span(), children: {
     let mut __mapped_2 = Vec::new();
     for __elem_3 in op.outputs.iter().cloned() {
-        __mapped_2.push(Rc::new(Node { name: __elem_3.name.clone(), span: __elem_3.span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: __elem_3.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
+        __mapped_2.push(Rc::new(Node { name: __elem_3.name.clone(), span: __elem_3.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: __elem_3.type_expr.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }));
     }
     Rc::new(__mapped_2)
-}, connective: Some(Connective::Conj), collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), op_params: op.params.clone() }))
+}, connective: Connective::Conj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), op_params: op.params.clone() }))
 }
     }
     None => {

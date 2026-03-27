@@ -135,9 +135,10 @@ pub struct Import {
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
 pub enum Connective {
-    #[default]
     Conj,
     Disj,
+    #[default]
+    NoConnective,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
@@ -149,12 +150,13 @@ pub enum Cardinality {
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash, Default)]
 pub enum CollectionKind {
-    #[default]
     ListKind,
     SetKind,
     NonEmptyListKind,
     NonEmptySetKind,
     MapKind,
+    #[default]
+    NoCollection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -248,6 +250,7 @@ pub fn is_kernel_textual(name: &str) -> bool {
 pub enum InferredNode {
     Resolved { node: Rc<Node> },
     CompilerError { message: String, span: SourceSpan },
+    TypeVariable { id: String },
 }
 
 impl Default for InferredNode {
@@ -258,30 +261,37 @@ impl Default for InferredNode {
 
 pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
     match inferred.as_ref() {
-    InferredNode::Resolved { node: n, .. } => {
-        Some(n.clone())
-    }
-    InferredNode::CompilerError { message: _, span: _, .. } => {
-        None
-    }
+    InferredNode::Resolved { node: n, .. } => Some(n.clone()),
+    InferredNode::CompilerError { .. } => None,
+    InferredNode::TypeVariable { .. } => None,
 }
 }
 
 pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
     match inferred.as_ref() {
-    InferredNode::Resolved { node: _, .. } => {
-        false
-    }
-    InferredNode::CompilerError { message: _, span: _, .. } => {
-        true
-    }
+    InferredNode::Resolved { .. } => false,
+    InferredNode::CompilerError { .. } => true,
+    InferredNode::TypeVariable { .. } => false,
 }
+}
+
+pub fn node_has_compiler_error(n: &Node) -> bool {
+    matches!(n.inferred.as_ref().map(|rc| rc.as_ref()), Some(InferredNode::CompilerError { .. }))
+}
+
+pub fn is_type_variable_node(n: &Node) -> bool {
+    matches!(n.inferred.as_ref().map(|rc| rc.as_ref()), Some(InferredNode::TypeVariable { .. }))
+}
+
+pub fn type_variable_node(id: &str) -> Rc<Node> {
+    Rc::new(Node { name: "".to_string(), span: SourceSpan { start: 0, end: 0 }, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.to_string() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NodeType {
     Typed { node: Rc<Node> },
     InferError { message: String, span: SourceSpan },
+    InferVariable { id: String },
     #[default]
     Untyped,
 }
@@ -296,6 +306,9 @@ pub fn rt_node(n: Rc<Node>) -> Rc<NodeType> {
     }
     InferredNode::CompilerError { message: m, span: s, .. } => {
         Rc::new(NodeType::InferError { message: m.clone(), span: s.clone() })
+    }
+    InferredNode::TypeVariable { id, .. } => {
+        Rc::new(NodeType::InferVariable { id: id.clone() })
     }
 }
 }
@@ -624,8 +637,8 @@ pub struct Node {
     pub name: String,
     pub span: SourceSpan,
     pub children: Rc<Vec<Rc<Node>>>,
-    pub connective: Option<Connective>,
-    pub collection_kind: Option<CollectionKind>,
+    pub connective: Connective,
+    pub collection_kind: CollectionKind,
     pub params: Rc<Vec<Rc<Param>>>,
     pub inferred: Option<Rc<InferredNode>>,
     pub return_cardinality: Cardinality,
@@ -641,15 +654,15 @@ pub struct Node {
 }
 
 pub fn make_expr_node(expr_data: Rc<ExprData>, inferred: Option<Rc<InferredNode>>, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: "".to_string(), span, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: expr_data.clone() })
+    Rc::new(Node { name: "".to_string(), span, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: expr_data.clone() })
 }
 
 pub fn make_expr_error_node(kind: ExprErrorKind, message: &str, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: "".to_string(), span: span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::CompilerError { message: message.to_string(), span: span.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::ExprError { kind, message: message.to_string() }) })
+    Rc::new(Node { name: "".to_string(), span: span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::CompilerError { message: message.to_string(), span: span.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::ExprError { kind, message: message.to_string() }) })
 }
 
 pub fn make_transport_node(name: &str, properties: Rc<Vec<Rc<FieldInit>>>, children: Rc<Vec<Rc<Node>>>, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: name.to_string(), span, children: children.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: properties.clone(), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: name.to_string(), span, children: children.clone(), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: properties.clone(), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn local_transport_node(span: SourceSpan) -> Rc<Node> {
@@ -1411,7 +1424,7 @@ pub fn diagnostic_node(severity: Severity, message: &str, span: SourceSpan, modu
         Rc::new(Vec::new())
     }
 };
-    Rc::new(Node { name: message.to_string(), span, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: v2_rt::concat(Rc::new(vec!(sev_prop.clone())), mod_prop.clone()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: message.to_string(), span, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: v2_rt::concat(Rc::new(vec!(sev_prop.clone())), mod_prop.clone()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn is_diagnostic_node(n: Rc<Node>) -> bool {
@@ -1454,7 +1467,7 @@ pub fn is_token_node(n: Rc<Node>) -> bool {
 }
 
 pub fn leaf_node(name: &str) -> Rc<Node> {
-    Rc::new(Node { name: name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: name.to_string(), span: SourceSpan { start: 0_i64, end: 0_i64 }, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn no_span() -> SourceSpan {
@@ -1469,15 +1482,4 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), collection_kind: n.collection_kind.clone(), params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: Cardinality::Required, uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
 }
 
-pub fn node_is_product(n: Rc<Node>) -> bool {
-    (n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Conj))
-}
-
-pub fn node_is_coproduct(n: Rc<Node>) -> bool {
-    (n.connective.clone().is_some()) && (n.connective.clone() == Some(Connective::Disj))
-}
-
-pub fn node_has_structure(n: Rc<Node>) -> bool {
-    node_is_product(n.clone()) || node_is_coproduct(n.clone())
-}
 
