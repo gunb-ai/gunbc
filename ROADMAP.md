@@ -1031,25 +1031,28 @@ standard `cargo test` did not catch the regression window.
 
 Scripted audit via `scripts/l1-ratchet.sh`. The script and this table
 measure the same categories. Run `scripts/l1-ratchet.sh --check` to
-verify the ratchet (current cap: 414). This scripted table is the
-canonical source of truth; older 470-count prose is stale.
+verify the ratchet (current cap: 51). This scripted table is the
+canonical source of truth.
 
 | Category | Script variable | Count | What the compiler still "knows" |
 |----------|----------------|------:|----------------------------------|
-| `.connective` direct access | `connective_field_count` | 27 | Product vs coproduct read from Node field |
-| `Conj` / `Disj` references | `conj_disj_count` | 47 | Connective shape matching (includes parse, which must produce them) |
-| Type constructors | `constructor_count` | 158 | `leaf_node`, `container_node`, `tuple_node`, etc. |
-| Type-name comparisons | `typename_count` | 40 | `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
-| `node_is_*` predicate calls | `predicate_count` | 148 | Centralized type-specific dispatch helpers |
-| `classify_type_structure` calls | `classify_count` | 0 | **Deleted** |
-| `builtin_type_kind()` calls | `builtin_count` | 0 | **Deleted** |
-| **Total** | | **420** | |
+| Type constructors | `constructor_count` | 51 | `leaf_node`, `container_node`, `tuple_node`, etc. |
+| Type-name comparisons | `typename_count` | 0 | **Eliminated** — all use kernel type constants |
+| **L1 Total** | | **51** | |
 
-Updated 2026-03-26 (was 373→414→420). P5.7a/b replaced uncounted
-string-property checks with counted typed-enum predicates
-(`n.collection_kind`). `classify_type_structure` fully deleted (0
-calls). Counter reflects true predicate count (148) after P5.11
-dissolution added structural accessor calls.
+Separate tracking (not L1 violations):
+
+| Category | Count | Status |
+|----------|------:|--------|
+| `.connective` access | 117 | Layer -1 primitives (permanent per P5.10) |
+| `Conj`/`Disj`/`NoConnective` | 242 | Layer -1 primitives (permanent) |
+| `CollectionKind` refs | 186 | Bridge debt (dissolves with method algebras) |
+
+Updated 2026-03-27 (was 420→147→51). Kernel type constants
+(`unit_type`, `bool_type`, etc.) centralized 96 `leaf_node` calls.
+Type-name comparisons eliminated via constant `.name` references.
+`node_is_*` predicates, `classify_type_structure`, `builtin_type_kind`
+all deleted in prior sessions.
 
 `BuiltinTypeKind` enum and `builtin_type_kind()` fully deleted.
 `classify_type_structure()` replaces direct `.connective` reads in
@@ -2732,27 +2735,36 @@ category of type-name comparisons after Error/Dynamic (Root Cause II).
   - Callable → structural `params |> count > 0`
   - Bool → structural `Disj + 2 children`
   - Unit → structural `Conj + 0 children` (empty product)
-- **Remaining L1 (147 total = 139 type constructors + 8 name comparisons):**
-  - Access Int/String checks (5 sites) → algebra declarations exist
-    (FreeMonoid.index, OrderedRing), structural method lookup exists (B4).
-    **Blocker:** inline tests don't load std modules — types resolve as
-    bare leaves from kernel seed, not as algebra compositions. Fix: either
-    (a) make inline test helper include std sources, or (b) fix resolver
-    to handle multi-module inline compilation. Attempted (a) but std
-    modules have cross-import issues in the inline test environment.
-  - is_kernel_type in deps (1 site) → same blocker: kernel seed exists
-    because inline tests don't load std
-  - String element extraction (1 site) → same blocker
-  - Tuple emit rendering (1 site) → needs Tuple declared in std with
-    structural form (unnamed product)
-  - Type constructors (139 sites) → factory functions (leaf_node ~100,
-    container_node/map_node ~20, tuple/callable ~19). Bridge debt tied
-    to CollectionKind dissolution when method algebras land.
-- `Conj`/`Disj`/`NoConnective` — Layer -1 type constructors, declared in
-  `dsl/std/constructors.dag`. Compiler-side dissolution tracked separately.
-- `CollectionKind` — bridge debt (dissolves when method algebras land)
+- **Remaining L1 (51 total = 51 type constructors + 0 name comparisons):**
+  - Type constructors (51 sites) → `leaf_node` with variable names (11),
+    `container_node` (12), `error_type` references in comments/imports,
+    `tuple_node` (4), `callable_node` (3). All in hardcoded return type
+    functions (`infer_intrinsic_method_type_node`,
+    `infer_runtime_bridge_method_type_node`) that Tier 0 structural
+    lookup makes redundant for std-loaded compilations.
+  - **Blocker:** The compiler's own .dag files don't import types from
+    `std.types` — they use the kernel seed (bare leaves). Tier 0
+    structural lookup only activates when std modules are loaded. The
+    hardcoded return type functions are dead code for user programs but
+    still active for self-compilation.
+  - **Design question:** Should the compiler import its own types from
+    `std.types`? This would make the compiler's own method calls resolve
+    structurally, enabling deletion of the hardcoded return type
+    functions and the kernel seed. The bootstrap compilation already
+    loads std modules (`prepare_sources` includes algebra, types, etc.)
+    so the imports would resolve. But inline tests using `compile_dag()`
+    would need to load std modules too.
+- **Structural method resolution: DONE (2026-03-27).** `lookup_structural_method`
+  (Tier 0 in `resolve_known_method_node`) finds methods on resolved type
+  structures. Alias resolution follows parameterized chains:
+  `List<Int> → FreeMonoid<Int> → Conj { map, filter, count, ... }`.
+  16 methods verified (map, filter, count, any, all, first, last, take,
+  skip, reverse, append, contains on List; get, has, keys, values on Map).
+  Tier 0 populates IntrinsicMethodSemantics for emit backward compatibility.
+- `Conj`/`Disj`/`NoConnective` — Layer -1 primitives (permanent per P5.10)
+- `CollectionKind` — bridge debt (dissolves when kernel seed dissolves
+  and emit reads algebraic origin instead of enum)
 - Each convergence step survives re-bootstrap and fixed-point verification
-- The compiler is in a clean place to start real L2 work
 
 ### Phase 5 Milestones (2026-03-27)
 
