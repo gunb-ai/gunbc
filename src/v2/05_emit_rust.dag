@@ -1104,7 +1104,7 @@ fn needs_reference_node(n: Node) -> Bool {
     true
   } else {
     let is_copy = is_rust_value_type(n: n)
-      || (n.name == "Unit" && n.children |> count == 0)
+      || (n.connective == Conj && n.children |> count == 0)
     is_copy == false
   }
 }
@@ -2352,7 +2352,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       }
       let acc_type_node = match fold_accumulator_type {
         Some { value: acc_type } =>
-          let acc_children_have_unit = acc_type.children |> any(c => c.name == "Unit" || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
+          let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
           if acc_type.collection_kind == MapKind && (acc_type.children |> count == 0 || acc_children_have_unit) {
             match contextual_acc_type {
               Some { value: concrete_type } => concrete_type
@@ -2375,7 +2375,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       }
       let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
       // Check if the acc type has any Unit/empty children (incomplete type inference)
-      let acc_has_unit_child = acc_type_node.children |> any(c => c.name == "Unit" || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => gc.name == "Unit" || gc.name == ""))
+      let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
       let init_str = match args |> first {
         Some { value: init_arg } =>
           match init_arg.value.expr_data {

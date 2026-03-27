@@ -59,6 +59,9 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: SourceSpan)
     InferredNode::CompilerError { message: _, span: _, .. } => {
         Rc::new(Vec::new())
     }
+    InferredNode::TypeVariable { .. } => {
+        Rc::new(Vec::new())
+    }
     InferredNode::Resolved { node: rt, .. } => {
         if rt.connective != Connective::NoConnective {
     if rt.connective == Connective::Conj {
@@ -84,7 +87,7 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: SourceSpan)
     Rc::new(vec!(Rc::new(Field { name: "value".to_string(), type_expr: rt.clone(), cardinality: Cardinality::Required, default_value: None, from_key: None, span: span.clone() })))
 }
 } else {
-    if (rt.name.clone() == "Unit") && (({
+    if (rt.connective == Connective::Conj) && (({
     let __len_2 = rt.children.clone().len();
     __len_2 as i64
 }) == 0_i64) {

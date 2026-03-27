@@ -250,6 +250,7 @@ pub fn is_kernel_textual(name: &str) -> bool {
 pub enum InferredNode {
     Resolved { node: Rc<Node> },
     CompilerError { message: String, span: SourceSpan },
+    TypeVariable { id: String },
 }
 
 impl Default for InferredNode {
@@ -260,23 +261,17 @@ impl Default for InferredNode {
 
 pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
     match inferred.as_ref() {
-    InferredNode::Resolved { node: n, .. } => {
-        Some(n.clone())
-    }
-    InferredNode::CompilerError { message: _, span: _, .. } => {
-        None
-    }
+    InferredNode::Resolved { node: n, .. } => Some(n.clone()),
+    InferredNode::CompilerError { .. } => None,
+    InferredNode::TypeVariable { .. } => None,
 }
 }
 
 pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
     match inferred.as_ref() {
-    InferredNode::Resolved { node: _, .. } => {
-        false
-    }
-    InferredNode::CompilerError { message: _, span: _, .. } => {
-        true
-    }
+    InferredNode::Resolved { .. } => false,
+    InferredNode::CompilerError { .. } => true,
+    InferredNode::TypeVariable { .. } => false,
 }
 }
 
@@ -284,10 +279,19 @@ pub fn node_has_compiler_error(n: &Node) -> bool {
     matches!(n.inferred.as_ref().map(|rc| rc.as_ref()), Some(InferredNode::CompilerError { .. }))
 }
 
+pub fn is_type_variable_node(n: &Node) -> bool {
+    matches!(n.inferred.as_ref().map(|rc| rc.as_ref()), Some(InferredNode::TypeVariable { .. }))
+}
+
+pub fn type_variable_node(id: &str) -> Rc<Node> {
+    Rc::new(Node { name: "".to_string(), span: SourceSpan { start: 0, end: 0 }, children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.to_string() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum NodeType {
     Typed { node: Rc<Node> },
     InferError { message: String, span: SourceSpan },
+    InferVariable { id: String },
     #[default]
     Untyped,
 }
@@ -302,6 +306,9 @@ pub fn rt_node(n: Rc<Node>) -> Rc<NodeType> {
     }
     InferredNode::CompilerError { message: m, span: s, .. } => {
         Rc::new(NodeType::InferError { message: m.clone(), span: s.clone() })
+    }
+    InferredNode::TypeVariable { id, .. } => {
+        Rc::new(NodeType::InferVariable { id: id.clone() })
     }
 }
 }

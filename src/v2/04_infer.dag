@@ -1983,7 +1983,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Seed the kernel with primitive types so they resolve even when
   // std.types is not in the compilation set (e.g., in isolated tests).
   let zero_span = SourceSpan { start: 0, end: 0 }
-  let kernel_bindings = fold(
+  // Build kernel type bindings. Unit is the terminal object — empty product
+  // (Conj + 0 children), structurally unique among kernel types.
+  let kernel_bindings_base = fold(
     kernel_types,
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding {
@@ -1991,6 +1993,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       resolved: Node { name: name, span: no_span(), children: [], connective: NoConnective, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     })
   )
+  // Override Unit with Conj connective (empty product, structurally distinct)
+  let kernel_bindings = map_insert(kernel_bindings_base, "Unit", TypeBinding {
+    name: "Unit",
+    resolved: Node { name: "Unit", span: no_span(), children: [], connective: Conj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  })
   // Register Optional as a Disj type so lookup_type("Optional") succeeds.
   // The real Optional is parametric (Optional<T>), but the kernel provides
   // the structural skeleton (Disj with Some/None variants) so that

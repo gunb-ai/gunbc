@@ -96,7 +96,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field>
           } else {
             [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
           }
-        } else if rt.name == "Unit" && rt.children |> count == 0 {
+        } else if rt.connective == Conj && rt.children |> count == 0 {
           []
         } else {
           [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]

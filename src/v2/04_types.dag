@@ -194,8 +194,10 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   let right_opt = right.return_cardinality == CardOptional
   if left_err || right_err { true }
   else if left_tv || right_tv { true }
-  else if left_opt && right.name == "Unit" { true }
-  else if left.name == "Unit" && right_opt { true }
+  let right_is_unit = right.connective == Conj && right.children |> count == 0
+  let left_is_unit = left.connective == Conj && left.children |> count == 0
+  else if left_opt && right_is_unit { true }
+  else if left_is_unit && right_opt { true }
   else {
     let left_ck = left.collection_kind
     let left_is_container = left_ck == ListKind || left_ck == SetKind || left_ck == NonEmptyListKind || left_ck == NonEmptySetKind
@@ -208,7 +210,9 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
           Some { value: left_el } =>
             match right.children |> first {
               Some { value: right_el } =>
-                if left_el.name == "Unit" || right_el.name == "Unit" { true }
+                let left_el_is_unit = left_el.connective == Conj && left_el.children |> count == 0
+                let right_el_is_unit = right_el.connective == Conj && right_el.children |> count == 0
+                if left_el_is_unit || right_el_is_unit { true }
                 else { node_type_compatible(left: left_el, right: right_el) }
               None => true
             }
@@ -219,7 +223,9 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     else if left_opt && right_opt {
       let left_inner = with_required_cardinality(n: left)
       let right_inner = with_required_cardinality(n: right)
-      if left_inner.name == "Unit" || right_inner.name == "Unit" { true }
+      let left_inner_is_unit = left_inner.connective == Conj && left_inner.children |> count == 0
+      let right_inner_is_unit = right_inner.connective == Conj && right_inner.children |> count == 0
+      if left_inner_is_unit || right_inner_is_unit { true }
       else { node_type_compatible(left: left_inner, right: right_inner) }
     }
     else if left_opt || right_opt { false }
@@ -235,11 +241,14 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
   let left_norm_name = left.name
   let left_is_unit_inner = if left_is_container {
     match left_first_child {
-      Some { value: el } => el.name == "Unit"
+      Some { value: el } =>
+        let el_is_unit = el.connective == Conj && el.children |> count == 0
+        el_is_unit
       None => false
     }
   } else if left_is_optional {
-    left.name == "Unit"
+    let left_is_unit = left.connective == Conj && left.children |> count == 0
+    left_is_unit
   } else { false }
   let right_ck = right.collection_kind
   let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
@@ -270,8 +279,10 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   if left_err || right_err { true }
   else if left_tv && right_tv { true }
   else if left_tv || right_tv { false }
-  else if left_opt && right.name == "Unit" { true }
-  else if left.name == "Unit" && right_opt { true }
+  let right_is_unit_eq = right.connective == Conj && right.children |> count == 0
+  let left_is_unit_eq = left.connective == Conj && left.children |> count == 0
+  else if left_opt && right_is_unit_eq { true }
+  else if left_is_unit_eq && right_opt { true }
   else if left_leaf && right_leaf {
     left.name == right.name
   }

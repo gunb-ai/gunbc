@@ -164,6 +164,9 @@ pub fn resolve_scrutinee_type_node_seen(env: Rc<TypeEnv>, n: Rc<Node>, seen: Rc<
     NodeType::InferError { message: _, span: _, .. } => {
         normed.clone()
     }
+    NodeType::InferVariable { .. } => {
+        normed.clone()
+    }
     NodeType::Untyped => {
         normed.clone()
     }

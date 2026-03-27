@@ -2842,6 +2842,9 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
     NodeType::InferError { message: _, span: _, .. } => {
         leaf_type_node("Unit", ch.span.clone())
     }
+    NodeType::InferVariable { .. } => {
+        leaf_type_node("Unit", ch.span.clone())
+    }
     NodeType::Untyped => {
         leaf_type_node("Unit", ch.span.clone())
     }

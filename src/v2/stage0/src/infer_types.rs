@@ -19,6 +19,9 @@ pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
     NodeType::InferError { message: _, span: _, .. } => {
         leaf_node("Unit")
     }
+    NodeType::InferVariable { .. } => {
+        leaf_node("Unit")
+    }
     NodeType::Untyped => {
         leaf_node("Unit")
     }
@@ -134,6 +137,9 @@ pub fn node_type_shape(n: Rc<Node>) -> String {
     NodeType::InferError { message: _, span: _, .. } => {
         false
     }
+    NodeType::InferVariable { .. } => {
+        false
+    }
     NodeType::Untyped => {
         false
     }
@@ -201,10 +207,10 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
     if (left.name == "Dynamic") || (right.name == "Dynamic") {
     break true;
 } else {
-    if left_opt.clone() && (right.name.clone() == "Unit") {
+    if left_opt.clone() && (right.connective == Connective::Conj && right.children.is_empty()) {
     break true;
 } else {
-    if (left.name.clone() == "Unit") && right_opt.clone() {
+    if (left.connective == Connective::Conj && left.children.is_empty()) && right_opt.clone() {
     break true;
 } else {
     if (left.collection_kind == CollectionKind::ListKind || left.collection_kind == CollectionKind::SetKind || left.collection_kind == CollectionKind::NonEmptyListKind || left.collection_kind == CollectionKind::NonEmptySetKind) && (right.collection_kind == CollectionKind::ListKind || right.collection_kind == CollectionKind::SetKind || right.collection_kind == CollectionKind::NonEmptyListKind || right.collection_kind == CollectionKind::NonEmptySetKind) {
@@ -215,7 +221,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
     Some(left_el) => {
         match right.children.clone().first().cloned() {
     Some(right_el) => {
-        if (left_el.name.clone() == "Unit") || (right_el.name.clone() == "Unit") {
+        if (left_el.connective == Connective::Conj && left_el.children.is_empty()) || (right_el.connective == Connective::Conj && right_el.children.is_empty()) {
     break true;
 } else {
      {
@@ -242,7 +248,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
     if left_opt.clone() && right_opt.clone() {
     let left_inner = with_required_cardinality(left.clone());
     let right_inner = with_required_cardinality(right.clone());
-    if (left_inner.name.clone() == "Unit") || (right_inner.name.clone() == "Unit") {
+    if (left_inner.connective == Connective::Conj && left_inner.children.is_empty()) || (right_inner.connective == Connective::Conj && right_inner.children.is_empty()) {
     break true;
 } else {
      {
@@ -278,7 +284,7 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
     let left_is_unit_inner = if left_is_container.clone() {
     match left_first_child.clone() {
     Some(el) => {
-        el.name.clone() == "Unit"
+        el.connective == Connective::Conj && el.children.is_empty()
     }
     None => {
         false
@@ -286,7 +292,7 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
 }
 } else {
     if left_is_optional.clone() {
-    left.name.clone() == "Unit"
+    left.connective == Connective::Conj && left.children.is_empty()
 } else {
     false
 }
@@ -324,10 +330,10 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     if (left.name == "Dynamic") || (right.name == "Dynamic") {
     false
 } else {
-    if left_opt.clone() && (right.name.clone() == "Unit") {
+    if left_opt.clone() && (right.connective == Connective::Conj && right.children.is_empty()) {
     true
 } else {
-    if (left.name.clone() == "Unit") && right_opt.clone() {
+    if (left.connective == Connective::Conj && left.children.is_empty()) && right_opt.clone() {
     true
 } else {
     if left_leaf.clone() && right_leaf.clone() {
@@ -543,6 +549,9 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
     NodeType::InferError { message: _, span: _, .. } => {
         false
     }
+    NodeType::InferVariable { .. } => {
+        false
+    }
     NodeType::Untyped => {
         false
     }
@@ -553,6 +562,9 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
         Rc::new(vec!(rt.name.clone()))
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        Rc::new(Vec::new())
+    }
+    NodeType::InferVariable { .. } => {
         Rc::new(Vec::new())
     }
     NodeType::Untyped => {
@@ -572,6 +584,9 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
     NodeType::InferError { message: _, span: _, .. } => {
         Rc::new(Vec::new())
     }
+    NodeType::InferVariable { .. } => {
+        Rc::new(Vec::new())
+    }
     NodeType::Untyped => {
         Rc::new(Vec::new())
     }
@@ -589,6 +604,9 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
         node_type_deps(rt.clone())
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        Rc::new(Vec::new())
+    }
+    NodeType::InferVariable { .. } => {
         Rc::new(Vec::new())
     }
     NodeType::Untyped => {

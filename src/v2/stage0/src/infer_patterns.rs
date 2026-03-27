@@ -53,6 +53,9 @@ pub fn pattern_subject_from_node_type(n: Rc<NodeType>) -> Rc<PatternSubject> {
     NodeType::InferError { message: _, span: _, .. } => {
         Rc::new(PatternSubject::PatternLookupBlocked)
     }
+    NodeType::InferVariable { .. } => {
+        Rc::new(PatternSubject::PatternLookupBlocked)
+    }
     NodeType::Untyped => {
         Rc::new(PatternSubject::PatternLookupBlocked)
     }

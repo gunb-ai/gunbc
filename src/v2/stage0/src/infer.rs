@@ -445,6 +445,9 @@ pub fn inferred_from_node_type(result: Rc<NodeType>, fallback_message: &str, fal
     NodeType::InferError { message, span, .. } => {
         Rc::new(InferredNode::CompilerError { message: message.clone(), span: span.clone() })
     }
+    NodeType::InferVariable { id, .. } => {
+        Rc::new(InferredNode::TypeVariable { id: id.clone() })
+    }
     NodeType::Untyped => {
         Rc::new(InferredNode::CompilerError { message: fallback_message.to_string(), span: fallback_span })
     }
@@ -1019,6 +1022,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
     NodeType::InferError { message: _, span: _, .. } => {
         fallback.clone()
     }
+    NodeType::InferVariable { .. } => {
+        fallback.clone()
+    }
     NodeType::Untyped => {
         fallback.clone()
     }
@@ -1048,6 +1054,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
     NodeType::InferError { message: _, span: _, .. } => {
         fallback.clone()
     }
+    NodeType::InferVariable { .. } => {
+        fallback.clone()
+    }
     NodeType::Untyped => {
         fallback.clone()
     }
@@ -1072,6 +1081,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
         container_node("List", rt.clone())
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        fallback.clone()
+    }
+    NodeType::InferVariable { .. } => {
         fallback.clone()
     }
     NodeType::Untyped => {
@@ -1100,6 +1112,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
     NodeType::InferError { message: _, span: _, .. } => {
         fallback.clone()
     }
+    NodeType::InferVariable { .. } => {
+        fallback.clone()
+    }
     NodeType::Untyped => {
         fallback.clone()
     }
@@ -1116,6 +1131,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
         rt.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        fallback.clone()
+    }
+    NodeType::InferVariable { .. } => {
         fallback.clone()
     }
     NodeType::Untyped => {
@@ -1139,6 +1157,9 @@ pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<Na
         rt.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        receiver_type.clone()
+    }
+    NodeType::InferVariable { .. } => {
         receiver_type.clone()
     }
     NodeType::Untyped => {
@@ -1244,6 +1265,9 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         error_type_node()
     }
+    NodeType::InferVariable { .. } => {
+        error_type_node()
+    }
     NodeType::Untyped => {
         leaf_node("Unit")
     }
@@ -1324,6 +1348,9 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
         rt.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        error_type_node()
+    }
+    NodeType::InferVariable { .. } => {
         error_type_node()
     }
     NodeType::Untyped => {
@@ -1555,6 +1582,9 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
         rt.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        error_type_node()
+    }
+    NodeType::InferVariable { .. } => {
         error_type_node()
     }
     NodeType::Untyped => {
@@ -1951,12 +1981,18 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         None
     }
+    NodeType::InferVariable { .. } => {
+        None
+    }
     NodeType::Untyped => {
         None
     }
 }
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::InferVariable { .. } => {
         None
     }
     NodeType::Untyped => {
@@ -1968,6 +2004,9 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
         index_type_result.clone()
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::InferVariable { .. } => {
         base_type_result.clone()
     }
     NodeType::Untyped => {
@@ -2020,12 +2059,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         None
     }
-    NodeType::Untyped => {
-        None
-    }
-}
-    }
-    NodeType::InferError { message: _, span: _, .. } => {
+    NodeType::InferVariable { .. } => {
         None
     }
     NodeType::Untyped => {
@@ -2034,6 +2068,20 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
 }
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::InferVariable { .. } => {
+        None
+    }
+    NodeType::Untyped => {
+        None
+    }
+}
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        None
+    }
+    NodeType::InferVariable { .. } => {
         None
     }
     NodeType::Untyped => {
@@ -2049,12 +2097,18 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     NodeType::InferError { message: _, span: _, .. } => {
         start_type_result.clone()
     }
+    NodeType::InferVariable { .. } => {
+        start_type_result.clone()
+    }
     NodeType::Untyped => {
         start_type_result.clone()
     }
 }
     }
     NodeType::InferError { message: _, span: _, .. } => {
+        base_type_result.clone()
+    }
+    NodeType::InferVariable { .. } => {
         base_type_result.clone()
     }
     NodeType::Untyped => {
@@ -2325,7 +2379,14 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     }
     __acc_0
 };
-    let some_value_field = Rc::new(Node { name: "value".to_string(), span: zero_span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::Resolved { node: leaf_node("Dynamic") })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
+    // Override Unit with Conj connective (empty product, structurally distinct)
+    let kernel_bindings = {
+    let __rc = kernel_bindings;
+    let mut __map = Rc::try_unwrap(__rc).unwrap_or_else(|rc| (*rc).clone());
+    __map.insert("Unit".to_string(), Rc::new(TypeBinding { name: "Unit".to_string(), resolved: Rc::new(Node { name: "Unit".to_string(), span: no_span(), children: Rc::new(Vec::new()), connective: Connective::Conj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }) }));
+    Rc::new(__map)
+};
+    let some_value_field = Rc::new(Node { name: "value".to_string(), span: zero_span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::TypeVariable { id: "some_value".to_string() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     let some_variant = Rc::new(Node { name: "Some".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_value_field.clone())), connective: Connective::NoConnective, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     let kernel_optional = Rc::new(Node { name: "Optional".to_string(), span: zero_span.clone(), children: Rc::new(vec!(some_variant.clone(), leaf_node("None"))), connective: Connective::Disj, collection_kind: CollectionKind::NoCollection, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     let kernel_bindings = {

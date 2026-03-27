@@ -1777,7 +1777,7 @@ pub fn needs_reference_node(n: Rc<Node>) -> bool {
 }) > 0_i64) {
     true
 } else {
-    let is_copy = ((is_int_type_node(n.clone()) || is_bool_type_node(n.clone())) || is_float_type_node(n.clone())) || ((n.name.clone() == "Unit") && (({
+    let is_copy = ((is_int_type_node(n.clone()) || is_bool_type_node(n.clone())) || is_float_type_node(n.clone())) || ((n.connective == Connective::Conj) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) == 0_i64));
@@ -4011,7 +4011,7 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
     let acc_children_have_unit = ({
     let mut __any_2 = false;
     for __elem_3 in acc_type.children.iter().cloned() {
-        if (__elem_3.name.clone() == "Unit") || (__elem_3.name.clone() == "") {
+        if ((__elem_3.connective == Connective::Conj) && __elem_3.children.is_empty()) || (__elem_3.name.clone() == "") {
     __any_2 = true;
     break;
 };
@@ -4024,7 +4024,7 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
 let __cond = {
     let mut __any_6 = false;
     for __elem_7 in __elem_5.children.iter().cloned() {
-        if (__elem_7.name.clone() == "Unit") || (__elem_7.name.clone() == "") {
+        if ((__elem_7.connective == Connective::Conj) && __elem_7.children.is_empty()) || (__elem_7.name.clone() == "") {
     __any_6 = true;
     break;
 };
@@ -4082,7 +4082,7 @@ if __cond {
     let acc_has_unit_child = ({
     let mut __any_9 = false;
     for __elem_10 in acc_type_node.children.iter().cloned() {
-        if (__elem_10.name.clone() == "Unit") || (__elem_10.name.clone() == "") {
+        if ((__elem_10.connective == Connective::Conj) && __elem_10.children.is_empty()) || (__elem_10.name.clone() == "") {
     __any_9 = true;
     break;
 };
@@ -4095,7 +4095,7 @@ if __cond {
 let __cond = {
     let mut __any_13 = false;
     for __elem_14 in __elem_12.children.iter().cloned() {
-        if (__elem_14.name.clone() == "Unit") || (__elem_14.name.clone() == "") {
+        if ((__elem_14.connective == Connective::Conj) && __elem_14.children.is_empty()) || (__elem_14.name.clone() == "") {
     __any_13 = true;
     break;
 };

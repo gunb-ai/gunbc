@@ -457,6 +457,9 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     NodeType::InferError { message: _, span: _, .. } => {
         resolved.clone()
     }
+    NodeType::InferVariable { .. } => {
+        resolved.clone()
+    }
     NodeType::Untyped => {
         resolved.clone()
     }
@@ -501,6 +504,9 @@ pub fn resolve_optional_node(n: Option<Rc<InferredNode>>, env: Rc<TypeEnv>, modu
     }
     InferredNode::CompilerError { message: msg, span: sp, .. } => {
         Rc::new(NodeResolveResult { resolved: make_expr_error_node(ExprErrorKind::SemanticExprError, &msg, sp.clone()), diagnostics: Rc::new(vec!(Rc::new(Diagnostic { severity: Severity::Error, message: msg.clone(), span: Some(sp.clone()), module_name: Some(module_name.to_string()), category: None }))) })
+    }
+    InferredNode::TypeVariable { .. } => {
+        Rc::new(NodeResolveResult { resolved: leaf_node("Unit"), diagnostics: Rc::new(Vec::new()) })
     }
 }
 }

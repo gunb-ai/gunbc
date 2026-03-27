@@ -734,6 +734,9 @@ pub fn serialize_inferred_node(inferred: Rc<InferredNode>) -> String {
     InferredNode::CompilerError { message, span, .. } => {
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"CompilerError\", \"message\": ".to_string(), json_quote(&message)), ", \"span\": ".to_string()), serialize_span(span.clone())), "}".to_string())
     }
+    InferredNode::TypeVariable { id, .. } => {
+        v2_rt::concat(v2_rt::concat("{\"kind\": \"TypeVariable\", \"id\": ".to_string(), json_quote(&id)), "}".to_string())
+    }
 }
     })
 }
