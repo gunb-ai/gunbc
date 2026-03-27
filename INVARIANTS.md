@@ -77,7 +77,7 @@ it was lost, (4) fix the rendering to exploit the guarantee.
 | FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **FIXED.** Indexed Kahn with in-degree map + reverse adjacency + queue drain. |
 | FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
 | FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
-| FF-8 | Value representation cost | .dag source (immutable strings) | v1 runtime `char_at` → `String` allocation | Heap-allocate per character read | Tokenize 4.87s (75% of pipeline) | **OPEN.** `char_at`, `scan_while`, `substring` allocate `String` for read-only character access. Source strings are immutable — character reads should be `&str` slices (zero-copy). Applies to all string-read operations in the runtime. |
+| FF-8 | Tokenize cost (unknown root cause) | .dag source | Unknown — `char_at` allocation is ~15ms, not the 4.87s bottleneck | Unknown | Tokenize 4.87s (75% of pipeline) | **OPEN — needs flamegraph profiling.** Initial hypothesis (char_at heap allocation) was wrong by ~300x. The real cost is elsewhere in the tokenizer. Candidates: `source.to_string()` per-file copy, Rc::try_unwrap failures on token list, `string_length` per-iteration, or an algorithmic issue. Use `cargo flamegraph` or the complexity analysis stage to identify. |
 
 #### The fan-out fix (FF-1) in detail
 
@@ -108,22 +108,24 @@ Reconcile: ~20 minutes → 244ms (release mode).
 **Status: FIXED (2026-03-26).** `04_cycle.dag` rewritten with indexed
 in-degree map + reverse adjacency + queue drain. O(V+E), single pass.
 
-#### Value representation cost (FF-8)
+#### Tokenize bottleneck (FF-8) — needs profiling
 
-The .dag language guarantees string immutability. Character reads
-should be zero-copy views into the source string, not heap allocations.
-The v1 runtime (`v2_rt.rs`) renders `char_at(s, pos)` as
-`String::from(bytes[pos] as char)` — heap allocation per character.
-The tokenizer calls this ~500K times → 500K heap allocations → 4.87s.
+Tokenize takes 4.87s (75% of the 6.47s pipeline). Initial hypothesis
+was `char_at` heap allocation, but back-of-envelope math shows that's
+~15ms — off by 300x. The real root cause is unknown.
 
-The fix: `char_at` returns `&str` (slice into source) or `char`
-(stack value). `scan_while` predicates take `&str`/`char` instead of
-owned `String`. `substring` for read-only checks uses slices.
+Candidates to investigate with flamegraph profiling:
+- `source.to_string()` in `tokenize()` — copies entire source file
+  into a new String per call (line 44 of tokenize.rs)
+- Rc::try_unwrap failures on the token list accumulation — would
+  cause O(n²) deep-clone per token, same class as the reconcile fix
+- `string_length` called per-iteration in the loop guard — O(n) for
+  the string even on ASCII (function call overhead)
+- Algorithmic issue in `skip_spaces_and_comments` or `scan_token`
 
-This is the same principle as FF-1: the source says "read" (O(1), no
-allocation), the rendering says "create" (O(1) amortized, but 100x+
-constant factor from heap allocation). The rendering must distinguish
-reads from creates, just as it distinguishes single-use from multi-use.
+The value-representation principle (immutable strings should be
+zero-copy reads) is correct but applies to ~15ms of the cost.
+The dominant cost is something else. Profile first, theorize second.
 
 #### Ratchet
 
