@@ -30,6 +30,92 @@ target bound directly. Prefer one-time indexing over repeated lookup,
 single-pass structural walks over nested rescans, and data ownership
 that avoids whole-structure cloning in loops.
 
+### Facts Flow Forward (2026-03-26)
+
+Every performance regression in this compiler traces to one structural
+pattern: **a fact is computed at stage X, lost during transformation to
+stage Y, and Y compensates with a conservative strategy that is correct
+but suboptimal.** The fix is never "optimize the compensation." The fix
+is always "stop losing the fact."
+
+The .dag language is pure-functional with lexical scope. In this model,
+every property needed for optimal rendering is already expressed by the
+source: purity means no aliasing, lexical scope means every binding's
+consumers are visible in the syntax tree, named composition means the
+data-flow graph IS the program text. If the compiler needs to guess,
+a fact was lost.
+
+**The governing rule:** if a fact exists at one stage of the pipeline,
+every downstream stage that needs it reads the fact — it never
+recomputes it. If a downstream stage contains an analysis pass, a
+heuristic, or a conservative fallback, there is a missing fact
+upstream. Produce the fact upstream; don't improve the downstream
+heuristic.
+
+**Diagnosis:** when you encounter a performance issue or a compensating
+mechanism: (1) identify the fact being recomputed, (2) find where it
+was first available, (3) trace where it was lost, (4) fix the
+transformation to preserve the fact.
+
+#### Known instances
+
+| # | Fact | Computed at | Lost during | Compensation | Cost | Status |
+|---|------|-------------|-------------|--------------|------|--------|
+| FF-1 | Binding fan-out (use-count) | .dag AST (lexical scope) | v1 emitter rendering to Rust | Rc-wrap all types, clone every use | Every fold O(n²). 20-min self-compile. | **Fold accumulators fixed (3x speedup).** Broader fix: ~50 use-count sites where rendering introduces non-preserving references. These are one bug (transformation isn't preserving), not 50 bugs. |
+| FF-2 | Resolved structural type | Infer (`.inferred`) | Bare name references at stage boundary | Emit re-resolves through TypeEnv | 12+ re-resolution sites | **FIXED** (C-series) |
+| FF-3 | Expression children | Parse (construction) | ExprData variant fields | 12 manual walks (~1800 lines) | Every analysis needs full ExprData match | **FIXED** (P5.11) |
+| FF-4 | Module dependency order | Resolve (topo sort) | `dep_order` field + re-sort | Extra field, unnecessary sort pass | Minor | **FIXED** (P5.2) |
+| FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **OPEN** |
+| FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
+| FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
+
+#### The fan-out fix (FF-1) in detail
+
+The .dag language guarantees that fan-out is a syntactic property —
+count the name references in a binding's scope. The rendering
+transformation must preserve this:
+
+- Fan-out = 0 → dead code, don't emit
+- Fan-out = 1 → move (the binding is consumed exactly once)
+- Fan-out > 1 → duplicate at the fork point
+
+The v1 emitter's contract for use-count preservation: **each .dag
+consumption maps to exactly one target-language move.** Rendering-
+introduced references (field access, auto-deref, method dispatch) are
+borrows, not moves. The emitter must not introduce move-sites that
+weren't in the source.
+
+Current state: fold accumulators are exempted from the Rc-clone
+override (the targeted fix). The full fix requires making the rendering
+transformation use-count-preserving at all sites, which means the ~50
+sites where the v1 emitter introduces non-preserving Rust references
+need to be audited and fixed. In the v2 emitter, fan-out is a
+structural fact on bindings from the start.
+
+#### Kahn cycle detection fix (FF-5) in detail
+
+`kahn_remove_loop` in `04_cycle.dag` re-scans all remaining items
+each iteration to find ready items. Proper Kahn's algorithm: build
+indexed adjacency list + in-degree counter once, process ready items
+via queue, decrement neighbors' in-degree. O(V+E), single pass.
+
+#### Ratchet
+
+After all open instances are fixed:
+
+1. **No downstream recomputation.** For each stage boundary, the
+   downstream stage does not import analysis functions from upstream.
+   Import across a stage boundary = potential recomputation = potential
+   lost fact.
+
+2. **Fan-out preservation.** Each `.clone()` in generated stage0
+   corresponds to a source binding with fan-out > 1. Any clone on a
+   fan-out=1 binding is a violation. Target: 0 violations.
+
+3. **Performance ratchet.** Self-compile time is a ratchet value.
+   Regressions indicate a new lost-fact instance. Baseline: 431s
+   (test suite, 2026-03-26). Target: <60s pipeline, <2s per-module.
+
 ## Sustainability Invariants
 
 The governing metric for this codebase is **cost of change**: when the
