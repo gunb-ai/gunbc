@@ -1,8 +1,0 @@
-[package]
-name = "daglang-syntax"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Lexer and parser for the .dag DSL — produces an unresolved AST"
-
-[dependencies]
