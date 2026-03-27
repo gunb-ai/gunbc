@@ -2239,7 +2239,8 @@ can interleave with either track.
 | P5.7 | Delete `node_is_*` predicates | P5.6 passing + P5.7a/P5.7b below | 82 call sites | Two distinct invariant violations behind the predicates. See P5.7 design below. |
 | P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | **Done (2026-03-26).** Function and all call sites deleted. One comment marker remains in `04_lookup.dag:136`. |
 | P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | **Done (2026-03-26).** Function and all call sites deleted. Ratchet category reports 0. |
-| P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | Evaluate whether `Conj`/`Disj` can dissolve or remain as the compiler's last structural primitive. Note: collections (`Set`, `Map`, `List`) are *not* products or coproducts — they are function/indexed types in the denotational model. `Conj`/`Disj` remain relevant for record types (product) and coproduct types (e.g., `Result<T, E> = Ok \| Err`), but the collection algebra family is orthogonal. `Optional` is cardinality, not a coproduct node (P1.4). |
+| P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | **Done (2026-03-26).** Assessment: keep `Conj`/`Disj` as permanent graph primitives. 230 legitimate usage sites. Product/coproduct is denotational mathematics. Collections are orthogonal (use `CollectionKind`). |
+| P5.13 | Kernel type `.dag` declarations | P5.7 | Medium | Declare missing kernel types (Bool, Unit, Secret, Json, Bytes) in `dsl/std/`. Wire into TypeEnv. Replace `is_kernel_type` string list with structural scope membership. Dissolves 27 type-name comparison sites. See P5.13 design below. |
 
 **`04_types` audit scope before deleting the final L1 bridges:**
 - `node_is_bridge_error_name` / `node_is_bridge_dynamic_name`
@@ -2562,13 +2563,109 @@ match succeeds.
 - `grep -n 'kind_tag(' src/v2/02_parse.dag` returns zero non-diagnostic uses
 - Fixed point holds
 
+### P5.13 Design: Kernel Type Declarations and `is_kernel_type` Dissolution
+
+**Problem:** The compiler hardcodes 8 kernel type names (`String`, `Int`,
+`Bool`, `Float`, `Secret`, `Json`, `Unit`, `Bytes`) as a string list in
+`00_core.dag:149`. `is_kernel_type(name)` scans this list. 27 sites in
+inference and emit branch on kernel type names (`.name == "Int"`, etc.).
+This is L1 type-world knowledge — the compiler knows what `Int` means
+instead of reading structure from `.dag` declarations.
+
+**Current `.dag` declaration state:**
+
+| Type | Declaration | Location | Structural? |
+|------|------------|----------|-------------|
+| `Int` | `type Int = Int64` | `dsl/std/integer.dag` | Yes — alias for `Interpret<Signed, Word64>` |
+| `Float` | `type Float = Float64` | `dsl/std/float.dag` | Yes — alias for `ieee754_binary64` |
+| `String` | `type String { ... }` | `dsl/std/string_type.dag` | Partial — product body exists |
+| `Bool` | **None** | — | Not declared in any `.dag` file |
+| `Unit` | **None** | — | Not declared in any `.dag` file |
+| `Secret` | **None** | — | Not declared in any `.dag` file |
+| `Json` | **None** | — | Not declared in any `.dag` file |
+| `Bytes` | **None** | — | Not declared in any `.dag` file |
+| `List<T>` | `type List<element>` | `dsl/std/types.dag` | Bare — no body, arity only |
+| `Set<T>` | `type Set<element>` | `dsl/std/types.dag` | Bare — no body, arity only |
+| `Map<K,V>` | `type Map<key, value>` | `dsl/std/types.dag` | Bare — no body, arity only |
+
+**What "real `.dag` declarations" means:**
+
+Each kernel type needs a declaration that carries enough structural
+information for the compiler to derive its properties without name-checking.
+This does NOT mean implementing the full algebraic vision (Bit-graph model
+is post-Phase 5). It means:
+
+1. **Every kernel type has a `.dag` declaration** (Bool, Unit, Secret,
+   Json, Bytes currently missing)
+2. **Declarations carry structural properties** the compiler currently
+   derives from names. For example:
+   - `Bool`: two-valued coproduct (`True | False`) — the compiler can
+     derive "this is a boolean" from `connective == Disj` + 2 unit variants
+   - `Unit`: zero-field product — structural emptiness
+   - `Int`/`Float`: numeric operations — declared via method algebras
+   - `String`: sequence operations — declared via method algebras
+3. **`is_kernel_type` dissolves** into "does this type's declaration
+   carry the structural property I need?" instead of "is this name in
+   my hardcoded list?"
+
+**The structural properties the compiler actually needs from kernel types:**
+
+| What the compiler checks | Why | Structural replacement |
+|--------------------------|-----|----------------------|
+| `is_kernel_type(name)` | Skip env lookup for built-in types | Type is in the kernel scope (structural — scope membership, not name) |
+| `is_int_type_node(n)` | Numeric literal inference | Type declares numeric algebra (method-based) |
+| `is_string_type_node(n)` | String literal inference | Type declares string algebra (method-based) |
+| `is_bool_type_node(n)` | Boolean literal inference | Type is `True \| False` coproduct (structural) |
+| `n.name == "Unit"` | Empty/absent value | Type has zero fields and zero children (structural) |
+| `n.name == "Callable"` | Function type detection | Node has params (structural — already checkable) |
+
+**Execution plan:**
+
+1. **Declare missing kernel types** in `dsl/std/`:
+   - `type Bool = True | False` (coproduct — structural)
+   - `type Unit` (empty product — structural)
+   - `type Secret = String where sensitive` (refinement)
+   - `type Json` (opaque — runtime-defined)
+   - `type Bytes` (opaque — runtime-defined)
+
+2. **Wire declarations into the compiler's type environment:**
+   The compiler already loads `dsl/std/types.dag`. Ensure all kernel
+   type declarations are imported by the compile pipeline so they're
+   in the `TypeEnv` before inference runs.
+
+3. **Replace name checks with structural queries:**
+   - `is_kernel_type(name)` → type exists in kernel scope
+   - `is_int_type_node` → type declares numeric methods (or: type's
+     declaration chain reaches `Int64`/`Word64`)
+   - `is_bool_type_node` → `n.connective == Disj && n.children |> count == 2`
+     with unit variants (or: type's declaration is `True | False`)
+   - `n.name == "Unit"` → `n.connective == NoConnective && n.children |> count == 0`
+     (already structural, just needs the name check removed)
+
+4. **Delete `kernel_types` string list and `is_kernel_type`** — replace
+   with scope-based membership test.
+
+**Scope:** Medium. The declarations are small. The wiring into TypeEnv
+requires understanding how `build_type_env` populates the kernel scope.
+The structural query replacements are per-site but follow a pattern.
+
+**Depends on:** P5.7 (done), collection method algebras (for List/Map/Set
+structural queries — can proceed in parallel for Bool/Unit/Int/Float).
+
+**Blocks:** L1=0 gate — the 27 kernel-type name checks are the last
+category of type-name comparisons after Error/Dynamic (Root Cause II).
+
 ### Phase 5 Exit Criteria
 
-- **L1=0:** scrambled-name tests pass; no `node_is_*` predicates; no
-  `normalize_type_name`; no `classify_type_structure` in emit; no type-name
-  comparisons in inference; no arity bridges
-- Target filenames from M1 are fully normalized
-- Compiler-internal structure is consistently `Node`-centric
+- **L1=0:** scrambled-name tests pass (**done**); no `node_is_*` predicates
+  (**done**); no `normalize_type_name` (**done**); no `classify_type_structure`
+  (**done**); no arity bridges (**done**)
+- **Remaining L1 gates:**
+  - Error/Dynamic name checks (14 sites) → Root Cause II: inference redesign
+  - Kernel type name checks (27 sites) → P5.13: real `.dag` declarations
+  - Type constructors (157 sites) → collection constructors are bridge debt
+- `Conj`/`Disj` are permanent graph primitives (P5.10)
+- `CollectionKind` is bridge debt (dissolves when method algebras land)
 - Each convergence step survives re-bootstrap and fixed-point verification
 - The compiler is in a clean place to start real L2 work
 
