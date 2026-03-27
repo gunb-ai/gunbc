@@ -394,7 +394,22 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match rt_node(n: resolved) {
-              Typed { node: target } => target
+              Typed { node: target } =>
+                // C2.3+: If the alias target is a parameterized reference
+                // (e.g., OrderedRing<Word64>), resolve it to expand generic
+                // substitution and produce the structural Conj definition.
+                // If it's a bare leaf (e.g., Int64), look it up in the env
+                // to follow the alias chain one more level.
+                // Topo ordering guarantees the target is already resolved.
+                if target.children |> count > 0 && target.connective == NoConnective {
+                  let target_result = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1)
+                  target_result.resolved
+                } else if target.children |> count == 0 && target.connective == NoConnective && target.name != "" {
+                  match lookup_type(env: env, name: target.name) {
+                    Some { value: env_target } => env_target
+                    None => target
+                  }
+                } else { target }
               InferError { message: _, span: _ } => resolved
               InferVariable { id: _ } => resolved
               Untyped => resolved
