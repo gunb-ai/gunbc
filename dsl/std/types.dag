@@ -43,7 +43,23 @@ module std.types
 //   Unit   = Dag{Identity}      [Unit]   = {} (bottom, _|_)
 //   Json   = Dag{Identity}      [Json]   = [Bool] U [Int] U ... U {null} (top, T)
 //
-// (built-in to the compiler, listed here for documentation)
+// Kernel type declarations. These are compiled as regular .dag types and
+// override the compiler's bootstrap kernel seed (leaf nodes) via the normal
+// merge order (kernel < imports < local). The compiler reads structural
+// properties from these declarations instead of hardcoding name checks.
+
+type Bool = True | False
+
+type Unit
+
+type Secret
+
+type Json
+
+type Bytes
+
+// Int, Float, String are declared in their respective std modules
+// (integer.dag, float.dag, string_type.dag).
 
 // --- Char type (structural primitive) ----------------------------------
 // Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
