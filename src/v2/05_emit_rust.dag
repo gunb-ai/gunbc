@@ -60,8 +60,8 @@ import v2.std.core {
   field_init_node_name, field_init_node_value,
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
-  CardOptional
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
+  Cardinality, Required, CardOptional
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
@@ -129,6 +129,17 @@ import v2.compiler.emit {
   service_fallback_transport, effective_operation_transport,
   service_uses_transport, service_has_rest_auth,
   extract_modifier_names
+}
+
+fn type_variable_node(id: String) -> Node {
+  Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
 }
 
 // Emit-side type identity checks. These are rendering decisions
@@ -887,7 +898,7 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
 // =========================================================================
 
 // Rust type rendering: delegated to shared emit_node_type_rc (P4.1a).
-// Rc wrapping, Dynamic/Error guards, anonymous product handling all
+// Rc wrapping, TypeVariable/Error guards, anonymous product handling all
 // unified in 05_emit.dag. This alias preserves call-site readability.
 
 // =========================================================================
@@ -1885,7 +1896,7 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNo
       Some { value: Resolved { node: ret_type } } =>
         let resolved_ret = ret_type
         let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
-        if type_str != "" && type_str != "Dynamic" {
+        if type_str != "" {
           concat("<", type_str, ">::new()")
         } else {
           "compile_error!(\"empty_map requires a concrete result type\")"
@@ -2139,13 +2150,9 @@ fn lambda_scope_from_semantics(scope: InferScope, params: List<String>, semantic
       params |> enumerate |> fold(init: scope, f: (acc, pair) =>
         let idx = pair.first
         let param_name = pair.second
-        // Dynamic audit: correct — scope must have a binding for every lambda param.
-        // When inference didn't resolve a param type, Dynamic is the correct sentinel.
-        // Downstream guards in lambda_param_type_strs filter Dynamic from rendered
-        // type annotations, and emit_node_type_rc catches any remaining leak.
         let param_type = match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: resolved_type } => resolved_type
-          None => leaf_node(name: "Dynamic")
+          None => type_variable_node(id: "lambda_param")
         }
         extend_scope(scope: acc, name: param_name, resolved: param_type)
       )
@@ -2161,11 +2168,9 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
       Some { value: lambda_semantics } =>
         match lambda_semantics.param_types |> skip(idx) |> first {
           Some { value: param_type } =>
-            // Dynamic audit: correct guard — filter Dynamic/CompilerError sentinels from
-            // rendered lambda param type annotations. Falls back to caller-provided
-            // fallback_types (typically elem_type_str or "_"), letting Rust infer.
             let param_is_error = if param_type.inferred != none { is_compiler_error(inferred: param_type.inferred.value) } else { false }
-            if param_type.name == "Dynamic" || param_is_error {
+            let param_is_type_var = if param_type.inferred != none { is_type_variable(inferred: param_type.inferred.value) } else { false }
+            if param_is_type_var || param_is_error {
               none
             } else {
               Some { value: emit_node_type_rc(n: param_type, target: Rust, rc_types: rc_types) }
@@ -2359,14 +2364,12 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
             Some { value: concrete_type } => concrete_type
             None =>
               // Fallback: infer accumulator type from init expression's return type.
-              // Dynamic audit: correct — Dynamic leaf_node here is caught by
-              // emit_node_type_rc which renders it as compile_error!.
               match args |> first {
                 Some { value: init_arg } =>
                   if init_arg.value.inferred != none {
                     rt_type(n: init_arg.value)
-                  } else { leaf_node(name: "Dynamic") }
-                None => leaf_node(name: "Dynamic")
+                  } else { type_variable_node(id: "fold_accum") }
+                None => type_variable_node(id: "fold_accum")
               }
           }
       }
@@ -2377,7 +2380,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         Some { value: init_arg } =>
           match init_arg.value.expr_data {
             ExprCall { func: init_func, call_semantics: _ } =>
-              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "Dynamic" && !acc_has_unit_child {
+              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
                 concat("<", acc_type_str, ">::new()")
               } else if init_func == "empty_map" {
                 // Partial turbofish: tell Rust the key type, infer value type from context
@@ -2402,9 +2405,8 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
         Some { value: Resolved { node: rt } } =>
           let resolved = rt
           let elem = for_each_element_type_node(n: resolved)
-          // Dynamic audit: correct guard — if sort_by element type is Dynamic,
-          // fall back to "_" so Rust infers the closure param type.
-          if elem.name != "" && elem.name != "Dynamic" {
+          let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
+          if elem.name != "" && !elem_is_type_var {
             emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
           } else { "_" }
         _ => "_"
@@ -2517,7 +2519,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String,
   let rc_match = analyze_rc_match(scrutinee: scrutinee, arms: arms, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
   let match_result_type = match arms |> first {
     Some { value: first_arm } => rt_type(n: first_arm.body)
-    None => leaf_node(name: "Dynamic")
+    None => type_variable_node(id: "match_result")
   }
   let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type))
   let arms_str = arm_strs |> join(separator: "\n")
@@ -2686,15 +2688,13 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
 fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
-  // Dynamic audit (both branches below): correct guards — when a field's type is
-  // Dynamic, return none rather than using "Dynamic" as a parent type qualifier.
-  // The caller falls back to other disambiguation strategies (vtoe, parent_enum).
   // First try: direct children (works for Conj/struct nodes)
   let direct = match struct_node.children |> filter(c => c.name == field_name) |> first {
     Some { value: field_child } =>
       if field_child.inferred != none {
         let field_type = rt_type(n: field_child)
-        if field_type.name != "" && field_type.name != "Dynamic" {
+        let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
+        if field_type.name != "" && !ft_is_type_var {
           Some { value: field_type.name }
         } else { none }
       } else { none }
@@ -2712,7 +2712,8 @@ fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_
                 Some { value: field_child } =>
                   if field_child.inferred != none {
                     let field_type = rt_type(n: field_child)
-                    if field_type.name != "" && field_type.name != "Dynamic" {
+                    let ft_is_type_var = if field_type.inferred != none { is_type_variable(inferred: field_type.inferred.value) } else { false }
+                    if field_type.name != "" && !ft_is_type_var {
                       Some { value: field_type.name }
                     } else { none }
                   } else { none }
@@ -2809,9 +2810,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
           match vtoe_lookup {
             Some { value: vtoe_parent } => Some { value: vtoe_parent }
             None =>
-              // Dynamic audit: correct guard — when resolved_type is Dynamic or Error,
-              // don't use it as the enum parent qualifier. Fall through to parent_enum.
-              if resolved_type.name != "" && resolved_type.name != tn && resolved_type.name != "Dynamic" && resolved_type.name != "Error" {
+              let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
+              if resolved_type.name != "" && resolved_type.name != tn && !rt_is_type_var && resolved_type.name != "Error" {
                 Some { value: resolved_type.name }
               } else {
                 parent_enum

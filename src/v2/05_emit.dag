@@ -80,6 +80,13 @@ import v2.compiler.languages {
   target_keyword, target_primitive_type, target_container_template
 }
 
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
 // =========================================================================
 // Emit result -- files plus diagnostic channel for downstream consumers.
 // =========================================================================
@@ -768,11 +775,12 @@ fn emit_node_type(n: Node, target: RenderTarget) -> String {
 }
 
 fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
-  // Dynamic/CompilerError: inference failures that leaked to emit.
+  // TypeVariable/CompilerError: inference failures that leaked to emit.
   let is_rust = match target { Rust => true  _ => false }
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-  let sentinel_label = if n_is_error { "CompilerError" } else { n.name }
-  if (n.name == "Dynamic" || n_is_error) && n.children |> count == 0 {
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  let sentinel_label = if n_is_error { "CompilerError" } else if n_is_type_var { "TypeVariable" } else { n.name }
+  if (n_is_type_var || n_is_error) && n.children |> count == 0 {
     if is_rust {
       return concat("compile_error!(\"unresolved ", sentinel_label, " type reached emit\")")
     } else {

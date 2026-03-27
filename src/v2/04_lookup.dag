@@ -11,7 +11,7 @@ module v2.compiler.infer_lookup
 
 import v2.std.core {
   Node, Param,
-  InferredNode, Resolved,
+  InferredNode, Resolved, TypeVariable,
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   IntrinsicMethod,
@@ -49,6 +49,13 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_service {
   OpEntry, ServiceMethodResult,
   check_service_method_call_node
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
 }
 
 // =========================================================================
@@ -135,11 +142,9 @@ fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
-  // Temporary bridge: scrutinee resolution still normalizes names and
-  // rewraps Optional after environment lookup. Access and match-pattern
-  // inference now carry explicit failure state before entering this helper,
-  // so this function should only resolve successfully typed scrutinee shapes.
-  // P5.8: normalize_type_name deleted. Canonical names are raw names.
+  // TypeVariable nodes are unresolved placeholders -- return as-is.
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  if n_is_type_var { return n }
   let normed = normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count == 0 {
     let canonical = normed.name

@@ -12,7 +12,7 @@ module v2.compiler.infer_emit_info
 
 import v2.std.core {
   Node,
-  InferredNode, Resolved,
+  InferredNode, Resolved, TypeVariable,
   FieldAccessStyle, StoredField, EnumAccessor, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
@@ -23,6 +23,13 @@ import v2.std.core {
 import v2.compiler.infer_types {
   normalize_access_type_node,
   rt_type, child_inferred_or_name, node_type_equals
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
 }
 
 // =========================================================================
@@ -250,7 +257,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
             match child.inferred {
               Some { value: Resolved { node: ft } } =>
                 let resolved_name = normalize_access_type_node(n: ft).name
-                if resolved_name != "" && resolved_name != "Dynamic" {
+                let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
+                if resolved_name != "" && !ft_is_type_var {
                   map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
                 } else { acc }
               _ => acc
@@ -262,7 +270,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
               match child.inferred {
                 Some { value: Resolved { node: ft } } =>
                   let resolved_name = normalize_access_type_node(n: ft).name
-                  if resolved_name != "" && resolved_name != "Dynamic" {
+                  let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
+                if resolved_name != "" && !ft_is_type_var {
                     map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
                   } else { inner_acc }
                 _ => inner_acc

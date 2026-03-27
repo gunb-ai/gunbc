@@ -46,6 +46,13 @@ import v2.compiler.infer_env {
   TypeEnv, lookup_type, is_recursive_type
 }
 
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
 // =========================================================================
 // Result types for type resolution
 // =========================================================================
@@ -398,7 +405,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         None =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
-          if is_kernel_type(name: n.name) || n.name == "Dynamic" || n_is_error || n_is_callable {
+          let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+          if is_kernel_type(name: n.name) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {

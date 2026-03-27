@@ -9,8 +9,13 @@
 
 module v2.compiler.infer_method
 
+import std.types { SourceSpan }
 import v2.std.core {
-  Node,
+  Node, InferredNode, TypeVariable,
+  Connective, NoConnective,
+  CollectionKind, NoCollection,
+  Cardinality, Required,
+  ExprData, NoExprData,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
@@ -161,6 +166,10 @@ fn infer_runtime_bridge_method_type_node(receiver_type: Node, method: RuntimeBri
 // Builtin call type inference
 // =========================================================================
 
+fn type_variable_node(id: String) -> Node {
+  Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
 fn infer_builtin_call_type(name: String) -> Node? {
   if name == "string_length" || name == "code_point" || name == "to_int" {
     Some { value: leaf_node(name: "Int") }
@@ -171,18 +180,15 @@ fn infer_builtin_call_type(name: String) -> Node? {
   } else if name == "scan_while" || name == "scan_string_end" || name == "scan_to_eol" || name == "skip_horizontal_ws" {
     Some { value: leaf_node(name: "Int") }
   } else if name == "lookup" || name == "map_get" {
-    // Dynamic audit: correct — value type depends on receiver's map type, unknown here
-    Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
+    Some { value: with_optional_cardinality(n: type_variable_node(id: "map_value")) }
   } else if name == "map_insert" || name == "map_merge" || name == "with" {
     Some { value: bare_map_node() }
   } else if name == "map_contains_key" || name == "map_has" || name == "emit_map_has" {
     Some { value: leaf_node(name: "Bool") }
   } else if name == "map_keys" || name == "map_values" || name == "reverse" || name == "list_push" {
-    // Dynamic audit: correct — element type depends on receiver, unknown here
-    Some { value: container_node(kind_name: "List", element: leaf_node(name: "Dynamic")) }
+    Some { value: container_node(kind_name: "List", element: type_variable_node(id: "collection_element")) }
   } else if name == "Some" {
-    // Dynamic audit: correct — inner type depends on argument, unknown here
-    Some { value: with_optional_cardinality(n: leaf_node(name: "Dynamic")) }
+    Some { value: with_optional_cardinality(n: type_variable_node(id: "some_inner")) }
   } else {
     none
   }

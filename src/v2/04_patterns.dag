@@ -51,6 +51,13 @@ type PatternSubject
   | PatternDynamic { span: SourceSpan }
   | PatternLookupBlocked
 
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
 // =========================================================================
 // Variant lookup
 // =========================================================================
@@ -68,7 +75,8 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
   let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-  if n.name == "Dynamic" {
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  if n_is_type_var {
     PatternDynamic { span: n.span }
   } else if n_is_error {
     PatternLookupBlocked
@@ -126,7 +134,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
-      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve variant '", concat(variant_name, "' on Dynamic scrutinee")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "variant_not_found" })])
+      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve variant '", concat(variant_name, "' on unresolved type variable")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "variant_not_found" })])
     PatternResolved { node: scrut_node } =>
       let scrut_opt = scrut_node.return_cardinality == CardOptional
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
@@ -154,7 +162,7 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
-      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve field '", concat(field_name, "' on Dynamic variant")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "field_not_found" })])
+      node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve field '", concat(field_name, "' on unresolved type variable")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "field_not_found" })])
     PatternResolved { node: variant_node } =>
       match variant_node.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
