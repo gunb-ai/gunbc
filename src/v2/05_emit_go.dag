@@ -789,7 +789,7 @@ fn emit_go_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>,
 fn emit_go_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0)
   let start_str = emit_go_typed_expr(texpr: start, registry: registry, scope: scope, depth: 0)
-  let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope, depth: 0)
+  let end_str = match end { Some { value: e } => emit_go_typed_expr(texpr: e, registry: registry, scope: scope, depth: 0)  None => "" }
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
