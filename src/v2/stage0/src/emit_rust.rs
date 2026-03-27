@@ -267,7 +267,7 @@ pub fn has_complex_variants(item: Rc<Node>) -> bool {
     {
     let mut __any_0 = false;
     for __elem_1 in item.children.iter().cloned() {
-        if node_has_structure(__elem_1.clone()) {
+        if __elem_1.connective != Connective::NoConnective  {
     __any_0 = true;
     break;
 };
@@ -696,7 +696,7 @@ if __cond {
     for __elem_39 in ({
     let mut __filtered_36 = Vec::new();
     for __elem_37 in typed_module.items.iter().cloned() {
-        if (classify_typed_item(__elem_37.clone()) == TypedItemKind::TypedItemTypeDef) && node_is_coproduct(__elem_37.clone()) {
+        if (classify_typed_item(__elem_37.clone()) == TypedItemKind::TypedItemTypeDef) && (__elem_37.connective == Connective::Disj) {
     __filtered_36.push(__elem_37);
 };
     }
@@ -1098,7 +1098,7 @@ pub fn needs_box_wrapping(n: Rc<Node>, recursive_types: Rc<HashMap<String, bool>
     break emit_map_has(recursive_types.clone(), &n.name);
 };
 } else {
-    if node_is_optional(n.clone()) {
+    if n.return_cardinality == Cardinality::CardOptional  {
      {
         let __tco_0 = with_required_cardinality(n.clone());
         let __tco_1 = recursive_types.clone();
@@ -1118,7 +1118,7 @@ pub fn needs_box_wrapping(n: Rc<Node>, recursive_types: Rc<HashMap<String, bool>
 }
 
 pub fn emit_type_def_from_connective(item: Rc<Node>, recursive_types: Rc<HashMap<String, bool>>, rc_types: Rc<HashMap<String, bool>>) -> String {
-    let is_product = node_is_product(item.clone());
+    let is_product = item.connective == Connective::Conj ;
     if is_product {
     emit_struct_from_children(&item.name, item.children.clone(), recursive_types.clone(), rc_types.clone())
 } else {
@@ -1774,7 +1774,7 @@ pub fn emit_inferred(inferred: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) ->
 }
 
 pub fn needs_reference_node(n: Rc<Node>) -> bool {
-    if node_has_structure(n.clone()) || (({
+    if (n.connective != Connective::NoConnective) || (({
     let __len_1 = n.children.clone().len();
     __len_1 as i64
 }) > 0_i64) {
@@ -2139,7 +2139,7 @@ pub fn analyze_rc_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<MatchArm>>>, scrut_
 };
     let scrutinee_is_optional = match scrutinee.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone())
+        rt.return_cardinality == Cardinality::CardOptional 
     }
     _ => {
         false
@@ -2381,11 +2381,11 @@ pub fn rc_pattern_preludes(pattern: Rc<MatchPattern>, rc_analysis: Rc<RcPatternA
 }
 
 pub fn explicit_record_struct_name(type_name: Option<String>, inferred_node: Rc<Node>, rc_types: Rc<HashMap<String, bool>>) -> Option<String> {
-    if node_is_optional(inferred_node.clone()) {
+    if inferred_node.return_cardinality == Cardinality::CardOptional  {
     let result = type_name.clone();
     return result;
 };
-    let n = if (inferred_node.name.clone() == "Refined") && node_has_structure(inferred_node.clone()) {
+    let n = if (inferred_node.name.clone() == "Refined") && (inferred_node.connective != Connective::NoConnective) {
     match inferred_node.children.clone().first().cloned() {
     Some(base) => {
         base.clone()
@@ -2397,8 +2397,8 @@ pub fn explicit_record_struct_name(type_name: Option<String>, inferred_node: Rc<
 } else {
     inferred_node.clone()
 };
-    let is_product = node_is_product(n.clone());
-    let is_coproduct = node_is_coproduct(n.clone());
+    let is_product = n.connective == Connective::Conj ;
+    let is_coproduct = n.connective == Connective::Disj ;
     if n.name.clone() == "__EmitTypeCacheMiss" {
     type_name.clone()
 } else {
@@ -2589,7 +2589,7 @@ pub fn emit_typed_field_access(base: Rc<Node>, field: &str, summary: Option<Rc<F
         let base_is_anon_record = match base.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: bt, .. }) => {
         {
-    let is_product = node_is_product(bt.clone());
+    let is_product = bt.connective == Connective::Conj ;
     if is_product && (bt.name.clone() == "") {
     true
 } else {
@@ -2691,8 +2691,8 @@ pub fn type_needs_rc_seen(type_node: Rc<Node>, seen: Rc<HashMap<String, bool>>) 
             let type_node = __tco_p_type_node;
             let seen = __tco_p_seen;
             let normed = normalize_access_type_node(type_node);
-            let is_product = node_is_product(normed.clone());
-            let is_coproduct = node_is_coproduct(normed.clone());
+            let is_product = normed.connective == Connective::Conj ;
+            let is_coproduct = normed.connective == Connective::Disj ;
             if is_product {
     break true;
 } else {
@@ -2746,7 +2746,7 @@ pub fn type_needs_rc_seen(type_node: Rc<Node>, seen: Rc<HashMap<String, bool>>) 
 }
 };
     let resolved = normed.clone();
-    if (((node_has_structure(resolved.clone()) == false) && (resolved.inferred.clone().is_none())) && (resolved.name.clone() == normed.name.clone())) && (({
+    if (((resolved.connective == Connective::NoConnective) && (resolved.inferred.clone().is_none())) && (resolved.name.clone() == normed.name.clone())) && (({
     let __len_7 = resolved.children.clone().len();
     __len_7 as i64
 }) == 0_i64) {
@@ -2772,7 +2772,7 @@ pub fn type_needs_rc_seen(type_node: Rc<Node>, seen: Rc<HashMap<String, bool>>) 
 pub fn rust_map_value_type(receiver_type: Rc<Node>, scope: Rc<InferScope>) -> Option<Rc<Node>> {
     let resolved = normalize_access_type_node(receiver_type.clone());
     let map_type = normalize_access_type_node(resolved.clone());
-    if node_is_map(map_type.clone()) {
+    if map_type.collection_kind == CollectionKind::MapKind  {
     match map_type.children.clone().get((1_i64) as usize).cloned() {
     Some(value_type) => {
         Some(value_type.clone())
@@ -3079,7 +3079,7 @@ pub fn contextual_variant_parent(variant_name: &str, parent_enum: Option<String>
 pub fn is_map_typed_expr(texpr: Rc<Node>) -> bool {
     match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: n, .. }) => {
-        node_is_map(n.clone())
+        n.collection_kind == CollectionKind::MapKind 
     }
     _ => {
         false
@@ -3125,7 +3125,7 @@ pub fn emit_typed_call_expr(func: &str, args: Rc<Vec<Rc<NamedArg>>>, inferred: O
     Some(InferredNode::Resolved { node: ret_type, .. }) => {
         {
     let resolved_ret = ret_type.clone();
-    if node_is_optional(resolved_ret.clone()) {
+    if resolved_ret.return_cardinality == Cardinality::CardOptional  {
     type_needs_rc(with_required_cardinality(resolved_ret.clone()))
 } else {
     false
@@ -3544,7 +3544,7 @@ pub fn emit_typed_index(base: Rc<Node>, index: Rc<Node>, registry: Rc<HashMap<St
         if is_string_type_node(base_node.clone()) {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::char_at(&".to_string(), base_str), ", ".to_string()), index_str), ")".to_string())
 } else {
-    if node_is_map(base_node.clone()) {
+    if base_node.collection_kind == CollectionKind::MapKind  {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("(".to_string(), base_str), ").get(&".to_string()), index_str), ").cloned()".to_string())
 } else {
     "panic!(\"internal error: unsupported index base in emitter\")".to_string()
@@ -3570,7 +3570,7 @@ pub fn emit_typed_slice(base: Rc<Node>, start: Rc<Node>, end: Rc<Node>, registry
 pub fn collection_element_type(receiver_type: Option<Rc<InferredNode>>, rc_types: Rc<HashMap<String, bool>>) -> String {
     match receiver_type.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        if node_is_container(rt.clone()) {
+        if rt.collection_kind == CollectionKind::ListKind || rt.collection_kind == CollectionKind::SetKind || rt.collection_kind == CollectionKind::NonEmptyListKind || rt.collection_kind == CollectionKind::NonEmptySetKind  {
     match rt.children.clone().first().cloned() {
     Some(elem_node) => {
         emit_node_type_rc(elem_node.clone(), RenderTarget::Rust, rc_types.clone())
@@ -3804,7 +3804,7 @@ pub fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumul
         {
     let recv_is_optional = match receiver.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone())
+        rt.return_cardinality == Cardinality::CardOptional 
     }
     _ => {
         false
@@ -4042,7 +4042,7 @@ if __cond {
     }
     __any_4
 });
-    if node_is_map(acc_type.clone()) && ((({
+    if (acc_type.collection_kind == CollectionKind::MapKind) && ((({
     let __len_8 = acc_type.children.clone().len();
     __len_8 as i64
 }) == 0_i64) || acc_children_have_unit.clone()) {
@@ -4386,7 +4386,7 @@ pub fn emit_typed_match(scrutinee: Rc<Node>, arms: Rc<Vec<Rc<MatchArm>>>, regist
         let scrut_str = emit_typed_expr(scrutinee.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
         let scrut_type = match scrutinee.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        if node_is_optional(rt.clone()) {
+        if rt.return_cardinality == Cardinality::CardOptional  {
     with_required_cardinality(rt.clone()).name.clone()
 } else {
     rt.name.clone()
@@ -4577,12 +4577,12 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
 } else {
     match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone())
+        rt.return_cardinality == Cardinality::CardOptional 
     }
     _ => {
         match scope.locals.clone().get(&n.clone()).cloned() {
     Some(binding) => {
-        node_is_optional(binding.resolved.clone())
+        binding.resolved.return_cardinality == Cardinality::CardOptional 
     }
     None => {
         false
@@ -4632,7 +4632,7 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
 } else {
     match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone())
+        rt.return_cardinality == Cardinality::CardOptional 
     }
     _ => {
         false
@@ -4644,7 +4644,7 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
     _ => {
         match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone())
+        rt.return_cardinality == Cardinality::CardOptional 
     }
     _ => {
         false
@@ -4658,7 +4658,7 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
     _ => {
         match texpr.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone())
+        rt.return_cardinality == Cardinality::CardOptional 
     }
     _ => {
         false
@@ -4818,7 +4818,7 @@ pub fn emit_typed_record_lit(type_name: Option<String>, fields: Rc<Vec<Rc<FieldI
         match qualified_name.clone() {
     None => {
         {
-    let is_product = node_is_product(resolved_type.clone());
+    let is_product = resolved_type.connective == Connective::Conj ;
     if is_product && (resolved_type.name.clone() == "") {
     if ({
     let __len_5 = fields.clone().len();
@@ -5022,7 +5022,7 @@ pub fn emit_typed_bin_op(op: BinOpKind, left: Rc<Node>, right: Rc<Node>, registr
 pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
     match e.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        node_is_optional(rt.clone())
+        rt.return_cardinality == Cardinality::CardOptional 
     }
     _ => {
         false
@@ -5048,7 +5048,7 @@ pub fn is_string_typed_expr(e: Rc<Node>) -> bool {
     match e.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
         {
-    let inner = if node_is_optional(rt.clone()) {
+    let inner = if rt.return_cardinality == Cardinality::CardOptional  {
     with_required_cardinality(rt.clone())
 } else {
     rt.clone()
@@ -5376,7 +5376,7 @@ pub fn emit_rust_tco_match(frame: Rc<TcoFrame>, fn_name: &str, params: Rc<Vec<Rc
     let scrut_str = emit_typed_expr(s.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
     let tco_scrut_type = match s.inferred.as_ref().map(|__rc| __rc.as_ref()) {
     Some(InferredNode::Resolved { node: rt, .. }) => {
-        if node_is_optional(rt.clone()) {
+        if rt.return_cardinality == Cardinality::CardOptional  {
     with_required_cardinality(rt.clone()).name.clone()
 } else {
     rt.name.clone()
@@ -5920,11 +5920,11 @@ pub fn emit_shell_call(op_name: &str, transport: Rc<Node>, registry: Rc<HashMap<
 
 pub fn emit_shell_return(inferred: Rc<Node>) -> String {
     let effective = unwrap_single_field_product(inferred.clone());
-    let is_product = node_is_product(effective.clone());
+    let is_product = effective.connective == Connective::Conj ;
     if (effective.name.clone() == "Bool") || (effective.name.clone() == "bool") {
     "Ok(output.status.success())".to_string()
 } else {
-    if ((effective.name.clone() == "List") || (effective.name.clone() == "Vec")) || node_is_container(effective.clone()) {
+    if ((effective.name.clone() == "List") || (effective.name.clone() == "Vec")) || (effective.collection_kind == CollectionKind::ListKind || effective.collection_kind == CollectionKind::SetKind || effective.collection_kind == CollectionKind::NonEmptyListKind || effective.collection_kind == CollectionKind::NonEmptySetKind) {
     "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
 } else {
     if is_product && (({
@@ -5940,7 +5940,7 @@ pub fn emit_shell_return(inferred: Rc<Node>) -> String {
 }
 
 pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
-    let is_product = node_is_product(n.clone());
+    let is_product = n.connective == Connective::Conj ;
     if (is_product && (n.name.clone() == "")) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
@@ -5960,7 +5960,7 @@ pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
 
 pub fn emit_file_call(op_name: &str, inferred: Rc<Node>) -> String {
     let effective = unwrap_single_field_product(inferred.clone());
-    let is_product = node_is_product(effective.clone());
+    let is_product = effective.connective == Connective::Conj ;
     let parse_line = if is_product && (({
     let __len_0 = effective.children.clone().len();
     __len_0 as i64
@@ -6048,7 +6048,7 @@ pub fn emit_data_def(name: &str, type_node: Rc<Node>, value: Rc<Node>, registry:
     let json_str = emit_data_value_json(value.clone());
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), to_snake(&name)), "() -> ".to_string()), ty_str), " {\n".to_string()), "    serde_json::from_value(serde_json::json!(".to_string()), json_str), "))\n".to_string()), "        .expect(\"valid data definition\")\n".to_string()), "}".to_string())
 } else {
-    if node_is_map(type_node.clone()) {
+    if type_node.collection_kind == CollectionKind::MapKind  {
     match value.expr_data.as_ref() {
     ExprData::ExprRecordLit { fields: fs, type_name: _, parent_enum: _, .. } => {
         {
@@ -6543,10 +6543,10 @@ pub fn emit_subcommand_field(param: Rc<Param>) -> String {
 
 pub fn emit_cli_param_type_node(n: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if node_is_optional(n.clone()) {
+        if n.return_cardinality == Cardinality::CardOptional  {
     v2_rt::concat(v2_rt::concat("Option<".to_string(), emit_cli_param_type_node(with_required_cardinality(n.clone()))), ">".to_string())
 } else {
-    if node_has_structure(n.clone()) {
+    if n.connective != Connective::NoConnective  {
     "String".to_string()
 } else {
     if ({

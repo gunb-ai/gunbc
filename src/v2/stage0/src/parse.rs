@@ -2827,7 +2827,7 @@ pub fn leaf_type_node(name: &str, span: SourceSpan) -> Rc<Node> {
 }
 
 pub fn is_conj_with_children(n: Rc<Node>) -> bool {
-    node_is_product(n.clone()) && (({
+    (n.connective == Connective::Conj) && (({
     let __len_0 = n.children.clone().len();
     __len_0 as i64
 }) > 0_i64)
@@ -5576,10 +5576,10 @@ pub fn node_to_name_str(n: Rc<Node>) -> String {
 }
 } else {
     if n.name.clone() == "" {
-    if node_is_product(n.clone()) {
+    if n.connective == Connective::Conj  {
     "Record".to_string()
 } else {
-    if node_is_coproduct(n.clone()) {
+    if n.connective == Connective::Disj  {
     "Union".to_string()
 } else {
     n.name.clone()

@@ -17,7 +17,7 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
-  leaf_node, no_span, node_has_structure
+  leaf_node, no_span
 }
 import v2.compiler.infer_types {
   emit_map_has
@@ -201,7 +201,7 @@ fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, 
 // =========================================================================
 
 fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>) -> Node? {
-  if node_has_structure(n: base_type) == false && base_type.children |> count == 0 {
+  if base_type.connective == NoConnective && base_type.children |> count == 0 {
     let path = concat(base_type.name, ".", field)
     match map_get(service_registry, path) {
       Some { value: _ } => Some { value: leaf_node(name: path) }
@@ -211,7 +211,7 @@ fn check_service_field_access_node(base_type: Node, field: String, service_regis
 }
 
 fn check_service_method_call_node(receiver_type: Node, method: String, service_registry: Map<String, List<OpEntry>>) -> ServiceMethodResult? {
-  if node_has_structure(n: receiver_type) == false && receiver_type.children |> count == 0 {
+  if receiver_type.connective == NoConnective && receiver_type.children |> count == 0 {
     match map_get(service_registry, receiver_type.name) {
       Some { value: ops } =>
         let matching = ops |> filter(op => op.name == method)

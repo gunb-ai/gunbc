@@ -24,7 +24,6 @@ module v2.compiler.emit_go
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
-  Connective, Conj, Disj,
   Field, Variant, Param, MatchArm,
   MatchPattern, FieldBinding, LiteralValue,
   TextFile, SourceSpan,
@@ -63,7 +62,9 @@ import v2.std.core {
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_value,
   leaf_node, with_required_cardinality,
-  node_is_product, node_is_coproduct
+  Connective, Conj, Disj,
+  CollectionKind, MapKind,
+  CardOptional
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
@@ -72,7 +73,7 @@ import v2.compiler.languages {
   scaffold_for_target, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { for_each_element_type_node, node_is_optional, node_is_map, rt_type }
+import v2.compiler.infer_types { for_each_element_type_node, rt_type }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -385,7 +386,7 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // =========================================================================
 
 fn emit_go_type_def_from_connective(item: Node) -> String {
-  let is_product = node_is_product(n: item)
+  let is_product = item.connective == Conj
   if is_product {
     emit_go_struct_from_children(name: item.name, children: item.children)
   } else {

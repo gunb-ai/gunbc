@@ -13,7 +13,8 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
-  leaf_node, node_has_structure, node_is_product, node_is_coproduct
+  leaf_node,
+  Connective, Conj, Disj, NoConnective
 }
 import v2.compiler.infer_types {
   rt_type
@@ -78,8 +79,8 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field>
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
     Resolved { node: rt } =>
-        if node_has_structure(n: rt) {
-          if node_is_product(n: rt) {
+        if rt.connective != NoConnective {
+          if rt.connective == Conj {
             if rt.name == "" {
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
@@ -102,7 +103,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field>
 }
 
 fn item_kind(item: Node) -> ItemKind {
-  let kind = if node_has_structure(n: item) && item.transport == none {
+  let kind = if item.connective != NoConnective && item.transport == none {
     TypeItem
   } else if item.transport != none {
     ServiceItem
@@ -123,7 +124,7 @@ fn item_kind(item: Node) -> ItemKind {
 // C2.1: variant locals carry the structural parent node, not leaf_node(name).
 fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
-    if node_is_coproduct(n: item) {
+    if item.connective == Disj {
       fold(item.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,

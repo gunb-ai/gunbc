@@ -188,7 +188,7 @@ fn is_kernel_textual(name: String) -> Bool {
 // (1) changes Node.inferred to InferredNode?
 // (2) wraps all inferred construction in Resolved { node: ... }
 // (3) replaces all .inferred.value access with inferred_inferred_node()
-// (4) node_is_error_type() and node_is_dynamic() deleted; inline checks remain until rt_node stops fabricating sentinels
+// (4) error/dynamic type predicates deleted; inline checks remain until rt_node stops fabricating sentinels
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
@@ -1198,14 +1198,3 @@ fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
-fn node_is_product(n: Node) -> Bool {
-  n.connective == Conj
-}
-
-fn node_is_coproduct(n: Node) -> Bool {
-  n.connective == Disj
-}
-
-fn node_has_structure(n: Node) -> Bool {
-  node_is_product(n: n) || node_is_coproduct(n: n)
-}

@@ -272,7 +272,7 @@ pub fn merge_scope_from_imports(remaining: Rc<Vec<Rc<ResolvedImport>>>, parent_i
     if ((((__elem_9.body.clone().is_some()) && (({
     let __len_18 = __elem_9.params.clone().len();
     __len_18 as i64
-}) == 0_i64)) && (__elem_9.transport.clone().is_none())) && (node_has_structure(__elem_9.clone()) == false)) && (__elem_9.inferred.clone().is_some()) {
+}) == 0_i64)) && (__elem_9.transport.clone().is_none())) && ((__elem_9.connective != Connective::NoConnective) == false)) && (__elem_9.inferred.clone().is_some()) {
     Rc::new(InferScopeComponents { func_sigs: __acc_8.func_sigs.clone(), svc_registry: __acc_8.svc_registry.clone(), svc_locals: {
     let __rc_17 = std::mem::take(&mut Rc::make_mut(&mut __acc_8).svc_locals);
     let mut __map_ins_16 = Rc::try_unwrap(__rc_17).unwrap_or_else(|rc| (*rc).clone());
@@ -378,7 +378,7 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: &str) -> Option<S
     Some(binding) => {
         match lookup_type(scope.type_env.clone(), &binding.resolved.name) {
     Some(parent) => {
-        if node_is_coproduct(parent.clone()) {
+        if parent.connective == Connective::Disj {
     {
 let __cond = {
     let mut __any_0 = false;
@@ -494,10 +494,10 @@ pub fn annotate_pattern_parent_enums(pattern: Rc<MatchPattern>, scrutinee_subjec
     let resolved_scrut = resolve_pattern_subject(scope.clone(), scrutinee_subject.clone());
     let inferred_parent = match resolved_scrut.as_ref() {
     PatternSubject::PatternResolved { node: resolved_scrut_node, .. } => {
-        if node_is_optional(resolved_scrut_node.clone()) && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
+        if resolved_scrut_node.return_cardinality == Cardinality::CardOptional && ((variant_name.clone() == "Some") || (variant_name.clone() == "None")) {
     Some("Optional".to_string())
 } else {
-    if node_is_coproduct(resolved_scrut_node.clone()) {
+    if resolved_scrut_node.connective == Connective::Disj {
     Some(resolved_scrut_node.name.clone())
 } else {
     None
@@ -977,7 +977,7 @@ pub fn infer_lambda_with_callable_type(lambda_expr: Rc<Node>, callable_type: Rc<
 
 pub fn refine_collection_result_type(method_name: &str, typed_args: Rc<Vec<Rc<NamedArg>>>, receiver_type: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
     let receiver_type_name = receiver_type.name.clone();
-    let receiver_is_map = node_is_map(receiver_type.clone());
+    let receiver_is_map = receiver_type.collection_kind == CollectionKind::MapKind;
     if method_name == "map" {
     match {
     let mut __found_2 = None;
@@ -2209,7 +2209,7 @@ pub fn infer_record_lit(type_name: Option<String>, field_inits: Rc<Vec<Rc<FieldI
 pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let typed_anno = item.type_annotation.clone();
-        if node_has_structure(item.clone()) && (item.transport.clone().is_none()) {
+        if (item.connective != Connective::NoConnective) && (item.transport.clone().is_none()) {
     Rc::new(TypedItemResult { item: Rc::new(Node { name: item.name.clone(), span: item.span.clone(), children: {
     let mut __mapped_0 = Vec::new();
     for __elem_1 in item.children.iter().cloned() {
@@ -2398,7 +2398,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     let local_bindings = {
     let mut __acc_20: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_21 in module.module.items.iter().cloned() {
-        __acc_20 = if node_has_structure(__elem_21.clone()) {
+        __acc_20 = if __elem_21.connective != Connective::NoConnective {
     let type_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: __elem_21.children.clone(), connective: __elem_21.connective.clone(), collection_kind: collection_kind_for_name(&__elem_21.name), params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_23 = __acc_20;
@@ -2434,7 +2434,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     if (((({
     let __len_34 = __elem_21.params.clone().len();
     __len_34 as i64
-}) > 0_i64) && (node_has_structure(__elem_21.clone()) == false)) && (__elem_21.body.clone().is_none())) && (__elem_21.transport.clone().is_none()) {
+}) > 0_i64) && ((__elem_21.connective != Connective::NoConnective) == false)) && (__elem_21.body.clone().is_none())) && (__elem_21.transport.clone().is_none()) {
     let bare_node = Rc::new(Node { name: __elem_21.name.clone(), span: __elem_21.span.clone(), children: Rc::new(Vec::new()), connective: Connective::NoConnective, collection_kind: collection_kind_for_name(&__elem_21.name), params: __elem_21.params.clone(), inferred: None, return_cardinality: __elem_21.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_29 = __acc_20;
@@ -2446,7 +2446,7 @@ pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: Rc<HashMap<Strin
     if ((((({
     let __len_32 = __elem_21.properties.clone().len();
     __len_32 as i64
-}) > 0_i64) && (node_has_structure(__elem_21.clone()) == false)) && (__elem_21.transport.clone().is_none())) && (__elem_21.inferred.clone().is_none())) && (({
+}) > 0_i64) && ((__elem_21.connective != Connective::NoConnective) == false)) && (__elem_21.transport.clone().is_none())) && (__elem_21.inferred.clone().is_none())) && (({
     let __len_33 = __elem_21.params.clone().len();
     __len_33 as i64
 }) == 0_i64) {
@@ -2641,7 +2641,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     let local_bindings = {
     let mut __acc_18: Rc<std::collections::HashMap<String, Rc<TypeBinding>>> = Rc::new(std::collections::HashMap::new());
     for __elem_19 in module.module.items.iter().cloned() {
-        __acc_18 = if node_has_structure(__elem_19.clone()) {
+        __acc_18 = if __elem_19.connective != Connective::NoConnective {
     let type_node = Rc::new(Node { name: __elem_19.name.clone(), span: __elem_19.span.clone(), children: __elem_19.children.clone(), connective: __elem_19.connective.clone(), collection_kind: collection_kind_for_name(&__elem_19.name), params: Rc::new(Vec::new()), inferred: None, return_cardinality: __elem_19.return_cardinality.clone(), uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, config: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) });
     {
     let __rc_21 = __acc_18;
@@ -2677,7 +2677,7 @@ pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: Rc<Ha
     if ((((({
     let __len_28 = __elem_19.properties.clone().len();
     __len_28 as i64
-}) > 0_i64) && (node_has_structure(__elem_19.clone()) == false)) && (__elem_19.transport.clone().is_none())) && (__elem_19.inferred.clone().is_none())) && (({
+}) > 0_i64) && ((__elem_19.connective != Connective::NoConnective) == false)) && (__elem_19.transport.clone().is_none())) && (__elem_19.inferred.clone().is_none())) && (({
     let __len_29 = __elem_19.params.clone().len();
     __len_29 as i64
 }) == 0_i64) {
@@ -2932,7 +2932,7 @@ pub fn build_module_context(contributions: Rc<Vec<Rc<ItemContribution>>>, parent
     let __values_3 = __entries_2.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
     Rc::new(__values_3)
 }).iter().cloned() {
-        __acc_4 = if node_is_coproduct(__elem_5.resolved.clone()) {
+        __acc_4 = if __elem_5.resolved.connective == Connective::Disj {
     {
     let mut __acc_6 = __acc_4.clone();
     for __elem_7 in __elem_5.resolved.children.iter().cloned() {

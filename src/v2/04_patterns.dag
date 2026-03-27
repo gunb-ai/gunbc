@@ -15,17 +15,16 @@ import v2.std.core {
   InferredNode, Resolved,
   NodeType, Typed, InferError, Untyped,
   Cardinality, Required,
-  Connective, NoConnective,
+  Connective, Disj, NoConnective,
   CollectionKind, NoCollection,
+  CardOptional,
   diagnostic_node,
   MatchArm, MatchPattern,
-  leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality
+  leaf_node, with_optional_cardinality
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
   error_type_node,
-  node_is_bridge_error_name, node_is_bridge_dynamic_name,
-  node_is_optional,
   extract_optional_inner_node,
   emit_map_has
 }
@@ -68,9 +67,9 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
-  if node_is_bridge_dynamic_name(n: n) {
+  if n.name == "Dynamic" {
     PatternDynamic { span: n.span }
-  } else if node_is_bridge_error_name(n: n) {
+  } else if n.name == "Error" {
     PatternLookupBlocked
   } else {
     PatternResolved { node: n }
@@ -127,8 +126,8 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [diagnostic_node(severity: "error", message: concat("cannot resolve variant '", concat(variant_name, "' on Dynamic scrutinee")), span: dynamic_span, module_name: Some { value: module_name }, category: Some { value: "variant_not_found" })])
     PatternResolved { node: scrut_node } =>
-      let scrut_opt = node_is_optional(n: scrut_node)
-      if node_has_structure(n: scrut_node) == false && scrut_node.children |> count == 0 && scrut_opt == false {
+      let scrut_opt = scrut_node.return_cardinality == CardOptional
+      if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         // Non-variant leaf type (Unit, Int, etc.): suppress cascade diagnostics.
         node_lookup_failed(diagnostics: [])
       } else {
@@ -178,8 +177,8 @@ fn check_match_exhaustiveness(
   // Resolve the scrutinee type -- if it's a leaf name, look up its definition.
   // Preserve Optional cardinality: lookup returns the type definition which
   // has Required cardinality, but the scrutinee may be T? (CardOptional).
-  let scrut_is_optional = node_is_optional(n: scrutinee_type)
-  let resolved_raw = if node_has_structure(n: scrutinee_type) {
+  let scrut_is_optional = scrutinee_type.return_cardinality == CardOptional
+  let resolved_raw = if scrutinee_type.connective != NoConnective {
     scrutinee_type
   } else {
     match lookup_type(env: env, name: scrutinee_type.name) {
@@ -189,11 +188,11 @@ fn check_match_exhaustiveness(
   }
   let resolved = if scrut_is_optional { with_optional_cardinality(n: resolved_raw) } else { resolved_raw }
   // Only check coproducts (Disj connective).
-  if node_is_coproduct(n: resolved) || node_is_optional(n: resolved) {
+  if resolved.connective == Disj || resolved.return_cardinality == CardOptional {
     // Optional is represented as [inner_type, None] — the first child
     // is the inner type, not a "Some" variant. Normalize to ["Some", "None"]
     // so patterns `Some { value: x } => ... None => ...` are recognized.
-    let variant_names = if node_is_optional(n: resolved) {
+    let variant_names = if resolved.return_cardinality == CardOptional {
       ["Some", "None"]
     } else {
       resolved.children |> map(c => c.name)

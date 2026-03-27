@@ -74,7 +74,8 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   Text, Interpolation,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  node_is_product, node_is_coproduct, node_has_structure, no_span
+  ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
+  no_span
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
@@ -83,8 +84,6 @@ import v2.compiler.infer_types {
   map_node, bare_map_node,
   tuple_node, callable_node, callable_inferred,
   error_type_node,
-  node_is_container, node_is_optional, node_is_map,
-  node_is_leaf, node_is_named_ref,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps, collection_kind_for_name,
@@ -343,7 +342,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             }
             // Data declarations: body, no params, no transport, no connective.
             // Add to scope as local variables so importing modules can reference them.
-            else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && node_has_structure(n: titem) == false && titem.inferred != none {
+            else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: acc.svc_registry,
@@ -426,7 +425,7 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
     Some { value: binding } =>
       match lookup_type(env: scope.type_env, name: binding.resolved.name) {
         Some { value: parent } =>
-          if node_is_coproduct(n: parent) {
+          if parent.connective == Disj {
             if parent.children |> any(child => child.name == name) {
               Some { value: binding.resolved.name }
             } else { none }
@@ -494,9 +493,9 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
-          if node_is_optional(n: resolved_scrut_node) && (variant_name == "Some" || variant_name == "None") {
+          if resolved_scrut_node.return_cardinality == CardOptional && (variant_name == "Some" || variant_name == "None") {
             Some { value: "Optional" }
-          } else if node_is_coproduct(n: resolved_scrut_node) {
+          } else if resolved_scrut_node.connective == Disj {
             Some { value: resolved_scrut_node.name }
           } else { none }
         PatternDynamic { span: _ } => none
@@ -816,7 +815,7 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
 
 fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>, receiver_type: Node, fallback: Node) -> Node {
   let receiver_type_name = receiver_type.name
-  let receiver_is_map = node_is_map(n: receiver_type)
+  let receiver_is_map = receiver_type.collection_kind == MapKind
   if method_name == "map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } =>
@@ -1819,7 +1818,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
   // Type definition: has connective (record/sum) and is not a transport binding
-  if node_has_structure(n: item) && item.transport == none {
+  if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
@@ -2004,7 +2003,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Nodes with capabilities are registered as nominal types so they can be
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    if node_has_structure(n: item) {
+    if item.connective != NoConnective {
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
         connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
@@ -2034,7 +2033,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
-    } else if item.params |> count > 0 && node_has_structure(n: item) == false && item.body == none && item.transport == none {
+    } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
       // Bare parameterized type declaration (e.g., type List<element>, type Map<key, value>).
       // Register as a nominal type with params so generics can find the declaration.
       let bare_node = Node {
@@ -2045,7 +2044,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: bare_node })
-    } else if item.properties |> count > 0 && node_has_structure(n: item) == false && item.transport == none && item.inferred == none && item.params |> count == 0 {
+    } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       // Resource declaration: has properties (kind, mode) but no children/connective.
       // Register as a nominal type so it can be referenced in `uses` clauses.
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: leaf_node(name: item.name) })
@@ -2118,7 +2117,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    if node_has_structure(n: item) {
+    if item.connective != NoConnective {
       let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
@@ -2127,7 +2126,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = Node { name: item.name, span: item.span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: leaf_node(name: item.name) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
-    } else if item.properties |> count > 0 && node_has_structure(n: item) == false && item.transport == none && item.inferred == none && item.params |> count == 0 {
+    } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: leaf_node(name: item.name) })
     } else {
       acc
@@ -2291,7 +2290,7 @@ fn build_module_context(contributions: List<ItemContribution>,
   // through TypeEnv. binding.resolved.name still returns the enum's name for
   // lookup_variant_parent_enum and record lit inference.
   let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
-    if node_is_coproduct(n: binding.resolved) {
+    if binding.resolved.connective == Disj {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,

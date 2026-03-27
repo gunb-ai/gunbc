@@ -18,9 +18,8 @@ import v2.std.core {
   NodeType, Typed, InferError, Untyped, rt_node,
   InferredNode, Resolved, CompilerError,
   diagnostic_node,
-  Cardinality, Required, CardOptional,
-  Connective, NoConnective,
-  CollectionKind, NoCollection,
+  Cardinality, Required,
+  NoCollection,
   ResourceUse,
   MatchArm, FieldInit, NamedArg, StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
@@ -35,10 +34,11 @@ import v2.std.core {
   is_kernel_type, is_transport_kind,
   TransportKind, LocalTransport,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  node_has_structure, node_is_product, no_span
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
+  CardOptional, no_span
 }
 import v2.compiler.infer_types {
-  node_is_optional, node_is_map, node_is_container,
   rt_type, collection_kind_for_name
 }
 import v2.compiler.infer_env {
@@ -126,13 +126,17 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 // True when the node has children (type args) and its name resolves to a
 // type declaration with params that's NOT a built-in parameterized type.
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
-  if node_has_structure(n: n) { false }
-  else if node_is_map(n: n) { false }
-  else if node_is_container(n: n) { false }
+  if n.connective != NoConnective { false }
+  else if n.collection_kind == MapKind { false }
   else {
-    match lookup_type(env: env, name: n.name) {
-      Some { value: decl } => decl.params |> count > 0
-      None => false
+    let ck = n.collection_kind
+    let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
+    if __is_container { false }
+    else {
+      match lookup_type(env: env, name: n.name) {
+        Some { value: decl } => decl.params |> count > 0
+        None => false
+      }
     }
   }
 }
@@ -188,7 +192,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   }
   // Normalize collection_kind: parser-produced nodes have collection_kind: none.
-  // Derive from name so downstream structural checks (node_is_map, node_is_container) work.
+  // Derive from name so downstream structural checks (collection_kind == MapKind, etc.) work.
   let n = if n.collection_kind == NoCollection {
     let ck = collection_kind_for_name(name: n.name)
     match ck {
@@ -196,8 +200,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       None => n
     }
   } else { n }
-  if node_has_structure(n: n) {
-    if node_is_product(n: n) {
+  if n.connective != NoConnective {
+    if n.connective == Conj {
       if n.name == "Refined" {
         // Refined: recurse on first child (base type)
         match n.children |> first {
@@ -235,7 +239,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         }
       }
     } else {
-      if node_is_optional(n: n) {
+      if n.return_cardinality == CardOptional {
         let inner = with_required_cardinality(n: n)
         let inner_result = resolve_node_bounded(n: inner, env: env, module_name: module_name, depth: depth + 1)
         let inner_resolved = inner_result.resolved
@@ -316,7 +320,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       diagnostics: concat(arity_diags, arg_diags)
     }
     result
-  } else if node_is_map(n: n) {
+  } else if n.collection_kind == MapKind {
     // Map: recurse on both key and value children
     let key_child = match n.children |> first {
       Some { value: k } => k
@@ -372,14 +376,14 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // always stores the canonical (Required) definition, but the
           // reference site may carry CardOptional (e.g. String? → String
           // in env). Without this, optionality is silently discarded.
-          let structurally_resolved = if node_has_structure(n: resolved) == false && resolved.children |> count == 0 && resolved.inferred != none {
+          let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match rt_node(n: resolved) {
               Typed { node: target } => target
               InferError { message: _, span: _ } => resolved
               Untyped => resolved
             }
           } else { resolved }
-          let final_resolved = if node_is_optional(n: n) { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
+          let final_resolved = if n.return_cardinality == CardOptional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
           NodeResolveResult { resolved: final_resolved, diagnostics: [] }
         None =>
           if is_kernel_type(name: n.name) || n.name == "Dynamic" || n.name == "Error" || n.name == "Callable" {

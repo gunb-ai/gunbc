@@ -314,7 +314,7 @@ pub fn expand_transitive_services(modules: Rc<Vec<Rc<TypedModule>>>, registry: R
 }
 
 pub fn check_service_field_access_node(base_type: Rc<Node>, field: &str, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<Node>> {
-    if (node_has_structure(base_type.clone()) == false) && (({
+    if ((base_type.connective != Connective::NoConnective) == false) && (({
     let __len_0 = base_type.children.clone().len();
     __len_0 as i64
 }) == 0_i64) {
@@ -333,7 +333,7 @@ pub fn check_service_field_access_node(base_type: Rc<Node>, field: &str, service
 }
 
 pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: &str, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Option<Rc<ServiceMethodResult>> {
-    if (node_has_structure(receiver_type.clone()) == false) && (({
+    if ((receiver_type.connective != Connective::NoConnective) == false) && (({
     let __len_5 = receiver_type.children.clone().len();
     __len_5 as i64
 }) == 0_i64) {

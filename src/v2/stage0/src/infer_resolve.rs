@@ -82,13 +82,13 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str) -> Rc<Node
 }
 
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if node_has_structure(n.clone()) {
+    if n.connective != Connective::NoConnective {
     false
 } else {
-    if node_is_map(n.clone()) {
+    if n.collection_kind == CollectionKind::MapKind {
     false
 } else {
-    if node_is_container(n.clone()) {
+    if n.collection_kind == CollectionKind::ListKind || n.collection_kind == CollectionKind::SetKind || n.collection_kind == CollectionKind::NonEmptyListKind || n.collection_kind == CollectionKind::NonEmptySetKind {
     false
 } else {
     match lookup_type(env.clone(), &n.name) {
@@ -167,8 +167,8 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
 } else {
     n.clone()
 };
-        if node_has_structure(n.clone()) {
-    if node_is_product(n.clone()) {
+        if n.connective != Connective::NoConnective {
+    if n.connective == Connective::Conj {
     if n.name.clone() == "Refined" {
     match n.children.clone().first().cloned() {
     Some(base) => {
@@ -216,7 +216,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: resolved_children.clone(), connective: n.connective.clone(), collection_kind: n.collection_kind.clone(), params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::NoExprData) }), diagnostics: all_diags.clone() })
 }
 } else {
-    if node_is_optional(n.clone()) {
+    if n.return_cardinality == Cardinality::CardOptional {
     let inner = with_required_cardinality(n.clone());
     let inner_result = resolve_node_bounded(inner.clone(), env.clone(), &module_name, depth.clone() + 1_i64);
     let inner_resolved = inner_result.resolved.clone();
@@ -393,7 +393,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     let result = Rc::new(NodeResolveResult { resolved: Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: substituted_children.clone(), connective: decl.connective.clone(), collection_kind: collection_kind_for_name(&n.name), params: Rc::new(Vec::new()), inferred: n.inferred.clone(), return_cardinality: n.return_cardinality.clone(), uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: decl.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() }), diagnostics: v2_rt::concat(arity_diags.clone(), arg_diags.clone()) });
     result.clone()
 } else {
-    if node_is_map(n.clone()) {
+    if n.collection_kind == CollectionKind::MapKind {
     let key_child = match n.children.clone().first().cloned() {
     Some(k) => {
         k.clone()
@@ -446,7 +446,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
     match lookup_type(env.clone(), &n.name) {
     Some(resolved) => {
         {
-    let structurally_resolved = if ((node_has_structure(resolved.clone()) == false) && (({
+    let structurally_resolved = if (((resolved.connective != Connective::NoConnective) == false) && (({
     let __len_43 = resolved.children.clone().len();
     __len_43 as i64
 }) == 0_i64)) && (resolved.inferred.clone().is_some()) {
@@ -464,7 +464,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: &str, de
 } else {
     resolved.clone()
 };
-    let final_resolved = if node_is_optional(n.clone()) {
+    let final_resolved = if n.return_cardinality == Cardinality::CardOptional {
     with_optional_cardinality(structurally_resolved.clone())
 } else {
     structurally_resolved.clone()

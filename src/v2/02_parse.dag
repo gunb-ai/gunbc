@@ -62,7 +62,7 @@ import v2.std.core {
   ShNewline, ShEof, ShUnknown,
   SourceSpan,
   diagnostic_node,
-  node_is_product, node_is_coproduct, with_required_cardinality
+  with_required_cardinality
 }
 
 // =========================================================================
@@ -1079,7 +1079,7 @@ fn leaf_type_node(name: String, span: SourceSpan) -> Node {
 
 // Check if a Node represents an inline record (Conj with children).
 fn is_conj_with_children(n: Node) -> Bool {
-  node_is_product(n: n) && n.children |> count > 0
+  n.connective == Conj && n.children |> count > 0
 }
 
 // Extract the inferred from a child Node, with a fallback.
@@ -2627,8 +2627,8 @@ fn node_to_name_str(n: Node) -> String {
     if has_children { concat("List_", node_to_name_str(n: first_child_or_self(n: n))) }
     else { n.name }
   } else if n.name == "" {
-    if node_is_product(n: n) { "Record" }
-    else if node_is_coproduct(n: n) { "Union" }
+    if n.connective == Conj { "Record" }
+    else if n.connective == Disj { "Union" }
     else { n.name }
   } else {
     n.name

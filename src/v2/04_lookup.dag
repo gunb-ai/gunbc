@@ -21,12 +21,13 @@ import v2.std.core {
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  node_is_product, node_is_coproduct, node_has_structure
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, MapKind,
+  CardOptional
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
   error_type_node,
-  node_is_optional, node_is_map,
   normalize_access_type_node,
   rt_type, rt_node,
   emit_map_has
@@ -79,7 +80,7 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 // =========================================================================
 
 fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
-  if node_is_optional(n: n) {
+  if n.return_cardinality == CardOptional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
       Some { value: inner }
@@ -89,8 +90,8 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
         None => none
       }
     }
-  } else if node_has_structure(n: n) {
-    if node_is_product(n: n) {
+  } else if n.connective != NoConnective {
+    if n.connective == Conj {
       match n.children |> filter(c => c.name == field_name) |> first {
         Some { value: field_child } =>
           Some { value: child_inferred_or_name(ch: field_child) }
@@ -135,13 +136,13 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   // so this function should only resolve successfully typed scrutinee shapes.
   // P5.8: normalize_type_name deleted. Canonical names are raw names.
   let normed = normalize_access_type_node(n: n)
-  if node_has_structure(n: normed) == false && normed.children |> count == 0 {
+  if normed.connective == NoConnective && normed.children |> count == 0 {
     let canonical = normed.name
     if normed.inferred != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match rt_node(n: normed) {
         Typed { node: target } =>
-          if target.name == normed.name && target.inferred == none && node_has_structure(n: target) == false && target.children |> count == 0 {
+          if target.name == normed.name && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
             resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
@@ -155,13 +156,13 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match lookup_type(env: env, name: normed.name) {
         Some { value: resolved } =>
-          if resolved.name == normed.name && resolved.inferred == none && node_has_structure(n: resolved) == false && resolved.children |> count == 0 {
+          if resolved.name == normed.name && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
             normed
           } else {
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
             // Preserve Optional scrutinee shape during alias/type-env lookup
             // until Optional itself becomes fully structural in the lookup path.
-            if node_is_optional(n: normed) { with_optional_cardinality(n: result) } else { result }
+            if normed.return_cardinality == CardOptional { with_optional_cardinality(n: result) } else { result }
           }
         None => normed
       }
@@ -173,7 +174,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if node_is_map(n: map_type) && map_type.children |> count >= 2 {
+  if map_type.collection_kind == MapKind && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -186,7 +187,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
   let normed = normalize_access_type_node(n: resolved)
-  let normed_opt = node_is_optional(n: normed)
+  let normed_opt = normed.return_cardinality == CardOptional
   if field == "value" && normed_opt {
     Some { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
   } else if normed_opt {
@@ -200,10 +201,10 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
       None => none
     }
   } else {
-    if node_has_structure(n: resolved) == false {
+    if resolved.connective == NoConnective {
       none
     } else {
-      if node_is_product(n: resolved) {
+      if resolved.connective == Conj {
         map_get(build_struct_field_summaries(children: resolved.children), field)
       } else {
         map_get(build_enum_field_summaries(variants: resolved.children), field)

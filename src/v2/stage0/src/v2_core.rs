@@ -1471,15 +1471,4 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node { name: n.name.clone(), span: n.span.clone(), children: n.children.clone(), connective: n.connective.clone(), collection_kind: n.collection_kind.clone(), params: n.params.clone(), inferred: n.inferred.clone(), return_cardinality: Cardinality::Required, uses: n.uses.clone(), body: n.body.clone(), transport: n.transport.clone(), properties: n.properties.clone(), type_annotation: n.type_annotation.clone(), config: n.config.clone(), is_self_recursive: n.is_self_recursive.clone(), has_non_tail_self_call: n.has_non_tail_self_call.clone(), expr_data: n.expr_data.clone() })
 }
 
-pub fn node_is_product(n: Rc<Node>) -> bool {
-    n.connective == Connective::Conj
-}
-
-pub fn node_is_coproduct(n: Rc<Node>) -> bool {
-    n.connective == Connective::Disj
-}
-
-pub fn node_has_structure(n: Rc<Node>) -> bool {
-    node_is_product(n.clone()) || node_is_coproduct(n.clone())
-}
 

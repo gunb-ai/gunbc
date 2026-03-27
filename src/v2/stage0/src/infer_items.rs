@@ -60,8 +60,8 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: SourceSpan)
         Rc::new(Vec::new())
     }
     InferredNode::Resolved { node: rt, .. } => {
-        if node_has_structure(rt.clone()) {
-    if node_is_product(rt.clone()) {
+        if rt.connective != Connective::NoConnective {
+    if rt.connective == Connective::Conj {
     if rt.name.clone() == "" {
     {
     let mut __mapped_0 = Vec::new();
@@ -99,7 +99,7 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: SourceSpan)
 }
 
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
-    let kind = if node_has_structure(item.clone()) && (item.transport.clone().is_none()) {
+    let kind = if (item.connective != Connective::NoConnective) && (item.transport.clone().is_none()) {
     ItemKind::TypeItem
 } else {
     if item.transport.clone().is_some() {
@@ -137,7 +137,7 @@ pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<Stri
     {
     let mut __acc_0 = init.clone();
     for __elem_1 in items.iter().cloned() {
-        __acc_0 = if node_is_coproduct(__elem_1.clone()) {
+        __acc_0 = if __elem_1.connective == Connective::Disj {
     {
     let mut __acc_2 = __acc_0.clone();
     for __elem_3 in __elem_1.children.iter().cloned() {

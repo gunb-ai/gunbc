@@ -504,7 +504,7 @@ pub fn emit_go_typed_item(item: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemIn
 }
 
 pub fn emit_go_type_def_from_connective(item: Rc<Node>) -> String {
-    let is_product = node_is_product(item.clone());
+    let is_product = item.connective == Connective::Conj;
     if is_product {
     emit_go_struct_from_children(&item.name, item.children.clone())
 } else {

@@ -91,87 +91,12 @@ pub fn error_type_node() -> Rc<Node> {
     leaf_node("Error")
 }
 
-pub fn node_is_bridge_error_name(n: Rc<Node>) -> bool {
-    n.name.clone() == "Error"
-}
-
-pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
-    n.name.clone() == "Dynamic"
-}
-
-pub fn node_is_container(n: Rc<Node>) -> bool {
-    match n.collection_kind.clone() {
-    CollectionKind::ListKind => {
-        true
-    }
-    CollectionKind::SetKind => {
-        true
-    }
-    CollectionKind::NonEmptyListKind => {
-        true
-    }
-    CollectionKind::NonEmptySetKind => {
-        true
-    }
-    _ => {
-        false
-    }
-}
-}
-
-pub fn node_is_optional(n: Rc<Node>) -> bool {
-    match n.return_cardinality.clone() {
-    Cardinality::CardOptional => {
-        true
-    }
-    Cardinality::Required => {
-        false
-    }
-}
-}
-
-pub fn node_is_map(n: Rc<Node>) -> bool {
-    let is_map = n.collection_kind.clone() == CollectionKind::MapKind;
-    is_map.clone()
-}
-
-pub fn node_is_leaf(n: Rc<Node>) -> bool {
-    ((((n.connective.clone() == Connective::NoConnective)) && (node_has_structure(n.clone()) == false)) && (({
-    let __len_0 = n.children.clone().len();
-    __len_0 as i64
-}) == 0_i64)) && (({
-    let __len_1 = n.properties.clone().len();
-    __len_1 as i64
-}) == 0_i64)
-}
-
-pub fn node_is_named_ref(n: Rc<Node>) -> bool {
-    if n.inferred.clone().is_none() {
-    false
-} else {
-    match rt_node(n.clone()).as_ref() {
-    NodeType::Typed { node: rt, .. } => {
-        ((((node_has_structure(rt.clone()) == false) && (({
-    let __len_0 = rt.children.clone().len();
-    __len_0 as i64
-}) == 0_i64)) && (rt.name.clone() != "")) && (rt.name.clone() != "None")) && (is_kernel_type(&rt.name) == false)
-    }
-    NodeType::InferError { message: _, span: _, .. } => {
-        false
-    }
-    NodeType::Untyped => {
-        false
-    }
-}
-}
-}
-
 pub fn normalize_access_type_node(n: Rc<Node>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let mut __tco_p_n = n;
         loop {
             let n = __tco_p_n;
-            let unwrapped = if (n.name.clone() == "Refined") && node_has_structure(n.clone()) {
+            let unwrapped = if (n.name.clone() == "Refined") && (n.connective != Connective::NoConnective) {
     n.children.clone().first().cloned()
 } else {
     None
@@ -195,28 +120,45 @@ pub fn normalize_access_type_node(n: Rc<Node>) -> Rc<Node> {
 
 pub fn node_type_shape(n: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if node_is_leaf(n.clone()) {
-    if node_is_named_ref(n.clone()) {
+        if n.connective == Connective::NoConnective && n.children.len() == 0 && n.properties.len() == 0  {
+    if if n.inferred.clone().is_none() {
+    false
+} else {
+    match rt_node(n.clone()).as_ref() {
+    NodeType::Typed { node: rt, .. } => {
+        (((((rt.connective != Connective::NoConnective) == false) && (({
+    let __len_0 = rt.children.clone().len();
+    __len_0 as i64
+}) == 0_i64)) && (rt.name.clone() != "")) && (rt.name.clone() != "None")) && (is_kernel_type(&rt.name) == false)
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        false
+    }
+    NodeType::Untyped => {
+        false
+    }
+}
+}  {
     v2_rt::concat(v2_rt::concat("Named(".to_string(), n.name.clone()), ")".to_string())
 } else {
     v2_rt::concat(v2_rt::concat("Primitive(".to_string(), n.name.clone()), ")".to_string())
 }
 } else {
-    if node_is_product(n.clone()) {
+    if n.connective == Connective::Conj  {
     if n.name.clone() == "" {
     "Product(<anon>)".to_string()
 } else {
     v2_rt::concat(v2_rt::concat("Product(".to_string(), n.name.clone()), ")".to_string())
 }
 } else {
-    if node_is_coproduct(n.clone()) {
+    if n.connective == Connective::Disj  {
     if n.name.clone() == "" {
     "Coproduct(<anon>)".to_string()
 } else {
     v2_rt::concat(v2_rt::concat("Coproduct(".to_string(), n.name.clone()), ")".to_string())
 }
 } else {
-    if node_is_container(n.clone()) {
+    if n.collection_kind == CollectionKind::ListKind || n.collection_kind == CollectionKind::SetKind || n.collection_kind == CollectionKind::NonEmptyListKind || n.collection_kind == CollectionKind::NonEmptySetKind  {
     let elem_shape = match n.children.clone().first().cloned() {
     Some(el) => {
         node_type_shape(el.clone())
@@ -227,11 +169,11 @@ pub fn node_type_shape(n: Rc<Node>) -> String {
 };
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("Container(".to_string(), n.name.clone()), ",".to_string()), elem_shape.clone()), ")".to_string())
 } else {
-    if node_is_optional(n.clone()) {
+    if n.return_cardinality == Cardinality::CardOptional  {
     let inner_shape = node_type_shape(with_required_cardinality(n.clone()));
     v2_rt::concat(v2_rt::concat("Optional(".to_string(), inner_shape), ")".to_string())
 } else {
-    if node_is_map(n.clone()) {
+    if n.collection_kind == CollectionKind::MapKind  {
     "Map(...)".to_string()
 } else {
     v2_rt::concat(v2_rt::concat("Node(".to_string(), n.name.clone()), ")".to_string())
@@ -251,12 +193,12 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
         loop {
             let left = __tco_p_left;
             let right = __tco_p_right;
-            let left_opt = node_is_optional(left.clone());
-            let right_opt = node_is_optional(right.clone());
-            if node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone()) {
+            let left_opt = left.return_cardinality == Cardinality::CardOptional ;
+            let right_opt = right.return_cardinality == Cardinality::CardOptional ;
+            if (left.name == "Error") || (right.name == "Error") {
     break true;
 } else {
-    if node_is_bridge_dynamic_name(left.clone()) || node_is_bridge_dynamic_name(right.clone()) {
+    if (left.name == "Dynamic") || (right.name == "Dynamic") {
     break true;
 } else {
     if left_opt.clone() && (right.name.clone() == "Unit") {
@@ -265,7 +207,7 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
     if (left.name.clone() == "Unit") && right_opt.clone() {
     break true;
 } else {
-    if node_is_container(left.clone()) && node_is_container(right.clone()) {
+    if (left.collection_kind == CollectionKind::ListKind || left.collection_kind == CollectionKind::SetKind || left.collection_kind == CollectionKind::NonEmptyListKind || left.collection_kind == CollectionKind::NonEmptySetKind) && (right.collection_kind == CollectionKind::ListKind || right.collection_kind == CollectionKind::SetKind || right.collection_kind == CollectionKind::NonEmptyListKind || right.collection_kind == CollectionKind::NonEmptySetKind) {
     if left.name.clone() != right.name.clone() {
     break false;
 } else {
@@ -329,8 +271,8 @@ pub fn node_type_compatible(left: Rc<Node>, right: Rc<Node>) -> bool {
 }
 
 pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
-    let left_is_container = node_is_container(left.clone());
-    let left_is_optional = node_is_optional(left.clone());
+    let left_is_container = left.collection_kind == CollectionKind::ListKind || left.collection_kind == CollectionKind::SetKind || left.collection_kind == CollectionKind::NonEmptyListKind || left.collection_kind == CollectionKind::NonEmptySetKind ;
+    let left_is_optional = left.return_cardinality == Cardinality::CardOptional ;
     let left_first_child = left.children.clone().first().cloned();
     let left_norm_name = left.name.clone();
     let left_is_unit_inner = if left_is_container.clone() {
@@ -349,10 +291,10 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
     false
 }
 };
-    let same_kind = if left_is_container.clone() && node_is_container(right.clone()) {
+    let same_kind = if left_is_container.clone() && (right.collection_kind == CollectionKind::ListKind || right.collection_kind == CollectionKind::SetKind || right.collection_kind == CollectionKind::NonEmptyListKind || right.collection_kind == CollectionKind::NonEmptySetKind) {
     left_norm_name == right.name.clone()
 } else {
-    if left_is_optional.clone() && node_is_optional(right.clone()) {
+    if left_is_optional.clone() && (right.return_cardinality == Cardinality::CardOptional) {
     true
 } else {
     false
@@ -367,19 +309,19 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
 
 pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let left_opt = node_is_optional(left.clone());
-        let right_opt = node_is_optional(right.clone());
-        let left_leaf = node_is_leaf(left.clone());
-        let right_leaf = node_is_leaf(right.clone());
-        let left_struct = node_has_structure(left.clone());
-        let right_struct = node_has_structure(right.clone());
-        if node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone()) {
+        let left_opt = left.return_cardinality == Cardinality::CardOptional ;
+        let right_opt = right.return_cardinality == Cardinality::CardOptional ;
+        let left_leaf = left.connective == Connective::NoConnective && left.children.len() == 0 && left.properties.len() == 0 ;
+        let right_leaf = right.connective == Connective::NoConnective && right.children.len() == 0 && right.properties.len() == 0 ;
+        let left_struct = left.connective != Connective::NoConnective ;
+        let right_struct = right.connective != Connective::NoConnective ;
+        if (left.name == "Error") || (right.name == "Error") {
     true
 } else {
-    if node_is_bridge_dynamic_name(left.clone()) && node_is_bridge_dynamic_name(right.clone()) {
+    if (left.name == "Dynamic") && (right.name == "Dynamic") {
     true
 } else {
-    if node_is_bridge_dynamic_name(left.clone()) || node_is_bridge_dynamic_name(right.clone()) {
+    if (left.name == "Dynamic") || (right.name == "Dynamic") {
     false
 } else {
     if left_opt.clone() && (right.name.clone() == "Unit") {
@@ -395,7 +337,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     if left.name.clone() != right.name.clone() {
     false
 } else {
-    if node_is_product(left.clone()) != node_is_product(right.clone()) {
+    if (left.connective == Connective::Conj) != (right.connective == Connective::Conj) {
     false
 } else {
     if ({
@@ -440,7 +382,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     if left_struct.clone() && right_leaf.clone() {
     left.name.clone() == right.name.clone()
 } else {
-    if node_is_container(left.clone()) && node_is_container(right.clone()) {
+    if (left.collection_kind == CollectionKind::ListKind || left.collection_kind == CollectionKind::SetKind || left.collection_kind == CollectionKind::NonEmptyListKind || left.collection_kind == CollectionKind::NonEmptySetKind) && (right.collection_kind == CollectionKind::ListKind || right.collection_kind == CollectionKind::SetKind || right.collection_kind == CollectionKind::NonEmptyListKind || right.collection_kind == CollectionKind::NonEmptySetKind) {
     if left.name.clone() != right.name.clone() {
     false
 } else {
@@ -464,7 +406,7 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
     if left_opt.clone() && right_opt.clone() {
     node_type_equals(with_required_cardinality(left.clone()), with_required_cardinality(right.clone()))
 } else {
-    if node_is_map(left.clone()) && node_is_map(right.clone()) {
+    if (left.collection_kind == CollectionKind::MapKind) && (right.collection_kind == CollectionKind::MapKind) {
     if (({
     let __len_7 = left.children.clone().len();
     __len_7 as i64
@@ -588,7 +530,24 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
 
 pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if node_is_named_ref(n.clone()) {
+        if if n.inferred.clone().is_none() {
+    false
+} else {
+    match rt_node(n.clone()).as_ref() {
+    NodeType::Typed { node: rt, .. } => {
+        (((((rt.connective != Connective::NoConnective) == false) && (({
+    let __len_0 = rt.children.clone().len();
+    __len_0 as i64
+}) == 0_i64)) && (rt.name.clone() != "")) && (rt.name.clone() != "None")) && (is_kernel_type(&rt.name) == false)
+    }
+    NodeType::InferError { message: _, span: _, .. } => {
+        false
+    }
+    NodeType::Untyped => {
+        false
+    }
+}
+}  {
     match rt_node(n.clone()).as_ref() {
     NodeType::Typed { node: rt, .. } => {
         Rc::new(vec!(rt.name.clone()))
@@ -601,7 +560,7 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
     }
 }
 } else {
-    if node_has_structure(n.clone()) {
+    if n.connective != Connective::NoConnective  {
     {
     let mut __flat_mapped_0 = Vec::new();
     for __elem_1 in n.children.iter().cloned() {
@@ -668,22 +627,22 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
 
 pub fn is_int_type_node(n: Rc<Node>) -> bool {
     let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "Int") && node_is_leaf(normed.clone())
+    (normed.name.clone() == "Int") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
 }
 
 pub fn is_string_type_node(n: Rc<Node>) -> bool {
     let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "String") && node_is_leaf(normed.clone())
+    (normed.name.clone() == "String") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
 }
 
 pub fn is_bool_type_node(n: Rc<Node>) -> bool {
     let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "Bool") && node_is_leaf(normed.clone())
+    (normed.name.clone() == "Bool") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
 }
 
 pub fn is_float_type_node(n: Rc<Node>) -> bool {
     let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "Float") && node_is_leaf(normed.clone())
+    (normed.name.clone() == "Float") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
 }
 
 pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
@@ -708,7 +667,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
 
 pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
     let normed = normalize_access_type_node(receiver_type.clone());
-    if (node_has_structure(normed.clone()) == false) && (({
+    if ((normed.connective != Connective::NoConnective) == false) && (({
     let __len_0 = normed.children.clone().len();
     __len_0 as i64
 }) == 1_i64) {
@@ -721,7 +680,7 @@ pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
     }
 }
 } else {
-    if node_is_map(normed.clone()) {
+    if normed.collection_kind == CollectionKind::MapKind  {
     match normed.children.clone().get((1_i64) as usize).cloned() {
     Some(val_type) => {
         val_type.clone()
@@ -737,7 +696,7 @@ pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
-    if node_is_optional(n.clone()) {
+    if n.return_cardinality == Cardinality::CardOptional  {
     with_required_cardinality(n.clone())
 } else {
     n.clone()
@@ -781,7 +740,7 @@ pub fn infer_binop_type_node(op: BinOpKind, left_type: Rc<Node>) -> Rc<Node> {
 
 pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
     let normed = normalize_access_type_node(n.clone());
-    let is_single_child = (node_has_structure(normed.clone()) == false) && (({
+    let is_single_child = ((normed.connective != Connective::NoConnective) == false) && (({
     let __len_0 = normed.children.clone().len();
     __len_0 as i64
 }) == 1_i64);
@@ -795,7 +754,7 @@ pub fn for_each_element_type_node(n: Rc<Node>) -> Rc<Node> {
         el.clone()
     }
     None => {
-        if node_is_leaf(normed.clone()) && (normed.name.clone() == "String") {
+        if (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0) && (normed.name.clone() == "String") {
     leaf_node("String")
 } else {
     normed.clone()
