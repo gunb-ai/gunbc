@@ -1290,7 +1290,15 @@ pub fn emit_py_typed_slice(base: Rc<Node>, start: Rc<Node>, end: Option<Rc<Node>
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let base_str = emit_py_typed_expr(base, registry.clone(), scope.clone(), depth.clone());
         let start_str = emit_py_typed_expr(start, registry.clone(), scope.clone(), depth.clone());
-        let end_str = emit_py_typed_expr(end.unwrap(), registry.clone(), scope.clone(), depth.clone());
+        let end_str = match end.as_ref().map(|__rc| __rc.as_ref()) {
+    Some(e) => {
+        let e = Rc::new(e.clone());
+        emit_py_typed_expr(e.clone(), registry.clone(), scope.clone(), depth.clone())
+    }
+    None => {
+        "".to_string()
+    }
+};
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str, "[".to_string()), start_str), ":".to_string()), end_str), "]".to_string())
     })
 }

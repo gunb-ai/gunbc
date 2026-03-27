@@ -4195,14 +4195,14 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, state: state, expected: ExpectKwIf)
-  if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
-  if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let condition = r.expr
 
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-  if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let then_branch = r.expr
   let s = skip_newlines(tokens: tokens, state: r.state)
 
@@ -4211,7 +4211,7 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
     let s = skip_newlines(tokens: tokens, state: e.state)
     if peek_is_kw_if(tokens: tokens, state: s) {
       let r2 = parse_if(tokens: tokens, state: s)
-      if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
+      if has_err(err: r2.err) { return ExprResult { expr: r2.expr, state: r2.state, err: r2.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span), state: r2.state, err: none }
     } else {
       let r2 = parse_block(tokens: tokens, state: s)

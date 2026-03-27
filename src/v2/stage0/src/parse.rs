@@ -8145,7 +8145,7 @@ pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<P
     }
     None => {
         {
-    return Rc::new(PatternResult { pattern: Rc::new(MatchPattern::LitPattern { value: Rc::new(LiteralValue::LitInt { value: 0_i64 }) }), state: state.clone(), err: Some(parse_error(&v2_rt::concat(v2_rt::concat("internal: ShLitInt token text not parseable as int: '".to_string(), tok.clone().unwrap().text.clone()), "'".to_string()), current_span(tokens.clone(), state.clone()))) })
+    return Rc::new(PatternResult { pattern: Rc::new(MatchPattern::Wildcard), state: state.clone(), err: Some(parse_error(&v2_rt::concat(v2_rt::concat("internal: ShLitInt token text not parseable as int: '".to_string(), tok.clone().unwrap().text.clone()), "'".to_string()), current_span(tokens.clone(), state.clone()))) })
 }
     }
 };
@@ -8275,16 +8275,16 @@ pub fn parse_if(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExprRe
         let dummy_expr = parse_recovery_placeholder();
         let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwIf);
         if has_err(r.err.clone()) {
-    return Rc::new(ExprResult { expr: dummy_expr, state: r.state.clone(), err: r.err.clone() });
+    return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
         let r = parse_expr_no_brace(tokens.clone(), r.state.clone());
         if has_err(r.err.clone()) {
-    return Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
+    return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
         let condition = r.expr.clone();
         let r = parse_block(tokens.clone(), skip_newlines(tokens.clone(), r.state.clone()));
         if has_err(r.err.clone()) {
-    return Rc::new(ExprResult { expr: r.expr.clone(), state: r.state.clone(), err: r.err.clone() });
+    return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() });
 };
         let then_branch = r.expr.clone();
         let s = skip_newlines(tokens.clone(), r.state.clone());
