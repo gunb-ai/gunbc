@@ -44,8 +44,8 @@ pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: &str) -
 }
 
 pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape {
-    let normed = normalize_access_type_node(type_node.clone());
-    if node_is_optional(normed.clone()) {
+    let normed = normalize_access_type_node(type_node);
+    if node_is_optional(normed) {
     FieldValueShape::OptionalValue
 } else {
     FieldValueShape::PlainValue
@@ -111,7 +111,7 @@ pub fn build_struct_field_summaries(children: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<S
 }
 
 pub fn find_first_enum_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: &str) -> Option<Rc<Node>> {
-    match variants.clone().first().cloned() {
+    match variants.first().cloned() {
     Some(variant) => {
         match {
     let mut __found_2 = None;
@@ -124,7 +124,7 @@ pub fn find_first_enum_field_node(variants: Rc<Vec<Rc<Node>>>, field_name: &str)
     __found_2
 } {
     Some(field_child) => {
-        Some(field_child.clone())
+        Some(field_child)
     }
     None => {
         None
@@ -241,7 +241,7 @@ pub fn build_enum_field_summaries(variants: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<Str
 }
     }
     None => {
-        __acc_6
+        __acc_6.clone()
     }
 };
     }
@@ -269,7 +269,7 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
     }
     __all_0
 };
-    Some(Rc::new(TypeSummary { name: item.name.clone(), repr: Rc::new(TypeRepr::EnumRepr { unit_only: unit_only.clone() }), field_summaries: build_enum_field_summaries(item.children.clone()) }))
+    Some(Rc::new(TypeSummary { name: item.name.clone(), repr: Rc::new(TypeRepr::EnumRepr { unit_only }), field_summaries: build_enum_field_summaries(item.children.clone()) }))
 }
 }
 
@@ -314,10 +314,10 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
         {
     let mut __acc_7 = state.variant_to_enum.clone();
     for __elem_8 in item.children.iter().cloned() {
-        __acc_7 = match __acc_7.get(&__elem_8.name.clone()).cloned() {
+        __acc_7 = match __acc_7.clone().get(&__elem_8.name.clone()).cloned() {
     Some(existing) => {
         if existing.clone() == summary.name.clone() {
-    __acc_7
+    __acc_7.clone()
 } else {
     {
     let __rc_10 = __acc_7;
@@ -380,12 +380,12 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     Rc::new(__map_ins_19)
 }
 } else {
-    __acc_17
+    __acc_17.clone()
 }
 }
     }
     _ => {
-        __acc_17
+        __acc_17.clone()
     }
 };
     }
@@ -411,12 +411,12 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     Rc::new(__map_ins_25)
 }
 } else {
-    __acc_23
+    __acc_23.clone()
 }
 }
     }
     _ => {
-        __acc_23
+        __acc_23.clone()
     }
 };
     }
@@ -427,7 +427,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
 }
     }
 };
-    Rc::new(EmitInfoBuildState { type_summaries: next_summaries.clone(), variant_to_enum: next_variants.clone(), enum_variant_membership: next_evm.clone(), field_type_names: next_ftn.clone() })
+    Rc::new(EmitInfoBuildState { type_summaries: next_summaries, variant_to_enum: next_variants, enum_variant_membership: next_evm, field_type_names: next_ftn })
 }
     }
     None => {

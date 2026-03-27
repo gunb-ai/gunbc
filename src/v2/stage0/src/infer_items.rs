@@ -132,12 +132,12 @@ pub fn item_kind(item: Rc<Node>) -> ItemKind {
 }
 }
 };
-    kind.clone()
+    kind
 }
 
 pub fn variant_locals_from_items(items: Rc<Vec<Rc<Node>>>, init: Rc<HashMap<String, Rc<TypeBinding>>>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     {
-    let mut __acc_0 = init.clone();
+    let mut __acc_0 = init;
     for __elem_1 in items.iter().cloned() {
         __acc_0 = if node_is_coproduct(__elem_1.clone()) {
     {

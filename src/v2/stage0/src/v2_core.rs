@@ -583,11 +583,11 @@ pub struct Node {
 }
 
 pub fn make_expr_node(expr_data: Rc<ExprData>, children: Rc<Vec<Rc<Node>>>, inferred: Option<Rc<InferredNode>>, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: "".to_string(), span, children: children.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: inferred.clone(), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: expr_data.clone() })
+    Rc::new(Node { name: "".to_string(), span, children, connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data })
 }
 
 pub fn make_expr_error_node(kind: ExprErrorKind, message: &str, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: "".to_string(), span: span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::CompilerError { message: message.to_string(), span: span.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, expr_data: Rc::new(ExprData::ExprError { kind, message: message.to_string() }), match_pattern: None })
+    Rc::new(Node { name: "".to_string(), span: span.clone(), children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: Some(Rc::new(InferredNode::CompilerError { message: message.to_string(), span: span.clone() })), return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::ExprError { kind, message: message.to_string() }) })
 }
 
 pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: SourceSpan) -> Rc<Node> {
@@ -599,7 +599,7 @@ pub fn make_arg_node(name: Option<String>, value: Rc<Node>, span: SourceSpan) ->
         "".to_string()
     }
 };
-    Rc::new(Node { name: arg_name.clone(), span, children: Rc::new(vec!(value.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: arg_name, span, children: Rc::new(vec!(value)), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn make_arm_node(pattern: Rc<MatchPattern>, guard: Option<Rc<Node>>, body: Rc<Node>, span: SourceSpan) -> Rc<Node> {
@@ -612,11 +612,11 @@ pub fn make_arm_node(pattern: Rc<MatchPattern>, guard: Option<Rc<Node>>, body: R
         Rc::new(vec!(body.clone()))
     }
 };
-    Rc::new(Node { name: "".to_string(), span, children: children.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: Some(pattern.clone()), expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "".to_string(), span, children, connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: Some(pattern), expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn make_field_init_node(name: &str, value: Rc<Node>, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: name.to_string(), span, children: Rc::new(vec!(value.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: name.to_string(), span, children: Rc::new(vec!(value)), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn make_text_part_node(text: &str, span: SourceSpan) -> Rc<Node> {
@@ -624,13 +624,13 @@ pub fn make_text_part_node(text: &str, span: SourceSpan) -> Rc<Node> {
 }
 
 pub fn make_interp_part_node(expr: Rc<Node>, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: "".to_string(), span, children: Rc::new(vec!(expr.clone())), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: "".to_string(), span, children: Rc::new(vec!(expr)), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(Vec::new()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: &str) -> Rc<Node> {
     match texpr.children.clone().get((index) as usize).cloned() {
     Some(v) => {
-        v.clone()
+        v
     }
     None => {
         make_expr_error_node(ExprErrorKind::InternalExprError, &v2_rt::concat("malformed node: missing ".to_string(), role.to_string()), texpr.span.clone())
@@ -649,7 +649,7 @@ pub fn arg_name(n: Rc<Node>) -> Option<String> {
 pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
     Some(v) => {
-        v.clone()
+        v
     }
     None => {
         make_expr_error_node(ExprErrorKind::InternalExprError, "malformed arg: missing value", n.span.clone())
@@ -683,7 +683,7 @@ pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
 pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().last().cloned() {
     Some(v) => {
-        v.clone()
+        v
     }
     None => {
         make_expr_error_node(ExprErrorKind::InternalExprError, "malformed arm: missing body", n.span.clone())
@@ -698,7 +698,7 @@ pub fn field_init_node_name(n: Rc<Node>) -> String {
 pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
     Some(v) => {
-        v.clone()
+        v
     }
     None => {
         make_expr_error_node(ExprErrorKind::InternalExprError, "malformed field-init: missing value", n.span.clone())
@@ -707,11 +707,11 @@ pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_condition(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "if condition")
+    expr_child_at(texpr, 0_i64, "if condition")
 }
 
 pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1_i64, "if then-branch")
+    expr_child_at(texpr, 1_i64, "if then-branch")
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
@@ -719,7 +719,7 @@ pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "match scrutinee")
+    expr_child_at(texpr, 0_i64, "match scrutinee")
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -727,23 +727,23 @@ pub fn match_arm_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "binop left")
+    expr_child_at(texpr, 0_i64, "binop left")
 }
 
 pub fn binop_right(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1_i64, "binop right")
+    expr_child_at(texpr, 1_i64, "binop right")
 }
 
 pub fn unaryop_operand(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "unaryop operand")
+    expr_child_at(texpr, 0_i64, "unaryop operand")
 }
 
 pub fn field_access_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "field access base")
+    expr_child_at(texpr, 0_i64, "field access base")
 }
 
 pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "method receiver")
+    expr_child_at(texpr, 0_i64, "method receiver")
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -755,11 +755,11 @@ pub fn call_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn lambda_body(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "lambda body")
+    expr_child_at(texpr, 0_i64, "lambda body")
 }
 
 pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "let value")
+    expr_child_at(texpr, 0_i64, "let value")
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
@@ -767,43 +767,43 @@ pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "cast expr")
+    expr_child_at(texpr, 0_i64, "cast expr")
 }
 
 pub fn cast_target(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1_i64, "cast target")
+    expr_child_at(texpr, 1_i64, "cast target")
 }
 
 pub fn foreach_collection(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "foreach collection")
+    expr_child_at(texpr, 0_i64, "foreach collection")
 }
 
 pub fn foreach_body(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1_i64, "foreach body")
+    expr_child_at(texpr, 1_i64, "foreach body")
 }
 
 pub fn index_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "index base")
+    expr_child_at(texpr, 0_i64, "index base")
 }
 
 pub fn index_expr(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1_i64, "index expression")
+    expr_child_at(texpr, 1_i64, "index expression")
 }
 
 pub fn slice_base(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "slice base")
+    expr_child_at(texpr, 0_i64, "slice base")
 }
 
 pub fn slice_start(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 1_i64, "slice start")
+    expr_child_at(texpr, 1_i64, "slice start")
 }
 
 pub fn slice_end(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 2_i64, "slice end")
+    expr_child_at(texpr, 2_i64, "slice end")
 }
 
 pub fn return_value(texpr: Rc<Node>) -> Rc<Node> {
-    expr_child_at(texpr.clone(), 0_i64, "return value")
+    expr_child_at(texpr, 0_i64, "return value")
 }
 
 pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -823,7 +823,7 @@ pub fn string_interp_parts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn make_transport_node(name: &str, properties: Rc<Vec<Rc<FieldInit>>>, children: Rc<Vec<Rc<Node>>>, span: SourceSpan) -> Rc<Node> {
-    Rc::new(Node { name: name.to_string(), span, children: children.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: properties.clone(), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: name.to_string(), span, children, connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties, type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn local_transport_node(span: SourceSpan) -> Rc<Node> {
@@ -831,18 +831,18 @@ pub fn local_transport_node(span: SourceSpan) -> Rc<Node> {
 }
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Rc<Vec<Rc<FieldInit>>>, headers: Rc<Vec<Rc<FieldInit>>>, span: SourceSpan) -> Rc<Node> {
-    let url_field = Rc::new(FieldInit { name: config_property_name(Rc::new(ConfigPropertyKey::ConfigBaseUrl)), value: base_url.clone() });
-    let props = v2_rt::concat(v2_rt::concat(Rc::new(vec!(url_field.clone())), auth_props.clone()), headers.clone());
-    make_transport_node(&transport_kind_name(Rc::new(TransportKind::RestTransport)), props.clone(), Rc::new(Vec::new()), span)
+    let url_field = Rc::new(FieldInit { name: config_property_name(Rc::new(ConfigPropertyKey::ConfigBaseUrl)), value: base_url });
+    let props = v2_rt::concat(v2_rt::concat(Rc::new(vec!(url_field)), auth_props), headers);
+    make_transport_node(&transport_kind_name(Rc::new(TransportKind::RestTransport)), props, Rc::new(Vec::new()), span)
 }
 
 pub fn shell_transport_node(argv: Rc<Vec<Rc<Node>>>, env: Rc<Vec<Rc<FieldInit>>>, span: SourceSpan) -> Rc<Node> {
-    make_transport_node(&transport_kind_name(Rc::new(TransportKind::ShellTransport)), env.clone(), argv.clone(), span)
+    make_transport_node(&transport_kind_name(Rc::new(TransportKind::ShellTransport)), env, argv, span)
 }
 
 pub fn file_transport_node(base_path: Rc<Node>, span: SourceSpan) -> Rc<Node> {
-    let path_field = Rc::new(FieldInit { name: config_property_name(Rc::new(ConfigPropertyKey::ConfigBasePath)), value: base_path.clone() });
-    make_transport_node(&transport_kind_name(Rc::new(TransportKind::FileTransport)), Rc::new(vec!(path_field.clone())), Rc::new(Vec::new()), span)
+    let path_field = Rc::new(FieldInit { name: config_property_name(Rc::new(ConfigPropertyKey::ConfigBasePath)), value: base_path });
+    make_transport_node(&transport_kind_name(Rc::new(TransportKind::FileTransport)), Rc::new(vec!(path_field)), Rc::new(Vec::new()), span)
 }
 
 pub fn find_property(props: Rc<Vec<Rc<FieldInit>>>, prop_name: &str) -> Option<Rc<Node>> {
@@ -866,7 +866,7 @@ pub fn find_property(props: Rc<Vec<Rc<FieldInit>>>, prop_name: &str) -> Option<R
 }
 
 pub fn find_property_string(props: Rc<Vec<Rc<FieldInit>>>, prop_name: &str) -> Option<String> {
-    match find_property(props.clone(), &prop_name) {
+    match find_property(props, &prop_name) {
     Some(n) => {
         match n.expr_data.as_ref() {
     ExprData::ExprLiteral { ref value, .. } => {
@@ -972,7 +972,7 @@ pub fn transport_kind(t: Rc<Node>) -> Rc<TransportKind> {
 }
 
 pub fn is_transport_kind(t: Rc<Node>, kind: Rc<TransportKind>) -> bool {
-    transport_kind_name(transport_kind(t.clone())) == transport_kind_name(kind.clone())
+    transport_kind_name(transport_kind(t)) == transport_kind_name(kind)
 }
 
 pub fn field_init_operation_modifier(field_init: Rc<FieldInit>) -> Option<OperationModifier> {
@@ -1172,13 +1172,13 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: &str, in_tail: bool
     let then_bad = expr_has_non_tail_self_call(if_then_branch(texpr.clone()), &fn_name, in_tail.clone());
     let else_bad = match if_else_branch(texpr.clone()) {
     Some(e) => {
-        expr_has_non_tail_self_call(e.clone(), &fn_name, in_tail.clone())
+        expr_has_non_tail_self_call(e, &fn_name, in_tail.clone())
     }
     None => {
         false
     }
 };
-    (cond_bad || then_bad) || else_bad.clone()
+    (cond_bad || then_bad) || else_bad
 }
     }
     ExprData::ExprMatch => {
@@ -1194,7 +1194,7 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: &str, in_tail: bool
     }
     __any_8
 };
-    scrut_bad || arms_bad.clone()
+    scrut_bad || arms_bad
 }
     }
     ExprData::ExprLet { name: _, .. } => {
@@ -1202,13 +1202,13 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: &str, in_tail: bool
     let val_bad = expr_has_non_tail_self_call(let_value(texpr.clone()), &fn_name, false);
     let body_bad = match let_body(texpr.clone()) {
     Some(b) => {
-        expr_has_non_tail_self_call(b.clone(), &fn_name, in_tail.clone())
+        expr_has_non_tail_self_call(b, &fn_name, in_tail.clone())
     }
     None => {
         false
     }
 };
-    val_bad || body_bad.clone()
+    val_bad || body_bad
 }
     }
     ExprData::ExprBlock => {
@@ -1247,13 +1247,13 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: &str, in_tail: bool
 };
     let last_bad = match ss.clone().last().cloned() {
     Some(last_expr) => {
-        expr_has_non_tail_self_call(last_expr.clone(), &fn_name, in_tail.clone())
+        expr_has_non_tail_self_call(last_expr, &fn_name, in_tail.clone())
     }
     None => {
         false
     }
 };
-    init_bad.clone() || last_bad.clone()
+    init_bad || last_bad
 }
 }
     }
@@ -1303,7 +1303,7 @@ pub fn diagnostic_node(severity: &str, message: &str, span: SourceSpan, module_n
         Rc::new(Vec::new())
     }
 };
-    Rc::new(Node { name: message.to_string(), span, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: v2_rt::concat(v2_rt::concat(Rc::new(vec!(sev_prop.clone())), mod_prop.clone()), cat_prop.clone()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: message.to_string(), span, children: Rc::new(Vec::new()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: v2_rt::concat(v2_rt::concat(Rc::new(vec!(sev_prop)), mod_prop), cat_prop), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn is_diagnostic_node(n: Rc<Node>) -> bool {
@@ -1320,7 +1320,7 @@ pub fn is_diagnostic_node(n: Rc<Node>) -> bool {
 }
 
 pub fn diagnostic_is_error(n: Rc<Node>) -> bool {
-    diagnostic_severity(n.clone()) == "error"
+    diagnostic_severity(n) == "error"
 }
 
 pub fn diagnostic_severity(n: Rc<Node>) -> String {
@@ -1334,7 +1334,7 @@ pub fn diagnostic_severity(n: Rc<Node>) -> String {
     }
     __found_2
 };
-    match sev_prop.clone() {
+    match sev_prop {
     Some(prop) => {
         match prop.value.expr_data.as_ref() {
     ExprData::ExprLiteral { value: lit, .. } => {
@@ -1373,7 +1373,7 @@ pub fn diagnostic_module_name(n: Rc<Node>) -> Option<String> {
     }
     __found_2
 };
-    match mod_prop.clone() {
+    match mod_prop {
     Some(prop) => {
         match prop.value.expr_data.as_ref() {
     ExprData::ExprLiteral { value: lit, .. } => {
@@ -1408,7 +1408,7 @@ pub fn diagnostic_category(n: Rc<Node>) -> Option<String> {
     }
     __found_2
 };
-    match cat_prop.clone() {
+    match cat_prop {
     Some(prop) => {
         match prop.value.expr_data.as_ref() {
     ExprData::ExprLiteral { value: lit, .. } => {
@@ -1437,7 +1437,7 @@ pub fn diagnostic_span(n: Rc<Node>) -> SourceSpan {
 }
 
 pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Rc<Vec<Rc<FieldInit>>> {
-    let ep_prop = Rc::new(vec!(Rc::new(FieldInit { name: "svc_endpoint".to_string(), value: endpoint.clone() })));
+    let ep_prop = Rc::new(vec!(Rc::new(FieldInit { name: "svc_endpoint".to_string(), value: endpoint })));
     let auth_prop = match auth.as_ref().map(|__rc| __rc.as_ref()) {
     Some(a) => {
         let a = Rc::new(a.clone());
@@ -1465,7 +1465,7 @@ pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, rat
         Rc::new(Vec::new())
     }
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop.clone(), auth_prop.clone()), rate_prop.clone()), retry_prop.clone())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop, auth_prop), rate_prop), retry_prop)
 }
 
 pub fn has_service_config(n: Rc<Node>) -> bool {
@@ -1499,7 +1499,7 @@ pub fn service_config_retry(n: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn module_node(name: &str, imports: Rc<Vec<Rc<Node>>>, items: Rc<Vec<Rc<Node>>>, span: SourceSpan) -> Rc<Node> {
     let marker = Rc::new(FieldInit { name: "__is_module".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: "true".to_string() }) }), Rc::new(Vec::new()), None, SourceSpan { start: 0_i64, end: 0_i64 }) });
-    Rc::new(Node { name: name.to_string(), span, children: v2_rt::concat(imports.clone(), items.clone()), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(vec!(marker.clone())), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: name.to_string(), span, children: v2_rt::concat(imports, items), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: Rc::new(vec!(marker)), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn import_node(module_path: &str, is_all: bool, specific_names: Rc<Vec<String>>, span: SourceSpan) -> Rc<Node> {
@@ -1516,7 +1516,7 @@ pub fn import_node(module_path: &str, is_all: bool, specific_names: Rc<Vec<Strin
     }
     Rc::new(__mapped_0)
 };
-    Rc::new(Node { name: module_path.to_string(), span, children: name_children.clone(), connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: v2_rt::concat(Rc::new(vec!(import_prop.clone())), all_prop.clone()), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
+    Rc::new(Node { name: module_path.to_string(), span, children: name_children, connective: None, collection_kind: None, params: Rc::new(Vec::new()), inferred: None, return_cardinality: Cardinality::Required, uses: Rc::new(Vec::new()), body: None, transport: None, properties: v2_rt::concat(Rc::new(vec!(import_prop)), all_prop), type_annotation: None, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: None, expr_data: Rc::new(ExprData::NoExprData) })
 }
 
 pub fn is_module_node(n: Rc<Node>) -> bool {

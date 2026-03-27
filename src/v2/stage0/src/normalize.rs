@@ -11,6 +11,6 @@ pub struct NormalizeResult {
 }
 
 pub fn normalize_graph(graph: Rc<ModuleGraph>) -> Rc<NormalizeResult> {
-    Rc::new(NormalizeResult { graph: graph.clone(), diagnostics: Rc::new(Vec::new()) })
+    Rc::new(NormalizeResult { graph, diagnostics: Rc::new(Vec::new()) })
 }
 

@@ -387,7 +387,7 @@ pub fn serialize_import_node(imp: Rc<Node>) -> String {
     Rc::new(__mapped_2)
 })), "}".to_string())
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(&imp.name)), ", \"names\": ".to_string()), names_json.clone()), ", \"span\": ".to_string()), serialize_span(imp.span.clone())), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module_path\": ".to_string(), json_quote(&imp.name)), ", \"names\": ".to_string()), names_json), ", \"span\": ".to_string()), serialize_span(imp.span.clone())), "}".to_string())
 }
 
 pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> String {
@@ -848,7 +848,7 @@ pub fn serialize_diagnostic(diagnostic: Rc<Node>) -> String {
         "null".to_string()
     }
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"severity\": ".to_string(), json_quote(&diagnostic_severity(diagnostic.clone()))), ", \"message\": ".to_string()), json_quote(&diagnostic_message(diagnostic.clone()))), ", \"span\": ".to_string()), serialize_span(diagnostic_span(diagnostic.clone()))), ", \"module_name\": ".to_string()), json_optional_string(diagnostic_module_name(diagnostic.clone()))), ", \"category\": ".to_string()), cat_json.clone()), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"severity\": ".to_string(), json_quote(&diagnostic_severity(diagnostic.clone()))), ", \"message\": ".to_string()), json_quote(&diagnostic_message(diagnostic.clone()))), ", \"span\": ".to_string()), serialize_span(diagnostic_span(diagnostic.clone()))), ", \"module_name\": ".to_string()), json_optional_string(diagnostic_module_name(diagnostic.clone()))), ", \"category\": ".to_string()), cat_json), "}".to_string())
 }
 
 pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
@@ -912,8 +912,8 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
     __joined_15
 };
-    let json = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n  \"version\": \"0.1.0\",\n  \"modules\": [".to_string(), modules_json.clone()), "],\n  \"item_registry_keys\": [".to_string()), item_registry_json.clone()), "],\n  \"diagnostics\": [".to_string()), diagnostics_json.clone()), "],\n  \"files\": []\n}".to_string());
-    Rc::new(EmitResult { files: Rc::new(vec!(Rc::new(TextFile { path: "dag-artifact.json".to_string(), content: json.clone() }))), diagnostics: Rc::new(Vec::new()) })
+    let json = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\n  \"version\": \"0.1.0\",\n  \"modules\": [".to_string(), modules_json), "],\n  \"item_registry_keys\": [".to_string()), item_registry_json), "],\n  \"diagnostics\": [".to_string()), diagnostics_json), "],\n  \"files\": []\n}".to_string());
+    Rc::new(EmitResult { files: Rc::new(vec!(Rc::new(TextFile { path: "dag-artifact.json".to_string(), content: json }))), diagnostics: Rc::new(Vec::new()) })
 }
 
 pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: &str) -> Rc<Vec<Rc<Node>>> {
@@ -988,7 +988,7 @@ pub fn emit_from_artifact_plan(typed: Rc<ResolvedGraph>, artifact_plan: Rc<Artif
     }
     Rc::new(__flat_mapped_6)
 };
-    Rc::new(EmitResult { files: all_files.clone(), diagnostics: all_diags.clone() })
+    Rc::new(EmitResult { files: all_files, diagnostics: all_diags })
 }
 
 pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<Node>>> {
@@ -1006,7 +1006,7 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
 }
     }
     None => {
-        __acc_0
+        __acc_0.clone()
     }
 };
     }
@@ -1040,8 +1040,8 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
     }
     __any_4
 };
-    if has_parse_errors.clone() {
-    Rc::new(FrontendResult { graph: None, diagnostics: parse_diagnostics.clone() })
+    if has_parse_errors {
+    Rc::new(FrontendResult { graph: None, diagnostics: parse_diagnostics })
 } else {
     let modules = {
     let mut __mapped_6 = Vec::new();
@@ -1050,18 +1050,18 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
     }
     Rc::new(__mapped_6)
 };
-    let graph = resolve_modules(modules.clone());
-    Rc::new(FrontendResult { graph: Some(graph.clone()), diagnostics: v2_rt::concat(parse_diagnostics.clone(), graph.diagnostics.clone()) })
+    let graph = resolve_modules(modules);
+    Rc::new(FrontendResult { graph: Some(graph.clone()), diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()) })
 }
 }
 
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
-    let frontend = front_end_sources(sources.clone());
+    let frontend = front_end_sources(sources);
     Rc::new(CompileResult { files: Rc::new(Vec::new()), diagnostics: frontend.diagnostics.clone() })
 }
 
 pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -> Rc<PipelineResult> {
-    let frontend = front_end_sources(sources.clone());
+    let frontend = front_end_sources(sources);
     match frontend.graph.as_ref().map(|__rc| __rc.as_ref()) {
     None => {
         Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: frontend.diagnostics.clone(), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() })
@@ -1080,7 +1080,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     Rc::new(__filtered_0)
 };
     if ({
-    let __len_2 = resolve_errors.clone().len();
+    let __len_2 = resolve_errors.len();
     __len_2 as i64
 }) > 0_i64 {
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: frontend.diagnostics.clone(), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
@@ -1097,7 +1097,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     Rc::new(__filtered_3)
 };
     if ({
-    let __len_5 = norm_errors.clone().len();
+    let __len_5 = norm_errors.len();
     __len_5 as i64
 }) > 0_i64 {
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), complexity: empty_complexity_report(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
@@ -1105,7 +1105,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     let typed = reconcile(norm.graph.clone());
     let typed_diags = typed.diagnostics.clone();
     let func_entries = extract_func_entries(typed.clone());
-    let complexity = build_complexity_report(func_entries.clone());
+    let complexity = build_complexity_report(func_entries);
     let typecheck_errors = {
     let mut __filtered_6 = Vec::new();
     for __elem_7 in typed_diags.iter().cloned() {
@@ -1116,7 +1116,7 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     Rc::new(__filtered_6)
 };
     if ({
-    let __len_8 = typecheck_errors.clone().len();
+    let __len_8 = typecheck_errors.len();
     __len_8 as i64
 }) > 0_i64 {
     return Rc::new(PipelineResult { files: Rc::new(Vec::new()), diagnostics: v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), complexity: complexity.clone(), ownership: Rc::new(Vec::new()), artifact_plan: empty_artifact_plan() });
@@ -1143,14 +1143,14 @@ pub fn compile_sources(sources: Rc<Vec<Rc<SourceFile>>>, target: RenderTarget) -
     Rc::new(__filtered_13)
 };
     let final_files = if ({
-    let __len_15 = emit_errors.clone().len();
+    let __len_15 = emit_errors.len();
     __len_15 as i64
 }) > 0_i64 {
     Rc::new(Vec::new())
 } else {
-    emit_files.clone()
+    emit_files
 };
-    Rc::new(PipelineResult { files: final_files.clone(), diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), ownership_diags.clone()), emit_diags.clone()), complexity: complexity.clone(), ownership: ownership.clone(), artifact_plan: artifact_plan.clone() })
+    Rc::new(PipelineResult { files: final_files, diagnostics: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()), typed_diags.clone()), ownership_diags), emit_diags.clone()), complexity: complexity.clone(), ownership: ownership.clone(), artifact_plan: artifact_plan.clone() })
 }
     }
 }
