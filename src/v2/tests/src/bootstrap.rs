@@ -451,3 +451,72 @@ fn gist_full_pipeline() {
     let _ = std::fs::remove_dir_all(&source_dir);
     let _ = std::fs::remove_dir_all(&out_dir);
 }
+
+// ── 6. performance_ratchet ───────────────────────────────────────────────
+
+/// Performance ratchet: self-compile pipeline must complete within the
+/// time budget. Catches FF-class regressions (new O(n²) patterns,
+/// lost facts, unnecessary allocations).
+///
+/// The ratchet is generous (30s) to avoid flaky failures from system load.
+/// The actual pipeline time is ~6.5s in release mode. If this test fails,
+/// a structural performance regression has been introduced.
+const PERF_RATCHET_SECONDS: u64 = 30;
+
+#[test]
+#[ignore] // Requires building stage0 binary
+fn performance_ratchet() {
+    let ws = crate::helpers::workspace_root();
+
+    // Build stage0
+    let build = std::process::Command::new("cargo")
+        .arg("build")
+        .arg("-p")
+        .arg("v2-compiler")
+        .arg("--release")
+        .output()
+        .expect("failed to build stage0");
+    assert!(build.status.success(), "stage0 build failed");
+
+    let stage0_bin = ws.join("target/release/v2-compiler");
+
+    // Prepare sources
+    let sources_dir = std::env::temp_dir().join("v2-perf-sources");
+    let _ = std::fs::remove_dir_all(&sources_dir);
+    std::fs::create_dir_all(&sources_dir).unwrap();
+    prepare_sources(&sources_dir);
+
+    let out_dir = std::env::temp_dir().join("v2-perf-output");
+    let _ = std::fs::remove_dir_all(&out_dir);
+
+    // Time the pipeline
+    let start = std::time::Instant::now();
+    let output = std::process::Command::new(&stage0_bin)
+        .arg("compile")
+        .arg("--source-dir")
+        .arg(&sources_dir)
+        .arg("--output-dir")
+        .arg(&out_dir)
+        .output()
+        .expect("failed to run stage0 compile");
+    let elapsed = start.elapsed();
+
+    assert!(
+        output.status.success(),
+        "pipeline failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    eprintln!("pipeline elapsed: {:?}", elapsed);
+    assert!(
+        elapsed.as_secs() < PERF_RATCHET_SECONDS,
+        "performance regression: pipeline took {:?}, budget is {}s. \
+         See INVARIANTS.md 'Facts Flow Forward' for diagnosis.",
+        elapsed,
+        PERF_RATCHET_SECONDS
+    );
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&sources_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
