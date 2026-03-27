@@ -93,6 +93,12 @@ let _result = match cli.command {
             for (i, d) in result.diagnostics.iter().take(20).enumerate() {
                 eprintln!("  [{}]: {:?}", i, d);
             }
+            if !result.complexity.formatted.is_empty() {
+                eprintln!("\n=== Complexity Report ===\n{}", result.complexity.formatted);
+            }
+            if !result.ownership.is_empty() {
+                eprintln!("=== Ownership Proofs: {} functions analyzed ===", result.ownership.len());
+            }
             if result.files.is_empty() {
                 eprintln!("error: no files emitted");
                 std::process::exit(1);
