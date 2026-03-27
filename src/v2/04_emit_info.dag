@@ -44,6 +44,26 @@ type TypeSummary {
   field_summaries: Map<String, FieldSummary>
 }
 
+// EmitGraphInfo: the reconcile→emit boundary contract.
+//
+// Invariant: emit never calls back into infer. All data the emitter needs
+// about graph-level type structure is precomputed here during reconcile
+// (build_emit_graph_info in 04_infer.dag).
+//
+// Fields and guarantees:
+//   type_summaries    — one entry per named type definition (Conj or Disj)
+//                       in the typed module graph. Keyed by type name.
+//                       Guaranteed non-empty for modules with type definitions.
+//   variant_to_enum   — maps each variant name to its parent enum name.
+//                       Populated for all Disj types. Used by emit to qualify
+//                       variant constructors (e.g., LitStr → LiteralValue::LitStr).
+//   enum_variant_membership — quick lookup: is this name a variant of any enum?
+//                       Keyed by variant name, value always true.
+//   field_type_names  — maps "TypeName.field_name" to the field's type name string.
+//                       Used by emit for field-level type disambiguation.
+//   recursive_type_set — maps type names that participate in recursive cycles
+//                       (detected by 04_cycle.dag) to true. Used by emit to decide
+//                       Rc wrapping (Rust) or pointer indirection (Go/C).
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   variant_to_enum: Map<String, String>

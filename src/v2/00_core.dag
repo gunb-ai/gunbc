@@ -988,6 +988,10 @@ fn diagnostic_is_error(n: Node) -> Bool {
   diagnostic_severity(n: n) == "error"
 }
 
+fn diagnostic_is_warning(n: Node) -> Bool {
+  diagnostic_severity(n: n) == "warning"
+}
+
 fn diagnostic_severity(n: Node) -> String {
   let sev_prop = n.properties |> filter(p => p.name == "severity") |> first
   match sev_prop {
