@@ -407,7 +407,7 @@ fn node_type_deps(n: Node) -> List<String> {
     if n.name != "" && is_kernel_type(name: n.name) == false {
       concat([n.name], child_deps)
     } else { child_deps }
-  } else if is_kernel_type(name: n.name) || n.name == "None" || n.name == "" {
+  } else if is_kernel_type(name: n.name) || n.name == none_type.name || n.name == "" {
     []
   } else {
     [n.name]
@@ -527,7 +527,7 @@ fn for_each_element_type_node(n: Node) -> Node {
   match extracted {
     Some { value: el } => el
     None =>
-      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && normed.name == "String" { string_type }
+      if normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0 && normed.name == string_type.name { string_type }
       else { normed }
   }
 }

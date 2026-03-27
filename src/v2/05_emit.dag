@@ -52,6 +52,7 @@ import v2.std.core {
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
+  tuple_type_name,
   Connective, Conj, Disj, NoConnective,
   CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
   CardOptional
@@ -879,7 +880,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       Some { value: base } => emit_node_type_rc(n: base, target: target, rc_types: rc_types)
       None => n.name
     }
-  } else if n.name == "Tuple" {
+  } else if n.name == tuple_type_name {
     // Tuple children may have inferred set — unwrap to get the actual type.
     let first_str = match n.children |> first {
       Some { value: c } =>
