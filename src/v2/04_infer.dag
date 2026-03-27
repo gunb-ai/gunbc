@@ -5,8 +5,8 @@
 // formal type-theoretic constructs. This stage reconciles how names are
 // used with how they're defined:
 //
-//   - Namespace lookup: `Token` -> has fields `kind`, `span`
-//   - Consistency check: `Token { kind: x }` -> does x match TokenKind?
+//   - Namespace lookup: `Token` -> has fields `text`, `span`, `shape`
+//   - Consistency check: `Token { shape: x }` -> does x match TokenShape?
 //   - Identity propagation: `char_at(s, pos)` -> result is in String namespace
 //   - Coverage validation: does `match` cover all variants in the namespace?
 //

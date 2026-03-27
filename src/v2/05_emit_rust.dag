@@ -1196,7 +1196,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   // RC1: Qualify variant names with parent enum using scrutinee type.
   // Some/None are Rust builtins -- never qualify. For all others, use the
   // scrutinee type so that variant name collisions (e.g. LitStr in both
-  // TokenKind and LiteralValue) are resolved correctly.
+  // TokenShape and LiteralValue) are resolved correctly.
   let qualified = if name == "Some" || name == "None" { name }
     else {
       match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
@@ -1473,7 +1473,7 @@ fn is_primitive_numeric_node(n: Node) -> Bool {
 // =========================================================================
 
 // RC1: Emit a Var reference. For unit variants of enums, qualify with parent
-// enum name to avoid name collisions (e.g. NullCoalesce in both TokenKind and
+// enum name to avoid name collisions (e.g. NullCoalesce in both TokenShape and
 // BinOpKind). Wrap in Rc::new() if parent enum is Rc-wrapped.
 // For `none`, emit `None`.
 fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
@@ -1589,11 +1589,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
       let matches = bt.children |> enumerate |> filter(pair => pair.second.name == field)
       match matches |> first {
         Some { value: m } =>
-          if m.first == 0 { concat(base_str, ".0") }
-          else if m.first == 1 { concat(base_str, ".1") }
-          else if m.first == 2 { concat(base_str, ".2") }
-          else if m.first == 3 { concat(base_str, ".3") }
-          else { concat("compile_error!(\"anonymous record tuple index >= 4 for field: ", field, "\")") }
+          concat(base_str, ".", to_string(m.first))
         None => concat("compile_error!(\"anonymous record field not found: ", field, "\")")
       }
     }
@@ -2684,7 +2680,7 @@ fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope)
 
 // RC2: Look up the expected type of a field from the struct's type node children.
 // Used to disambiguate variant constructors that exist in multiple enums
-// (e.g. LitStr in both TokenKind and LiteralValue).
+// (e.g. LitStr in both TokenShape and LiteralValue).
 // Handles both Conj nodes (struct fields are direct children) and Disj nodes
 // (need to find the variant first, then look in its children).
 fn lookup_struct_field_type_name(struct_node: Node, field_name: String, variant_name: String?) -> String? {
@@ -2794,7 +2790,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<FieldInit>, parent_enu
       }
     Some { value: tn } =>
       // RC1: Qualify variant names with parent enum to avoid name collisions
-      // (e.g. LitFloat exists in both TokenKind and LiteralValue).
+      // (e.g. LitFloat exists in both TokenShape and LiteralValue).
       // Resolution order:
       // 1. contextual enum authority (explicit parent_enum / resolved_type membership)
       // 2. module-corrected vtoe map
@@ -3563,15 +3559,36 @@ fn rust_test_signature_comment(projection: TestProjection) -> String {
 
 fn emit_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = rust_test_name(projection: projection)
-  let mock_setup = projection.mock_field_inits |> map(mp =>
-    emit_mock_prop_setup(mock_prop: mp, depth: depth + 1)
+  let struct_name = sanitize_service_name(name: projection.service_name)
+  let op_method = to_snake(name: projection.operation_name)
+  let indent = make_indent(level: depth + 1)
+  // Build parameter arguments for the operation call
+  let param_args = projection.params |> map(p =>
+    emit_rust_default_value(param: p)
   )
-  let mock_str = mock_setup |> join(separator: "\n")
+  let args_str = param_args |> join(separator: ", ")
+  let call_args = if args_str == "" { "" } else { args_str }
   concat(rust_async_test_decorator(), "\nasync fn ", test_name, "() {\n",
-    make_indent(level: depth + 1), rust_test_signature_comment(projection: projection), "\n",
-    make_indent(level: depth + 1),mock_str, "\n",
-    make_indent(level: depth + 1),"// Mock-based test: verifies operation contract with fixture data.", "\n",
+    indent, rust_test_signature_comment(projection: projection), "\n",
+    indent, "let service = ", struct_name, "::new(crate::dry_run::DryRunMode(true));\n",
+    indent, "let result = service.", emit_ident(name: op_method, target: Rust), "(", call_args, ").await;\n",
+    indent, "assert!(result.is_ok(), \"", struct_name, ".", projection.operation_name, " should succeed in dry-run mode: {:?}\", result.err());\n",
     "}")
+}
+
+fn emit_rust_default_value(param: Param) -> String {
+  let type_name = param.type_expr.name
+  if type_name == "String" { "String::new()" }
+  else if type_name == "Int" { "0" }
+  else if type_name == "Bool" { "false" }
+  else if type_name == "Float" { "0.0" }
+  else {
+    // Custom types derive Deserialize — use JSON deserialization from empty object.
+    // This works for structs (fields get defaults) and is safe for dry-run
+    // since the service ignores params and returns mock data.
+    concat("serde_json::from_str::<", emit_node_type(n: param.type_expr, target: Rust), ">(\"{}\")",
+      ".expect(\"test param default\")")
+  }
 }
 
 fn emit_mock_prop_setup(mock_prop: FieldInit, depth: Int) -> String {

@@ -854,22 +854,25 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       }
       emit_map_type(key_type: k, val_type: v, target: target)
     } else if n.children |> count == 1 {
-    // Single-child container. count == 1 guarantees first succeeds.
-    let inner = match n.children |> first {
-      Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
-      None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
-    }
-    // NonEmpty variants: Rust uses distinct types, others map to base container
-    let is_rust = match target { Rust => true  _ => false }
-    let container_kind = if n.collection_kind == NonEmptyListKind {
-      if is_rust { "non_empty_list" } else { "list" }
-    } else if n.collection_kind == NonEmptySetKind {
-      if is_rust { "non_empty_set" } else { "set" }
-    } else { to_snake(name: n.name) }
-    emit_container(kind: container_kind, inner: inner, target: target)
+      // Single-child container. count == 1 guarantees first succeeds.
+      let inner = match n.children |> first {
+        Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
+        None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
+      }
+      // NonEmpty variants: Rust uses distinct types, others map to base container
+      let container_kind = non_empty_container_kind(collection: n.collection_kind, name: n.name, target: target)
+      emit_container(kind: container_kind, inner: inner, target: target)
     } else {
       n.name
     }
+  }
+}
+
+fn non_empty_container_kind(collection: CollectionKind, name: String, target: RenderTarget) -> String {
+  match collection {
+    NonEmptyListKind => match target { Rust => "non_empty_list"  _ => "list" }
+    NonEmptySetKind => match target { Rust => "non_empty_set"  _ => "set" }
+    _ => to_snake(name: name)
   }
 }
 
