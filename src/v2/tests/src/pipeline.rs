@@ -469,10 +469,51 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
 // comparing the structural JSON values.
 
 /// Compile source with DAG backend and return the typed graph as parsed JSON.
+/// Filters to only the "test" module — std modules are identical in both
+/// scrambled-name runs and would add noise to the structural comparison.
 fn typed_graph_json(source: &str) -> Value {
     let result = compile_dag_target(source, RenderTarget::Dag);
     let json_str = find_file(&result, "dag-artifact.json");
-    serde_json::from_str(&json_str).expect("dag artifact should be valid JSON")
+    let mut graph: Value = serde_json::from_str(&json_str).expect("dag artifact should be valid JSON");
+    // Filter to only the test module — std modules are identical in both
+    // scrambled-name runs and add noise to structural comparison.
+    if let Some(modules) = graph.get_mut("modules") {
+        if let Value::Array(arr) = modules {
+            arr.retain(|m| {
+                m.get("module")
+                    .and_then(|mod_obj| mod_obj.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(|name| name == "test")
+                    .unwrap_or(false)
+            });
+        }
+    }
+    // Filter item_registry_keys to only test-module items
+    let test_items: std::collections::HashSet<String> = graph
+        .get("modules")
+        .and_then(|m| m.as_array())
+        .map(|mods| {
+            mods.iter()
+                .flat_map(|m| {
+                    m.get("item_registry_keys")
+                        .and_then(|k| k.as_array())
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(keys) = graph.get_mut("item_registry_keys") {
+        if let Value::Array(arr) = keys {
+            arr.retain(|v| {
+                v.as_str()
+                    .map(|s| test_items.contains(s))
+                    .unwrap_or(false)
+            });
+        }
+    }
+    graph
 }
 
 /// Normalize a JSON value for structural comparison:
@@ -1186,11 +1227,9 @@ fn sh4_resolved_graph_completeness() {
 
 #[test]
 fn structural_method_resolution_with_std() {
-    // Load real std modules so types resolve through algebra declarations.
+    // std modules loaded automatically by compile_dag/compile_multi.
     // List<Int> → FreeMonoid<Int> → Conj { map, filter, count, ... }
-    // Method calls should resolve via lookup_structural_method (Tier 0).
-    let algebra = read_v2_file("dsl/std/algebra.dag");
-    let types = read_v2_file("dsl/std/types.dag");
+    // Method calls resolve via lookup_structural_method (Tier 0).
     let user = r#"module user_test
 import std.types { List, Map }
 
@@ -1214,11 +1253,7 @@ fn has_key(m: Map<String, Int>) -> Bool { m |> has("key") }
 fn all_keys(m: Map<String, Int>) -> List<String> { m |> keys }
 fn all_vals(m: Map<String, Int>) -> List<Int> { m |> values }
 "#;
-    let result = compile_multi(&[
-        ("dsl/std/algebra.dag", &algebra),
-        ("dsl/std/types.dag", &types),
-        ("user_test.dag", user),
-    ]);
+    let result = compile_dag_named("user_test.dag", user, RenderTarget::Rust);
     let msgs = diagnostic_messages(&result);
     assert!(
         msgs.is_empty(),
