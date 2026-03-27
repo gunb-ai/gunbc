@@ -338,7 +338,7 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
   }
 }
 
-fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<NamedArg>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>) -> SummaryResult {
+fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>) -> SummaryResult {
   match shape {
     ShapeIterateBody { produces_collection: pc } =>
       let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
