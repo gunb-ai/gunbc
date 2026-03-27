@@ -703,6 +703,38 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
+pub fn binop_algebra_field(op: BinOpKind) -> String {
+    match op {
+    BinOpKind::Add => {
+        "add".to_string()
+    }
+    BinOpKind::Sub => {
+        "add".to_string()
+    }
+    BinOpKind::Mul => {
+        "mul".to_string()
+    }
+    BinOpKind::Div => {
+        "reciprocal".to_string()
+    }
+    BinOpKind::Mod => {
+        "add".to_string()
+    }
+    BinOpKind::BinEq | BinOpKind::BinNe | BinOpKind::BinLt | BinOpKind::BinGt | BinOpKind::BinLe | BinOpKind::BinGe => {
+        "compare".to_string()
+    }
+    BinOpKind::BinAnd => {
+        "meet".to_string()
+    }
+    BinOpKind::BinOr => {
+        "join".to_string()
+    }
+    BinOpKind::NullCoalesce => {
+        "".to_string()
+    }
+}
+}
+
 pub fn infer_binop_type_node(op: BinOpKind, left_type: Rc<Node>) -> Rc<Node> {
     match op {
     BinOpKind::BinEq => {
@@ -733,7 +765,36 @@ pub fn infer_binop_type_node(op: BinOpKind, left_type: Rc<Node>) -> Rc<Node> {
         extract_optional_inner_node(left_type.clone())
     }
     _ => {
-        left_type.clone()
+        let field_name = binop_algebra_field(op.clone());
+        if left_type.connective == Connective::Conj {
+            let matching = {
+                let mut __found_0 = None;
+                for __elem_1 in left_type.children.iter().cloned() {
+                    if __elem_1.name.clone() == field_name {
+                        __found_0 = Some(__elem_1);
+                        break;
+                    };
+                }
+                __found_0
+            };
+            match matching {
+                Some(field) => {
+                    match field.inferred.as_ref().map(|__rc| __rc.as_ref()) {
+                        Some(InferredNode::Resolved { node: rt, .. }) => {
+                            rt.clone()
+                        }
+                        _ => {
+                            left_type.clone()
+                        }
+                    }
+                }
+                None => {
+                    left_type.clone()
+                }
+            }
+        } else {
+            left_type.clone()
+        }
     }
 }
 }

@@ -225,7 +225,38 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 // Known method resolution
 // =========================================================================
 
+// Structural field lookup: check if the receiver type's declaration has
+// a child with the requested method name (e.g., OrderedRing<T>.add).
+// This is how the compiler resolves methods from algebraic compositions
+// without name-checking the type.
+fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
+  let is_product = receiver_type.connective == Conj
+  if is_product {
+    let matching = receiver_type.children |> filter(c => c.name == method_name)
+    match matching |> first {
+      Some { value: field } =>
+        // Found a structural field matching the method name.
+        // Return its inferred type (the method's signature).
+        match field.inferred {
+          Some { value: Resolved { node: rt } } => Some { value: rt }
+          _ => none
+        }
+      None => none
+    }
+  } else { none }
+}
+
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
+  // Tier 0: Structural field lookup on the resolved type.
+  // If the receiver's type declaration has a field matching the method name
+  // (e.g., OrderedRing<T>.add), use its signature directly.
+  match lookup_structural_method(receiver_type: receiver_type, method_name: method_name) {
+    Some { value: result_type } =>
+      KnownMethodResolution {
+        semantics: none,
+        result_type: Some { value: result_type }
+      }
+    None =>
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry) {
     Some { value: svc_result } =>
       KnownMethodResolution {
@@ -257,5 +288,6 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
               KnownMethodResolution { semantics: none, result_type: none }
           }
       }
+  }
   }
 }

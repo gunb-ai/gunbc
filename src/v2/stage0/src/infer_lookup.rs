@@ -264,8 +264,46 @@ pub fn field_summary_for_type(base_type: Rc<Node>, env: Rc<TypeEnv>, field: &str
     })
 }
 
+pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: &str) -> Option<Rc<Node>> {
+    let is_product = receiver_type.connective == Connective::Conj;
+    if is_product {
+        let matching = {
+            let mut __found_0 = None;
+            for __elem_1 in receiver_type.children.iter().cloned() {
+                if __elem_1.name.clone() == method_name {
+                    __found_0 = Some(__elem_1);
+                    break;
+                };
+            }
+            __found_0
+        };
+        match matching {
+            Some(field) => {
+                match field.inferred.as_ref().map(|__rc| __rc.as_ref()) {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        Some(rt.clone())
+                    }
+                    _ => {
+                        None
+                    }
+                }
+            }
+            None => {
+                None
+            }
+        }
+    } else {
+        None
+    }
+}
+
 pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: &str, fold_accumulator_type: Option<Rc<Node>>, service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>) -> Rc<KnownMethodResolution> {
-    match check_service_method_call_node(receiver_type.clone(), &method_name, service_registry.clone()) {
+    match lookup_structural_method(receiver_type.clone(), &method_name) {
+    Some(result_type) => {
+        Rc::new(KnownMethodResolution { semantics: None, result_type: Some(result_type.clone()) })
+    }
+    None => {
+        match check_service_method_call_node(receiver_type.clone(), &method_name, service_registry.clone()) {
     Some(svc_result) => {
         Rc::new(KnownMethodResolution { semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics { service_name: receiver_type.name.clone(), op_params: svc_result.op_params.clone() })), result_type: Some(svc_result.result_type.clone()) })
     }
@@ -281,6 +319,8 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
     }
     None => {
         Rc::new(KnownMethodResolution { semantics: None, result_type: None })
+    }
+}
     }
 }
     }
