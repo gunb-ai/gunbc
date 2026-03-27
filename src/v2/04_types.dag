@@ -18,7 +18,7 @@ import v2.std.core {
   NoExprData, ExprLiteral,
   make_expr_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
-  is_kernel_type, is_kernel_numeric, is_kernel_textual,
+  is_kernel_type,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   InferredNode, Resolved, CompilerError, rt_node, has_inferred,
   NodeType, Typed, InferError, Untyped,
@@ -384,30 +384,6 @@ fn node_type_deps(n: Node) -> List<String> {
   } else {
     [n.name]
   }
-}
-
-// =========================================================================
-// Primitive type checks
-// =========================================================================
-
-fn is_int_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Int" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
-}
-
-fn is_string_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "String" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
-}
-
-fn is_bool_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Bool" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
-}
-
-fn is_float_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Float" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
 }
 
 // =========================================================================

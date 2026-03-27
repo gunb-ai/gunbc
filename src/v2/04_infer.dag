@@ -87,7 +87,6 @@ import v2.compiler.infer_types {
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps, collection_kind_for_name,
-  is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,

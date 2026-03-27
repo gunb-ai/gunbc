@@ -625,26 +625,6 @@ pub fn node_type_deps(n: Rc<Node>) -> Rc<Vec<String>> {
     })
 }
 
-pub fn is_int_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "Int") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
-}
-
-pub fn is_string_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "String") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
-}
-
-pub fn is_bool_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "Bool") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
-}
-
-pub fn is_float_type_node(n: Rc<Node>) -> bool {
-    let normed = normalize_access_type_node(n.clone());
-    (normed.name.clone() == "Float") && (normed.connective == Connective::NoConnective && normed.children.len() == 0 && normed.properties.len() == 0)
-}
-
 pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
     match lit.as_ref() {
     LiteralValue::LitStr { value: _, .. } => {

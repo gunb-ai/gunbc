@@ -155,28 +155,9 @@ fn is_kernel_type(name: String) -> Bool {
   kernel_types |> any(t => t == name)
 }
 
-fn is_kernel_numeric(name: String) -> Bool {
-  name == "Int" || name == "Float"
-}
-
-// Arity bridge: parameterized types and their expected number of type children.
-// This is an explicit short-term bridge — deleted when real .dag algebraic
-// declarations exist (Phase 3, P3.7). Optional is EXCLUDED: it is cardinality
-// on the binding site (P1.4), not a parameterized type.
-//
-// A type node for Map must have exactly 2 children (key, value).
-// A type node for List/Set must have exactly 1 child (element).
-// A bare leaf_node(name: "Map") with 0 children is a construction error.
 // Arity bridge DELETED (P3.7). The compiler no longer hardcodes which
 // types are parameterized. Arity comes from .dag declarations (params
 // field on type definitions). See std/types.dag for List, Map, Set.
-//
-// Callers that used parameterized_type_arity/is_parameterized_type now
-// use declaration-based checks via the type environment.
-
-fn is_kernel_textual(name: String) -> Bool {
-  name == "String" || name == "Secret"
-}
 
 // P1.9 InferredNode: compiler errors are orthogonal to the node graph.
 // When inference fails, the result is structurally distinct from a type node.
