@@ -192,10 +192,10 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
-  if left_err || right_err { true }
-  else if left_tv || right_tv { true }
   let right_is_unit = right.connective == Conj && right.children |> count == 0
   let left_is_unit = left.connective == Conj && left.children |> count == 0
+  if left_err || right_err { true }
+  else if left_tv || right_tv { true }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else {
@@ -276,11 +276,11 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
   let left_struct = left.connective != NoConnective
   let right_struct = right.connective != NoConnective
+  let right_is_unit_eq = right.connective == Conj && right.children |> count == 0
+  let left_is_unit_eq = left.connective == Conj && left.children |> count == 0
   if left_err || right_err { true }
   else if left_tv && right_tv { true }
   else if left_tv || right_tv { false }
-  let right_is_unit_eq = right.connective == Conj && right.children |> count == 0
-  let left_is_unit_eq = left.connective == Conj && left.children |> count == 0
   else if left_opt && right_is_unit_eq { true }
   else if left_is_unit_eq && right_opt { true }
   else if left_leaf && right_leaf {

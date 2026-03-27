@@ -118,6 +118,7 @@ import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary
 }
+import v2.compiler.ownership { empty_operational_facts }
 import v2.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph,
@@ -2598,7 +2599,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     variant_to_enum: built.variant_to_enum,
     enum_variant_membership: built.enum_variant_membership,
     field_type_names: built.field_type_names,
-    recursive_type_set: all_recursive
+    recursive_type_set: all_recursive,
+    operational_facts: empty_operational_facts()
   }
 }
 

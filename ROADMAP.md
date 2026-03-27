@@ -226,6 +226,49 @@ basis is not the set of named user types; it is the set of structural
 constructors and binding/cardinality facts from which named declarations
 are composed.
 
+**5. Operational metadata — the missing compositional layer (2026-03-27)**
+
+The structural basis above describes **what data is** (types,
+cardinality, composition). It does not describe **how data flows**
+at the binding level. This gap is the root cause of every recurring
+performance regression (FF-1, FF-5, FF-8, OOM incident).
+
+The `.dag` language is pure-functional with lexical scope. These
+guarantees make the following facts derivable from the graph alone:
+
+| Operational fact | Derivable from | What it tells the backend |
+|------------------|----------------|---------------------------|
+| **Fan-out** | Count of name references in binding scope | 1: reuse storage. >1: share. 0: dead code. |
+| **Mutation pattern** | Whether binding appears as fold/loop accumulator vs read-only consumer | Accumulator: in-place mutation safe. Read-only: sharing safe. |
+| **Access pattern** | Whether index operations appear in a loop over the same binding | Sequential indexed: representation must support O(1) positional access. |
+
+These are not target-language properties. They are **graph facts**,
+the same way cardinality and connective are graph facts. They are
+computable in a single pass over the binding scopes during lowering.
+
+Currently the emitter does not receive these facts. Instead, it makes
+type-category-based guesses: user-defined types get shared
+representations (Rc in Rust), built-in types (List, String, Map)
+get bare representations. This guess is wrong for any built-in type
+with O(n) duplication cost, which is all of them except primitives.
+
+The fix is compositional: compute these facts during lowering, carry
+them in the IR alongside type facts, and require the emitter API to
+consume them. Each backend renders the target-appropriate construct
+from the operational metadata — Rust picks Rc vs move, Go picks
+pointer vs value, C picks heap vs stack. The decision is a lookup
+against a DAG fact, not a guess from a type category.
+
+This is the same "smart facts + dumb compiler" pattern the rest of
+the architecture follows: the graph carries the knowledge, the
+backend is a simple function from facts to target syntax.
+
+**Design status:** Root-caused (2026-03-27). The `perf/v2-tokenizer-
+root-cause` branch proved the class by hand-patching generated files
+(parser 37s → 0.4s). Holistic solution design is next — likely a
+compositional model where operational metadata is attached to
+bindings during the lowering pass and flows through the IR to emission.
+
 ### Composition Stack
 
 The algebraic type vision (above) covers Layers 0-3: logic, machine
@@ -1085,6 +1128,7 @@ the canonical stream assignments.
 |--------|--------|------|-------|
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors (158), type-name comparisons (40), CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.12 ExprData tag assessment, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
+| **Stream 3: Operational Metadata** | `perf/v2-tokenizer-root-cause` (proof branch) | Per-binding operational facts in IR (fan-out, mutation pattern, access pattern). Root-caused 2026-03-27. Design needed before implementation. | Eliminate recurring performance regression class (FF-8). See Compositional Basis §5. |
 
 ### Completed work streams (Phases 1-4)
 
@@ -3147,6 +3191,9 @@ current phase order.
 | Callable-type parameters | **Done** (P4.7). All 6 steps complete. Unblocks P4.2 step 5. |
 | Full linear type checking | Ownership proof work has started, but full proof remains beyond the current migration |
 | Widen V5 | The conservative version covers current hot paths |
+| `[when]` string comparison | `[when x == "foo"]` is not supported; only boolean fields, negation (`!x.field`), and `!= None` work. Blocks conditional service dispatch in workflows. Workaround: `match` + `shell.Exec.Run` with computed command strings. |
+| `[when]`/`[after]` inside `for` comprehensions | Bracket clauses are only supported on top-level step bindings, not inside `for` loops. Blocks conditional execution per iteration. |
+| Multiple `uses` clauses | Only one `uses` clause per `func` is supported. Workaround: use `shell.Exec.Run` for file I/O instead of `Filesystem` resource when `Network` is already declared. |
 
 ### Compiler Improvements
 

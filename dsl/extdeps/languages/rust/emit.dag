@@ -32,10 +32,16 @@ data rust_keywords: Map<String, String> = {
 // -- Container type templates --------------------------------------------
 // {0} = element type, {1} = second type (maps).
 // Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::HashMap
+//
+// Containers are Rc-wrapped for Rust (OwnershipBased semantics). This makes
+// clone O(1) for all non-Copy types. Mutation uses Rc::try_unwrap (O(1) when
+// refcount=1, which is the common case for accumulators). This is the
+// language-agnostic operational-metadata design: Rust's sharing construct is
+// Rc; Python/Go templates remain unwrapped (GC/value semantics handle sharing).
 data rust_container_templates: Map<String, String> = {
-  "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
-  "non_empty_list": "NonEmptyVec<{0}>", "non_empty_set": "NonEmptyBTreeSet<{0}>",
-  "optional": "Option<{0}>", "map": "HashMap<{0}, {1}>"
+  "list": "Rc<Vec<{0}>>", "set": "Rc<std::collections::BTreeSet<{0}>>",
+  "non_empty_list": "Rc<NonEmptyVec<{0}>>", "non_empty_set": "Rc<NonEmptyBTreeSet<{0}>>",
+  "optional": "Option<{0}>", "map": "Rc<HashMap<{0}, {1}>>"
 }
 
 // -- Reserved words ------------------------------------------------------

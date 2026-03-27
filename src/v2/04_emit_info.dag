@@ -24,6 +24,7 @@ import v2.compiler.infer_types {
   normalize_access_type_node,
   rt_type, child_inferred_or_name, node_type_equals
 }
+import v2.compiler.ownership { OperationalFacts, empty_operational_facts }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -70,6 +71,7 @@ type EmitGraphInfo {
   enum_variant_membership: Map<String, Bool>
   field_type_names: Map<String, String>
   recursive_type_set: Map<String, Bool>
+  operational_facts: OperationalFacts
 }
 
 type EmitInfoBuildState {
@@ -89,7 +91,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     variant_to_enum: empty_map(),
     enum_variant_membership: empty_map(),
     field_type_names: empty_map(),
-    recursive_type_set: empty_map()
+    recursive_type_set: empty_map(),
+    operational_facts: empty_operational_facts()
   }
 }
 

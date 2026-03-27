@@ -98,6 +98,7 @@ import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary
 }
+import v2.compiler.ownership { OperationalFacts }
 
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
@@ -330,9 +331,21 @@ fn is_simple_disj(item: Node) -> Bool {
 // Entry point -- Rust target
 // =========================================================================
 
-fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  let emit_info = build_emit_graph_info(modules: typed.modules)
+fn emit_rust(typed: ResolvedGraph, op_facts: OperationalFacts) -> EmitResult {
+  let emit_info_base = build_emit_graph_info(modules: typed.modules)
+  // Inject operational facts into the emit boundary contract.
+  let emit_info = EmitGraphInfo {
+    type_summaries: emit_info_base.type_summaries,
+    variant_to_enum: emit_info_base.variant_to_enum,
+    enum_variant_membership: emit_info_base.enum_variant_membership,
+    field_type_names: emit_info_base.field_type_names,
+    recursive_type_set: emit_info_base.recursive_type_set,
+    operational_facts: op_facts
+  }
   let vtoe = emit_info.variant_to_enum
+  // rc_types: merge type-category heuristic with operational facts.
+  // User-defined types keep their existing Rc wrapping (no regression).
+  // Container types gain Rc wrapping from operational analysis.
   let rc_types = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
     if type_summary_needs_rc(summary: summary) {
       map_insert(acc, summary.name, true)

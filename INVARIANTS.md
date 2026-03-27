@@ -77,7 +77,7 @@ it was lost, (4) fix the rendering to exploit the guarantee.
 | FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **FIXED.** Indexed Kahn with in-degree map + reverse adjacency + queue drain. |
 | FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
 | FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
-| FF-8 | Token/source operational contract | `.dag` tokenizer/parser design (`01_tokenize.dag`, `02_parse.dag`) | Stage0 Rust lowering and runtime boundary | Generated code reintroduces whole-Vec clones, repeated Unicode rescans, and by-value token-stream passing | Large-module compiles regressed from expected seconds to hangs / tens of seconds; live samples pinned in tokenize and parser hot paths | **ROOT-CAUSED (2026-03-27), class still OPEN.** The local emergency fix on `perf/v2-tokenizer-root-cause` cut isolated probes sharply (`02_parse.dag`: ~37.2s → ~0.43s, `04_infer.dag`: ~7.18s → ~0.06s, `--source-dir src/v2`: hang/minutes → ~0.65s returning diagnostics). But the underlying debt remains until the codegen/runtime boundary models these operational guarantees directly and compiler-sized perf ratchets enforce them. |
+| FF-8 | Per-binding operational metadata (fan-out, mutation pattern, access pattern) | Derivable from .dag graph structure (purity, lexical scope, structural composition) | Emitter type-category rendering: Rc for user-defined types, bare for built-in types (Vec, String, HashMap) | Backends guess representation from type category. O(n) collection clones where O(1) sharing suffices; O(n²) character access where indexed access suffices. | Parser: 37s → 0.4s. Tokenizer: 7s → 0.06s. Full compiler: hang → 0.65s. (Hand-patched generated files proved the class.) | **ROOT-CAUSED (2026-03-27), class OPEN.** The IR does not carry per-binding data-flow operational facts. These are derivable from the graph but not computed. Every backend guesses from type categories, producing the same regression class in every new code path. The fix is not target-specific (Rc for Rust) — it is modeling operational metadata as language-agnostic DAG facts that any backend consumes. See FF-8 detail. |
 
 #### The fan-out fix (FF-1) in detail
 
@@ -108,71 +108,106 @@ Reconcile: ~20 minutes → 244ms (release mode).
 **Status: FIXED (2026-03-26).** `04_cycle.dag` rewritten with indexed
 in-degree map + reverse adjacency + queue drain. O(V+E), single pass.
 
-#### Generated boundary regression (FF-8)
+#### Missing operational metadata — the recurring performance class (FF-8)
 
-The 2026-03-27 v2 performance incident is now root-caused.
+Every performance regression in this compiler (FF-1, FF-5, FF-8, the OOM
+incident) is an instance of the same structural gap: **the IR carries
+type facts but not data-flow operational facts.** The emitter receives
+types (what shape does data have?) but not operational metadata (how is
+each binding used?). So it guesses representation from type categories,
+and the guesses are wrong for any type whose clone cost is O(n).
 
-The source-level intent was already present:
-- `01_tokenize.dag` explicitly threads `tokens` separately so append
-  stays O(1) and wraps `source` so reassignment becomes cheap sharing.
-- Parser/token helpers conceptually operate on indexed streams and
-  immutable source text.
+The `.dag` language provides all the information needed to derive these
+facts. Purity means no aliasing. Lexical scope means every binding's
+consumers are visible in the syntax tree. Structural composition means
+the data-flow graph IS the program text. But this information is not
+computed and not carried in the IR, so every backend independently
+guesses — and every guess based on type categories produces the same
+class of regression.
 
-But those guarantees were not preserved compositionally in generated
-stage0 Rust. The generated boundary reintroduced compensating work:
-- tokenizer token accumulation cloned the full token vector in the hot
-  path instead of mutating one accumulator
-- tokenizer Unicode access fell back to repeated `chars().nth()` /
-  `skip()` rescans for any file containing non-ASCII text, including
-  comments
-- parser helpers passed the token stream by value, so helper traffic
-  cloned the whole token vector instead of sharing it
+**The missing facts (all derivable from the graph, all language-agnostic):**
 
-This is the key lesson: **comments in `.dag` are not enforcement.**
-If the operational contract matters, the lowering/runtime boundary must
-make the cheap representation the default representation.
+| Operational fact | Derivable from | What any backend needs to decide |
+|------------------|----------------|----------------------------------|
+| **Fan-out** | Count of edges from binding to consumers | fan-out=1: reuse storage. fan-out>1: share. |
+| **Mutation pattern** | Whether binding flows through append/push vs read-only | Accumulator: in-place. Read-only: share. |
+| **Access pattern** | Whether indexing ops appear inside a loop body | Sequential indexed: pre-index. Random: hash. |
 
-The emergency branch `perf/v2-tokenizer-root-cause` proved the class:
-- `02_parse.dag` single-file probe: ~37.2s → ~0.43s
-- `04_infer.dag` single-file probe: ~7.18s → ~0.06s
-- `target/debug/v2-compiler compile --source-dir src/v2 ...`:
-  hang/minutes → ~0.65s returning diagnostics
+These are not Rust-specific. They are graph facts:
+- Rust uses them to decide Rc vs move, &str vs String, Vec vs Rc<Vec>.
+- Go uses them to decide pointer vs value, slice sharing.
+- C uses them to decide heap vs stack, pointer vs copy.
+- Python mostly doesn't need them (GC), but can use them for preallocation.
 
-The invariant is not "remember to optimize generated Rust later." The
-invariant is: **the stage boundary must preserve the source cost model.**
-If a source guarantee (immutable text, indexed stream, lexical fan-out)
-is lost at lowering time and recovered with a compensation, the design
-is incomplete even if the output is semantically correct.
+**The current ad-hoc split:**
 
-#### Ratchet
+| Type category | Emitter treatment | Clone cost | Correct? |
+|--------------|-------------------|-----------|----------|
+| User-defined struct | Rc<T> | O(1) | Yes |
+| User-defined enum (with fields) | Rc<T> | O(1) | Yes |
+| Primitive (Int, Bool, Float) | bare | O(1) (Copy) | Yes |
+| **List<T>** | bare Vec<T> | **O(n)** | **No** |
+| **Map<K,V>** | bare HashMap<K,V> | **O(n)** | **No** |
+| **String** | bare String | **O(n)** | **No** |
 
-After all open instances are fixed:
+This split is the root cause. It is type-category-based instead of
+cost-based, and it is embedded in the emitter's container templates
+(`extdeps_languages_rust_emit.rs:84`) rather than derived from the
+graph.
 
-1. **No downstream recomputation.** For each stage boundary, the
-   downstream stage does not import analysis functions from upstream.
-   Import across a stage boundary = potential recomputation = potential
-   lost fact.
+**The 2026-03-27 incident (proof of class):**
 
-2. **Fan-out preservation.** Each `.clone()` in generated stage0
-   corresponds to a source binding with fan-out > 1. Any clone on a
-   fan-out=1 binding is a violation. Target: 0 violations.
+The emergency branch `perf/v2-tokenizer-root-cause` hand-patched
+generated stage0 files to prove the fix class works:
+- Parser: changed `Vec<Rc<Token>>` → `Rc<Vec<Rc<Token>>>` (991 sites
+  of `.clone()` go from O(n) to O(1))
+- Tokenizer: added pre-computed char index table (per-character access
+  goes from O(n) to O(1))
+- Results: parse 37s → 0.4s, tokenize 7s → 0.06s, full compiler
+  hang → 0.65s
 
-3. **Performance ratchet.** Self-compile time is a ratchet value.
-   Regressions indicate a new lost-fact instance.
-   Release-mode baseline (2026-03-26): **6.47s total pipeline**
-   (Tokenize 4.87s, Parse 78ms, Resolve 1ms, Reconcile 244ms,
-   Emit 1.27s). Target: <2s total.
+These hand-edits will be overwritten on next stage0 regeneration.
+The fix must be in the IR and emitter, not in generated output.
 
-4. **Generated-boundary ratchet.** Compiler-sized probes must run
-   through the live generated stage0 binary, not just smoke DAGs.
-   At minimum, keep a ratchet on:
-   - `target/debug/v2-compiler compile --source-dir src/v2 ...`
-   - isolated large modules such as `src/v2/02_parse.dag` and
-     `src/v2/04_infer.dag`
-   - a curated bootstrap-style bundle that includes `src/v2/*.dag`
-     plus the std/extdep modules they depend on
-   If only tiny DAGs are timed, codegen/runtime regressions can re-enter
-   while all smoke tests still pass.
+**The fix is not "Rc-wrap everything for Rust."** That is a
+target-specific patch that makes one backend's default safe but
+does not model the underlying facts. The fix is: compute per-binding
+operational metadata during lowering (a graph analysis pass that
+counts fan-out, classifies mutation patterns, identifies access
+patterns), carry it in the IR, and let each backend render the
+target-appropriate construct from that metadata. This makes the
+operational decision a lookup against a DAG fact, not a guess from
+a type category — the same "smart facts + dumb compiler" pattern
+the rest of the architecture follows.
+
+#### Construction, not validation
+
+The goal is to make performance violations **unrepresentable**, not to
+catch them after the fact with ratchets. Ratchets are useful as
+diagnostics/warnings, but they are a form of validation — the system
+already produced the wrong output and the ratchet notices retroactively.
+
+The construction-based approach: if the IR carries per-binding
+operational metadata, then the emitter's rendering function takes that
+metadata as input. A backend cannot emit a representation without first
+consulting the operational facts. This makes "ignore fan-out and guess
+from type category" unrepresentable — the API requires the fact.
+
+**Structural properties to enforce by construction:**
+
+1. **No downstream recomputation.** Stage boundaries carry complete
+   facts. A downstream stage that imports analysis functions from
+   upstream is a design gap, not a performance bug to catch.
+
+2. **Fan-out drives representation.** The emitter receives per-binding
+   fan-out as part of the IR. The rendering decision is a function of
+   this fact, not a guess from type category. fan-out=1 → reuse.
+   fan-out>1 → share. This is the API contract, not a post-hoc check.
+
+3. **Operational facts are language-agnostic.** The metadata (fan-out,
+   mutation pattern, access pattern) is computed once in the IR layer.
+   Each backend reads it and renders the target-appropriate construct.
+   Adding a new backend does not require re-deriving operational facts.
 
 ## Sustainability Invariants
 
