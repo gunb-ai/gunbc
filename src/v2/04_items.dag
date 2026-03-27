@@ -10,7 +10,7 @@ module v2.compiler.infer_items
 import std.types { SourceSpan }
 import v2.std.core {
   Node, Param, Field,
-  InferredNode, Resolved, CompilerError,
+  InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
   leaf_node,
@@ -78,6 +78,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field>
   if inferred == none { [] }
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
+    TypeVariable { id: _ } => []
     Resolved { node: rt } =>
         let has_structure = rt.connective != NoConnective
         if has_structure {

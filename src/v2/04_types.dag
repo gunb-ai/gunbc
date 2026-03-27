@@ -21,8 +21,8 @@ import v2.std.core {
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type,
   BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
-  InferredNode, Resolved, CompilerError, rt_node, has_inferred, is_compiler_error,
-  NodeType, Typed, InferError, Untyped,
+  InferredNode, Resolved, CompilerError, TypeVariable, rt_node, has_inferred, is_compiler_error,
+  NodeType, Typed, InferError, InferVariable, Untyped,
   leaf_node, no_span, with_optional_cardinality, with_required_cardinality
 }
 
@@ -46,6 +46,7 @@ fn rt_type(n: Node) -> Node {
   match rt_node(n: n) {
     Typed { node: rt } => rt
     InferError { message: _, span: _ } => leaf_node(name: "Unit")
+    InferVariable { id: _ } => leaf_node(name: "Unit")
     Untyped => leaf_node(name: "Unit")
   }
 }
@@ -136,6 +137,7 @@ fn node_type_shape(n: Node) -> String {
             && rt.name != "" && rt.name != "None"
             && is_kernel_type(name: rt.name) == false
         InferError { message: _, span: _ } => false
+        InferVariable { id: _ } => false
         Untyped => false
       }
     }
@@ -361,22 +363,23 @@ fn node_type_deps(n: Node) -> List<String> {
           && rt.name != "" && rt.name != "None"
           && is_kernel_type(name: rt.name) == false
       InferError { message: _, span: _ } => false
+      InferVariable { id: _ } => false
       Untyped => false
     }
   }
   let has_structure = n.connective != NoConnective
   if __is_named_ref {
-    match rt_node(n: n) { Typed { node: rt } => [rt.name]  InferError { message: _, span: _ } => []  Untyped => [] }
+    match rt_node(n: n) { Typed { node: rt } => [rt.name]  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
   } else if has_structure {
     flat_map(n.children, child =>
       if child.inferred != none {
-        match rt_node(n: child) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
+        match rt_node(n: child) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
       } else {
         node_type_deps(n: child)
       }
     )
   } else if n.inferred != none {
-    match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  Untyped => [] }
+    match rt_node(n: n) { Typed { node: rt } => node_type_deps(n: rt)  InferError { message: _, span: _ } => []  InferVariable { id: _ } => []  Untyped => [] }
   } else if n.children |> count > 0 {
     // Parameterized type reference (e.g., MyList<T>): the node name IS a
     // dependency (MyList) AND the children (type args like T) may also be.

@@ -12,7 +12,7 @@ module v2.compiler.infer_lookup
 import v2.std.core {
   Node, Param,
   InferredNode, Resolved,
-  NodeType, Typed, InferError, Untyped,
+  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   IntrinsicMethod,
   MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
@@ -153,6 +153,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
             resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
           }
         InferError { message: _, span: _ } => normed
+        InferVariable { id: _ } => normed
         Untyped => normed
       }
     } else if canonical != "" && emit_map_has(m: seen, key: canonical) {

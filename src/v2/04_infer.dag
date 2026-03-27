@@ -35,8 +35,8 @@ import v2.std.core {
   make_expr_node, make_expr_error_node,
   make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name,
-  rt_node, has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError,
-  NodeType, Typed, InferError, Untyped,
+  rt_node, has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
+  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required, CardOptional,
   diagnostic_node,
   ResourceUse,
@@ -459,6 +459,7 @@ fn inferred_from_node_type(result: NodeType, fallback_message: String, fallback_
   match result {
     Typed { node: resolved } => Resolved { node: resolved }
     InferError { message: message, span: span } => CompilerError { message: message, span: span }
+    InferVariable { id: id } => TypeVariable { id: id }
     Untyped => CompilerError { message: fallback_message, span: fallback_span }
   }
 }
@@ -828,12 +829,12 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
     }
   } else if method_name == "flat_map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
+      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
   } else if method_name == "fold" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
+      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
   } else if method_name == "list_push" && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
@@ -841,23 +842,24 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
       Some { value: item_arg } => match rt_node(n: item_arg.value) {
         Typed { node: rt } => container_node(kind_name: "List", element: rt)
         InferError { message: _, span: _ } => fallback
+        InferVariable { id: _ } => fallback
         Untyped => fallback
       }
       None => fallback
     }
   } else if method_name == "map_insert" && receiver_type.children |> count == 0 && receiver_is_map && typed_args |> count >= 2 {
     let key_type = match typed_args |> first {
-      Some { value: key_arg } => match rt_node(n: key_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
+      Some { value: key_arg } => match rt_node(n: key_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
     match typed_args |> skip(1) |> first {
       Some { value: val_arg } =>
-        map_node(key: key_type, value: match rt_node(n: val_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback })
+        map_node(key: key_type, value: match rt_node(n: val_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback })
       None => fallback
     }
   } else if method_name == "map_merge" && receiver_is_map && typed_args |> count >= 1 {
     let overlay_type = match typed_args |> first {
-      Some { value: overlay_arg } => match rt_node(n: overlay_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => receiver_type  Untyped => receiver_type }
+      Some { value: overlay_arg } => match rt_node(n: overlay_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => receiver_type  InferVariable { id: _ } => receiver_type  Untyped => receiver_type }
       None => receiver_type
     }
     if receiver_type.children |> count == 0 && overlay_type.children |> count > 0 {
@@ -946,7 +948,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
-      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => leaf_node(name: "Unit") }
+      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => leaf_node(name: "Unit") }
       let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_rt)
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
@@ -1028,7 +1030,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let call_method_args = call_args |> skip(1)
       let call_fold_info = extract_fold_init_info(method_name: func_name, method_args: call_method_args, min_args: 2, scope: scope)
       let call_fold_acc_type = match call_fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => error_type_node() }
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => error_type_node() }
         None => error_type_node()
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
@@ -1228,7 +1230,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       let fold_info = extract_fold_init_info(method_name: method_name, method_args: mc_args, min_args: 2, scope: scope)
       let fold_acc_type = match fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => error_type_node() }
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => error_type_node() }
         None => error_type_node()
       }
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
@@ -1604,14 +1606,17 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
                 module_name: scope.module_name
               ) }
             InferError { message: _, span: _ } => none
+            InferVariable { id: _ } => none
             Untyped => none
           }
         InferError { message: _, span: _ } => none
+        InferVariable { id: _ } => none
         Untyped => none
       }
       let access_failure_source = match base_type_result {
         Typed { node: _ } => index_type_result
         InferError { message: _, span: _ } => base_type_result
+        InferVariable { id: _ } => base_type_result
         Untyped => base_type_result
       }
       let idx_inferred = match index_check {
@@ -1660,12 +1665,15 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
                     module_name: scope.module_name
                   ) }
                 InferError { message: _, span: _ } => none
+                InferVariable { id: _ } => none
                 Untyped => none
               }
             InferError { message: _, span: _ } => none
+            InferVariable { id: _ } => none
             Untyped => none
           }
         InferError { message: _, span: _ } => none
+        InferVariable { id: _ } => none
         Untyped => none
       }
       let access_failure_source = match base_type_result {
@@ -1673,9 +1681,11 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           match start_type_result {
             Typed { node: _ } => end_type_result
             InferError { message: _, span: _ } => start_type_result
+            InferVariable { id: _ } => start_type_result
             Untyped => start_type_result
           }
         InferError { message: _, span: _ } => base_type_result
+        InferVariable { id: _ } => base_type_result
         Untyped => base_type_result
       }
       let slc_inferred = match slice_check {

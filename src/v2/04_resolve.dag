@@ -15,8 +15,8 @@ module v2.compiler.infer_resolve
 import std.types { SourceSpan }
 import v2.std.core {
   Node, Field, Param,
-  NodeType, Typed, InferError, Untyped, rt_node,
-  InferredNode, Resolved, CompilerError, is_compiler_error,
+  NodeType, Typed, InferError, InferVariable, Untyped, rt_node,
+  InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   diagnostic_node,
   Cardinality, Required,
   NoCollection,
@@ -388,6 +388,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
             match rt_node(n: resolved) {
               Typed { node: target } => target
               InferError { message: _, span: _ } => resolved
+              InferVariable { id: _ } => resolved
               Untyped => resolved
             }
           } else { resolved }
@@ -427,6 +428,9 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
           diagnostics: [diagnostic_node(severity: "error", message: msg, span: sp, module_name: Some { value: module_name }, category: none)]
         }
+      TypeVariable { id: _ } =>
+        // TypeVariable: unresolved type variable, preserve structurally.
+        NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
     }
   }
 }

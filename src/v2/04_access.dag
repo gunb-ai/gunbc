@@ -10,7 +10,7 @@ module v2.compiler.infer_access
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
-  InferredNode, Resolved, CompilerError,
+  InferredNode, Resolved, CompilerError, TypeVariable,
   diagnostic_node, diagnostic_message,
   leaf_node, with_optional_cardinality,
   Connective, NoConnective,

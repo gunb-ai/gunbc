@@ -15,7 +15,7 @@
 module v2.compiler.emit_rust
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError, is_compiler_error,
+  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   Param, LiteralValue,
   ExprData, NoExprData,

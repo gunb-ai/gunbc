@@ -12,8 +12,8 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node,
   ExprData, NoExprData,
-  InferredNode, Resolved, CompilerError, is_compiler_error,
-  NodeType, Typed, InferError, Untyped,
+  InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   Connective, Disj, NoConnective,
   CollectionKind, NoCollection,
@@ -81,6 +81,7 @@ fn pattern_subject_from_node_type(n: NodeType) -> PatternSubject {
   match n {
     Typed { node: resolved } => pattern_subject_from_node(n: resolved)
     InferError { message: _, span: _ } => PatternLookupBlocked
+    InferVariable { id: _ } => PatternLookupBlocked
     Untyped => PatternLookupBlocked
   }
 }
