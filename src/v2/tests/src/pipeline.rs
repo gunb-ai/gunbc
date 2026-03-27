@@ -88,6 +88,27 @@ fn python_emit_generates_mock_test_file() {
 }
 
 #[test]
+fn python_test_file_syntax_valid() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Python);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "tests/test_mock_smoke.py");
+
+    // Validate via python3 ast.parse — checks real Python syntax validity
+    let status = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(format!("import ast; ast.parse({})", serde_json::to_string(&content).unwrap()))
+        .output()
+        .expect("failed to invoke python3");
+    assert!(
+        status.status.success(),
+        "emitted Python test file is not valid Python syntax:\n--- stderr ---\n{}\n--- content ---\n{}",
+        String::from_utf8_lossy(&status.stderr),
+        content,
+    );
+}
+
+#[test]
 fn go_emit_generates_mock_test_file() {
     let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
     let result = compile_dag_target(source, RenderTarget::Go);
@@ -95,6 +116,25 @@ fn go_emit_generates_mock_test_file() {
     let content = find_file(&result, "mock_smoke_test.go");
     assert!(content.contains("func TestDemoApiPing("), "Go test file should contain a PascalCase generated test function");
     assert!(content.contains("// Signature:"), "Go test file should contain the projection signature comment");
+}
+
+#[test]
+fn go_test_file_syntax_valid() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_smoke_test.go");
+
+    // Valid Go test structure
+    assert!(content.contains("package "), "Go test file must declare a package");
+    assert!(content.contains("import"), "Go test file must have imports");
+    assert!(content.contains("func Test"), "Go test file must contain a Test function");
+    assert!(content.contains("testing.T"), "Go test file must reference testing.T");
+
+    // Must not contain syntax from other targets
+    assert!(!content.contains("fn "), "Go test file must not contain Rust 'fn ' syntax");
+    assert!(!content.contains("def "), "Go test file must not contain Python 'def ' syntax");
+    assert!(!content.contains("compile_error!"), "Go test file must not contain Rust compile_error! macro");
 }
 
 #[test]

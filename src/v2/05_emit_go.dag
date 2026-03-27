@@ -263,14 +263,17 @@ fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> 
 
 fn emit_go_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = go_test_name(projection: projection)
+  let struct_name = sanitize_service_name(name: projection.service_name)
+  let indent = make_indent(level: depth + 1)
   let mock_setup = projection.mock_field_inits
     |> map(mp => emit_go_mock_prop_setup(mock_prop: mp, depth: depth + 1))
     |> join(separator: "\n")
   concat(
     "func ", test_name, "(t *testing.T) {\n",
-    make_indent(level: depth + 1), go_test_signature_comment(projection: projection), "\n",
-    make_indent(level: depth + 1), mock_setup, "\n",
-    make_indent(level: depth + 1), "t.Helper()\n",
+    indent, go_test_signature_comment(projection: projection), "\n",
+    indent, "_ = ", struct_name, "{}\n",
+    indent, mock_setup, "\n",
+    indent, "// TODO: add dry-run support to Go service emission for full invocation tests\n",
     "}")
 }
 

@@ -1589,11 +1589,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
       let matches = bt.children |> enumerate |> filter(pair => pair.second.name == field)
       match matches |> first {
         Some { value: m } =>
-          if m.first == 0 { concat(base_str, ".0") }
-          else if m.first == 1 { concat(base_str, ".1") }
-          else if m.first == 2 { concat(base_str, ".2") }
-          else if m.first == 3 { concat(base_str, ".3") }
-          else { concat("compile_error!(\"anonymous record tuple index >= 4 for field: ", field, "\")") }
+          concat(base_str, ".", to_string(m.first))
         None => concat("compile_error!(\"anonymous record field not found: ", field, "\")")
       }
     }
@@ -3563,15 +3559,30 @@ fn rust_test_signature_comment(projection: TestProjection) -> String {
 
 fn emit_operation_test(projection: TestProjection, depth: Int) -> String {
   let test_name = rust_test_name(projection: projection)
-  let mock_setup = projection.mock_field_inits |> map(mp =>
-    emit_mock_prop_setup(mock_prop: mp, depth: depth + 1)
+  let struct_name = sanitize_service_name(name: projection.service_name)
+  let op_method = to_snake(name: projection.operation_name)
+  let indent = make_indent(level: depth + 1)
+  // Build parameter arguments for the operation call
+  let param_args = projection.params |> map(p =>
+    emit_rust_default_value(param: p)
   )
-  let mock_str = mock_setup |> join(separator: "\n")
+  let args_str = param_args |> join(separator: ", ")
+  let call_args = if args_str == "" { "" } else { args_str }
   concat(rust_async_test_decorator(), "\nasync fn ", test_name, "() {\n",
-    make_indent(level: depth + 1), rust_test_signature_comment(projection: projection), "\n",
-    make_indent(level: depth + 1),mock_str, "\n",
-    make_indent(level: depth + 1),"// Mock-based test: verifies operation contract with fixture data.", "\n",
+    indent, rust_test_signature_comment(projection: projection), "\n",
+    indent, "let service = ", struct_name, "::new(crate::dry_run::DryRunMode(true));\n",
+    indent, "let result = service.", emit_ident(name: op_method, target: Rust), "(", call_args, ").await;\n",
+    indent, "assert!(result.is_ok(), \"", struct_name, ".", projection.operation_name, " should succeed in dry-run mode: {:?}\", result.err());\n",
     "}")
+}
+
+fn emit_rust_default_value(param: Param) -> String {
+  let type_name = param.type_expr.name
+  if type_name == "String" { "String::new()" }
+  else if type_name == "Int" { "0" }
+  else if type_name == "Bool" { "false" }
+  else if type_name == "Float" { "0.0" }
+  else { concat("Default::default()") }
 }
 
 fn emit_mock_prop_setup(mock_prop: FieldInit, depth: Int) -> String {
