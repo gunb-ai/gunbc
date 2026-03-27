@@ -436,3 +436,85 @@ fn testgen_service_mock_source_gate() {
         "05_emit.dag should NOT contain starts_with_prefix"
     );
 }
+
+// ── Canonical accessor and fallback elimination audits ────────────────
+//
+// After the P5.11 child-layout centralization, ad-hoc `None => texpr`
+// fallbacks must not exist in consumer files. Child layout knowledge
+// lives in 00_core.dag accessors only.
+
+#[test]
+fn canonical_accessors_exist_in_core() {
+    let source = read_v2_file("src/v2/00_core.dag");
+    let accessors = [
+        "fn expr_child_at",
+        "fn if_condition", "fn if_then_branch", "fn if_else_branch",
+        "fn match_scrutinee", "fn match_arm_nodes",
+        "fn binop_left", "fn binop_right",
+        "fn unaryop_operand",
+        "fn field_access_base",
+        "fn method_receiver", "fn method_arg_nodes",
+        "fn lambda_body",
+        "fn let_value", "fn let_body",
+        "fn cast_expr", "fn cast_target",
+        "fn foreach_collection", "fn foreach_body",
+        "fn index_base", "fn index_expr",
+        "fn slice_base", "fn slice_start", "fn slice_end",
+        "fn return_value",
+    ];
+    for acc in &accessors {
+        assert!(source.contains(acc), "00_core.dag must define {}", acc);
+    }
+}
+
+#[test]
+fn no_self_fallback_in_consumer_files() {
+    // After accessor migration, no consumer file should contain the
+    // fail-open "None => texpr" or "None => expr" child-access pattern.
+    let files = [
+        "src/v2/04_infer.dag",
+        "src/v2/04_service.dag",
+        "src/v2/05_emit.dag",
+        "src/v2/05_emit_rust.dag",
+        "src/v2/05_emit_go.dag",
+        "src/v2/05_emit_python.dag",
+        "src/v2/complexity.dag",
+        "src/v2/ownership.dag",
+    ];
+    for path in &files {
+        let source = read_v2_file(path);
+        assert!(
+            !source.contains("None => texpr"),
+            "{} must not contain 'None => texpr' self-fallback (use canonical accessors)", path
+        );
+        assert!(
+            !source.contains("None => expr }"),
+            "{} must not contain 'None => expr' self-fallback (use canonical accessors)", path
+        );
+    }
+}
+
+#[test]
+fn serializer_has_no_expr_other_fallback() {
+    let source = read_v2_file("src/v2/compile.dag");
+    assert!(
+        !source.contains("ExprOther"),
+        "compile.dag serializer must not collapse any variant to ExprOther"
+    );
+}
+
+#[test]
+fn no_expr_data_before_catch_all_in_core() {
+    // The NoExprData arm must appear BEFORE any catch-all `_` in
+    // expr_has_non_tail_self_call. Verify by checking that NoExprData
+    // appears in the function and is not shadowed.
+    let source = read_v2_file("src/v2/00_core.dag");
+    let func_start = source.find("fn expr_has_non_tail_self_call").expect("function must exist");
+    let func_body = &source[func_start..];
+    let no_expr_pos = func_body.find("NoExprData =>").expect("NoExprData arm must exist");
+    let wildcard_pos = func_body.find("_ =>\n").expect("catch-all arm must exist");
+    assert!(
+        no_expr_pos < wildcard_pos,
+        "NoExprData must appear BEFORE catch-all _ in expr_has_non_tail_self_call"
+    );
+}

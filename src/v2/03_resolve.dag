@@ -6,14 +6,14 @@
 //   2. Resolves each import to its target module
 //   3. Validates imported names exist in target modules
 //   4. Detects circular dependencies
-//   5. Topologically sorts modules (leaves first)
+//   5. Topologically sorts modules (leaves first = dep_order 0)
 //
 // The resolver is the bridge between "a bag of parsed files" and
 // "an ordered graph the typechecker can walk front-to-back".
 
 module v2.compiler.resolve
 
-import v2.std.core { Node, Connective, Conj, Disj, SourceSpan, diagnostic_node, no_span, kernel_types, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
+import v2.std.core { Node, Connective, Conj, Disj, NoConnective, CollectionKind, NoCollection, diagnostic_node, no_span, kernel_types, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
 
 // =========================================================================
 // Output types
@@ -27,11 +27,14 @@ type ModuleGraph {
 type ResolvedModule {
   module: Node
   resolved_imports: List<ResolvedImport>
+  dep_order: Int
 }
 
 type ResolvedImport {
   module_path: String
-  target_span: SourceSpan?
+  is_all: Bool
+  specific_names: List<String>
+  target_module: Node?
 }
 
 // =========================================================================
@@ -106,18 +109,25 @@ fn resolve_modules(modules: List<Node>) -> ModuleGraph {
     None => []
   }
 
-  // Phase 4: build resolved modules in dependency order from topo sort.
-  // Iterating sorted_names produces leaves-first order directly.
-  // Modules not in the sorted output (cycle members) are excluded.
+  // Phase 4: assign dep_order from the sorted order.
+  // Modules not in the sorted output (cycle members) get no dep_order
+  // and are excluded from the acyclic result.
+  // Build a map from module name to its position in the sorted list for O(1) lookup.
   let sorted_names = topo_result.sorted
-  let acyclic_resolved = sorted_names |> flat_map(name =>
-    match map_get(module_index, name) {
-      Some { value: m } =>
-        match map_get(imports_by_name, name) {
+  let sorted_order_map = sorted_names |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
+    map_insert(acc, pair.second, pair.first)
+  )
+  let acyclic_resolved = modules |> flat_map(m =>
+    match map_get(sorted_order_map, m.name) {
+      Some { value: order } =>
+        match map_get(imports_by_name, m.name) {
+          // imports_by_name should contain every module -- None is
+          // unreachable. Default to [] only as a safe fallback.
           Some { value: imps } =>
             [ResolvedModule {
               module: m,
-              resolved_imports: imps
+              resolved_imports: imps,
+              dep_order: order
             }]
           None => []
         }
@@ -125,8 +135,11 @@ fn resolve_modules(modules: List<Node>) -> ModuleGraph {
     }
   )
 
+  // Sort resolved modules by dep_order (leaves first)
+  let sorted_resolved = acyclic_resolved |> sort_by(m => m.dep_order)
+
   ModuleGraph {
-    modules: acyclic_resolved,
+    modules: sorted_resolved,
     diagnostics: concat(dup_diags, import_diags, topo_diags)
   }
 }
@@ -156,7 +169,7 @@ fn resolve_module_imports(module: Node, module_index: Map<String, Node>, export_
     resolve_import(import: imp, module_index: module_index, importing_module: module.name, export_sets: export_sets)
   )
   let resolved = results
-    |> filter(r => r.resolved.target_span != none && (r.diagnostics |> count == 0))
+    |> filter(r => r.resolved.target_module != none && (r.diagnostics |> count == 0))
     |> map(r => r.resolved)
   let diags = results |> flat_map(r => r.diagnostics)
   ModuleResolveResult {
@@ -185,7 +198,9 @@ fn resolve_import(
       ImportResolveResult {
         resolved: ResolvedImport {
           module_path: import.name,
-          target_span: None
+          is_all: import_is_all(n: import),
+          specific_names: import_specific_names(n: import),
+          target_module: None
         },
         diagnostics: [diag]
       }
@@ -207,7 +222,9 @@ fn resolve_import(
       ImportResolveResult {
         resolved: ResolvedImport {
           module_path: import.name,
-          target_span: Some { value: target_mod.span }
+          is_all: import_is_all(n: import),
+          specific_names: import_specific_names(n: import),
+          target_module: Some { value: target_mod }
         },
         diagnostics: name_diags
       }
@@ -245,7 +262,7 @@ fn get_item_name(item: Node) -> String {
 // For sum types (disjunction), each child node is a variant whose name
 // is importable. For other items, returns an empty list.
 fn get_variant_names(item: Node) -> List<String> {
-  let is_coproduct = item.connective != none && item.connective == Some { value: Disj }
+  let is_coproduct = item.connective == Disj
   if is_coproduct { item.children |> map(c => c.name) }
   else { [] }
 }

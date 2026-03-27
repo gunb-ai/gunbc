@@ -16,7 +16,8 @@ import extdeps.languages.rust.emit {
   rust_struct_derives, rust_struct_derives_copy,
   rust_enum_derives, rust_enum_derives_copy,
   rust_serde_tag, rust_serde_rename_template,
-  rust_source_extension, rust_source_dir, rust_visibility
+  rust_source_extension, rust_source_dir, rust_visibility,
+  rust_value_types, rust_string_types
 }
 
 import extdeps.languages.python.emit {
@@ -218,6 +219,23 @@ fn target_container_template(target: RenderTarget, kind: String) -> String? {
     Go => lookup(go_container_templates, key: kind)
     Python => lookup(python_container_templates, key: kind)
     Dag => none
+  }
+}
+
+// Value-semantic type check: is this type rendered as Copy in the target?
+// Reads from language extdep data — no hardcoded type names in the compiler.
+fn is_value_type(target: RenderTarget, name: String) -> Bool {
+  match target {
+    Rust => rust_value_types |> any(t => t == name)
+    _ => false
+  }
+}
+
+// String-like type check: does this type use string comparison semantics?
+fn is_string_like(target: RenderTarget, name: String) -> Bool {
+  match target {
+    Rust => rust_string_types |> any(t => t == name)
+    _ => false
   }
 }
 

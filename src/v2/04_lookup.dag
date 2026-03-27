@@ -11,8 +11,8 @@ module v2.compiler.infer_lookup
 
 import v2.std.core {
   Node, Param,
-  InferredNode, Resolved,
-  NodeType, Typed, InferError, Untyped,
+  InferredNode, Resolved, TypeVariable,
+  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   IntrinsicMethod,
   MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
@@ -21,12 +21,13 @@ import v2.std.core {
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  node_is_product, node_is_coproduct, node_has_structure
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, MapKind,
+  CardOptional
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
   error_type_node,
-  node_is_optional, node_is_map,
   normalize_access_type_node,
   rt_type, rt_node,
   emit_map_has
@@ -48,6 +49,13 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_service {
   OpEntry, ServiceMethodResult,
   check_service_method_call_node
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
 }
 
 // =========================================================================
@@ -79,7 +87,8 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 // =========================================================================
 
 fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
-  if node_is_optional(n: n) {
+  let is_optional = n.return_cardinality == CardOptional
+  if is_optional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
       Some { value: inner }
@@ -89,17 +98,21 @@ fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
         None => none
       }
     }
-  } else if node_has_structure(n: n) {
-    if node_is_product(n: n) {
-      match n.children |> filter(c => c.name == field_name) |> first {
-        Some { value: field_child } =>
-          Some { value: child_inferred_or_name(ch: field_child) }
-        None => none
+  } else {
+    let has_structure = n.connective != NoConnective
+    if has_structure {
+      let is_product = n.connective == Conj
+      if is_product {
+        match n.children |> filter(c => c.name == field_name) |> first {
+          Some { value: field_child } =>
+            Some { value: child_inferred_or_name(ch: field_child) }
+          None => none
+        }
+      } else {
+        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
       }
-    } else {
-      lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
-    }
-  } else { none }
+    } else { none }
+  }
 }
 
 fn lookup_coproduct_common_field_node(variants: List<Node>, field_name: String) -> Node? {
@@ -129,24 +142,23 @@ fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
 }
 
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
-  // Temporary bridge: scrutinee resolution still normalizes names and
-  // rewraps Optional after environment lookup. Access and match-pattern
-  // inference now carry explicit failure state before entering this helper,
-  // so this function should only resolve successfully typed scrutinee shapes.
-  // P5.8: normalize_type_name deleted. Canonical names are raw names.
+  // TypeVariable nodes are unresolved placeholders -- return as-is.
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  if n_is_type_var { return n }
   let normed = normalize_access_type_node(n: n)
-  if node_has_structure(n: normed) == false && normed.children |> count == 0 {
+  if normed.connective == NoConnective && normed.children |> count == 0 {
     let canonical = normed.name
     if normed.inferred != none {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match rt_node(n: normed) {
         Typed { node: target } =>
-          if target.name == normed.name && target.inferred == none && node_has_structure(n: target) == false && target.children |> count == 0 {
+          if target.name == normed.name && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
             resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
           }
         InferError { message: _, span: _ } => normed
+        InferVariable { id: _ } => normed
         Untyped => normed
       }
     } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
@@ -155,13 +167,14 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match lookup_type(env: env, name: normed.name) {
         Some { value: resolved } =>
-          if resolved.name == normed.name && resolved.inferred == none && node_has_structure(n: resolved) == false && resolved.children |> count == 0 {
+          if resolved.name == normed.name && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
             normed
           } else {
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
             // Preserve Optional scrutinee shape during alias/type-env lookup
             // until Optional itself becomes fully structural in the lookup path.
-            if node_is_optional(n: normed) { with_optional_cardinality(n: result) } else { result }
+            let is_optional = normed.return_cardinality == CardOptional
+            if is_optional { with_optional_cardinality(n: result) } else { result }
           }
         None => normed
       }
@@ -173,7 +186,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if node_is_map(n: map_type) && map_type.children |> count >= 2 {
+  if map_type.collection_kind == MapKind && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -186,7 +199,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
   let normed = normalize_access_type_node(n: resolved)
-  let normed_opt = node_is_optional(n: normed)
+  let normed_opt = normed.return_cardinality == CardOptional
   if field == "value" && normed_opt {
     Some { value: FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
   } else if normed_opt {
@@ -200,10 +213,12 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
       None => none
     }
   } else {
-    if node_has_structure(n: resolved) == false {
+    let no_structure = resolved.connective == NoConnective
+    if no_structure {
       none
     } else {
-      if node_is_product(n: resolved) {
+      let is_product = resolved.connective == Conj
+      if is_product {
         map_get(build_struct_field_summaries(children: resolved.children), field)
       } else {
         map_get(build_enum_field_summaries(variants: resolved.children), field)
@@ -216,7 +231,50 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 // Known method resolution
 // =========================================================================
 
+// Structural field lookup: check if the receiver type's declaration has
+// a child with the requested method name (e.g., OrderedRing<T>.add).
+// Returns the RETURN TYPE of calling that method, not the method's
+// signature. For add: fn(T,T)->T, returns T (the call result type).
+fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
+  let is_product = receiver_type.connective == Conj
+  if is_product {
+    let matching = receiver_type.children |> filter(c => c.name == method_name)
+    match matching |> first {
+      Some { value: field } =>
+        // Found a structural field matching the method name.
+        // The field's inferred type is the method's signature.
+        // If it's a callable (has params), extract its return type.
+        // If it's a non-callable (e.g., zero: T), return its type directly.
+        match field.inferred {
+          Some { value: Resolved { node: rt } } =>
+            if rt.params |> count > 0 {
+              // Callable field: return type is the callable's own inferred type
+              match rt.inferred {
+                Some { value: Resolved { node: return_type } } => Some { value: return_type }
+                _ => Some { value: rt }
+              }
+            } else {
+              // Non-callable field (e.g., zero: T, one: T): return type directly
+              Some { value: rt }
+            }
+          _ => none
+        }
+      None => none
+    }
+  } else { none }
+}
+
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
+  // Tier 0: Structural field lookup on the resolved type.
+  // If the receiver's type declaration has a field matching the method name
+  // (e.g., OrderedRing<T>.add), use its signature directly.
+  match lookup_structural_method(receiver_type: receiver_type, method_name: method_name) {
+    Some { value: result_type } =>
+      KnownMethodResolution {
+        semantics: none,
+        result_type: Some { value: result_type }
+      }
+    None =>
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry) {
     Some { value: svc_result } =>
       KnownMethodResolution {
@@ -248,5 +306,6 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
               KnownMethodResolution { semantics: none, result_type: none }
           }
       }
+  }
   }
 }

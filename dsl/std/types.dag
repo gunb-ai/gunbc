@@ -43,7 +43,36 @@ module std.types
 //   Unit   = Dag{Identity}      [Unit]   = {} (bottom, _|_)
 //   Json   = Dag{Identity}      [Json]   = [Bool] U [Int] U ... U {null} (top, T)
 //
-// (built-in to the compiler, listed here for documentation)
+// Kernel type declarations.
+//
+// The compiler's bootstrap kernel seed (leaf nodes) provides fallback
+// bindings for isolated tests. These declarations override the seed via
+// the normal merge order (kernel < imports < local).
+//
+// COMPOSITIONAL TARGET (Part B of P5.13):
+// These types will compose from algebraic structures in std/algebra.dag:
+//   Int    = OrderedRing<Word64>      — arithmetic emerges from Ring
+//   Float  = Field<Word64>            — division emerges from Field
+//   String = FreeMonoid<Char>         — concat/length emerge from Monoid
+//   Bool   = BooleanAlgebra<{T,F}>    — and/or/not emerge from Lattice
+// Until Part B lands (inference resolves methods from type fields),
+// the compiler still uses kernel_types/is_kernel_type for these.
+
+// Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
+// Target: Bool = BooleanAlgebra over {True, False}.
+type Bool = True | False
+
+// Unit: terminal object (zero-field product, single inhabitant).
+type Unit
+
+// Secret, Json, Bytes: opaque kernel types.
+type Secret
+type Json
+type Bytes
+
+// Int, Float, String declared in std/integer.dag, std/float.dag,
+// std/string_type.dag respectively. Currently use v1-era where syntax;
+// will be rewritten as algebra.dag compositions in Part B.
 
 // --- Char type (structural primitive) ----------------------------------
 // Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
@@ -54,9 +83,18 @@ module std.types
 type Char = Int where brand("Char"), range(min: 0, max: 1114111)
 
 // --- Container types (parameterized) -----------------------------------
-// Bare declarations with type parameters. The compiler reads arity from
-// params and renders to target-language containers. The algebraic
-// structure (Nil|Cons for List, etc.) is denotational -- not compiled.
+// Each container inhabits a specific algebraic structure from which its
+// operations emerge (see std/algebra.dag).
+//
+// Denotational equations (from Collection Denotational Model in ROADMAP):
+//   List<A>  = Σ n. Fin(n) → A         (positional, ordered, duplicates OK)
+//   Set<A>   = A → Bool                 (membership, unordered, unique)
+//   Map<K,V> = K → (1 + V)             (keyed partial function)
+//
+// Algebraic inhabitation:
+//   List<T>  inhabits FreeMonoid<T>     → append, empty, length, map, fold, filter
+//   Set<A>   inhabits BooleanAlgebra<A> → union, intersect, diff, member
+//   Map<K,V> inhabits PartialFunction<K,V> → lookup, insert, delete, merge
 type List<element>
 type Set<element>
 type Map<key, value>

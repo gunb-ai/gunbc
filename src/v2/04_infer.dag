@@ -25,7 +25,8 @@ import v2.std.core {
   Node,
   module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names,
   Field, Variant, Param,
-  Connective, Conj, Disj,
+  Connective, Conj, Disj, NoConnective,
+  CollectionKind, NoCollection,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -33,21 +34,9 @@ import v2.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_expr_error_node,
   make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
-  field_init_node_name, field_init_node_value,
   map_children, arg_value, arg_name,
-  arm_body, arm_pattern, arm_guard,
-  if_condition, if_then_branch, if_else_branch,
-  match_scrutinee, match_arm_nodes,
-  let_value, let_body,
-  field_access_base, lambda_body,
-  method_receiver, method_arg_nodes,
-  binop_left, binop_right,
-  foreach_collection, foreach_body,
-  index_base, index_expr, slice_base, slice_start, slice_end,
-  cast_target, cast_expr, return_value, unaryop_operand,
-  CollectionKind, diagnostic_is_error,
-  rt_node, has_inferred, InferredNode, Resolved, CompilerError,
-  NodeType, Typed, InferError, Untyped,
+  rt_node, has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
+  NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required, CardOptional,
   diagnostic_node,
   ResourceUse,
@@ -85,7 +74,8 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   Text, Interpolation,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  node_is_product, node_is_coproduct, node_has_structure, no_span
+  ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
+  no_span
 }
 import v2.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v2.compiler.infer_types {
@@ -94,12 +84,9 @@ import v2.compiler.infer_types {
   map_node, bare_map_node,
   tuple_node, callable_node, callable_inferred,
   error_type_node,
-  node_is_container, node_is_optional, node_is_map,
-  node_is_leaf, node_is_named_ref,
   normalize_access_type_node,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps, collection_kind_for_name,
-  is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
@@ -354,7 +341,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
             }
             // Data declarations: body, no params, no transport, no connective.
             // Add to scope as local variables so importing modules can reference them.
-            else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && node_has_structure(n: titem) == false && titem.inferred != none {
+            else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
                 svc_registry: acc.svc_registry,
@@ -437,7 +424,8 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
     Some { value: binding } =>
       match lookup_type(env: scope.type_env, name: binding.resolved.name) {
         Some { value: parent } =>
-          if node_is_coproduct(n: parent) {
+          let is_coproduct = parent.connective == Disj
+          if is_coproduct {
             if parent.children |> any(child => child.name == name) {
               Some { value: binding.resolved.name }
             } else { none }
@@ -467,10 +455,22 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   diagnostic_node(severity: "error", message: message, span: span, module_name: Some { value: module_name }, category: Some { value: category })
 }
 
+fn type_variable_node(id: String) -> Node {
+  Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+fn is_type_variable(inferred: InferredNode) -> Bool {
+  match inferred {
+    TypeVariable { id: _ } => true
+    _ => false
+  }
+}
+
 fn inferred_from_node_type(result: NodeType, fallback_message: String, fallback_span: SourceSpan) -> InferredNode {
   match result {
     Typed { node: resolved } => Resolved { node: resolved }
     InferError { message: message, span: span } => CompilerError { message: message, span: span }
+    InferVariable { id: id } => TypeVariable { id: id }
     Untyped => CompilerError { message: fallback_message, span: fallback_span }
   }
 }
@@ -505,11 +505,14 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
       let inferred_parent = match resolved_scrut {
         PatternResolved { node: resolved_scrut_node } =>
-          if node_is_optional(n: resolved_scrut_node) && (variant_name == "Some" || variant_name == "None") {
+          if resolved_scrut_node.return_cardinality == CardOptional && (variant_name == "Some" || variant_name == "None") {
             Some { value: "Optional" }
-          } else if node_is_coproduct(n: resolved_scrut_node) {
-            Some { value: resolved_scrut_node.name }
-          } else { none }
+          } else {
+            let is_coproduct = resolved_scrut_node.connective == Disj
+            if is_coproduct {
+              Some { value: resolved_scrut_node.name }
+            } else { none }
+          }
         PatternDynamic { span: _ } => none
         PatternLookupBlocked => none
       }
@@ -568,9 +571,8 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node) -> InferScope {
 
 // Extend scope with lambda parameter names.
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
-  // Dynamic audit: correct — lambda params start as Dynamic; refined during body inference
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p, TypeBinding { name: p, resolved: leaf_node(name: "Dynamic") })
+    map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param") })
   )
   InferScope {
     type_env: scope.type_env,
@@ -682,8 +684,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         } else if pair.first == param_count - 1 {
           elem_type
         } else {
-          // Dynamic audit: correct — fold middle params are structurally unknown
-          leaf_node(name: "Dynamic")
+          type_variable_node(id: "fold_middle_param")
         }
       )
       let lam_locals = fold(lam_params |> enumerate, init: scope.locals, f: (acc_locals, pair) =>
@@ -692,8 +693,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
         } else if pair.first == param_count - 1 {
           map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: elem_type })
         } else {
-          // Dynamic audit: correct — fold middle params are structurally unknown
-          map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: leaf_node(name: "Dynamic") })
+          map_insert(acc_locals, pair.second, TypeBinding { name: pair.second, resolved: type_variable_node(id: "fold_middle_param") })
         }
       )
       let typed_lam_scope = InferScope {
@@ -725,7 +725,7 @@ fn infer_fold_lambda_arg(arg: NamedArg, scope: InferScope, acc_type: Node, elem_
 // Collection function call inference: fold, flat_map, map, filter, any, all
 //
 // Infers the collection arg first to extract element type, then types
-// lambda params from the element type instead of Dynamic.
+// lambda params from the element type instead of type variables.
 // -------------------------------------------------------------------------
 
 fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: InferScope) -> InferResult {
@@ -740,8 +740,7 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
           if pair.first == (lam_params |> count) - 1 {
             element_type
           } else {
-            // Dynamic audit: correct — multi-param lambda non-last params are unknown
-            leaf_node(name: "Dynamic")
+            type_variable_node(id: "lambda_non_last_param")
           }
         )
       }
@@ -751,13 +750,11 @@ fn infer_lambda_with_element_type(lambda_expr: Node, element_type: Node, scope: 
           None => scope
         }
       } else {
-        // Multi-param (e.g. fold): type last param as element, others stay Dynamic
         fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
           if pair.first == (lam_params |> count) - 1 {
             extend_scope(scope: acc, name: pair.second, resolved: element_type)
           } else {
-            // Dynamic audit: correct — multi-param lambda non-last params are unknown
-            extend_scope(scope: acc, name: pair.second, resolved: leaf_node(name: "Dynamic"))
+            extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_non_last_param"))
           }
         )
       }
@@ -797,13 +794,13 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
       let param_types = lam_params |> enumerate |> map(pair =>
         match callable_params |> skip(pair.first) |> first {
           Some { value: cp } => cp.type_expr
-          None => leaf_node(name: "Dynamic")
+          None => type_variable_node(id: "callable_param")
         }
       )
       let typed_scope = fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
         let pt = match callable_params |> skip(pair.first) |> first {
           Some { value: cp } => cp.type_expr
-          None => leaf_node(name: "Dynamic")
+          None => type_variable_node(id: "callable_param")
         }
         extend_scope(scope: acc, name: pair.second, resolved: pt)
       )
@@ -827,7 +824,7 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
 
 fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>, receiver_type: Node, fallback: Node) -> Node {
   let receiver_type_name = receiver_type.name
-  let receiver_is_map = node_is_map(n: receiver_type)
+  let receiver_is_map = receiver_type.collection_kind == MapKind
   if method_name == "map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } =>
@@ -837,12 +834,12 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
     }
   } else if method_name == "flat_map" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
+      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
   } else if method_name == "fold" {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
-      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
+      Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
   } else if method_name == "list_push" && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
@@ -850,23 +847,24 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
       Some { value: item_arg } => match rt_node(n: item_arg.value) {
         Typed { node: rt } => container_node(kind_name: "List", element: rt)
         InferError { message: _, span: _ } => fallback
+        InferVariable { id: _ } => fallback
         Untyped => fallback
       }
       None => fallback
     }
   } else if method_name == "map_insert" && receiver_type.children |> count == 0 && receiver_is_map && typed_args |> count >= 2 {
     let key_type = match typed_args |> first {
-      Some { value: key_arg } => match rt_node(n: key_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback }
+      Some { value: key_arg } => match rt_node(n: key_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
     match typed_args |> skip(1) |> first {
       Some { value: val_arg } =>
-        map_node(key: key_type, value: match rt_node(n: val_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  Untyped => fallback })
+        map_node(key: key_type, value: match rt_node(n: val_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback })
       None => fallback
     }
   } else if method_name == "map_merge" && receiver_is_map && typed_args |> count >= 1 {
     let overlay_type = match typed_args |> first {
-      Some { value: overlay_arg } => match rt_node(n: overlay_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => receiver_type  Untyped => receiver_type }
+      Some { value: overlay_arg } => match rt_node(n: overlay_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => receiver_type  InferVariable { id: _ } => receiver_type  Untyped => receiver_type }
       None => receiver_type
     }
     if receiver_type.children |> count == 0 && overlay_type.children |> count > 0 {
@@ -955,9 +953,10 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let base_result = infer_expr(texpr: base_expr, scope: scope)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
-      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => leaf_node(name: "Unit") }
+      let base_rt = match rt_node(n: base_typed) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => leaf_node(name: "Unit") }
       let resolved_base = resolve_scrutinee_type_node(env: scope.type_env, n: base_rt)
-      if resolved_base.name == "Error" {
+      let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
+      if resolved_base_is_error {
         InferResult {
           typed: make_expr_error_node(kind: SemanticExprError, message: "error type cascade", span: span),
           diagnostics: base_diags
@@ -977,12 +976,12 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             diagnostics: base_diags
           }
         None =>
-          // Dynamic audit: correct — field access on Dynamic base; type is genuinely unknown
-          if resolved_base.name == "Dynamic" {
+          let base_is_type_var = if resolved_base.inferred != none { is_type_variable(inferred: resolved_base.inferred.value) } else { false }
+          if base_is_type_var {
             let fa_texpr = make_expr_node(
               expr_data: ExprFieldAccess { field: field_name, summary: Some { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
               children: [base_typed],
-              inferred: Some { value: Resolved { node: leaf_node(name: "Dynamic") } },
+              inferred: Some { value: TypeVariable { id: "field_of_type_var" } },
               span: span
             )
             InferResult {
@@ -1036,7 +1035,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let call_method_args = call_args |> skip(1)
       let call_fold_info = extract_fold_init_info(method_name: func_name, method_args: call_method_args, min_args: 2, scope: scope)
       let call_fold_acc_type = match call_fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => error_type_node() }
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => error_type_node() }
         None => error_type_node()
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
@@ -1061,9 +1060,9 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let a = pair.second
           let formal_param_type = match sig_params |> skip(pair.first) |> first {
             Some { value: p } => p.type_expr
-            None => leaf_node(name: "Dynamic")
+            None => type_variable_node(id: "callable_param")
           }
-          let is_callable_formal = formal_param_type.name == "Callable"
+          let is_callable_formal = formal_param_type.params |> count > 0
           if is_lambda_expr(e: a.value) && is_callable_formal {
             infer_lambda_with_callable_type(lambda_expr: a.value, callable_type: formal_param_type, arg_name: a.name, scope: scope)
           } else {
@@ -1175,7 +1174,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           // Tier 2c: callable-typed local (e.g. parameter `recurse: fn(Node) -> String`)
           let callable_local = match map_get(scope.locals, func_name) {
             Some { value: binding } =>
-              if binding.resolved.name == "Callable" { Some { value: binding.resolved } }
+              if binding.resolved.params |> count > 0 { Some { value: binding.resolved } }
               else { none }
             None => none
           }
@@ -1230,13 +1229,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let recv_result = infer_expr(texpr: recv, scope: scope)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
-      // Type lambda args from receiver's element type instead of Dynamic.
+      // Type lambda args from receiver's element type instead of type variables.
       // For fold: also infer init arg to type accumulator param.
       let recv_rt = rt_type(n: recv_typed)
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
       let fold_info = extract_fold_init_info(method_name: method_name, method_args: mc_args, min_args: 2, scope: scope)
       let fold_acc_type = match fold_info {
-        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  Untyped => error_type_node() }
+        Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type_node()  InferVariable { id: _ } => error_type_node()  Untyped => error_type_node() }
         None => error_type_node()
       }
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
@@ -1395,13 +1394,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
     ExprLet { name: let_name } =>
       let span = texpr.span
       // children: [value] or [value, body]
-      let let_value = let_value(texpr: texpr)
-      let let_body = let_body(texpr: texpr)
-      let val_result = infer_expr(texpr: let_value, scope: scope)
+      let val_expr = let_value(texpr: texpr)
+      let body_expr = let_body(texpr: texpr)
+      let val_result = infer_expr(texpr: val_expr, scope: scope)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics
       let val_type = rt_type(n: val_typed)
-      if let_body == none {
+      if body_expr == none {
         let let_texpr = make_expr_node(expr_data: ExprLet { name: let_name }, children: [val_typed], inferred: Some { value: Resolved { node: val_type } }, span: span)
         InferResult {
           typed: let_texpr,
@@ -1409,7 +1408,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         }
       } else {
         let extended = extend_scope(scope: scope, name: let_name, resolved: val_type)
-        let body_result = infer_expr(texpr: let_body.value, scope: extended)
+        let body_result = infer_expr(texpr: body_expr.value, scope: extended)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
         let let_texpr2 = make_expr_node(expr_data: ExprLet { name: let_name }, children: [val_typed, body_typed], inferred: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
@@ -1612,14 +1611,17 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
                 module_name: scope.module_name
               ) }
             InferError { message: _, span: _ } => none
+            InferVariable { id: _ } => none
             Untyped => none
           }
         InferError { message: _, span: _ } => none
+        InferVariable { id: _ } => none
         Untyped => none
       }
       let access_failure_source = match base_type_result {
         Typed { node: _ } => index_type_result
         InferError { message: _, span: _ } => base_type_result
+        InferVariable { id: _ } => base_type_result
         Untyped => base_type_result
       }
       let idx_inferred = match index_check {
@@ -1668,12 +1670,15 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
                     module_name: scope.module_name
                   ) }
                 InferError { message: _, span: _ } => none
+                InferVariable { id: _ } => none
                 Untyped => none
               }
             InferError { message: _, span: _ } => none
+            InferVariable { id: _ } => none
             Untyped => none
           }
         InferError { message: _, span: _ } => none
+        InferVariable { id: _ } => none
         Untyped => none
       }
       let access_failure_source = match base_type_result {
@@ -1681,9 +1686,11 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           match start_type_result {
             Typed { node: _ } => end_type_result
             InferError { message: _, span: _ } => start_type_result
+            InferVariable { id: _ } => start_type_result
             Untyped => start_type_result
           }
         InferError { message: _, span: _ } => base_type_result
+        InferVariable { id: _ } => base_type_result
         Untyped => base_type_result
       }
       let slc_inferred = match slice_check {
@@ -1750,16 +1757,16 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
         name: fir.typed_field.name, span: no_span(),
-        children: [], connective: none,
-        collection_kind: none,
+        children: [], connective: NoConnective,
+        collection_kind: NoCollection,
         params: [], inferred: Some { value: Resolved { node: rt_type(n: fir.infer_result.typed) } }, return_cardinality: Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
     )
     let anon_node = Node {
       name: "", span: no_span(),
-      children: child_nodes, connective: Some { value: Conj },
-      collection_kind: none,
+      children: child_nodes, connective: Conj,
+      collection_kind: NoCollection,
       params: [], inferred: none, return_cardinality: Required, uses: [],
       body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
@@ -1830,7 +1837,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
   // Type definition: has connective (record/sum) and is not a transport binding
-  if node_has_structure(n: item) && item.transport == none {
+  if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
@@ -1858,12 +1865,12 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: item.uses, body: Some { value: body_typed },
-        connective: none, transport: item.transport,
-        collection_kind: none,
+        connective: NoConnective, transport: item.transport,
+        collection_kind: NoCollection,
         properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
-        match_pattern: none, expr_data: NoExprData
+        expr_data: NoExprData
       },
       diagnostics: body_diags
     }
@@ -1880,8 +1887,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: [], params: [],
         inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: [], body: Some { value: body_typed },
-        connective: none, transport: item.transport,
-        collection_kind: none,
+        connective: NoConnective, transport: item.transport,
+        collection_kind: NoCollection,
         properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
@@ -1898,8 +1905,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: [], params: [],
         inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: [], body: Some { value: val_typed },
-        connective: none, transport: item.transport,
-        collection_kind: none,
+        connective: NoConnective, transport: item.transport,
+        collection_kind: NoCollection,
         properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
@@ -1913,8 +1920,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       item: Node {
         name: item.name, span: item.span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: Some { value: Resolved { node: resolved_ret } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
-        connective: none, transport: item.transport,
-        collection_kind: none,
+        connective: NoConnective, transport: item.transport,
+        collection_kind: NoCollection,
         properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       },
@@ -1976,22 +1983,28 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Seed the kernel with primitive types so they resolve even when
   // std.types is not in the compilation set (e.g., in isolated tests).
   let zero_span = SourceSpan { start: 0, end: 0 }
-  let kernel_bindings = fold(
+  // Build kernel type bindings. Unit is the terminal object — empty product
+  // (Conj + 0 children), structurally unique among kernel types.
+  let kernel_bindings_base = fold(
     kernel_types,
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding {
       name: name,
-      resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      resolved: Node { name: name, span: no_span(), children: [], connective: NoConnective, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     })
   )
+  // Override Unit with Conj connective (empty product, structurally distinct)
+  let kernel_bindings = map_insert(kernel_bindings_base, "Unit", TypeBinding {
+    name: "Unit",
+    resolved: Node { name: "Unit", span: no_span(), children: [], connective: Conj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  })
   // Register Optional as a Disj type so lookup_type("Optional") succeeds.
   // The real Optional is parametric (Optional<T>), but the kernel provides
   // the structural skeleton (Disj with Some/None variants) so that
   // RecordLit and pattern matching resolve variant constructors correctly.
-  // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
-  let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let some_value_field = Node { name: "value", span: zero_span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Disj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
 
@@ -2009,13 +2022,14 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
-  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_span.value, module_name: Some { value: module.module.name }, category: Some { value: "unresolved_name" })] })
+  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span, module_name: Some { value: module.module.name }, category: Some { value: "unresolved_name" })] })
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
   // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    if node_has_structure(n: item) {
+    let has_structure = item.connective != NoConnective
+    if has_structure {
       let type_node = Node {
         name: item.name, span: item.span, children: item.children,
         connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
@@ -2029,7 +2043,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       // For aliases, create a leaf node referencing the aliased type
       let alias_node = Node {
         name: item.name, span: item.span, children: [],
-        connective: none, collection_kind: none, params: [], inferred: item.inferred,
+        connective: NoConnective, collection_kind: NoCollection, params: [], inferred: item.inferred,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -2038,25 +2052,25 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = Node {
         name: item.name, span: item.span, children: [],
-        connective: none, collection_kind: none, params: [],
+        connective: NoConnective, collection_kind: NoCollection, params: [],
         inferred: Some { value: Resolved { node: leaf_node(name: item.name) } },
         return_cardinality: Required,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
-    } else if item.params |> count > 0 && node_has_structure(n: item) == false && item.body == none && item.transport == none {
+    } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
       // Bare parameterized type declaration (e.g., type List<element>, type Map<key, value>).
       // Register as a nominal type with params so generics can find the declaration.
       let bare_node = Node {
         name: item.name, span: item.span, children: [],
-        connective: none, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
+        connective: NoConnective, collection_kind: collection_kind_for_name(name: item.name), params: item.params, inferred: none,
         return_cardinality: item.return_cardinality,
         uses: [], body: none, transport: none, properties: [],
         type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: bare_node })
-    } else if item.properties |> count > 0 && node_has_structure(n: item) == false && item.transport == none && item.inferred == none && item.params |> count == 0 {
+    } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       // Resource declaration: has properties (kind, mode) but no children/connective.
       // Register as a nominal type so it can be referenced in `uses` clauses.
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: leaf_node(name: item.name) })
@@ -2115,12 +2129,11 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     kernel_types,
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), children: [], connective: none, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } })
+    f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), children: [], connective: NoConnective, collection_kind: collection_kind_for_name(name: name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } })
   )
-  // Dynamic audit: correct — Some.value is parametric; T is unknown until use-site specialization
-  let some_value_field = Node { name: "value", span: zero_span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: leaf_node(name: "Dynamic") } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Some { value: Disj }, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let some_value_field = Node { name: "value", span: zero_span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let some_variant = Node { name: "Some", span: zero_span, children: [some_value_field], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: zero_span, children: [some_variant, leaf_node(name: "None")], connective: Disj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map() }
   let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
@@ -2129,16 +2142,17 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
-    if node_has_structure(n: item) {
+    let has_structure = item.connective != NoConnective
+    if has_structure {
       let type_node = Node { name: item.name, span: item.span, children: item.children, connective: item.connective, collection_kind: collection_kind_for_name(name: item.name), params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: type_node })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { name: item.name, span: item.span, children: [], connective: none, collection_kind: none, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let alias_node = Node { name: item.name, span: item.span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: alias_node })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = Node { name: item.name, span: item.span, children: [], connective: none, collection_kind: none, params: [], inferred: Some { value: Resolved { node: leaf_node(name: item.name) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let ref_node = Node { name: item.name, span: item.span, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: leaf_node(name: item.name) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: ref_node })
-    } else if item.properties |> count > 0 && node_has_structure(n: item) == false && item.transport == none && item.inferred == none && item.params |> count == 0 {
+    } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
       map_insert(acc, item.name, TypeBinding { name: item.name, resolved: leaf_node(name: item.name) })
     } else {
       acc
@@ -2302,7 +2316,8 @@ fn build_module_context(contributions: List<ItemContribution>,
   // through TypeEnv. binding.resolved.name still returns the enum's name for
   // lookup_variant_parent_enum and record lit inference.
   let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
-    if node_is_coproduct(n: binding.resolved) {
+    let is_coproduct = binding.resolved.connective == Disj
+    if is_coproduct {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         map_insert(vacc, child.name, TypeBinding {
           name: child.name,
@@ -2556,7 +2571,7 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
   let diagnostics = flat_map(resolved.resolved_imports, imp =>
     match map_get(module_index, imp.module_path) {
       Some { value: _ } => []
-      None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"), span: imp.target_span.value, module_name: Some { value: resolved.module.name }, category: Some { value: "unresolved_name" })]
+      None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"), span: imp.target_module.value.span, module_name: Some { value: resolved.module.name }, category: Some { value: "unresolved_name" })]
     }
   )
   ParentModulesResult { modules: modules, diagnostics: diagnostics }
@@ -2590,7 +2605,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
 // =========================================================================
 // Main entry point: typecheck
 //
-// Processes modules in dependency order (from the resolver's topo sort).
+// Processes modules in dependency order (from the resolver's dep_order).
 // Each module sees the type environments of all its dependencies.
 //
 // Invariant: after this function returns, no unresolved Named references
@@ -2653,6 +2668,5 @@ fn typecheck_modules(
 
 fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
   let typed = typecheck(graph: graph)
-  let emit_info = build_emit_graph_info(modules: typed.modules)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
 }

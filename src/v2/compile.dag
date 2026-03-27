@@ -16,10 +16,10 @@ module v2.compiler.compile
 import v2.std.core {
   CompileResult, TextFile, SourceSpan,
   diagnostic_node, diagnostic_is_error, diagnostic_severity, diagnostic_message, diagnostic_module_name, diagnostic_category, diagnostic_span, no_span,
-  Connective, Cardinality, Field, Param, ResourceUse,
+  Connective, NoConnective, Cardinality, Field, Param, ResourceUse,
   module_imports, module_items, is_import_node, import_is_all, import_specific_names,
   FieldAccessStyle, FieldValueShape, FieldSummary,
-  InferredNode, Resolved, CompilerError,
+  InferredNode, Resolved, CompilerError, TypeVariable,
   VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
@@ -172,6 +172,7 @@ fn connective_name(value: Connective) -> String {
   match value {
     Conj => "Conj"
     Disj => "Disj"
+    NoConnective => "NoConnective"
   }
 }
 
@@ -527,6 +528,8 @@ fn serialize_inferred_node(inferred: InferredNode) -> String {
         "{\"kind\": \"CompilerError\", \"message\": ", json_quote(s: message),
         ", \"span\": ", serialize_span(span: span),
         "}")
+    TypeVariable { id: id } =>
+      concat("{\"kind\": \"TypeVariable\", \"id\": ", json_quote(s: id), "}")
   }
 }
 
@@ -565,8 +568,9 @@ fn serialize_node(node: Node) -> String {
     ", \"children\": ", json_list(items: node.children |> map(child => serialize_node(node: child))),
     ", \"connective\": ",
     match node.connective {
-      Some { value: inner } => json_quote(s: connective_name(value: inner))
-      None => "null"
+      Conj => json_quote(s: connective_name(value: Conj))
+      Disj => json_quote(s: connective_name(value: Disj))
+      NoConnective => "null"
     },
     ", \"params\": ", json_list(items: node.params |> map(param => serialize_param(param: param))),
     ", \"inferred\": ", json_optional_inferred_node(value: node.inferred),

@@ -100,11 +100,11 @@ type TokenShape
 // Connective -- the logical primitive for type structure.
 // Conj = conjunction: all children hold simultaneously (record fields).
 // Disj = disjunction: exactly one child holds (sum variants).
-type Connective = Conj | Disj
+type Connective = Conj | Disj | NoConnective
 
 type Cardinality = Required | CardOptional
 
-type CollectionKind = ListKind | SetKind | NonEmptyListKind | NonEmptySetKind | MapKind
+type CollectionKind = ListKind | SetKind | NonEmptyListKind | NonEmptySetKind | MapKind | NoCollection
 
 type Field {
   name: String
@@ -155,28 +155,9 @@ fn is_kernel_type(name: String) -> Bool {
   kernel_types |> any(t => t == name)
 }
 
-fn is_kernel_numeric(name: String) -> Bool {
-  name == "Int" || name == "Float"
-}
-
-// Arity bridge: parameterized types and their expected number of type children.
-// This is an explicit short-term bridge — deleted when real .dag algebraic
-// declarations exist (Phase 3, P3.7). Optional is EXCLUDED: it is cardinality
-// on the binding site (P1.4), not a parameterized type.
-//
-// A type node for Map must have exactly 2 children (key, value).
-// A type node for List/Set must have exactly 1 child (element).
-// A bare leaf_node(name: "Map") with 0 children is a construction error.
 // Arity bridge DELETED (P3.7). The compiler no longer hardcodes which
 // types are parameterized. Arity comes from .dag declarations (params
 // field on type definitions). See std/types.dag for List, Map, Set.
-//
-// Callers that used parameterized_type_arity/is_parameterized_type now
-// use declaration-based checks via the type environment.
-
-fn is_kernel_textual(name: String) -> Bool {
-  name == "String" || name == "Secret"
-}
 
 // P1.9 InferredNode: compiler errors are orthogonal to the node graph.
 // When inference fails, the result is structurally distinct from a type node.
@@ -188,7 +169,7 @@ fn is_kernel_textual(name: String) -> Bool {
 // (1) changes Node.inferred to InferredNode?
 // (2) wraps all inferred construction in Resolved { node: ... }
 // (3) replaces all .inferred.value access with inferred_inferred_node()
-// (4) node_is_error_type() and node_is_dynamic() deleted; inline checks remain until rt_node stops fabricating sentinels
+// (4) error/dynamic type predicates deleted; inline checks remain until rt_node stops fabricating sentinels
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
@@ -463,10 +444,10 @@ type Node {
   span: SourceSpan
   // Fractal composition -- operations, capabilities, items are all children
   children: List<Node>
-  // Logical connective -- And (record/all-hold), Or (sum/one-holds), none (leaf)
-  connective: Connective?
+  // Logical connective -- And (record/all-hold), Or (sum/one-holds), NoConnective (leaf)
+  connective: Connective
   // Collection classification -- structural, not name-based (P5.7b)
-  collection_kind: CollectionKind?
+  collection_kind: CollectionKind
   // Ports -- what flows in and out
   params: List<Param>
   inferred: InferredNode?
@@ -491,8 +472,8 @@ type Node {
 fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
     name: "", span: span, children: children,
-    connective: none,
-    collection_kind: none,
+    connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -502,8 +483,8 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [], connective: none,
-    collection_kind: none,
+    name: "", span: span, children: [], connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: Some { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
     properties: [], type_annotation: none,
@@ -525,8 +506,8 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
   let arg_name = match name { Some { value: n } => n  None => "" }
   Node {
-    name: arg_name, span: span, children: [value], connective: none,
-    collection_kind: none,
+    name: arg_name, span: span, children: [value], connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -539,8 +520,8 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
 fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
   let children = match guard { Some { value: g } => [g, body]  None => [body] }
   Node {
-    name: "", span: span, children: children, connective: none,
-    collection_kind: none,
+    name: "", span: span, children: children, connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -552,8 +533,8 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
 // Field init node: name carries the field name, child is the value expression.
 fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: [value], connective: none,
-    collection_kind: none,
+    name: name, span: span, children: [value], connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -564,8 +545,8 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
 // Text part node: a literal string fragment in string interpolation.
 fn make_text_part_node(text: String, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [], connective: none,
-    collection_kind: none,
+    name: "", span: span, children: [], connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -577,8 +558,8 @@ fn make_text_part_node(text: String, span: SourceSpan) -> Node {
 // Interpolation part node: child is the interpolated expression.
 fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [expr], connective: none,
-    collection_kind: none,
+    name: "", span: span, children: [expr], connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -685,9 +666,6 @@ fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 
-// -- ExprCall --
-fn call_arg_nodes(texpr: Node) -> List<Node> { texpr.children }
-
 // -- ExprLambda --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
 
@@ -718,14 +696,8 @@ fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, rol
 // -- ExprBlock --
 fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 
-// -- ExprRecordLit --
-fn record_field_nodes(texpr: Node) -> List<Node> { texpr.children }
-
-// -- ExprListLit --
-fn list_elements(texpr: Node) -> List<Node> { texpr.children }
-
-// -- ExprStringInterp --
-fn string_interp_parts(texpr: Node) -> List<Node> { texpr.children }
+// ExprRecordLit, ExprListLit, ExprStringInterp: children accessed
+// directly via texpr.children (trivial — no accessor needed).
 
 // =========================================================================
 // Transport Node constructors
@@ -736,8 +708,8 @@ fn string_interp_parts(texpr: Node) -> List<Node> { texpr.children }
 
 fn make_transport_node(name: String, properties: List<FieldInit>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: children, connective: none,
-    collection_kind: none,
+    name: name, span: span, children: children, connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
     type_annotation: none, is_self_recursive: false,
@@ -998,8 +970,8 @@ fn diagnostic_node(severity: String, message: String, span: SourceSpan, module_n
     None => []
   }
   Node {
-    name: message, span: span, children: [], connective: none,
-    collection_kind: none,
+    name: message, span: span, children: [], connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none,
     properties: concat([sev_prop], mod_prop, cat_prop), type_annotation: none,
@@ -1110,8 +1082,8 @@ fn service_config_retry(n: Node) -> Node? {
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
   let marker = FieldInit { name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }
   Node {
-    name: name, span: span, children: concat(imports, items), connective: none,
-    collection_kind: none,
+    name: name, span: span, children: concat(imports, items), connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [marker],
     type_annotation: none, is_self_recursive: false,
@@ -1125,16 +1097,16 @@ fn import_node(module_path: String, is_all: Bool, specific_names: List<String>, 
     [FieldInit { name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }) }]
   } else { [] }
   let name_children = specific_names |> map(n => Node {
-    name: n, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none,
-    collection_kind: none,
+    name: n, span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   })
   Node {
-    name: module_path, span: span, children: name_children, connective: none,
-    collection_kind: none,
+    name: module_path, span: span, children: name_children, connective: NoConnective,
+    collection_kind: NoCollection,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: concat([import_prop], all_prop),
     type_annotation: none, is_self_recursive: false,
@@ -1183,7 +1155,7 @@ fn is_token_node(n: Node) -> Bool {
 // =========================================================================
 
 fn leaf_node(name: String) -> Node {
-  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: none, collection_kind: none, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn no_span() -> SourceSpan {
@@ -1198,14 +1170,3 @@ fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, collection_kind: n.collection_kind, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
-fn node_is_product(n: Node) -> Bool {
-  n.connective != none && n.connective == Some { value: Conj }
-}
-
-fn node_is_coproduct(n: Node) -> Bool {
-  n.connective != none && n.connective == Some { value: Disj }
-}
-
-fn node_has_structure(n: Node) -> Bool {
-  node_is_product(n: n) || node_is_coproduct(n: n)
-}
