@@ -31,11 +31,11 @@ data rust_keywords: Map<String, String> = {
 
 // -- Container type templates --------------------------------------------
 // {0} = element type, {1} = second type (maps).
-// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::BTreeMap
+// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::HashMap
 data rust_container_templates: Map<String, String> = {
   "list": "Vec<{0}>", "set": "std::collections::BTreeSet<{0}>",
   "non_empty_list": "NonEmptyVec<{0}>", "non_empty_set": "NonEmptyBTreeSet<{0}>",
-  "optional": "Option<{0}>", "map": "BTreeMap<{0}, {1}>"
+  "optional": "Option<{0}>", "map": "HashMap<{0}, {1}>"
 }
 
 // -- Reserved words ------------------------------------------------------

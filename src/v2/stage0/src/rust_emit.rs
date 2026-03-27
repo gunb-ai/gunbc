@@ -11,7 +11,7 @@ pub static RUST_KEYWORDS: std::sync::LazyLock<std::collections::HashMap<String, 
 });
 
 pub static RUST_CONTAINER_TEMPLATES: std::sync::LazyLock<std::collections::HashMap<String, String>> = std::sync::LazyLock::new(|| {
-    HashMap::from([("list".to_string(), "Vec<{0}>".to_string()), ("set".to_string(), "std::collections::BTreeSet<{0}>".to_string()), ("non_empty_list".to_string(), "NonEmptyVec<{0}>".to_string()), ("non_empty_set".to_string(), "NonEmptyBTreeSet<{0}>".to_string()), ("optional".to_string(), "Option<{0}>".to_string()), ("map".to_string(), "BTreeMap<{0}, {1}>".to_string())])
+    HashMap::from([("list".to_string(), "Vec<{0}>".to_string()), ("set".to_string(), "std::collections::BTreeSet<{0}>".to_string()), ("non_empty_list".to_string(), "NonEmptyVec<{0}>".to_string()), ("non_empty_set".to_string(), "NonEmptyBTreeSet<{0}>".to_string()), ("optional".to_string(), "Option<{0}>".to_string()), ("map".to_string(), "HashMap<{0}, {1}>".to_string())])
 });
 
 pub static RUST_RESERVED: &[&str] = &[

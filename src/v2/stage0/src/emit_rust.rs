@@ -1016,7 +1016,7 @@ if __cond {
 
 pub fn emit_prelude() -> String {
     let serde_import = v2_rt::concat("use serde::{".to_string(), "Serialize, Deserialize};".to_string());
-    let imports = v2_rt::concat(v2_rt::concat("use std::collections::BTreeMap;\nuse std::rc::Rc;\n".to_string(), serde_import), "\nuse crate::v2_rt;".to_string());
+    let imports = v2_rt::concat(v2_rt::concat("use std::collections::HashMap;\nuse std::rc::Rc;\n".to_string(), serde_import), "\nuse crate::v2_rt;".to_string());
     v2_rt::concat(v2_rt::concat(imports, "\n\n".to_string()), emit_non_empty_wrappers())
 }
 
@@ -4253,7 +4253,7 @@ if __cond {
     v2_rt::concat(v2_rt::concat("<".to_string(), acc_type_str.clone()), ">::new()".to_string())
 } else {
     if init_func.clone() == "empty_map" {
-    "<BTreeMap<String, _>>::new()".to_string()
+    "<HashMap<String, _>>::new()".to_string()
 } else {
     emit_typed_expr(init_arg.value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
 }
@@ -6240,7 +6240,7 @@ pub fn emit_data_def(name: &str, type_node: Rc<Node>, value: Rc<Node>, registry:
     }
     __joined_2
 };
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("lazy_static::lazy_static! {\n".to_string(), "    ".to_string()), rust_visibility_prefix()), "static ref ".to_string()), upper_name.clone()), ": ".to_string()), ty_str.clone()), " = {\n".to_string()), "        let mut __m = BTreeMap::new();\n".to_string()), inserts_str), "\n".to_string()), "        __m\n".to_string()), "    };\n".to_string()), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("lazy_static::lazy_static! {\n".to_string(), "    ".to_string()), rust_visibility_prefix()), "static ref ".to_string()), upper_name.clone()), ": ".to_string()), ty_str.clone()), " = {\n".to_string()), "        let mut __m = HashMap::new();\n".to_string()), inserts_str), "\n".to_string()), "        __m\n".to_string()), "    };\n".to_string()), "}".to_string())
 }
     }
     _ => {
