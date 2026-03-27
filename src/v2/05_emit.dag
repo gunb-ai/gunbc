@@ -59,7 +59,7 @@ import v2.std.core {
   lambda_body,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  return_value
+  return_value, unaryop_operand
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
