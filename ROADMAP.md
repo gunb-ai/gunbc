@@ -2711,12 +2711,31 @@ category of type-name comparisons after Error/Dynamic (Root Cause II).
 - **L1=0:** scrambled-name tests pass (**done**); no `node_is_*` predicates
   (**done**); no `normalize_type_name` (**done**); no `classify_type_structure`
   (**done**); no arity bridges (**done**)
-- **Remaining L1 gates:**
-  - Error/Dynamic name checks (14 sites) → Root Cause II: inference redesign
-  - Kernel type name checks (27 sites) → P5.13: real `.dag` declarations
-  - Type constructors (157 sites) → collection constructors are bridge debt
-- `Conj`/`Disj` are permanent graph primitives (P5.10)
-- `CollectionKind` is bridge debt (dissolves when method algebras land)
+- **Dissolved in this branch:**
+  - Error sentinels → `CompilerError` structural variant (Root Cause II done)
+  - Dynamic sentinels → `TypeVariable` structural variant
+  - Callable → structural `params |> count > 0`
+  - Bool → structural `Disj + 2 children`
+  - Unit → structural `Conj + 0 children` (empty product)
+- **Remaining L1 (147 total = 139 type constructors + 8 name comparisons):**
+  - Access Int/String checks (5 sites) → algebra declarations exist
+    (FreeMonoid.index, OrderedRing), structural method lookup exists (B4).
+    **Blocker:** inline tests don't load std modules — types resolve as
+    bare leaves from kernel seed, not as algebra compositions. Fix: either
+    (a) make inline test helper include std sources, or (b) fix resolver
+    to handle multi-module inline compilation. Attempted (a) but std
+    modules have cross-import issues in the inline test environment.
+  - is_kernel_type in deps (1 site) → same blocker: kernel seed exists
+    because inline tests don't load std
+  - String element extraction (1 site) → same blocker
+  - Tuple emit rendering (1 site) → needs Tuple declared in std with
+    structural form (unnamed product)
+  - Type constructors (139 sites) → factory functions (leaf_node ~100,
+    container_node/map_node ~20, tuple/callable ~19). Bridge debt tied
+    to CollectionKind dissolution when method algebras land.
+- `Conj`/`Disj`/`NoConnective` — Layer -1 type constructors, declared in
+  `dsl/std/constructors.dag`. Compiler-side dissolution tracked separately.
+- `CollectionKind` — bridge debt (dissolves when method algebras land)
 - Each convergence step survives re-bootstrap and fixed-point verification
 - The compiler is in a clean place to start real L2 work
 

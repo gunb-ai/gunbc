@@ -666,9 +666,6 @@ fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> drop(1) }
 
-// -- ExprCall --
-fn call_arg_nodes(texpr: Node) -> List<Node> { texpr.children }
-
 // -- ExprLambda --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
 
@@ -699,14 +696,8 @@ fn return_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, rol
 // -- ExprBlock --
 fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 
-// -- ExprRecordLit --
-fn record_field_nodes(texpr: Node) -> List<Node> { texpr.children }
-
-// -- ExprListLit --
-fn list_elements(texpr: Node) -> List<Node> { texpr.children }
-
-// -- ExprStringInterp --
-fn string_interp_parts(texpr: Node) -> List<Node> { texpr.children }
+// ExprRecordLit, ExprListLit, ExprStringInterp: children accessed
+// directly via texpr.children (trivial — no accessor needed).
 
 // =========================================================================
 // Transport Node constructors

@@ -1394,13 +1394,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
     ExprLet { name: let_name } =>
       let span = texpr.span
       // children: [value] or [value, body]
-      let let_value = let_value(texpr: texpr)
-      let let_body = let_body(texpr: texpr)
-      let val_result = infer_expr(texpr: let_value, scope: scope)
+      let val_expr = let_value(texpr: texpr)
+      let body_expr = let_body(texpr: texpr)
+      let val_result = infer_expr(texpr: val_expr, scope: scope)
       let val_typed = val_result.typed
       let val_diags = val_result.diagnostics
       let val_type = rt_type(n: val_typed)
-      if let_body == none {
+      if body_expr == none {
         let let_texpr = make_expr_node(expr_data: ExprLet { name: let_name }, children: [val_typed], inferred: Some { value: Resolved { node: val_type } }, span: span)
         InferResult {
           typed: let_texpr,
@@ -1408,7 +1408,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         }
       } else {
         let extended = extend_scope(scope: scope, name: let_name, resolved: val_type)
-        let body_result = infer_expr(texpr: let_body.value, scope: extended)
+        let body_result = infer_expr(texpr: body_expr.value, scope: extended)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
         let let_texpr2 = make_expr_node(expr_data: ExprLet { name: let_name }, children: [val_typed, body_typed], inferred: Some { value: Resolved { node: rt_type(n: body_typed) } }, span: span)
