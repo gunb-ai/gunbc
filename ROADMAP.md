@@ -2645,12 +2645,38 @@ is post-Phase 5). It means:
 4. **Delete `kernel_types` string list and `is_kernel_type`** — replace
    with scope-based membership test.
 
-**Scope:** Medium. The declarations are small. The wiring into TypeEnv
-requires understanding how `build_type_env` populates the kernel scope.
-The structural query replacements are per-site but follow a pattern.
+**Part A (done):** Algebraic structure types declared in `dsl/std/algebra.dag`
+as real generic types with fn-typed fields (OrderedRing\<T\>, Field\<T\>,
+BooleanAlgebra\<T\>, FreeMonoid\<T\>, PartialFunction\<K,V\>). The algebra
+lives in DAG structure, not in labels. `types.dag` has kernel type
+declarations (Bool, Unit, Secret, Json, Bytes). Bootstrap loads algebra.dag,
+types.dag, containers.dag.
 
-**Depends on:** P5.7 (done), collection method algebras (for List/Map/Set
-structural queries — can proceed in parallel for Bool/Unit/Int/Float).
+**Part B (next — multi-session):** Rewrite Int/Float/String as compositions
+of algebra types. Then refactor inference to resolve methods from type
+structure instead of string dispatch.
+
+Concretely:
+1. Rewrite `integer.dag`: `type Int = OrderedRing<Word64>` (requires v2
+   parser to handle the composition — currently uses v1-era `where` syntax)
+2. Rewrite `float.dag`: `type Float = Field<Word64>`
+3. Rewrite `string_type.dag`: `type String = FreeMonoid<Char>`
+4. Refactor `04_method.dag`/`04_infer.dag`: when the compiler sees `a + b`,
+   resolve `+` to the `add` field of `a`'s type's algebraic composition.
+   Currently uses ~60 string branches in `classify_reconciled_intrinsic_method`.
+5. Delete `kernel_types` string list, `is_kernel_type`, `is_int_type_node`,
+   `is_string_type_node`, `is_bool_type_node`, `is_float_type_node`,
+   `is_kernel_numeric`, `is_kernel_textual`.
+
+**Design principle (invariant):** The compiler is a pure DAG processor.
+It knows only Node, Conj/Disj, Cardinality, and Bit. Everything else —
+Int, String, Bool, arithmetic, string ops — is DAG composition processed
+structurally. No labels, no `where` annotations, no name checks. The
+compiler sees OrderedRing\<T\> as a Conj node with fn-typed children and
+validates `a + b` by finding the `add` child on the resolved type. Pure
+graph traversal.
+
+**Depends on:** P5.7 (done), algebra.dag declarations (done).
 
 **Blocks:** L1=0 gate — the 27 kernel-type name checks are the last
 category of type-name comparisons after Error/Dynamic (Root Cause II).

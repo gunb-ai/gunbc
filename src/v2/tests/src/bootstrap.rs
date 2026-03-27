@@ -30,13 +30,15 @@ fn prepare_sources(sources_dir: &std::path::Path) {
         }
     }
 
-    // Copy std modules (types, algebra, primitives, and compositional chain)
+    // Copy std modules that the v2 parser can handle.
+    // logic.dag, bit.dag, integer.dag, float.dag use v1-era where syntax
+    // (field-level where, width(), unsigned, etc.) that the v2 parser doesn't
+    // support yet. These will be loadable once integer/float types compose
+    // from algebra.dag generic types instead of using where labels (Part B).
     let dst_dir = sources_dir.join("dsl/std");
     std::fs::create_dir_all(&dst_dir).unwrap();
     let std_files = [
         "types", "algebra", "containers",
-        "logic", "bit", "integer", "float", "string_type",
-        "encoding",
     ];
     for name in &std_files {
         let src = ws.join(format!("dsl/std/{}.dag", name));

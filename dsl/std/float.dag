@@ -1,25 +1,14 @@
-// std/float.dag -- Floating-point type hierarchy.
+// std/float.dag -- Syllogistic floating-point type hierarchy.
 //
-// IEEE 754 floating-point types. Their algebraic operations emerge from
-// inhabiting an approximate field:
-//
-//   Float inhabits Field (approximate)
-//     → all Ring operations (add, subtract, multiply, negate, abs)
-//     → divide, reciprocal (from Field — multiplicative inverse)
-//     → compare, min, max (from Order)
-//
-// "Approximate" is honest: floating-point addition is not associative
-// due to rounding. The algebra captures the INTENT (field operations)
-// while the "approximate" qualifier captures the REALITY (IEEE 754
-// rounding semantics). The compiler treats Float as supporting all
-// field operations; the target language handles precision.
+// IEEE 754 floating-point types structurally defined from bit-level
+// types with domain predicates.
 
 module std.float
 
 import std.bit { Word32, Word64 }
 
-type Float32 = Word32 where domain("ieee754_binary32"), approximate_field
-type Float64 = Word64 where domain("ieee754_binary64"), approximate_field
+type Float32 = Word32 where domain("ieee754_binary32"), arithmetic
+type Float64 = Word64 where domain("ieee754_binary64"), arithmetic
 
 // Default alias
 type Float = Float64

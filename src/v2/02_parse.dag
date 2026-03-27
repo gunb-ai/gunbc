@@ -1503,31 +1503,11 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         PredResult { predicate: FieldInit { name: "ContentEncoding", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span) }, state: r3.state, err: none }
       }
       "domain" => {
-        // domain(ident) or domain("string") — accept both
-        let r2 = parse_expr(tokens: tokens, state: e.state)
+        let r2 = expect_ident(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        let domain_str = match r2.expr.expr_data {
-          ExprLiteral { value: LitStr { value: s } } => s
-          ExprVar { name: n, binding_kind: _ } => n
-          _ => "unknown"
-        }
-        PredResult { predicate: FieldInit { name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: domain_str } }, children: [], inferred: none, span: zero_span) }, state: r3.state, err: none }
-      }
-      "width" => {
-        let r2 = parse_expr(tokens: tokens, state: e.state)
-        if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
-        if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        PredResult { predicate: FieldInit { name: "Width", value: r2.expr }, state: r3.state, err: none }
-      }
-      "length" => {
-        let r2 = parse_expr(tokens: tokens, state: e.state)
-        if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
-        if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        PredResult { predicate: FieldInit { name: "Length", value: r2.expr }, state: r3.state, err: none }
+        PredResult { predicate: FieldInit { name: "Domain", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span) }, state: r3.state, err: none }
       }
       "range" => {
         // range(min: N) | range(max: N) | range(min: N, max: N)
@@ -1548,27 +1528,10 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         PredResult { predicate: dummy_pred, state: e.state, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: e.state)) } }
     }
   } else {
-    // No args -- handle bare predicate names.
-    // Algebraic structure predicates (ordered_ring, approximate_field, etc.)
-    // are stored as boolean FieldInit properties on the Refined node.
-    // The compiler reads these to determine algebraic inhabitation.
+    // No args -- handle bare predicate names
     match pred_name {
       "non_empty" =>
         PredResult { predicate: FieldInit { name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
-      // Bit-level predicates
-      "signed" =>
-        PredResult { predicate: FieldInit { name: "Signed", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
-      "unsigned" =>
-        PredResult { predicate: FieldInit { name: "Unsigned", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
-      // Algebraic structure predicates
-      "arithmetic" =>
-        PredResult { predicate: FieldInit { name: "Arithmetic", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
-      "semiring" =>
-        PredResult { predicate: FieldInit { name: "Semiring", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
-      "ordered_ring" =>
-        PredResult { predicate: FieldInit { name: "OrderedRing", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
-      "approximate_field" =>
-        PredResult { predicate: FieldInit { name: "ApproximateField", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
       _ =>
         PredResult { predicate: dummy_pred, state: s, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: s)) } }
     }

@@ -3438,7 +3438,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     }
     "domain" => {
         {
-    let r2 = parse_expr(tokens.clone(), e.state.clone());
+    let r2 = expect_ident(tokens.clone(), e.state.clone());
     if has_err(r2.err.clone()) {
     return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r2.state.clone(), err: r2.err.clone() });
 };
@@ -3446,29 +3446,7 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
     if has_err(r3.err.clone()) {
     return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: r3.err.clone() });
 };
-    let domain_str = match r2.expr.expr_data.as_ref() {
-        ExprData::ExprLiteral { value } => match value.as_ref() {
-            LiteralValue::LitStr { value: s } => s.clone(),
-            _ => "unknown".to_string(),
-        },
-        ExprData::ExprVar { name, .. } => name.clone(),
-        _ => "unknown".to_string(),
-    };
-    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Domain".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: domain_str }) }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
-}
-    }
-    "width" | "length" => {
-        {
-    let label = if pred_name == "width" { "Width" } else { "Length" };
-    let r2 = parse_expr(tokens.clone(), e.state.clone());
-    if has_err(r2.err.clone()) {
-    return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r2.state.clone(), err: r2.err.clone() });
-};
-    let r3 = expect(tokens.clone(), r2.state.clone(), ExpectedToken::ExpectRParen);
-    if has_err(r3.err.clone()) {
-    return Rc::new(PredResult { predicate: dummy_pred.clone(), state: r3.state.clone(), err: r3.err.clone() });
-};
-    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: label.to_string(), value: r2.expr.clone() }), state: r3.state.clone(), err: None })
+    Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "Domain".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitStr { value: r2.name.clone() }) }), None, zero_span.clone()) }), state: r3.state.clone(), err: None })
 }
     }
     "range" => {
@@ -3500,18 +3478,8 @@ pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>
 }
 } else {
     match pred_name.as_str() {
-    "non_empty" | "signed" | "unsigned" | "arithmetic" | "semiring" | "ordered_ring" | "approximate_field" => {
-        let label = match pred_name.as_str() {
-            "non_empty" => "NonEmpty",
-            "signed" => "Signed",
-            "unsigned" => "Unsigned",
-            "arithmetic" => "Arithmetic",
-            "semiring" => "Semiring",
-            "ordered_ring" => "OrderedRing",
-            "approximate_field" => "ApproximateField",
-            _ => "Unknown",
-        };
-        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: label.to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, zero_span.clone()) }), state: s.clone(), err: None })
+    "non_empty" => {
+        Rc::new(PredResult { predicate: Rc::new(FieldInit { name: "NonEmpty".to_string(), value: make_expr_node(Rc::new(ExprData::ExprLiteral { value: Rc::new(LiteralValue::LitBool { value: true }) }), None, zero_span.clone()) }), state: s.clone(), err: None })
     }
     _ => {
         Rc::new(PredResult { predicate: dummy_pred.clone(), state: s.clone(), err: Some(parse_error(&v2_rt::concat(v2_rt::concat("unknown where predicate `".to_string(), pred_name), "`".to_string()), current_span(tokens.clone(), s.clone()))) })

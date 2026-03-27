@@ -1,45 +1,34 @@
 // std/bit.dag -- Bit-level structural types.
 //
 // Machine-width types built from Classical truth values.
-// Width is a structural property: Byte has 8 bits, Word64 has 8 bytes.
-//
-// The compositional chain:
-//   Classical (2 values) → Bit (1-bit width) → Byte (8 bits)
-//   → Word16 (2 bytes) → Word32 (4 bytes) → Word64 (8 bytes)
-//
-// Integer and floating-point types compose from these via
-// algebraic structure annotations (see integer.dag, float.dag).
+// Width constraints encode the exact number of bits.
 
 module std.bit
 
 import std.logic { Classical }
 
-// Bit: single Classical truth value (width = 1)
-type Bit = Classical
+type Bit = Classical where width(1)
 
-// Nibble: 4 bits
 type Nibble {
-    bits: List<Bit>
+    bits: List<Bit> where length(4)
 }
 
-// Byte: 8 bits (fundamental storage unit)
 type Byte {
-    bits: List<Bit>
+    bits: List<Bit> where length(8)
 }
 
-// Machine words: fixed-width byte sequences
 type Word16 {
-    bytes: List<Byte>
+    bytes: List<Byte> where length(2)
 }
 
 type Word32 {
-    bytes: List<Byte>
+    bytes: List<Byte> where length(4)
 }
 
 type Word64 {
-    bytes: List<Byte>
+    bytes: List<Byte> where length(8)
 }
 
 type Word128 {
-    bytes: List<Byte>
+    bytes: List<Byte> where length(16)
 }
