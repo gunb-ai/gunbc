@@ -70,7 +70,8 @@ import extdeps.languages.rust.emit {
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
-  test_conventions_for_target, top_level_visibility_for_target
+  test_conventions_for_target, top_level_visibility_for_target,
+  is_value_type, is_string_like, target_primitive_type
 }
 import v2.compiler.runtime_rust { rust_runtime_source }
 
@@ -131,28 +132,18 @@ import v2.compiler.emit {
 }
 
 // Emit-side type identity checks. These are rendering decisions
-// (Int → "i64", Bool → "bool") that legitimately need type names.
-// The inference layer no longer exports these — emit owns them.
-// Future: LanguageSpec type mapping replaces these (Phase 4).
+// Emit-side type checks read from language extdep data, not hardcoded names.
+// is_value_type/is_string_like are defined in v2.compiler.languages and
+// read from rust_value_types/rust_string_types in the Rust extdep.
 
-fn is_int_type_node(n: Node) -> Bool {
+fn is_rust_value_type(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.name == "Int" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
+  is_value_type(target: Rust, name: normed.name)
 }
 
-fn is_string_type_node(n: Node) -> Bool {
+fn is_rust_string_like(n: Node) -> Bool {
   let normed = normalize_access_type_node(n: n)
-  normed.name == "String" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
-}
-
-fn is_bool_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Bool" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
-}
-
-fn is_float_type_node(n: Node) -> Bool {
-  let normed = normalize_access_type_node(n: n)
-  normed.name == "Float" && normed.connective == NoConnective && normed.children |> count == 0 && normed.properties |> count == 0
+  is_string_like(target: Rust, name: normed.name)
 }
 
 // Shared helpers imported from v2.compiler.emit
@@ -1101,7 +1092,7 @@ fn needs_reference_node(n: Node) -> Bool {
   if n.connective != NoConnective || n.children |> count > 0 {
     true
   } else {
-    let is_copy = is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
+    let is_copy = is_rust_value_type(n: n)
       || (n.name == "Unit" && n.children |> count == 0)
     is_copy == false
   }
@@ -1459,7 +1450,7 @@ fn explicit_record_struct_name(type_name: String?, inferred_node: Node, rc_types
 
 // Returns true for primitive numeric types where Rust `as` is valid (Node-based).
 fn is_primitive_numeric_node(n: Node) -> Bool {
-  is_int_type_node(n: n) || is_float_type_node(n: n) || is_bool_type_node(n: n)
+  is_rust_value_type(n: n)
 }
 
 // =========================================================================
@@ -2105,7 +2096,7 @@ fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, sc
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
   let is_map = base_node.collection_kind == MapKind
-  if is_string_type_node(n: base_node) {
+  if is_rust_string_like(n: base_node) {
     concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
   } else if is_map {
     concat("(", base_str, ").get(&", index_str, ").cloned()")
@@ -2119,7 +2110,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
   let start_str = emit_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let end_str = emit_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
-  if is_string_type_node(n: base_node) {
+  if is_rust_string_like(n: base_node) {
     concat("v2_rt::substring(&", base_str, ", ", start_str, ", ", end_str, ")")
   } else {
     "panic!(\"internal error: unsupported slice base in emitter\")"
@@ -2920,7 +2911,7 @@ fn is_string_typed_expr(e: Node) -> Bool {
     Some { value: Resolved { node: rt } } =>
       let is_optional = rt.return_cardinality == CardOptional
       let inner = if is_optional { with_required_cardinality(n: rt) } else { rt }
-      is_string_type_node(n: inner)
+      is_rust_string_like(n: inner)
     _ => false
   }
 }
@@ -3525,7 +3516,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 }
 
 fn is_simple_type_node(n: Node) -> Bool {
-  is_int_type_node(n: n) || is_bool_type_node(n: n) || is_float_type_node(n: n)
+  is_rust_value_type(n: n)
 }
 
 // =========================================================================
@@ -3847,9 +3838,8 @@ fn emit_cli_param_type_node(n: Node) -> String {
   } else if has_structure {
     "String"
   } else if n.children |> count == 0 {
-    if is_bool_type_node(n: n) { "bool" }
-    else if is_int_type_node(n: n) { "i64" }
-    else if is_float_type_node(n: n) { "f64" }
+    let mapped = target_primitive_type(target: Rust, name: n.name)
+    if mapped != n.name { mapped }
     else { "String" }
   } else {
     "String"

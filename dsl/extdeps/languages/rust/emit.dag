@@ -56,6 +56,16 @@ data rust_reserved: List<String> = [
 // Mirrors rust_reserved_words.strategy.prefix from std.languages.
 data rust_reserved_escape_prefix: String = "r#"
 
+// -- Value-semantic types ------------------------------------------------
+// Types with Copy semantics in Rust — no Rc wrapping, no .clone().
+// These are the types whose DAG algebra resolves to fixed-width carriers.
+// Ref: Rust Reference 10.1.2 "Copy trait"
+data rust_value_types: List<String> = ["Int", "Bool", "Float"]
+
+// -- String-like types ---------------------------------------------------
+// Types that render as Rust &str/.as_str() for comparison operations.
+data rust_string_types: List<String> = ["String", "Secret"]
+
 // -- Serialization -------------------------------------------------------
 // Ref: serde_derive docs (serde.rs), Rust derive macros
 // Mirrors rust_serialization from std.languages.
