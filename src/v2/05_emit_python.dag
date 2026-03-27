@@ -162,14 +162,17 @@ fn emit_python(typed: ResolvedGraph) -> EmitResult {
   let registry = typed.item_registry
   let test_projections = extract_test_projections(typed: typed)
   let module_files = typed.modules |> map(tm => emit_py_module(typed_module: tm, registry: registry))
-  let test_files = typed.modules
+  let service_test_files = typed.modules
     |> map(tm => emit_py_test_file(
       module_name: tm.module.name,
       projections: test_projections |> filter(p => p.module_name == tm.module.name)))
     |> filter(f => f.content != "")
+  let fn_test_files = typed.modules
+    |> map(tm => emit_py_fn_test_file(typed_module: tm))
+    |> filter(f => f.content != "")
   let init_file = emit_init_py(modules: typed.modules)
   let requirements = emit_requirements_txt(has_services: has_service_items(typed: typed))
-  let files = concat([requirements, init_file], module_files, test_files)
+  let files = concat([requirements, init_file], module_files, service_test_files, fn_test_files)
   EmitResult { files: files, diagnostics: [] }
 }
 
@@ -272,6 +275,124 @@ fn emit_py_mock_prop_setup(mock_prop: FieldInit, depth: Int) -> String {
     emit_ident(name: mock_prop.name, target: Python),
     " = ",
     emit_simple_expr(expr: mock_prop.value, target: Python))
+}
+
+fn py_starts_with_list(s: String) -> Bool {
+  if string_length(s: s) < 5 { false }
+  else { substring(s: s, start: 0, end: 5) == "list[" }
+}
+
+fn py_starts_with_optional(s: String) -> Bool {
+  if string_length(s: s) < 9 { false }
+  else { substring(s: s, start: 0, end: 9) == "Optional[" }
+}
+
+// =========================================================================
+// Pure function test generation
+// =========================================================================
+//
+// Generates smoke tests for pure `fn` definitions. Each function gets a test
+// that constructs default arguments and calls the function, asserting the
+// result is not None. This gives basic importability and call-shape coverage.
+
+fn emit_py_fn_test_file(typed_module: TypedModule) -> TextFile {
+  let pure_fns = typed_module.items
+    |> filter(item => classify_typed_item(item: item) == TypedItemFunction && item.uses |> count == 0)
+  if pure_fns |> count == 0 {
+    TextFile { path: "", content: "" }
+  } else {
+    let mod_filename = module_to_filename(name: typed_module.module.name)
+    let import_names = pure_fns |> map(item => emit_ident(name: item.name, target: Python))
+    let imports_str = concat("from ", mod_filename, " import ", import_names |> join(separator: ", "))
+    let type_imports = emit_py_fn_test_type_imports(items: pure_fns, mod_filename: mod_filename)
+    let tests_str = pure_fns
+      |> map(item => emit_py_fn_smoke_test(item: item, depth: 0))
+      |> join(separator: "\n\n\n")
+    let content = concat(
+      "# Generated tests -- do not edit.\n",
+      "# Source module: ", typed_module.module.name, "\n\n",
+      type_imports,
+      imports_str, "\n\n\n",
+      tests_str, "\n")
+    TextFile { path: py_test_file_path(module_name: typed_module.module.name), content: content }
+  }
+}
+
+fn emit_py_fn_test_type_imports(items: List<Node>, mod_filename: String) -> String {
+  let type_names = items
+    |> flat_map(item => item.params |> map(p => emit_node_type(n: p.type_expr, target: Python)))
+    |> filter(name => name != "int" && name != "str" && name != "bool" && name != "float" && name != "None")
+    |> filter(name => !starts_with(s: name, prefix: "list[") && !py_starts_with_optional(s: name))
+  let unique_names = unique_strings(strings: type_names)
+  if unique_names |> count == 0 {
+    ""
+  } else {
+    concat("from ", mod_filename, " import ", unique_names |> join(separator: ", "), "\n")
+  }
+}
+
+fn emit_py_fn_smoke_test(item: Node, depth: Int) -> String {
+  let fn_name = emit_ident(name: item.name, target: Python)
+  let test_name = concat("test_", fn_name)
+  let param_setups = item.params |> map(p => emit_py_default_param(param: p, depth: depth + 1))
+  let param_names = item.params |> map(p => emit_ident(name: p.name, target: Python))
+  let setup_str = param_setups |> join(separator: "\n")
+  let call_str = concat(fn_name, "(", param_names |> join(separator: ", "), ")")
+  let ret_type = emit_node_type(n: rt_type(n: item), target: Python)
+  let assertion = if ret_type == "bool" {
+    concat(make_indent(level: depth + 1), "assert isinstance(result, bool)")
+  } else if ret_type == "int" {
+    concat(make_indent(level: depth + 1), "assert isinstance(result, int)")
+  } else if ret_type == "str" {
+    concat(make_indent(level: depth + 1), "assert isinstance(result, str)")
+  } else {
+    concat(make_indent(level: depth + 1), "assert result is not None")
+  }
+  concat(
+    "def ", test_name, "():\n",
+    setup_str, "\n",
+    make_indent(level: depth + 1), "result = ", call_str, "\n",
+    assertion)
+}
+
+fn emit_py_default_param(param: Param, depth: Int) -> String {
+  let name = emit_ident(name: param.name, target: Python)
+  let type_str = emit_node_type(n: param.type_expr, target: Python)
+  let default_val = py_default_for_type(type_str: type_str, type_node: param.type_expr)
+  concat(make_indent(level: depth), name, " = ", default_val)
+}
+
+fn py_default_for_type(type_str: String, type_node: Node) -> String {
+  if type_str == "int" { "0" }
+  else if type_str == "str" { "\"\"" }
+  else if type_str == "bool" { "False" }
+  else if type_str == "float" { "0.0" }
+  else if py_starts_with_list(s: type_str) { "[]" }
+  else if node_is_coproduct(n: type_node) {
+    // Enum type -- use first variant
+    match type_node.children |> first {
+      Some { value: first_variant } =>
+        if first_variant.children |> count == 0 {
+          // Unit variant
+          concat(type_str, first_variant.name, "()")
+        } else {
+          // Data variant -- construct with defaults
+          let field_strs = first_variant.children |> map(c =>
+            concat(emit_ident(name: c.name, target: Python), "=",
+              py_default_for_type(type_str: emit_node_type(n: c, target: Python), type_node: c)))
+          concat(type_str, first_variant.name, "(", field_strs |> join(separator: ", "), ")")
+        }
+      None => concat(type_str, "()")
+    }
+  } else if node_is_product(n: type_node) {
+    // Record type -- construct with defaults for each field
+    let field_strs = type_node.children |> map(c =>
+      concat(emit_ident(name: c.name, target: Python), "=",
+        py_default_for_type(type_str: emit_node_type(n: c, target: Python), type_node: c)))
+    concat(type_str, "(", field_strs |> join(separator: ", "), ")")
+  } else {
+    "None"
+  }
 }
 
 // =========================================================================

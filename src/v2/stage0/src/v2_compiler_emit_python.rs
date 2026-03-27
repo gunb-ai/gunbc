@@ -139,10 +139,11 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let registry = typed.item_registry.clone();
 let test_projections = extract_test_projections(typed.clone());
 let module_files = { let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.push(emit_py_module(tm.clone(), registry.clone())); } __result };
-let test_files = { let mut __result = Vec::new(); for f in { let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.push(emit_py_test_file(tm.module.clone().name.clone(), { let mut __result = Vec::new(); for p in test_projections.clone().iter().cloned() { if (p.module_name.clone() == tm.module.clone().name.clone()) { __result.push(p); } } __result })); } __result }.iter().cloned() { if (f.content.clone() != "".to_string()) { __result.push(f); } } __result };
+let service_test_files = { let mut __result = Vec::new(); for f in { let mut __result = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result.push(emit_py_test_file(tm.module.clone().name.clone(), { let mut __result = Vec::new(); for p in test_projections.clone().iter().cloned() { if (p.module_name.clone() == tm.module.clone().name.clone()) { __result.push(p); } } __result })); } __result }.iter().cloned() { if (f.content.clone() != "".to_string()) { __result.push(f); } } __result };
+let fn_test_files = { let mut __result = Vec::new(); for f in { let mut __result2 = Vec::new(); for tm in typed.modules.clone().iter().cloned() { __result2.push(emit_py_fn_test_file(tm.clone())); } __result2 }.iter().cloned() { if (f.content.clone() != "".to_string()) { __result.push(f); } } __result };
 let init_file = emit_init_py(typed.modules.clone());
 let requirements = emit_requirements_txt(has_service_items(typed.clone()));
-let files = v2_rt::concat(v2_rt::concat(vec![requirements.clone(), init_file.clone()], module_files.clone()), test_files.clone());
+let files = v2_rt::concat(v2_rt::concat(v2_rt::concat(vec![requirements.clone(), init_file.clone()], module_files.clone()), service_test_files.clone()), fn_test_files.clone());
 Rc::new(EmitResult {
     files: files.clone(),
     diagnostics: vec![],
@@ -255,6 +256,149 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_py_mock_prop_setup(mock_prop: Rc<FieldInit>, depth: i64) -> String {
     v2_rt::concat(v2_rt::concat(emit_ident(mock_prop.name.clone(), RenderTarget::Python), " = ".to_string()), emit_simple_expr(mock_prop.value.clone(), RenderTarget::Python))
+}
+
+// ── Pure function test generation ─────────────────────────────────────────
+
+pub fn emit_py_fn_test_file(typed_module: Rc<TypedModule>) -> Rc<TextFile> {
+    let all_items = typed_module.items.clone();
+    let pure_fns: Vec<Rc<Node>> = all_items.iter().filter(|item| {
+        classify_typed_item((*item).clone()) == TypedItemKind::TypedItemFunction
+            && item.uses.is_empty()
+    }).cloned().collect();
+    if pure_fns.is_empty() {
+        return Rc::new(TextFile { path: "".to_string(), content: "".to_string() });
+    }
+    // Build a map from type name -> type definition for default construction
+    let type_defs: HashMap<String, Rc<Node>> = all_items.iter().filter(|item| {
+        let kind = classify_typed_item((*item).clone());
+        kind == TypedItemKind::TypedItemTypeDef
+    }).map(|item| (item.name.clone(), item.clone())).collect();
+    let mod_filename = module_to_filename(typed_module.module.name.clone());
+    let import_names: Vec<String> = pure_fns.iter().map(|item| emit_ident(item.name.clone(), RenderTarget::Python)).collect();
+    let imports_str = format!("from {} import {}", mod_filename, import_names.join(", "));
+    // Import all type definitions + variant classes for tagged unions
+    let mut type_import_names: Vec<String> = Vec::new();
+    for (name, def) in type_defs.iter() {
+        type_import_names.push(name.clone());
+        // For tagged unions (coproducts with data variants), also import variant classes
+        if node_is_coproduct(def.clone()) {
+            let has_data = def.children.iter().any(|v| !v.children.is_empty());
+            if has_data {
+                for v in def.children.iter() {
+                    type_import_names.push(format!("{}{}", name, v.name));
+                }
+            }
+        }
+    }
+    let type_imports = if type_import_names.is_empty() {
+        "".to_string()
+    } else {
+        type_import_names.sort();
+        type_import_names.dedup();
+        format!("from {} import {}\n", mod_filename, type_import_names.join(", "))
+    };
+    let tests_str: Vec<String> = pure_fns.iter().map(|item| emit_py_fn_smoke_test(item.clone(), 0, &type_defs)).collect();
+    let content = format!("# Generated tests -- do not edit.\n# Source module: {}\n\n{}{}\n\n\n{}\n",
+        typed_module.module.name, type_imports, imports_str, tests_str.join("\n\n\n"));
+    Rc::new(TextFile {
+        path: py_test_file_path(typed_module.module.name.clone()),
+        content,
+    })
+}
+
+fn emit_py_fn_test_type_imports(items: Vec<Rc<Node>>, mod_filename: String) -> String {
+    // Collect all type names from params AND return types
+    let mut type_names: Vec<String> = items.iter().flat_map(|item| {
+        let mut names: Vec<String> = item.params.iter().map(|p| emit_node_type(p.type_expr.clone(), RenderTarget::Python)).collect();
+        names.push(emit_node_type(rt_type(item.clone()), RenderTarget::Python));
+        names
+    }).filter(|name| {
+        name != "int" && name != "str" && name != "bool" && name != "float" && name != "None"
+            && !name.starts_with("list[") && !name.starts_with("Optional[")
+    }).collect();
+    // Also add Element for enum defaults used in construction
+    // (We import all non-primitive types used anywhere)
+    let unique = unique_strings(type_names);
+    if unique.is_empty() {
+        "".to_string()
+    } else {
+        format!("from {} import {}\n", mod_filename, unique.join(", "))
+    }
+}
+
+fn emit_py_fn_smoke_test(item: Rc<Node>, depth: i64, type_defs: &HashMap<String, Rc<Node>>) -> String {
+    let fn_name = emit_ident(item.name.clone(), RenderTarget::Python);
+    let test_name = format!("test_{}", fn_name);
+    let param_setups: Vec<String> = item.params.iter().map(|p| emit_py_default_param(p.clone(), depth + 1, type_defs)).collect();
+    let param_names: Vec<String> = item.params.iter().map(|p| emit_ident(p.name.clone(), RenderTarget::Python)).collect();
+    let setup_str = param_setups.join("\n");
+    let call_str = format!("{}({})", fn_name, param_names.join(", "));
+    let ret_type = emit_node_type(rt_type(item.clone()), RenderTarget::Python);
+    let assertion = if ret_type == "bool" {
+        format!("{}assert isinstance(result, bool)", make_indent(depth + 1))
+    } else if ret_type == "int" {
+        format!("{}assert isinstance(result, int)", make_indent(depth + 1))
+    } else if ret_type == "str" {
+        format!("{}assert isinstance(result, str)", make_indent(depth + 1))
+    } else {
+        format!("{}assert result is not None", make_indent(depth + 1))
+    };
+    format!("def {}():\n{}\n{}result = {}\n{}",
+        test_name, setup_str, make_indent(depth + 1), call_str, assertion)
+}
+
+fn emit_py_default_param(param: Rc<Param>, depth: i64, type_defs: &HashMap<String, Rc<Node>>) -> String {
+    let name = emit_ident(param.name.clone(), RenderTarget::Python);
+    let type_str = emit_node_type(param.type_expr.clone(), RenderTarget::Python);
+    let default_val = py_default_for_type(type_str.clone(), type_defs);
+    format!("{}{} = {}", make_indent(depth), name, default_val)
+}
+
+fn py_default_for_type(type_str: String, type_defs: &HashMap<String, Rc<Node>>) -> String {
+    if type_str == "int" { "0".to_string() }
+    else if type_str == "str" { "\"\"".to_string() }
+    else if type_str == "bool" { "False".to_string() }
+    else if type_str == "float" { "0.0".to_string() }
+    else if type_str.starts_with("list[") { "[]".to_string() }
+    else if let Some(type_def) = type_defs.get(&type_str) {
+        if node_is_coproduct(type_def.clone()) {
+            // Enum/union -- check if all variants are unit (Python Enum) or have data (Union)
+            let all_unit = type_def.children.iter().all(|v| v.children.is_empty());
+            match type_def.children.first().cloned() {
+                Some(first_variant) => {
+                    if all_unit {
+                        // Python Enum: Element.Fire
+                        format!("{}.{}", type_str, first_variant.name)
+                    } else if first_variant.children.is_empty() {
+                        // Tagged union, unit variant: BattleResultDefeat()
+                        format!("{}{}()", type_str, first_variant.name)
+                    } else {
+                        // Tagged union, data variant: BattleResultVictory(xp_gained=0)
+                        let field_strs: Vec<String> = first_variant.children.iter().map(|c| {
+                            let field_name = emit_ident(c.name.clone(), RenderTarget::Python);
+                            let field_type = emit_node_type(rt_type(c.clone()), RenderTarget::Python);
+                            format!("{}={}", field_name, py_default_for_type(field_type, type_defs))
+                        }).collect();
+                        format!("{}{}({})", type_str, first_variant.name, field_strs.join(", "))
+                    }
+                },
+                None => format!("{}()", type_str),
+            }
+        } else if node_is_product(type_def.clone()) {
+            // Record -- construct with defaults for each field
+            let field_strs: Vec<String> = type_def.children.iter().map(|c| {
+                let field_name = emit_ident(c.name.clone(), RenderTarget::Python);
+                let field_type = emit_node_type(rt_type(c.clone()), RenderTarget::Python);
+                format!("{}={}", field_name, py_default_for_type(field_type, type_defs))
+            }).collect();
+            format!("{}({})", type_str, field_strs.join(", "))
+        } else {
+            "None".to_string()
+        }
+    } else {
+        "None".to_string()
+    }
 }
 
 pub fn emit_py_module(typed_module: Rc<TypedModule>, registry: HashMap<String, Rc<ItemInfo>>) -> Rc<TextFile> {
