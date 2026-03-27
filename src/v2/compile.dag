@@ -36,7 +36,7 @@ import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
 import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
-import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, OperationalFacts, analyze_ownership, compute_operational_facts }
+import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
 // =========================================================================
@@ -119,9 +119,9 @@ fn compile_bundle_error(message: String) -> Node {
   diagnostic_node(severity: "error", message: message, span: no_span(), module_name: none, category: none)
 }
 
-fn emit_artifact(typed: ResolvedGraph, artifact: Artifact, op_facts: OperationalFacts) -> EmitResult {
+fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
   match artifact.target {
-    Rust => emit_rust(typed: typed, op_facts: op_facts)
+    Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)
     Go => emit_go(typed: typed)
     Dag => emit_dag_artifact(typed: typed)
@@ -650,7 +650,7 @@ fn validate_boundaries(plan: ArtifactPlan) -> List<Node> {
   )
 }
 
-fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan, op_facts: OperationalFacts) -> EmitResult {
+fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> EmitResult {
   if artifact_plan.artifacts |> count == 0 {
     return EmitResult {
       files: [],
@@ -661,7 +661,7 @@ fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan, op
   if boundary_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: boundary_diags }
   }
-  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact, op_facts: op_facts))
+  let results = artifact_plan.artifacts |> map(artifact => emit_artifact(typed: typed, artifact: artifact))
   let all_files = results |> flat_map(r => r.files)
   let all_diags = results |> flat_map(r => r.diagnostics)
   EmitResult { files: all_files, diagnostics: all_diags }
@@ -784,11 +784,6 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
 
-      // Stage 6b: Compute operational facts from ownership proofs.
-      // These flow through EmitGraphInfo to the emitter, making representation
-      // decisions (clone vs move) a function of graph facts, not type categories.
-      let op_facts = compute_operational_facts(proofs: ownership)
-
       // Stage 7: Default artifact planning for the current single-artifact flow.
       let artifact_plan = default_artifact_plan(
         root_modules: typed.modules |> map(m => m.module.name),
@@ -797,8 +792,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
 
       // Stage 8: Emit target-language files.
       // The artifact plan is the source of truth for backend selection in the
-      // current single-artifact compiler path. Operational facts are required.
-      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan, op_facts: op_facts)
+      // current single-artifact compiler path.
+      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
       let emit_errors = emit_diags |> filter(d => diagnostic_is_error(n: d))

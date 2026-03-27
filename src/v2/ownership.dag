@@ -82,37 +82,6 @@ type OwnershipProof {
 }
 
 // =========================================================================
-// Operational facts -- the emit-facing summary of ownership analysis.
-//
-// Per-binding fan-out counts, aggregated from all OwnershipProofs.
-// The emitter reads these to make clone-vs-move decisions per variable
-// reference. This is a required field of EmitGraphInfo -- the emitter
-// cannot be called without it.
-//
-// Language-agnostic: computed once, consumed by any backend.
-// =========================================================================
-
-type OperationalFacts {
-  // Per-binding fan-out: "func_name|binding_name" -> count.
-  // fan-out=0: dead code. fan-out=1: move. fan-out>1: clone (O(1) if shared).
-  binding_fan_out: Map<String, Int>
-}
-
-fn empty_operational_facts() -> OperationalFacts {
-  OperationalFacts { binding_fan_out: empty_map() }
-}
-
-// Aggregate per-binding fan-out from all ownership proofs in a compilation.
-fn compute_operational_facts(proofs: List<OwnershipProof>) -> OperationalFacts {
-  let fan_out_map = proofs |> fold(init: empty_map(), f: (acc, proof) =>
-    proof.bindings |> map_values |> fold(init: acc, f: (m, usage) =>
-      map_insert(m, concat(proof.func_name, "|", usage.name), binding_fan_out(usage: usage))
-    )
-  )
-  OperationalFacts { binding_fan_out: fan_out_map }
-}
-
-// =========================================================================
 // Internal accumulator for collecting edge classifications
 // =========================================================================
 
