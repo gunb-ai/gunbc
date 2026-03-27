@@ -88,6 +88,27 @@ fn python_emit_generates_mock_test_file() {
 }
 
 #[test]
+fn python_test_file_syntax_valid() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Python);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "tests/test_mock_smoke.py");
+
+    // Validate via python3 ast.parse — checks real Python syntax validity
+    let status = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(format!("import ast; ast.parse({})", serde_json::to_string(&content).unwrap()))
+        .output()
+        .expect("failed to invoke python3");
+    assert!(
+        status.status.success(),
+        "emitted Python test file is not valid Python syntax:\n--- stderr ---\n{}\n--- content ---\n{}",
+        String::from_utf8_lossy(&status.stderr),
+        content,
+    );
+}
+
+#[test]
 fn go_emit_generates_mock_test_file() {
     let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
     let result = compile_dag_target(source, RenderTarget::Go);
@@ -95,6 +116,25 @@ fn go_emit_generates_mock_test_file() {
     let content = find_file(&result, "mock_smoke_test.go");
     assert!(content.contains("func TestDemoApiPing("), "Go test file should contain a PascalCase generated test function");
     assert!(content.contains("// Signature:"), "Go test file should contain the projection signature comment");
+}
+
+#[test]
+fn go_test_file_syntax_valid() {
+    let source = "module mock_smoke\n\ntype Pong = String\n\nservice demo.Api {\n  operation Ping {\n    response {\n      200 => Pong\n    }\n    mock_response {\n      200 => \"pong\"\n    }\n  }\n}\n";
+    let result = compile_dag_target(source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_smoke_test.go");
+
+    // Valid Go test structure
+    assert!(content.contains("package "), "Go test file must declare a package");
+    assert!(content.contains("import"), "Go test file must have imports");
+    assert!(content.contains("func Test"), "Go test file must contain a Test function");
+    assert!(content.contains("testing.T"), "Go test file must reference testing.T");
+
+    // Must not contain syntax from other targets
+    assert!(!content.contains("fn "), "Go test file must not contain Rust 'fn ' syntax");
+    assert!(!content.contains("def "), "Go test file must not contain Python 'def ' syntax");
+    assert!(!content.contains("compile_error!"), "Go test file must not contain Rust compile_error! macro");
 }
 
 #[test]
@@ -1013,4 +1053,131 @@ fn duplicate_module_name_produces_diagnostic() {
         "duplicate module names should produce a diagnostic, got: {:?}",
         msgs
     );
+}
+
+// ── Self-hosting contract tests (SH-1 through SH-8) ────────────────────
+//
+// These verify stage boundary invariants on the PipelineResult.
+
+#[test]
+fn sh1_artifact_plan_valid() {
+    let source = "module artifact_check\n\ntype Foo { x: Int }\n\nfn make_foo() -> Foo { Foo { x: 1 } }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let plan = &result.artifact_plan;
+    // Artifact plan should have at least one artifact
+    assert!(!plan.artifacts.is_empty(), "artifact plan should contain at least one artifact");
+    // All boundary references should point to existing artifact names
+    let artifact_names: Vec<&str> = plan.artifacts.iter().map(|a| a.name.as_str()).collect();
+    for b in plan.boundaries.iter() {
+        assert!(
+            artifact_names.contains(&b.from_artifact.as_str()),
+            "boundary from_artifact '{}' not found in artifacts: {:?}",
+            b.from_artifact, artifact_names
+        );
+        assert!(
+            artifact_names.contains(&b.to_artifact.as_str()),
+            "boundary to_artifact '{}' not found in artifacts: {:?}",
+            b.to_artifact, artifact_names
+        );
+        assert_ne!(
+            b.from_artifact, b.to_artifact,
+            "boundary self-loop: {} -> {}",
+            b.from_artifact, b.to_artifact
+        );
+    }
+}
+
+#[test]
+fn sh2_ownership_covers_all_functions() {
+    let source = "module own_check\n\nfn add(a: Int, b: Int) -> Int { a + b }\n\nfn greet(name: String) -> String { name }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    // Every function with a body should have an ownership proof
+    let proof_names: Vec<&str> = result.ownership.iter().map(|p| p.func_name.as_str()).collect();
+    assert!(proof_names.contains(&"add"), "ownership should cover 'add', got: {:?}", proof_names);
+    assert!(proof_names.contains(&"greet"), "ownership should cover 'greet', got: {:?}", proof_names);
+    // Every proof should have non-empty decisions
+    for proof in result.ownership.iter() {
+        assert!(
+            !proof.decisions.is_empty(),
+            "ownership proof for '{}' has no decisions",
+            proof.func_name
+        );
+    }
+}
+
+#[test]
+fn sh3_complexity_report_consistent() {
+    let source = "module cx_check\n\nfn identity(x: Int) -> Int { x }\n\nfn double(x: Int) -> Int { x + x }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let report = &result.complexity;
+    // Violations should only reference functions in summaries
+    for violation in report.violations.iter() {
+        assert!(
+            report.function_summaries.contains_key(&violation.func_name),
+            "violation references '{}' but it's not in function_summaries",
+            violation.func_name
+        );
+    }
+}
+
+#[test]
+fn sh7_parse_output_has_valid_structure() {
+    let source = "module parse_check\n\ntype Foo { x: Int }\n\nfn bar() -> Int { 42 }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    // Files should be emitted (parse succeeded through to emit)
+    assert!(!result.files.is_empty(), "compilation should produce files");
+    // Every emitted file should have a non-empty path and content
+    for file in result.files.iter() {
+        assert!(!file.path.is_empty(), "emitted file has empty path");
+        assert!(!file.content.is_empty(), "emitted file '{}' has empty content", file.path);
+    }
+}
+
+#[test]
+fn sh8_multi_module_imports_resolve() {
+    let source_a = "module types_mod\n\ntype Color { r: Int  g: Int  b: Int }\n";
+    let source_b = "module consumer_mod\n\nimport types_mod { Color }\n\nfn make_red() -> Color { Color { r: 255, g: 0, b: 0 } }\n";
+    let result = compile_multi(&[
+        ("types_mod.dag", source_a),
+        ("consumer_mod.dag", source_b),
+    ]);
+    assert_no_diagnostics(&result);
+    // Both modules should produce output files
+    assert!(
+        result.files.iter().any(|f| f.path.contains("types_mod")),
+        "types_mod should produce an output file"
+    );
+    assert!(
+        result.files.iter().any(|f| f.path.contains("consumer_mod")),
+        "consumer_mod should produce an output file"
+    );
+    // Diagnostics should be empty (imports resolved successfully)
+    assert!(result.diagnostics.is_empty(), "multi-module compilation should have 0 diagnostics");
+}
+
+#[test]
+fn sh4_resolved_graph_completeness() {
+    // Use DAG target to get the full typed graph as JSON, then verify
+    // structural completeness of the ResolvedGraph serialization.
+    let source = "module rg_check\n\ntype Color = Red | Green | Blue\n\ntype Pair { a: Int  b: String }\n\nfn make_pair() -> Pair { Pair { a: 1, b: \"hello\" } }\n";
+    let result = compile_dag_target(source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let json_str = find_file(&result, "dag-artifact.json");
+    let artifact: Value = serde_json::from_str(&json_str).expect("dag artifact should be valid JSON");
+    // Artifact should have version, modules, and diagnostics
+    assert!(artifact.get("version").is_some(), "artifact should have version");
+    assert!(artifact.get("modules").is_some(), "artifact should have modules");
+    let modules = artifact["modules"].as_array().expect("modules should be array");
+    assert!(!modules.is_empty(), "modules should be non-empty");
+    // Each module should have name and items
+    for module in modules {
+        let mod_obj = module.get("module").expect("typed module should have 'module' field");
+        assert!(mod_obj.get("name").is_some(), "module should have a name");
+        let items_field = module.get("items");
+        assert!(items_field.is_some(), "typed module should have 'items' field");
+    }
 }

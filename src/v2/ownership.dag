@@ -57,6 +57,15 @@ fn semantic_consumer_count(usage: BindingUsage) -> Int {
   usage.consumers |> filter(c => match c.kind { Consumed => true, _ => false }) |> count
 }
 
+// Fan-out: total reference count across all edge kinds.
+// This is the syntactic fan-out of a binding — how many times it is referenced.
+// The emit rule: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
+// Threaded edges (fold accumulators) are excluded — they are linearity-preserving
+// by construction and should not inflate fan-out.
+fn binding_fan_out(usage: BindingUsage) -> Int {
+  usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true }) |> count
+}
+
 // =========================================================================
 // Ownership proof -- per-function analysis output
 // =========================================================================

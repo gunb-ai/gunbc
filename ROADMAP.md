@@ -1075,23 +1075,26 @@ L1 acceptance (updated per thesis amendments):
 
 ## Recommended Next Steps and Parallelization
 
-Phase 1 complete. Phase 2 gate met (gist lib compiles). Phase 3 closed on
-this branch. Phase 4 implementation is complete on this branch except for
-P4.6 equivalence validation / convergence follow-through.
+**Phase 5 is active.** Phases 1-4 complete. Remaining work is split into
+two independent streams (assigned 2026-03-27). See Phase 5 Workboard for
+the canonical stream assignments.
 
-### Parallelizable work streams
+### Active work streams (Phase 5)
 
-| Stream | What | Status | Depends on |
-|--------|------|--------|------------|
-| **A: Fixed-point** | Bootstrap convergence | **Done** — deterministic output, ratchet at 0 | — |
-| **B: Generics** | P3.6 + P3.7 | **Done** — recursive generics landed and the arity bridge is deleted; built-in/user-generic path unification remains later L1 cleanup | — |
-| **D: V1 retirement** | Replace v1 interpreter with stage0 | **Done** (PR #200 + #204) — stage0 committed, tests direct, v1-bootstrap removed | — |
-| **D tier 5: File decomposition** | Decompose `04_infer.dag` using `map_expr_children` | **In progress** — `map_expr_children` landed and `resolve_expr_types` rewrites now use it; further file splitting is follow-up cleanup | D done |
-| **E: P4.1a + P4.2/P4.3/P4.4/P4.5** | Shared emit spine, generated tests, DAG backend, typed CLI target surface | **Done** — full shared ExprData/TCO dispatch landed; tests and DAG artifact now share compiler-owned projections | P4.1 review cleanup done |
+| Stream | Branch | What | Scope |
+|--------|--------|------|-------|
+| **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors (158), type-name comparisons (40), CollectionKind bridge | L1 ratchet 420 → 0 |
+| **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.12 ExprData tag assessment, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 
-**D tier 5 remains independent of the completed emit work** — further
-`04_infer.dag` file splitting can proceed without reopening the Phase 4
-emit boundary changes.
+### Completed work streams (Phases 1-4)
+
+| Stream | What | Status |
+|--------|------|--------|
+| **A: Fixed-point** | Bootstrap convergence | **Done** — deterministic output, ratchet at 0 |
+| **B: Generics** | P3.6 + P3.7 | **Done** — recursive generics landed and the arity bridge is deleted |
+| **D: V1 retirement** | Replace v1 interpreter with stage0 | **Done** (PR #200 + #204) |
+| **D tier 5: File decomposition** | Decompose `04_infer.dag` | **Partially done** — `map_expr_children` landed; further splitting is optional cleanup |
+| **E: P4.1a + P4.2/P4.3/P4.4/P4.5** | Shared emit spine, generated tests, DAG backend | **Done** — full shared dispatch landed |
 
 ### V1 retirement + file decomposition plan (Stream D)
 
@@ -2232,37 +2235,49 @@ stable.
 
 ### Phase 5 Workboard
 
-Phase 5 has two tracks that can run in parallel: **L3 dissolution**
-(parser, P5.0-P5.1) and **L1 final deletions** (P5.6-P5.10). The
-structural dissolutions (P5.2-P5.5) are independent of each other and
-can interleave with either track.
+Phase 5 remaining work is split into two independent streams that can
+run in parallel on separate branches. No cross-stream dependencies.
 
-#### Track A: L3 dissolution (parser)
+#### Work Stream Assignment (2026-03-27)
+
+| Stream | Branch | Focus | Primary files |
+|--------|--------|-------|---------------|
+| **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | Drive L1 ratchet → 0 (the Phase 5 gate) | `04_types.dag`, `04_infer.dag`, `05_emit*.dag`, `dsl/std/`, `04_resolve.dag` |
+| **Stream 2: Expression Model & Frontend** | *(unassigned branch)* | Mature expression/token structural model | `01_tokenize.dag`, `02_parse.dag`, `00_core.dag` (ExprData/enum sections), `compile.dag`, `src/v2/stage0/` |
+
+Shared file `00_core.dag`: Stream 1 touches type/Node fields and
+`kernel_types`; Stream 2 touches ExprData variants and semantic enums.
+Different sections — coordinate if both need structural changes to Node.
+
+#### Track A: L3 dissolution (parser) — **Stream 2**
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
 | P5.0 | `kind_tag` string dispatch elimination | — | ~200 sites in `02_parse.dag` | **Done.** Parser control flow now goes through payload-insensitive token-shape helpers, source-audit ratchets enforce the API, and `kind_display_name` is diagnostics-only. Token dissolution remains P5.1. |
-| P5.1 | Token coherence (redefined) | P5.0 | ~507 lines (`01_tokenize.dag`) | **Redefined 2026-03-26.** `Token { text, span, shape }` with `TokenShape` replaces `TokenKind`. This is token coherence (shape/payload separation), not dissolution into Node. Full token→Node dissolution is future work. |
+| P5.1 | Token coherence (redefined) | P5.0 | ~507 lines (`01_tokenize.dag`) | **Stream 2.** **Redefined 2026-03-26.** `Token { text, span, shape }` with `TokenShape` replaces `TokenKind`. This is token coherence (shape/payload separation), not dissolution into Node. Full token→Node dissolution is future work. |
 
-#### Track B: Structural dissolutions (independent, any order)
+#### Track B: Structural dissolutions (independent, any order) — **Stream 2**
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
 | P5.2 | Module/import dissolution | — | ~459 lines (`03_resolve.dag`) | **Done (2026-03-26).** Dead fields trimmed: `is_all`, `specific_names`, `target_module`→`target_span`, `dep_order` removed from stage boundary types. `build_emit_graph_info` moved from emit to reconcile boundary (`ResolvedGraph.emit_graph_info`). Remaining wrappers (`ModuleGraph`, `ResolvedGraph`, `TypedModule`) are genuine output contracts carrying stage-local metadata (`type_env`, `func_env`, `item_registry`). |
 | P5.3 | Diagnostic / compile-output dissolution | — | Moderate | **Done (2026-03-26, audit).** Already dissolved: `diagnostic_node()` is the unified constructor; no `Diagnostic`, `Severity`, or `ErrorCategory` types exist. `CompileResult`/`PipelineResult`/`TextFile` are output contracts, not dissolvable. |
 | P5.4 | Service/support type dissolution | — | Small | **Done (2026-03-26, audit).** Already dissolved: `OperationDef`/`ServiceConfig` dissolved into Node in parser. `TransportKind` → Node.name. Remaining types (`ItemInfo`, `OpEntry`, `ServiceMethodResult`) are compiler-analysis artifacts, not Node duplicates. |
-| P5.5 | Residual semantic enum cleanup | P5.2-P5.4 | Small | Move remaining compiler-only semantic types toward `.dag` or `Node`-based representation. Depends on prior dissolutions to identify what's left. |
+| P5.5 | Residual semantic enum cleanup | P5.2-P5.4 | Small | **Stream 2.** Move remaining compiler-only semantic types (IntrinsicMethod, RuntimeBridgeMethod, FieldAccessStyle, etc.) toward `.dag` or `Node`-based representation. Depends on prior dissolutions to identify what's left. |
 
-#### Track C: L1 final deletions (the L1=0 gate)
+#### Track C: L1 final deletions (the L1=0 gate) — **Stream 1**
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
 | P5.6 | Scrambled-name tests (full suite) | Phase 4 (emit name-opacity) | Test suite | **Done (2026-03-26).** 6 tests comparing full typed-graph JSON (via DAG backend) after name normalization: smoke, containers, enums, field access, map types, nested types. Inference produces identical structural decisions regardless of type names. |
-| P5.7 | Delete `node_is_*` predicates | P5.6 passing + P5.7a/P5.7b below | 82 call sites | Two distinct invariant violations behind the predicates. See P5.7 design below. |
+| P5.7 | Delete `node_is_*` predicates | P5.6 passing + P5.7a/P5.7b below | 148 ratchet sites | **Stream 1.** Two distinct invariant violations behind the predicates. See P5.7 design below. |
 | P5.8 | Delete `normalize_type_name` | P5.6 passing | 17 sites | **Done (2026-03-26).** Function and all call sites deleted. One comment marker remains in `04_lookup.dag:136`. |
 | P5.9 | Delete `classify_type_structure` from emit | P5.6 passing, Phase 4 (shared emit) | 22 call sites | **Done (2026-03-26).** Function and all call sites deleted. Ratchet category reports 0. |
 | P5.10 | Connective dissolution assessment | P5.7-P5.9 | Design decision | **Done (2026-03-26).** Assessment: keep `Conj`/`Disj` as permanent graph primitives. 230 legitimate usage sites. Product/coproduct is denotational mathematics. Collections are orthogonal (use `CollectionKind`). |
-| P5.13 | Kernel type `.dag` declarations | P5.7 | Medium | Declare missing kernel types (Bool, Unit, Secret, Json, Bytes) in `dsl/std/`. Wire into TypeEnv. Replace `is_kernel_type` string list with structural scope membership. Dissolves 27 type-name comparison sites. See P5.13 design below. |
+| P5.13 | Kernel type `.dag` declarations | P5.7 | Medium | **Stream 1.** Declare missing kernel types (Bool, Unit, Secret, Json, Bytes) in `dsl/std/`. Wire into TypeEnv. Replace `is_kernel_type` string list with structural scope membership. Dissolves 27 type-name comparison sites. See P5.13 design below. |
+| — | Type constructor reduction | P5.7 | 158 ratchet sites | **Stream 1.** Replace `leaf_node`, `container_node`, `tuple_node`, etc. with structural alternatives. |
+| — | Type-name comparison reduction | P5.13 | 40 ratchet sites | **Stream 1.** Dissolve `.name == "Optional"`, `"Map"`, `"Dynamic"`, etc. |
+| — | CollectionKind bridge evolution | P5.13 | `04_types.dag`, `04_resolve.dag` | **Stream 1.** Evolve toward method algebra queries; delete `CollectionKind` enum when `.dag` type definitions declare method algebras. |
 
 **`04_types` audit scope before deleting the final L1 bridges:**
 - `node_is_bridge_error_name` / `node_is_bridge_dynamic_name`
@@ -2308,12 +2323,12 @@ See Active Temporary Bridges table.
 
 **Sequencing:** P5.7a (delete duplicate property strings) is safe to do any time — it only removes a parallel representation, no semantic change. P5.7b (typed collection enum) is a Node representation change that creates bridge debt with a named deletion point.
 
-#### Track D: L2 dissolution (ExprData → Node children)
+#### Track D: L2 dissolution (ExprData → Node children) — **Stream 2**
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
 | P5.11 | ExprData child dissolution | Phase 4 (shared emit stable) ✓ | ~129 match sites, ~141 construction sites across all .dag files | **Done (2026-03-26).** ExprData slimmed to pure operator metadata. All Node-valued fields removed. Children in `node.children` as compositional Nodes. Bridge functions deleted. ~300 lines of walker boilerplate eliminated. Diagnostic ratchet at 0. |
-| P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | Validate whether `ExprData` should dissolve into a more structural expression-kind property on Node, or remain as a closed semantic tag where that is the right exhaustiveness device. The goal is structural clarity, not dogmatic deletion. |
+| P5.12 | ExprData tag dissolution assessment | P5.11 | ~2000 lines | **Done (2026-03-27). Verdict: RETAIN as closed semantic tag.** 143 match sites across 13 files provide compiler-enforced exhaustiveness. 160+ construction sites, zero string comparisons. Post P5.11, ExprData is pure operator metadata — the right design. Enum principle applies: enum over language constructs stays. |
 
 ### P5.11 Design: ExprData Child Dissolution
 
@@ -3103,13 +3118,16 @@ current phase order.
 
 ### Compiler Improvements
 
-| Item | Why deferred |
-|------|--------------|
-| Anonymous record target resolution | Must fail closed, but is not blocking active phases. R2 is the fail-loud stopgap; this item is the real fix (proper field access for any arity). |
-| Collection intrinsic semantics in shared IR | Worth doing after shared emit is real; the Collection Denotational Model pins what each algebra's methods mean |
-| Generated self-hosting tests and stage contracts | Valuable once the compile contract settles |
-| TCO backend contract | Should be cleaned up during/after shared emit extraction |
-| SCC-aware return type resolution | Not currently blocking bootstrap |
+| Item | Why deferred | Stream |
+|------|--------------|--------|
+| Anonymous record target resolution | Must fail closed, but is not blocking active phases. R2 is the fail-loud stopgap; this item is the real fix (proper field access for any arity). | — |
+| Collection intrinsic semantics in shared IR | Worth doing after shared emit is real; the Collection Denotational Model pins what each algebra's methods mean | Stream 1 (relates to CollectionKind dissolution) |
+| Generated self-hosting tests and stage contracts | Valuable once the compile contract settles | — |
+| TCO backend contract | Should be cleaned up during/after shared emit extraction | Stream 2 |
+| SCC-aware return type resolution | Not currently blocking bootstrap | — |
+| `assemble_stage0` fixups (5 known issues) | Not blocking active phases. 5 post-regeneration manual corrections needed each time. | Stream 2 |
+| Statement/expression emit classification | Python (and partially Go) are statement-oriented; emit assumes expression-orientation. Three symptoms: `return let` at block tail, incomplete `functools.reduce` fold, `return match` as expression. Root cause: emit boundary loses statement/expression structural distinction. Fix: pre-emit metadata tags bindings vs tail expression in blocks; backends render the structural fact. Relates to FO-* (fan-out preservation) and P5.11 (ExprData dissolution). | Stream 2 |
+| Cross-language test generation parity | Generated tests must cover all target languages equally. Currently Rust test generation is most complete; Go and Python test emission needs parity audit and gaps filled. | Stream 2 |
 
 ### Open Invariant Violations (grouped by root cause)
 
@@ -3246,7 +3264,84 @@ Dissolved by: P1.14 (normalization), P1.15 (deduplication), and P1.19
 | Gist pipeline | `cargo test -p v2-compiler-tests v2_gist_full_pipeline -- --ignored` | End of Phase 2 |
 | L1 ratchet | `scripts/l1-ratchet.sh --check` | After any `.dag` change (goal: 0) |
 | Testgen gate | `cargo test -p v2-compiler-tests v2_testgen_emits_valid_rust` | After P1.21; verifies generated test files are non-empty and syntactically valid |
+| Testgen parity | `cargo test -p v2-compiler-tests testgen_parity` | Roadmap exit; generated tests compile and exercise operations for all three targets |
 | Scrambled-name tests | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | After P1.16; verifies name opacity |
+
+### Test Generation Exit Criteria (Roadmap-Level)
+
+Generated tests are a first-class output of the compiler. They must:
+
+1. **Exist for all three targets.** Every service operation with mock data
+   produces a test file for Rust, Go, and Python. (Currently met at
+   scaffold level via shared `extract_test_projections`.)
+
+2. **Compile/parse in the target language.** Rust test files pass
+   `rustc --edition 2021`, Go test files pass `go vet`, Python test
+   files pass `python3 -c "import ast; ast.parse(...)"`. (Rust met
+   via `testgen_emits_valid_rust`; Go and Python not yet gated.)
+
+3. **Exercise the operation.** Each generated test must instantiate
+   mock data, call the service operation (or its dry-run equivalent),
+   and assert the return value matches the mock response. The current
+   tests set up mock data but do not invoke the operation or assert
+   results — this is the gap.
+
+4. **Parity across targets.** The same service module with mock data
+   must produce structurally equivalent tests for all three languages.
+   Same operations tested, same mock data used, same assertion shape.
+
+**Structural prerequisite: enrich TestProjection (TG-0).**
+
+The current `TestProjection` loses facts that are available at extraction
+time. It carries `service_name` and `params` but not the service's
+transport kind or the structural type of each parameter. Downstream
+consumers (test emitters) must fabricate values or skip invocation because
+the projection doesn't compose these facts forward.
+
+This is a **layer downgrade**: the emitter re-derives "how to construct
+this service" and "what default value is valid for this param type" from
+names, when inference already resolved those facts structurally.
+
+**Fix:** `TestProjection` should be a view over the service's already-
+resolved structural facts, not a hand-picked field subset:
+
+```
+type TestProjection {
+  module_name: String
+  service_name: String
+  operation_name: String
+  inferred: Node              // return type (already structural)
+  params: List<Param>         // operation params
+  mock_field_inits: List<FieldInit>
+  transport_kind: TransportKind   // NEW: service transport
+  service_has_auth: Bool          // NEW: whether constructor needs auth
+}
+```
+
+With transport facts on the projection, test emitters can construct
+services with appropriate defaults (REST: empty base_url, Shell: None,
+File: ".") without fabrication. Param default values still need
+structural type info on `Param.type_expr` — that's already a Node with
+`.connective`, `.children`, `.name`, which the emitter should read
+structurally instead of branching on `.name == "String"`.
+
+**Lesson learned (2026-03-27):** When a projection type forces downstream
+consumers to fabricate or re-derive facts, the projection is incomplete.
+The fix is always to compose the fact at the extraction site where the
+source data is available — not to add workarounds downstream. This
+applies to every pipeline boundary, not just TestProjection.
+
+Work items to reach these criteria:
+
+| ID | Item | Status | Notes |
+|----|------|--------|-------|
+| TG-0 | Enrich TestProjection with transport + structural facts | Planned | Prerequisite for TG-7/8/9. Add `transport_kind`, `service_has_auth` to TestProjection. Read structural type facts on params instead of name-branching. |
+| TG-5 | Go test file syntax gate | **Done** | Structural syntax validation test added |
+| TG-6 | Python test file syntax gate | **Done** | `ast.parse` validation test added |
+| TG-7 | Rust test invocation: call operation with mock data | **Partial** | Service instantiated with DryRunMode(true), op called, Ok asserted. Param defaults use serde fallback — proper fix is TG-0. |
+| TG-8 | Go test invocation | **Partial** | Zero-value struct instantiation. Full invocation needs TG-0 + Go dry-run. |
+| TG-9 | Python test invocation | **Partial** | Mock data setup only. Full invocation needs TG-0 + Python dry-run. |
+| TG-10 | Cross-target parity test | Planned | Same `.dag` source → same test structure across all 3 targets |
 
 **Scrambled-name test design:** Rename all type names to arbitrary strings
 (consistently across declarations and references), run through inference,

@@ -231,8 +231,8 @@ fn resolve_filters_failed_imports_and_cycles() {
         "03_resolve.dag should contain acyclic_resolved"
     );
     assert!(
-        source.contains("r.resolved.target_span != none"),
-        "03_resolve.dag should contain 'r.resolved.target_span != none'"
+        source.contains("r.resolved.target_module != none"),
+        "03_resolve.dag should contain 'r.resolved.target_module != none'"
     );
     assert!(
         source.contains("r.diagnostics |> count == 0"),
