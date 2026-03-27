@@ -305,7 +305,7 @@ fn is_simple_disj(item: Node) -> Bool {
 // =========================================================================
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
-  let emit_info = build_emit_graph_info(modules: typed.modules)
+  let emit_info = typed.emit_graph_info
   let vtoe = emit_info.variant_to_enum
   let rc_types = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
     if type_summary_needs_rc(summary: summary) {

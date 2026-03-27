@@ -1997,7 +1997,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
-  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span, module_name: Some { value: module.module.name }, category: Some { value: "unresolved_name" })] })
+  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_span.value, module_name: Some { value: module.module.name }, category: Some { value: "unresolved_name" })] })
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
@@ -2544,7 +2544,7 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
   let diagnostics = flat_map(resolved.resolved_imports, imp =>
     match map_get(module_index, imp.module_path) {
       Some { value: _ } => []
-      None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"), span: imp.target_module.value.span, module_name: Some { value: resolved.module.name }, category: Some { value: "unresolved_name" })]
+      None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"), span: imp.target_span.value, module_name: Some { value: resolved.module.name }, category: Some { value: "unresolved_name" })]
     }
   )
   ParentModulesResult { modules: modules, diagnostics: diagnostics }
@@ -2578,7 +2578,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
 // =========================================================================
 // Main entry point: typecheck
 //
-// Processes modules in dependency order (from the resolver's dep_order).
+// Processes modules in dependency order (from the resolver's topo sort).
 // Each module sees the type environments of all its dependencies.
 //
 // Invariant: after this function returns, no unresolved Named references
@@ -2641,5 +2641,6 @@ fn typecheck_modules(
 
 fn reconcile(graph: ModuleGraph) -> ResolvedGraph {
   let typed = typecheck(graph: graph)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
+  let emit_info = build_emit_graph_info(modules: typed.modules)
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
 }

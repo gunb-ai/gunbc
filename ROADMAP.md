@@ -2226,9 +2226,9 @@ can interleave with either track.
 
 | ID | Item | Depends on | Est. scope | Notes |
 |----|------|-----------|-----------|-------|
-| P5.2 | Module/import dissolution | — | ~459 lines (`03_resolve.dag`) | Dissolve `Module`, `Import`, and `ImportNames` into `Node` compositions |
-| P5.3 | Diagnostic / compile-output dissolution | — | Moderate | Dissolve `Diagnostic`, `Severity`, `CompileResult`, and `TextFile` where it is still valuable. `InferredNode` (P1.9) already handles error representation. |
-| P5.4 | Service/support type dissolution | — | Small | Verify which service-layer types still need to move. Service nodes already use `Node` composition for operations/transports. |
+| P5.2 | Module/import dissolution | — | ~459 lines (`03_resolve.dag`) | **Done (2026-03-26).** Dead fields trimmed: `is_all`, `specific_names`, `target_module`→`target_span`, `dep_order` removed from stage boundary types. `build_emit_graph_info` moved from emit to reconcile boundary (`ResolvedGraph.emit_graph_info`). Remaining wrappers (`ModuleGraph`, `ResolvedGraph`, `TypedModule`) are genuine output contracts carrying stage-local metadata (`type_env`, `func_env`, `item_registry`). |
+| P5.3 | Diagnostic / compile-output dissolution | — | Moderate | **Done (2026-03-26, audit).** Already dissolved: `diagnostic_node()` is the unified constructor; no `Diagnostic`, `Severity`, or `ErrorCategory` types exist. `CompileResult`/`PipelineResult`/`TextFile` are output contracts, not dissolvable. |
+| P5.4 | Service/support type dissolution | — | Small | **Done (2026-03-26, audit).** Already dissolved: `OperationDef`/`ServiceConfig` dissolved into Node in parser. `TransportKind` → Node.name. Remaining types (`ItemInfo`, `OpEntry`, `ServiceMethodResult`) are compiler-analysis artifacts, not Node duplicates. |
 | P5.5 | Residual semantic enum cleanup | P5.2-P5.4 | Small | Move remaining compiler-only semantic types toward `.dag` or `Node`-based representation. Depends on prior dissolutions to identify what's left. |
 
 #### Track C: L1 final deletions (the L1=0 gate)

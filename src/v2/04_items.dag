@@ -24,6 +24,9 @@ import v2.compiler.infer_env {
 import v2.compiler.infer_sigs {
   ResolvedFuncEnv
 }
+import v2.compiler.infer_emit_info {
+  EmitGraphInfo
+}
 
 // =========================================================================
 // Types
@@ -58,10 +61,12 @@ type TypedGraph {
 // ResolvedGraph: the reconcile-to-emit boundary type.
 // Wraps TypedModules whose func_env is ResolvedFuncEnv, making it
 // structurally impossible for unresolved signatures to reach emit.
+// emit_graph_info is precomputed here so emit never calls back into infer.
 type ResolvedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<Node>
+  emit_graph_info: EmitGraphInfo
 }
 
 // =========================================================================
