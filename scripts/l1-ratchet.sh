@@ -66,7 +66,7 @@ echo "  ---"
 echo "  Structural Total:              $structural_total"
 
 # Ratchet: L1 violations must not exceed this value.
-L1_RATCHET=202
+L1_RATCHET=198
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

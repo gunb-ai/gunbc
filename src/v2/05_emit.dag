@@ -53,7 +53,7 @@ import v2.std.core {
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, MapKind,
+  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
   CardOptional
 }
 
@@ -813,9 +813,12 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   if n.children |> count == 0 {
     // Bare container nodes (from empty_map(), etc.) need container templates
     // even without children — emit with "_" placeholders.
-    let base = if n.name == "Map" {
+    let bare_is_map = n.collection_kind == MapKind
+    let bare_ck = n.collection_kind
+    let bare_is_collection = bare_ck == ListKind || bare_ck == SetKind || bare_ck == NonEmptyListKind || bare_ck == NonEmptySetKind
+    let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
-    } else if n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet" {
+    } else if bare_is_collection {
       emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
     } else {
       emit_primitive_type(name: n.name, target: target)
@@ -848,9 +851,9 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
     }
     // NonEmpty variants: Rust uses distinct types, others map to base container
     let is_rust = match target { Rust => true  _ => false }
-    let container_kind = if n.name == "NonEmptyList" {
+    let container_kind = if n.collection_kind == NonEmptyListKind {
       if is_rust { "non_empty_list" } else { "list" }
-    } else if n.name == "NonEmptySet" {
+    } else if n.collection_kind == NonEmptySetKind {
       if is_rust { "non_empty_set" } else { "set" }
     } else { to_snake(name: n.name) }
     emit_container(kind: container_kind, inner: inner, target: target)

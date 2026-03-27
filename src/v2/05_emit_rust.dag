@@ -3364,7 +3364,7 @@ fn emit_shell_return(inferred: Node) -> String {
   } else {
     let eff_ck = effective.collection_kind
     let __eff_is_container = eff_ck == ListKind || eff_ck == SetKind || eff_ck == NonEmptyListKind || eff_ck == NonEmptySetKind
-    if effective.name == "List" || effective.name == "Vec" || __eff_is_container {
+    if __eff_is_container {
       "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
     } else if is_product && effective.children |> count > 1 {
       concat("let parsed: serde_json::Value = serde_json::from_str(&stdout)?;\nOk(serde_json::from_value(parsed)?)")

@@ -20,7 +20,7 @@ import v2.std.core {
   module_node, import_node,
   Node, InferredNode, Resolved, CompilerError,
   NodeType, Typed, InferError, Untyped, rt_node,
-  Connective, Conj, Disj, NoConnective, NoCollection,
+  Connective, Conj, Disj, NoConnective, CollectionKind, MapKind, NoCollection,
   Field, Variant, Param, ResourceUse, Cardinality, Required, CardOptional,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -2617,7 +2617,7 @@ fn node_to_name_str(n: Node) -> String {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     concat("Optional_", node_to_name_str(n: with_required_cardinality(n: n)))
-  } else if n.name == "Map" {
+  } else if n.collection_kind == MapKind {
     if n.children |> count > 1 { concat("Map_", node_to_name_str(n: last_child_or_self(n: n))) }
     else { n.name }
   } else if n.name == "Refined" {
