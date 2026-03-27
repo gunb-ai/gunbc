@@ -249,6 +249,28 @@ compiler semantics; the point is that the **shapes** those records
 inhabit should come from shared vocabulary.)
 
 ```
+Layer -1: Type Constructors                      *** NOT YET IN STD ***
+  Product  — all children hold simultaneously (record fields, tuples)
+  Coproduct — exactly one child holds (enum variants, sum types)
+  Cardinality — presence/absence on binding sites (Required, Optional)
+
+  These are the irreducible type-theoretic primitives from which ALL
+  other types compose. Currently hardcoded as `type Connective = Conj | Disj
+  | NoConnective` in the compiler (`00_core.dag`). Should be modeled in
+  `dsl/std/constructors.dag` as the foundational building blocks.
+
+  Classical = True | False USES Coproduct.
+  OrderedRing<T> { add: ..., mul: ... } USES Product.
+  The constructors are more fundamental than the types they build.
+
+  The 313 "graph primitive" ratchet sites (.connective access + Conj/Disj
+  refs) are reads on these constructors. They should be structural reads
+  on modeled primitives, not compiler-internal enum checks.
+
+  Modeling path: declare Product/Coproduct in std, then the compiler reads
+  them from DAG structure. The `Connective` enum in `00_core.dag` dissolves
+  into structural composition from std-declared primitives.
+
 Layer 0: Logic
   Classical = True | False                       (std/logic.dag)
 

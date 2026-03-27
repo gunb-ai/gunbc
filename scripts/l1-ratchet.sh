@@ -34,15 +34,16 @@ typename_count=$(count_matches '\.name == "(Optional|Map|List|Set|Dynamic|Error|
 
 l1_total=$((constructor_count + typename_count))
 
-# ── Graph Primitives (permanent, not violations) ────────────────────────
+# ── Type Constructors (Layer -1, not yet modeled in std) ────────────────
 
-# .connective direct field access (graph primitive per P5.10)
+# .connective direct field access (Product/Coproduct constructor reads)
 connective_field_count=$(count_matches '\.connective\b')
 
-# Conj/Disj/NoConnective references (graph primitive per P5.10)
+# Conj/Disj/NoConnective references (constructor enum — dissolves when
+# Product/Coproduct are modeled in dsl/std/constructors.dag)
 conj_disj_count=$(count_matches '\b(Conj|Disj|NoConnective)\b')
 
-graph_primitive_total=$((connective_field_count + conj_disj_count))
+constructor_primitive_total=$((connective_field_count + conj_disj_count))
 
 # ── Bridge Debt (tracked, has deletion point) ───────────────────────────
 
@@ -59,12 +60,12 @@ echo "  Type-name comparisons:         $typename_count"
 echo "  ---"
 echo "  L1 Total:                      $l1_total"
 echo ""
-echo "  Graph Primitives (permanent)"
-echo "  ----------------------------"
+echo "  Type Constructors (Layer -1, not yet in std)"
+echo "  ---------------------------------------------"
 echo "  .connective access:            $connective_field_count"
 echo "  Conj/Disj/NoConnective:        $conj_disj_count"
 echo "  ---"
-echo "  Graph Primitive Total:         $graph_primitive_total"
+echo "  Constructor Total:             $constructor_primitive_total"
 echo ""
 echo "  Bridge Debt (has deletion point)"
 echo "  --------------------------------"
