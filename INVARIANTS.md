@@ -127,6 +127,79 @@ The value-representation principle (immutable strings should be
 zero-copy reads) is correct but applies to ~15ms of the cost.
 The dominant cost is something else. Profile first, theorize second.
 
+#### Import resolution is the caller's job — it should be the compiler's (FF-9)
+
+**Status: OPEN (2026-03-27).**
+
+**The violation:** The compiler takes a flat `List<SourceFile>` and compiles
+whatever it's given. Import declarations (`import std.types { List }`)
+are validated against the provided sources — if `std.types` isn't in the
+list, the import fails. The compiler has no way to discover and load a
+module that wasn't pre-loaded by the caller.
+
+This means:
+- The stage0 binary manually `collect_dag_files` from a directory
+- The test harness manually assembles source lists per test
+- The bootstrap test manually copies specific std files
+- Three callers, three different "import resolution" strategies
+
+**What's lost:** The import declarations in `.dag` source files are the
+complete, authoritative dependency graph. The compiler already parses
+these imports and validates them. But it treats them as assertions about
+what the caller provided, not as demands for what to load.
+
+**The compensation:** Each caller reinvents import resolution:
+- stage0 binary: recursive directory walk, loads everything
+- `compile_dag()`: loads nothing extra (kernel seed only)
+- `compile_with_std()`: hardcodes algebra.dag + types.dag
+- bootstrap: hardcodes a specific list of std files
+- gist test: hardcodes a specific list of dsl files
+
+Adding a new std module (e.g., `std.sorting`) requires updating every
+caller that might need it. This violates "No parallel implementations"
+and "Single-authority metadata" — the `.dag` import declaration should
+be the single authority for what's needed.
+
+**The fix:** Import-driven source resolution. The compiler (or a thin
+layer above it) resolves imports to files:
+
+1. The caller provides a **source root** (or roots), not a flat file list
+2. The compiler parses the entry point, discovers imports, loads
+   transitively referenced modules from the source roots
+3. Only files reachable from the entry point's import graph are loaded
+4. The resolve stage already builds the dependency graph — the missing
+   piece is wiring it to file discovery
+
+This is the standard approach (Go, Rust, Python all resolve imports to
+files). The compiler's pure-function constraint is preserved: the I/O
+layer (file reading) wraps the pure compiler, and the pure compiler
+receives exactly the transitive closure of imported sources.
+
+**Concrete mechanism:**
+
+```
+// Current: caller assembles all sources upfront
+compile_sources(sources: List<SourceFile>, target) -> PipelineResult
+
+// Target: caller provides roots, compiler discovers imports
+compile_from_roots(entry: SourceFile, roots: List<SourceRoot>, target) -> PipelineResult
+```
+
+Where `SourceRoot` is a path prefix that maps module paths to files:
+`std.types` → `<root>/std/types.dag`. The I/O wrapper reads files on
+demand as imports are discovered.
+
+**Impact:** Eliminates the kernel seed (modules that need `List` import
+it; the import loads `std.types` which loads `std.algebra`). Eliminates
+`compile_with_std` vs `compile_dag` distinction. Tests use the same
+resolution as production. Every compilation loads exactly what it needs
+— minimal and universal.
+
+**Depends on:** No compiler changes needed — the resolve stage already
+validates imports. The new piece is a pre-resolve import discovery pass
+that reads files. This can be implemented in the Rust test harness and
+stage0 binary without changing any `.dag` code.
+
 #### Ratchet
 
 After all open instances are fixed:
