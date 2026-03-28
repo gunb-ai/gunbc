@@ -1843,8 +1843,12 @@ fn parse_field(tokens: List<Token>, state: ParserState) -> FieldResult {
 
   let r3 = parse_type_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return FieldResult { field: dummy_field, state: r3.state, err: r3.err } }
-  let te = r3.type_expr
-  let s = r3.state
+
+  // Optional where clause: field: Type where range(min: 1, max: 100)
+  let wr = try_where_clause(tokens: tokens, state: r3.state, base_te: r3.type_expr, start_span: start_span)
+  if has_err(err: wr.err) { return FieldResult { field: dummy_field, state: wr.state, err: wr.err } }
+  let te = wr.type_expr
+  let s = wr.state
 
   // Check for from "key" binding: name: Type from "json_key"
   let from_r = parse_optional_from_key(tokens: tokens, state: s)
@@ -3388,7 +3392,7 @@ fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
       None => false
     }
     let decl_ok = match t2 {
-      Some { value: t } => is_colon_shape(shape: t.shape) || is_lbracket_shape(shape: t.shape)
+      Some { value: t } => is_colon_shape(shape: t.shape) || is_lbracket_shape(shape: t.shape) || is_eq_shape(shape: t.shape)
       None => false
     }
     name_ok && decl_ok
@@ -3453,21 +3457,28 @@ fn parse_node_decl(tokens: List<Token>, state: ParserState) -> ExprResult {
   // Optional constraint annotations: [after X, when Y]
   let cr = try_constraint_annotations(tokens: tokens, state: r.state)
   if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, state: cr.state, err: cr.err } }
-  // Expect colon
-  let r2 = expect(tokens: tokens, state: cr.state, expected: ExpectColon)
-  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+  // Expect colon or equals: node x: Type  OR  node x = expr
+  let e_colon = eat(tokens: tokens, state: cr.state, expected: ExpectColon)
+  let r2_state = if e_colon.consumed { e_colon.state } else {
+    let r2 = expect(tokens: tokens, state: cr.state, expected: ExpectEq)
+    if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+    r2.state
+  }
   // Parse node type/value expression
-  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  let r3 = parse_expr(tokens: tokens, state: r2_state)
   if has_err(err: r3.err) { return r3 }
+  // Optional return type annotation: node x: call() -> { fields }
+  let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
+  if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, state: ret.state, err: ret.err } }
   // Build node: ExprLet with type_annotation holding the type expression
   let node = Node { name: "", span: span, children: [r3.expr],
     connective: NoConnective, collection_kind: NoCollection,
-    params: [], inferred: none, return_cardinality: Required,
+    params: [], inferred: ret.inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: cr.constraints,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,
     expr_data: ExprLet { name: name } }
-  ExprResult { expr: node, state: r3.state, err: none }
+  ExprResult { expr: node, state: ret.state, err: none }
 }
 
 // Parse bare assignment: name = expr -> desugar to Let { name, value, body: none }
