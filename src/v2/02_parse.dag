@@ -712,9 +712,9 @@ fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> Parser
 
 // Eat: consume the token if it matches, otherwise leave state unchanged.
 fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatResult {
-  let sh = peek_shape(tokens: tokens, state: state)
-  let matches = match sh {
-    Some { value: shape } => shape_matches_expected(shape: shape, expected: expected)
+  let tok = peek(tokens: tokens, state: state)
+  let matches = match tok {
+    Some { value: t } => token_matches_expected(token: t, expected: expected)
     None => false
   }
   if matches {
@@ -3106,7 +3106,7 @@ fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
     let t1 = get(tokens, state.pos + 1)
     let t2 = get(tokens, state.pos + 2)
     let name_ok = match t1 {
-      Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword_shape(shape: t.shape)
+      Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword(token: t)
       None => false
     }
     let decl_ok = match t2 {
@@ -4003,7 +4003,7 @@ fn peek_is_expected_at(tokens: List<Token>, state: ParserState, offset: Int, exp
   if state.pos + offset < count(tokens) {
     let tok = get(tokens, state.pos + offset)
     match tok {
-      Some { value: t } => shape_matches_expected(shape: t.shape, expected: expected)
+      Some { value: t } => token_matches_expected(token: t, expected: expected)
       None => false
     }
   } else {
@@ -4362,8 +4362,8 @@ fn parse_expr_list_until(tokens: List<Token>, state: ParserState, end_expected: 
 
 fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_expected: ExpectedToken, acc: List<Node>) -> ExprsResult {
   let s = skip_newlines(tokens: tokens, state: state)
-  let at_end_tag = match peek_shape(tokens: tokens, state: s) {
-    Some { value: shape } => shape_matches_expected(shape: shape, expected: end_expected)
+  let at_end_tag = match peek(tokens: tokens, state: s) {
+    Some { value: t } => token_matches_expected(token: t, expected: end_expected)
     None => false
   }
   if at_end_tag || at_end(tokens: tokens, state: s) {
