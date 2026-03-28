@@ -788,8 +788,13 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
       return concat("__EMIT_BUG_UNRESOLVED_", sentinel_label, "__")
     }
   }
-  // Callable: function type rendering (structural — has params)
-  if n.params |> count > 0 {
+  // Callable: function type rendering (structural identification).
+  // A callable has params (fn(A) -> B) or is a zero-param callable
+  // (fn() -> T) identified structurally: inferred carries the return
+  // type, no connective, no children. No name check needed — after
+  // Part 1 fix, error-recovery dummies have inferred == none.
+  let is_zero_param_callable = n.inferred != none && n.connective == NoConnective && n.children |> count == 0 && n.collection_kind == NoCollection && n.params |> count == 0
+  if n.params |> count > 0 || is_zero_param_callable {
     let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {

@@ -751,7 +751,8 @@ if (((n.name.clone() == "Dynamic".to_string()) || (n.name.clone() == "Error".to_
                     return v2_rt::concat(v2_rt::concat("__EMIT_BUG_UNRESOLVED_".to_string(), n.name.clone()), "__".to_string())
 }
 }
-if ((n.name.clone() == "Callable".to_string()) && ((n.params.clone().len() as i64) > 0)) {
+let is_zero_param_callable = n.inferred.is_some() && n.connective.is_none() && n.children.is_empty() && n.collection_kind.is_none() && n.params.is_empty();
+if (((n.params.clone().len() as i64) > 0) || is_zero_param_callable) {
                 {
                     let param_types = { let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(p.type_expr.clone(), target.clone(), rc_types.clone())); } __result };
 let param_str = param_types.clone().join(&", ".to_string());
