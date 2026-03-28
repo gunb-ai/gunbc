@@ -3196,6 +3196,20 @@ current phase order.
 | Statement/expression emit classification | Python (and partially Go) are statement-oriented; emit assumes expression-orientation. Three symptoms: `return let` at block tail, incomplete `functools.reduce` fold, `return match` as expression. Root cause: emit boundary loses statement/expression structural distinction. Fix: pre-emit metadata tags bindings vs tail expression in blocks; backends render the structural fact. Relates to FO-* (fan-out preservation) and P5.11 (ExprData dissolution). | Stream 2 |
 | Cross-language test generation parity | Generated tests must cover all target languages equally. Currently Rust test generation is most complete; Go and Python test emission needs parity audit and gaps filled. | Stream 2 |
 
+### Rust Codegen Issues (stage0 regeneration blockers, 2026-03-27)
+
+After the parser fixes land (hermetic, where, uses Resource(mode:), [after/when], fixture commented out), the .dag compiler produces 0 diagnostics on self-compile. But the generated Rust has 5 issues blocking `cargo check`:
+
+| # | Error | Count | Root cause | Fix |
+|---|-------|-------|-----------|-----|
+| CG-1 | `cannot find type Bool` | 153 | Emitter renders .dag `Bool` as Rust `Bool` instead of `bool` | Rust emit should lower `Bool` → `bool` (primitive type mapping) |
+| CG-2 | `could not find v2_core in crate root` | 15 | Module rename in `regenerate-stage0.sh` renames `v2_std_core.rs` → `v2_core.rs`, but generated code references `crate::v2_core` and `lib.rs` may not declare `mod v2_core` | Ensure `lib.rs` declares `mod v2_core` or fix the rename script |
+| CG-3 | `unresolved module serde` / `cannot find trait Deserialize` | 16 | Emitter generates `#[derive(Deserialize)]` and `serde::Deserializer` for `Secret` type, but `serde` is not in stage0 `Cargo.toml` dependencies with `derive` feature | Either add `serde = { version = "1.0", features = ["derive"] }` to stage0 Cargo.toml, or stop emitting serde derives for the self-compile target |
+| CG-4 | `name Secret is defined multiple times` | 1 | Two modules both emit a `Secret` struct (likely `std/types.dag` and another) | Emit should namespace or deduplicate cross-module type definitions |
+| CG-5 | `unhandled item: Unit` | 1 | Emitter encounters a `Unit` type/item it doesn't know how to render | Add Unit handling in Rust emit (likely map to `()`) |
+
+Priority: CG-1 (Bool→bool) clears 153 of 190 errors. CG-2 and CG-3 are configuration/script fixes. CG-4 and CG-5 are single-site issues.
+
 ### Open Invariant Violations (grouped by root cause)
 
 All ~66 violations trace to three root causes. Each root cause has a
