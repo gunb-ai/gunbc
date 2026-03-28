@@ -287,7 +287,7 @@ match matching.clone().first().cloned() {
     span: f.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: f.type_expr.clone(),
@@ -304,7 +304,7 @@ match matching.clone().first().cloned() {
     expr_data: Rc::new(ExprData::NoExprData),
 })); } __result },
     connective: Some(Connective::Conj),
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,

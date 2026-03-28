@@ -53,7 +53,7 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
-use crate::v2_std_core::CollectionKind;
+
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
 use crate::v2_std_core::RuntimeBridgeMethod::{BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup};
 use crate::v2_std_core::TransportKind::{RestTransport, ShellTransport, FileTransport};
@@ -61,7 +61,7 @@ use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 use crate::v2_std_core::IntrinsicMethod::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
-pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, rt_type, emit_map_has};
+pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, node_is_collection, node_is_keyed_collection, node_is_element_collection, rt_type, emit_map_has};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{TypedModule, ResolvedGraph, ItemInfo};
 pub use crate::v2_compiler_infer_service::{UniqueAccum, is_typed_service_call_receiver, extract_typed_service_name};
@@ -835,19 +835,9 @@ emit_map_type(k.clone(), v.clone(), target.clone())
     Some(child) => emit_node_type_rc(child.clone(), target.clone(), rc_types.clone()),
     None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__".to_string(),
 };
-let is_container = n.collection_kind.is_some();
+let is_container = node_is_collection(n.clone());
 if is_container {
-    let is_rust = match target.clone() {
-        RenderTarget::Rust => true,
-        _ => false,
-    };
-    let container_kind = if (n.name.clone() == "NonEmptyList".to_string()) {
-        if is_rust.clone() { "non_empty_list".to_string() } else { "list".to_string() }
-    } else if (n.name.clone() == "NonEmptySet".to_string()) {
-        if is_rust.clone() { "non_empty_set".to_string() } else { "set".to_string() }
-    } else {
-        to_snake(n.name.clone())
-    };
+    let container_kind = to_snake(n.name.clone());
     emit_container(container_kind.clone(), inner.clone(), target.clone())
 } else {
     // Non-container generic type (e.g., FreeMonoid<T>): emit as Name<Inner>

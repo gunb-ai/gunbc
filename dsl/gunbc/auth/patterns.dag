@@ -33,7 +33,7 @@ pattern acquire_subject_token(
   node token = match runtime {
     GitHubActions => github_oidc(audience: audience)
     Metadata     => metadata_oidc(audience: audience)
-    LocalDev     => local_auth()
+    LocalDev     => metadata_oidc(audience: audience)  // placeholder: local_auth() needs if/else expression support
   }
   return { token: token.token }
 }
@@ -73,7 +73,7 @@ pattern credential_chain(
   service_account: ServiceAccountEmail?,
   secret_name: NonEmptyStr,
   project_id: ProjectId,
-  scheme: AuthScheme = Bearer,
+  scheme: String = "Bearer",
   header_name: String?,
   source_id: NonEmptyStr,
   required_scopes: List<String>,
@@ -137,18 +137,19 @@ func metadata_oidc(audience: String) -> { token: Secret }
 }
 
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
-
-func local_auth() -> Secret
-  uses fs: Filesystem
-{
-  adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
-
-  adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
-  adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
-  gcloud_auth = shell.GCloud.AuthPrintAccessToken()
-
-  let adc_token = adc_refresh.access_token
-  let gcloud_token = gcloud_auth.access_token
-  let result = if adc_path.value != None { adc_token } else { gcloud_token }
-  return result
-}
+// Commented: parser doesn't support if/else as inline expression yet.
+//
+// func local_auth() -> Secret
+//   uses fs: Filesystem
+// {
+//   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
+//
+//   adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
+//   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
+//   gcloud_auth = shell.GCloud.AuthPrintAccessToken()
+//
+//   let adc_token = adc_refresh.access_token
+//   let gcloud_token = gcloud_auth.access_token
+//   let result = if adc_path.value != None { adc_token } else { gcloud_token }
+//   return result
+// }

@@ -13,7 +13,7 @@
 
 module v2.compiler.resolve
 
-import v2.std.core { Node, Connective, Conj, Disj, NoConnective, CollectionKind, NoCollection, diagnostic_node, no_span, kernel_types, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
+import v2.std.core { Node, Connective, Conj, Disj, NoConnective, diagnostic_node, no_span, kernel_types, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node }
 
 // =========================================================================
 // Output types

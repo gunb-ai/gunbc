@@ -63,7 +63,7 @@ fn malformed_map_index_returns_compiler_error_type() {
     );
 
     assert_eq!(result.diagnostics.len(), 1);
-    assert_compiler_error(&result.inferred, "malformed Map type");
+    assert_compiler_error(&result.inferred, "indexing is only supported");
 }
 
 #[test]

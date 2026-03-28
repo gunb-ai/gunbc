@@ -13,7 +13,6 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node, FieldInit, Param,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
   Cardinality, Required, CardOptional,
   NoExprData, ExprLiteral,
   ExprErrorKind, SemanticExprError,
@@ -60,39 +59,202 @@ fn rt_type(n: Node) -> Node {
   }
 }
 
-fn collection_kind_for_name(name: String) -> CollectionKind {
-  if name == "List" { ListKind }
-  else if name == "Set" { SetKind }
-  else if name == "NonEmptyList" { NonEmptyListKind }
-  else if name == "NonEmptySet" { NonEmptySetKind }
-  else if name == "Map" { MapKind }
-  else { NoCollection }
+// =========================================================================
+// Structural collection predicates (L1 dissolution)
+//
+// After resolution, only container types retain children without connective.
+// Products have Conj, coproducts have Disj, callables use the params field,
+// tuples have Conj. These predicates derive collection-ness from node shape
+// alone — no name checks, no CollectionKind enum. Pass scrambled-name test.
+// =========================================================================
+
+fn node_is_collection(n: Node) -> Bool {
+  (n.children |> count) > 0 && n.connective == NoConnective
+}
+
+fn node_is_keyed_collection(n: Node) -> Bool {
+  node_is_collection(n: n) && (n.children |> count) == 2
+}
+
+fn node_is_element_collection(n: Node) -> Bool {
+  node_is_collection(n: n) && (n.children |> count) == 1
 }
 
 fn container_node(kind_name: String, element: Node) -> Node {
-  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: NoConnective, collection_kind: collection_kind_for_name(name: kind_name), params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: kind_name, span: SourceSpan { start: 0, end: 0 }, children: [element], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn tuple_node(first: Node, second: Node) -> Node {
   Node { name: "Tuple", span: SourceSpan { start: 0, end: 0 }, children: [
-    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  ], connective: Conj, collection_kind: NoCollection, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Node { name: "first", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: first } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    Node { name: "second", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn map_node(key: Node, value: Node) -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: NoConnective, collection_kind: MapKind, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [key, value], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn bare_map_node() -> Node {
-  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: MapKind, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Map", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
 // checked via declaration params in the type environment, not hardcoded names.
 
+// =========================================================================
+// P5.13B: Algebraic field enrichment for kernel types
+//
+// These helpers build child Nodes representing algebraic structure fields
+// (add, mul, concat, etc.) on kernel types. Called once during
+// build_type_env kernel seed to produce Conj product types with structural
+// fields, enabling Tier 0 method lookup to resolve methods from type
+// structure instead of string matching.
+//
+// The return types use bare leaf_node references — inference resolves
+// names via the type environment, so circular references are avoided.
+// =========================================================================
+
+// Build a value field (e.g., zero: Int, identity: String).
+fn algebra_value_field(name: String, type_node: Node) -> Node {
+  Node { name: name, span: no_span(), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+// Build a callable field (e.g., add: fn(Int, Int) -> Int).
+// The field's inferred type is a callable_node with params and return type.
+// lookup_structural_method checks params.count > 0 to distinguish callable
+// from value fields, so we need real Param entries.
+fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
+  let params = param_types |> map(t => Param { name: "_", type_expr: t, default_value: none, span: no_span() })
+  Node { name: name, span: no_span(), children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable_node(func_params: params, ret: return_type) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+}
+
+// Enrich a kernel type with algebraic structure fields.
+// Returns a Conj product node with children representing the type's
+// algebraic operations. Non-enriched types pass through unchanged.
+fn enrich_kernel_type(name: String, base: Node) -> Node {
+  let self_type = leaf_node(name: name)
+  let ordering_type = leaf_node(name: "Ordering")
+  if name == "Int" {
+    // OrderedRing<Word64> fields
+    let fields = [
+      algebra_method_field(name: "add", param_types: [self_type, self_type], return_type: self_type),
+      algebra_value_field(name: "zero", type_node: self_type),
+      algebra_method_field(name: "negate", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "mul", param_types: [self_type, self_type], return_type: self_type),
+      algebra_value_field(name: "one", type_node: self_type),
+      algebra_method_field(name: "compare", param_types: [self_type, self_type], return_type: ordering_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else if name == "Float" {
+    // Field<Word64> fields (ring + reciprocal)
+    let fields = [
+      algebra_method_field(name: "add", param_types: [self_type, self_type], return_type: self_type),
+      algebra_value_field(name: "zero", type_node: self_type),
+      algebra_method_field(name: "negate", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "mul", param_types: [self_type, self_type], return_type: self_type),
+      algebra_value_field(name: "one", type_node: self_type),
+      algebra_method_field(name: "reciprocal", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "compare", param_types: [self_type, self_type], return_type: ordering_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else if name == "Bool" {
+    // BooleanAlgebra fields
+    let fields = [
+      algebra_method_field(name: "meet", param_types: [self_type, self_type], return_type: self_type),
+      algebra_method_field(name: "join", param_types: [self_type, self_type], return_type: self_type),
+      algebra_method_field(name: "complement", param_types: [self_type], return_type: self_type),
+      algebra_value_field(name: "top", type_node: self_type),
+      algebra_value_field(name: "bottom", type_node: self_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else if name == "String" {
+    // FreeMonoid<Char> fields — the methods that currently resolve via
+    // IntrinsicMethod/RuntimeBridgeMethod string matching
+    let char_type = leaf_node(name: "Char")
+    let list_of_string = container_node(kind_name: "List", element: self_type)
+    let list_of_char = container_node(kind_name: "List", element: char_type)
+    let fields = [
+      algebra_method_field(name: "concat", param_types: [self_type, self_type], return_type: self_type),
+      algebra_value_field(name: "empty", type_node: self_type),
+      algebra_method_field(name: "length", param_types: [self_type], return_type: int_type),
+      algebra_method_field(name: "chars", param_types: [self_type], return_type: list_of_char),
+      algebra_method_field(name: "split", param_types: [self_type, self_type], return_type: list_of_string),
+      algebra_method_field(name: "join", param_types: [list_of_string, self_type], return_type: self_type),
+      algebra_method_field(name: "contains", param_types: [self_type, self_type], return_type: bool_type),
+      algebra_method_field(name: "starts_with", param_types: [self_type, self_type], return_type: bool_type),
+      algebra_method_field(name: "ends_with", param_types: [self_type, self_type], return_type: bool_type),
+      algebra_method_field(name: "trim", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "to_lower", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "to_upper", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "replace", param_types: [self_type, self_type, self_type], return_type: self_type),
+      algebra_method_field(name: "substring", param_types: [self_type, int_type, int_type], return_type: self_type),
+      algebra_method_field(name: "to_int", param_types: [self_type], return_type: int_type),
+      algebra_method_field(name: "to_string", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "reverse", param_types: [self_type], return_type: self_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else if name == "List" || name == "Set" || name == "NonEmptyList" || name == "NonEmptySet" {
+    // FreeMonoid<T> fields for collection types.
+    // Return types use self_type (the collection) as a conservative base;
+    // refine_collection_result_type specializes polymorphic cases (map, fold, flat_map)
+    // by examining the typed callback args at the call site.
+    let elem = match base.children |> first { Some { value: e } => e  None => leaf_node(name: "T") }
+    let fields = [
+      algebra_method_field(name: "map", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "filter", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "flat_map", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "fold", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "any", param_types: [self_type], return_type: bool_type),
+      algebra_method_field(name: "all", param_types: [self_type], return_type: bool_type),
+      algebra_method_field(name: "count", param_types: [self_type], return_type: int_type),
+      algebra_method_field(name: "first", param_types: [self_type], return_type: with_optional_cardinality(n: elem)),
+      algebra_method_field(name: "last", param_types: [self_type], return_type: with_optional_cardinality(n: elem)),
+      algebra_method_field(name: "skip", param_types: [self_type, int_type], return_type: self_type),
+      algebra_method_field(name: "take", param_types: [self_type, int_type], return_type: self_type),
+      algebra_method_field(name: "sort_by", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "append", param_types: [self_type, elem], return_type: self_type),
+      algebra_method_field(name: "contains", param_types: [self_type, elem], return_type: bool_type),
+      algebra_method_field(name: "enumerate", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "reverse", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "join", param_types: [self_type, string_type], return_type: string_type),
+      algebra_method_field(name: "concat", param_types: [self_type, self_type], return_type: self_type),
+      algebra_method_field(name: "list_push", param_types: [self_type, elem], return_type: self_type),
+      algebra_method_field(name: "length", param_types: [self_type], return_type: int_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else if name == "Map" {
+    // PartialFunction<K,V> fields
+    let key_node = match base.children |> first { Some { value: k } => k  None => leaf_node(name: "K") }
+    let val_node = match base.children |> skip(1) |> first { Some { value: v } => v  None => leaf_node(name: "V") }
+    let list_of_keys = container_node(kind_name: "List", element: key_node)
+    let list_of_vals = container_node(kind_name: "List", element: val_node)
+    let fields = [
+      algebra_method_field(name: "get", param_types: [self_type, key_node], return_type: with_optional_cardinality(n: val_node)),
+      algebra_method_field(name: "map_get", param_types: [self_type, key_node], return_type: with_optional_cardinality(n: val_node)),
+      algebra_method_field(name: "lookup", param_types: [self_type, key_node], return_type: with_optional_cardinality(n: val_node)),
+      algebra_method_field(name: "map_insert", param_types: [self_type, key_node, val_node], return_type: self_type),
+      algebra_method_field(name: "map_merge", param_types: [self_type, self_type], return_type: self_type),
+      algebra_method_field(name: "has", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "map_has", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "emit_map_has", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "map_contains_key", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "keys", param_types: [self_type], return_type: list_of_keys),
+      algebra_method_field(name: "map_keys", param_types: [self_type], return_type: list_of_keys),
+      algebra_method_field(name: "values", param_types: [self_type], return_type: list_of_vals),
+      algebra_method_field(name: "map_values", param_types: [self_type], return_type: list_of_vals),
+      algebra_method_field(name: "with", param_types: [self_type, key_node, val_node], return_type: self_type),
+      algebra_method_field(name: "contains", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "length", param_types: [self_type], return_type: int_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else {
+    base
+  }
+}
+
 fn callable_node(func_params: List<Param>, ret: Node) -> Node {
-  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "Callable", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, params: func_params, inferred: Some { value: Resolved { node: ret } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn callable_inferred(n: Node) -> Node {
@@ -157,10 +319,9 @@ fn node_type_shape(n: Node) -> String {
     } else if is_coproduct {
       if n.name == "" { "Coproduct(<anon>)" } else { concat("Coproduct(", n.name, ")") }
     } else {
-      let ck = n.collection_kind
-      let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
+      let __is_container = node_is_element_collection(n: n)
       let is_optional = n.return_cardinality == CardOptional
-      let is_map = n.collection_kind == MapKind
+      let is_map = node_is_keyed_collection(n: n)
       if __is_container {
         let elem_shape = match n.children |> first {
           Some { value: el } => node_type_shape(n: el)
@@ -195,10 +356,8 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else {
-    let left_ck = left.collection_kind
-    let left_is_container = left_ck == ListKind || left_ck == SetKind || left_ck == NonEmptyListKind || left_ck == NonEmptySetKind
-    let right_ck = right.collection_kind
-    let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
+    let left_is_container = node_is_element_collection(n: left)
+    let right_is_container = node_is_element_collection(n: right)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
@@ -230,8 +389,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
 }
 
 fn prefer_specific_type(left: Node, right: Node) -> Node {
-  let left_ck = left.collection_kind
-  let left_is_container = left_ck == ListKind || left_ck == SetKind || left_ck == NonEmptyListKind || left_ck == NonEmptySetKind
+  let left_is_container = node_is_element_collection(n: left)
   let left_is_optional = left.return_cardinality == CardOptional
   let left_first_child = left.children |> first
   let left_norm_name = left.name
@@ -246,8 +404,7 @@ fn prefer_specific_type(left: Node, right: Node) -> Node {
     let left_is_unit = left.connective == Conj && left.children |> count == 0
     left_is_unit
   } else { false }
-  let right_ck = right.collection_kind
-  let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
+  let right_is_container = node_is_element_collection(n: right)
   let right_is_optional = right.return_cardinality == CardOptional
   let same_kind = if left_is_container && right_is_container {
     left_norm_name == right.name
@@ -302,10 +459,8 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
     left.name == right.name
   }
   else {
-    let left_ck = left.collection_kind
-    let left_is_container = left_ck == ListKind || left_ck == SetKind || left_ck == NonEmptyListKind || left_ck == NonEmptySetKind
-    let right_ck = right.collection_kind
-    let right_is_container = right_ck == ListKind || right_ck == SetKind || right_ck == NonEmptyListKind || right_ck == NonEmptySetKind
+    let left_is_container = node_is_element_collection(n: left)
+    let right_is_container = node_is_element_collection(n: right)
     if left_is_container && right_is_container {
       if left.name != right.name { false }
       else {
@@ -323,7 +478,7 @@ fn node_type_equals(left: Node, right: Node) -> Bool {
       node_type_equals(left: with_required_cardinality(n: left), right: with_required_cardinality(n: right))
     }
     else {
-      let both_maps = left.collection_kind == MapKind && right.collection_kind == MapKind
+      let both_maps = node_is_keyed_collection(n: left) && node_is_keyed_collection(n: right)
       if both_maps {
       if left.children |> count == 2 && right.children |> count == 2 {
         let left_first = match left.children |> first { Some { value: v } => v, None => left }
@@ -440,7 +595,7 @@ fn method_receiver_element_node(receiver_type: Node) -> Node {
       None => receiver_type
     }
   } else {
-    let is_map = normed.collection_kind == MapKind
+    let is_map = node_is_keyed_collection(n: normed)
     if is_map {
       match normed.children |> skip(1) |> first {
         Some { value: val_type } => val_type

@@ -1978,7 +1978,6 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     span: span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2345,7 +2344,6 @@ match sh.clone() {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -2381,7 +2379,6 @@ Rc::new(Node {
     span: field.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: ret_type.clone(),
@@ -2412,7 +2409,6 @@ Rc::new(Node {
 } else {
             None
 },
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2437,7 +2433,6 @@ pub fn outputs_to_inferred(outputs: Vec<Rc<Field>>, span: Rc<SourceSpan>) -> Opt
     span: span.clone(),
     children: { let mut __result = Vec::new(); for f in outputs.clone().iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result },
     connective: Some(Connective::Conj),
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2469,7 +2464,6 @@ let dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -2512,7 +2506,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -2544,7 +2537,6 @@ let item = Rc::new(Node {
     span: start_span.clone(),
     children: type_children.clone(),
     connective: Some(Connective::Conj),
-    collection_kind: None,
     params: type_params.clone(),
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2579,7 +2571,6 @@ parse_type_body_after_eq(tokens.clone(), s.clone(), name.clone(), start_span.clo
     span: start_span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: type_params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: leaf_type_node(name.clone(), start_span.clone()),
@@ -2618,7 +2609,6 @@ pub fn parse_type_body_after_eq(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserStat
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -2666,7 +2656,6 @@ let item = Rc::new(Node {
     span: start_span.clone(),
     children: type_children.clone(),
     connective: Some(Connective::Disj),
-    collection_kind: None,
     params: type_params.clone(),
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2709,7 +2698,6 @@ let item = Rc::new(Node {
     span: start_span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: type_params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: wr.type_expr.clone(),
@@ -2756,7 +2744,6 @@ let item = Rc::new(Node {
     span: start_span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: type_params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: wr.type_expr.clone(),
@@ -2799,7 +2786,6 @@ let refined = Rc::new(Node {
     span: start_span.clone(),
     children: vec![base_te.clone()],
     connective: Some(Connective::Conj),
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -3400,7 +3386,6 @@ let te = Rc::new(Node {
     span: span.clone(),
     children: { let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result },
     connective: Some(Connective::Conj),
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -3498,7 +3483,6 @@ let te = Rc::new(Node {
     span: start_span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: params_result.params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: ret.type_expr.clone(),
@@ -3598,7 +3582,6 @@ let te = Rc::new(Node {
     span: start_span.clone(),
     children: type_args.args.clone(),
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -3736,7 +3719,6 @@ if e.consumed.clone() {
     span: te.span.clone(),
     children: te.children.clone(),
     connective: te.connective.clone(),
-    collection_kind: te.collection_kind.clone(),
     params: te.params.clone(),
     inferred: te.inferred.clone(),
     return_cardinality: Cardinality::CardOptional,
@@ -3971,7 +3953,6 @@ let dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4007,7 +3988,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4055,7 +4035,6 @@ let item = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: Some(body.clone()),
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4085,7 +4064,6 @@ let dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4127,7 +4105,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4185,7 +4162,6 @@ let item = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: uses.clone(),
     body: Some(body.clone()),
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4320,7 +4296,7 @@ if e_lp.consumed.clone() {
         children: r3.type_expr.children.clone(), params: r3.type_expr.params.clone(),
         inferred: r3.type_expr.inferred.clone(), return_cardinality: r3.type_expr.return_cardinality.clone(),
         uses: r3.type_expr.uses.clone(), body: r3.type_expr.body.clone(),
-        collection_kind: r3.type_expr.collection_kind.clone(), connective: r3.type_expr.connective.clone(),
+        connective: r3.type_expr.connective.clone(),
         transport: r3.type_expr.transport.clone(), properties: ar.fields.clone(),
         type_annotation: r3.type_expr.type_annotation.clone(),
         is_self_recursive: r3.type_expr.is_self_recursive.clone(),
@@ -4419,7 +4395,6 @@ let dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4457,7 +4432,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -4510,7 +4484,6 @@ Rc::new(Node {
     uses: vec![],
     body: None,
     connective: None,
-    collection_kind: None,
     transport: op.transport.clone(),
     properties: all_props.clone(),
     type_annotation: None,
@@ -4542,7 +4515,6 @@ let item = Rc::new(Node {
     uses: vec![],
     body: None,
     connective: None,
-    collection_kind: None,
     transport: Some(r.transport.clone()),
     properties: v2_rt::concat(vec![ns_prop.clone()], svc_props.clone()),
     type_annotation: None,
@@ -6041,26 +6013,6 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn is_container_name(name: String) -> bool {
-    if (name.clone() == "List".to_string()) {
-        true
-} else {
-        if (name.clone() == "Set".to_string()) {
-            true
-} else {
-            if (name.clone() == "NonEmptyList".to_string()) {
-                true
-} else {
-                if (name.clone() == "NonEmptySet".to_string()) {
-                    true
-} else {
-                    false
-}
-}
-}
-}
-}
-
 pub fn node_to_name_str(n: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
@@ -6083,7 +6035,7 @@ if is_optional.clone() {
                             n.name.clone()
 }
 } else {
-                        if is_container_name(n.name.clone()) {
+                        if ((n.name.clone() == "List".to_string()) || (n.name.clone() == "Set".to_string()) || (n.name.clone() == "NonEmptyList".to_string()) || (n.name.clone() == "NonEmptySet".to_string())) {
                             if has_children.clone() {
                                 v2_rt::concat("List_".to_string(), node_to_name_str(first_child_or_self(n.clone())))
 } else {
@@ -6623,7 +6575,6 @@ let dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -6659,7 +6610,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -6708,7 +6658,6 @@ let cap_children = { let mut __result = Vec::new(); for cap in r.capabilities.cl
     uses: vec![],
     body: None,
     connective: None,
-    collection_kind: None,
     transport: None,
     properties: vec![],
     type_annotation: None,
@@ -6727,7 +6676,6 @@ let item = Rc::new(Node {
     uses: vec![],
     body: None,
     connective: None,
-    collection_kind: None,
     transport: None,
     properties: r.properties.clone(),
     type_annotation: None,
@@ -7193,7 +7141,6 @@ let dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7229,7 +7176,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7281,7 +7227,6 @@ let item = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: Some(r.expr.clone()),
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7311,7 +7256,6 @@ let dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7351,7 +7295,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7393,7 +7336,6 @@ let item = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7429,7 +7371,6 @@ let named_dummy = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7471,7 +7412,6 @@ let item = Rc::new(Node {
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: None,
-    collection_kind: None,
     connective: None,
     transport: None,
     properties: vec![],
@@ -7868,7 +7808,7 @@ pub fn parse_constrained_assignment(tokens: Rc<Vec<Rc<Token>>>, state: Rc<Parser
         name: node.name.clone(), span: node.span.clone(), children: node.children.clone(),
         params: node.params.clone(), inferred: node.inferred.clone(),
         return_cardinality: node.return_cardinality.clone(), uses: node.uses.clone(),
-        body: node.body.clone(), collection_kind: node.collection_kind.clone(),
+        body: node.body.clone(),
         connective: node.connective.clone(), transport: node.transport.clone(),
         properties: cr.constraints.clone(), type_annotation: node.type_annotation.clone(),
         is_self_recursive: node.is_self_recursive.clone(),
@@ -7915,7 +7855,7 @@ pub fn parse_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
     let type_ann = if e_colon.consumed.clone() { Some(r3.expr.clone()) } else { None };
     Rc::new(ExprResult { expr: Rc::new(Node {
         name: "".to_string(), span: span.clone(), children: vec![r3.expr.clone()],
-        connective: None, collection_kind: None, params: vec![], inferred: ret.inferred.clone(),
+        connective: None, params: vec![], inferred: ret.inferred.clone(),
         return_cardinality: Cardinality::Required, uses: vec![], body: None, transport: None,
         properties: cr.constraints.clone(), type_annotation: type_ann, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: None,
@@ -7956,7 +7896,7 @@ if (cr.constraints.clone().len() as i64) > 0 {
         name: node.name.clone(), span: node.span.clone(), children: node.children.clone(),
         params: node.params.clone(), inferred: node.inferred.clone(),
         return_cardinality: node.return_cardinality.clone(), uses: node.uses.clone(),
-        body: node.body.clone(), collection_kind: node.collection_kind.clone(),
+        body: node.body.clone(),
         connective: node.connective.clone(), transport: node.transport.clone(),
         properties: cr.constraints.clone(), type_annotation: node.type_annotation.clone(),
         is_self_recursive: node.is_self_recursive.clone(),

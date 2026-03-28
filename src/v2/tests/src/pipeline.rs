@@ -475,7 +475,7 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
 //
 // These tests verify that inference is name-opaque: replacing all user-defined
 // type names with arbitrary strings produces identical structural decisions
-// (typed graph shape, connective, cardinality, collection_kind, expr_data).
+// (typed graph shape, connective, cardinality, expr_data).
 //
 // Implementation: compile both variants with RenderTarget::Dag to get the
 // full typed graph as JSON, then normalize names and strip spans before
@@ -818,6 +818,12 @@ fn strict_complexity_violation_count() {
 
     // Ratchet: track the violation count. Lower this as violations are fixed.
     // 2026-03-25: 2 violations out of 1169 function summaries.
+    // 2026-03-28: Budget guard removed; RecursionPattern wired in.
+    // LinearRecursion (1 self-call) gets bounded cost. DivideAndConquer
+    // (>1 self-calls) reports CostUnknown (CostExpr can't express k^depth).
+    // In practice, .dag multi-self-calls occur in fold bodies (tree walks)
+    // which are already bounded by the fold's CostSum. May need calibration
+    // if any functions have >1 direct (non-fold) self-calls.
     const COMPLEXITY_RATCHET: usize = 2;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
@@ -1262,4 +1268,68 @@ fn check_has(c: Counter) -> Bool {
         "user-defined structural methods with colliding names should compile, got: {:?}",
         msgs,
     );
+}
+
+// ── Parse-emit round-trip smoke test ────────────────────────────────────
+//
+// Verify that compiling the same source twice produces identical typed
+// graph JSON. This is the idempotency property: the compiler is
+// deterministic and the serialization is stable.
+
+fn sort_json_arrays(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, v) in map {
+                out.insert(k.clone(), sort_json_arrays(v));
+            }
+            Value::Object(out)
+        }
+        Value::Array(arr) => {
+            let sorted: Vec<Value> = arr.iter().map(sort_json_arrays).collect();
+            // Sort arrays of strings (like item_registry_keys)
+            if sorted.iter().all(|v| v.is_string()) {
+                let mut strs: Vec<String> = sorted.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                strs.sort();
+                Value::Array(strs.into_iter().map(Value::String).collect())
+            } else {
+                Value::Array(sorted)
+            }
+        }
+        _ => value.clone(),
+    }
+}
+
+#[test]
+fn parse_emit_round_trip_idempotency() {
+    let source = r#"module roundtrip
+
+type Color = Red | Green | Blue
+
+type Config {
+  name: String
+  retries: Int
+  verbose: Bool
+}
+
+fn default_config() -> Config {
+  Config { name: "default", retries: 3, verbose: false }
+}
+
+fn double(x: Int) -> Int { x * 2 }
+
+fn greet(name: String) -> String { concat("Hello, ", name) }
+"#;
+    let json1 = sort_json_arrays(&typed_graph_json(source));
+    let json2 = sort_json_arrays(&typed_graph_json(source));
+    assert_eq!(
+        json1, json2,
+        "compiling the same source twice should produce structurally identical typed graph JSON"
+    );
+    // Verify the artifact has the expected structural properties
+    let modules = json1["modules"].as_array().expect("modules should be array");
+    assert!(!modules.is_empty(), "should have at least one module");
+    let module = &modules[0];
+    let mod_obj = module.get("module").expect("should have module field");
+    assert_eq!(mod_obj["name"], "roundtrip", "module name should match");
 }

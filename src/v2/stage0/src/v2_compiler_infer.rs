@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Field, Variant, Param, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, CollectionKind, diagnostic_is_error, rt_node, has_inferred, InferredNode, NodeType, Cardinality, diagnostic_node, ResourceUse, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
+pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Field, Variant, Param, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, diagnostic_is_error, rt_node, has_inferred, InferredNode, NodeType, Cardinality, diagnostic_node, ResourceUse, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
@@ -69,9 +69,9 @@ use crate::v2_std_core::BinOpKind::{Add, Sub, Mul, Div, Mod, BinEq, BinNe, BinLt
 use crate::v2_std_core::UnaryOpKind::{Not, Neg};
 use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
-use crate::v2_std_core::CollectionKind::*;
+
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, container_node, map_node, bare_map_node, tuple_node, callable_node, callable_inferred, error_type_node, node_is_container, node_is_optional, node_is_map, node_is_leaf, node_is_named_ref, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, collection_kind_for_name, is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, container_node, map_node, bare_map_node, tuple_node, callable_node, callable_inferred, error_type_node, node_is_container, node_is_optional, node_is_map, node_is_leaf, node_is_named_ref, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_method::{classify_reconciled_intrinsic_method, classify_runtime_bridge_method, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node, infer_builtin_call_type, resolve_builtin_call_type};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, merge_envs};
@@ -1802,7 +1802,6 @@ if (type_name.clone() == None) {
     span: no_span(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: rt_type(fir.infer_result.clone().typed.clone()),
@@ -1823,7 +1822,6 @@ let anon_node = Rc::new(Node {
     span: no_span(),
     children: child_nodes.clone(),
     connective: Some(Connective::Conj),
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -1919,7 +1917,6 @@ if (node_has_structure(item.clone()) && (item.transport.clone() == None)) {
     body: None,
     connective: item.connective.clone(),
     transport: item.transport.clone(),
-    collection_kind: item.collection_kind.clone(),
     properties: item.properties.clone(),
     type_annotation: typed_anno.clone(),
     is_self_recursive: false,
@@ -1955,7 +1952,6 @@ Rc::new(TypedItemResult {
     body: Some(body_typed.clone()),
     connective: None,
     transport: item.transport.clone(),
-    collection_kind: None,
     properties: item.properties.clone(),
     type_annotation: typed_anno.clone(),
     is_self_recursive: expr_has_self_call(body_typed.clone(), item.name.clone()),
@@ -1988,7 +1984,6 @@ Rc::new(TypedItemResult {
     body: Some(body_typed.clone()),
     connective: None,
     transport: item.transport.clone(),
-    collection_kind: None,
     properties: item.properties.clone(),
     type_annotation: typed_anno.clone(),
     is_self_recursive: false,
@@ -2024,7 +2019,6 @@ Rc::new(TypedItemResult {
     body: Some(val_typed.clone()),
     connective: None,
     transport: item.transport.clone(),
-    collection_kind: None,
     properties: item.properties.clone(),
     type_annotation: typed_anno.clone(),
     is_self_recursive: false,
@@ -2057,7 +2051,6 @@ Rc::new(TypedItemResult {
     body: None,
     connective: None,
     transport: item.transport.clone(),
-    collection_kind: None,
     properties: item.properties.clone(),
     type_annotation: typed_anno.clone(),
     is_self_recursive: false,
@@ -2089,7 +2082,6 @@ Rc::new(TypedItemResult {
     body: None,
     connective: item.connective.clone(),
     transport: item.transport.clone(),
-    collection_kind: item.collection_kind.clone(),
     properties: item.properties.clone(),
     type_annotation: typed_anno.clone(),
     is_self_recursive: false,
@@ -2126,7 +2118,6 @@ let kernel_bindings = KERNEL_TYPES.clone().iter().cloned().fold(<HashMap<String,
     span: no_span(),
     children: vec![],
     connective: None,
-    collection_kind: collection_kind_for_name(name.clone()),
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2146,7 +2137,6 @@ let some_value_field = Rc::new(Node {
     span: zero_span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: leaf_node("Dynamic".to_string()),
@@ -2167,7 +2157,6 @@ let some_variant = Rc::new(Node {
     span: zero_span.clone(),
     children: vec![some_value_field.clone()],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2186,7 +2175,6 @@ let kernel_optional = Rc::new(Node {
     span: zero_span.clone(),
     children: vec![some_variant.clone(), leaf_node("None".to_string())],
     connective: Some(Connective::Disj),
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2232,7 +2220,6 @@ let local_bindings = module_items(module.module.clone()).iter().cloned().fold(<H
     span: item.span.clone(),
     children: item.children.clone(),
     connective: item.connective.clone(),
-    collection_kind: collection_kind_for_name(item.name.clone()),
     params: item.params.clone(),
     inferred: None,
     return_cardinality: item.return_cardinality.clone(),
@@ -2259,7 +2246,6 @@ v2_rt::map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     span: item.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: item.inferred.clone(),
     return_cardinality: item.return_cardinality.clone(),
@@ -2286,7 +2272,6 @@ v2_rt::map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     span: item.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: leaf_node(item.name.clone()),
@@ -2315,7 +2300,6 @@ v2_rt::map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     span: item.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: collection_kind_for_name(item.name.clone()),
     params: item.params.clone(),
     inferred: None,
     return_cardinality: item.return_cardinality.clone(),
@@ -2403,7 +2387,6 @@ let kernel_bindings = KERNEL_TYPES.clone().iter().cloned().fold(<HashMap<String,
     span: no_span(),
     children: vec![],
     connective: None,
-    collection_kind: collection_kind_for_name(name.clone()),
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2423,7 +2406,6 @@ let some_value_field = Rc::new(Node {
     span: zero_span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: leaf_node("Dynamic".to_string()),
@@ -2444,7 +2426,6 @@ let some_variant = Rc::new(Node {
     span: zero_span.clone(),
     children: vec![some_value_field.clone()],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2463,7 +2444,6 @@ let kernel_optional = Rc::new(Node {
     span: zero_span.clone(),
     children: vec![some_variant.clone(), leaf_node("None".to_string())],
     connective: Some(Connective::Disj),
-    collection_kind: None,
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -2505,7 +2485,6 @@ let local_bindings = module_items(module.module.clone()).iter().cloned().fold(<H
     span: item.span.clone(),
     children: item.children.clone(),
     connective: item.connective.clone(),
-    collection_kind: collection_kind_for_name(item.name.clone()),
     params: vec![],
     inferred: None,
     return_cardinality: item.return_cardinality.clone(),
@@ -2532,7 +2511,6 @@ v2_rt::map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     span: item.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: item.inferred.clone(),
     return_cardinality: item.return_cardinality.clone(),
@@ -2559,7 +2537,6 @@ v2_rt::map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
     span: item.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: leaf_node(item.name.clone()),
