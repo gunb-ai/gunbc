@@ -597,6 +597,88 @@ Additional workarounds applied (not compiler bugs, parser limitations):
 - `scheme: AuthScheme = Bearer` changed to `String = "Bearer"`: compiler expects CLI parameter defaults to be string literals, not enum constructors.
 - `char_display_width` restructured: ownership checker flags enum constructors used in multiple return paths as "2 consumers" (false positive on constructors vs bindings).
 
+**Compiler structural audit (2026-03-28): ~362 hardcoded name-based branches.**
+
+The compiler encodes knowledge as code branches rather than as data it
+reads. This inverts the project thesis ("smart facts, dumb compiler").
+Three themes, all rooted in the same cause: the compiler "knows" names.
+
+**Theme A: Type/method dispatch is name-based (~177 sites).**
+
+`infer_types.rs` has an `if/else` chain checking `"Int"`, `"Float"`,
+`"Bool"`, `"String"`, `"List"`, `"Map"`, `"Callable"` — each branch
+injects algebra methods. `infer_method.rs` has a 56-branch `if/else`
+chain dispatching on method name strings (`"fold"`, `"map"`, `"count"`,
+`"join"`, etc.). This is why `sum` and `repeat` were missing — adding a
+method means editing compiler source. 107 hardcoded type-name
+comparisons, 70 method-name comparisons.
+
+| File | Type-name checks | Method-name checks | Total |
+|------|------------------|--------------------|-------|
+| `v2_compiler_infer_method.rs` | 0 | 56 | 56 |
+| `v2_compiler_infer_types.rs` | 27 | 0 | 27 |
+| `v2_compiler_infer.rs` | 7 | 10 | 17 |
+| Other (5 files) | 5 | 4 | 9 |
+
+**Invariant violated:** Types and methods should be defined in `.dag`
+data declarations and resolved structurally. The compiler should read
+the algebra registry, not contain it.
+
+**Fix direction:** The algebra registry (`std.algebra`) already exists
+in the DSL. The compiler should load it at startup and use it for method
+resolution, replacing the `if/else` chains. This is a data-loading
+change, not an architecture change.
+
+**Theme B: Emission hardcodes target-language syntax (~57 sites).**
+
+`v2_compiler_emit.rs` contains `"let "`, `"vec![]"`,
+`.unwrap_or_else(|| ...)`, `"compile_error!()"`, `"|x| "` (lambda
+syntax) — all hardcoded per `RenderTarget`. The `LanguageSpec` type
+exists and the language extdep data files already provide type maps and
+container templates, but the emitter bypasses them for ~57 constructs.
+
+Missing from `LanguageSpec` (11 fields needed):
+
+| Missing field | Currently hardcoded as |
+|---------------|----------------------|
+| `statement_terminator` | `";"` (Rust), `""` (Python/Go) |
+| `variable_declaration_keyword` | `"let "` (Rust), `""` (Python/Go) |
+| `assignment_operator` | `" = "` (Rust/Python), `" := "` (Go) |
+| `lambda_syntax` | `"\|x\| "` (Rust), `"lambda x: "` (Python), `"func(x) { }"` (Go) |
+| `callable_type_template` | `"Rc<dyn Fn(...)>"` (Rust), `"Callable[...]"` (Python) |
+| `error_expression` | `"compile_error!()"` (Rust), `"raise RuntimeError()"` (Python) |
+| `null_coalesce` | `.unwrap_or_else(...)` (Rust), `"or"` (Python) |
+| `string_interpolation` | `format!(...)` (Rust), `f"..."` (Python), `fmt.Sprintf(...)` (Go) |
+| `container_bracket` | `"<>"` (Rust/Go), `"[]"` (Python) |
+| `tuple_type_template` | `"(A, B)"` (Rust), `"Tuple[A, B]"` (Python) |
+| `indentation_width` | `4` (all targets) |
+
+**Invariant violated:** Languages are extdeps modeled from specs.
+Emission must read language data, not contain it.
+
+**Fix direction:** Extend `LanguageSpec` with the 11 missing fields,
+populate them in the language extdep `.dag` files, and replace the
+`match render_target` branches in the emitter with spec lookups.
+
+**Theme C: Testgen doesn't test the compiler; Go/Python are stubs.**
+
+- `generated_tests.rs` (26,692 lines) is a static snapshot of `.dag`
+  source embedded as const strings for tokenizer tests — not generated
+  tests of compiler behavior.
+- Rust test emission (`emit_test_file()`) works but Go/Python emit
+  `assert True` placeholder stubs.
+- Bootstrap tests verify the compiler produces 0 diagnostics and that
+  stage0→stage1 is a fixed point, but the emitted Rust has ~872
+  `cargo check` errors — so the compiler cannot verify its output
+  actually compiles.
+- No test that inference/emission produces *correct* code, only that
+  it produces *some* code with 0 diagnostics.
+
+**Fix direction:** (1) Fix the 872 codegen errors so emitted Rust
+compiles. (2) Add a "golden output" test: compile a small `.dag` file,
+`cargo check` the output, run the generated tests. (3) Fill Go/Python
+test stubs so cross-language parity is testable.
+
 **Diagnostic quality: INSUFFICIENT.** Diagnostics report byte offsets
 with no file name, no line:column, no source context. Implementation
 path: file name in SourceSpan, byte→line:column, source-context
