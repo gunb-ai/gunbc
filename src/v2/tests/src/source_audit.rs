@@ -557,6 +557,33 @@ fn l1_type_knowledge_ratchet() {
 }
 
 #[test]
+fn second_syntax_spec_exists() {
+    // Stream 0 exit criterion: SyntaxSpec abstraction is real.
+    // A second SyntaxSpec (Rust) must exist alongside the .dag spec,
+    // proving the parser can be driven by non-.dag spec data.
+    let ws = crate::helpers::workspace_root();
+    let rust_spec = ws.join("dsl/extdeps/languages/rust/syntax.dag");
+    assert!(
+        rust_spec.exists(),
+        "Rust SyntaxSpec must exist at dsl/extdeps/languages/rust/syntax.dag"
+    );
+    let content = std::fs::read_to_string(&rust_spec).expect("should read Rust syntax spec");
+    // Verify it declares a SyntaxSpec instance
+    assert!(
+        content.contains("rust_syntax_spec: SyntaxSpec"),
+        "Rust spec should declare rust_syntax_spec: SyntaxSpec"
+    );
+    // Verify it has item forms, operators, keyword literals
+    assert!(content.contains("rust_item_forms"), "should define item forms");
+    assert!(content.contains("rust_operators"), "should define operators");
+    assert!(content.contains("rust_keyword_literals"), "should define keyword literals");
+    // Verify it has Rust-specific keywords
+    assert!(content.contains("\"struct\""), "should include struct keyword");
+    assert!(content.contains("\"enum\""), "should include enum keyword");
+    assert!(content.contains("\"impl\""), "should include impl keyword");
+}
+
+#[test]
 fn no_expr_data_before_catch_all_in_core() {
     // The NoExprData arm must appear BEFORE any catch-all `_` in
     // expr_has_non_tail_self_call. Verify by checking that NoExprData
