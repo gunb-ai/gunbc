@@ -545,6 +545,33 @@ DSL files. Remaining ~3 diagnostics: enum variant as standalone value.
 as record literal (block/record disambiguation). Workaround: use match
 with discriminant enum instead of if-blocks with named-arg calls.
 
+**Known invariant violation: Option rendering splits absence variants.**
+The emitter renders `.dag` coproducts with an "absence" variant (e.g.,
+`NoCollection` in `CollectionKind`) as Rust `Option<T>` where the
+absence variant becomes `None` and is removed from the Rust enum.
+This creates duplicate representations:
+- `.dag`: `n.collection_kind == NoCollection` (enum variant comparison)
+- Rust: `n.collection_kind.is_none()` (Option check)
+
+These are semantically identical but structurally different. The `.dag`
+source has one representation (NoCollection is a variant), the Rust
+target has another (None is absence of a value). This split is an
+implicit heuristic in the emitter, not a declared LanguageSpec fact.
+
+**The fix:** Absence-variant rendering should be a `LanguageSpec`
+declaration, not an emitter heuristic. The language spec should declare:
+"for Rust, coproduct variants with no fields whose name starts with
+`No` or `None` render as `Option::None`." The emitter reads this
+declaration; it doesn't decide. This way, the `.dag` source is the
+single representation, and the Rust rendering is a mechanical
+projection — not a second representation that can diverge.
+
+This is a specific instance of the general principle: every rendering
+decision the emitter makes should trace to a `LanguageSpec` fact, not
+to hardcoded logic. The Option split, the Copy-vs-Clone decision, the
+Rc-wrapping heuristic, and the container template selection should all
+be LanguageSpec data.
+
 **L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
 in `node.children`. Bridge functions deleted.
 
