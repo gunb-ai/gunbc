@@ -7,16 +7,13 @@
 
 module extdeps.languages.rust.syntax
 
-import v2.compiler.languages {
+import std.syntax {
   ItemForm, BodyKind,
   ExprBody, BlockBody, TypeBody, NoBody,
-  OperatorSpec, SyntaxSpec
-}
-
-import v2.std.core {
-  BinOpKind, Add, Sub, Mul, Div, Mod,
-  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr,
-  LiteralValue, LitBool
+  OperatorSpec, SyntaxSpec,
+  BinOp, OpAdd, OpSub, OpMul, OpDiv, OpMod,
+  OpEq, OpNe, OpLt, OpGt, OpLe, OpGe, OpAnd, OpOr,
+  LiteralKind, BoolLiteral
 }
 
 // Rust item forms — the keyword-driven dispatch table.
@@ -54,9 +51,9 @@ data rust_item_forms: List<ItemForm> = [
 
 // Rust literal keywords
 
-data rust_keyword_literals: Map<String, LiteralValue> = {
-  "true": LitBool { value: true },
-  "false": LitBool { value: false }
+data rust_keyword_literals: Map<String, LiteralKind> = {
+  "true": BoolLiteral { value: true },
+  "false": BoolLiteral { value: false }
 }
 
 // Rust keyword set — all reserved words
@@ -77,19 +74,19 @@ data rust_keyword_set: Map<String, Bool> = {
 // Range operators (.., ..=) not included (no BinOpKind mapping yet).
 
 data rust_operators: List<OperatorSpec> = [
-  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: BinOr },
-  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: BinAnd },
-  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: BinEq },
-  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: BinNe },
-  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: BinLt },
-  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: BinGt },
-  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: BinLe },
-  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: BinGe },
-  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add },
-  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub },
-  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul },
-  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div },
-  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod },
+  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: OpOr },
+  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: OpAnd },
+  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: OpEq },
+  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: OpNe },
+  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: OpLt },
+  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: OpGt },
+  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: OpLe },
+  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: OpGe },
+  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: OpAdd },
+  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: OpSub },
+  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: OpMul },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: OpDiv },
+  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: OpMod },
   OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none }
 ]
 

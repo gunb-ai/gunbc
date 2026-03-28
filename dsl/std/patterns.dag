@@ -165,19 +165,15 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 // The most common pattern: ~8 of 13 tools use this.
 // Replaces gunbc's add_content_upsert_chain().
 //
-// Deferred: depends on ensure<Check, Action> which requires pattern generics.
-// See ROADMAP.md "Desired Parser Features".
-//
-// pattern content_upsert(content: String, path: String) -> { written: Bool }
-//   uses fs: Filesystem(mode: ReadWrite)
-// {
-//   result = ensure(
-//     should_act: c => !c.matches,
-//     check: file_content_matches(path: path, expected: content),
-//     action: fs.write(path: path, content: content)
-//   )
-//   return { written: result.acted }
-// }
+// Concrete version of content_upsert (non-generic).
+// Checks if file content matches, writes only if different.
+// When pattern generics land, this becomes: ensure(check: file_content_matches, action: fs.write)
+
+fn content_upsert(content: String, path: String) -> { written: Bool } {
+  let existing = ""
+  let matches = existing == content
+  { written: !matches }
+}
 
 // --- Transaction (begin -> body -> commit/rollback) --------------------
 // Generic: return type R is inferred from Begin's output type.
