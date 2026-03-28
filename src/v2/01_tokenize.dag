@@ -429,6 +429,8 @@ fn process_escapes_loop(source: String, pos: Int, acc: List<String>) -> String {
         else if next == "\\" { "\\" }
         else if next == "n" { "\n" }
         else if next == "t" { "\t" }
+        else if next == "{" { "{" }
+        else if next == "}" { "}" }
         else { concat("\\", next) }
       process_escapes_loop(source: source, pos: pos + 2, acc: list_push(acc, resolved))
     } else {
