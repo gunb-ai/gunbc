@@ -19,11 +19,18 @@ STAGE0_DIR="$ROOT/src/v2/stage0"
 echo "=== Building stage0 (v2-compiler) ==="
 cargo build -p v2-compiler --release
 
-STAGE0_BIN="$ROOT/target/release/v2-compiler"
+# Use `cargo run` to invoke the binary — this works regardless of whether
+# cargo is native or containerized (via Docker wrapper in ~/ctrl/scripts/cargo).
+# Direct binary path ($ROOT/target/release/v2-compiler) fails when cargo
+# runs in a Docker container with a volume-mounted target directory.
+STAGE0_CMD="cargo run -p v2-compiler --release --"
 
-# Prepare sources in temp directory (same layout as bootstrap test)
-SOURCES_DIR=$(mktemp -d)
-OUTPUT_DIR=$(mktemp -d)
+# Prepare sources and output under the workspace root so the Docker
+# container (which mounts the workspace) can access them.
+SOURCES_DIR="$ROOT/.regen-sources"
+OUTPUT_DIR="$ROOT/.regen-output"
+rm -rf "$SOURCES_DIR" "$OUTPUT_DIR"
+mkdir -p "$SOURCES_DIR" "$OUTPUT_DIR"
 trap "rm -rf $SOURCES_DIR $OUTPUT_DIR" EXIT
 
 # Copy v2 compiler .dag files
@@ -42,7 +49,7 @@ mkdir -p "$SOURCES_DIR/dsl/std"
 cp "$ROOT/dsl/std/types.dag" "$SOURCES_DIR/dsl/std/"
 
 echo "=== Compiling .dag source with v2 compiler ==="
-"$STAGE0_BIN" compile --source-dir "$SOURCES_DIR" --output-dir "$OUTPUT_DIR"
+$STAGE0_CMD compile --source-dir "$SOURCES_DIR" --output-dir "$OUTPUT_DIR"
 
 echo "=== Renaming modules for workspace compatibility ==="
 

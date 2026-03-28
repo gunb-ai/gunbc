@@ -201,6 +201,32 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
   }
 }
 
+// Resolve an alias target through to its structural definition.
+// Uses a discriminant + match to avoid the block-in-if parse
+// limitation (stage0 parser misreads `{ fn(name: v) }` as record
+// literal). Only the chosen branch executes.
+type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
+
+fn classify_alias(target: Node) -> AliasKind {
+  let nc = target.connective == NoConnective
+  if target.children |> count > 0 && nc { AliasParameterized }
+  else if target.children |> count == 0 && nc && target.name != "" { AliasLeaf }
+  else { AliasPassthrough }
+}
+
+fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: Int) -> Node {
+  match classify_alias(target: target) {
+    AliasParameterized =>
+      resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
+    AliasLeaf =>
+      match lookup_type(env: env, name: target.name) {
+        Some { value: env_target } => env_target
+        None => target
+      }
+    AliasPassthrough => target
+  }
+}
+
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> NodeResolveResult {
   // Defensive depth limit: with topological resolution ordering, this should
   // never fire. If it does, there is a bug in topo_resolve_types dependency analysis.
@@ -423,21 +449,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match rt_node(n: resolved) {
               Typed { node: target } =>
-                // C2.3+: If the alias target is a parameterized reference
-                // (e.g., OrderedRing<Word64>), resolve it to expand generic
-                // substitution and produce the structural Conj definition.
-                // If it's a bare leaf (e.g., Int64), look it up in the env
-                // to follow the alias chain one more level.
-                // Topo ordering guarantees the target is already resolved.
-                if target.children |> count > 0 && target.connective == NoConnective {
-                  let target_result = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1)
-                  target_result.resolved
-                } else if target.children |> count == 0 && target.connective == NoConnective && target.name != "" {
-                  match lookup_type(env: env, name: target.name) {
-                    Some { value: env_target } => env_target
-                    None => target
-                  }
-                } else { target }
+                resolve_alias_target(target: target, env: env, module_name: module_name, depth: depth)
               InferError { message: _, span: _ } => resolved
               InferVariable { id: _ } => resolved
               Untyped => resolved

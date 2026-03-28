@@ -503,6 +503,59 @@ fn serializer_has_no_expr_other_fallback() {
     );
 }
 
+// ── Ratchet audits ────────────────────────────────────────────────────
+//
+// These tests make invisible breakage visible by counting structural
+// properties and asserting they stay within known bounds.
+
+const PARSE_ITEM_KEYWORD_ARM_RATCHET: usize = 9;
+
+#[test]
+fn parse_item_keyword_arm_count() {
+    let source = read_v2_file("src/v2/02_parse.dag");
+    let func_start = source
+        .find("fn parse_item(")
+        .expect("parse_item must exist in 02_parse.dag");
+    let rest = &source[func_start..];
+    let func_end = rest[1..]
+        .find("\nfn ")
+        .map(|i| i + 1)
+        .unwrap_or(rest.len());
+    let func_body = &rest[..func_end];
+    // Count on live source (comments stripped) to avoid false positives
+    // from historical notes or TODOs mentioning ShKw patterns.
+    let live = live_source(func_body);
+    let arm_count = live.matches("Some { value: ShKw").count();
+    assert_eq!(
+        arm_count, PARSE_ITEM_KEYWORD_ARM_RATCHET,
+        "parse_item has {} keyword arms, expected {} — \
+         update PARSE_ITEM_KEYWORD_ARM_RATCHET if this is intentional",
+        arm_count, PARSE_ITEM_KEYWORD_ARM_RATCHET
+    );
+}
+
+#[test]
+fn l1_type_knowledge_ratchet() {
+    // Delegate to scripts/l1-ratchet.sh (single authority) instead of
+    // reimplementing the pattern matching in Rust.
+    let ws = crate::helpers::workspace_root();
+    let script = ws.join("scripts/l1-ratchet.sh");
+    let output = std::process::Command::new("bash")
+        .arg(&script)
+        .arg("--check")
+        .current_dir(&ws)
+        .output()
+        .expect("failed to run l1-ratchet.sh");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("{}", stdout);
+    assert!(
+        output.status.success(),
+        "l1-ratchet.sh --check failed:\n{}\n{}",
+        stdout, stderr
+    );
+}
+
 #[test]
 fn no_expr_data_before_catch_all_in_core() {
     // The NoExprData arm must appear BEFORE any catch-all `_` in

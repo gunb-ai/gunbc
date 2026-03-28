@@ -299,6 +299,216 @@ parse-emit symmetry.
 
 ---
 
+## Design Direction: Decidability (DAG-Reducibility)
+
+**Governing principle:** every `.dag` program is decidable. The DAG is
+the only computational primitive. Recursion, loops, and cyclic-looking
+patterns are surface syntax sugar that must decompose into bounded
+iteration over finite structure.
+
+This is the complexity-side dual of parse-emit symmetry: just as the
+parser and emitter are symmetric views of the same spec, every
+recursive surface form has a bounded iterative lowering that the
+compiler can prove terminates.
+
+### What this means for the language
+
+Undecidable programs are **structurally unrepresentable**, not detected
+and rejected. This is the "construction over ratchets" principle
+applied to the language itself — the same way `ExpectedToken` makes
+string-based parser dispatch impossible by construction, the language's
+iteration primitives make unbounded computation impossible by
+construction.
+
+The language provides:
+- `fold`, `map`, `filter`, `flat_map` — bounded by collection size
+- `repeat(bound: N)` — bounded by explicit count
+- Recursive functions — bounded by structural descent on children
+
+The language does not provide:
+- `while(true)` — no unbounded loop primitive
+- `loop` without a bound — no general loop
+- Unrestricted recursion — must descend on a well-founded measure
+
+The complexity analyzer's role is not to *filter out* bad programs.
+It is to *confirm* what the language already guarantees. If `?O(?)`
+appears, the bug is in the analyzer or a missing lowering in the
+compiler — not in the user's program.
+
+| Surface pattern | Why it's bounded | Lowering |
+|---|---|---|
+| Tree walk (visit children) | strict child descent | `fold` over `node.children` |
+| Tokenizer/scanner loop | monotonic position advance | iterate until `pos >= len` |
+| Accumulator recursion | decreasing counter or list length | `fold` with init + step |
+| Mutual recursion (SCC) | shared decreasing measure | topological fold |
+| Long-running process | explicit bound `repeat(bound: N)` | bounded loop, N can be 2^64 |
+
+### Relationship to existing work
+
+- **S85 (recursive types):** SCC-derived cycle metadata already
+  classifies recursive type structures. This extends the same principle
+  to function bodies — the compiler proves the recursion is bounded.
+- **Complexity engine:** currently interim polynomial algebra. Under
+  this direction, the engine is a proof witness, not a filter. Its job
+  is confirming structural guarantees, not catching violations.
+- **`RecursionPattern` (complexity.dag:201-204):** `LinearRecursion |
+  DivideAndConquer | UnresolvableRecursion` is declared but never wired
+  in. This is the classification mechanism — `UnresolvableRecursion`
+  means the analyzer can't see the descent, which is a compiler bug.
+- **Compositional parser (Stream 0):** the parser itself must be
+  decidable. Spec-driven structural recognition over finite token
+  streams, not unbounded backtracking.
+
+### Concrete next steps
+
+1. Audit language iteration primitives — ensure no primitive permits
+   unbounded computation. If one exists, redesign it with an explicit
+   bound parameter.
+2. Wire `RecursionPattern` into `cost_of_expr` — classify every
+   recursive call as `LinearRecursion` or `DivideAndConquer`. Any
+   `UnresolvableRecursion` is a compiler gap to fix.
+3. Ensure `cost_of_expr` (tree walk, bound = |nodes|) and
+   `tokenize_loop` (scanner, bound = |source|) express their descent
+   measures so the analyzer resolves them.
+4. Fix `trace_pop_frame` O(|stack|^2) — `take(count - 1)` copies the
+   list; needs O(1) pop.
+
+### Enforcement (see Guarantee Map)
+
+This is a **Tier 1 (structural)** guarantee, not Tier 2 (tested).
+The language makes undecidability unrepresentable. The complexity
+ratchet test exists to verify the analyzer sees the bounds correctly
+— it's a test of the *analyzer*, not a gate on *programs*.
+
+### Non-goal
+
+This does not restrict what users can express — only how they express
+it. Recursive types, recursive functions, and long-running processes
+are all supported. The language requires the bound to be explicit or
+structurally derivable. "Run for 30 trillion years" is fine.
+"Run forever" is not expressible.
+
+---
+
+## Design Direction: Guarantee Map
+
+**Problem:** We have invariants, we have tests, but no clear picture of
+which invariants are structurally enforced, which are tested but
+breakable, which are aspirational, and which are fundamentally not
+provable. Without this map, invariants drift — we write rules we can't
+verify and skip enforcement we could have.
+
+### Tier 1: Structurally enforced (compiler rejects violations)
+
+These guarantees hold because the code is structured so violations
+don't compile or can't be represented.
+
+| Guarantee | Mechanism | What breaks if violated |
+|---|---|---|
+| Parser token dispatch is typed | `ExpectedToken` enum + exhaustive match | Missing match arm = Rust compile error |
+| ExprData variants are closed | Enum with exhaustive match in all walkers | Missing arm = Rust compile error |
+| Inference returns `InferredNode` not `Node` | Type system separates resolved/error | Can't accidentally treat error as valid node |
+| Arity from `.dag` declarations | Generic slot count read from type def | Can't hardcode arity for a type |
+| Fan-out = graph out-degree | Computed from binding reference count | Can't fabricate use-count |
+
+**Property:** violations are unrepresentable. No test needed — the
+compiler enforces it. This is the gold standard; all invariants should
+aspire to this tier.
+
+### Tier 2: Tested and gated (CI catches regressions)
+
+These guarantees hold because automated tests verify them on every
+change. They could be broken by editing the code, but the test suite
+catches it.
+
+| Guarantee | Test | CI status |
+|---|---|---|
+| Inference is name-opaque | 6 scrambled-name tests (rename all types → identical graph) | `cargo test -p v2-compiler-tests` — **in CI** |
+| No string-based parser dispatch | Source audit: `ExpectedToken` exists, `kind_matches_tag` absent | `cargo test -p v2-compiler-tests` — **in CI** |
+| Canonical accessor pattern | Source audit: `node.children` not raw `expr_data` field access | `cargo test -p v2-compiler-tests` — **in CI** |
+| All `.dag` files parse | Parse audit: every `.dag` file parses with 0 errors | `cargo test -p v2-compiler-tests` — **in CI** |
+| Clippy clean | `cargo clippy --all-targets -- -D warnings` | **in CI** |
+| Self-compile 0 diagnostics | Diagnostic ratchet test (DIAG_RATCHET = 0) | `--ignored` — **manual gate** |
+| Bootstrap fixed point | stage0→stage1→stage2 emit identical source | `--ignored` — **manual gate** |
+| Self-compile < 30s | Performance ratchet test | `--ignored` — **manual gate** |
+
+**Property:** a regression produces a failing test. The `--ignored`
+tests are slower and run manually before merge, not in CI on every
+push. They could be promoted to CI if build time permits.
+
+### Tier 3: Machinery exists but not gated (report-only)
+
+The analysis runs and produces results, but nothing blocks on the
+output. These are the most dangerous — they give the illusion of
+coverage without enforcement.
+
+| Guarantee (aspirational) | Machinery | What's missing |
+|---|---|---|
+| All functions have proven time bounds | Complexity analyzer produces `ComplexityViolation` list | No test asserts `violations.is_empty()` |
+| All functions have proven space bounds | `output_size` field exists in `ComplexitySummary` but only populated for collection-producing ops; most branches return `empty_map()` | Replace `output_size` map with `space: CostExpr` peer to `work`/`span`; populate at every branch using space composition algebra (same walk, different combinators) |
+| L1 type knowledge = 0 | `scripts/l1-ratchet.sh` counts violations | Script not in CI; no test wraps it |
+| Ownership proof coverage | `ownership.dag` runs, produces ownership annotations | No ratchet on uncovered functions |
+| Emitted Rust compiles | Stage0 → `cargo check` | ~280 errors; no ratchet tracking reduction |
+
+**These are the immediate action items.** Each one has working
+machinery — the gap is wiring it into a test that fails on regression.
+
+### Tier 4: Not yet enforceable (design exists, no machinery)
+
+| Guarantee (future) | Design | What's needed |
+|---|---|---|
+| Parse-emit round trip | `parse(spec, emit(spec, graph)) ≅ graph` | Compositional parser (Stream 0) must land first |
+| `parse_item` has 0 keyword arms | R3 exit criteria defined | Ratchet counting keyword match arms in `parse_item` |
+| All containers have O(1) clone | FF-8 root-caused; fix designed | Container template change + ratchet on clone cost |
+| Complexity bounds are tight (not just proven) | `Conservative` vs `Proven` certainty | CAS-grade precision (log, sqrt) in cost algebra |
+| Space bounds are complete | `output_size` tracks collection output | Promote to `space: CostExpr` peer field; populate all branches (same walk as time, different algebra) |
+| Import-driven source resolution | FF-9 design written | Compiler resolves imports from source roots, not caller-provided list |
+
+### Tier 5: Fundamentally limited
+
+| Property | Why it can't be fully proven | What we can do instead |
+|---|---|---|
+| Semantic correctness of emitted code | Generated Rust/Go/Python compiles, but behavior = "does it do what the `.dag` means?" requires end-to-end tests per program | Generated test stubs (Tier 4 test gen) + gist pipeline as integration test |
+| Completeness of language coverage | No test that every `.dag` language feature has emission support for every target | Differential: compile same `.dag` to all targets, diff structural coverage |
+| Exact complexity bounds | Polynomial algebra can't express log/sqrt/constants | `Conservative` certainty tracks where bounds are loose; CAS upgrade is long-term |
+| Correctness of `.dag` type definitions | Algebraic laws (e.g., List is a free monoid) are declarations, not proofs | Property-based tests on generated code exercising the laws |
+
+### Enforcement roadmap
+
+**Immediate (wire existing machinery into gates):**
+
+1. **Complexity ratchet test.** Same pattern as diagnostic ratchet:
+   compile self, assert `complexity.violations.len() == 0`. Promotes
+   Tier 3 → Tier 2.
+2. **L1 ratchet in CI.** Wrap `l1-ratchet.sh --check` in a test or CI
+   step. Promotes Tier 3 → Tier 2.
+3. **Emitted Rust error ratchet.** Track `cargo check` error count on
+   generated stage0; ratchet down from ~280. Promotes Tier 3 → Tier 2.
+
+**Near-term (new machinery, builds on current work):**
+
+4. **Keyword arm ratchet.** Count `ShKw*` match arms in `parse_item`;
+   ratchet toward 0 as Stream 0 progresses.
+5. **Round-trip smoke test.** Once compositional parser handles a
+   subset: parse a `.dag` file, emit it, reparse, assert graph
+   equality. Grows with parser coverage.
+6. **Ownership coverage ratchet.** Count functions with unresolved
+   ownership annotations; ratchet toward 0.
+
+**Structural (promote Tier 2 → Tier 1 by construction):**
+
+7. **Complexity bounds by construction (decidability invariant).**
+   The language only permits bounded iteration — `?O(?)` is
+   unrepresentable, not caught by a test. The complexity ratchet test
+   (Step 1) verifies the *analyzer* sees the bounds, not that programs
+   are bounded — programs are bounded by construction. This is the
+   model: structural guarantee first, analyzer confirmation second.
+8. **Parser extensibility by construction.** When `parse_item` reads
+   from `SyntaxSpec` instead of matching on keywords, adding a keyword
+   arm becomes impossible — there are no arms to add. Stream 0 endgame.
+
+---
+
 ## Current State (2026-03-28)
 
 **Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
@@ -325,8 +535,16 @@ now live in `node.children` as compositional Nodes.
 in `LanguageSpec` container templates, not new compiler machinery.
 Hand-patch proof confirms fix (parser 37s → 0.4s). Atomic fix pending.
 
-**Stream 0 is the architectural priority.** Next steps: parse-emit
-symmetry validation (round-trip test), second language frontend.
+**Root-cause audit (2026-03-23):** Three root causes behind all ~66
+invariant violations — I (incomplete types ~32), II (error-as-name ~18),
+III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
+Remaining violations are tracked in L1 dissolution (Stream 1).
+
+**Two foundational directions for Phase 5 exit:**
+**Stream 0 (compositional parser) — LANDED (PR #226).**
+**Decidability (DAG-reducibility) — active.**
+Next steps: parse-emit symmetry validation (round-trip test), second
+language frontend.
 
 ---
 
@@ -348,6 +566,8 @@ See git history for full stage breakdown.
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors, type-name comparisons, CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` | Rust container templates → `Rc<Vec<{0}>>` etc. + emitter + runtime + stage0 regen | Eliminate O(n) clone class (FF-8) |
+| **Stream 4: Guarantee Enforcement** | *(unassigned)* | Wire Tier 3 machinery into gates; add Tier 4 ratchets as design directions land | Complexity ratchet, L1 ratchet in CI, keyword arm ratchet, round-trip smoke test |
+| **Stream 5: Compiler Correctness** | *(unassigned)* | Fix emitted Rust errors (~280→0); space complexity tracking; regeneration script | Generated stage0 passes `cargo check`; space bounds in complexity report |
 
 ### Stream 0: Compositional Parser — Status
 
@@ -382,6 +602,252 @@ Fix the remaining 3 parse diagnostics in the DSL files (not in the parser):
 **Step 5: Second language frontend.**
 Define a second `SyntaxSpec` (e.g., a subset of Python or a simplified
 frontend) to validate that the architecture supports multiple frontends.
+
+**Enforcement (see Guarantee Map):**
+- **Immediate (Tier 3→2):** Keyword arm ratchet — count `ShKw*` match
+  arms in `parse_item`, fail if above ratchet value. Tracks Stream 0
+  progress mechanically.
+- **Near-term (Tier 4→2):** Round-trip smoke test —
+  `parse(spec, emit(spec, graph)) ≅ graph` on subset of `.dag` files.
+  Grows as parser coverage grows.
+- **Endgame (Tier 2→1):** When `parse_item` reads from `SyntaxSpec`,
+  keyword arms are structurally impossible — there are no arms to add.
+
+### Stream 4: Guarantee Enforcement — Implementation Plan
+
+**Goal:** Every invariant in INVARIANTS.md has a corresponding
+enforcement mechanism. No Tier 3 (report-only) items remain at Phase 5
+exit.
+
+**Step 1: Wire existing machinery into ratchet tests.**
+Three tests, same pattern as the existing diagnostic ratchet in
+`bootstrap.rs`:
+
+| Test | What it checks | Ratchet value |
+|---|---|---|
+| `v2_complexity_violation_count` | `complexity.violations.len()` from self-compile | 0 (all functions have proven bounds) |
+| `v2_l1_ratchet` | Wrap `l1-ratchet.sh --check` or port the regex counts into Rust | 420 → 0 |
+| `v2_emitted_rust_error_count` | `cargo check` error count on generated stage0 | ~280 → 0 (tracks Stream 5) |
+
+**Step 2: Add structural ratchets for active design directions.**
+
+| Test | Tracks | Ratchet direction |
+|---|---|---|
+| `v2_parse_item_keyword_arms` | Stream 0 progress | Count `ShKw*` match arms in `parse_item` → 0 |
+| `v2_space_complexity_coverage` | Stream 5 space tracking | Count functions with `output_size: empty_map()` → 0 |
+| `v2_ownership_coverage` | Ownership proof maturity | Count functions with unresolved annotations → 0 |
+
+**Step 3: Publish guarantee inventory.**
+The Guarantee Map in this roadmap is the design doc. The test suite
+is the executable version. Each ratchet test's doc comment links to the
+corresponding Guarantee Map tier and the invariant it enforces. Anyone
+can run `cargo test -p v2-compiler-tests -- --ignored` and see exactly
+which guarantees hold and which are still ratcheting down.
+
+### Stream 5: Compiler Correctness — Implementation Plan
+
+**Goal:** Generated Rust compiles. Complexity analysis covers both time
+and space. The regeneration script works reliably.
+
+**Track A: Emitted Rust errors (~280 → 0)**
+
+The errors are in three layers (see "Rust Codegen Issues" in Backlog).
+Priority order by error yield:
+
+| Fix | Errors cleared | Location |
+|---|---|---|
+| `Bool`→`bool`, `Unit`→`()` primitive mapping | ~154 | `05_emit_rust.dag` |
+| Remove serde `Deserialize` derives | ~124 | `05_emit_rust.dag` |
+| Emit P5.11 accessor functions (`let_value`, etc.) | ~130 | `05_emit.dag` |
+| Fix `regenerate-stage0.sh` module naming | ~15 | Script |
+| Remaining (duplicate types, undeclared refs) | ~12 | `05_emit.dag` namespace |
+
+Many errors overlap (a single `Bool` type produces multiple downstream
+errors), so the actual fix count is smaller than the error sum.
+
+**Track B: Space complexity — same walk, different algebra**
+
+Time and space are not separate analyses. The complexity analyzer
+already walks the expression tree once and computes `work`, `span`,
+and `output_size` in the same pass (`cost_of_expr`). The walk is
+shared — the only difference is the composition operator at each node:
+
+| Pattern | Time (work) | Space (peak live) |
+|---|---|---|
+| Sequential `a; b` | `add(a, b)` | `max(a, b)` |
+| Parallel (match arms) | `max(a, b)` | `add(a, b)` |
+| Loop `n × body` | `mul(n, body)` | `body` (streaming) or `mul(n, body)` (accumulating) |
+| Recursion (depth × frame) | `mul(depth, frame)` | `mul(depth, frame)` (stack) |
+
+The current gap is not a missing analyzer — it's that most branches
+in `cost_of_expr` return `output_size: empty_map()` instead of
+computing the space contribution. The fix is populating the existing
+field using the correct algebra, not building separate machinery.
+
+**Step 1:** Replace `output_size: Map<String, CostExpr>` with a
+proper `space: CostExpr` field in `ComplexitySummary` — a peer to
+`work` and `span`, not a second-class map. All three are `CostExpr`
+trees composed by the same walk.
+
+**Step 2:** Populate `space` at every branch in `cost_of_expr` using
+the space composition algebra. Sequential = `max`, parallel = `add`,
+loop = `body` or `mul` depending on accumulation. Most of the changes
+are replacing `empty_map()` with the correct `cost_max`/`cost_par`
+call — same structure as the `work` line, different combinator.
+
+**Step 3:** Stack depth falls out of decidability. If every recursive
+function has a proven descent measure, stack depth = that measure.
+No new machinery — the bound is already computed for time; space
+reuses it.
+
+**Step 4:** Clone cost = fan-out × representation size. Once
+containers are `Rc`-wrapped (Stream 3), clone cost is O(1) and the
+space analyzer confirms it. Before the fix, the analyzer should
+report the O(n) clone cost — making FF-8 class regressions visible
+in the complexity report.
+
+**Track C: Regeneration script**
+
+`regenerate-stage0.sh` has known bugs (module renaming vs `lib.rs`,
+serde imports, duplicate types). Fix the script so `./regenerate-stage0.sh && cargo check` passes. This is the practical gate
+for Stream 5 Track A — without a working regen script, every codegen
+fix requires manual stage0 porting.
+
+### Gaps identified (2026-03-28)
+
+Two items surfaced during the workboard design:
+
+**1. `RecursionPattern` is declared but never used.** The complexity
+analyzer defines `LinearRecursion | DivideAndConquer |
+UnresolvableRecursion` (complexity.dag:201-204) but never calls it.
+`cost_of_expr` recurses into children without classifying the recursion
+pattern. This is the decidability enforcement point — wiring
+`RecursionPattern` into the walk is how the analyzer proves (or
+rejects) recursive functions.
+
+**2. Space complexity would have caught FF-8.** The 20-minute
+self-compile (FF-1/FF-8) was a space problem: O(n) clones on bare
+`Vec`/`HashMap` inside loops. If space had been a first-class dimension
+in the complexity report, the analyzer would have flagged
+`O(|tokens|²)` space on the parser before anyone ran it. This
+connects Stream 3 (container sharing) to Stream 5 Track B (space) —
+the fix makes clone cost O(1), and the space analyzer proves it stays
+that way.
+
+---
+
+## Workboard: Parallel Lanes
+
+**Governing concern (2026-03-28):** CI is green but the compiler
+generates invalid code (~280 Rust errors). False green is worse than
+red — it erodes trust in the entire verification pipeline. The first
+priority is closing the gap between "compiler runs" and "compiler
+output works." No design work should proceed without confidence that
+regressions are visible.
+
+### Lane ordering
+
+**Lane A (Verification) is the foundation.** Nothing else matters if
+we can't tell what's broken. Lane A runs first and produces the
+ratchets that Lanes B and C drive toward zero.
+
+**Lanes B and C run in parallel after Lane A delivers ratchets.** They
+touch different files and have independent exit criteria.
+
+```
+Lane A: Verification             Lane B: Compiler Output       Lane C: Language Design
+(know what's broken)             (make output correct)         (make the language right)
+─────────────────────────        ─────────────────────────     ─────────────────────────
+PHASE 1: Wire ratchets           Stream 5C: Regen script       Stream 0: Compositional
+  (no design, just plumbing)       · Fix module naming            Parser (R3)
+  · Emitted Rust error ratchet     · Fix serde imports           · SyntaxSpec extraction
+    (cargo check on stage0)        · cargo check gate            · parse_item reads spec
+  · Complexity ratchet test                                      · round-trip smoke test
+    (violations.len() == N)      Stream 5A: Emitted Rust
+  · L1 ratchet in CI               errors (~280→0)            Decidability invariant
+    (wrap l1-ratchet.sh)           · Bool→bool, Unit→()         · Audit iteration primitives
+  · Keyword arm count              · Remove serde derives        · Wire RecursionPattern
+                                   · Emit P5.11 accessors       · Confirm structural guarantee
+PHASE 2: Space complexity
+  (same walk, diff algebra)      Stream 3: Container           Stream 1: L1 Dissolution
+  · space: CostExpr peer field     Sharing (FF-8)               · Type constructors → 0
+  · Populate all branches          · Rc<Vec<{0}>> templates     · Type-name comparisons → 0
+  · Clone cost = fan-out × size    · emitter + runtime update   · CollectionKind dissolves
+                                   · stage0 regeneration
+─────────────────────────        ─────────────────────────     ─────────────────────────
+Files: bootstrap.rs (tests),     Files: 05_emit_rust.dag,      Files: 02_parse.dag,
+  source_audit.rs,                 LanguageSpec templates,        complexity.dag,
+  complexity.dag (space),          runtime_rust.dag,              01_tokenize.dag (spec),
+  l1-ratchet.sh                    regenerate-stage0.sh,          04_infer.dag (L1)
+                                   stage0/*.rs
+─────────────────────────        ─────────────────────────     ─────────────────────────
+Exit: every Tier 3 item in       Exit: cargo check 0 errors    Exit: parse_item 0 keyword
+  Guarantee Map promoted to        on generated stage0;           arms; decidability is
+  Tier 2; space in complexity      FF-8 class eliminated          structural (Tier 1);
+  report                                                          L1 ratchet = 0
+```
+
+### Why Lane A first
+
+The emitted Rust error ratchet is the single most important test to
+add. Today:
+
+- Self-compile: 0 diagnostics (tested, green)
+- Generated Rust: ~280 errors (untested, invisible)
+- CI: green (false confidence)
+
+Adding one test — compile generated stage0, count errors, assert
+`<= RATCHET` — immediately makes the breakage visible. Every
+subsequent fix in Lane B mechanically ratchets the number down. Without
+this test, Lane B fixes are unverifiable.
+
+The other Lane A ratchets (complexity violations, L1 count, keyword
+arms) follow the same pattern: measure what exists, make the number
+visible, ratchet down. All are pure plumbing — no design decisions.
+
+### Cross-lane dependencies
+
+```
+Lane A ──→ Lane B:  Emitted Rust ratchet makes Lane B progress
+                     measurable. Without it, fixes are unverifiable.
+
+Lane A ──→ Lane C:  Complexity ratchet verifies decidability — the
+                     analyzer confirms the structural guarantee. Not
+                     a blocking dependency (Tier 1 guarantee holds
+                     by construction) but provides observability.
+
+Lane B ──→ Lane B:  Regen script (5C) unblocks emitted Rust fixes
+                     (5A). 5C first, then 5A is automated.
+
+Lane B ──→ Lane A:  Container sharing (FF-8) feeds space complexity
+                     clone cost model. Space analyzer can land first;
+                     FF-8 fix makes clone cost O(1) and analyzer
+                     confirms.
+
+Lane C ──→ Lane A:  Compositional parser enables round-trip smoke
+                     test. Can start on subset before full parser.
+```
+
+### Execution order
+
+**Lane A (start immediately):**
+1. Emitted Rust error ratchet test (~280 today)
+2. Complexity violation ratchet test
+3. L1 ratchet in CI
+4. Keyword arm count in source audit
+5. Space as peer dimension in complexity analyzer
+
+**Lane B (start after Lane A step 1):**
+1. Fix regen script (5C)
+2. Bool→bool + serde removal (clears ~95% of errors)
+3. P5.11 accessor emission
+4. Container sharing (FF-8, atomic with regen)
+
+**Lane C (runs in parallel, no blocking deps):**
+1. Decidability audit (review iteration primitives)
+2. SyntaxSpec extraction (Stream 0 Step 1)
+3. Wire RecursionPattern into complexity analyzer
+4. L1 dissolution (continuous)
 
 ---
 
@@ -552,6 +1018,10 @@ All C-series items complete. Key outcomes:
   algebra queries.
 - `CollectionKind` — bridge debt (dissolves when method algebras land)
 - Each convergence step survives re-bootstrap and fixed-point verification
+- **Guarantee enforcement:** Tier 3 machinery (complexity violations,
+  L1 ratchet, emitted-Rust errors) must be gated before Phase 5 exit.
+  No invariant may exist without a corresponding enforcement mechanism
+  from the Guarantee Map.
 
 ---
 
