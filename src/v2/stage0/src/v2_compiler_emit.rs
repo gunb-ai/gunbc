@@ -900,10 +900,11 @@ match target.clone() {
 }
 } else {
             if (n.name.clone() != "".to_string()) {
+                let mapped = emit_primitive_type(n.name.clone(), target.clone());
                 if emit_map_has(rc_types.clone(), n.name.clone()) {
-                    v2_rt::concat(v2_rt::concat("Rc<".to_string(), n.name.clone()), ">".to_string())
+                    v2_rt::concat(v2_rt::concat("Rc<".to_string(), mapped.clone()), ">".to_string())
 } else {
-                    n.name.clone()
+                    mapped.clone()
 }
 } else {
                 {
@@ -943,10 +944,11 @@ result.clone()
 
 pub fn emit_node_type_disj_rc(n: Rc<Node>, target: RenderTarget, rc_types: HashMap<String, bool>) -> String {
     if (n.name.clone() != "".to_string()) {
+        let mapped = emit_primitive_type(n.name.clone(), target.clone());
         if emit_map_has(rc_types.clone(), n.name.clone()) {
-            v2_rt::concat(v2_rt::concat("Rc<".to_string(), n.name.clone()), ">".to_string())
+            v2_rt::concat(v2_rt::concat("Rc<".to_string(), mapped.clone()), ">".to_string())
 } else {
-            n.name.clone()
+            mapped.clone()
 }
 } else {
         {
