@@ -503,6 +503,120 @@ fn serializer_has_no_expr_other_fallback() {
     );
 }
 
+// ── Ratchet audits ────────────────────────────────────────────────────
+//
+// These tests make invisible breakage visible by counting structural
+// properties and asserting they stay within known bounds.
+
+const PARSE_ITEM_KEYWORD_ARM_RATCHET: usize = 9;
+
+#[test]
+fn parse_item_keyword_arm_count() {
+    let source = read_v2_file("src/v2/02_parse.dag");
+    let func_start = source
+        .find("fn parse_item(")
+        .expect("parse_item must exist in 02_parse.dag");
+    let rest = &source[func_start..];
+    // Slice to the next top-level function definition
+    let func_end = rest[1..]
+        .find("\nfn ")
+        .map(|i| i + 1)
+        .unwrap_or(rest.len());
+    let func_body = &rest[..func_end];
+    let arm_count = func_body.matches("Some { value: ShKw").count();
+    assert_eq!(
+        arm_count, PARSE_ITEM_KEYWORD_ARM_RATCHET,
+        "parse_item has {} keyword arms, expected {} — \
+         update PARSE_ITEM_KEYWORD_ARM_RATCHET if this is intentional",
+        arm_count, PARSE_ITEM_KEYWORD_ARM_RATCHET
+    );
+}
+
+const L1_RATCHET: usize = 51;
+
+#[test]
+fn l1_type_knowledge_ratchet() {
+    let ws = crate::helpers::workspace_root();
+    let v2_dir = ws.join("src/v2");
+    let mut all_content = String::new();
+    for entry in std::fs::read_dir(&v2_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            all_content.push_str(&std::fs::read_to_string(&path).unwrap());
+            all_content.push('\n');
+        }
+    }
+
+    // Type constructors — word-boundary match (mirrors l1-ratchet.sh)
+    let constructor_words = [
+        "leaf_node", "optional_node", "container_node",
+        "tuple_node", "pair_node", "callable_node", "error_type_node",
+    ];
+    // Count lines matching ANY constructor word (one line = one violation,
+    // even if it contains multiple words — matches shell grep -cE behavior).
+    let constructor_count: usize = all_content.lines().filter(|line| {
+        constructor_words.iter().any(|word| {
+            line.match_indices(word).any(|(i, _)| {
+                let bytes = line.as_bytes();
+                let before_ok = i == 0 || {
+                    let b = bytes[i - 1];
+                    !b.is_ascii_alphanumeric() && b != b'_'
+                };
+                let after_idx = i + word.len();
+                let after_ok = after_idx >= bytes.len() || {
+                    let b = bytes[after_idx];
+                    !b.is_ascii_alphanumeric() && b != b'_'
+                };
+                before_ok && after_ok
+            })
+        })
+    }).count();
+
+    // Type-name string comparisons (.name == "X")
+    let type_names = [
+        "Optional", "Map", "List", "Set", "Dynamic", "Error",
+        "Int", "String", "Bool", "Float", "Unit", "Bytes",
+        "Json", "Secret", "Tuple", "Callable", "None", "Some",
+    ];
+    let typename_count: usize = type_names
+        .iter()
+        .map(|name| {
+            let pattern = format!(".name == \"{}\"", name);
+            all_content.lines().filter(|l| l.contains(&pattern)).count()
+        })
+        .sum();
+
+    let l1_total = constructor_count + typename_count;
+    eprintln!("L1 ratchet: constructors={}, typenames={}, total={}", constructor_count, typename_count, l1_total);
+
+    assert!(
+        l1_total <= L1_RATCHET,
+        "L1 type knowledge {} exceeds ratchet {} — \
+         fix violations or update L1_RATCHET if this increase is justified",
+        l1_total, L1_RATCHET
+    );
+}
+
+/// Count lines containing `word` at a word boundary (not part of a larger identifier).
+fn count_word_boundary_lines(content: &str, word: &str) -> usize {
+    content.lines().filter(|line| {
+        line.match_indices(word).any(|(i, _)| {
+            let bytes = line.as_bytes();
+            let before_ok = i == 0 || {
+                let b = bytes[i - 1];
+                !b.is_ascii_alphanumeric() && b != b'_'
+            };
+            let after_idx = i + word.len();
+            let after_ok = after_idx >= bytes.len() || {
+                let b = bytes[after_idx];
+                !b.is_ascii_alphanumeric() && b != b'_'
+            };
+            before_ok && after_ok
+        })
+    }).count()
+}
+
 #[test]
 fn no_expr_data_before_catch_all_in_core() {
     // The NoExprData arm must appear BEFORE any catch-all `_` in
