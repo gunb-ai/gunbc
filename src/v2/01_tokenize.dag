@@ -15,15 +15,7 @@ module v2.compiler.tokenize
 import std.types { SourceSpan }
 import v2.std.core {
   Token, TokenShape,
-  ShKwModule, ShKwImport, ShKwType, ShKwFn, ShKwFunc,
-  ShKwService, ShKwResource, ShKwData, ShKwExtern,
-  ShKwInterface, ShKwPipeline, ShKwProfile, ShKwPattern,
-  ShKwLet, ShKwReturn, ShKwMatch, ShKwIf, ShKwElse,
-  ShKwFor, ShKwIn, ShKwWhere, ShKwWith,
-  ShKwTrue, ShKwFalse, ShKwNone,
-  ShKwAcquire, ShKwRelease, ShKwCapability,
-  ShKwOperation, ShKwInput, ShKwOutput,
-  ShKwIdempotent, ShKwReadonly, ShKwHermetic,
+  ShKeyword,
   ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
   ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
   ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
@@ -34,25 +26,18 @@ import v2.std.core {
   ShNewline, ShEof, ShUnknown
 }
 
-// === Keyword table ===
-//
-// Data declaration, not match arms. Adding a keyword = one entry here.
+import extdeps.languages.dag.syntax { dag_keyword_set }
 
-data keywords: Map<String, TokenShape> = {
-  "module": ShKwModule, "import": ShKwImport, "type": ShKwType,
-  "fn": ShKwFn, "func": ShKwFunc, "service": ShKwService,
-  "resource": ShKwResource, "data": ShKwData, "extern": ShKwExtern,
-  "interface": ShKwInterface, "pipeline": ShKwPipeline,
-  "profile": ShKwProfile, "pattern": ShKwPattern,
-  "let": ShKwLet, "return": ShKwReturn, "match": ShKwMatch,
-  "if": ShKwIf, "else": ShKwElse, "for": ShKwFor, "in": ShKwIn,
-  "where": ShKwWhere, "with": ShKwWith,
-  "true": ShKwTrue, "false": ShKwFalse, "none": ShKwNone, "null": ShKwNone,
-  "acquire": ShKwAcquire, "release": ShKwRelease,
-  "capability": ShKwCapability, "operation": ShKwOperation,
-  "input": ShKwInput, "output": ShKwOutput,
-  "idempotent": ShKwIdempotent, "readonly": ShKwReadonly,
-  "hermetic": ShKwHermetic
+// === Keyword recognition ===
+//
+// Keyword set derived from dag_keyword_set (the single authority in SyntaxSpec).
+// O(1) map lookup per identifier token. Adding a keyword = one entry in syntax.dag.
+
+fn is_keyword_text(text: String) -> Bool {
+  match lookup(dag_keyword_set, key: text) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // === Single-char punctuation table ===
@@ -248,10 +233,7 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int) -> ScanResult {
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = scan_while(s: source.text, start: pos.pos, pred: is_ident_char)
   let text = substring(s: source.text, start: pos.pos, end: end)
-  let shape = match lookup(keywords, key: text) {
-    Some { value: sh } => sh
-    None => ShIdent
-  }
+  let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
   let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: end }, shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }

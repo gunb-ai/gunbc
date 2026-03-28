@@ -1,0 +1,112 @@
+// .dag syntax specification — instance #1 of SyntaxSpec.
+//
+// This file declares the grammar of the .dag language as data.
+// The parser reads this spec; adding a new item type = one entry here.
+// Future language frontends (Python, Go source) provide their own SyntaxSpec.
+
+module extdeps.languages.dag.syntax
+
+import v2.compiler.languages {
+  ItemForm, BodyKind,
+  ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
+  ServiceBody, ResourceBody,
+  OperatorSpec, SyntaxSpec
+}
+
+import v2.std.core {
+  BinOpKind, Add, Sub, Mul, Div, Mod,
+  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
+  LiteralValue, LitBool, LitNull
+}
+
+// Item forms: keyword -> structural components + body kind.
+// The parser dispatches on keyword text, looks up the form,
+// then parses the shared prefix (name, type params, params, return, uses)
+// and delegates to the appropriate body parser.
+
+data dag_item_forms: List<ItemForm> = [
+  ItemForm { keyword: "type", has_type_params: true, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: TypeBody },
+  ItemForm { keyword: "fn", has_type_params: true, has_params: true,
+    has_return_type: true, return_required: true,
+    has_uses: false, body_kind: ExprBody },
+  ItemForm { keyword: "func", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: true, body_kind: BlockBody },
+  ItemForm { keyword: "service", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: ServiceBody },
+  ItemForm { keyword: "resource", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: ResourceBody },
+  ItemForm { keyword: "data", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: ValueBody },
+  ItemForm { keyword: "extern", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: true,
+    has_uses: false, body_kind: NoBody },
+  ItemForm { keyword: "pattern", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: false, body_kind: BlockBody },
+  ItemForm { keyword: "interface", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: false, body_kind: BlockBody }
+]
+
+// Literal keywords: keyword text -> LiteralValue.
+// The parser checks this map before expression keywords.
+
+data dag_keyword_literals: Map<String, LiteralValue> = {
+  "true": LitBool { value: true },
+  "false": LitBool { value: false },
+  "none": LitNull,
+  "null": LitNull
+}
+
+// Keyword lookup map — the single authority for what strings are keywords.
+// Map<String, Bool> used as a set: O(1) lookup per identifier token.
+// The tokenizer and parser both derive from this map.
+
+data dag_keyword_set: Map<String, Bool> = {
+  "module": true, "import": true, "type": true, "fn": true, "func": true,
+  "service": true, "resource": true, "data": true, "extern": true,
+  "interface": true, "pipeline": true, "profile": true, "pattern": true,
+  "let": true, "return": true, "match": true, "if": true, "else": true,
+  "for": true, "in": true, "where": true, "with": true,
+  "true": true, "false": true, "none": true, "null": true,
+  "acquire": true, "release": true, "capability": true, "operation": true,
+  "input": true, "output": true,
+  "idempotent": true, "readonly": true, "hermetic": true
+}
+
+// Operator precedence table.
+// ?? < || < && < cmp < add < mul < |> < .
+// |> and . have binding power entries but their binop field is unused
+// (the expression loop handles them as pipe/field-access, not binary ops).
+
+data dag_operators: List<OperatorSpec> = [
+  OperatorSpec { symbol: "??", left_bp: 3, right_bp: 4, binop: NullCoalesce },
+  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: BinOr },
+  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: BinAnd },
+  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: BinEq },
+  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: BinNe },
+  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: BinLt },
+  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: BinGt },
+  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: BinLe },
+  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: BinGe },
+  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add },
+  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub },
+  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div },
+  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod },
+  OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: none },
+  OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none }
+]
+
+data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
+  item_forms: dag_item_forms,
+  operators: dag_operators,
+  keyword_literals: dag_keyword_literals,
+  keyword_set: dag_keyword_set
+}

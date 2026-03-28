@@ -43,15 +43,7 @@ import v2.std.core {
   OperationModifier, Idempotent, Readonly, Hermetic,
   CapabilityDef,
   Token, TokenShape,
-  ShKwModule, ShKwImport, ShKwType, ShKwFn, ShKwFunc,
-  ShKwService, ShKwResource, ShKwData, ShKwExtern,
-  ShKwInterface, ShKwPipeline, ShKwProfile, ShKwPattern,
-  ShKwLet, ShKwReturn, ShKwMatch, ShKwIf, ShKwElse,
-  ShKwFor, ShKwIn, ShKwWhere, ShKwWith,
-  ShKwTrue, ShKwFalse, ShKwNone,
-  ShKwAcquire, ShKwRelease, ShKwCapability,
-  ShKwOperation, ShKwInput, ShKwOutput,
-  ShKwIdempotent, ShKwReadonly, ShKwHermetic,
+  ShKeyword,
   ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
   ShLt, ShGt, ShLe, ShGe, ShFatArrow, ShArrow,
   ShColon, ShComma, ShDot, ShDotDot, ShEq, ShEqEq, ShNe,
@@ -64,6 +56,15 @@ import v2.std.core {
   diagnostic_node,
   with_required_cardinality
 }
+
+import v2.compiler.languages {
+  ItemForm, BodyKind,
+  ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
+  ServiceBody, ResourceBody,
+  OperatorSpec, SyntaxSpec
+}
+
+import extdeps.languages.dag.syntax { dag_syntax_spec }
 
 // =========================================================================
 // Parser state types
@@ -106,6 +107,18 @@ type ArgResult { arg: NamedArg, state: ParserState, err: Node? }
 type FieldResult { field: Field, state: ParserState, err: Node? }
 type FieldInitResult { field: FieldInit, state: ParserState, err: Node? }
 type ResUseResult { resource_use: ResourceUse, state: ParserState, err: Node? }
+
+// Generic prefix result: shared across TypeBody, ExprBody, BlockBody items.
+type ItemPrefixResult {
+  name: String
+  type_params: List<Param>
+  params: List<Param>
+  inferred: InferredNode?
+  uses: List<ResourceUse>
+  state: ParserState
+  err: Node?
+}
+
 // Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
 // service Node construction boundary. This type exists only inside the parser.
 type ServiceConfig { endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node? }
@@ -115,26 +128,7 @@ type ConfigResult { config: ServiceConfig, state: ParserState, err: Node? }
 type BindingPower { left: Int, right: Int }
 
 type ExpectedToken
-  = ExpectKwModule
-  | ExpectKwImport
-  | ExpectKwType
-  | ExpectKwFn
-  | ExpectKwFunc
-  | ExpectKwService
-  | ExpectKwResource
-  | ExpectKwData
-  | ExpectKwExtern
-  | ExpectKwInterface
-  | ExpectKwPattern
-  | ExpectKwLet
-  | ExpectKwReturn
-  | ExpectKwMatch
-  | ExpectKwIf
-  | ExpectKwElse
-  | ExpectKwFor
-  | ExpectKwIn
-  | ExpectKwCapability
-  | ExpectKwOperation
+  = ExpectKeyword { text: String }
   | ExpectLBrace
   | ExpectRBrace
   | ExpectLParen
@@ -277,45 +271,26 @@ fn is_unknown_shape(shape: TokenShape) -> Bool { match shape { ShUnknown => true
 // Structure
 fn is_newline_shape(shape: TokenShape) -> Bool { match shape { ShNewline => true  _ => false } }
 fn is_eof_shape(shape: TokenShape) -> Bool { match shape { ShEof => true  _ => false } }
-// Declaration keywords
-fn is_kw_module_shape(shape: TokenShape) -> Bool { match shape { ShKwModule => true  _ => false } }
-fn is_kw_import_shape(shape: TokenShape) -> Bool { match shape { ShKwImport => true  _ => false } }
-fn is_kw_type_shape(shape: TokenShape) -> Bool { match shape { ShKwType => true  _ => false } }
-fn is_kw_fn_shape(shape: TokenShape) -> Bool { match shape { ShKwFn => true  _ => false } }
-fn is_kw_func_shape(shape: TokenShape) -> Bool { match shape { ShKwFunc => true  _ => false } }
-fn is_kw_service_shape(shape: TokenShape) -> Bool { match shape { ShKwService => true  _ => false } }
-fn is_kw_resource_shape(shape: TokenShape) -> Bool { match shape { ShKwResource => true  _ => false } }
-fn is_kw_data_shape(shape: TokenShape) -> Bool { match shape { ShKwData => true  _ => false } }
-fn is_kw_extern_shape(shape: TokenShape) -> Bool { match shape { ShKwExtern => true  _ => false } }
-fn is_kw_interface_shape(shape: TokenShape) -> Bool { match shape { ShKwInterface => true  _ => false } }
-fn is_kw_pipeline_shape(shape: TokenShape) -> Bool { match shape { ShKwPipeline => true  _ => false } }
-fn is_kw_profile_shape(shape: TokenShape) -> Bool { match shape { ShKwProfile => true  _ => false } }
-fn is_kw_pattern_shape(shape: TokenShape) -> Bool { match shape { ShKwPattern => true  _ => false } }
-// Control flow keywords
-fn is_kw_let_shape(shape: TokenShape) -> Bool { match shape { ShKwLet => true  _ => false } }
-fn is_kw_return_shape(shape: TokenShape) -> Bool { match shape { ShKwReturn => true  _ => false } }
-fn is_kw_match_shape(shape: TokenShape) -> Bool { match shape { ShKwMatch => true  _ => false } }
-fn is_kw_if_shape(shape: TokenShape) -> Bool { match shape { ShKwIf => true  _ => false } }
-fn is_kw_else_shape(shape: TokenShape) -> Bool { match shape { ShKwElse => true  _ => false } }
-fn is_kw_for_shape(shape: TokenShape) -> Bool { match shape { ShKwFor => true  _ => false } }
-fn is_kw_in_shape(shape: TokenShape) -> Bool { match shape { ShKwIn => true  _ => false } }
-fn is_kw_where_shape(shape: TokenShape) -> Bool { match shape { ShKwWhere => true  _ => false } }
-fn is_kw_with_shape(shape: TokenShape) -> Bool { match shape { ShKwWith => true  _ => false } }
-// Literal keywords
-fn is_kw_true_shape(shape: TokenShape) -> Bool { match shape { ShKwTrue => true  _ => false } }
-fn is_kw_false_shape(shape: TokenShape) -> Bool { match shape { ShKwFalse => true  _ => false } }
-fn is_kw_none_shape(shape: TokenShape) -> Bool { match shape { ShKwNone => true  _ => false } }
-// Resource lifecycle keywords
-fn is_kw_acquire_shape(shape: TokenShape) -> Bool { match shape { ShKwAcquire => true  _ => false } }
-fn is_kw_release_shape(shape: TokenShape) -> Bool { match shape { ShKwRelease => true  _ => false } }
-fn is_kw_capability_shape(shape: TokenShape) -> Bool { match shape { ShKwCapability => true  _ => false } }
-fn is_kw_operation_shape(shape: TokenShape) -> Bool { match shape { ShKwOperation => true  _ => false } }
-fn is_kw_input_shape(shape: TokenShape) -> Bool { match shape { ShKwInput => true  _ => false } }
-fn is_kw_output_shape(shape: TokenShape) -> Bool { match shape { ShKwOutput => true  _ => false } }
-// Modifier keywords
-fn is_kw_idempotent_shape(shape: TokenShape) -> Bool { match shape { ShKwIdempotent => true  _ => false } }
-fn is_kw_readonly_shape(shape: TokenShape) -> Bool { match shape { ShKwReadonly => true  _ => false } }
-fn is_kw_hermetic_shape(shape: TokenShape) -> Bool { match shape { ShKwHermetic => true  _ => false } }
+// Keyword shape — single variant for all keywords, identity is in Token.text
+fn is_keyword_shape(shape: TokenShape) -> Bool { match shape { ShKeyword => true  _ => false } }
+
+// Check if the current token is a keyword with a specific text
+fn peek_is_keyword(tokens: List<Token>, state: ParserState, kw: String) -> Bool {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } => is_keyword_shape(shape: t.shape) && t.text == kw
+    None => false
+  }
+}
+
+// Get the keyword text of the current token, or "" if not a keyword
+fn peek_keyword_text(tokens: List<Token>, state: ParserState) -> String {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } => if is_keyword_shape(shape: t.shape) { t.text } else { "" }
+    None => ""
+  }
+}
 // Paired delimiters
 fn is_lbrace_shape(shape: TokenShape) -> Bool { match shape { ShLBrace => true  _ => false } }
 fn is_rbrace_shape(shape: TokenShape) -> Bool { match shape { ShRBrace => true  _ => false } }
@@ -510,259 +485,10 @@ fn peek_is_question(tokens: List<Token>, state: ParserState) -> Bool {
   }
 }
 
-fn peek_is_kw_module(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_module_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_import(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_import_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_type(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_type_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_fn(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_fn_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_func(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_func_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_service(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_service_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_resource(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_resource_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_data(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_data_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_extern(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_extern_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_interface(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_interface_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_pipeline(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_pipeline_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_profile(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_profile_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_pattern(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_pattern_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_let(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_let_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_return(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_return_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_match(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_match_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_if(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_if_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_else(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_else_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_for(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_for_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_in(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_in_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_where(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_where_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_with(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_with_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_true(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_true_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_false(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_false_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_idempotent(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_idempotent_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_readonly(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_readonly_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_hermetic(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_hermetic_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_capability(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_capability_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_operation(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_operation_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_input(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_input_shape(shape: shape)
-    None => false
-  }
-}
-
-fn peek_is_kw_output(tokens: List<Token>, state: ParserState) -> Bool {
-  match peek_shape(tokens: tokens, state: state) {
-    Some { value: shape } => is_kw_output_shape(shape: shape)
-    None => false
-  }
-}
 
 fn shape_display_name(shape: TokenShape) -> String {
   match shape {
-    ShKwModule => "KwModule"
-    ShKwImport => "KwImport"
-    ShKwType => "KwType"
-    ShKwFn => "KwFn"
-    ShKwFunc => "KwFunc"
-    ShKwService => "KwService"
-    ShKwResource => "KwResource"
-    ShKwData => "KwData"
-    ShKwExtern => "KwExtern"
-    ShKwInterface => "KwInterface"
-    ShKwPipeline => "KwPipeline"
-    ShKwProfile => "KwProfile"
-    ShKwPattern => "KwPattern"
-    ShKwLet => "KwLet"
-    ShKwReturn => "KwReturn"
-    ShKwMatch => "KwMatch"
-    ShKwIf => "KwIf"
-    ShKwElse => "KwElse"
-    ShKwFor => "KwFor"
-    ShKwIn => "KwIn"
-    ShKwWhere => "KwWhere"
-    ShKwWith => "KwWith"
-    ShKwTrue => "KwTrue"
-    ShKwFalse => "KwFalse"
-    ShKwNone => "KwNone"
-    ShKwAcquire => "KwAcquire"
-    ShKwRelease => "KwRelease"
-    ShKwCapability => "KwCapability"
-    ShKwOperation => "KwOperation"
-    ShKwInput => "KwInput"
-    ShKwOutput => "KwOutput"
-    ShKwIdempotent => "KwIdempotent"
-    ShKwReadonly => "KwReadonly"
-    ShKwHermetic => "KwHermetic"
+    ShKeyword => "keyword"
     ShLBrace => "LBrace"
     ShRBrace => "RBrace"
     ShLParen => "LParen"
@@ -807,28 +533,17 @@ fn shape_display_name(shape: TokenShape) -> String {
   }
 }
 
+fn token_display_name(token: Token) -> String {
+  if is_keyword_shape(shape: token.shape) {
+    concat("keyword '", concat(token.text, "'"))
+  } else {
+    shape_display_name(shape: token.shape)
+  }
+}
+
 fn expected_token_name(expected: ExpectedToken) -> String {
   match expected {
-    ExpectKwModule => "KwModule"
-    ExpectKwImport => "KwImport"
-    ExpectKwType => "KwType"
-    ExpectKwFn => "KwFn"
-    ExpectKwFunc => "KwFunc"
-    ExpectKwService => "KwService"
-    ExpectKwResource => "KwResource"
-    ExpectKwData => "KwData"
-    ExpectKwExtern => "KwExtern"
-    ExpectKwInterface => "KwInterface"
-    ExpectKwPattern => "KwPattern"
-    ExpectKwLet => "KwLet"
-    ExpectKwReturn => "KwReturn"
-    ExpectKwMatch => "KwMatch"
-    ExpectKwIf => "KwIf"
-    ExpectKwElse => "KwElse"
-    ExpectKwFor => "KwFor"
-    ExpectKwIn => "KwIn"
-    ExpectKwCapability => "KwCapability"
-    ExpectKwOperation => "KwOperation"
+    ExpectKeyword { text: kw } => concat("keyword '", concat(kw, "'"))
     ExpectLBrace => "LBrace"
     ExpectRBrace => "RBrace"
     ExpectLParen => "LParen"
@@ -848,59 +563,40 @@ fn expected_token_name(expected: ExpectedToken) -> String {
   }
 }
 
-fn shape_matches_expected(shape: TokenShape, expected: ExpectedToken) -> Bool {
+fn token_matches_expected(token: Token, expected: ExpectedToken) -> Bool {
   match expected {
-    ExpectKwModule => is_kw_module_shape(shape: shape)
-    ExpectKwImport => is_kw_import_shape(shape: shape)
-    ExpectKwType => is_kw_type_shape(shape: shape)
-    ExpectKwFn => is_kw_fn_shape(shape: shape)
-    ExpectKwFunc => is_kw_func_shape(shape: shape)
-    ExpectKwService => is_kw_service_shape(shape: shape)
-    ExpectKwResource => is_kw_resource_shape(shape: shape)
-    ExpectKwData => is_kw_data_shape(shape: shape)
-    ExpectKwExtern => is_kw_extern_shape(shape: shape)
-    ExpectKwInterface => is_kw_interface_shape(shape: shape)
-    ExpectKwPattern => is_kw_pattern_shape(shape: shape)
-    ExpectKwLet => is_kw_let_shape(shape: shape)
-    ExpectKwReturn => is_kw_return_shape(shape: shape)
-    ExpectKwMatch => is_kw_match_shape(shape: shape)
-    ExpectKwIf => is_kw_if_shape(shape: shape)
-    ExpectKwElse => is_kw_else_shape(shape: shape)
-    ExpectKwFor => is_kw_for_shape(shape: shape)
-    ExpectKwIn => is_kw_in_shape(shape: shape)
-    ExpectKwCapability => is_kw_capability_shape(shape: shape)
-    ExpectKwOperation => is_kw_operation_shape(shape: shape)
-    ExpectLBrace => is_lbrace_shape(shape: shape)
-    ExpectRBrace => is_rbrace_shape(shape: shape)
-    ExpectLParen => is_lparen_shape(shape: shape)
-    ExpectRParen => is_rparen_shape(shape: shape)
-    ExpectLBracket => is_lbracket_shape(shape: shape)
-    ExpectRBracket => is_rbracket_shape(shape: shape)
-    ExpectLt => is_lt_shape(shape: shape)
-    ExpectGt => is_gt_shape(shape: shape)
-    ExpectFatArrow => is_fat_arrow_shape(shape: shape)
-    ExpectArrow => is_arrow_shape(shape: shape)
-    ExpectColon => is_colon_shape(shape: shape)
-    ExpectComma => is_comma_shape(shape: shape)
-    ExpectDot => is_dot_shape(shape: shape)
-    ExpectEq => is_eq_shape(shape: shape)
-    ExpectQuestion => is_question_shape(shape: shape)
-    ExpectPipe => is_pipe_shape(shape: shape)
+    ExpectKeyword { text: kw } => is_keyword_shape(shape: token.shape) && token.text == kw
+    ExpectLBrace => is_lbrace_shape(shape: token.shape)
+    ExpectRBrace => is_rbrace_shape(shape: token.shape)
+    ExpectLParen => is_lparen_shape(shape: token.shape)
+    ExpectRParen => is_rparen_shape(shape: token.shape)
+    ExpectLBracket => is_lbracket_shape(shape: token.shape)
+    ExpectRBracket => is_rbracket_shape(shape: token.shape)
+    ExpectLt => is_lt_shape(shape: token.shape)
+    ExpectGt => is_gt_shape(shape: token.shape)
+    ExpectFatArrow => is_fat_arrow_shape(shape: token.shape)
+    ExpectArrow => is_arrow_shape(shape: token.shape)
+    ExpectColon => is_colon_shape(shape: token.shape)
+    ExpectComma => is_comma_shape(shape: token.shape)
+    ExpectDot => is_dot_shape(shape: token.shape)
+    ExpectEq => is_eq_shape(shape: token.shape)
+    ExpectQuestion => is_question_shape(shape: token.shape)
+    ExpectPipe => is_pipe_shape(shape: token.shape)
   }
 }
 
 fn expect(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> TokenResult {
-  let sh = peek_shape(tokens: tokens, state: state)
-  let matches = match sh {
-    Some { value: shape } => shape_matches_expected(shape: shape, expected: expected)
+  let tok = peek(tokens: tokens, state: state)
+  let matches = match tok {
+    Some { value: t } => token_matches_expected(token: t, expected: expected)
     None => false
   }
   if matches {
     let adv = advance(tokens: tokens, state: state)
     TokenResult { token: adv.token, state: adv.state, err: none }
   } else {
-    let found = match sh {
-      Some { value: shape } => shape_display_name(shape: shape)
+    let found = match tok {
+      Some { value: t } => token_display_name(token: t)
       None => "EOF"
     }
     let wanted = expected_token_name(expected: expected)
@@ -940,7 +636,7 @@ fn expect_name(tokens: List<Token>, state: ParserState) -> NameResult {
       NameResult { name: n, state: adv.state, err: none }
     }
     _ => {
-      // Try to extract keyword name -- all Kw* tokens can be field names.
+      // Try to extract keyword name -- keyword tokens can be field names.
       let kw_name = keyword_to_name(tokens: tokens, state: state)
       match kw_name {
         Some { value: n } => {
@@ -948,8 +644,8 @@ fn expect_name(tokens: List<Token>, state: ParserState) -> NameResult {
           NameResult { name: n, state: adv.state, err: none }
         }
         None => {
-          let found = match sh {
-            Some { value: shape } => shape_display_name(shape: shape)
+          let found = match tok {
+            Some { value: t } => token_display_name(token: t)
             None => "EOF"
           }
           NameResult { name: "", state: state, err: Some { value: parse_error(msg: concat("expected name, found ", found), span: current_span(tokens: tokens, state: state)) } }
@@ -965,7 +661,7 @@ fn keyword_to_name(tokens: List<Token>, state: ParserState) -> String? {
   let tok = peek(tokens: tokens, state: state)
   match tok {
     Some { value: t } => {
-      if is_name_keyword_shape(shape: t.shape) {
+      if is_name_keyword(token: t) {
         Some { value: t.text }
       } else {
         none
@@ -976,33 +672,19 @@ fn keyword_to_name(tokens: List<Token>, state: ParserState) -> String? {
 }
 
 // Keywords that are valid as names (field names, type names).
-// Excludes literal keywords (true, false, none) and resource lifecycle keywords.
-fn is_name_keyword_shape(shape: TokenShape) -> Bool {
-  match shape {
-    ShKwModule => true  ShKwImport => true  ShKwType => true  ShKwFn => true  ShKwFunc => true
-    ShKwService => true  ShKwResource => true  ShKwData => true  ShKwExtern => true
-    ShKwInterface => true  ShKwPipeline => true  ShKwProfile => true  ShKwPattern => true
-    ShKwLet => true  ShKwReturn => true  ShKwMatch => true  ShKwIf => true  ShKwElse => true
-    ShKwFor => true  ShKwIn => true  ShKwWhere => true  ShKwWith => true
-    ShKwCapability => true  ShKwOperation => true  ShKwInput => true  ShKwOutput => true
-    ShKwIdempotent => true  ShKwReadonly => true  ShKwHermetic => true
-    _ => false
-  }
-}
-
-// Check if a shape is any keyword shape.
-fn is_keyword_shape(shape: TokenShape) -> Bool {
-  match shape {
-    ShKwModule => true  ShKwImport => true  ShKwType => true  ShKwFn => true  ShKwFunc => true
-    ShKwService => true  ShKwResource => true  ShKwData => true  ShKwExtern => true
-    ShKwInterface => true  ShKwPipeline => true  ShKwProfile => true  ShKwPattern => true
-    ShKwLet => true  ShKwReturn => true  ShKwMatch => true  ShKwIf => true  ShKwElse => true
-    ShKwFor => true  ShKwIn => true  ShKwWhere => true  ShKwWith => true
-    ShKwTrue => true  ShKwFalse => true  ShKwNone => true
-    ShKwAcquire => true  ShKwRelease => true  ShKwCapability => true
-    ShKwOperation => true  ShKwInput => true  ShKwOutput => true
-    ShKwIdempotent => true  ShKwReadonly => true  ShKwHermetic => true
-    _ => false
+// Derived structurally: any keyword that is NOT a literal keyword
+// and NOT a resource lifecycle keyword (acquire/release).
+// No local enumeration — the keyword set comes from SyntaxSpec.
+fn is_name_keyword(token: Token) -> Bool {
+  if is_keyword_shape(shape: token.shape) {
+    let is_literal = match lookup(dag_syntax_spec.keyword_literals, key: token.text) {
+      Some { value: _ } => true
+      None => false
+    }
+    let is_lifecycle = token.text == "acquire" || token.text == "release"
+    !is_literal && !is_lifecycle
+  } else {
+    false
   }
 }
 
@@ -1042,9 +724,9 @@ fn skip_continuation_newlines(tokens: List<Token>, state: ParserState) -> Parser
 
 // Eat: consume the token if it matches, otherwise leave state unchanged.
 fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatResult {
-  let sh = peek_shape(tokens: tokens, state: state)
-  let matches = match sh {
-    Some { value: shape } => shape_matches_expected(shape: shape, expected: expected)
+  let tok = peek(tokens: tokens, state: state)
+  let matches = match tok {
+    Some { value: t } => token_matches_expected(token: t, expected: expected)
     None => false
   }
   if matches {
@@ -1146,7 +828,7 @@ fn parse_module(tokens: List<Token>, state: ParserState) -> ModuleResult {
   let start_span = current_span(tokens: tokens, state: s)
 
   // module path.name
-  let r = expect(tokens: tokens, state: s, expected: ExpectKwModule)
+  let r = expect(tokens: tokens, state: s, expected: ExpectKeyword { text: "module" })
   if has_err(err: r.err) { return ModuleResult { module: module_node(name: "", imports: [], items: [], span: start_span), state: r.state, err: r.err } }
   let s = r.state
 
@@ -1177,7 +859,7 @@ fn parse_imports(tokens: List<Token>, state: ParserState) -> ImportsResult {
 
 fn parse_imports_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> ImportsResult {
   let s = skip_newlines(tokens: tokens, state: state)
-  if peek_is_kw_import(tokens: tokens, state: s) {
+  if peek_is_keyword(tokens: tokens, state: s, kw: "import") {
     let r = parse_import(tokens: tokens, state: s)
     if has_err(err: r.err) { return ImportsResult { imports: [], state: r.state, err: r.err } }
     parse_imports_acc(tokens: tokens, state: r.state, acc: list_push(acc, r.import))
@@ -1211,7 +893,7 @@ fn parse_items_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> 
 fn parse_import(tokens: List<Token>, state: ParserState) -> ImportResult {
   let start_span = current_span(tokens: tokens, state: state)
   let err_import = import_node(module_path: "", is_all: false, specific_names: [], span: start_span)
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwImport)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "import" })
   if has_err(err: r.err) { return ImportResult { import: err_import, state: r.state, err: r.err } }
   let s = r.state
 
@@ -1260,23 +942,105 @@ fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Str
 }
 
 // =========================================================================
-// 4. parse_item -- dispatch on keyword
+// 4. parse_item -- spec-driven dispatch
+//
+// Looks up the keyword in dag_syntax_spec.item_forms (from SyntaxSpec).
+// Adding a new item type with a standard body kind = one entry in syntax.dag.
 // =========================================================================
+
+fn find_item_form(forms: List<ItemForm>, keyword: String) -> ItemForm? {
+  let matches = forms |> filter(f => f.keyword == keyword)
+  match matches |> count {
+    0 => none
+    _ => Some { value: first(matches).value }
+  }
+}
 
 fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
   let s = skip_newlines(tokens: tokens, state: state)
-  let sh = peek_shape(tokens: tokens, state: s)
-  match sh {
-    Some { value: ShKwType }     => parse_type_def(tokens: tokens, state: s)
-    Some { value: ShKwFn }       => parse_fn_def(tokens: tokens, state: s)
-    Some { value: ShKwFunc }     => parse_func_def(tokens: tokens, state: s)
-    Some { value: ShKwService }  => parse_service_def(tokens: tokens, state: s)
-    Some { value: ShKwResource } => parse_resource_def(tokens: tokens, state: s)
-    Some { value: ShKwData }     => parse_data_def(tokens: tokens, state: s)
-    Some { value: ShKwExtern }   => parse_extern_decl(tokens: tokens, state: s)
-    Some { value: ShKwPattern }  => parse_func_def(tokens: tokens, state: s)
-    Some { value: ShKwInterface } => parse_func_def(tokens: tokens, state: s)
-    _ => ItemResult { item: Node { name: "<unknown>", span: current_span(tokens: tokens, state: s), children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(tokens: tokens, state: s)) } }
+  let kw = peek_keyword_text(tokens: tokens, state: s)
+  let form = find_item_form(forms: dag_syntax_spec.item_forms, keyword: kw)
+  match form {
+    Some { value: f } => parse_item_by_form(tokens: tokens, state: s, form: f)
+    None => ItemResult { item: Node { name: "<unknown>", span: current_span(tokens: tokens, state: s), children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(tokens: tokens, state: s)) } }
+  }
+}
+
+// Generic prefix parser: consumes ident, optional type_params, optional params,
+// optional return type, and optional uses clause based on ItemForm fields.
+fn parse_item_prefix(tokens: List<Token>, state: ParserState, form: ItemForm) -> ItemPrefixResult {
+  // 1. Expect identifier
+  let r = expect_ident(tokens: tokens, state: state)
+  if has_err(err: r.err) { return ItemPrefixResult { name: "", type_params: [], params: [], inferred: none, uses: [], state: r.state, err: r.err } }
+  let name = r.name
+
+  // 2. Optional type params (if form.has_type_params)
+  let tp_result = if form.has_type_params {
+    parse_optional_type_params(tokens: tokens, state: r.state)
+  } else {
+    TypeParamsResult { params: [], state: r.state }
+  }
+
+  // 3. Params (if form.has_params)
+  let params_result = if form.has_params {
+    parse_params(tokens: tokens, state: tp_result.state)
+  } else {
+    ParamsResult { params: [], state: tp_result.state, err: none }
+  }
+  if has_err(err: params_result.err) { return ItemPrefixResult { name: name, type_params: tp_result.params, params: [], inferred: none, uses: [], state: params_result.state, err: params_result.err } }
+
+  // 4. Return type (if form.has_return_type)
+  let ret_result = if form.has_return_type {
+    parse_optional_inferred(tokens: tokens, state: params_result.state)
+  } else {
+    OptRetResult { inferred: none, state: params_result.state, err: none }
+  }
+  if has_err(err: ret_result.err) { return ItemPrefixResult { name: name, type_params: tp_result.params, params: params_result.params, inferred: none, uses: [], state: ret_result.state, err: ret_result.err } }
+  // Enforce return_required: if the form demands a return type and none was provided, error
+  let missing_required_ret = form.return_required && match ret_result.inferred { Some { value: _ } => false  None => true }
+  if missing_required_ret {
+    return ItemPrefixResult { name: name, type_params: tp_result.params, params: params_result.params, inferred: none, uses: [], state: ret_result.state, err: Some { value: parse_error(msg: concat("expected return type annotation (-> Type) for '", concat(form.keyword, concat(" ", name))), span: current_span(tokens: tokens, state: ret_result.state)) } }
+  }
+
+  // 5. Uses clause (if form.has_uses)
+  let uses_result = if form.has_uses {
+    parse_uses_clause(tokens: tokens, state: skip_newlines(tokens: tokens, state: ret_result.state))
+  } else {
+    UsesResult { uses: [], state: ret_result.state, err: none }
+  }
+  if has_err(err: uses_result.err) { return ItemPrefixResult { name: name, type_params: tp_result.params, params: params_result.params, inferred: ret_result.inferred, uses: [], state: uses_result.state, err: uses_result.err } }
+
+  ItemPrefixResult { name: name, type_params: tp_result.params, params: params_result.params, inferred: ret_result.inferred, uses: uses_result.uses, state: uses_result.state, err: none }
+}
+
+fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -> ItemResult {
+  let start_span = current_span(tokens: tokens, state: state)
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  // Eat the keyword generically — enables new keywords with existing body kinds
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: form.keyword })
+  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  // Standard body kinds: generic prefix, then body-specific parser
+  match form.body_kind {
+    TypeBody => {
+      let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+      if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+      parse_type_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+    }
+    ExprBody => {
+      let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+      if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+      parse_fn_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+    }
+    BlockBody => {
+      let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+      if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+      parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+    }
+    // Non-standard prefixes: keep their own prefix logic
+    ServiceBody => parse_service_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+    ResourceBody => parse_resource_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+    ValueBody => parse_data_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+    NoBody => parse_extern_after_kw(tokens: tokens, state: r.state, start_span: start_span)
   }
 }
 
@@ -1334,10 +1098,15 @@ fn outputs_to_inferred(outputs: List<Field>, span: SourceSpan) -> InferredNode? 
 fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwType)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "type" })
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  parse_type_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+}
 
-  let r = expect_ident(tokens: tokens, state: r.state)
+fn parse_type_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
 
@@ -1351,6 +1120,40 @@ fn parse_type_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   if e.consumed {
     let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
     let named_dummy = Node { name: name, span: start_span, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+    let s = skip_newlines(tokens: tokens, state: r.state)
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
+    if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
+    let type_children = r.fields |> map(f => field_to_child_node(field: f))
+    let item = Node { name: name, span: start_span, children: type_children, connective: Conj, collection_kind: NoCollection, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
+  } else {
+    // Sum type or alias: type Name = ...
+    // Or bare primitive declaration: type Name (no body)
+    let eq = eat(tokens: tokens, state: s, expected: ExpectEq)
+    if eq.consumed {
+      let s = skip_newlines(tokens: tokens, state: eq.state)
+      parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span, type_params: type_params)
+    } else {
+      // Bare type declaration -- primitive type with no structural expansion
+      let item = Node { name: name, span: start_span, children: [], connective: NoConnective, collection_kind: NoCollection, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: start_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      ItemResult { item: item, state: s, err: none }
+    }
+  }
+}
+
+// Body-only parser for TypeBody items. Receives prefix (name, type_params) from parse_item_prefix.
+// Handles { fields } (record), = variants (sum), = alias, or bare declaration.
+fn parse_type_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+  let name = prefix.name
+  let type_params = prefix.type_params
+  let named_dummy = Node { name: name, span: start_span, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let s = skip_newlines(tokens: tokens, state: prefix.state)
+
+  // Record type: type Name { fields }
+  let e = eat(tokens: tokens, state: s, expected: ExpectLBrace)
+  if e.consumed {
+    let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
     if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
     let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
@@ -1421,7 +1224,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
 // try_where_clause: if the next token is KwWhere, parse predicates and
 // wrap the base type in a Refined Node. Otherwise, return the base type unchanged.
 fn try_where_clause(tokens: List<Token>, state: ParserState, base_te: Node, start_span: SourceSpan) -> TypeResult {
-  if peek_is_kw_where(tokens: tokens, state: state) {
+  if peek_is_keyword(tokens: tokens, state: state, kw: "where") {
     let adv = advance(tokens: tokens, state: state)
     let r = parse_predicates(tokens: tokens, state: adv.state)
     if has_err(err: r.err) { return TypeResult { type_expr: base_te, state: r.state, err: r.err } }
@@ -1643,10 +1446,14 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
       TypeResult { type_expr: te, state: r2.state, err: none }
     }
     // Callable type: fn(T1, T2) -> R
-    Some { value: ShKwFn } => {
-      let adv = advance(tokens: tokens, state: s)
-      let start_span = current_span(tokens: tokens, state: s)
-      parse_callable_type_expr(tokens: tokens, state: adv.state, start_span: start_span)
+    Some { value: ShKeyword } => {
+      if tok.value.text == "fn" {
+        let adv = advance(tokens: tokens, state: s)
+        let start_span = current_span(tokens: tokens, state: s)
+        parse_callable_type_expr(tokens: tokens, state: adv.state, start_span: start_span)
+      } else {
+        TypeResult { type_expr: leaf_type_node(name: "", span: current_span(tokens: tokens, state: s)), state: s, err: Some { value: parse_error(msg: "expected type expression", span: current_span(tokens: tokens, state: s)) } }
+      }
     }
     // Named type
     Some { value: ShIdent } => {
@@ -1913,10 +1720,15 @@ fn parse_optional_from_key(tokens: List<Token>, state: ParserState) -> FromKeyRe
 fn parse_fn_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwFn)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "fn" })
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  parse_fn_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+}
 
-  let r = expect_ident(tokens: tokens, state: r.state)
+fn parse_fn_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1945,6 +1757,27 @@ fn parse_fn_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
 
+// Body-only parser for ExprBody items. Receives prefix (name, params, inferred)
+// from parse_item_prefix. Parses the block body and assembles the Node.
+fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+  let name = prefix.name
+  let params = prefix.params
+  let inferred = prefix.inferred
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  // Body: { exprs }
+  let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: prefix.state))
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let body = r.expr
+
+  let item = Node { name: name, span: start_span, children: [], params: params,
+    inferred: inferred, return_cardinality: Required, uses: [],
+    body: Some { value: body }, collection_kind: NoCollection, connective: NoConnective, transport: none,
+    properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
+}
+
 // =========================================================================
 // 9. parse_func_def: func name(params) -> RetType uses res: Type { body }
 // =========================================================================
@@ -1953,16 +1786,24 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   // Accept func, pattern, or interface as the leading keyword
-  let sh = peek_shape(tokens: tokens, state: state)
-  let r = match sh {
-    Some { value: ShKwFunc } => expect(tokens: tokens, state: state, expected: ExpectKwFunc)
-    Some { value: ShKwPattern } => expect(tokens: tokens, state: state, expected: ExpectKwPattern)
-    Some { value: ShKwInterface } => expect(tokens: tokens, state: state, expected: ExpectKwInterface)
-    _ => expect(tokens: tokens, state: state, expected: ExpectKwFunc)
-  }
+  let kw = peek_keyword_text(tokens: tokens, state: state)
+  let r = if kw == "func" { expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "func" }) }
+    else if kw == "pattern" { expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "pattern" }) }
+    else if kw == "interface" { expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "interface" }) }
+    else { expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "func" }) }
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  // All three keywords use BlockBody with has_uses varying per form
+  let has_uses = kw == "func"
+  let form = ItemForm { keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
+  let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+  if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+  parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+}
 
-  let r = expect_ident(tokens: tokens, state: r.state)
+fn parse_block_item_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan, form: ItemForm) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1977,13 +1818,35 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let inferred = ret.inferred
   let s = ret.state
 
-  // Optional uses clause
-  let uses_r = parse_uses_clause(tokens: tokens, state: skip_newlines(tokens: tokens, state: s))
+  // Optional uses clause (only for forms that support it)
+  let uses_r = if form.has_uses { parse_uses_clause(tokens: tokens, state: skip_newlines(tokens: tokens, state: s)) }
+    else { UsesResult { uses: [], state: s, err: none } }
   if has_err(err: uses_r.err) { return ItemResult { item: named_dummy, state: uses_r.state, err: uses_r.err } }
   let uses = uses_r.uses
   let s = uses_r.state
 
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: s))
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let body = r.expr
+
+  let item = Node { name: name, span: start_span, children: [], params: params,
+    inferred: inferred, return_cardinality: Required, uses: uses,
+    body: Some { value: body }, collection_kind: NoCollection, connective: NoConnective, transport: none,
+    properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
+}
+
+// Body-only parser for BlockBody items. Receives prefix (name, params, inferred, uses)
+// from parse_item_prefix. Parses block body and assembles the Node.
+fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+  let name = prefix.name
+  let params = prefix.params
+  let inferred = prefix.inferred
+  let uses = prefix.uses
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: prefix.state))
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
@@ -2115,10 +1978,15 @@ fn parse_optional_inferred(tokens: List<Token>, state: ParserState) -> OptRetRes
 fn parse_service_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwService)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "service" })
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  parse_service_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+}
 
-  let r_ns = expect_name(tokens: tokens, state: r.state)
+fn parse_service_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r_ns = expect_name(tokens: tokens, state: state)
   if has_err(err: r_ns.err) { return ItemResult { item: dummy, state: r_ns.state, err: r_ns.err } }
   let namespace_root = r_ns.name
   let r = parse_dotted_ident_rest(tokens: tokens, state: r_ns.state, acc: namespace_root)
@@ -2209,10 +2077,15 @@ fn parse_service_entries(tokens: List<Token>, state: ParserState, config: Servic
           ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: current_span(tokens: tokens, state: s)) } }
         }
       }
-      Some { value: ShKwOperation } => {
-        let r = parse_operation_def(tokens: tokens, state: s)
-        if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r.state, err: r.err } }
-        parse_service_entries(tokens: tokens, state: r.state, config: config, transport: transport, operations: list_push(operations, r.operation))
+      Some { value: ShKeyword } => {
+        let kw_text = tok.value.text
+        if kw_text == "operation" {
+          let r = parse_operation_def(tokens: tokens, state: s)
+          if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, state: r.state, err: r.err } }
+          parse_service_entries(tokens: tokens, state: r.state, config: config, transport: transport, operations: list_push(operations, r.operation))
+        } else {
+          ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: current_span(tokens: tokens, state: s)) } }
+        }
       }
       _ => ServiceBodyResult { config: config, transport: transport, operations: operations, state: s, err: Some { value: parse_error(msg: "expected config, transport, or operation in service block", span: current_span(tokens: tokens, state: s)) } }
     }
@@ -2413,7 +2286,7 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
 fn parse_operation_def(tokens: List<Token>, state: ParserState) -> OpResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy_op = OperationDef { name: "", inputs: [], outputs: [], response_props: [], mock_props: [], exit_props: [], modifier_props: [], transport: none, span: start_span }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwOperation)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "operation" })
   if has_err(err: r.err) { return OpResult { operation: dummy_op, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -2512,40 +2385,41 @@ fn parse_op_body_entries(
     let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
     let err_result = OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: s, err: none }
     match sh {
-      Some { value: ShKwInput } => {
-        let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-        let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-        if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
-        parse_op_body_entries(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
-      }
-      Some { value: ShKwOutput } => {
-        let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
-        let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-        if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
-        parse_op_body_entries(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
-      }
-      Some { value: ShKwIdempotent } => {
-        let adv = advance(tokens: tokens, state: s)
-        let prop = modifier_to_prop(name: "idempotent", span: current_span(tokens: tokens, state: s))
-        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
-      }
-      Some { value: ShKwReadonly } => {
-        let adv = advance(tokens: tokens, state: s)
-        let prop = modifier_to_prop(name: "readonly", span: current_span(tokens: tokens, state: s))
-        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
-      }
-      Some { value: ShKwHermetic } => {
-        let adv = advance(tokens: tokens, state: s)
-        let prop = modifier_to_prop(name: "hermetic", span: current_span(tokens: tokens, state: s))
-        parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+      Some { value: ShKeyword } => {
+        let kw_text = tok.value.text
+        if kw_text == "input" {
+          let adv = advance(tokens: tokens, state: s)
+          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
+          let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
+          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
+          let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
+          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
+          parse_op_body_entries(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        } else if kw_text == "output" {
+          let adv = advance(tokens: tokens, state: s)
+          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
+          if has_err(err: r.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r.state, err: r.err } }
+          let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
+          if has_err(err: r2.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r2.state, err: r2.err } }
+          let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
+          if has_err(err: r3.err) { return OpBodyResult { inputs: inputs, outputs: outputs, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props, state: r3.state, err: r3.err } }
+          parse_op_body_entries(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields, modifier_props: modifier_props, transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        } else if kw_text == "idempotent" {
+          let adv = advance(tokens: tokens, state: s)
+          let prop = modifier_to_prop(name: "idempotent", span: current_span(tokens: tokens, state: s))
+          parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        } else if kw_text == "readonly" {
+          let adv = advance(tokens: tokens, state: s)
+          let prop = modifier_to_prop(name: "readonly", span: current_span(tokens: tokens, state: s))
+          parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        } else if kw_text == "hermetic" {
+          let adv = advance(tokens: tokens, state: s)
+          let prop = modifier_to_prop(name: "hermetic", span: current_span(tokens: tokens, state: s))
+          parse_op_body_entries(tokens: tokens, state: adv.state, inputs: inputs, outputs: outputs, modifier_props: list_push(modifier_props, prop), transport: transport, exit_props: exit_props, response_props: response_props, mock_props: mock_props)
+        } else {
+          err_result
+        }
       }
       Some { value: ShIdent } => {
         let id = tok.value.text
@@ -2741,21 +2615,18 @@ fn parse_operation_modifiers(tokens: List<Token>, state: ParserState) -> ModsRes
 }
 
 fn parse_operation_modifiers_acc(tokens: List<Token>, state: ParserState, acc: List<OperationModifier>) -> ModsResult {
-  let sh = peek_shape(tokens: tokens, state: state)
-  match sh {
-    Some { value: ShKwIdempotent } => {
-      let adv = advance(tokens: tokens, state: state)
-      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Idempotent))
-    }
-    Some { value: ShKwReadonly } => {
-      let adv = advance(tokens: tokens, state: state)
-      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Readonly))
-    }
-    Some { value: ShKwHermetic } => {
-      let adv = advance(tokens: tokens, state: state)
-      parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Hermetic))
-    }
-    _ => ModsResult { modifiers: acc, state: state, err: none }
+  let kw = peek_keyword_text(tokens: tokens, state: state)
+  if kw == "idempotent" {
+    let adv = advance(tokens: tokens, state: state)
+    parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Idempotent))
+  } else if kw == "readonly" {
+    let adv = advance(tokens: tokens, state: state)
+    parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Readonly))
+  } else if kw == "hermetic" {
+    let adv = advance(tokens: tokens, state: state)
+    parse_operation_modifiers_acc(tokens: tokens, state: adv.state, acc: list_push(acc, Hermetic))
+  } else {
+    ModsResult { modifiers: acc, state: state, err: none }
   }
 }
 
@@ -2928,10 +2799,15 @@ fn parse_mock_response_entries_acc(tokens: List<Token>, state: ParserState, acc:
 fn parse_resource_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwResource)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "resource" })
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  parse_resource_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+}
 
-  let r = expect_ident(tokens: tokens, state: r.state)
+fn parse_resource_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -2978,28 +2854,31 @@ fn parse_resource_entries(tokens: List<Token>, state: ParserState, properties: L
   } else {
     let sh = peek_shape(tokens: tokens, state: s)
     match sh {
-      Some { value: ShKwCapability } => {
-        let r = parse_capability(tokens: tokens, state: s)
-        if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
-        parse_resource_entries(tokens: tokens, state: r.state, properties: properties, capabilities: list_push(capabilities, r.capability))
-      }
-      Some { value: ShKwAcquire } => {
-        let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
-        let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
-        if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
-        parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
-      }
-      Some { value: ShKwRelease } => {
-        let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
-        let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
-        if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
-        parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
+      Some { value: ShKeyword } => {
+        let kw_text = peek_keyword_text(tokens: tokens, state: s)
+        if kw_text == "capability" {
+          let r = parse_capability(tokens: tokens, state: s)
+          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
+          parse_resource_entries(tokens: tokens, state: r.state, properties: properties, capabilities: list_push(capabilities, r.capability))
+        } else if kw_text == "acquire" {
+          let adv = advance(tokens: tokens, state: s)
+          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
+          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
+          let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
+          let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
+          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
+          parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
+        } else if kw_text == "release" {
+          let adv = advance(tokens: tokens, state: s)
+          let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
+          if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r.state, err: r.err } }
+          let r2 = skip_until_rbrace(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
+          let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRBrace)
+          if has_err(err: r3.err) { return ResPropResult { properties: properties, capabilities: capabilities, state: r3.state, err: r3.err } }
+          parse_resource_entries(tokens: tokens, state: skip_newlines(tokens: tokens, state: r3.state), properties: properties, capabilities: capabilities)
+        } else {
+          ResPropResult { properties: properties, capabilities: capabilities, state: s, err: Some { value: parse_error(msg: "unexpected keyword in resource block", span: current_span(tokens: tokens, state: s)) } }
+        }
       }
       Some { value: ShIdent } => {
         if peek_is_colon_after_ident(tokens: tokens, state: s) {
@@ -3048,7 +2927,7 @@ fn skip_until_rbrace(tokens: List<Token>, state: ParserState) -> UnitResult {
 fn parse_capability(tokens: List<Token>, state: ParserState) -> CapResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy_cap = CapabilityDef { name: "", inputs: [], outputs: [], span: start_span }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwCapability)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "capability" })
   if has_err(err: r.err) { return CapResult { capability: dummy_cap, state: r.state, err: r.err } }
 
   let r = expect_ident(tokens: tokens, state: r.state)
@@ -3098,32 +2977,28 @@ fn parse_io_blocks_acc(tokens: List<Token>, state: ParserState, inputs: List<Fie
   if peek_is_rbrace(tokens: tokens, state: s) || at_end(tokens: tokens, state: s) {
     IOResult { inputs: inputs, outputs: outputs, state: s, err: none }
   } else {
-    let sh = peek_shape(tokens: tokens, state: s)
-    match sh {
-      Some { value: ShKwInput } => {
-        let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
-        let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-        if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
-        parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs)
-      }
-      Some { value: ShKwOutput } => {
-        let adv = advance(tokens: tokens, state: s)
-        let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
-        if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
-        let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
-        if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
-        let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
-        if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
-        parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields)
-      }
-      _ => {
-        let result = IOResult { inputs: inputs, outputs: outputs, state: s, err: none }
-        result
-      }
+    let kw = peek_keyword_text(tokens: tokens, state: s)
+    if kw == "input" {
+      let adv = advance(tokens: tokens, state: s)
+      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
+      if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
+      let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
+      if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
+      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
+      if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
+      parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: r2.fields, outputs: outputs)
+    } else if kw == "output" {
+      let adv = advance(tokens: tokens, state: s)
+      let r = expect(tokens: tokens, state: adv.state, expected: ExpectLBrace)
+      if has_err(err: r.err) { return IOResult { inputs: inputs, outputs: outputs, state: r.state, err: r.err } }
+      let r2 = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state))
+      if has_err(err: r2.err) { return IOResult { inputs: inputs, outputs: outputs, state: r2.state, err: r2.err } }
+      let r3 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r2.state), expected: ExpectRBrace)
+      if has_err(err: r3.err) { return IOResult { inputs: inputs, outputs: outputs, state: r3.state, err: r3.err } }
+      parse_io_blocks_acc(tokens: tokens, state: r3.state, inputs: inputs, outputs: r2.fields)
+    } else {
+      let result = IOResult { inputs: inputs, outputs: outputs, state: s, err: none }
+      result
     }
   }
 }
@@ -3135,10 +3010,15 @@ fn parse_io_blocks_acc(tokens: List<Token>, state: ParserState, inputs: List<Fie
 fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwData)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "data" })
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  parse_data_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+}
 
-  let r = expect_ident(tokens: tokens, state: r.state)
+fn parse_data_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = expect_ident(tokens: tokens, state: state)
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
   let name = r.name
   let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -3171,49 +3051,35 @@ fn parse_data_def(tokens: List<Token>, state: ParserState) -> ItemResult {
 fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
   let start_span = current_span(tokens: tokens, state: state)
   let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwExtern)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "extern" })
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
+  parse_extern_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+}
+
+fn parse_extern_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
+  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   // Expect "fn" or "func" after extern
-  let sh = peek_shape(tokens: tokens, state: r.state)
-  match sh {
-    Some { value: ShKwFn } => {
-      let adv = advance(tokens: tokens, state: r.state)
-      let r2 = expect_ident(tokens: tokens, state: adv.state)
-      if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
-      let name = r2.name
-      let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      let r3 = parse_params(tokens: tokens, state: r2.state)
-      if has_err(err: r3.err) { return ItemResult { item: named_dummy, state: r3.state, err: r3.err } }
-      let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
-      if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
-      let inferred = if ret.inferred != none { ret.inferred } else { Some { value: Resolved { node: leaf_type_node(name: "Unit", span: start_span) } } }
-      let item = Node { name: name, span: start_span, children: [], params: r3.params,
-        inferred: inferred, return_cardinality: Required, uses: [],
-        body: none, collection_kind: NoCollection, connective: NoConnective, transport: none,
-        properties: [], type_annotation: none,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ItemResult { item: item, state: skip_newlines(tokens: tokens, state: ret.state), err: none }
-    }
-    Some { value: ShKwFunc } => {
-      let adv = advance(tokens: tokens, state: r.state)
-      let r2 = expect_ident(tokens: tokens, state: adv.state)
-      if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
-      let name = r2.name
-      let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      let r3 = parse_params(tokens: tokens, state: r2.state)
-      if has_err(err: r3.err) { return ItemResult { item: named_dummy, state: r3.state, err: r3.err } }
-      let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
-      if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
-      let inferred = if ret.inferred != none { ret.inferred } else { Some { value: Resolved { node: leaf_type_node(name: "Unit", span: start_span) } } }
-      let item = Node { name: name, span: start_span, children: [], params: r3.params,
-        inferred: inferred, return_cardinality: Required, uses: [],
-        body: none, collection_kind: NoCollection, connective: NoConnective, transport: none,
-        properties: [], type_annotation: none,
-        is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ItemResult { item: item, state: skip_newlines(tokens: tokens, state: ret.state), err: none }
-    }
-    _ => ItemResult { item: dummy, state: r.state, err: Some { value: parse_error(msg: "expected fn or func after extern", span: current_span(tokens: tokens, state: r.state)) } }
+  let extern_kw = peek_keyword_text(tokens: tokens, state: state)
+  if extern_kw == "fn" || extern_kw == "func" {
+    let adv = advance(tokens: tokens, state: state)
+    let r2 = expect_ident(tokens: tokens, state: adv.state)
+    if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
+    let name = r2.name
+    let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let r3 = parse_params(tokens: tokens, state: r2.state)
+    if has_err(err: r3.err) { return ItemResult { item: named_dummy, state: r3.state, err: r3.err } }
+    let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
+    if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
+    let inferred = if ret.inferred != none { ret.inferred } else { Some { value: Resolved { node: leaf_type_node(name: "Unit", span: start_span) } } }
+    let item = Node { name: name, span: start_span, children: [], params: r3.params,
+      inferred: inferred, return_cardinality: Required, uses: [],
+      body: none, collection_kind: NoCollection, connective: NoConnective, transport: none,
+      properties: [], type_annotation: none,
+      is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    ItemResult { item: item, state: skip_newlines(tokens: tokens, state: ret.state), err: none }
+  } else {
+    ItemResult { item: dummy, state: state, err: Some { value: parse_error(msg: "expected fn or func after extern", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
@@ -3347,8 +3213,17 @@ fn parse_stmts_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> 
 fn parse_stmt(tokens: List<Token>, state: ParserState) -> ExprResult {
   let sh = peek_shape(tokens: tokens, state: state)
   match sh {
-    Some { value: ShKwLet } => parse_let(tokens: tokens, state: state)
-    Some { value: ShKwReturn } => parse_return(tokens: tokens, state: state)
+    Some { value: ShKeyword } => {
+      let kw_text = peek_keyword_text(tokens: tokens, state: state)
+      if kw_text == "let" { parse_let(tokens: tokens, state: state) }
+      else if kw_text == "return" { parse_return(tokens: tokens, state: state) }
+      else if peek_is_eq_after_ident(tokens: tokens, state: state) {
+        // Keywords used as binding names: `hermetic = ...` etc.
+        parse_bare_assignment(tokens: tokens, state: state)
+      } else {
+        parse_expr(tokens: tokens, state: state)
+      }
+    }
     Some { value: ShIdent } => {
       if peek_text_is(tokens: tokens, state: state, expected: "node") && peek_is_node_decl(tokens: tokens, state: state) {
         parse_node_decl(tokens: tokens, state: state)
@@ -3360,14 +3235,7 @@ fn parse_stmt(tokens: List<Token>, state: ParserState) -> ExprResult {
         parse_expr(tokens: tokens, state: state)
       }
     }
-    _ => {
-      // Keywords used as binding names: `hermetic = ...` etc.
-      if is_name_keyword_shape(shape: sh.value) && peek_is_eq_after_ident(tokens: tokens, state: state) {
-        parse_bare_assignment(tokens: tokens, state: state)
-      } else {
-        parse_expr(tokens: tokens, state: state)
-      }
-    }
+    _ => parse_expr(tokens: tokens, state: state)
   }
 }
 
@@ -3391,7 +3259,7 @@ fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
     let t1 = get(tokens, state.pos + 1)
     let t2 = get(tokens, state.pos + 2)
     let name_ok = match t1 {
-      Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword_shape(shape: t.shape)
+      Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword(token: t)
       None => false
     }
     let decl_ok = match t2 {
@@ -3576,9 +3444,14 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
               let r = parse_expr_bp(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: state)
-              let binop = token_to_binop(shape: adv.token.shape)
-              let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
-              parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
+              let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
+              match binop_opt {
+                Some { value: binop } => {
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
+                }
+                None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }
+              }
             }
           }
         }
@@ -3589,47 +3462,33 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
   }
 }
 
-fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
-  let sh = peek_shape(tokens: tokens, state: state)
-  // Precedence matches v1: ?? < || < && < cmp < add < mul < |> < . < call
-  match sh {
-    Some { value: ShNullCoalesce } => Some { value: BindingPower { left: 3, right: 4 } }
-    Some { value: ShOr }         => Some { value: BindingPower { left: 5, right: 6 } }
-    Some { value: ShAnd }        => Some { value: BindingPower { left: 7, right: 8 } }
-    Some { value: ShEqEq }     => Some { value: BindingPower { left: 9, right: 10 } }
-    Some { value: ShNe }       => Some { value: BindingPower { left: 9, right: 10 } }
-    Some { value: ShLt }       => Some { value: BindingPower { left: 11, right: 12 } }
-    Some { value: ShGt }       => Some { value: BindingPower { left: 11, right: 12 } }
-    Some { value: ShLe }       => Some { value: BindingPower { left: 11, right: 12 } }
-    Some { value: ShGe }       => Some { value: BindingPower { left: 11, right: 12 } }
-    Some { value: ShPlus }     => Some { value: BindingPower { left: 13, right: 14 } }
-    Some { value: ShMinus }    => Some { value: BindingPower { left: 13, right: 14 } }
-    Some { value: ShStar }     => Some { value: BindingPower { left: 15, right: 16 } }
-    Some { value: ShSlash }    => Some { value: BindingPower { left: 15, right: 16 } }
-    Some { value: ShPercent }  => Some { value: BindingPower { left: 15, right: 16 } }
-    Some { value: ShPipeArrow }    => Some { value: BindingPower { left: 17, right: 18 } }
-    Some { value: ShDot }      => Some { value: BindingPower { left: 19, right: 20 } }
-    _ => none
+// Operator precedence: data-driven from dag_syntax_spec.operators (SyntaxSpec).
+// Adding a new operator = one entry in syntax.dag.
+
+fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    let op = first(matching).value
+    Some { value: BindingPower { left: op.left_bp, right: op.right_bp } }
+  } else {
+    none
   }
 }
 
-fn token_to_binop(shape: TokenShape) -> BinOpKind {
-  match shape {
-    ShPlus => Add
-    ShMinus => Sub
-    ShStar => Mul
-    ShSlash => Div
-    ShPercent => Mod
-    ShEqEq => BinEq
-    ShNe => BinNe
-    ShLt => BinLt
-    ShGt => BinGt
-    ShLe => BinLe
-    ShGe => BinGe
-    ShAnd => BinAnd
-    ShOr => BinOr
-    ShNullCoalesce => NullCoalesce
-    _ => Add
+fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } => find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text)
+    None => none
+  }
+}
+
+fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOpKind? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    first(matching).value.binop
+  } else {
+    none
   }
 }
 
@@ -3684,17 +3543,39 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
   let sh = match tok { Some { value: t } => Some { value: t.shape }  None => none }
   let span = current_span(tokens: tokens, state: state)
   match sh {
-    Some { value: ShKwTrue } => {
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span), state: adv.state, err: none }
-    }
-    Some { value: ShKwFalse } => {
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: span), state: adv.state, err: none }
-    }
-    Some { value: ShKwNone } => {
-      let adv = advance(tokens: tokens, state: state)
-      ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: LitNull }, children: [], inferred: none, span: span), state: adv.state, err: none }
+    Some { value: ShKeyword } => {
+      let kw_text = tok.value.text
+      // Check literal keywords from spec (true, false, none, null)
+      let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
+      match lit_val {
+        Some { value: lv } => {
+          let adv = advance(tokens: tokens, state: state)
+          ExprResult { expr: make_expr_node(expr_data: ExprLiteral { value: lv }, children: [], inferred: none, span: span), state: adv.state, err: none }
+        }
+        None => {
+      // Expression keywords (structural forms, not data-drivable)
+      if kw_text == "match" { parse_match(tokens: tokens, state: state) }
+      else if kw_text == "if" { parse_if(tokens: tokens, state: state) }
+      else if kw_text == "for" { parse_for(tokens: tokens, state: state) }
+      else if kw_text == "let" { parse_let(tokens: tokens, state: state) }
+      else if kw_text == "return" { parse_return(tokens: tokens, state: state) }
+      else if kw_text == "fn" { parse_fn_lambda(tokens: tokens, state: state) }
+      else {
+        // Keywords used as variable names (e.g., module, type, pattern).
+        let kw_name = keyword_to_name(tokens: tokens, state: state)
+        match kw_name {
+          Some { value: n } => parse_ident_expr(tokens: tokens, state: state, name: n)
+          None => {
+            ExprResult {
+              expr: parse_recovery_expr(span: span, message: "expected expression, found keyword '{kw_text}'"),
+              state: state,
+              err: Some { value: parse_error(msg: "expected expression, found keyword '{kw_text}'", span: span) }
+            }
+          }
+        }
+      }
+      }
+      }
     }
     Some { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
@@ -3720,28 +3601,15 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
     Some { value: ShLParen } => parse_paren_expr(tokens: tokens, state: state)
     Some { value: ShLBracket } => parse_list_literal(tokens: tokens, state: state)
     Some { value: ShLBrace } => parse_brace_expr(tokens: tokens, state: state)
-    Some { value: ShKwMatch } => parse_match(tokens: tokens, state: state)
-    Some { value: ShKwIf } => parse_if(tokens: tokens, state: state)
-    Some { value: ShKwFor } => parse_for(tokens: tokens, state: state)
-    Some { value: ShKwLet } => parse_let(tokens: tokens, state: state)
-    Some { value: ShKwReturn } => parse_return(tokens: tokens, state: state)
-    Some { value: ShKwFn } => parse_fn_lambda(tokens: tokens, state: state)
     _ => {
-      // Keywords used as variable names (e.g., module, type, pattern).
-      let kw_name = keyword_to_name(tokens: tokens, state: state)
-      match kw_name {
-        Some { value: n } => parse_ident_expr(tokens: tokens, state: state, name: n)
-        None => {
-          let tag = match sh {
-            Some { value: shape } => shape_display_name(shape: shape)
-            None => "EOF"
-          }
-          ExprResult {
-            expr: parse_recovery_expr(span: span, message: "expected expression, found {tag}"),
-            state: state,
-            err: Some { value: parse_error(msg: "expected expression, found {tag}", span: span) }
-          }
-        }
+      let tag = match sh {
+        Some { value: shape } => shape_display_name(shape: shape)
+        None => "EOF"
+      }
+      ExprResult {
+        expr: parse_recovery_expr(span: span, message: "expected expression, found {tag}"),
+        state: state,
+        err: Some { value: parse_error(msg: "expected expression, found {tag}", span: span) }
       }
     }
   }
@@ -3753,12 +3621,7 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
 
 fn parse_lambda_body(tokens: List<Token>, state: ParserState) -> ExprResult {
   let s = skip_newlines(tokens: tokens, state: state)
-  let sh = peek_shape(tokens: tokens, state: s)
-  let is_block = match sh {
-    Some { value: ShKwLet } => true
-    Some { value: ShKwReturn } => true
-    _ => false
-  }
+  let is_block = peek_is_keyword(tokens: tokens, state: s, kw: "let") || peek_is_keyword(tokens: tokens, state: s, kw: "return")
   if is_block {
     let r = parse_lambda_stmts(tokens: tokens, state: s, acc: [])
     if has_err(err: r.err) { return ExprResult { expr: parse_recovery_placeholder(), state: r.state, err: r.err } }
@@ -4084,7 +3947,7 @@ fn parse_single_arg(tokens: List<Token>, state: ParserState) -> ArgResult {
 fn parse_match(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwMatch)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "match" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
@@ -4158,9 +4021,14 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
               let r = parse_expr_bp_no_brace(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: s)
-              let binop = token_to_binop(shape: adv.token.shape)
-              let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
-              parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
+              let binop_opt = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
+              match binop_opt {
+                Some { value: binop } => {
+                  let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
+                  parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
+                }
+                None => ExprResult { expr: lhs, state: r.state, err: Some { value: parse_error(msg: concat("unknown binary operator: ", adv.token.text), span: span) } }
+              }
             }
           }
         }
@@ -4222,12 +4090,7 @@ fn parse_match_arm(tokens: List<Token>, state: ParserState) -> ArmResult {
 // Parse match arm body: single expression or implicit block (let/return).
 // Implicit blocks collect statements until } or a new arm start.
 fn parse_match_arm_body(tokens: List<Token>, state: ParserState) -> ExprResult {
-  let sh = peek_shape(tokens: tokens, state: state)
-  let is_block = match sh {
-    Some { value: ShKwLet } => true
-    Some { value: ShKwReturn } => true
-    _ => false
-  }
+  let is_block = peek_is_keyword(tokens: tokens, state: state, kw: "let") || peek_is_keyword(tokens: tokens, state: state, kw: "return")
   if is_block {
     let r = parse_match_arm_stmts(tokens: tokens, state: state, acc: [])
     if has_err(err: r.err) { return ExprResult { expr: parse_recovery_placeholder(), state: r.state, err: r.err } }
@@ -4303,7 +4166,7 @@ fn peek_is_expected_at(tokens: List<Token>, state: ParserState, offset: Int, exp
   if state.pos + offset < count(tokens) {
     let tok = get(tokens, state.pos + offset)
     match tok {
-      Some { value: t } => shape_matches_expected(shape: t.shape, expected: expected)
+      Some { value: t } => token_matches_expected(token: t, expected: expected)
       None => false
     }
   } else {
@@ -4350,7 +4213,7 @@ fn scan_braces_depth(tokens: List<Token>, state: ParserState, idx: Int, depth: I
 }
 
 fn parse_optional_guard(tokens: List<Token>, state: ParserState) -> GuardResult {
-  if peek_is_kw_if(tokens: tokens, state: state) {
+  if peek_is_keyword(tokens: tokens, state: state, kw: "if") {
     let adv = advance(tokens: tokens, state: state)
     let r = parse_expr(tokens: tokens, state: adv.state)
     if has_err(err: r.err) { return GuardResult { guard: none, state: r.state, err: r.err } }
@@ -4381,17 +4244,16 @@ fn parse_pattern(tokens: List<Token>, state: ParserState) -> PatternResult {
         }
       }
     }
-    Some { value: ShKwTrue } => {
-      let adv = advance(tokens: tokens, state: state)
-      PatternResult { pattern: LitPattern { value: LitBool { value: true } }, state: adv.state, err: none }
-    }
-    Some { value: ShKwFalse } => {
-      let adv = advance(tokens: tokens, state: state)
-      PatternResult { pattern: LitPattern { value: LitBool { value: false } }, state: adv.state, err: none }
-    }
-    Some { value: ShKwNone } => {
-      let adv = advance(tokens: tokens, state: state)
-      PatternResult { pattern: LitPattern { value: LitNull }, state: adv.state, err: none }
+    Some { value: ShKeyword } => {
+      let kw_text = tok.value.text
+      let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
+      match lit_val {
+        Some { value: lv } => {
+          let adv = advance(tokens: tokens, state: state)
+          PatternResult { pattern: LitPattern { value: lv }, state: adv.state, err: none }
+        }
+        None => PatternResult { pattern: Wildcard, state: state, err: none }
+      }
     }
     Some { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
@@ -4469,7 +4331,7 @@ fn parse_variant_bindings_brace_acc(tokens: List<Token>, state: ParserState, acc
 fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwIf)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "if" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
@@ -4481,10 +4343,10 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
   let then_branch = r.expr
   let s = skip_newlines(tokens: tokens, state: r.state)
 
-  let e = eat(tokens: tokens, state: s, expected: ExpectKwElse)
+  let e = eat(tokens: tokens, state: s, expected: ExpectKeyword { text: "else" })
   if e.consumed {
     let s = skip_newlines(tokens: tokens, state: e.state)
-    if peek_is_kw_if(tokens: tokens, state: s) {
+    if peek_is_keyword(tokens: tokens, state: s, kw: "if") {
       let r2 = parse_if(tokens: tokens, state: s)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, state: r2.state, err: r2.err } }
       ExprResult { expr: make_expr_node(expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span), state: r2.state, err: none }
@@ -4505,7 +4367,7 @@ fn parse_if(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwLet)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "let" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = expect_name(tokens: tokens, state: r.state)
@@ -4528,7 +4390,7 @@ fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwReturn)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "return" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr(tokens: tokens, state: r.state)
@@ -4543,14 +4405,14 @@ fn parse_return(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect(tokens: tokens, state: state, expected: ExpectKwFor)
+  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "for" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = expect_name(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let var_name = r.name
 
-  let r = expect(tokens: tokens, state: r.state, expected: ExpectKwIn)
+  let r = expect(tokens: tokens, state: r.state, expected: ExpectKeyword { text: "in" })
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
   let r = parse_expr_no_brace(tokens: tokens, state: r.state)
@@ -4663,8 +4525,8 @@ fn parse_expr_list_until(tokens: List<Token>, state: ParserState, end_expected: 
 
 fn parse_expr_list_until_acc(tokens: List<Token>, state: ParserState, end_expected: ExpectedToken, acc: List<Node>) -> ExprsResult {
   let s = skip_newlines(tokens: tokens, state: state)
-  let at_end_tag = match peek_shape(tokens: tokens, state: s) {
-    Some { value: shape } => shape_matches_expected(shape: shape, expected: end_expected)
+  let at_end_tag = match peek(tokens: tokens, state: s) {
+    Some { value: t } => token_matches_expected(token: t, expected: end_expected)
     None => false
   }
   if at_end_tag || at_end(tokens: tokens, state: s) {
@@ -4726,7 +4588,7 @@ fn parse_fn_lambda(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy = parse_recovery_placeholder()
   // Consume 'fn'
-  let r1 = expect(tokens: tokens, state: state, expected: ExpectKwFn)
+  let r1 = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "fn" })
   if has_err(err: r1.err) { return ExprResult { expr: dummy, state: r1.state, err: r1.err } }
   // Consume '('
   let r2 = expect(tokens: tokens, state: r1.state, expected: ExpectLParen)
@@ -4884,28 +4746,38 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
   } else {
     let sh = peek_shape(tokens: tokens, state: s)
     match sh {
-      Some { value: ShKwLet } => {
-        let r = parse_stmts(tokens: tokens, state: s)
-        if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-        let s2 = skip_newlines(tokens: tokens, state: r.state)
-        let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-        if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-        if count(r.stmts) == 1 {
-          ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
+      Some { value: ShKeyword } => {
+        let brace_kw = peek_keyword_text(tokens: tokens, state: s)
+        if brace_kw == "let" || brace_kw == "return" {
+          let r = parse_stmts(tokens: tokens, state: s)
+          if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+          let s2 = skip_newlines(tokens: tokens, state: r.state)
+          let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
+          if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+          if count(r.stmts) == 1 {
+            ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
+          } else {
+            ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), state: r2.state, err: none }
+          }
         } else {
-          ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), state: r2.state, err: none }
-        }
-      }
-      Some { value: ShKwReturn } => {
-        let r = parse_stmts(tokens: tokens, state: s)
-        if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
-        let s2 = skip_newlines(tokens: tokens, state: r.state)
-        let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
-        if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-        if count(r.stmts) == 1 {
-          ExprResult { expr: first(r.stmts).value, state: r2.state, err: none }
-        } else {
-          ExprResult { expr: make_expr_node(expr_data: ExprBlock, children: r.stmts, inferred: none, span: span), state: r2.state, err: none }
+          // Keyword used as field name in record literal
+          let ident_or_keyword = is_keyword_name(tokens: tokens, state: s)
+          if ident_or_keyword && peek_is_colon_after_ident(tokens: tokens, state: s) {
+            let r = parse_field_init_list(tokens: tokens, state: s)
+            if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+            let s2 = skip_newlines(tokens: tokens, state: r.state)
+            let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
+            if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+            ExprResult { expr: make_expr_node(expr_data: ExprRecordLit { type_name: none, parent_enum: none }, children: r.fields |> map(fi => make_field_init_node(name: fi.name, value: fi.value, span: span)), inferred: none, span: span), state: r2.state, err: none }
+          } else {
+            // Fall through to expression parsing
+            let r = parse_expr(tokens: tokens, state: s)
+            if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+            let s2 = skip_newlines(tokens: tokens, state: r.state)
+            let r2 = expect(tokens: tokens, state: s2, expected: ExpectRBrace)
+            if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+            ExprResult { expr: r.expr, state: r2.state, err: none }
+          }
         }
       }
       _ => {

@@ -65,7 +65,7 @@ fn parser_uses_expected_token_api_for_control_flow() {
     );
     assert_live_contains(
         &source,
-        "fn shape_matches_expected(",
+        "fn token_matches_expected(",
         "02_parse.dag should match parser control flow on ExpectedToken",
     );
     assert_live_not_contains(
@@ -508,7 +508,7 @@ fn serializer_has_no_expr_other_fallback() {
 // These tests make invisible breakage visible by counting structural
 // properties and asserting they stay within known bounds.
 
-const PARSE_ITEM_KEYWORD_ARM_RATCHET: usize = 9;
+const PARSE_ITEM_KEYWORD_ARM_RATCHET: usize = 0;
 
 #[test]
 fn parse_item_keyword_arm_count() {
