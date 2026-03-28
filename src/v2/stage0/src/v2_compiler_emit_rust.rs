@@ -525,77 +525,49 @@ v2_rt::concat(v2_rt::concat(imports.clone(), "
 }
 
 pub fn emit_non_empty_wrappers() -> String {
-    {
-        let vec_wrapper = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, PartialEq)]
-".to_string(), "pub struct NonEmptyVec<T>(Vec<T>);
+    // Serde Deserialize impls removed — not needed for self-hosting.
+    // This function matches the .dag source emit_non_empty_wrappers().
+    let vec_wrapper = "#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyVec<T>(Vec<T>);
 
-".to_string()), "impl<T> NonEmptyVec<T> {
-".to_string()), "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
-".to_string()), "        if items.is_empty() {
-".to_string()), "            Err(\"NonEmptyVec requires at least one element\")
-".to_string()), "        } else {
-".to_string()), "            Ok(Self(items))
-".to_string()), "        }
-".to_string()), "    }
+impl<T> NonEmptyVec<T> {
+    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err(\"NonEmptyVec requires at least one element\")
+        } else {
+            Ok(Self(items))
+        }
+    }
 
-".to_string()), "    pub fn as_slice(&self) -> &[T] {
-".to_string()), "        &self.0
-".to_string()), "    }
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
+    }
 
-".to_string()), "    pub fn into_vec(self) -> Vec<T> {
-".to_string()), "        self.0
-".to_string()), "    }
-".to_string()), "}
+    pub fn into_vec(self) -> Vec<T> {
+        self.0
+    }
+}".to_string();
+    let set_wrapper = "#[derive(Debug, Clone, PartialEq)]
+pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
 
-".to_string()), "impl<'de, T> Deserialize<'de> for NonEmptyVec<T>
-".to_string()), "where
-".to_string()), "    T: Deserialize<'de>,
-".to_string()), "{
-".to_string()), "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-".to_string()), "    where
-".to_string()), "        D: serde::Deserializer<'de>,
-".to_string()), "    {
-".to_string()), "        let items = Vec::<T>::deserialize(deserializer)?;
-".to_string()), "        NonEmptyVec::new(items).map_err(serde::de::Error::custom)
-".to_string()), "    }
-".to_string()), "}".to_string());
-let set_wrapper = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Debug, Clone, PartialEq)]
-".to_string(), "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
+impl<T: Ord> NonEmptyBTreeSet<T> {
+    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
+        if items.is_empty() {
+            Err(\"NonEmptyBTreeSet requires at least one element\")
+        } else {
+            Ok(Self(items))
+        }
+    }
 
-".to_string()), "impl<T: Ord> NonEmptyBTreeSet<T> {
-".to_string()), "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
-".to_string()), "        if items.is_empty() {
-".to_string()), "            Err(\"NonEmptyBTreeSet requires at least one element\")
-".to_string()), "        } else {
-".to_string()), "            Ok(Self(items))
-".to_string()), "        }
-".to_string()), "    }
+    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
+        &self.0
+    }
 
-".to_string()), "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
-".to_string()), "        &self.0
-".to_string()), "    }
-
-".to_string()), "    pub fn into_set(self) -> std::collections::BTreeSet<T> {
-".to_string()), "        self.0
-".to_string()), "    }
-".to_string()), "}
-
-".to_string()), "impl<'de, T> Deserialize<'de> for NonEmptyBTreeSet<T>
-".to_string()), "where
-".to_string()), "    T: Ord + Deserialize<'de>,
-".to_string()), "{
-".to_string()), "    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-".to_string()), "    where
-".to_string()), "        D: serde::Deserializer<'de>,
-".to_string()), "    {
-".to_string()), "        let items = std::collections::BTreeSet::<T>::deserialize(deserializer)?;
-".to_string()), "        NonEmptyBTreeSet::new(items).map_err(serde::de::Error::custom)
-".to_string()), "    }
-".to_string()), "}".to_string());
-v2_rt::concat(v2_rt::concat(vec_wrapper.clone(), "
-
-".to_string()), set_wrapper.clone())
-}
+    pub fn into_set(self) -> std::collections::BTreeSet<T> {
+        self.0
+    }
+}".to_string();
+    v2_rt::concat(v2_rt::concat(vec_wrapper, "\n\n".to_string()), set_wrapper)
 }
 
 pub fn emit_typed_item(item: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
