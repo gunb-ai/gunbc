@@ -69,7 +69,7 @@ semantic operation — no divergent code paths for the same concept.
 
 | Layer | What dissolves | Compiler stops knowing | Status |
 |-------|----------------|------------------------|--------|
-| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean | **Active** — 420 ratchet sites remaining |
+| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean | **Active** — CollectionKind dissolved (2026-03-28); kernel type dissolution remaining |
 | **L2: Expressions** | `ExprData` semantic knowledge, full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | **Bridge landed and dissolved** (P5.11 complete) |
 | **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax | **Active** — compositional parser (R3/Stream 0) |
 
@@ -108,6 +108,42 @@ Phase timeline:
 | Phase 5 | L1=0. Scrambled-name tests pass. | None |
 | Beyond | Bit-graph model. Primitives as compositions. Full structural type algebra. | None |
 
+### CollectionKind dissolution (2026-03-28) — COMPLETE
+
+**What was dissolved:** The `CollectionKind` enum (6 variants: `ListKind`,
+`SetKind`, `NonEmptyListKind`, `NonEmptySetKind`, `MapKind`, `NoCollection`)
+and the `collection_kind` field on `Node`. 184 sites across 17 .dag files
+and 8 stage0 .rs files. Net: -501 lines, +306 lines.
+
+**Design:** No new field on Node (a label/string would violate the
+"compiler is a DAG processor" invariant). Instead:
+
+1. **Resolve time** (names allowed): `container_types` data list in
+   `00_core.dag` controls which parameterized types stay unexpanded.
+2. **After resolution** (structural): containers are uniquely identifiable
+   as nodes with `children > 0 && connective == NoConnective`. Products
+   have Conj, coproducts have Disj, callables use the params field,
+   tuples have Conj.
+3. **Emit time** (names allowed): `to_snake(n.name)` as LanguageSpec
+   template key. Each language template map has explicit entries for
+   all container variants.
+
+**Structural predicates** (pass scrambled-name test):
+- `node_is_collection(n)` — children > 0, no connective
+- `node_is_keyed_collection(n)` — above AND 2 children (Map)
+- `node_is_element_collection(n)` — above AND 1 child (List/Set/NonEmpty*)
+
+**Stepping stone:** `container_types` data list is name-based at resolve
+time. Dissolves further when algebraic inhabitation (FreeMonoid,
+BooleanAlgebra, PartialFunction from `std/algebra.dag`) replaces it.
+
+**Remaining L1 cleanup:**
+- `generated_tests.rs` still embeds old .dag source with `CollectionKind` —
+  regenerated on next self-compile pass
+- Kernel type dissolution (`is_kernel_type`, `is_int_type_node`, etc.) —
+  requires algebraic ontology from `std/algebra.dag`
+- `container_types` data list → derives from algebraic inhabitation (future)
+
 ### Compositional Basis
 
 **1. Compiler-model primitives (what the compiler operates on):**
@@ -117,7 +153,7 @@ Phase timeline:
 - Cardinality on bindings (Required, CardOptional)
 - Generic slot composition (`<T>`)
 - Recursion / self-reference (SCC-detected cycle metadata)
-- Collection constructors (List, Set, Map — type-level, not name-level)
+- Collection identity — structural (no enum, no field on Node; `container_types` data list + shape after resolution)
 
 **2. Value/type-algebra primitives (what the kernel knows):**
 
@@ -136,7 +172,7 @@ declarations; Phase 5+: `is_kernel_type` dissolves).
 | Cardinality | Presence/absence on bindings | `return_cardinality: CardOptional` |
 | Parameterization | Generic types (`List<T>`) | Slot substitution before inference |
 | Recursion | Self-referential types | SCC cycle metadata on Node |
-| Collection | Indexed structures | `List<A>`, `Set<A>`, `Map<K,V>` type constructors |
+| Collection | Indexed structures | Structural shape after resolution (children + no connective); `container_types` data list |
 
 **4. What is derived (named namespaces over the above):**
 
