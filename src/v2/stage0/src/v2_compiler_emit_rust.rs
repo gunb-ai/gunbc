@@ -643,18 +643,28 @@ continue;
 }
 }
 
+pub fn emit_type_params(params: Vec<Rc<Param>>) -> String {
+    if params.is_empty() {
+        String::new()
+    } else {
+        let names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+        format!("<{}>", names.join(", "))
+    }
+}
+
 pub fn emit_type_def_from_connective(item: Rc<Node>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>) -> String {
     {
+        let type_params = emit_type_params(item.params.clone());
         let is_product = node_is_product(item.clone());
 if is_product.clone() {
-            emit_struct_from_children(item.name.clone(), item.children.clone(), recursive_types.clone(), rc_types.clone())
+            emit_struct_from_children(item.name.clone(), type_params.clone(), item.children.clone(), recursive_types.clone(), rc_types.clone())
 } else {
-            emit_enum_from_children(item.name.clone(), item.children.clone(), recursive_types.clone(), rc_types.clone())
+            emit_enum_from_children(item.name.clone(), type_params.clone(), item.children.clone(), recursive_types.clone(), rc_types.clone())
 }
 }
 }
 
-pub fn emit_struct_from_children(name: String, children: Vec<Rc<Node>>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>) -> String {
+pub fn emit_struct_from_children(name: String, type_params: String, children: Vec<Rc<Node>>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>) -> String {
     {
         let derives = if emit_map_has(rc_types.clone(), name.clone()) {
             rust_struct_derives_text()
@@ -662,15 +672,15 @@ pub fn emit_struct_from_children(name: String, children: Vec<Rc<Node>>, recursiv
             rust_struct_derives_copy_text()
 };
 if ((children.clone().len() as i64) == 0) {
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives.clone(), "
-".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), ";".to_string())
+            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives.clone(), "
+".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), type_params.clone()), ";".to_string())
 } else {
             {
                 let field_lines = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_struct_field_from_child(child.clone(), recursive_types.clone(), rc_types.clone())); } __result };
 let fields_str = field_lines.clone().join(&"
 ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives.clone(), "
-".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), " {
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives.clone(), "
+".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), type_params.clone()), " {
 ".to_string()), fields_str.clone()), "
 }".to_string())
 }
@@ -712,15 +722,15 @@ match ((complex.clone().len() as i64) == 0) {
 }
 }
 
-pub fn emit_enum_from_children(name: String, children: Vec<Rc<Node>>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>) -> String {
+pub fn emit_enum_from_children(name: String, type_params: String, children: Vec<Rc<Node>>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>) -> String {
     {
         let derives = enum_derives(children.clone());
 let variant_lines = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_variant_from_child(child.clone(), recursive_types.clone(), rc_types.clone())); } __result };
 let variants_str = variant_lines.clone().join(&"
 ".to_string());
-let enum_def = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives.clone(), "
+let enum_def = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives.clone(), "
 ".to_string()), rust_serde_tag_attr()), "
-".to_string()), rust_visibility_prefix()), "enum ".to_string()), name.clone()), " {
+".to_string()), rust_visibility_prefix()), "enum ".to_string()), name.clone()), type_params.clone()), " {
 ".to_string()), variants_str.clone()), "
 }".to_string());
 let accessor_impl = emit_enum_shared_accessors(name.clone(), children.clone(), recursive_types.clone(), rc_types.clone());
