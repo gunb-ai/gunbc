@@ -520,20 +520,26 @@ Diagnostic ratchet PASSES. Self-compile time: ~260s (FF-8 perf issue).
 
 **Verification ratchets (Lane A complete):**
 - Diagnostic ratchet: 0 (passes)
-- Emitted Rust error ratchet: 1184 errors in regenerated output
-  (generics 541, serde residual 404, downstream 140)
+- Emitted Rust error ratchet: 872 errors (down from 1242)
 - L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
 - Keyword arm count: 9 (exact match)
 - Complexity ratchet: 2 violations (pre-existing in pipeline.rs)
 
-**Stage0 regeneration: BLOCKED on codegen gaps.** The stage0 binary
-successfully compiles .dag → Rust, but the regenerated Rust has 1184
-`cargo check` errors. Cannot replace committed stage0 until these are
-fixed. Three error categories:
-- E0425 (541): generics — emitter generates `T` without type param
-- E0433+E0405 (404): serde — NonEmpty wrapper Deserialize impls
-  removed from stage0 but need binary rebuild to take effect
-- E0220+E0277 (140): downstream trait/type errors
+**Stage0 regeneration: BLOCKED on 872 codegen errors.** Fixes applied:
+- ✓ Serde removal (138 → 0)
+- ✓ Generic type params `<T>` on struct/enum defs (~130 errors)
+- ✓ Container/generic casing (FreeMonoid not free_monoid)
+- ✓ Type map in conj/disj rendering (Bool→bool, Float→f64)
+- ✓ Callable error recovery (Part 1: errors orthogonal to nodes)
+Remaining 872 errors in 3 structural categories:
+- E0308 (358): type mismatches (cascading)
+- E0425 (155): Callable zero-param rendering (needs pipeline alignment)
+- E0433 (128): CodegenBackend cross-module visibility (emitter imports)
+- E0369+E0277+E0282 (231): downstream cascades
+
+**DSL user diagnostics (20 → ~3):** Added `\{` `\}` escape sequences
+for literal braces in strings. 775 brace templates escaped across 18
+DSL files. Remaining ~3 diagnostics: enum variant as standalone value.
 
 **Known parser limitation:** Stage0 parser misreads `{ fn(name: val) }`
 as record literal (block/record disambiguation). Workaround: use match
