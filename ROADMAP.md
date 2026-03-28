@@ -511,6 +511,13 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ## Current State (2026-03-28)
 
+**TOP PRIORITY: Diagnostic quality.** The DSL is unusable until
+diagnostics include file name, line:column, source context, and
+actionable suggestions. Current diagnostics report "expected LBrace,
+found KwElse at offset 4651" with no file name — this is only usable
+by compiler developers with hex editors. See "Diagnostic quality"
+section below for implementation path.
+
 **Phases 1-4 complete. Phase 5 active.**
 
 **Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Stage0

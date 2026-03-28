@@ -797,7 +797,7 @@ fn emit_enum_from_children(name: String, type_params: String, children: List<Nod
   let variants_str = variant_lines |> join(separator: "\n")
   let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, type_params, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
-  let accessor_impl = emit_enum_shared_accessors(name: name, children: children, recursive_types: recursive_types, rc_types: rc_types)
+  let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, rc_types: rc_types)
   if accessor_impl == "" { enum_def }
   else { concat(enum_def, "\n", accessor_impl) }
 }
@@ -819,7 +819,7 @@ fn find_shared_enum_fields(children: List<Node>) -> List<String> {
   )
 }
 
-fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
+fn emit_enum_shared_accessors(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   let all_shared = find_shared_enum_fields(children: children)
   if all_shared |> count == 0 { return "" }
   // Only keep fields whose type is consistent across all fielded variants.
@@ -858,7 +858,7 @@ fn emit_enum_shared_accessors(name: String, children: List<Node>, recursive_type
     concat("    pub fn ", emit_ident(name: fname, target: Rust), "(&self) -> ", ty, " {\n        match self {\n", arms_str, "\n        }\n    }")
   )
   let fns_str = accessor_fns |> join(separator: "\n")
-  concat("impl ", name, " {\n", fns_str, "\n}")
+  concat("impl", type_params, " ", name, type_params, " {\n", fns_str, "\n}")
 }
 
 fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
