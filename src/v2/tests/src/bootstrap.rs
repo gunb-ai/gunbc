@@ -220,7 +220,7 @@ fn stage0_compile_accepts_dag_target() {
 //   E0425 (541): generics — emitter generates `T` without type param declaration
 //   E0433+E0405 (404): serde — emitter generates serde code, stage0 lacks serde dep
 //   E0220+E0277 (140): downstream trait/type errors from above
-const EMITTED_RUST_ERROR_RATCHET: usize = 1000;
+const EMITTED_RUST_ERROR_RATCHET: usize = 810;
 
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check
