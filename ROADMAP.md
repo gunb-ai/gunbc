@@ -3182,6 +3182,7 @@ current phase order.
 | `[when]` string comparison | `[when x == "foo"]` is not supported; only boolean fields, negation (`!x.field`), and `!= None` work. Blocks conditional service dispatch in workflows. Workaround: `match` + `shell.Exec.Run` with computed command strings. |
 | `[when]`/`[after]` inside `for` comprehensions | Bracket clauses are only supported on top-level step bindings, not inside `for` loops. Blocks conditional execution per iteration. |
 | Multiple `uses` clauses | Only one `uses` clause per `func` is supported. Workaround: use `shell.Exec.Run` for file I/O instead of `Filesystem` resource when `Network` is already declared. |
+| `fixture`/`test` blocks | Parser needs `fixture name { mock/input/expect stmts }` and `test name : fixture { stmts }`. Blocked on compositional parser model — adding these as keywords + match arms would grow the enum further. The body sub-grammar (mock path -> value, expect expr is Type, expect expr contains expr) also needs design. Nothing imports openai.dag so this is not blocking import resolution. |
 
 ### Compiler Improvements
 
@@ -3195,20 +3196,43 @@ current phase order.
 | `assemble_stage0` fixups (5 known issues) | Not blocking active phases. 5 post-regeneration manual corrections needed each time. | Stream 2 |
 | Statement/expression emit classification | Python (and partially Go) are statement-oriented; emit assumes expression-orientation. Three symptoms: `return let` at block tail, incomplete `functools.reduce` fold, `return match` as expression. Root cause: emit boundary loses statement/expression structural distinction. Fix: pre-emit metadata tags bindings vs tail expression in blocks; backends render the structural fact. Relates to FO-* (fan-out preservation) and P5.11 (ExprData dissolution). | Stream 2 |
 | Cross-language test generation parity | Generated tests must cover all target languages equally. Currently Rust test generation is most complete; Go and Python test emission needs parity audit and gaps filled. | Stream 2 |
+| Compositional parser model | `parse_item` is a growing match on keywords (type/fn/func/service/resource/data/extern/pattern/interface). Adding fixture/test requires more keywords, more match arms, more `parse_*_def` functions — case enumeration for an open set. The parser should recognize a fixed set of structural forms (named blocks, parameterized declarations, typed bindings) and item identity should be data (the tag string), not code (an enum variant). All existing items compose from: Tag + Name + optional [TypeParams, Params, Return, Uses, Provides] + Body. Body sub-grammars (fields, statements, operations) also decompose. Blocked on: fixture/test syntax design needs this; also prerequisite for language-extdep-defined item types. | — |
 
-### Rust Codegen Issues (stage0 regeneration blockers, 2026-03-27)
+### Rust Codegen Issues (stage0 regeneration blockers, 2026-03-28)
 
-After the parser fixes land (hermetic, where, uses Resource(mode:), [after/when], fixture commented out), the .dag compiler produces 0 diagnostics on self-compile. But the generated Rust has 5 issues blocking `cargo check`:
+The .dag compiler self-compiles with **0 diagnostics** after the parser fixes
+(hermetic, where, uses Resource(mode:), [after/when], fixture commented out).
+But the generated Rust fails `cargo check` with ~280 errors in three layers.
 
-| # | Error | Count | Root cause | Fix |
-|---|-------|-------|-----------|-----|
-| CG-1 | `cannot find type Bool` | 153 | Emitter renders .dag `Bool` as Rust `Bool` instead of `bool` | Rust emit should lower `Bool` → `bool` (primitive type mapping) |
-| CG-2 | `could not find v2_core in crate root` | 15 | Module rename in `regenerate-stage0.sh` renames `v2_std_core.rs` → `v2_core.rs`, but generated code references `crate::v2_core` and `lib.rs` may not declare `mod v2_core` | Ensure `lib.rs` declares `mod v2_core` or fix the rename script |
-| CG-3 | `unresolved module serde` / `cannot find trait Deserialize` | 16 | Emitter generates `#[derive(Deserialize)]` and `serde::Deserializer` for `Secret` type, but `serde` is not in stage0 `Cargo.toml` dependencies with `derive` feature | Either add `serde = { version = "1.0", features = ["derive"] }` to stage0 Cargo.toml, or stop emitting serde derives for the self-compile target |
-| CG-4 | `name Secret is defined multiple times` | 1 | Two modules both emit a `Secret` struct (likely `std/types.dag` and another) | Emit should namespace or deduplicate cross-module type definitions |
-| CG-5 | `unhandled item: Unit` | 1 | Emitter encounters a `Unit` type/item it doesn't know how to render | Add Unit handling in Rust emit (likely map to `()`) |
+**Layer 1: Primitive type mapping (~154 errors)**
 
-Priority: CG-1 (Bool→bool) clears 153 of 190 errors. CG-2 and CG-3 are configuration/script fixes. CG-4 and CG-5 are single-site issues.
+| # | Error | Count | Root cause |
+|---|-------|-------|-----------|
+| CG-1 | `cannot find type Bool` | ~153 | Emitter renders .dag `Bool` as Rust `Bool` instead of `bool`. Fix in `05_emit_rust.dag` primitive type lowering. |
+| CG-5 | `unhandled item: Unit` | 1 | Emitter doesn't map `Unit` to `()`. Same fix location. |
+
+**Layer 2: Module/crate wiring (~151 errors)**
+
+| # | Error | Count | Root cause |
+|---|-------|-------|-----------|
+| CG-2 | `could not find v2_core in crate root` | ~15 | `regenerate-stage0.sh` renames files (`v2_compiler_*` → short names) but the hand-maintained `lib.rs` still declares old module names. Script needs to regenerate `lib.rs` to match, or the emitter needs to produce stable names that don't require renaming. |
+| CG-3 | `cannot find trait Deserialize` | ~124 | Emitter generates `#[derive(Deserialize)]` but doesn't emit `use serde::Deserialize;` at module top. Also needs `serde = { features = ["derive"] }` in stage0 `Cargo.toml`. |
+| CG-4 | `name Secret defined multiple times` | 1 | Two modules both emit a `Secret` struct. Emit should namespace or deduplicate cross-module type definitions. |
+| CG-6 | `use of undeclared type CodegenBackend` | ~10 | Type referenced in generated code but not defined. |
+| CG-7 | `unresolved import crate::parse` | 1 | `parse.rs` exists as a generated file but isn't declared in `lib.rs`. Same root cause as CG-2. |
+
+**Layer 3: Missing expr_children helpers (~130 errors)**
+
+| # | Error | Count | Root cause |
+|---|-------|-------|-----------|
+| CG-8 | `cannot find function let_value`, `let_body`, `if_condition`, `match_scrutinee`, etc. | ~130 | The new compiler emits calls to structural ExprData accessor functions that were introduced in P5.11 (ExprData dissolution). Full list: `let_value`, `let_body`, `if_condition`, `if_then_branch`, `if_else_branch`, `match_scrutinee`, `match_arm_nodes`, `field_access_base`, `lambda_body`, `method_receiver`, `method_arg_nodes`, `slice_base/start/end`, `return_value`, `foreach_collection/body`, `cast_expr/target`, `index_base/expr`, `binop_left/right`, `unaryop_operand`, `arm_pattern/guard/body`, `field_init_node_name/value`. These are defined in the compiler `.dag` source but not landing in the generated Rust — either `v2_core` emission is incomplete or they need to be in `v2_rt.rs`. |
+
+**Priority order:**
+1. CG-1 + CG-5 (primitive mapping) — clears ~55% of errors, fix is in `05_emit_rust.dag`
+2. CG-3 (serde) — clears ~44%, needs `use` statement in emitter + Cargo.toml dep
+3. CG-8 (expr_children) — structural issue, the P5.11 helpers need to be emitted or maintained in v2_rt
+4. CG-2/CG-7 (lib.rs) — regeneration script needs to produce a matching lib.rs
+5. CG-4/CG-6 — single-site dedup and missing type
 
 ### Open Invariant Violations (grouped by root cause)
 
