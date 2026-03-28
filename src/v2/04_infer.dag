@@ -96,7 +96,6 @@ import v2.compiler.infer_types {
   enrich_kernel_type
 }
 import v2.compiler.infer_method {
-  classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
   infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node,
   infer_builtin_call_type, resolve_builtin_call_type
 }

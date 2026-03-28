@@ -40,7 +40,6 @@ import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
 }
 import v2.compiler.infer_method {
-  classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
   infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node,
   intrinsic_method_index, runtime_bridge_method_index
 }
@@ -328,6 +327,7 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
         result_type: Some { value: resolved_type }
       }
     None =>
+  // Tier 1: Service method lookup
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry) {
     Some { value: svc_result } =>
       KnownMethodResolution {
@@ -335,30 +335,8 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
         result_type: Some { value: svc_result.result_type }
       }
     None =>
-      match classify_reconciled_intrinsic_method(method: method_name) {
-        Some { value: intrinsic } =>
-          KnownMethodResolution {
-            semantics: Some { value: IntrinsicMethodSemantics {
-              intrinsic: intrinsic,
-              fold_accumulator_type: fold_accumulator_type
-            } },
-            result_type: infer_intrinsic_method_type_node(
-              receiver_type: receiver_type,
-              intrinsic: intrinsic,
-              fold_accumulator_type: fold_accumulator_type
-            )
-          }
-        None =>
-          match classify_runtime_bridge_method(method: method_name) {
-            Some { value: bridge_method } =>
-              KnownMethodResolution {
-                semantics: Some { value: RuntimeBridgeSemantics { method: bridge_method } },
-                result_type: infer_runtime_bridge_method_type_node(receiver_type: receiver_type, method: bridge_method)
-              }
-            None =>
-              KnownMethodResolution { semantics: none, result_type: none }
-          }
-      }
+      // No structural field found, not a service method — method not found.
+      KnownMethodResolution { semantics: none, result_type: none }
   }
   }
 }

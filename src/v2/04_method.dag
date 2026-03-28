@@ -41,64 +41,10 @@ import v2.compiler.infer_types {
 // Intrinsic method classification
 // =========================================================================
 
-fn classify_reconciled_intrinsic_method(method: String) -> IntrinsicMethod? {
-  if method == "count" { Some { value: MethodCount } }
-  else if method == "join" { Some { value: MethodJoin } }
-  else if method == "split" { Some { value: MethodSplit } }
-  else if method == "last" { Some { value: MethodLast } }
-  else if method == "first" { Some { value: MethodFirst } }
-  else if method == "enumerate" { Some { value: MethodEnumerate } }
-  else if method == "chars" { Some { value: MethodChars } }
-  else if method == "string_contains" { Some { value: MethodStringContains } }
-  else if method == "concat" { Some { value: MethodConcat } }
-  else if method == "map" { Some { value: MethodMap } }
-  else if method == "filter" { Some { value: MethodFilter } }
-  else if method == "any" { Some { value: MethodAny } }
-  else if method == "all" { Some { value: MethodAll } }
-  else if method == "flat_map" { Some { value: MethodFlatMap } }
-  else if method == "skip" { Some { value: MethodSkip } }
-  else if method == "take" { Some { value: MethodTake } }
-  else if method == "fold" { Some { value: MethodFold } }
-  else if method == "sort_by" { Some { value: MethodSortBy } }
-  else if method == "append" { Some { value: MethodAppend } }
-  else { none }
-}
-
-// =========================================================================
-// Runtime bridge method classification
-// =========================================================================
-
-fn classify_runtime_bridge_method(method: String) -> RuntimeBridgeMethod? {
-  if method == "get" { Some { value: BridgeGet } }
-  else if method == "with" { Some { value: BridgeWith } }
-  else if method == "list_push" { Some { value: BridgeListPush } }
-  else if method == "map_insert" { Some { value: BridgeMapInsert } }
-  else if method == "map_merge" { Some { value: BridgeMapMerge } }
-  else if method == "map_get" { Some { value: BridgeMapGet } }
-  else if method == "map_has" { Some { value: BridgeMapHas } }
-  else if method == "emit_map_has" { Some { value: BridgeEmitMapHas } }
-  else if method == "map_values" { Some { value: BridgeMapValues } }
-  else if method == "map_keys" { Some { value: BridgeMapKeys } }
-  else if method == "map_contains_key" { Some { value: BridgeMapContainsKey } }
-  else if method == "char_at" { Some { value: BridgeCharAt } }
-  else if method == "string_at" { Some { value: BridgeStringAt } }
-  else if method == "string_length" { Some { value: BridgeStringLength } }
-  else if method == "length" { Some { value: BridgeLength } }
-  else if method == "starts_with" { Some { value: BridgeStartsWith } }
-  else if method == "ends_with" { Some { value: BridgeEndsWith } }
-  else if method == "to_string" { Some { value: BridgeToString } }
-  else if method == "trim" { Some { value: BridgeTrim } }
-  else if method == "to_lower" { Some { value: BridgeToLower } }
-  else if method == "to_upper" { Some { value: BridgeToUpper } }
-  else if method == "replace" { Some { value: BridgeReplace } }
-  else if method == "substring" { Some { value: BridgeSubstring } }
-  else if method == "to_int" { Some { value: BridgeToInt } }
-  else if method == "empty_map" { Some { value: BridgeEmptyMap } }
-  else if method == "contains" { Some { value: BridgeContains } }
-  else if method == "reverse" { Some { value: BridgeReverse } }
-  else if method == "lookup" { Some { value: BridgeLookup } }
-  else { none }
-}
+// classify_reconciled_intrinsic_method and classify_runtime_bridge_method
+// DELETED (2026-03-28). 48 string branches replaced by algebra registry
+// (enrich_kernel_type) + emit-prep reclassification via index maps.
+// Methods now resolve structurally through Tier 0 lookup_structural_method.
 
 // =========================================================================
 // Method return type inference
