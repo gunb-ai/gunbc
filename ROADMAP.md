@@ -3237,6 +3237,33 @@ current phase order.
 | Multiple `uses` clauses | Only one `uses` clause per `func` is supported. Workaround: use `shell.Exec.Run` for file I/O instead of `Filesystem` resource when `Network` is already declared. |
 | `fixture`/`test` blocks | Parser needs `fixture name { mock/input/expect stmts }` and `test name : fixture { stmts }`. Blocked on compositional parser model — adding these as keywords + match arms would grow the enum further. The body sub-grammar (mock path -> value, expect expr is Type, expect expr contains expr) also needs design. Nothing imports openai.dag so this is not blocking import resolution. |
 
+### Desired Parser Features (2026-03-28)
+
+Features needed for domain workflows to compile end-to-end. Each has a
+DSL-side workaround so that domain .dag files can be written today without
+requiring parser changes. The workarounds live in the DSL, not the compiler.
+When the compositional parser lands, these become structural forms available
+to any item.
+
+| Feature | Blocked files | DSL workaround | Proper fix |
+|---------|--------------|----------------|-----------|
+| `uses Resource(mode: X)` parameterized resources | patterns.dag, bootstrap.dag, codegen.dag, readme.dag | Drop `uses` clause; handle resources in shell runtime | Compositional parser: `uses` accepts arbitrary parenthesized config |
+| `[after X, when X.field]` multi-clause brackets | build.dag | Use implicit data-flow ordering (compiler infers deps from variable refs) | Compositional parser: bracket clause accepts comma-separated constraints |
+| `[when]` string comparison `x == "foo"` | workflow .dag files | `match` expression + `shell.Exec.Run` with computed command string | Bracket clause accepts arbitrary boolean expressions |
+| `[when]`/`[after]` inside `for` comprehensions | workflow .dag files | Move conditional logic into called functions or shell runtime | Bracket clauses on any binding, not just top-level steps |
+| Multiple `uses` clauses per func | workflow .dag files | Use `shell.Exec.Run` for secondary resources | Single `uses` clause with multiple resource bindings: `uses net: Network, fs: Filesystem` |
+| `fixture`/`test` blocks | openai.dag | Comment out test blocks; tests run via cargo test on generated code | Compositional parser: fixture/test as structural item tags |
+| `hermetic` as identifier | fidelity.dag | Rename binding to avoid keyword collision | Keyword-as-identifier in binding position (already partially supported) |
+| `where` predicates in params | iam.dag, patterns.dag | Move constraint to doc comment or runtime validation | `where` clause as structural modifier on any param list |
+| `and`/`or` as operators | filesystem.dag | Use `&&`/`\|\|` | Parser recognizes `and`/`or` as boolean operators |
+| `{ ident: value }` in match arms (block/record ambiguity) | various | Use named types or `let` bindings instead of inline record literals in match arms | Structural disambiguation: `{ ident : }` is always record, `{ stmt }` is always block |
+| `pattern<T>` generics on patterns | patterns.dag | Defer; monomorphize manually | Type params available to any item structural form |
+
+**Principle:** workarounds exist only in the DSL (domain .dag files), never in
+the compiler. The compiler should not accumulate special-case handling for
+syntax it doesn't structurally support yet. When the compositional parser
+lands, these workarounds dissolve and the original syntax works.
+
 ### Compiler Improvements
 
 | Item | Why deferred | Stream |
