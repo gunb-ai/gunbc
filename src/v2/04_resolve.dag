@@ -202,30 +202,29 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
 }
 
 // Resolve an alias target through to its structural definition.
-// Split into two helpers to avoid block-in-if parse limitation in
-// the current stage0 parser (named-arg calls inside { } blocks
-// are misread as record literals).
-fn resolve_alias_target_parameterized(target: Node, env: TypeEnv, module_name: String, depth: Int) -> Node {
-  resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
-}
+// Uses a discriminant + match to avoid the block-in-if parse
+// limitation (stage0 parser misreads `{ fn(name: v) }` as record
+// literal). Only the chosen branch executes.
+type AliasKind = AliasParameterized | AliasLeaf | AliasPassthrough
 
-fn resolve_alias_target_leaf(target: Node, env: TypeEnv) -> Node {
-  match lookup_type(env: env, name: target.name) {
-    Some { value: env_target } => env_target
-    None => target
-  }
+fn classify_alias(target: Node) -> AliasKind {
+  let nc = target.connective == NoConnective
+  if target.children |> count > 0 && nc { AliasParameterized }
+  else if target.children |> count == 0 && nc && target.name != "" { AliasLeaf }
+  else { AliasPassthrough }
 }
 
 fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: Int) -> Node {
-  let has_children = target.children |> count > 0
-  let no_connective = target.connective == NoConnective
-  let is_named = target.name != ""
-  let no_children = target.children |> count == 0
-  let parameterized = resolve_alias_target_parameterized(target: target, env: env, module_name: module_name, depth: depth)
-  let leaf = resolve_alias_target_leaf(target: target, env: env)
-  if has_children && no_connective { parameterized }
-  else if no_children && no_connective && is_named { leaf }
-  else { target }
+  match classify_alias(target: target) {
+    AliasParameterized =>
+      resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
+    AliasLeaf =>
+      match lookup_type(env: env, name: target.name) {
+        Some { value: env_target } => env_target
+        None => target
+      }
+    AliasPassthrough => target
+  }
 }
 
 fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) -> NodeResolveResult {

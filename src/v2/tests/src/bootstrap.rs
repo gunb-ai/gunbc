@@ -268,26 +268,11 @@ fn bootstrap_stage0_to_stage1() {
     );
 
     // Cargo check stage1 — count errors as ratchet.
-    // If stage0 emitted 0 files (parse/compile failure), count that as
-    // a high error count rather than panicking — the ratchet tracks the
-    // full distance from "broken" to "working."
-    if !output.status.success() || !stage1_dir.join("Cargo.toml").exists() {
-        let emitted_files = std::fs::read_dir(stage1_dir.join("src"))
-            .map(|d| d.count())
-            .unwrap_or(0);
-        eprintln!(
-            "stage0 compile failed or emitted no files ({} files in output). \
-             Counting as EMITTED_RUST_ERROR_RATCHET errors.",
-            emitted_files
-        );
-        assert!(
-            EMITTED_RUST_ERROR_RATCHET <= EMITTED_RUST_ERROR_RATCHET,
-            "stage0 can't compile .dag source — bootstrap is broken"
-        );
-        let _ = std::fs::remove_dir_all(&sources_dir);
-        let _ = std::fs::remove_dir_all(&stage1_dir);
-        return;
-    }
+    // Missing output is a hard failure, not a silent pass.
+    assert!(
+        stage1_dir.join("Cargo.toml").exists(),
+        "stage0 produced no Cargo.toml — bootstrap is broken"
+    );
 
     let check = std::process::Command::new("cargo")
         .arg("check")
@@ -295,7 +280,19 @@ fn bootstrap_stage0_to_stage1() {
         .output()
         .expect("failed to cargo check stage1");
     let check_stderr = String::from_utf8_lossy(&check.stderr);
-    let error_count = check_stderr.matches("error[E").count();
+    // Count both coded errors (error[Exxxx]) and uncoded errors (error: ...)
+    // to avoid silently passing on parse/syntax failures.
+    let error_count = check_stderr.lines()
+        .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
+        .count();
+    // Fall back: if cargo check failed but we counted 0 errors, something
+    // uncategorized went wrong — don't silently pass.
+    let error_count = if !check.status.success() && error_count == 0 {
+        eprintln!("cargo check failed with uncategorized errors:\n{}", check_stderr);
+        usize::MAX
+    } else {
+        error_count
+    };
     eprintln!("stage1 cargo check: {} errors (ratchet: {})", error_count, EMITTED_RUST_ERROR_RATCHET);
 
     assert!(
