@@ -876,15 +876,20 @@ Lane C ──→ Lane A:  Compositional parser enables round-trip smoke
 
 **Lane A: ✓ DONE** (PR #227)
 
-**Lane B (current priority — 1184 errors → 0):**
+**Lane B (current priority — 996 errors → 0):**
 1. ✓ Fix regen script for Docker (cargo run instead of binary path)
-2. ✓ Remove serde from NonEmpty wrappers (committed, needs binary rebuild)
-3. Fix generics emission — `T` without `<T>` type param (541 errors)
-4. Verify serde removal took effect (rebuild binary, regenerate)
-5. Fix remaining codegen gaps
-6. Regenerate stage0, verify cargo check passes
-7. Committed binary approach (never hand-edit generated code again)
-8. Container sharing (FF-8, atomic with regen)
+2. ✓ Remove serde from NonEmpty wrappers (138 → 0 serde errors)
+3. ✓ Fix generics emission — `<T>` on struct/enum defs (~130 errors)
+4. ✓ Fix container/generic casing — FreeMonoid not free_monoid
+5. ✓ Fix callable error recovery — empty name, not "Callable" (Part 1)
+6. Callable rendering (Part 2) — zero-param fn() → Rc<dyn Fn() -> T>.
+   Structural identification works (inferred != none predicate) but
+   rendering change causes ~186 cascading type mismatches. Needs full
+   emit pipeline to agree: struct fields, function sigs, call sites.
+7. Remaining E0425 (388): `Tuple`, `Bool` type names unresolved
+8. Regenerate stage0, verify cargo check passes
+9. Committed binary approach (never hand-edit generated code again)
+10. Container sharing (FF-8, atomic with regen)
 
 **Lane C (runs in parallel, no blocking deps):**
 1. Decidability audit (review iteration primitives)
