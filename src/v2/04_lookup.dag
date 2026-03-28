@@ -41,7 +41,8 @@ import v2.compiler.infer_emit_info {
 }
 import v2.compiler.infer_method {
   classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
-  infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node
+  infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node,
+  intrinsic_method_index, runtime_bridge_method_index
 }
 import v2.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv
@@ -280,19 +281,51 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
-  // Tier 0: Structural field lookup for non-collection types only.
-  // Collection types (List, Map, Set) fall through to Tiers 2/3 which
-  // provide the correct IntrinsicMethodSemantics/RuntimeBridgeSemantics
-  // that emit needs for target-specific rendering patterns.
-  // Non-collection types (user-defined, algebra types) get
-  // PlainMethodSemantics — emit renders as plain recv.method(args).
-  let is_collection = receiver_type.collection_kind != NoCollection
-  let tier0_result = if is_collection { none } else { lookup_structural_method(receiver_type: receiver_type, method_name: method_name) }
+  // Tier 0: Structural field lookup for ALL types (including collections).
+  // The algebra registry (enrich_kernel_type) provides fields for kernel
+  // types; user-defined types have their own structural children.
+  //
+  // Emit-prep reclassification: when Tier 0 finds a method, check the
+  // intrinsic/bridge indexes to tag with the correct MethodSemantics
+  // for emit. This preserves IntrinsicMethodSemantics/RuntimeBridgeSemantics
+  // that emitters need for target-specific rendering (e.g., iter().map()
+  // in Rust) while resolving the method structurally, not via string matching.
+  let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
     Some { value: result_type } =>
+      // Emit-prep: reclassify for emit if this is an intrinsic or bridge method
+      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
+      let bridge_match = map_get(runtime_bridge_method_index(), method_name)
+      let semantics = match intrinsic_match {
+        Some { value: intrinsic } =>
+          IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type }
+        None => match bridge_match {
+          Some { value: bridge } => RuntimeBridgeSemantics { method: bridge }
+          None => PlainMethodSemantics
+        }
+      }
+      // For intrinsic methods, use the existing type inference (handles
+      // polymorphic cases like fold accumulator type). For others, use
+      // the type from the algebra field. refine_collection_result_type
+      // further specializes map/flat_map/fold at the call site.
+      let resolved_type = match intrinsic_match {
+        Some { value: intrinsic } =>
+          match infer_intrinsic_method_type_node(receiver_type: receiver_type, intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type) {
+            Some { value: inferred_rt } => inferred_rt
+            None => result_type
+          }
+        None => match bridge_match {
+          Some { value: bridge } =>
+            match infer_runtime_bridge_method_type_node(receiver_type: receiver_type, method: bridge) {
+              Some { value: inferred_rt } => inferred_rt
+              None => result_type
+            }
+          None => result_type
+        }
+      }
       KnownMethodResolution {
-        semantics: Some { value: PlainMethodSemantics },
-        result_type: Some { value: result_type }
+        semantics: Some { value: semantics },
+        result_type: Some { value: resolved_type }
       }
     None =>
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry) {

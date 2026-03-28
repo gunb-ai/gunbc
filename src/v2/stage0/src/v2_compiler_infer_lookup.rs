@@ -60,7 +60,7 @@ use crate::v2_std_core::RuntimeBridgeMethod::*;
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, error_type_node, node_is_optional, node_is_map, normalize_access_type_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
-pub use crate::v2_compiler_infer_method::{classify_reconciled_intrinsic_method, classify_runtime_bridge_method, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node};
+pub use crate::v2_compiler_infer_method::{classify_reconciled_intrinsic_method, classify_runtime_bridge_method, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node, intrinsic_method_index, runtime_bridge_method_index};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult, check_service_method_call_node};
 
@@ -289,13 +289,44 @@ pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: String) ->
 
 pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: String, fold_accumulator_type: Option<Rc<Node>>, service_registry: HashMap<String, Vec<Rc<OpEntry>>>) -> Rc<KnownMethodResolution> {
     // Tier 0: Structural field lookup (including algebra registry for kernel types)
-    let is_collection = receiver_type.collection_kind.clone().is_some();
-    let tier0_result = if is_collection { None } else { lookup_structural_method(receiver_type.clone(), method_name.clone()) };
+    let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
     match tier0_result {
-        Some(result_type) => Rc::new(KnownMethodResolution {
-            semantics: Some(Rc::new(MethodSemantics::PlainMethodSemantics)),
-            result_type: Some(result_type.clone()),
-        }),
+        Some(result_type) => {
+            // Emit-prep reclassification via index lookup
+            let intrinsic_idx = intrinsic_method_index();
+            let bridge_idx = runtime_bridge_method_index();
+            let intrinsic_match = v2_rt::map_get(&intrinsic_idx, method_name.clone());
+            let bridge_match = v2_rt::map_get(&bridge_idx, method_name.clone());
+            let semantics: Rc<MethodSemantics> = match intrinsic_match.clone() {
+                Some(intrinsic) => Rc::new(MethodSemantics::IntrinsicMethodSemantics {
+                    intrinsic: intrinsic.clone(),
+                    fold_accumulator_type: fold_accumulator_type.clone(),
+                }),
+                None => match bridge_match.clone() {
+                    Some(bridge) => Rc::new(MethodSemantics::RuntimeBridgeSemantics {
+                        method: bridge.clone(),
+                    }),
+                    None => Rc::new(MethodSemantics::PlainMethodSemantics),
+                },
+            };
+            let resolved_type: Rc<Node> = match intrinsic_match.clone() {
+                Some(intrinsic) => match infer_intrinsic_method_type_node(receiver_type.clone(), intrinsic.clone(), fold_accumulator_type.clone()) {
+                    Some(inferred_rt) => inferred_rt.clone(),
+                    None => result_type.clone(),
+                },
+                None => match bridge_match.clone() {
+                    Some(bridge) => match infer_runtime_bridge_method_type_node(receiver_type.clone(), bridge.clone()) {
+                        Some(inferred_rt) => inferred_rt.clone(),
+                        None => result_type.clone(),
+                    },
+                    None => result_type.clone(),
+                },
+            };
+            Rc::new(KnownMethodResolution {
+                semantics: Some(semantics),
+                result_type: Some(resolved_type),
+            })
+        },
         None =>
     match check_service_method_call_node(receiver_type.clone(), method_name.clone(), service_registry.clone()) {
     Some(svc_result) => Rc::new(KnownMethodResolution {
@@ -305,27 +336,10 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
 })),
     result_type: Some(svc_result.result_type.clone()),
 }),
-    None => match classify_reconciled_intrinsic_method(method_name.clone()) {
-    Some(intrinsic) => Rc::new(KnownMethodResolution {
-    semantics: Some(Rc::new(MethodSemantics::IntrinsicMethodSemantics {
-    intrinsic: intrinsic.clone(),
-    fold_accumulator_type: fold_accumulator_type.clone(),
-})),
-    result_type: infer_intrinsic_method_type_node(receiver_type.clone(), intrinsic.clone(), fold_accumulator_type.clone()),
-}),
-    None => match classify_runtime_bridge_method(method_name.clone()) {
-    Some(bridge_method) => Rc::new(KnownMethodResolution {
-    semantics: Some(Rc::new(MethodSemantics::RuntimeBridgeSemantics {
-    method: bridge_method.clone(),
-})),
-    result_type: infer_runtime_bridge_method_type_node(receiver_type.clone(), bridge_method.clone()),
-}),
     None => Rc::new(KnownMethodResolution {
     semantics: None,
     result_type: None,
 }),
-},
-},
 },
 }
 }

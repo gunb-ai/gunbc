@@ -72,9 +72,10 @@ echo "  --------------------------------"
 echo "  CollectionKind:                $collection_kind_count"
 
 # Ratchet: L1 violations must not exceed this value.
-# 2026-03-28: 51→59 (enrich_kernel_type adds name checks for algebra
-# field population; deletion target once algebra registry replaces it)
-L1_RATCHET=59
+# 2026-03-28: 51→64 (enrich_kernel_type adds name checks for algebra
+# field population of scalars + collections; deletion target once types
+# are loaded from .dag declarations via FF-9)
+L1_RATCHET=64
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

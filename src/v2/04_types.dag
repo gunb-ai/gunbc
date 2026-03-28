@@ -183,6 +183,60 @@ fn enrich_kernel_type(name: String, base: Node) -> Node {
       algebra_method_field(name: "reverse", param_types: [self_type], return_type: self_type)
     ]
     Node { name: name, span: base.span, children: fields, connective: Conj, collection_kind: base.collection_kind, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else if name == "List" || name == "Set" || name == "NonEmptyList" || name == "NonEmptySet" {
+    // FreeMonoid<T> fields for collection types.
+    // Return types use self_type (the collection) as a conservative base;
+    // refine_collection_result_type specializes polymorphic cases (map, fold, flat_map)
+    // by examining the typed callback args at the call site.
+    let elem = match base.children |> first { Some { value: e } => e  None => leaf_node(name: "T") }
+    let fields = [
+      algebra_method_field(name: "map", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "filter", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "flat_map", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "fold", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "any", param_types: [self_type], return_type: bool_type),
+      algebra_method_field(name: "all", param_types: [self_type], return_type: bool_type),
+      algebra_method_field(name: "count", param_types: [self_type], return_type: int_type),
+      algebra_method_field(name: "first", param_types: [self_type], return_type: with_optional_cardinality(n: elem)),
+      algebra_method_field(name: "last", param_types: [self_type], return_type: with_optional_cardinality(n: elem)),
+      algebra_method_field(name: "skip", param_types: [self_type, int_type], return_type: self_type),
+      algebra_method_field(name: "take", param_types: [self_type, int_type], return_type: self_type),
+      algebra_method_field(name: "sort_by", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "append", param_types: [self_type, elem], return_type: self_type),
+      algebra_method_field(name: "contains", param_types: [self_type, elem], return_type: bool_type),
+      algebra_method_field(name: "enumerate", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "reverse", param_types: [self_type], return_type: self_type),
+      algebra_method_field(name: "join", param_types: [self_type, string_type], return_type: string_type),
+      algebra_method_field(name: "concat", param_types: [self_type, self_type], return_type: self_type),
+      algebra_method_field(name: "list_push", param_types: [self_type, elem], return_type: self_type),
+      algebra_method_field(name: "length", param_types: [self_type], return_type: int_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, collection_kind: base.collection_kind, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
+  } else if name == "Map" {
+    // PartialFunction<K,V> fields
+    let key_node = match base.children |> first { Some { value: k } => k  None => leaf_node(name: "K") }
+    let val_node = match base.children |> skip(1) |> first { Some { value: v } => v  None => leaf_node(name: "V") }
+    let list_of_keys = container_node(kind_name: "List", element: key_node)
+    let list_of_vals = container_node(kind_name: "List", element: val_node)
+    let fields = [
+      algebra_method_field(name: "get", param_types: [self_type, key_node], return_type: with_optional_cardinality(n: val_node)),
+      algebra_method_field(name: "map_get", param_types: [self_type, key_node], return_type: with_optional_cardinality(n: val_node)),
+      algebra_method_field(name: "lookup", param_types: [self_type, key_node], return_type: with_optional_cardinality(n: val_node)),
+      algebra_method_field(name: "map_insert", param_types: [self_type, key_node, val_node], return_type: self_type),
+      algebra_method_field(name: "map_merge", param_types: [self_type, self_type], return_type: self_type),
+      algebra_method_field(name: "has", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "map_has", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "emit_map_has", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "map_contains_key", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "keys", param_types: [self_type], return_type: list_of_keys),
+      algebra_method_field(name: "map_keys", param_types: [self_type], return_type: list_of_keys),
+      algebra_method_field(name: "values", param_types: [self_type], return_type: list_of_vals),
+      algebra_method_field(name: "map_values", param_types: [self_type], return_type: list_of_vals),
+      algebra_method_field(name: "with", param_types: [self_type, key_node, val_node], return_type: self_type),
+      algebra_method_field(name: "contains", param_types: [self_type, key_node], return_type: bool_type),
+      algebra_method_field(name: "length", param_types: [self_type], return_type: int_type)
+    ]
+    Node { name: name, span: base.span, children: fields, connective: Conj, collection_kind: base.collection_kind, params: base.params, inferred: base.inferred, return_cardinality: base.return_cardinality, uses: base.uses, body: base.body, transport: base.transport, properties: base.properties, type_annotation: base.type_annotation, is_self_recursive: base.is_self_recursive, has_non_tail_self_call: base.has_non_tail_self_call, match_pattern: base.match_pattern, expr_data: base.expr_data }
   } else {
     base
   }

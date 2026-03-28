@@ -233,3 +233,36 @@ fn intrinsic_method_index() -> Map<String, IntrinsicMethod> {
   let m = map_insert(m, "append", MethodAppend)
   m
 }
+
+fn runtime_bridge_method_index() -> Map<String, RuntimeBridgeMethod> {
+  let m = empty_map()
+  let m = map_insert(m, "get", BridgeGet)
+  let m = map_insert(m, "with", BridgeWith)
+  let m = map_insert(m, "list_push", BridgeListPush)
+  let m = map_insert(m, "map_insert", BridgeMapInsert)
+  let m = map_insert(m, "map_merge", BridgeMapMerge)
+  let m = map_insert(m, "map_get", BridgeMapGet)
+  let m = map_insert(m, "map_has", BridgeMapHas)
+  let m = map_insert(m, "emit_map_has", BridgeEmitMapHas)
+  let m = map_insert(m, "map_values", BridgeMapValues)
+  let m = map_insert(m, "map_keys", BridgeMapKeys)
+  let m = map_insert(m, "map_contains_key", BridgeMapContainsKey)
+  let m = map_insert(m, "char_at", BridgeCharAt)
+  let m = map_insert(m, "string_at", BridgeStringAt)
+  let m = map_insert(m, "string_length", BridgeStringLength)
+  let m = map_insert(m, "length", BridgeLength)
+  let m = map_insert(m, "starts_with", BridgeStartsWith)
+  let m = map_insert(m, "ends_with", BridgeEndsWith)
+  let m = map_insert(m, "to_string", BridgeToString)
+  let m = map_insert(m, "trim", BridgeTrim)
+  let m = map_insert(m, "to_lower", BridgeToLower)
+  let m = map_insert(m, "to_upper", BridgeToUpper)
+  let m = map_insert(m, "replace", BridgeReplace)
+  let m = map_insert(m, "substring", BridgeSubstring)
+  let m = map_insert(m, "to_int", BridgeToInt)
+  let m = map_insert(m, "empty_map", BridgeEmptyMap)
+  let m = map_insert(m, "contains", BridgeContains)
+  let m = map_insert(m, "reverse", BridgeReverse)
+  let m = map_insert(m, "lookup", BridgeLookup)
+  m
+}
