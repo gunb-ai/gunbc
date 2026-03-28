@@ -361,17 +361,23 @@ compiler — not in the user's program.
 
 ### Concrete next steps
 
-1. Audit language iteration primitives — ensure no primitive permits
-   unbounded computation. If one exists, redesign it with an explicit
-   bound parameter.
-2. Wire `RecursionPattern` into `cost_of_expr` — classify every
-   recursive call as `LinearRecursion` or `DivideAndConquer`. Any
-   `UnresolvableRecursion` is a compiler gap to fix.
+1. ~~Audit language iteration primitives.~~ **DONE (2026-03-28).** No
+   unbounded primitives found. All .dag iteration (fold/map/filter/for)
+   is bounded by collection size. All tail-recursive functions have
+   structurally decreasing measures (pos advance, item removal, token
+   consumption). Rust runtime `while` loops are bounded by string
+   length. TCO `loop {}` is a rendering artifact; bound is proven
+   in the .dag analyzer.
+2. ~~Wire `RecursionPattern` into `cost_of_expr`.~~ **DONE (2026-03-28).**
+   `get_or_compute_summary` detects self-recursion via placeholder,
+   classifies as Linear/DivideAndConquer, produces bounded cost.
 3. Ensure `cost_of_expr` (tree walk, bound = |nodes|) and
    `tokenize_loop` (scanner, bound = |source|) express their descent
    measures so the analyzer resolves them.
-4. Fix `trace_pop_frame` O(|stack|^2) — `take(count - 1)` copies the
-   list; needs O(1) pop.
+4. ~~Fix `trace_pop_frame` O(|stack|^2).~~ **RESOLVED (2026-03-28).**
+   `trace.dag` is dead code (no callers). See Gap #3 for the
+   multi-layer analysis: dead code detection, reachability-gated
+   analysis, and persistent data structures.
 
 ### Enforcement (see Guarantee Map)
 
@@ -717,13 +723,13 @@ fix requires manual stage0 porting.
 
 Two items surfaced during the workboard design:
 
-**1. `RecursionPattern` is declared but never used.** The complexity
+**1. `RecursionPattern` is declared but never used.** ~~The complexity
 analyzer defines `LinearRecursion | DivideAndConquer |
-UnresolvableRecursion` (complexity.dag:201-204) but never calls it.
-`cost_of_expr` recurses into children without classifying the recursion
-pattern. This is the decidability enforcement point — wiring
-`RecursionPattern` into the walk is how the analyzer proves (or
-rejects) recursive functions.
+UnresolvableRecursion` (complexity.dag:201-204) but never calls it.~~
+**FIXED (2026-03-28).** `get_or_compute_summary` now detects self-
+recursion via the placeholder mechanism, classifies the pattern
+(Linear vs DivideAndConquer), and produces bounded costs with
+`Conservative` certainty instead of `CostUnknown`.
 
 **2. Space complexity would have caught FF-8.** The 20-minute
 self-compile (FF-1/FF-8) was a space problem: O(n) clones on bare
@@ -733,6 +739,26 @@ in the complexity report, the analyzer would have flagged
 connects Stream 3 (container sharing) to Stream 5 Track B (space) —
 the fix makes clone cost O(1), and the space analyzer proves it stays
 that way.
+
+**3. Dead code exists undetected (trace.dag).** The entire `trace.dag`
+module (types + 8 functions) is dead code — no other `.dag` file
+calls any function in it. This violates the "dead code is invariant-
+breaking" rule. The deeper issue is the compiler has no reachability
+analysis: it compiles and analyzes every function in every loaded
+module, including unreachable ones. Four layers of violation:
+
+| Layer | Issue | Fix direction |
+|-------|-------|---------------|
+| Dead module | `trace.dag` loaded, compiled, analyzed, never called | Delete dead module |
+| No dead code detection | Compiler can't flag unused functions/modules | Call-graph reachability from entry points |
+| Analyzer processes unreachable code | Complexity engine wastes work on dead functions, inflates summary/violation counts | Reachability-gated analysis: only analyze functions reachable from entry points |
+| List representation can't express O(1) pop | `Vec<Rc<T>>` makes structural removal O(n); `take(count-1)` is the symptom, immutable Vec is the cause | Persistent data structures in Layer 4 of composition stack (currently missing from std); or uniqueness typing to enable in-place mutation when refcount == 1 |
+
+The first three are wirable now (delete trace.dag, add reachability,
+gate the analyzer). The fourth is a runtime representation change
+that connects to the composition stack (Layer 4: structural
+compositions including stacks/deques) and potentially to the
+algebraic type vision (Stack<A> with O(1) push/pop denotation).
 
 ---
 

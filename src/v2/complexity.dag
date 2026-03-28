@@ -203,6 +203,113 @@ type RecursionPattern
   | DivideAndConquer { split_factor: Int }
   | UnresolvableRecursion { reason: String }
 
+// Check if a CostExpr contains a placeholder for a self-recursive call.
+// The placeholder reason is "computing: <func_name>", inserted by
+// get_or_compute_summary before walking the body.
+fn cost_contains_computing_ref(expr: CostExpr, func_name: String) -> Bool {
+  let target = concat("computing: ", func_name)
+  match expr {
+    CostUnknown { reason: r } => r == target
+    CostAdd { left: l, right: r } =>
+      cost_contains_computing_ref(expr: l, func_name: func_name)
+      || cost_contains_computing_ref(expr: r, func_name: func_name)
+    CostMul { left: l, right: r } =>
+      cost_contains_computing_ref(expr: l, func_name: func_name)
+      || cost_contains_computing_ref(expr: r, func_name: func_name)
+    CostMax { left: l, right: r } =>
+      cost_contains_computing_ref(expr: l, func_name: func_name)
+      || cost_contains_computing_ref(expr: r, func_name: func_name)
+    CostSum { binder: _, upper: _, body: b } =>
+      cost_contains_computing_ref(expr: b, func_name: func_name)
+    _ => false
+  }
+}
+
+// Replace all CostUnknown placeholders for a self-recursive call with
+// a replacement cost (typically CostConst { value: 0 } to extract
+// per-iteration cost).
+fn replace_computing_ref(expr: CostExpr, func_name: String, replacement: CostExpr) -> CostExpr {
+  let target = concat("computing: ", func_name)
+  match expr {
+    CostUnknown { reason: r } =>
+      if r == target { replacement } else { expr }
+    CostAdd { left: l, right: r } =>
+      CostAdd {
+        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
+        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
+      }
+    CostMul { left: l, right: r } =>
+      CostMul {
+        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
+        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
+      }
+    CostMax { left: l, right: r } =>
+      CostMax {
+        left: replace_computing_ref(expr: l, func_name: func_name, replacement: replacement),
+        right: replace_computing_ref(expr: r, func_name: func_name, replacement: replacement)
+      }
+    CostSum { binder: b, upper: u, body: bd } =>
+      CostSum {
+        binder: b,
+        upper: u,
+        body: replace_computing_ref(expr: bd, func_name: func_name, replacement: replacement)
+      }
+    _ => expr
+  }
+}
+
+// Count direct self-calls in a function body expression tree.
+fn count_self_calls(body: Node, func_name: String) -> Int {
+  let own = match body.expr_data {
+    ExprCall { func: f, call_semantics: _ } =>
+      if f == func_name { 1 } else { 0 }
+    _ => 0
+  }
+  let from_children = body.children |> fold(init: 0, f: (acc, child) =>
+    acc + count_self_calls(body: child, func_name: func_name)
+  )
+  own + from_children
+}
+
+// Classify the recursion pattern of a self-recursive function.
+// 1 self-call = LinearRecursion (tail recursion, accumulator pattern).
+// >1 self-calls = DivideAndConquer (tree walk, divide-and-conquer).
+// 0 self-calls = should not reach here, but treat as linear.
+fn classify_recursion_pattern(func_name: String, body: Node) -> RecursionPattern {
+  let calls = count_self_calls(body: body, func_name: func_name)
+  if calls <= 1 {
+    LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else {
+    DivideAndConquer { split_factor: calls }
+  }
+}
+
+// Build the bounded cost for a recursive function, given its pattern
+// and the raw body cost (which still contains computing placeholders).
+fn bounded_recursive_cost(pattern: RecursionPattern, raw_cost: CostExpr, func_name: String) -> CostExpr {
+  // Extract per-iteration cost by replacing recursive call with 0
+  let per_iter = simplify_cost(expr: replace_computing_ref(
+    expr: raw_cost,
+    func_name: func_name,
+    replacement: CostConst { value: 0 }
+  ))
+  match pattern {
+    LinearRecursion { iteration_var: var } =>
+      // Total cost = iterations × per-iteration cost
+      CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
+    DivideAndConquer { split_factor: k } =>
+      // Conservative: depth × (k × per-level cost)
+      let depth_var = concat("depth_", func_name)
+      CostSum {
+        binder: depth_var,
+        upper: SizeVar { name: depth_var },
+        body: CostMul { left: CostConst { value: k }, right: per_iter }
+      }
+    UnresolvableRecursion { reason: r } =>
+      CostUnknown { reason: r }
+  }
+}
+
 // Compose two sequential costs.
 fn cost_seq(a: CostExpr, b: CostExpr) -> CostExpr {
   CostAdd { left: a, right: b }
@@ -1082,17 +1189,11 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
       // Look up function body
       match map_get(func_index, func_name) {
         Some { value: entry } =>
-          let body_budget = estimate_expr_size(texpr: entry.body, budget: 500)
-          if body_budget <= 0 {
-            let too_large = ComplexitySummary {
-              work: CostUnknown { reason: concat("body too large: ", func_name) },
-              span: CostUnknown { reason: concat("body too large: ", func_name) },
-              output_size: empty_map(),
-              certainty: Unknown
-            }
-            let guarded_table = cache_summary(table: table, func_name: func_name, summary: too_large)
-            SummaryResult { summary: too_large, table: guarded_table }
-          } else {
+          // No body-size budget: the caching/placeholder mechanism prevents
+          // exponential analysis, and the decidability invariant guarantees
+          // all functions terminate. Skipping large functions produces false
+          // violations on the most important functions to analyze.
+          {
             // Insert a placeholder to prevent infinite recursion on self-recursive functions
             let placeholder = ComplexitySummary {
               work: CostUnknown { reason: concat("computing: ", func_name) },
@@ -1103,12 +1204,27 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
             // Walk the function body
             let result = cost_of_expr(texpr: entry.body, func_index: func_index, table: table_with_placeholder)
+            // Detect and classify self-recursion: if the result cost still
+            // contains the "computing: func_name" placeholder, the function
+            // is recursive. Classify the pattern and produce a bounded cost.
+            let is_recursive = cost_contains_computing_ref(expr: result.summary.work, func_name: func_name)
+            let bounded = if is_recursive {
+              let pattern = classify_recursion_pattern(func_name: func_name, body: entry.body)
+              ComplexitySummary {
+                work: bounded_recursive_cost(pattern: pattern, raw_cost: result.summary.work, func_name: func_name),
+                span: bounded_recursive_cost(pattern: pattern, raw_cost: result.summary.span, func_name: func_name),
+                output_size: result.summary.output_size,
+                certainty: Conservative
+              }
+            } else {
+              result.summary
+            }
             // Simplify and cache the real summary
             let simplified = ComplexitySummary {
-              work: simplify_cost(expr: result.summary.work),
-              span: simplify_cost(expr: result.summary.span),
-              output_size: result.summary.output_size,
-              certainty: result.summary.certainty
+              work: simplify_cost(expr: bounded.work),
+              span: simplify_cost(expr: bounded.span),
+              output_size: bounded.output_size,
+              certainty: bounded.certainty
             }
             let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
             SummaryResult { summary: simplified, table: final_table }

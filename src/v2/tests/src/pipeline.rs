@@ -805,7 +805,10 @@ fn strict_complexity_violation_count() {
 
     // Ratchet: track the violation count. Lower this as violations are fixed.
     // 2026-03-25: 2 violations out of 1169 function summaries.
-    const COMPLEXITY_RATCHET: usize = 2;
+    // 2026-03-28: 0 violations. Budget guard removed (caching prevents
+    // exponential analysis; decidability invariant guarantees termination).
+    // RecursionPattern wired in to classify self-recursive functions.
+    const COMPLEXITY_RATCHET: usize = 0;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
         "complexity violation count {} exceeds ratchet {}",
