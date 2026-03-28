@@ -200,6 +200,65 @@ Hand-patched generated stage0 files proved the fix class:
 **Status: ROOT-CAUSED, fix pending.** Template + emitter + runtime
 changes must land atomically with a regeneration pass.
 
+## Decidability Invariant
+
+All `.dag` programs are decidable. The DAG is the only computational
+primitive — every program must reduce to a finite, acyclic dataflow
+graph with a provable termination bound.
+
+**Decidable does not mean small.** A loop that runs for 30 trillion
+iterations is decidable — the compiler knows its bound. An "infinite"
+loop is not — the compiler can't reason about it. The compiler does not
+care about the *value* of the bound, only that one *exists*. A server
+that processes up to `MAX_REQUESTS` requests is decidable. A server
+that "runs forever" is not — rewrite it as `repeat(bound: N)` where N
+is the deployment lifetime. The bound can be astronomically large.
+
+The utility of total decidability is extreme: if every function has a
+bound, then complexity analysis is total (every function gets a time
+and space bound), space analysis is total (peak memory is computable),
+the compiler itself is provably terminating on all inputs, and
+composition is closed — piping two `.dag` programs together is still
+decidable. Without decidability, one unbounded function poisons the
+entire pipeline.
+
+Recursion and loops are surface syntax sugar. Users write recursive
+types and functions for familiarity, but the compiler must prove that
+every recursive call descends on a well-founded measure (tree children,
+decreasing index, monotonically advancing position) and lower to bounded
+iteration over finite structure.
+
+**The rule:** undecidable programs are structurally unrepresentable,
+not detected and rejected. The language's iteration primitives (`fold`,
+`map`, `filter`, bounded `repeat`) all require a finite structure or
+explicit bound. There is no `while(true)`, no unbounded `loop`, no
+general recursion without a proven descent measure. The complexity
+analyzer does not *reject* undecidable programs — it *confirms* what
+the language already guarantees. `?O(?)` in the analyzer is not a
+program error; it is a bug in the analyzer or a missing lowering in
+the compiler.
+
+**The test:** the complexity analyzer must produce a concrete bound for
+every function. If a `?` appears, the language or the analyzer has a
+gap — not the user's program. Fix the gap, not the program.
+
+**The fix:** ensure every iteration primitive in the language carries
+its bound structurally. Every recursive pattern has a bounded iterative
+equivalent:
+
+| Recursive pattern | Structural bound | Bounded lowering |
+|---|---|---|
+| Tree walk (visit children) | \|nodes\| (strict child descent) | `fold` over `node.children` |
+| Tokenizer loop (advance pos) | \|source\| (monotonic advance) | iterate until `pos >= len` |
+| Accumulator recursion | decreasing counter or list length | `fold` with init + step |
+| Mutual recursion | SCC with shared decreasing measure | topological fold |
+| Long-running process | explicit bound (`repeat(bound: N)`) | bounded loop with N iterations |
+
+Graph-like properties (cycles, unbounded iteration, general recursion)
+are not expressible in the core language. They can appear as syntactic
+sugar in the surface language only when the compiler can prove they
+decompose into DAG form.
+
 ## Sustainability Invariants
 
 The governing metric for this codebase is **cost of change**: when the
