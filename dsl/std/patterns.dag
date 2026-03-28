@@ -36,8 +36,8 @@ pattern file_content_matches(path: String, expected: String) -> { matches: Bool 
   uses fs: Filesystem(mode: Read)
 {
   node read: fs.read(path: path)
-  node check: eq(a: expected, b: read.content) -> { equal: Bool }
-  return { matches: check.equal }
+  node check: eq(a: expected, b: read.content)
+  return { matches: check }
 }
 
 // Classify a list of file paths into readable and skipped partitions.
@@ -100,7 +100,7 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 
   data = for path in classified.skipped {
     probe = fs.probe(path: path)
-    { path: path, size: probe.classification.size }
+    { path: path, size: probe.size }
   }
 
   return { files: data, skipped: classified.readable }

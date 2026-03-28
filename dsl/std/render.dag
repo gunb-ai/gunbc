@@ -150,9 +150,15 @@ fn format_comment(syntax: CommentSyntax, text: String) -> String {
 
 // -- Format-aware section header ------------------------------------
 
+// Repeat a string N times. Local helper until std.strings provides this.
+fn repeat_string(s: String, n: Int) -> String {
+  if n <= 0 { "" }
+  else { [0] |> fold(init: "", f: fn(acc, _) { concat(acc, s) }) }
+}
+
 fn format_section_header(syntax: CommentSyntax, title: String) -> String {
   let prefix = comment_prefix_for(syntax: syntax)
-  let separator = repeat("=", 76)
+  let separator = "============================================================================"
   "\{prefix\} \{separator\}\n\{prefix\} \{title\}\n\{prefix\} \{separator\}"
 }
 
@@ -168,7 +174,7 @@ fn format_section_header(syntax: CommentSyntax, title: String) -> String {
 // -- Indentation ----------------------------------------------------
 
 fn indent_text(level: Int, unit: String, text: String) -> String {
-  let pad = repeat(unit, level)
+  let pad = repeat_string(s: unit, n: level)
   "\{pad\}\{text\}"
 }
 
