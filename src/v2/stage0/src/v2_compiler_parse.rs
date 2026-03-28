@@ -7754,12 +7754,26 @@ pub fn parse_stmt(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<Expr
 match sh.clone() {
     Some(TokenShape::ShKwLet) => parse_let(tokens.clone(), state.clone()),
     Some(TokenShape::ShKwReturn) => parse_return(tokens.clone(), state.clone()),
-    Some(TokenShape::ShIdent) => if peek_is_eq_after_ident(tokens.clone(), state.clone()) {
+    Some(TokenShape::ShIdent) => if peek_text_is(tokens.clone(), state.clone(), "node".to_string()) && peek_is_node_decl(tokens.clone(), state.clone()) {
+            parse_node_decl(tokens.clone(), state.clone())
+} else if peek_is_eq_after_ident(tokens.clone(), state.clone()) {
             parse_bare_assignment(tokens.clone(), state.clone())
+} else if is_constraint_bracket_after_ident(tokens.clone(), state.clone()) {
+            parse_constrained_assignment(tokens.clone(), state.clone())
 } else {
             parse_expr(tokens.clone(), state.clone())
 },
-    _ => parse_expr(tokens.clone(), state.clone()),
+    _ => {
+        if let Some(ref shape) = sh {
+            if is_name_keyword_shape(shape.clone()) && peek_is_eq_after_ident(tokens.clone(), state.clone()) {
+                parse_bare_assignment(tokens.clone(), state.clone())
+            } else {
+                parse_expr(tokens.clone(), state.clone())
+            }
+        } else {
+            parse_expr(tokens.clone(), state.clone())
+        }
+    },
 }
 }
 }
@@ -7816,6 +7830,46 @@ pub fn try_constraint_annotations(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserSt
     if is_constraint_bracket(tokens.clone(), state.clone()) { parse_constraint_annotations(tokens.clone(), state.clone()) }
     else { Rc::new(ConstraintsResult { constraints: vec![], state: state.clone(), err: None }) }
 }
+// Check if ident [after/when ...] = ... pattern (constraint before assignment)
+pub fn is_constraint_bracket_after_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
+    // pos is ident, pos+1 should be [
+    if ((state.pos.clone() + 1) < (tokens.clone().len() as i64)) {
+        let t1 = tokens.clone().get(((state.pos.clone() + 1)) as usize).cloned();
+        match t1 {
+            Some(t) => is_lbracket_shape(t.shape.clone()) && is_constraint_bracket(tokens.clone(), Rc::new(ParserState { pos: state.pos.clone() + 1 })),
+            None => false,
+        }
+    } else { false }
+}
+
+// Parse: name [constraints] = expr
+pub fn parse_constrained_assignment(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ExprResult> {
+    let span = current_span(tokens.clone(), state.clone());
+    let dummy_expr = parse_recovery_placeholder();
+    let r = expect_name(tokens.clone(), state.clone());
+    if has_err(r.err.clone()) { return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r.state.clone(), err: r.err.clone() }) }
+    let name = r.name.clone();
+    let cr = try_constraint_annotations(tokens.clone(), r.state.clone());
+    if has_err(cr.err.clone()) { return Rc::new(ExprResult { expr: dummy_expr.clone(), state: cr.state.clone(), err: cr.err.clone() }) }
+    let r2 = expect(tokens.clone(), cr.state.clone(), ExpectedToken::ExpectEq);
+    if has_err(r2.err.clone()) { return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() }) }
+    let r3 = parse_expr(tokens.clone(), r2.state.clone());
+    if has_err(r3.err.clone()) { return r3.clone() }
+    let node = make_expr_node(Rc::new(ExprData::ExprLet { name: name.clone() }), vec![r3.expr.clone()], None, span.clone());
+    let node = Rc::new(Node {
+        name: node.name.clone(), span: node.span.clone(), children: node.children.clone(),
+        params: node.params.clone(), inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(), uses: node.uses.clone(),
+        body: node.body.clone(), collection_kind: node.collection_kind.clone(),
+        connective: node.connective.clone(), transport: node.transport.clone(),
+        properties: cr.constraints.clone(), type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: node.match_pattern.clone(), expr_data: node.expr_data.clone(),
+    });
+    Rc::new(ExprResult { expr: node.clone(), state: r3.state.clone(), err: None })
+}
+
 pub fn peek_is_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
     if ((state.pos.clone() + 2) < (tokens.clone().len() as i64)) {
         let t1 = tokens.clone().get(((state.pos.clone() + 1)) as usize).cloned();
@@ -9604,6 +9658,27 @@ Rc::new(PatternResult {
     err: None,
 })
 }
+} else if peek_is_lparen(tokens.clone(), state.clone()) {
+        // Paren variant: Some(binding) or Some(_)
+        let adv = advance(tokens.clone(), state.clone());
+        let r = parse_pattern(tokens.clone(), adv.state.clone());
+        if has_err(r.err.clone()) {
+            return Rc::new(PatternResult { pattern: Rc::new(MatchPattern::Wildcard), state: r.state.clone(), err: r.err.clone() })
+        }
+        let r2 = expect(tokens.clone(), r.state.clone(), ExpectedToken::ExpectRParen);
+        if has_err(r2.err.clone()) {
+            return Rc::new(PatternResult { pattern: Rc::new(MatchPattern::Wildcard), state: r2.state.clone(), err: r2.err.clone() })
+        }
+        let fb = Rc::new(FieldBinding { field_name: "0".to_string(), binding: r.pattern.clone() });
+        Rc::new(PatternResult {
+    pattern: Rc::new(MatchPattern::VariantPattern {
+    name: name.clone(),
+    parent_enum: None,
+    field_bindings: vec![fb],
+}),
+    state: r2.state.clone(),
+    err: None,
+})
 } else {
         Rc::new(PatternResult {
     pattern: Rc::new(MatchPattern::VariantPattern {

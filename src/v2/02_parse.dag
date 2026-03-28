@@ -3347,6 +3347,8 @@ fn parse_stmt(tokens: List<Token>, state: ParserState) -> ExprResult {
         parse_node_decl(tokens: tokens, state: state)
       } else if peek_is_eq_after_ident(tokens: tokens, state: state) {
         parse_bare_assignment(tokens: tokens, state: state)
+      } else if is_constraint_bracket_after_ident(tokens: tokens, state: state) {
+        parse_constrained_assignment(tokens: tokens, state: state)
       } else {
         parse_expr(tokens: tokens, state: state)
       }
@@ -3391,6 +3393,41 @@ fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
     }
     name_ok && decl_ok
   } else { false }
+}
+
+// Check if ident [after/when ...] = ... pattern (constraint before assignment)
+fn is_constraint_bracket_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
+  if state.pos + 1 < count(tokens) {
+    let t1 = get(tokens, state.pos + 1)
+    match t1 {
+      Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens, state: ParserState { pos: state.pos + 1 })
+      None => false
+    }
+  } else { false }
+}
+
+// Parse: name [constraints] = expr
+fn parse_constrained_assignment(tokens: List<Token>, state: ParserState) -> ExprResult {
+  let span = current_span(tokens: tokens, state: state)
+  let dummy_expr = parse_recovery_placeholder()
+  let r = expect_name(tokens: tokens, state: state)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let name = r.name
+  let cr = try_constraint_annotations(tokens: tokens, state: r.state)
+  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, state: cr.state, err: cr.err } }
+  let r2 = expect(tokens: tokens, state: cr.state, expected: ExpectEq)
+  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  if has_err(err: r3.err) { return r3 }
+  let node = make_expr_node(expr_data: ExprLet { name: name }, children: [r3.expr], inferred: none, span: span)
+  let node = Node { name: node.name, span: node.span, children: node.children,
+    params: node.params, inferred: node.inferred, return_cardinality: node.return_cardinality,
+    uses: node.uses, body: node.body, collection_kind: node.collection_kind,
+    connective: node.connective, transport: node.transport, properties: cr.constraints,
+    type_annotation: node.type_annotation, is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call, match_pattern: node.match_pattern,
+    expr_data: node.expr_data }
+  ExprResult { expr: node, state: r3.state, err: none }
 }
 
 // Check if current token is an identifier with a specific text.
@@ -4363,6 +4400,15 @@ fn parse_variant_pattern(tokens: List<Token>, state: ParserState, name: String) 
     let r2 = expect(tokens: tokens, state: skip_newlines(tokens: tokens, state: r.state), expected: ExpectRBrace)
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, state: r2.state, err: none }
+  } else if peek_is_lparen(tokens: tokens, state: state) {
+    // Paren variant: Some(binding) or Some(_)
+    let adv = advance(tokens: tokens, state: state)
+    let r = parse_pattern(tokens: tokens, state: adv.state)
+    if has_err(err: r.err) { return PatternResult { pattern: Wildcard, state: r.state, err: r.err } }
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectRParen)
+    if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, state: r2.state, err: r2.err } }
+    let fb = FieldBinding { field_name: "0", binding: r.pattern }
+    PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, state: r2.state, err: none }
   } else {
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, state: state, err: none }
   }
