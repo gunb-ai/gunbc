@@ -107,6 +107,6 @@ fn char_width(c: Char) -> Int {
 
 fn string_display_width(s: String) -> Int {
   let char_list = chars(s)
-  let widths = map(char_list, c => char_width(c: c))
-  sum(widths)
+  let widths = char_list |> map(c => char_width(c: c))
+  widths |> fold(init: 0, f: fn(acc, w) { acc + w })
 }

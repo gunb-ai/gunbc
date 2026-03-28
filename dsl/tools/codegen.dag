@@ -12,7 +12,7 @@ import std.resources { Filesystem }
 import extdeps.gunbc { shell.Codegen }
 
 func codegen() -> { success: Bool, ran: Bool }
-  uses fs: Filesystem(mode: ReadWrite)
+  uses fs: Filesystem
 {
   check = shell.Codegen.Check()
 

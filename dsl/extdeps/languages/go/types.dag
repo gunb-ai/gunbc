@@ -45,7 +45,7 @@ data go_primitives: List<GoZeroValue> = [
 // Go uses pointer types (*T) for optional values and to avoid copying
 // large structs. A nil pointer represents an absent value.
 
-data pointer_template: String = "*{0}"
+data pointer_template: String = "*\{0\}"
 data address_of_template: String = "&\{value\}"
 data nil_literal: String = "nil"
 

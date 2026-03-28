@@ -45,6 +45,19 @@ fn generic_single_param() {
     assert_no_diagnostics(&result);
 }
 
+// ── Match pattern binding tests ─────────────────────────────────────────
+
+#[test]
+fn match_pattern_binding_scoped_into_arm_body() {
+    let source = "module match_bind\n\ntype Result = Ok { value: Int } | Err { message: String }\n\nfn extract(r: Result) -> Int {\n  match r {\n    Ok { value: v } => v\n    Err { message: _ } => 0\n  }\n}\n";
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    for d in &diags {
+        eprintln!("  diag: {}", d);
+    }
+    assert_no_diagnostics(&result);
+}
+
 // ── Target-specific tests ───────────────────────────────────────────────
 
 #[test]

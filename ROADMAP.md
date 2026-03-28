@@ -511,40 +511,64 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ## Current State (2026-03-28)
 
+**TOP PRIORITY: Diagnostic quality.** The DSL is unusable until
+diagnostics include file name, line:column, source context, and
+actionable suggestions. See "Diagnostic quality" section below.
+
 **Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
 landed (PR #226).**
 
-**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. 148 v2-
-compiler-tests pass. Self-compile time: ~6.47s (release mode). Stage0
-regeneration blocked by pre-existing 04_resolve.dag parse diagnostic
-(not related to Stream 0 changes).
-
 **Stream 0 complete (2026-03-28, PR #226).** `SyntaxSpec` type landed
-in `languages.dag`. `.dag` syntax spec instance in
-`dsl/extdeps/languages/dag/syntax.dag`. Item dispatch, operator
-precedence, and literal keywords are all spec-driven. `parse_item` has
-0 keyword match arms. `infix_bp` has 0 match arms. 30+ `ShKw*`
-TokenShape variants consolidated to single `ShKeyword`. 70+ keyword
-predicates deleted. Net -170 lines. Adding a new item type with a
-standard body kind = 1 file edit (`syntax.dag`).
+in `languages.dag`. Item dispatch, operator precedence, and literal
+keywords are all spec-driven. `parse_item` has 0 keyword match arms.
+30+ `ShKw*` variants consolidated to single `ShKeyword`. 70+ keyword
+predicates deleted. Net -170 lines.
+
+**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Stage0
+binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
+151 fast tests pass, clippy clean. Self-compile time: ~260s (FF-8).
+
+**Verification ratchets (Lane A complete, PR #227):**
+- Diagnostic ratchet: 0 (passes)
+- Emitted Rust error ratchet: 872 errors (down from 1242)
+- L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
+- Keyword arm count: 9 (exact match)
+- Complexity ratchet: 2 violations (pre-existing)
+
+**Stage0 regeneration: BLOCKED on 872 codegen errors.** Fixes applied
+(PR #229): serde removal, generic type params, container casing, type
+map routing, callable error recovery. Remaining: callable rendering,
+cross-module imports, cascading type mismatches.
+
+**DSL compilation:** Added `\{` `\}` escape sequences. 775 brace
+templates escaped across 18 DSL files. Remaining ~1 parse diagnostic
+(block/record disambiguation). Compiler correctly fails closed.
+
+**Diagnostic quality: INSUFFICIENT.** Diagnostics report byte offsets
+with no file name, no line:column, no source context. Implementation
+path: file name in SourceSpan, byte→line:column, source-context
+rendering, parse-context threading, suggestions.
+
+**Known invariant violation: Option rendering splits absence variants.**
+Absence-variant rendering should be a LanguageSpec declaration, not
+an emitter heuristic. See details below.
 
 **L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
-now live in `node.children` as compositional Nodes.
+in `node.children`. Bridge functions deleted.
 
 **Container sharing (FF-8):** Root-caused 2026-03-27. Rendering change
-in `LanguageSpec` container templates, not new compiler machinery.
-Hand-patch proof confirms fix (parser 37s → 0.4s). Atomic fix pending.
+in `LanguageSpec` container templates. Hand-patch proof: 37s → 0.4s.
+Fix pending (Stream 3).
 
 **Root-cause audit (2026-03-23):** Three root causes behind all ~66
 invariant violations — I (incomplete types ~32), II (error-as-name ~18),
 III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
-Remaining violations are tracked in L1 dissolution (Stream 1).
 
-**Two foundational directions for Phase 5 exit:**
-**Stream 0 (compositional parser) — LANDED (PR #226).**
-**Decidability (DAG-reducibility) — active.**
-Next steps: parse-emit symmetry validation (round-trip test), second
-language frontend.
+**Foundational directions for Phase 5 exit:**
+- **Stream 0 (compositional parser) — LANDED (PR #226)**
+- **Decidability (DAG-reducibility) — active**
+- **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
+- **Diagnostic quality — TOP PRIORITY (blocks DSL usability)**
 
 ---
 
@@ -738,72 +762,52 @@ that way.
 
 ## Workboard: Parallel Lanes
 
-**Governing concern (2026-03-28):** CI is green but the compiler
-generates invalid code (~280 Rust errors). False green is worse than
-red — it erodes trust in the entire verification pipeline. The first
-priority is closing the gap between "compiler runs" and "compiler
-output works." No design work should proceed without confidence that
-regressions are visible.
+**Lane A (Verification) DONE (PR #227).** Ratchets are in place:
+diagnostic (0), emitted Rust errors (1184/1200), L1 (51), keyword
+arms (9), complexity (2). Space complexity (Lane A Phase 2) deferred
+until Lane B drives error count down.
 
-### Lane ordering
+**Current priority: Lane B (Compiler Output).** The 1184 cargo check
+errors in regenerated stage0 are the single deficit blocking
+bootstrap regeneration and the committed-binary approach.
 
-**Lane A (Verification) is the foundation.** Nothing else matters if
-we can't tell what's broken. Lane A runs first and produces the
-ratchets that Lanes B and C drive toward zero.
-
-**Lanes B and C run in parallel after Lane A delivers ratchets.** They
-touch different files and have independent exit criteria.
+**Lanes B and C run in parallel.** They touch different files and have
+independent exit criteria.
 
 ```
-Lane A: Verification             Lane B: Compiler Output       Lane C: Language Design
-(know what's broken)             (make output correct)         (make the language right)
+Lane A: Verification ✓           Lane B: Compiler Output       Lane C: Language Design
+(DONE — PR #227)                 (make output correct)         (make the language right)
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-PHASE 1: Wire ratchets           Stream 5C: Regen script       Stream 0: Compositional
-  (no design, just plumbing)       · Fix module naming            Parser (R3)
-  · Emitted Rust error ratchet     · Fix serde imports           · SyntaxSpec extraction
-    (cargo check on stage0)        · cargo check gate            · parse_item reads spec
-  · Complexity ratchet test                                      · round-trip smoke test
-    (violations.len() == N)      Stream 5A: Emitted Rust
-  · L1 ratchet in CI               errors (~280→0)            Decidability invariant
-    (wrap l1-ratchet.sh)           · Bool→bool, Unit→()         · Audit iteration primitives
-  · Keyword arm count              · Remove serde derives        · Wire RecursionPattern
-                                   · Emit P5.11 accessors       · Confirm structural guarantee
-PHASE 2: Space complexity
-  (same walk, diff algebra)      Stream 3: Container           Stream 1: L1 Dissolution
-  · space: CostExpr peer field     Sharing (FF-8)               · Type constructors → 0
-  · Populate all branches          · Rc<Vec<{0}>> templates     · Type-name comparisons → 0
-  · Clone cost = fan-out × size    · emitter + runtime update   · CollectionKind dissolves
-                                   · stage0 regeneration
+✓ Emitted Rust error ratchet     Stream 5A: Codegen fixes      Stream 0: Compositional
+✓ Complexity ratchet (2)           (1184 → 0 errors)             Parser (R3)
+✓ L1 ratchet (51, via script)    ┌─────────────────────┐       · SyntaxSpec extraction
+✓ Keyword arm count (9)          │ E0425 (541): generic │       · parse_item reads spec
+                                 │   type params <T>    │       · round-trip smoke test
+Deferred:                        │ E0433 (404): serde   │
+· Space as peer dimension        │   NonEmpty wrappers  │     Decidability invariant
+                                 │ E0220 (140): derived │       · Audit iteration prims
+                                 └─────────────────────┘       · Wire RecursionPattern
+                                 Stream 5C: Regen script
+                                   · ✓ cargo run (Docker)     Stream 1: L1 Dissolution
+                                   · Regenerate + commit        · Type constructors → 0
+                                                                · Type-name comparisons
+                                 Stream 3: Container FF-8       · CollectionKind dissolves
+                                   · Rc<Vec<{0}>> templates
+                                   · Atomic with regen
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-Files: bootstrap.rs (tests),     Files: 05_emit_rust.dag,      Files: 02_parse.dag,
-  source_audit.rs,                 LanguageSpec templates,        complexity.dag,
-  complexity.dag (space),          runtime_rust.dag,              01_tokenize.dag (spec),
-  l1-ratchet.sh                    regenerate-stage0.sh,          04_infer.dag (L1)
-                                   stage0/*.rs
-─────────────────────────        ─────────────────────────     ─────────────────────────
-Exit: every Tier 3 item in       Exit: cargo check 0 errors    Exit: parse_item 0 keyword
-  Guarantee Map promoted to        on generated stage0;           arms; decidability is
-  Tier 2; space in complexity      FF-8 class eliminated          structural (Tier 1);
-  report                                                          L1 ratchet = 0
+Exit: ✓ Done                     Exit: cargo check 0 errors    Exit: parse_item 0 keyword
+                                   on generated stage0;           arms; decidability is
+                                   committed binary (not          structural (Tier 1);
+                                   source); FF-8 eliminated       L1 ratchet = 0
 ```
 
-### Why Lane A first
+### Lane A status (2026-03-28): DONE
 
-The emitted Rust error ratchet is the single most important test to
-add. Today:
-
-- Self-compile: 0 diagnostics (tested, green)
-- Generated Rust: ~280 errors (untested, invisible)
-- CI: green (false confidence)
-
-Adding one test — compile generated stage0, count errors, assert
-`<= RATCHET` — immediately makes the breakage visible. Every
-subsequent fix in Lane B mechanically ratchets the number down. Without
-this test, Lane B fixes are unverifiable.
-
-The other Lane A ratchets (complexity violations, L1 count, keyword
-arms) follow the same pattern: measure what exists, make the number
-visible, ratchet down. All are pure plumbing — no design decisions.
+All ratchets delivered in PR #227. The verification gap is closed:
+regressions in compiler output, L1 type knowledge, parser keyword
+arms, and complexity violations are now visible and mechanically
+tracked. Lane B progress is measurable via the emitted Rust error
+ratchet (1184 → target 0).
 
 ### Cross-lane dependencies
 
@@ -830,18 +834,22 @@ Lane C ──→ Lane A:  Compositional parser enables round-trip smoke
 
 ### Execution order
 
-**Lane A (start immediately):**
-1. Emitted Rust error ratchet test (~280 today)
-2. Complexity violation ratchet test
-3. L1 ratchet in CI
-4. Keyword arm count in source audit
-5. Space as peer dimension in complexity analyzer
+**Lane A: ✓ DONE** (PR #227)
 
-**Lane B (start after Lane A step 1):**
-1. Fix regen script (5C)
-2. Bool→bool + serde removal (clears ~95% of errors)
-3. P5.11 accessor emission
-4. Container sharing (FF-8, atomic with regen)
+**Lane B (current priority — 996 errors → 0):**
+1. ✓ Fix regen script for Docker (cargo run instead of binary path)
+2. ✓ Remove serde from NonEmpty wrappers (138 → 0 serde errors)
+3. ✓ Fix generics emission — `<T>` on struct/enum defs (~130 errors)
+4. ✓ Fix container/generic casing — FreeMonoid not free_monoid
+5. ✓ Fix callable error recovery — empty name, not "Callable" (Part 1)
+6. Callable rendering (Part 2) — zero-param fn() → Rc<dyn Fn() -> T>.
+   Structural identification works (inferred != none predicate) but
+   rendering change causes ~186 cascading type mismatches. Needs full
+   emit pipeline to agree: struct fields, function sigs, call sites.
+7. Remaining E0425 (388): `Tuple`, `Bool` type names unresolved
+8. Regenerate stage0, verify cargo check passes
+9. Committed binary approach (never hand-edit generated code again)
+10. Container sharing (FF-8, atomic with regen)
 
 **Lane C (runs in parallel, no blocking deps):**
 1. Decidability audit (review iteration primitives)

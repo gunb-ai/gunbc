@@ -33,11 +33,11 @@ fn eq(a: String, b: String) -> Bool {
 // CI verification ("has this generated file drifted?").
 
 pattern file_content_matches(path: String, expected: String) -> { matches: Bool }
-  uses fs: Filesystem(mode: Read)
+  uses fs: Filesystem
 {
   node read: fs.read(path: path)
-  node check: eq(a: expected, b: read.content) -> { equal: Bool }
-  return { matches: check.equal }
+  node check: eq(a: expected, b: read.content)
+  return { matches: check }
 }
 
 // Classify a list of file paths into readable and skipped partitions.
@@ -52,7 +52,7 @@ pattern file_content_matches(path: String, expected: String) -> { matches: Bool 
 // Every input path appears in exactly one output list.
 
 pattern classify_files(paths: List<FilePath>) -> { readable: List<FilePath>, skipped: List<FilePath> }
-  uses fs: Filesystem(mode: Read)
+  uses fs: Filesystem
 {
   entries = for path in paths {
     fs.probe(path: path)
@@ -73,7 +73,7 @@ pattern classify_files(paths: List<FilePath>) -> { readable: List<FilePath>, ski
 // missing paths, and special files.
 
 pattern read_text_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, content: String }>, skipped: List<FilePath> }
-  uses fs: Filesystem(mode: Read)
+  uses fs: Filesystem
 {
   classified = classify_files(paths: paths)
 
@@ -94,13 +94,13 @@ pattern read_text_files(paths: List<FilePath>) -> { files: List<{ path: FilePath
 // also skipped since they can't be read as binary content.
 
 pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, size: Int }>, skipped: List<FilePath> }
-  uses fs: Filesystem(mode: Read)
+  uses fs: Filesystem
 {
   classified = classify_files(paths: paths)
 
   data = for path in classified.skipped {
     probe = fs.probe(path: path)
-    { path: path, size: probe.classification.size }
+    { path: path, size: probe.size }
   }
 
   return { files: data, skipped: classified.readable }
@@ -127,51 +127,37 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 // (with a resolve step) and content_upsert specializes (with
 // file_content_matches as the check and fs.write as the action).
 
-pattern ensure<Check, Action>(
-  should_act: fn(Check.Output) -> Bool = c => !c.exists
-) -> { acted: Bool } {
-  node check: Check
-  node action [after check, when should_act(check)]: Action
-  return { acted: should_act(check) }
-}
-
-// --- Upsert (check -> create -> resolve) ------------------------------
-// 3-step conditional: check, create if needed, then resolve a result.
-// Extends ensure with a resolve step that runs after both check and create.
+// ensure, upsert, content_upsert: commented out pending parser support
+// for generics on pattern declarations (pattern ensure<Check, Action>).
+// See ROADMAP.md "Desired Parser Features" for tracking.
 //
-// Generic: return type R is inferred from Resolve's output type.
-// Guard is customizable via should_create (default: c => !c.exists).
+// pattern ensure<Check, Action>(
+//   should_act: fn(Check.Output) -> Bool = c => !c.exists
+// ) -> { acted: Bool } {
+//   node check: Check
+//   node action [after check, when should_act(check)]: Action
+//   return { acted: should_act(check) }
+// }
 //
-// Type system features used:
-//   - Resolve: -> R  (output type variable, Level 7 + Level 8)
-//   - fn(T) -> Bool  (higher-order parameter)
+// pattern upsert<Check, Create, Resolve: -> R>(
+//   should_create: fn(Check.Output) -> Bool = c => !c.exists
+// ) -> { value: R } {
+//   node check: Check
+//   node create [after check, when should_create(check)]: Create
+//   node resolve [after check, after create]: Resolve
+//   return { value: resolve }
+// }
 //
-// Replaces gunbc's UpsertBuilder.
-
-pattern upsert<Check, Create, Resolve: -> R>(
-  should_create: fn(Check.Output) -> Bool = c => !c.exists
-) -> { value: R } {
-  node check: Check
-  node create [after check, when should_create(check)]: Create
-  node resolve [after check, after create]: Resolve
-  return { value: resolve }
-}
-
-// --- Content Upsert (check -> conditional write) ----------------------
-// Specializes ensure: check = file_content_matches, action = fs.write.
-// The most common pattern: ~8 of 13 tools use this.
-// Replaces gunbc's add_content_upsert_chain().
-
-pattern content_upsert(content: String, path: String) -> { written: Bool }
-  uses fs: Filesystem(mode: ReadWrite)
-{
-  result = ensure(
-    should_act: c => !c.matches,
-    check: file_content_matches(path: path, expected: content),
-    action: fs.write(path: path, content: content)
-  )
-  return { written: result.acted }
-}
+// pattern content_upsert(content: String, path: String) -> { written: Bool }
+//   uses fs: Filesystem
+// {
+//   result = ensure(
+//     should_act: c => !c.matches,
+//     check: file_content_matches(path: path, expected: content),
+//     action: fs.write(path: path, content: content)
+//   )
+//   return { written: result.acted }
+// }
 
 // --- Transaction (begin -> body -> commit/rollback) --------------------
 // Generic: return type R is inferred from Begin's output type.
@@ -181,18 +167,19 @@ pattern content_upsert(content: String, path: String) -> { written: Bool }
 //   - Begin: -> R    (output type variable)
 //   - fn(T) -> Bool  (higher-order parameter)
 
-pattern transaction<Begin: -> R, Body, Commit, Rollback>(
-  succeeded: fn(Body.Output) -> Bool = b => b.success
-) -> { value: R } {
-  node begin: Begin
-  node body: Body
-  node commit [when succeeded(body)]: Commit
-  node rollback [when !succeeded(body)]: Rollback
-  return { value: begin }
-}
-
-// --- Retry ------------------------------------------------------------
-
-pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} {
-  node op: Op
-}
+// transaction, retry: commented out pending parser support for
+// generics on pattern declarations.
+//
+// pattern transaction<Begin: -> R, Body, Commit, Rollback>(
+//   succeeded: fn(Body.Output) -> Bool = b => b.success
+// ) -> { value: R } {
+//   node begin: Begin
+//   node body: Body
+//   node commit [when succeeded(body)]: Commit
+//   node rollback [when !succeeded(body)]: Rollback
+//   return { value: begin }
+// }
+//
+// pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} {
+//   node op: Op
+// }

@@ -24,7 +24,7 @@ data generated_roots: List<String> = [
 // -- Path templates for per-module codegen artefacts --
 
 data path_templates: List<String> = [
-  "target/codegen/{module}.json",
-  "target/codegen/{module}.lock",
-  "target/codegen/{module}.status"
+  "target/codegen/\{module\}.json",
+  "target/codegen/\{module\}.lock",
+  "target/codegen/\{module\}.status"
 ]

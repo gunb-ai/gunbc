@@ -220,7 +220,7 @@ fn stage0_compile_accepts_dag_target() {
 //   E0425 (541): generics — emitter generates `T` without type param declaration
 //   E0433+E0405 (404): serde — emitter generates serde code, stage0 lacks serde dep
 //   E0220+E0277 (140): downstream trait/type errors from above
-const EMITTED_RUST_ERROR_RATCHET: usize = 1200;
+const EMITTED_RUST_ERROR_RATCHET: usize = 880;
 
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check
@@ -293,7 +293,31 @@ fn bootstrap_stage0_to_stage1() {
     } else {
         error_count
     };
+    // Categorize errors for diagnosis
+    let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for line in check_stderr.lines() {
+        if line.starts_with("error[") {
+            let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
+            *categories.entry(code).or_insert(0) += 1;
+        }
+    }
+    let mut cats: Vec<_> = categories.iter().collect();
+    cats.sort_by(|a, b| b.1.cmp(a.1));
     eprintln!("stage1 cargo check: {} errors (ratchet: {})", error_count, EMITTED_RUST_ERROR_RATCHET);
+    for (code, count) in cats.iter().take(10) {
+        eprintln!("  {}: {}", code, count);
+    }
+    // Show samples for top 3 categories
+    for (code, _) in cats.iter().take(3) {
+        let needle = code.trim_end_matches(']').trim_start_matches("error[");
+        let samples: Vec<&str> = check_stderr.lines()
+            .filter(|l| l.starts_with(&format!("error[{}]", needle)))
+            .take(2)
+            .collect();
+        for s in samples {
+            eprintln!("  {}", &s[..s.len().min(200)]);
+        }
+    }
 
     assert!(
         error_count <= EMITTED_RUST_ERROR_RATCHET,

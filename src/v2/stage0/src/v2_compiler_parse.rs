@@ -3442,7 +3442,7 @@ finish_type_expr_from_name(tokens.clone(), adv.state.clone(), n.clone(), span.cl
 
 pub fn parse_callable_type_expr(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, start_span: Rc<SourceSpan>) -> Rc<TypeResult> {
     {
-        let dummy_te = leaf_type_node("Callable".to_string(), start_span.clone());
+        let dummy_te = leaf_type_node("".to_string(), start_span.clone());
 let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectLParen);
 if has_err(r.err.clone()) {
             return Rc::new(TypeResult {

@@ -54,7 +54,7 @@ type PartitionResult {
 fn is_text_readable(entry: FileEntry) -> Bool {
   match entry.kind {
     RegularFile => entry.encoding != Binary
-    Symlink     => entry.symlink_target == TargetFile and entry.encoding != Binary
+    Symlink     => entry.symlink_target == TargetFile && entry.encoding != Binary
     Directory   => false
     Missing     => false
     Other       => false
