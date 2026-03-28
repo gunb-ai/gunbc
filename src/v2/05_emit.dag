@@ -867,8 +867,12 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         let container_kind = non_empty_container_kind(collection: n.collection_kind, name: n.name, target: target)
         emit_container(kind: container_kind, inner: inner, target: target)
       } else {
+        // Non-container generic type: use target-specific syntax.
         let base = emit_primitive_type(name: n.name, target: target)
-        let wrapped = concat(base, "<", inner, ">")
+        let wrapped = match target {
+          Python => concat(base, "[", inner, "]")
+          _ => concat(base, "<", inner, ">")
+        }
         if emit_map_has(m: rc_types, key: n.name) { concat("Rc<", wrapped, ">") }
         else { wrapped }
       }

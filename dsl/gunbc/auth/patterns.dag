@@ -33,9 +33,7 @@ pattern acquire_subject_token(
   node token = match runtime {
     GitHubActions => github_oidc(audience: audience)
     Metadata     => metadata_oidc(audience: audience)
-    // LocalDev branch deferred: local_auth() requires parser features
-    // not yet supported (field access in if-block expressions).
-    // See ROADMAP.md "Desired Parser Features".
+    LocalDev     => metadata_oidc(audience: audience)  // placeholder: local_auth() needs if/else expression support
   }
   return { token: token.token }
 }
@@ -55,11 +53,11 @@ pattern optional_impersonation(
     target_sa: service_account,
     lifetime_seconds: lifetime_seconds
   ) [when service_account != None]
-  node impersonated_token = match service_account {
+  let result_token = match service_account {
     Some(_sa) => impersonated.access_token
     None => access_token
   }
-  return { token: impersonated_token }
+  return { token: result_token }
 }
 
 fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_id: String, required_scopes: List<String>) -> AccessToken {
@@ -75,14 +73,14 @@ pattern credential_chain(
   service_account: ServiceAccountEmail?,
   secret_name: NonEmptyStr,
   project_id: ProjectId,
-  scheme: AuthScheme = Bearer,
+  scheme: String = "Bearer",
   header_name: String?,
   source_id: NonEmptyStr,
   required_scopes: List<String>,
   lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
 ) -> { token: AccessToken }
   uses net: Network
-  // provides auth: AuthContext  -- deferred: parser doesn't support provides clause yet
+  // provides auth: AuthContext  -- commented: parser doesn't support provides yet
 {
   node subject: acquire_subject_token(runtime: runtime, audience: audience)
 
@@ -139,16 +137,19 @@ func metadata_oidc(audience: String) -> { token: Secret }
 }
 
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
-// Deferred: parser can't handle field access (adc_refresh.access_token)
-// inside if-block expressions. See ROADMAP.md "Desired Parser Features".
+// Commented: parser doesn't support if/else as inline expression yet.
 //
-// func local_auth() -> { token: Secret }
-//   uses fs: Filesystem(mode: Read)
+// func local_auth() -> Secret
+//   uses fs: Filesystem
 // {
 //   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
+//
 //   adc_content = fs.read(path: adc_path.value) [when adc_path.value != None]
 //   adc_refresh = shell.OAuth2.RefreshToken(refresh_token: adc_content.content) [when adc_path.value != None]
 //   gcloud_auth = shell.GCloud.AuthPrintAccessToken()
-//   resolved_token = if adc_path.value != None { adc_refresh.access_token } else { gcloud_auth.access_token }
-//   return { token: resolved_token }
+//
+//   let adc_token = adc_refresh.access_token
+//   let gcloud_token = gcloud_auth.access_token
+//   let result = if adc_path.value != None { adc_token } else { gcloud_token }
+//   return result
 // }

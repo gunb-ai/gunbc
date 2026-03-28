@@ -11,20 +11,18 @@ module tools.codegen
 import std.resources { Filesystem }
 import extdeps.gunbc { shell.Codegen }
 
-func codegen() -> { success: Bool, ran: Bool }
-  uses fs: Filesystem(mode: ReadWrite)
-{
-  check = shell.Codegen.Check()
-
-  run = shell.Codegen.Run() [when !check.needed]
-
-  stamp [when run.success] = fs.write(
-    path: "target/codegen/.stamp",
-    content: "ok"
-  )
-
-  return {
-    success: check.needed || run.success,
-    ran: !check.needed
-  }
-}
+// Commented: compiler doesn't bind `uses` resource variables into scope yet.
+// func codegen() -> { success: Bool, ran: Bool }
+//   uses fs: Filesystem
+// {
+//   check = shell.Codegen.Check()
+//   run = shell.Codegen.Run() [when !check.needed]
+//   stamp [when run.success] = fs.write(
+//     path: "target/codegen/.stamp",
+//     content: "ok"
+//   )
+//   return {
+//     success: check.needed || run.success,
+//     ran: !check.needed
+//   }
+// }

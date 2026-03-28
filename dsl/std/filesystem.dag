@@ -75,9 +75,10 @@ fn skip_reason(entry: FileEntry) -> String {
     Missing     => "missing"
     Other       => "special file"
     Symlink     => match entry.symlink_target {
-      TargetDir => "symlink to directory"
-      Broken    => "broken symlink"
+      TargetDir  => "symlink to directory"
+      Broken     => "broken symlink"
       TargetFile => "binary file (via symlink)"
+      _          => "unknown symlink target"
     }
     RegularFile => "binary file"
   }

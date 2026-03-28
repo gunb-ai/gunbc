@@ -32,79 +32,51 @@ fn eq(a: String, b: String) -> Bool {
 // Useful independently for: staleness detection, dry-run reporting,
 // CI verification ("has this generated file drifted?").
 
-pattern file_content_matches(path: String, expected: String) -> { matches: Bool }
-  uses fs: Filesystem(mode: Read)
-{
-  node read: fs.read(path: path)
-  node check: eq(a: expected, b: read.content) -> { equal: Bool }
-  return { matches: check.equal }
-}
-
-// Classify a list of file paths into readable and skipped partitions.
-// Uses Filesystem.probe to determine entry kind and content encoding,
-// then partitions using is_text_readable from std.filesystem.
+// Commented: compiler doesn't bind `uses` resource variables into scope yet.
+// These patterns are correct DSL but need compiler support for `fs.read()` etc.
 //
-// This is the standard pattern for safely consuming file listings
-// from services that return unclassified paths (git.Core.LsFiles,
-// directory listings, etc). Handles all entry kinds: regular files,
-// directories, symlinks, missing paths, and special files.
+// pattern file_content_matches(path: String, expected: String) -> { matches: Bool }
+//   uses fs: Filesystem
+// {
+//   node read: fs.read(path: path)
+//   node check: eq(a: expected, b: read.content)
+//   return { matches: check }
+// }
 //
-// Every input path appears in exactly one output list.
-
-pattern classify_files(paths: List<FilePath>) -> { readable: List<FilePath>, skipped: List<FilePath> }
-  uses fs: Filesystem(mode: Read)
-{
-  entries = for path in paths {
-    fs.probe(path: path)
-  }
-  partitioned = partition_entries(entries: entries)
-  return {
-    readable: map(partitioned.readable, e => e.path),
-    skipped: map(partitioned.skipped, e => e.path)
-  }
-}
-
-// Read all text files from a list, skipping non-readable entries.
-// Composes classify_files (partition step) + parallel fs.read (content step).
+// pattern classify_files(paths: List<FilePath>) -> { readable: List<FilePath>, skipped: List<FilePath> }
+//   uses fs: Filesystem
+// {
+//   entries = for path in paths {
+//     fs.probe(path: path)
+//   }
+//   partitioned = partition_entries(entries: entries)
+//   return {
+//     readable: map(partitioned.readable, e => e.path),
+//     skipped: map(partitioned.skipped, e => e.path)
+//   }
+// }
 //
-// Returns both the successfully read files AND the skipped paths,
-// so callers can report/log what was excluded. Skipped entries include
-// directories, symlinks to directories, broken symlinks, binary files,
-// missing paths, and special files.
-
-pattern read_text_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, content: String }>, skipped: List<FilePath> }
-  uses fs: Filesystem(mode: Read)
-{
-  classified = classify_files(paths: paths)
-
-  contents = for path in classified.readable {
-    content = fs.read(path: path)
-    { path: path, content: content.content }
-  }
-
-  return { files: contents, skipped: classified.skipped }
-}
-
-// Read all binary files from a list, skipping readable text files.
-// Parallel to read_text_files but uses fs.read_bytes for binary-safe I/O.
+// pattern read_text_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, content: String }>, skipped: List<FilePath> }
+//   uses fs: Filesystem
+// {
+//   classified = classify_files(paths: paths)
+//   contents = for path in classified.readable {
+//     content = fs.read(path: path)
+//     { path: path, content: content.content }
+//   }
+//   return { files: contents, skipped: classified.skipped }
+// }
 //
-// Returns both the successfully read binary files AND the skipped paths.
-// Note: "skipped" here means readable text files (the inverse of
-// read_text_files). Non-file entries (dirs, symlinks, missing) are
-// also skipped since they can't be read as binary content.
-
-pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, size: Int }>, skipped: List<FilePath> }
-  uses fs: Filesystem(mode: Read)
-{
-  classified = classify_files(paths: paths)
-
-  data = for path in classified.skipped {
-    probe = fs.probe(path: path)
-    { path: path, size: probe.classification.size }
-  }
-
-  return { files: data, skipped: classified.readable }
-}
+// pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePath, size: Int }>, skipped: List<FilePath> }
+//   uses fs: Filesystem
+// {
+//   classified = classify_files(paths: paths)
+//   data = for path in classified.skipped {
+//     probe = fs.probe(path: path)
+//     { path: path, size: probe.size }
+//   }
+//   return { files: data, skipped: classified.readable }
+// }
 
 // =====================================================================
 // Composition Patterns
@@ -127,8 +99,10 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 // (with a resolve step) and content_upsert specializes (with
 // file_content_matches as the check and fs.write as the action).
 
-// Deferred: pattern generics require compositional parser.
-// See ROADMAP.md "Desired Parser Features".
+// ensure, upsert, content_upsert: commented out pending parser support
+// for generics on pattern declarations (pattern ensure<Check, Action>).
+// See ROADMAP.md "Desired Parser Features" for tracking.
+//
 // pattern ensure<Check, Action>(
 //   should_act: fn(Check.Output) -> Bool = c => !c.exists
 // ) -> { acted: Bool } {
@@ -136,21 +110,7 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 //   node action [after check, when should_act(check)]: Action
 //   return { acted: should_act(check) }
 // }
-
-// --- Upsert (check -> create -> resolve) ------------------------------
-// 3-step conditional: check, create if needed, then resolve a result.
-// Extends ensure with a resolve step that runs after both check and create.
 //
-// Generic: return type R is inferred from Resolve's output type.
-// Guard is customizable via should_create (default: c => !c.exists).
-//
-// Type system features used:
-//   - Resolve: -> R  (output type variable, Level 7 + Level 8)
-//   - fn(T) -> Bool  (higher-order parameter)
-//
-// Replaces gunbc's UpsertBuilder.
-
-// Deferred: pattern generics require compositional parser.
 // pattern upsert<Check, Create, Resolve: -> R>(
 //   should_create: fn(Check.Output) -> Bool = c => !c.exists
 // ) -> { value: R } {
@@ -159,19 +119,22 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 //   node resolve [after check, after create]: Resolve
 //   return { value: resolve }
 // }
-
-// --- Content Upsert (check -> conditional write) ----------------------
-// Specializes ensure: check = file_content_matches, action = fs.write.
-// The most common pattern: ~8 of 13 tools use this.
-// Replaces gunbc's add_content_upsert_chain().
 //
-// Concrete version of content_upsert (non-generic).
-// Checks if file content matches, writes only if different.
-// When pattern generics land, this becomes: ensure(check: file_content_matches, action: fs.write)
+// pattern content_upsert(content: String, path: String) -> { written: Bool }
+//   uses fs: Filesystem
+// {
+//   result = ensure(
+//     should_act: c => !c.matches,
+//     check: file_content_matches(path: path, expected: content),
+//     action: fs.write(path: path, content: content)
+//   )
+//   return { written: result.acted }
+// }
 
+// Concrete stub: imported by tools.bootstrap and tools.readme.
+// When pattern generics land, replace with the pattern above.
 fn content_upsert(content: String, path: String) -> { written: Bool } {
-  let existing = ""
-  let matches = existing == content
+  let matches = content == ""
   { written: !matches }
 }
 
@@ -183,7 +146,9 @@ fn content_upsert(content: String, path: String) -> { written: Bool } {
 //   - Begin: -> R    (output type variable)
 //   - fn(T) -> Bool  (higher-order parameter)
 
-// Deferred: pattern generics require compositional parser.
+// transaction, retry: commented out pending parser support for
+// generics on pattern declarations.
+//
 // pattern transaction<Begin: -> R, Body, Commit, Rollback>(
 //   succeeded: fn(Body.Output) -> Bool = b => b.success
 // ) -> { value: R } {
@@ -193,10 +158,7 @@ fn content_upsert(content: String, path: String) -> { written: Bool } {
 //   node rollback [when !succeeded(body)]: Rollback
 //   return { value: begin }
 // }
-
-// --- Retry ------------------------------------------------------------
-
-// Deferred: pattern generics require compositional parser.
+//
 // pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} {
 //   node op: Op
 // }

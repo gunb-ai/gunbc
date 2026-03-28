@@ -40,7 +40,10 @@ type ContentBlock
 
 // -- System prompt -------------------------------------------------
 
-type CacheControl = Ephemeral
+// Single-variant enum. "Ephemeral" is the only cache control type
+// in the Anthropic API (as of 2026). Modeled as a String constant
+// since single-variant enums are type aliases in .dag.
+type CacheControl { type: String }
 
 type SystemPrompt {
   text: String

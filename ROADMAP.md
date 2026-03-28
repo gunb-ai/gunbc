@@ -511,39 +511,48 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ## Current State (2026-03-28)
 
-**Phases 1-4 complete. Phase 5 active.**
+**TOP PRIORITY: Diagnostic quality.** The DSL is unusable until
+diagnostics include file name, line:column, source context, and
+actionable suggestions. See "Diagnostic quality" section below.
+
+**Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
+landed (PR #226).**
+
+**Stream 0 complete (2026-03-28, PR #226).** `SyntaxSpec` type landed
+in `languages.dag`. Item dispatch, operator precedence, and literal
+keywords are all spec-driven. `parse_item` has 0 keyword match arms.
+30+ `ShKw*` variants consolidated to single `ShKeyword`. 70+ keyword
+predicates deleted. Net -170 lines.
+
 
 **Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Stage0
 binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
-Diagnostic ratchet PASSES. Self-compile time: ~260s (FF-8 perf issue).
-150 fast tests pass, clippy clean.
+151 fast tests pass, clippy clean. Self-compile time: ~260s (FF-8).
 
-**Verification ratchets (Lane A complete):**
+**Verification ratchets (Lane A complete, PR #227):**
 - Diagnostic ratchet: 0 (passes)
 - Emitted Rust error ratchet: 872 errors (down from 1242)
 - L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
 - Keyword arm count: 9 (exact match)
-- Complexity ratchet: 2 violations (pre-existing in pipeline.rs)
+- Complexity ratchet: 2 violations (pre-existing)
 
-**Stage0 regeneration: BLOCKED on 872 codegen errors.** Fixes applied:
-- ✓ Serde removal (138 → 0)
-- ✓ Generic type params `<T>` on struct/enum defs (~130 errors)
-- ✓ Container/generic casing (FreeMonoid not free_monoid)
-- ✓ Type map in conj/disj rendering (Bool→bool, Float→f64)
-- ✓ Callable error recovery (Part 1: errors orthogonal to nodes)
-Remaining 872 errors in 3 structural categories:
-- E0308 (358): type mismatches (cascading)
-- E0425 (155): Callable zero-param rendering (needs pipeline alignment)
-- E0433 (128): CodegenBackend cross-module visibility (emitter imports)
-- E0369+E0277+E0282 (231): downstream cascades
+**Stage0 regeneration: BLOCKED on 872 codegen errors.** Fixes applied
+(PR #229): serde removal, generic type params, container casing, type
+map routing, callable error recovery. Remaining: callable rendering,
+cross-module imports, cascading type mismatches.
 
-**DSL user diagnostics (20 → ~3):** Added `\{` `\}` escape sequences
-for literal braces in strings. 775 brace templates escaped across 18
-DSL files. Remaining ~3 diagnostics: enum variant as standalone value.
+**DSL compilation:** Added `\{` `\}` escape sequences. 775 brace
+templates escaped across 18 DSL files. Remaining ~1 parse diagnostic
+(block/record disambiguation). Compiler correctly fails closed.
 
-**Known parser limitation:** Stage0 parser misreads `{ fn(name: val) }`
-as record literal (block/record disambiguation). Workaround: use match
-with discriminant enum instead of if-blocks with named-arg calls.
+**Diagnostic quality: INSUFFICIENT.** Diagnostics report byte offsets
+with no file name, no line:column, no source context. Implementation
+path: file name in SourceSpan, byte→line:column, source-context
+rendering, parse-context threading, suggestions.
+
+**Known invariant violation: Option rendering splits absence variants.**
+Absence-variant rendering should be a LanguageSpec declaration, not
+an emitter heuristic. See details below.
 
 **L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
 in `node.children`. Bridge functions deleted.
@@ -552,9 +561,15 @@ in `node.children`. Bridge functions deleted.
 in `LanguageSpec` container templates. Hand-patch proof: 37s → 0.4s.
 Fix pending (Stream 3).
 
-**Three foundational directions must land before Phase 5 exit:**
-**Stream 0 (compositional parser), decidability (DAG-reducibility),**
-**and guarantee enforcement (all Tier 3 items promoted to Tier 2).**
+**Root-cause audit (2026-03-23):** Three root causes behind all ~66
+invariant violations — I (incomplete types ~32), II (error-as-name ~18),
+III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
+
+**Foundational directions for Phase 5 exit:**
+- **Stream 0 (compositional parser) — LANDED (PR #226)**
+- **Decidability (DAG-reducibility) — active**
+- **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
+- **Diagnostic quality — TOP PRIORITY (blocks DSL usability)**
 
 ---
 
