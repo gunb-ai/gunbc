@@ -339,6 +339,44 @@ Remaining violations are tracked in L1 dissolution (Stream 1).
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` | Rust container templates → `Rc<Vec<{0}>>` etc. + emitter + runtime + stage0 regen | Eliminate O(n) clone class (FF-8) |
 
+### Stream 0: Compositional Parser — Implementation Plan
+
+**Goal:** The parser and emitter are symmetric. Both read from
+`LanguageSpec`. Adding a language = adding a spec file, not code.
+
+**Step 1: Extract .dag SyntaxSpec from hardcoded parser.**
+Define a `SyntaxSpec` type in `dsl/extdeps/languages/dag/syntax.dag`
+that captures the implicit grammar currently buried in `02_parse.dag`:
+- Keyword → item-tag table (replaces tokenizer keyword map + `parse_item` match)
+- Operator precedence table (replaces `infix_bp` / `prefix_bp` functions)
+- Structural form declarations: which optional modifiers each tag accepts
+  (type params, params, return, uses, provides, body style)
+- Block/record disambiguation rule (`: ` after identifier = record field)
+- Binding forms (let, bare assignment, node declaration, constrained assignment)
+
+**Step 2: Make parser generic over SyntaxSpec.**
+Refactor `02_parse.dag` so `parse_item` reads the tag table instead of
+matching on `ShKw*` tokens. `parse_stmt` reads binding forms from spec.
+Operator precedence comes from the spec table, not hardcoded functions.
+The .dag `SyntaxSpec` is the first (and initially only) instance.
+
+**Step 3: Validate symmetry with emission.**
+Ensure `LanguageSpec` and `SyntaxSpec` share the same fact tables where
+applicable (item tags, operator symbols, type templates). Define the
+round-trip invariant test: `parse(spec, emit(spec, graph)) ≅ graph`.
+
+**Step 4: DSL-side workarounds for current parser limitations.**
+While the compositional parser is in progress, fix the remaining 3
+parse diagnostics in the DSL files (not in the parser):
+- `filesystem.dag`: `and` → `&&`
+- `auth/patterns.dag`: rewrite `{ token: value }` match arms
+- `std/patterns.dag`: defer generics on patterns until spec-driven parser
+
+**Step 5: Second language frontend.**
+With the spec-driven parser working for .dag, define a second
+`SyntaxSpec` (e.g., a subset of Python or a simplified frontend) to
+validate that the architecture actually supports multiple frontends.
+
 ---
 
 ## Execution Order
