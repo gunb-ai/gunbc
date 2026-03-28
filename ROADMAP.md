@@ -71,7 +71,7 @@ semantic operation — no divergent code paths for the same concept.
 |-------|----------------|------------------------|--------|
 | **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean | **Active** — 420 ratchet sites remaining |
 | **L2: Expressions** | `ExprData` semantic knowledge, full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | **Bridge landed and dissolved** (P5.11 complete) |
-| **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax | **Active** — compositional parser (R3/Stream 0) |
+| **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax | **Active** — compositional parser (R3/Stream 0); item dispatch, operators, literals now spec-driven (PR #226) |
 
 L1 is the urgent layer. Its endgame is: the compiler processes graph
 structure and reads structurally declared properties from `.dag` type
@@ -511,21 +511,25 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ## Current State (2026-03-28)
 
-**Phases 1-4 complete. Phase 5 active.**
+**Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
+landed (PR #226).**
 
-**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Bootstrap
-fixed-point green. Stage0 compiles, 146 tests pass, 0 diagnostics on
-self-compile. Self-compile time: ~6.47s (release mode). Clippy clean.
+**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. 148 v2-
+compiler-tests pass. Self-compile time: ~6.47s (release mode). Stage0
+regeneration blocked by pre-existing 04_resolve.dag parse diagnostic
+(not related to Stream 0 changes).
+
+**Stream 0 complete (2026-03-28, PR #226).** `SyntaxSpec` type landed
+in `languages.dag`. `.dag` syntax spec instance in
+`dsl/extdeps/languages/dag/syntax.dag`. Item dispatch, operator
+precedence, and literal keywords are all spec-driven. `parse_item` has
+0 keyword match arms. `infix_bp` has 0 match arms. 30+ `ShKw*`
+TokenShape variants consolidated to single `ShKeyword`. 70+ keyword
+predicates deleted. Net -170 lines. Adding a new item type with a
+standard body kind = 1 file edit (`syntax.dag`).
 
 **L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
-now live in `node.children` as compositional Nodes. Bridge functions
-`expr_children`/`map_expr_children`/`with_expr_data` deleted. P5.12
-assessed ExprData tag — verdict: RETAIN as closed semantic tag.
-
-**dsl/ compilation:** 9 → 3 parse diagnostics after parser fixes (this
-session). Remaining 3 are pre-existing limitations: `and`/`&&` operator
-ambiguity, block/record disambiguation in match arms, and generics on
-pattern declarations.
+now live in `node.children` as compositional Nodes.
 
 **Container sharing (FF-8):** Root-caused 2026-03-27. Rendering change
 in `LanguageSpec` container templates, not new compiler machinery.
@@ -536,75 +540,21 @@ invariant violations — I (incomplete types ~32), II (error-as-name ~18),
 III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
 Remaining violations are tracked in L1 dissolution (Stream 1).
 
-**Two foundational directions must land before Phase 5 exit:**
-**Stream 0 (compositional parser R3) and decidability (DAG-reducibility).**
-**The practical priority is getting review.dag → compiled binary.**
+**Two foundational directions for Phase 5 exit:**
+**Stream 0 (compositional parser) — LANDED (PR #226).**
+**Decidability (DAG-reducibility) — active.**
+Next steps: parse-emit symmetry validation (round-trip test), second
+language frontend.
 
 ---
 
-## PLACEHOLDER_DELETE_BELOW
+## Backlog: review.dag → Binary
 
----
-
-## Critical Path: review.dag → Binary
-
-The motivating use case: compile `review.dag` (a cyclical PR review
-agent) into a native binary, replacing the current shell script runtime.
-This requires clearing 4 stages. Stages 1-2 are compiler work; stages
-3-4 are domain wiring.
-
-### Stage 1: Parser (9 → 3 remaining)
-
-Parser fixes for `uses Resource(mode:)`, `[after/when]`, `hermetic`,
-`where` predicates, `is_text_readable`, paren variant patterns, node
-declarations, and constrained assignments are written in both `.dag`
-source and stage0 Rust. 6 of 9 errors fixed. Remaining 3 are DSL-side
-workarounds (`and` → `&&`, block/record disambiguation, generics on
-patterns).
-
-**Blocker:** `regenerate-stage0.sh` has bugs (module renaming mismatch
-with lib.rs, serde imports, duplicate types). Manual stage0 porting
-works but the script needs fixing for sustainable regeneration.
-
-### Stage 2: Rust Codegen (~280 errors)
-
-| Gap | Errors | Root cause | Fix location |
-|-----|-------:|------------|--------------|
-| `Bool` → `bool` | ~153 | Primitive type mapping missing | `05_emit_rust.dag` |
-| `Deserialize` trait | ~124 | Emitter generates serde derives without deps | `05_emit_rust.dag` |
-| `expr_children` helpers | ~130 | P5.11 accessors emitted as calls but undefined | `05_emit.dag` |
-| Module name mismatch | ~15 | `regenerate-stage0.sh` renames vs `lib.rs` | Script fix |
-| `CodegenBackend` undeclared | ~10 | Type referenced but not emitted | `05_emit.dag` |
-| `Secret` duplicate | 1 | Two modules emit same struct | `05_emit.dag` namespace |
-| `Unit` unhandled | 1 | Not mapped to `()` | `05_emit_rust.dag` |
-
-Priority: `Bool`→`bool` clears ~153 of ~280 errors. Serde removal
-clears ~124. Together they resolve ~95% of codegen errors.
-
-### Stage 3: Domain Workflow Compilation
-
-| Gap | What's needed |
-|-----|---------------|
-| Cross-repo imports | `review.dag` imports from `gunbc/dsl/extdeps/`. Compiler needs multi-root `--source-dir` or review.dag moves into gunbc. |
-| `for` comprehension codegen | `for pr in open_prs.pulls { ... }` with service calls inside loop body. Works for gist but untested with REST services. |
-| REST transport codegen | `github.Pulls.List/Diff/CreateComment` → reqwest HTTP calls. Shell transport works; REST uses the gists.dag pattern. |
-| CLI entrypoint generation | `main.rs` with clap subcommands for `review-cycle` and `review-pr`. Currently hand-maintained. |
-| Auth injection | `github_token()` through GCP Secret Manager credential chain or env var fallback. |
-
-### Stage 4: Feature Parity with Shell Runtime
-
-| Gap | Shell has | .dag needs |
-|-----|-----------|------------|
-| Stateless dedup | Queries reviews API at commit SHA | `github.Pulls.ListReviews` service op |
-| Line-level comments | Posts via `gh api` reviews endpoint | `github.Pulls.CreateReview` service op |
-| Fix verification | Fetches prior violations, asks LLM if fixed | `verify_fixes` composing ListReviews + LLM |
-| Cron upsert | Tag-based idempotent crontab | Modeled in `extdeps/cron.dag`, blocked on Stage 1 |
-| Reference docs | Fetches algebra.dag, extdeps.md as review context | Pure function, easy to model once compilation works |
-
-**Critical path: Stage 1 → Stage 2 → Stage 3.** Stage 1 is one
-successful stage0 regeneration script fix. Stage 2 is codegen fixes
-in `05_emit_rust.dag`. Stage 3 is domain wiring. Stage 4 is
-incremental after the binary works.
+Deferred pipeline. Not the current architectural priority (Stream 0
+parse-emit symmetry takes precedence). When revisited: Stage 1 parser
+(3 remaining diagnostics) → Stage 2 Rust codegen (~280 errors) →
+Stage 3 domain wiring → Stage 4 feature parity with shell runtime.
+See git history for full stage breakdown.
 
 ---
 
@@ -612,50 +562,46 @@ incremental after the binary works.
 
 | Stream | Branch | Focus | Exit criteria |
 |--------|--------|-------|---------------|
-| **Stream 0: Compositional Parser (R3)** | `sharp-lynx-892` | Replace keyword-driven `parse_item`/`parse_stmt` with structure-driven model | `parse_item` has 0 keyword match arms; adding item type = 0 parser edits |
+| **Stream 0: Compositional Parser (R3)** | `cool-ant-90` | **LANDED (PR #226).** Spec-driven item dispatch, operators, literals. Next: parse-emit round-trip, second frontend. | ~~`parse_item` has 0 keyword match arms~~ **DONE**; adding item type = 0 parser edits **DONE**; round-trip test; second SyntaxSpec |
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors, type-name comparisons, CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` | Rust container templates → `Rc<Vec<{0}>>` etc. + emitter + runtime + stage0 regen | Eliminate O(n) clone class (FF-8) |
 | **Stream 4: Guarantee Enforcement** | *(unassigned)* | Wire Tier 3 machinery into gates; add Tier 4 ratchets as design directions land | Complexity ratchet, L1 ratchet in CI, keyword arm ratchet, round-trip smoke test |
 | **Stream 5: Compiler Correctness** | *(unassigned)* | Fix emitted Rust errors (~280→0); space complexity tracking; regeneration script | Generated stage0 passes `cargo check`; space bounds in complexity report |
 
-### Stream 0: Compositional Parser — Implementation Plan
+### Stream 0: Compositional Parser — Status
 
 **Goal:** The parser and emitter are symmetric. Both read from
-`LanguageSpec`. Adding a language = adding a spec file, not code.
+spec data. Adding a language = adding a spec file, not code.
 
-**Step 1: Extract .dag SyntaxSpec from hardcoded parser.**
-Define a `SyntaxSpec` type in `dsl/extdeps/languages/dag/syntax.dag`
-that captures the implicit grammar currently buried in `02_parse.dag`:
-- Keyword → item-tag table (replaces tokenizer keyword map + `parse_item` match)
-- Operator precedence table (replaces `infix_bp` / `prefix_bp` functions)
-- Structural form declarations: which optional modifiers each tag accepts
-  (type params, params, return, uses, provides, body style)
-- Block/record disambiguation rule (`: ` after identifier = record field)
-- Binding forms (let, bare assignment, node declaration, constrained assignment)
+**Step 1: Extract .dag SyntaxSpec from hardcoded parser. — DONE (PR #226)**
+`SyntaxSpec`, `ItemForm`, `BodyKind`, `OperatorSpec` types in
+`languages.dag`. Instance data in `dsl/extdeps/languages/dag/syntax.dag`:
+- `dag_item_forms`: 9 item forms (type, fn, func, service, resource, data, extern, pattern, interface)
+- `dag_operators`: 16 operators with Pratt binding powers
+- `dag_keyword_literals`: true/false/none/null → LiteralValue
 
-**Step 2: Make parser generic over SyntaxSpec.**
-Refactor `02_parse.dag` so `parse_item` reads the tag table instead of
-matching on `ShKw*` tokens. `parse_stmt` reads binding forms from spec.
-Operator precedence comes from the spec table, not hardcoded functions.
-The .dag `SyntaxSpec` is the first (and initially only) instance.
+**Step 2: Make parser generic over SyntaxSpec. — DONE (PR #226)**
+`parse_item` reads from `dag_item_forms` via `find_item_form` lookup.
+`parse_item_by_form` eats keyword generically, dispatches on `BodyKind`.
+`infix_bp` reads from `dag_operators`. `parse_primary` reads from
+`dag_keyword_literals`. 30+ `ShKw*` variants → single `ShKeyword`.
+70+ keyword predicates deleted. 7 `*_after_kw` body parsers extracted.
 
-**Step 3: Validate symmetry with emission.**
+**Step 3: Validate symmetry with emission. — NEXT**
 Ensure `LanguageSpec` and `SyntaxSpec` share the same fact tables where
 applicable (item tags, operator symbols, type templates). Define the
 round-trip invariant test: `parse(spec, emit(spec, graph)) ≅ graph`.
 
 **Step 4: DSL-side workarounds for current parser limitations.**
-While the compositional parser is in progress, fix the remaining 3
-parse diagnostics in the DSL files (not in the parser):
+Fix the remaining 3 parse diagnostics in the DSL files (not in the parser):
 - `filesystem.dag`: `and` → `&&`
 - `auth/patterns.dag`: rewrite `{ token: value }` match arms
 - `std/patterns.dag`: defer generics on patterns until spec-driven parser
 
 **Step 5: Second language frontend.**
-With the spec-driven parser working for .dag, define a second
-`SyntaxSpec` (e.g., a subset of Python or a simplified frontend) to
-validate that the architecture actually supports multiple frontends.
+Define a second `SyntaxSpec` (e.g., a subset of Python or a simplified
+frontend) to validate that the architecture supports multiple frontends.
 
 **Enforcement (see Guarantee Map):**
 - **Immediate (Tier 3→2):** Keyword arm ratchet — count `ShKw*` match
@@ -1050,12 +996,16 @@ All C-series items complete. Key outcomes:
 | FO-4 | v2 emitter fan-out fact | Open |
 | FO-5 | Fan-out preservation ratchet | Blocked on FO-3 |
 
-### Phase 5 Milestones (2026-03-27)
+### Phase 5 Milestones (2026-03-28)
 
 - **Diagnostic ratchet: 0.** Zero type errors or warnings on self-compile.
+  (Note: stage0 regeneration currently blocked by pre-existing
+  04_resolve.dag parse diagnostic unrelated to Stream 0.)
 - **Fixed-point: PASSES.** Stage0 → stage1 → stage2 converges.
 - **Self-compile: 6.47s** (release). Tokenize 4.87s, Parse 78ms,
   Resolve 1ms, Reconcile 244ms, Emit 1.27s.
+- **Stream 0 landed (2026-03-28, PR #226).** `SyntaxSpec` types,
+  data-driven item/operator/literal dispatch. 148/148 tests pass.
 
 ### Phase 5 Exit Criteria
 
@@ -1083,7 +1033,7 @@ All C-series items complete. Key outcomes:
 |----|--------|-------------------|--------|
 | R1 | `00_core.dag` | C → A | Phase 1/3 |
 | R2 | `01_tokenize.dag` | A → A | Done |
-| R3 | `02_parse.dag` | D → B+ | **ACTIVE (priority)** — compositional parser model |
+| R3 | `02_parse.dag` | D → B+ | **B+ (PR #226)** — spec-driven dispatch landed; statement/expression dispatch still hardcoded |
 | R4 | `03_resolve.dag` | A → A | Done |
 | R5 | `04_infer.dag` | D → B+ | Phase 1 |
 | R6 | `05_emit*.dag` | D → B+ | Phase 4 (done) |
@@ -1093,29 +1043,28 @@ All C-series items complete. Key outcomes:
 
 ### R3 Detail: Compositional Parser Model
 
-**Problem (2026-03-28).** The parser has accumulated structural debt.
-`parse_item` has 9 keyword match arms. Each new DSL syntax form adds
-dedicated parse functions and match arms. The keyword enum has 9 item
-types across 3 files.
+**Landed (2026-03-28, PR #226).** The parser reads `SyntaxSpec` data.
 
-**Target model:**
+**What shipped:**
+- `SyntaxSpec` type with `ItemForm`, `BodyKind`, `OperatorSpec` in `languages.dag`
+- `.dag` syntax spec instance: `dsl/extdeps/languages/dag/syntax.dag`
+- `parse_item` → `find_item_form` lookup → `parse_item_by_form` dispatch on `BodyKind`
+- `infix_bp` → `find_operator_bp` lookup from `dag_operators` table
+- `parse_primary` literal dispatch → `dag_keyword_literals` map lookup
+- `TokenShape`: 30+ `ShKw*` → single `ShKeyword`; 70+ predicates deleted
+- 7 `*_after_kw` body parsers extracted from existing parse functions
 
-```
-Item     = Tag Name [TypeParams] [Params] [Return] [Uses] [Provides] Body
-Body     = BlockBody | FieldBody | AssignBody | DeclOnly
-Statement = LetBinding | NodeBinding | Return | Expr
-Binding  = Name [Constraints] (: | =) Expr [Return]
-```
+**Exit criteria (met):**
+- `parse_item` has 0 keyword-specific match arms
+- Adding a new item type with standard body = 1 file edit (`syntax.dag`)
+- `infix_bp` has 0 hardcoded match arms
 
-Item identity is the tag string, not an enum variant. Adding a new item
-type requires zero parser changes. Block vs record resolved structurally:
-`{ ident : expr }` is always record; `{ stmt; stmt }` is always block.
-
-**Exit criteria:**
-- `parse_item` has no keyword-specific match arms
-- Adding a new item type requires editing 0 parser files
-- Block/record disambiguation is structural, not heuristic
-- Type params, constraints, return annotations available to any form
+**Remaining (deferred):**
+- Statement dispatch (`parse_stmt`) — 3 keyword arms, stable, small
+- Expression keyword dispatch (match/if/for/let/return/fn) — structural forms, not data-drivable
+- Block/record disambiguation — still heuristic
+- Parse-emit round-trip test
+- Second language frontend
 
 ---
 
@@ -1129,7 +1078,7 @@ type requires zero parser changes. Block vs record resolved structurally:
 | `[when]` string comparison | Only boolean fields supported; blocks conditional service dispatch |
 | `[when]`/`[after]` inside `for` | Bracket clauses only on top-level step bindings |
 | Multiple `uses` clauses | Only one per `func`; workaround: use `shell.Exec.Run` |
-| `fixture`/`test` blocks | Blocked on compositional parser — would grow keyword enum |
+| `fixture`/`test` blocks | **Unblocked by PR #226** — add `ItemForm` entry in `syntax.dag` with `BlockBody` |
 
 ### Desired Parser Features (2026-03-28)
 
@@ -1139,7 +1088,7 @@ type requires zero parser changes. Block vs record resolved structurally:
 | `[after X, when X.field]` multi-clause brackets | Implicit data-flow ordering | Bracket clause accepts comma-separated constraints |
 | `[when]` string comparison `x == "foo"` | `match` + `shell.Exec.Run` | Bracket clause accepts arbitrary boolean expressions |
 | Multiple `uses` clauses per func | `shell.Exec.Run` for secondary resources | `uses net: Network, fs: Filesystem` |
-| `fixture`/`test` blocks | Comment out; tests via cargo test | Structural item tags |
+| `fixture`/`test` blocks | Comment out; tests via cargo test | **Unblocked:** add `ItemForm` to `syntax.dag` |
 | `and`/`or` as operators | `&&`/`||` | Parser recognizes as boolean operators |
 | `{ ident: value }` in match arms | Named types or `let` bindings | Structural block/record disambiguation |
 | `pattern<T>` generics on patterns | Monomorphize manually | Type params on any structural form |

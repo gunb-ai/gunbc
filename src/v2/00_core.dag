@@ -41,20 +41,9 @@ type Token {
 // Every variant is a unit variant — payloads live in Token.text.
 // This is the structural classifier; Token.text carries the semantic content.
 type TokenShape
-  // Declaration keywords
-  = ShKwModule | ShKwImport | ShKwType | ShKwFn | ShKwFunc
-  | ShKwService | ShKwResource | ShKwData | ShKwExtern
-  | ShKwInterface | ShKwPipeline | ShKwProfile | ShKwPattern
-  // Control flow keywords
-  | ShKwLet | ShKwReturn | ShKwMatch | ShKwIf | ShKwElse
-  | ShKwFor | ShKwIn | ShKwWhere | ShKwWith
-  // Literal keywords
-  | ShKwTrue | ShKwFalse | ShKwNone
-  // Resource lifecycle keywords
-  | ShKwAcquire | ShKwRelease | ShKwCapability
-  | ShKwOperation | ShKwInput | ShKwOutput
-  // Modifier keywords
-  | ShKwIdempotent | ShKwReadonly | ShKwHermetic
+  // All keywords share a single variant; identity is in Token.text.
+  // Keywords are an open set defined by SyntaxSpec, not a closed enum.
+  = ShKeyword
   // Paired delimiters
   | ShLBrace | ShRBrace | ShLParen | ShRParen | ShLBracket | ShRBracket
   // Relational / arrow
