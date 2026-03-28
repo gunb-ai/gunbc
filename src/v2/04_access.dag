@@ -14,12 +14,12 @@ import v2.std.core {
   diagnostic_node, diagnostic_message,
   leaf_node, with_optional_cardinality,
   Connective, NoConnective,
-  CollectionKind, MapKind,
+
   unit_type, string_type, int_type
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
-  node_type_equals
+  node_type_equals, node_is_keyed_collection
 }
 
 // =========================================================================
@@ -65,7 +65,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     let diags = if normed_index.name == int_type.name { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
     access_result(inferred: string_type, diagnostics: diags, span: span, fallback_message: "invalid string index access")
-  } else if normed.collection_kind == MapKind && normed.children |> count >= 2 {
+  } else if node_is_keyed_collection(n: normed) && normed.children |> count >= 2 {
     let key_node = match normed.children |> first {
       Some { value: k } => k
       None => leaf_node(name: "")
@@ -78,7 +78,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
     access_result(inferred: with_optional_cardinality(n: val_node), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
   } else {
-    let is_map = normed.collection_kind == MapKind
+    let is_map = node_is_keyed_collection(n: normed)
     if is_map {
       let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
       access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")

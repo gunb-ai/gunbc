@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, FieldInit, Param, Connective, Cardinality, make_expr_node, LiteralValue, is_kernel_type, is_kernel_numeric, is_kernel_textual, BinOpKind, InferredNode, rt_node, has_inferred, NodeType, leaf_node, no_span, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, CollectionKind, ExprData};
+pub use crate::v2_std_core::{Node, FieldInit, Param, Connective, Cardinality, make_expr_node, LiteralValue, is_kernel_type, is_kernel_numeric, is_kernel_textual, BinOpKind, InferredNode, rt_node, has_inferred, NodeType, leaf_node, no_span, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
@@ -57,7 +57,7 @@ use crate::v2_std_core::LiteralValue::{LitStr, LitInt, LitFloat, LitBool, LitNul
 use crate::v2_std_core::BinOpKind::{BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
-use crate::v2_std_core::CollectionKind::{ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind};
+
 
 pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() == None) {
@@ -75,29 +75,6 @@ pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
 }
 }
 
-pub fn collection_kind_for_name(name: String) -> Option<CollectionKind> {
-    if (name.clone() == "List".to_string()) {
-        Some(CollectionKind::ListKind)
-} else {
-        if (name.clone() == "Set".to_string()) {
-            Some(CollectionKind::SetKind)
-} else {
-            if (name.clone() == "NonEmptyList".to_string()) {
-                Some(CollectionKind::NonEmptyListKind)
-} else {
-                if (name.clone() == "NonEmptySet".to_string()) {
-                    Some(CollectionKind::NonEmptySetKind)
-} else {
-                    if (name.clone() == "Map".to_string()) {
-                        Some(CollectionKind::MapKind)
-} else {
-                        None
-}
-}
-}
-}
-}
-}
 
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
@@ -108,7 +85,7 @@ pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
 }),
     children: vec![element.clone()],
     connective: None,
-    collection_kind: collection_kind_for_name(kind_name.clone()),
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -139,7 +116,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 }),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: first.clone(),
@@ -162,7 +139,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 }),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: second.clone(),
@@ -179,7 +156,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     expr_data: Rc::new(ExprData::NoExprData),
 })],
     connective: Some(Connective::Conj),
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -204,7 +181,7 @@ pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
 }),
     children: vec![key.clone(), value.clone()],
     connective: None,
-    collection_kind: Some(CollectionKind::MapKind),
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -229,7 +206,7 @@ pub fn bare_map_node() -> Rc<Node> {
 }),
     children: vec![],
     connective: None,
-    collection_kind: Some(CollectionKind::MapKind),
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -254,7 +231,7 @@ pub fn callable_node(func_params: Vec<Rc<Param>>, ret: Rc<Node>) -> Rc<Node> {
 }),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: func_params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: ret.clone(),
@@ -278,7 +255,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         span: no_span(),
         children: vec![],
         connective: None,
-        collection_kind: None,
+    
         params: vec![],
         inferred: Some(Rc::new(InferredNode::Resolved { node: type_node.clone() })),
         return_cardinality: Cardinality::Required,
@@ -308,7 +285,7 @@ pub fn algebra_method_field(name: String, param_types: Vec<Rc<Node>>, return_typ
         span: no_span(),
         children: vec![],
         connective: None,
-        collection_kind: None,
+    
         params: vec![],
         inferred: Some(Rc::new(InferredNode::Resolved { node: callable_node(params, return_type.clone()) })),
         return_cardinality: Cardinality::Required,
@@ -336,7 +313,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
             algebra_value_field("one".to_string(), self_type.clone()),
             algebra_method_field("compare".to_string(), vec![self_type.clone(), self_type.clone()], ordering_type.clone()),
         ];
-        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
     } else if (name.clone() == "Float".to_string()) {
         let fields = vec![
             algebra_method_field("add".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
@@ -347,7 +324,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
             algebra_method_field("reciprocal".to_string(), vec![self_type.clone()], self_type.clone()),
             algebra_method_field("compare".to_string(), vec![self_type.clone(), self_type.clone()], ordering_type.clone()),
         ];
-        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
     } else if (name.clone() == "Bool".to_string()) {
         let fields = vec![
             algebra_method_field("meet".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
@@ -356,7 +333,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
             algebra_value_field("top".to_string(), self_type.clone()),
             algebra_value_field("bottom".to_string(), self_type.clone()),
         ];
-        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
     } else if (name.clone() == "String".to_string()) {
         let int_type = leaf_node("Int".to_string());
         let bool_type = leaf_node("Bool".to_string());
@@ -382,7 +359,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
             algebra_method_field("to_string".to_string(), vec![self_type.clone()], self_type.clone()),
             algebra_method_field("reverse".to_string(), vec![self_type.clone()], self_type.clone()),
         ];
-        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
     } else if (name.clone() == "List".to_string() || name.clone() == "Set".to_string() || name.clone() == "NonEmptyList".to_string() || name.clone() == "NonEmptySet".to_string()) {
         let int_type = leaf_node("Int".to_string());
         let bool_type = leaf_node("Bool".to_string());
@@ -410,7 +387,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
             algebra_method_field("list_push".to_string(), vec![self_type.clone(), elem.clone()], self_type.clone()),
             algebra_method_field("length".to_string(), vec![self_type.clone()], int_type.clone()),
         ];
-        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
     } else if (name.clone() == "Map".to_string()) {
         let int_type = leaf_node("Int".to_string());
         let bool_type = leaf_node("Bool".to_string());
@@ -436,7 +413,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
             algebra_method_field("contains".to_string(), vec![self_type.clone(), key_node.clone()], bool_type.clone()),
             algebra_method_field("length".to_string(), vec![self_type.clone()], int_type.clone()),
         ];
-        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
     } else {
         base.clone()
     }
@@ -466,14 +443,20 @@ pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
     (n.name.clone() == "Dynamic".to_string())
 }
 
-pub fn node_is_container(n: Rc<Node>) -> bool {
-    match n.collection_kind.clone() {
-    Some(CollectionKind::ListKind) => true,
-    Some(CollectionKind::SetKind) => true,
-    Some(CollectionKind::NonEmptyListKind) => true,
-    Some(CollectionKind::NonEmptySetKind) => true,
-    _ => false,
+pub fn node_is_collection(n: Rc<Node>) -> bool {
+    ((n.children.clone().len() as i64) > 0) && (n.connective.clone() == None)
 }
+
+pub fn node_is_keyed_collection(n: Rc<Node>) -> bool {
+    node_is_collection(n.clone()) && ((n.children.clone().len() as i64) == 2)
+}
+
+pub fn node_is_element_collection(n: Rc<Node>) -> bool {
+    node_is_collection(n.clone()) && ((n.children.clone().len() as i64) == 1)
+}
+
+pub fn node_is_container(n: Rc<Node>) -> bool {
+    node_is_element_collection(n.clone())
 }
 
 pub fn node_is_optional(n: Rc<Node>) -> bool {
@@ -484,10 +467,7 @@ pub fn node_is_optional(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_map(n: Rc<Node>) -> bool {
-    {
-        let is_map = (n.collection_kind.clone() == Some(CollectionKind::MapKind));
-is_map.clone()
-}
+    node_is_keyed_collection(n.clone())
 }
 
 pub fn node_is_leaf(n: Rc<Node>) -> bool {

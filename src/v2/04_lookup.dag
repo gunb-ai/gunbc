@@ -22,12 +22,12 @@ import v2.std.core {
   FieldSummary,
   leaf_node, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, MapKind, NoCollection,
+
   CardOptional
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  normalize_access_type_node,
+  normalize_access_type_node, node_is_keyed_collection,
   method_receiver_element_node,
   rt_type, rt_node,
   emit_map_has,
@@ -186,7 +186,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if map_type.collection_kind == MapKind && map_type.children |> count >= 2 {
+  if node_is_keyed_collection(n: map_type) && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none

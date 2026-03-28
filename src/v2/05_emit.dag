@@ -54,12 +54,12 @@ import v2.std.core {
   leaf_node, with_required_cardinality,
   tuple_type_name,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
+
   CardOptional
 }
 
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
-import v2.compiler.infer_types { rt_type, emit_map_has }
+import v2.compiler.infer_types { rt_type, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
@@ -389,7 +389,7 @@ fn has_nested_records_node(n: Node) -> Bool {
       has_nested_records_node(n: with_required_cardinality(n: n))
     } else { false }
   } else {
-    let is_map = n.collection_kind == MapKind
+    let is_map = node_is_keyed_collection(n: n)
     if is_map {
       match skip(n.children, 1) |> first {
         Some { value: val_child } => has_nested_records_node(n: val_child)
@@ -824,9 +824,8 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   if n.children |> count == 0 {
     // Bare container nodes (from empty_map(), etc.) need container templates
     // even without children — emit with "_" placeholders.
-    let bare_is_map = n.collection_kind == MapKind
-    let bare_ck = n.collection_kind
-    let bare_is_collection = bare_ck == ListKind || bare_ck == SetKind || bare_ck == NonEmptyListKind || bare_ck == NonEmptySetKind
+    let bare_is_map = node_is_keyed_collection(n: n)
+    let bare_is_collection = node_is_element_collection(n: n)
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if bare_is_collection {
@@ -841,7 +840,7 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       base
     }
   } else {
-    let is_map = n.collection_kind == MapKind
+    let is_map = node_is_keyed_collection(n: n)
     if is_map {
       // After resolution, Map nodes always have 2 children (key + value).
       // None branches are structurally required by match but unreachable.
@@ -859,13 +858,14 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
         None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
       }
-      // Only use container templates for actual containers (has collection_kind).
+      // Only use container templates for actual containers (structural check).
       // Non-container generic types (e.g., FreeMonoid<T>) emit as Name<Inner>
       // without snake_casing — type names stay in their declared casing.
-      let is_container = n.collection_kind != NoCollection
+      let is_container = node_is_collection(n: n)
       if is_container {
-        let container_kind = non_empty_container_kind(collection: n.collection_kind, name: n.name, target: target)
-        emit_container(kind: container_kind, inner: inner, target: target)
+        // Template key is snake_case of the type name — LanguageSpec maps
+        // each key to the target-language template (e.g., "list" → "Vec<{0}>").
+        emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
       } else {
         // Non-container generic type: use target-specific syntax.
         let base = emit_primitive_type(name: n.name, target: target)
@@ -882,13 +882,6 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   }
 }
 
-fn non_empty_container_kind(collection: CollectionKind, name: String, target: RenderTarget) -> String {
-  match collection {
-    NonEmptyListKind => match target { Rust => "non_empty_list"  _ => "list" }
-    NonEmptySetKind => match target { Rust => "non_empty_set"  _ => "set" }
-    _ => to_snake(name: name)
-  }
-}
 
 fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name == "Refined" {
