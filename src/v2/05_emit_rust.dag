@@ -721,18 +721,29 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
   }
 }
 
+// Emit generic type parameter list from item.params (e.g., "<T>" or "<A, B>").
+// Returns empty string if the item has no type params.
+fn emit_type_params(params: List<Param>) -> String {
+  if params |> count == 0 { "" }
+  else {
+    let names = params |> map(p => p.name)
+    concat("<", names |> join(separator: ", "), ">")
+  }
+}
+
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
+  let type_params = emit_type_params(params: item.params)
   let is_product = item.connective == Conj
   if is_product {
-    emit_struct_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
+    emit_struct_from_children(name: item.name, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   } else {
-    emit_enum_from_children(name: item.name, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
+    emit_enum_from_children(name: item.name, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   }
 }
 
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
-fn emit_struct_from_children(name: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
+fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   // rust_struct_derives is the base derive set from extdeps.languages.rust.emit.
   // Non-Rc types get Copy added as a Rust-specific value semantics optimization.
   let derives = if emit_map_has(m: rc_types, key: name) {
@@ -741,11 +752,11 @@ fn emit_struct_from_children(name: String, children: List<Node>, recursive_types
     rust_struct_derives_copy_text()
   }
   if children |> count == 0 {
-    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, ";")
+    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, ";")
   } else {
     let field_lines = children |> map(child => emit_struct_field_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types))
     let fields_str = field_lines |> join(separator: "\n")
-    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, " {\n", fields_str, "\n}")
+    concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, " {\n", fields_str, "\n}")
   }
 }
 
@@ -780,11 +791,11 @@ fn enum_derives(children: List<Node>) -> String {
   }
 }
 
-fn emit_enum_from_children(name: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
+fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   let derives = enum_derives(children: children)
   let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types))
   let variants_str = variant_lines |> join(separator: "\n")
-  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, " {\n", variants_str, "\n}")
+  let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, type_params, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
   let accessor_impl = emit_enum_shared_accessors(name: name, children: children, recursive_types: recursive_types, rc_types: rc_types)
   if accessor_impl == "" { enum_def }

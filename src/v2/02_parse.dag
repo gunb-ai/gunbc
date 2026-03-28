@@ -1469,7 +1469,10 @@ fn parse_type_expr(tokens: List<Token>, state: ParserState) -> TypeResult {
 // Parse callable type: fn(T1, T2) -> R
 // Called after 'fn' keyword has been consumed.
 fn parse_callable_type_expr(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> TypeResult {
-  let dummy_te = leaf_type_node(name: "Callable", span: start_span)
+  // Error recovery produces an empty-named node, not "Callable" — errors
+  // must be orthogonal to the node graph (invariant #2). A "Callable"-named
+  // dummy would leak into emit and be indistinguishable from a real callable.
+  let dummy_te = leaf_type_node(name: "", span: start_span)
   // Expect opening paren
   let r = expect(tokens: tokens, state: state, expected: ExpectLParen)
   if has_err(err: r.err) { return TypeResult { type_expr: dummy_te, state: r.state, err: r.err } }

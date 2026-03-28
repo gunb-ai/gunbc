@@ -32,8 +32,8 @@ data python_keywords: Map<String, String> = {
 // {0} = element type, {1} = second type (maps).
 // Ref: typing module (PEP 585)
 data python_container_templates: Map<String, String> = {
-  "list": "list[{0}]", "set": "set[{0}]",
-  "optional": "Optional[{0}]", "map": "dict[{0}, {1}]"
+  "list": "list[\{0\}]", "set": "set[\{0\}]",
+  "optional": "Optional[\{0\}]", "map": "dict[\{0\}, \{1\}]"
 }
 
 // -- Reserved words ------------------------------------------------------

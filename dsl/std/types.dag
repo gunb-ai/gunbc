@@ -119,8 +119,8 @@ type Map<key, value> = PartialFunction<key, value>
 //   2. Auto-generation of test inputs (valid from [T], invalid from [T]^c)
 //   3. Documentation of expected shapes
 
-type CommitSha    = String where pattern("^[a-f0-9]{40}$")
-type Sha256       = String where pattern("^[a-f0-9]{64}$")
+type CommitSha    = String where pattern("^[a-f0-9]\{40\}$")
+type Sha256       = String where pattern("^[a-f0-9]\{64\}$")
 type RetryCount   = Int where range(min: 1, max: 5)
 type HttpStatus   = Int where range(min: 100, max: 599)
 type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
@@ -170,7 +170,7 @@ type SourceSpan {
   end: Int
 }
 
-type Timestamp    = String where pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")
+type Timestamp    = String where pattern("^\\d\{4\}-\\d\{2\}-\\d\{2\}T\\d\{2\}:\\d\{2\}:\\d\{2\}")
 type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")

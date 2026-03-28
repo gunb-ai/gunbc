@@ -53,6 +53,7 @@ use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
+use crate::v2_std_core::CollectionKind;
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
 use crate::v2_std_core::RuntimeBridgeMethod::{BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup};
 use crate::v2_std_core::TransportKind::{RestTransport, ShellTransport, FileTransport};
@@ -834,28 +835,30 @@ emit_map_type(k.clone(), v.clone(), target.clone())
     Some(child) => emit_node_type_rc(child.clone(), target.clone(), rc_types.clone()),
     None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__".to_string(),
 };
-let is_rust = match target.clone() {
-    RenderTarget::Rust => true,
-    _ => false,
-};
-let container_kind = if (n.name.clone() == "NonEmptyList".to_string()) {
-                        if is_rust.clone() {
-                            "non_empty_list".to_string()
+let is_container = n.collection_kind.is_some();
+if is_container {
+    let is_rust = match target.clone() {
+        RenderTarget::Rust => true,
+        _ => false,
+    };
+    let container_kind = if (n.name.clone() == "NonEmptyList".to_string()) {
+        if is_rust.clone() { "non_empty_list".to_string() } else { "list".to_string() }
+    } else if (n.name.clone() == "NonEmptySet".to_string()) {
+        if is_rust.clone() { "non_empty_set".to_string() } else { "set".to_string() }
+    } else {
+        to_snake(n.name.clone())
+    };
+    emit_container(container_kind.clone(), inner.clone(), target.clone())
 } else {
-                            "list".to_string()
+    // Non-container generic type (e.g., FreeMonoid<T>): emit as Name<Inner>
+    let base = emit_primitive_type(n.name.clone(), target.clone());
+    let wrapped = v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "<".to_string()), inner.clone()), ">".to_string());
+    if emit_map_has(rc_types.clone(), n.name.clone()) {
+        v2_rt::concat(v2_rt::concat("Rc<".to_string(), wrapped), ">".to_string())
+    } else {
+        wrapped
+    }
 }
-} else {
-                        if (n.name.clone() == "NonEmptySet".to_string()) {
-                            if is_rust.clone() {
-                                "non_empty_set".to_string()
-} else {
-                                "set".to_string()
-}
-} else {
-                            to_snake(n.name.clone())
-}
-};
-emit_container(container_kind.clone(), inner.clone(), target.clone())
 }
 } else {
                 n.name.clone()
@@ -897,10 +900,11 @@ match target.clone() {
 }
 } else {
             if (n.name.clone() != "".to_string()) {
+                let mapped = emit_primitive_type(n.name.clone(), target.clone());
                 if emit_map_has(rc_types.clone(), n.name.clone()) {
-                    v2_rt::concat(v2_rt::concat("Rc<".to_string(), n.name.clone()), ">".to_string())
+                    v2_rt::concat(v2_rt::concat("Rc<".to_string(), mapped.clone()), ">".to_string())
 } else {
-                    n.name.clone()
+                    mapped.clone()
 }
 } else {
                 {
@@ -940,10 +944,11 @@ result.clone()
 
 pub fn emit_node_type_disj_rc(n: Rc<Node>, target: RenderTarget, rc_types: HashMap<String, bool>) -> String {
     if (n.name.clone() != "".to_string()) {
+        let mapped = emit_primitive_type(n.name.clone(), target.clone());
         if emit_map_has(rc_types.clone(), n.name.clone()) {
-            v2_rt::concat(v2_rt::concat("Rc<".to_string(), n.name.clone()), ">".to_string())
+            v2_rt::concat(v2_rt::concat("Rc<".to_string(), mapped.clone()), ">".to_string())
 } else {
-            n.name.clone()
+            mapped.clone()
 }
 } else {
         {

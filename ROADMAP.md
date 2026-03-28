@@ -71,7 +71,7 @@ semantic operation — no divergent code paths for the same concept.
 |-------|----------------|------------------------|--------|
 | **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean | **Active** — 420 ratchet sites remaining |
 | **L2: Expressions** | `ExprData` semantic knowledge, full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | **Bridge landed and dissolved** (P5.11 complete) |
-| **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax | **Active** — compositional parser (R3/Stream 0); item dispatch, operators, literals now spec-driven (PR #226) |
+| **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax | **Active** — compositional parser (R3/Stream 0) |
 
 L1 is the urgent layer. Its endgame is: the compiler processes graph
 structure and reads structurally declared properties from `.dag` type
@@ -361,23 +361,17 @@ compiler — not in the user's program.
 
 ### Concrete next steps
 
-1. ~~Audit language iteration primitives.~~ **DONE (2026-03-28).** No
-   unbounded primitives found. All .dag iteration (fold/map/filter/for)
-   is bounded by collection size. All tail-recursive functions have
-   structurally decreasing measures (pos advance, item removal, token
-   consumption). Rust runtime `while` loops are bounded by string
-   length. TCO `loop {}` is a rendering artifact; bound is proven
-   in the .dag analyzer.
-2. ~~Wire `RecursionPattern` into `cost_of_expr`.~~ **DONE (2026-03-28).**
-   `get_or_compute_summary` detects self-recursion via placeholder,
-   classifies as Linear/DivideAndConquer, produces bounded cost.
+1. Audit language iteration primitives — ensure no primitive permits
+   unbounded computation. If one exists, redesign it with an explicit
+   bound parameter.
+2. Wire `RecursionPattern` into `cost_of_expr` — classify every
+   recursive call as `LinearRecursion` or `DivideAndConquer`. Any
+   `UnresolvableRecursion` is a compiler gap to fix.
 3. Ensure `cost_of_expr` (tree walk, bound = |nodes|) and
    `tokenize_loop` (scanner, bound = |source|) express their descent
    measures so the analyzer resolves them.
-4. ~~Fix `trace_pop_frame` O(|stack|^2).~~ **RESOLVED (2026-03-28).**
-   `trace.dag` is dead code (no callers). See Gap #3 for the
-   multi-layer analysis: dead code detection, reachability-gated
-   analysis, and persistent data structures.
+4. Fix `trace_pop_frame` O(|stack|^2) — `take(count - 1)` copies the
+   list; needs O(1) pop.
 
 ### Enforcement (see Guarantee Map)
 
@@ -517,50 +511,116 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ## Current State (2026-03-28)
 
-**Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
-landed (PR #226).**
+**Phases 1-4 complete. Phase 5 active.**
 
-**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. 148 v2-
-compiler-tests pass. Self-compile time: ~6.47s (release mode). Stage0
-regeneration blocked by pre-existing 04_resolve.dag parse diagnostic
-(not related to Stream 0 changes).
+**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Stage0
+binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
+Diagnostic ratchet PASSES. Self-compile time: ~260s (FF-8 perf issue).
+150 fast tests pass, clippy clean.
 
-**Stream 0 complete (2026-03-28, PR #226).** `SyntaxSpec` type landed
-in `languages.dag`. `.dag` syntax spec instance in
-`dsl/extdeps/languages/dag/syntax.dag`. Item dispatch, operator
-precedence, and literal keywords are all spec-driven. `parse_item` has
-0 keyword match arms. `infix_bp` has 0 match arms. 30+ `ShKw*`
-TokenShape variants consolidated to single `ShKeyword`. 70+ keyword
-predicates deleted. Net -170 lines. Adding a new item type with a
-standard body kind = 1 file edit (`syntax.dag`).
+**Verification ratchets (Lane A complete):**
+- Diagnostic ratchet: 0 (passes)
+- Emitted Rust error ratchet: 872 errors (down from 1242)
+- L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
+- Keyword arm count: 9 (exact match)
+- Complexity ratchet: 2 violations (pre-existing in pipeline.rs)
+
+**Stage0 regeneration: BLOCKED on 872 codegen errors.** Fixes applied:
+- ✓ Serde removal (138 → 0)
+- ✓ Generic type params `<T>` on struct/enum defs (~130 errors)
+- ✓ Container/generic casing (FreeMonoid not free_monoid)
+- ✓ Type map in conj/disj rendering (Bool→bool, Float→f64)
+- ✓ Callable error recovery (Part 1: errors orthogonal to nodes)
+Remaining 872 errors in 3 structural categories:
+- E0308 (358): type mismatches (cascading)
+- E0425 (155): Callable zero-param rendering (needs pipeline alignment)
+- E0433 (128): CodegenBackend cross-module visibility (emitter imports)
+- E0369+E0277+E0282 (231): downstream cascades
+
+**DSL user diagnostics (20 → ~3):** Added `\{` `\}` escape sequences
+for literal braces in strings. 775 brace templates escaped across 18
+DSL files. Remaining ~3 diagnostics: enum variant as standalone value.
+
+**Known parser limitation:** Stage0 parser misreads `{ fn(name: val) }`
+as record literal (block/record disambiguation). Workaround: use match
+with discriminant enum instead of if-blocks with named-arg calls.
 
 **L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
-now live in `node.children` as compositional Nodes.
+in `node.children`. Bridge functions deleted.
 
 **Container sharing (FF-8):** Root-caused 2026-03-27. Rendering change
-in `LanguageSpec` container templates, not new compiler machinery.
-Hand-patch proof confirms fix (parser 37s → 0.4s). Atomic fix pending.
+in `LanguageSpec` container templates. Hand-patch proof: 37s → 0.4s.
+Fix pending (Stream 3).
 
-**Root-cause audit (2026-03-23):** Three root causes behind all ~66
-invariant violations — I (incomplete types ~32), II (error-as-name ~18),
-III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
-Remaining violations are tracked in L1 dissolution (Stream 1).
-
-**Two foundational directions for Phase 5 exit:**
-**Stream 0 (compositional parser) — LANDED (PR #226).**
-**Decidability (DAG-reducibility) — active.**
-Next steps: parse-emit symmetry validation (round-trip test), second
-language frontend.
+**Three foundational directions must land before Phase 5 exit:**
+**Stream 0 (compositional parser), decidability (DAG-reducibility),**
+**and guarantee enforcement (all Tier 3 items promoted to Tier 2).**
 
 ---
 
-## Backlog: review.dag → Binary
+## PLACEHOLDER_DELETE_BELOW
 
-Deferred pipeline. Not the current architectural priority (Stream 0
-parse-emit symmetry takes precedence). When revisited: Stage 1 parser
-(3 remaining diagnostics) → Stage 2 Rust codegen (~280 errors) →
-Stage 3 domain wiring → Stage 4 feature parity with shell runtime.
-See git history for full stage breakdown.
+---
+
+## Critical Path: review.dag → Binary
+
+The motivating use case: compile `review.dag` (a cyclical PR review
+agent) into a native binary, replacing the current shell script runtime.
+This requires clearing 4 stages. Stages 1-2 are compiler work; stages
+3-4 are domain wiring.
+
+### Stage 1: Parser (9 → 3 remaining)
+
+Parser fixes for `uses Resource(mode:)`, `[after/when]`, `hermetic`,
+`where` predicates, `is_text_readable`, paren variant patterns, node
+declarations, and constrained assignments are written in both `.dag`
+source and stage0 Rust. 6 of 9 errors fixed. Remaining 3 are DSL-side
+workarounds (`and` → `&&`, block/record disambiguation, generics on
+patterns).
+
+**Blocker:** `regenerate-stage0.sh` has bugs (module renaming mismatch
+with lib.rs, serde imports, duplicate types). Manual stage0 porting
+works but the script needs fixing for sustainable regeneration.
+
+### Stage 2: Rust Codegen (~280 errors)
+
+| Gap | Errors | Root cause | Fix location |
+|-----|-------:|------------|--------------|
+| `Bool` → `bool` | ~153 | Primitive type mapping missing | `05_emit_rust.dag` |
+| `Deserialize` trait | ~124 | Emitter generates serde derives without deps | `05_emit_rust.dag` |
+| `expr_children` helpers | ~130 | P5.11 accessors emitted as calls but undefined | `05_emit.dag` |
+| Module name mismatch | ~15 | `regenerate-stage0.sh` renames vs `lib.rs` | Script fix |
+| `CodegenBackend` undeclared | ~10 | Type referenced but not emitted | `05_emit.dag` |
+| `Secret` duplicate | 1 | Two modules emit same struct | `05_emit.dag` namespace |
+| `Unit` unhandled | 1 | Not mapped to `()` | `05_emit_rust.dag` |
+
+Priority: `Bool`→`bool` clears ~153 of ~280 errors. Serde removal
+clears ~124. Together they resolve ~95% of codegen errors.
+
+### Stage 3: Domain Workflow Compilation
+
+| Gap | What's needed |
+|-----|---------------|
+| Cross-repo imports | `review.dag` imports from `gunbc/dsl/extdeps/`. Compiler needs multi-root `--source-dir` or review.dag moves into gunbc. |
+| `for` comprehension codegen | `for pr in open_prs.pulls { ... }` with service calls inside loop body. Works for gist but untested with REST services. |
+| REST transport codegen | `github.Pulls.List/Diff/CreateComment` → reqwest HTTP calls. Shell transport works; REST uses the gists.dag pattern. |
+| CLI entrypoint generation | `main.rs` with clap subcommands for `review-cycle` and `review-pr`. Currently hand-maintained. |
+| Auth injection | `github_token()` through GCP Secret Manager credential chain or env var fallback. |
+
+### Stage 4: Feature Parity with Shell Runtime
+
+| Gap | Shell has | .dag needs |
+|-----|-----------|------------|
+| Stateless dedup | Queries reviews API at commit SHA | `github.Pulls.ListReviews` service op |
+| Line-level comments | Posts via `gh api` reviews endpoint | `github.Pulls.CreateReview` service op |
+| Fix verification | Fetches prior violations, asks LLM if fixed | `verify_fixes` composing ListReviews + LLM |
+| Cron upsert | Tag-based idempotent crontab | Modeled in `extdeps/cron.dag`, blocked on Stage 1 |
+| Reference docs | Fetches algebra.dag, extdeps.md as review context | Pure function, easy to model once compilation works |
+
+**Critical path: Stage 1 → Stage 2 → Stage 3.** Stage 1 is one
+successful stage0 regeneration script fix. Stage 2 is codegen fixes
+in `05_emit_rust.dag`. Stage 3 is domain wiring. Stage 4 is
+incremental after the binary works.
 
 ---
 
@@ -568,46 +628,50 @@ See git history for full stage breakdown.
 
 | Stream | Branch | Focus | Exit criteria |
 |--------|--------|-------|---------------|
-| **Stream 0: Compositional Parser (R3)** | `cool-ant-90` | **LANDED (PR #226).** Spec-driven item dispatch, operators, literals. Next: parse-emit round-trip, second frontend. | ~~`parse_item` has 0 keyword match arms~~ **DONE**; adding item type = 0 parser edits **DONE**; round-trip test; second SyntaxSpec |
+| **Stream 0: Compositional Parser (R3)** | `sharp-lynx-892` | Replace keyword-driven `parse_item`/`parse_stmt` with structure-driven model | `parse_item` has 0 keyword match arms; adding item type = 0 parser edits |
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors, type-name comparisons, CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` | Rust container templates → `Rc<Vec<{0}>>` etc. + emitter + runtime + stage0 regen | Eliminate O(n) clone class (FF-8) |
 | **Stream 4: Guarantee Enforcement** | *(unassigned)* | Wire Tier 3 machinery into gates; add Tier 4 ratchets as design directions land | Complexity ratchet, L1 ratchet in CI, keyword arm ratchet, round-trip smoke test |
 | **Stream 5: Compiler Correctness** | *(unassigned)* | Fix emitted Rust errors (~280→0); space complexity tracking; regeneration script | Generated stage0 passes `cargo check`; space bounds in complexity report |
 
-### Stream 0: Compositional Parser — Status
+### Stream 0: Compositional Parser — Implementation Plan
 
 **Goal:** The parser and emitter are symmetric. Both read from
-spec data. Adding a language = adding a spec file, not code.
+`LanguageSpec`. Adding a language = adding a spec file, not code.
 
-**Step 1: Extract .dag SyntaxSpec from hardcoded parser. — DONE (PR #226)**
-`SyntaxSpec`, `ItemForm`, `BodyKind`, `OperatorSpec` types in
-`languages.dag`. Instance data in `dsl/extdeps/languages/dag/syntax.dag`:
-- `dag_item_forms`: 9 item forms (type, fn, func, service, resource, data, extern, pattern, interface)
-- `dag_operators`: 16 operators with Pratt binding powers
-- `dag_keyword_literals`: true/false/none/null → LiteralValue
+**Step 1: Extract .dag SyntaxSpec from hardcoded parser.**
+Define a `SyntaxSpec` type in `dsl/extdeps/languages/dag/syntax.dag`
+that captures the implicit grammar currently buried in `02_parse.dag`:
+- Keyword → item-tag table (replaces tokenizer keyword map + `parse_item` match)
+- Operator precedence table (replaces `infix_bp` / `prefix_bp` functions)
+- Structural form declarations: which optional modifiers each tag accepts
+  (type params, params, return, uses, provides, body style)
+- Block/record disambiguation rule (`: ` after identifier = record field)
+- Binding forms (let, bare assignment, node declaration, constrained assignment)
 
-**Step 2: Make parser generic over SyntaxSpec. — DONE (PR #226)**
-`parse_item` reads from `dag_item_forms` via `find_item_form` lookup.
-`parse_item_by_form` eats keyword generically, dispatches on `BodyKind`.
-`infix_bp` reads from `dag_operators`. `parse_primary` reads from
-`dag_keyword_literals`. 30+ `ShKw*` variants → single `ShKeyword`.
-70+ keyword predicates deleted. 7 `*_after_kw` body parsers extracted.
+**Step 2: Make parser generic over SyntaxSpec.**
+Refactor `02_parse.dag` so `parse_item` reads the tag table instead of
+matching on `ShKw*` tokens. `parse_stmt` reads binding forms from spec.
+Operator precedence comes from the spec table, not hardcoded functions.
+The .dag `SyntaxSpec` is the first (and initially only) instance.
 
-**Step 3: Validate symmetry with emission. — NEXT**
+**Step 3: Validate symmetry with emission.**
 Ensure `LanguageSpec` and `SyntaxSpec` share the same fact tables where
 applicable (item tags, operator symbols, type templates). Define the
 round-trip invariant test: `parse(spec, emit(spec, graph)) ≅ graph`.
 
 **Step 4: DSL-side workarounds for current parser limitations.**
-Fix the remaining 3 parse diagnostics in the DSL files (not in the parser):
+While the compositional parser is in progress, fix the remaining 3
+parse diagnostics in the DSL files (not in the parser):
 - `filesystem.dag`: `and` → `&&`
 - `auth/patterns.dag`: rewrite `{ token: value }` match arms
 - `std/patterns.dag`: defer generics on patterns until spec-driven parser
 
 **Step 5: Second language frontend.**
-Define a second `SyntaxSpec` (e.g., a subset of Python or a simplified
-frontend) to validate that the architecture supports multiple frontends.
+With the spec-driven parser working for .dag, define a second
+`SyntaxSpec` (e.g., a subset of Python or a simplified frontend) to
+validate that the architecture actually supports multiple frontends.
 
 **Enforcement (see Guarantee Map):**
 - **Immediate (Tier 3→2):** Keyword arm ratchet — count `ShKw*` match
@@ -723,13 +787,13 @@ fix requires manual stage0 porting.
 
 Two items surfaced during the workboard design:
 
-**1. `RecursionPattern` is declared but never used.** ~~The complexity
+**1. `RecursionPattern` is declared but never used.** The complexity
 analyzer defines `LinearRecursion | DivideAndConquer |
-UnresolvableRecursion` (complexity.dag:201-204) but never calls it.~~
-**FIXED (2026-03-28).** `get_or_compute_summary` now detects self-
-recursion via the placeholder mechanism, classifies the pattern
-(Linear vs DivideAndConquer), and produces bounded costs with
-`Conservative` certainty instead of `CostUnknown`.
+UnresolvableRecursion` (complexity.dag:201-204) but never calls it.
+`cost_of_expr` recurses into children without classifying the recursion
+pattern. This is the decidability enforcement point — wiring
+`RecursionPattern` into the walk is how the analyzer proves (or
+rejects) recursive functions.
 
 **2. Space complexity would have caught FF-8.** The 20-minute
 self-compile (FF-1/FF-8) was a space problem: O(n) clones on bare
@@ -740,96 +804,56 @@ connects Stream 3 (container sharing) to Stream 5 Track B (space) —
 the fix makes clone cost O(1), and the space analyzer proves it stays
 that way.
 
-**3. Dead code exists undetected (trace.dag).** The entire `trace.dag`
-module (types + 8 functions) is dead code — no other `.dag` file
-calls any function in it. This violates the "dead code is invariant-
-breaking" rule. The deeper issue is the compiler has no reachability
-analysis: it compiles and analyzes every function in every loaded
-module, including unreachable ones. Four layers of violation:
-
-| Layer | Issue | Fix direction |
-|-------|-------|---------------|
-| Dead module | `trace.dag` loaded, compiled, analyzed, never called | Delete dead module |
-| No dead code detection | Compiler can't flag unused functions/modules | Call-graph reachability from entry points |
-| Analyzer processes unreachable code | Complexity engine wastes work on dead functions, inflates summary/violation counts | Reachability-gated analysis: only analyze functions reachable from entry points |
-| List representation can't express O(1) pop | `Vec<Rc<T>>` makes structural removal O(n); `take(count-1)` is the symptom, immutable Vec is the cause | Persistent data structures in Layer 4 of composition stack (currently missing from std); or uniqueness typing to enable in-place mutation when refcount == 1 |
-
-The first three are wirable now (delete trace.dag, add reachability,
-gate the analyzer). The fourth is a runtime representation change
-that connects to the composition stack (Layer 4: structural
-compositions including stacks/deques) and potentially to the
-algebraic type vision (Stack<A> with O(1) push/pop denotation).
-
 ---
 
 ## Workboard: Parallel Lanes
 
-**Governing concern (2026-03-28):** CI is green but the compiler
-generates invalid code (~280 Rust errors). False green is worse than
-red — it erodes trust in the entire verification pipeline. The first
-priority is closing the gap between "compiler runs" and "compiler
-output works." No design work should proceed without confidence that
-regressions are visible.
+**Lane A (Verification) DONE (PR #227).** Ratchets are in place:
+diagnostic (0), emitted Rust errors (1184/1200), L1 (51), keyword
+arms (9), complexity (2). Space complexity (Lane A Phase 2) deferred
+until Lane B drives error count down.
 
-### Lane ordering
+**Current priority: Lane B (Compiler Output).** The 1184 cargo check
+errors in regenerated stage0 are the single deficit blocking
+bootstrap regeneration and the committed-binary approach.
 
-**Lane A (Verification) is the foundation.** Nothing else matters if
-we can't tell what's broken. Lane A runs first and produces the
-ratchets that Lanes B and C drive toward zero.
-
-**Lanes B and C run in parallel after Lane A delivers ratchets.** They
-touch different files and have independent exit criteria.
+**Lanes B and C run in parallel.** They touch different files and have
+independent exit criteria.
 
 ```
-Lane A: Verification             Lane B: Compiler Output       Lane C: Language Design
-(know what's broken)             (make output correct)         (make the language right)
+Lane A: Verification ✓           Lane B: Compiler Output       Lane C: Language Design
+(DONE — PR #227)                 (make output correct)         (make the language right)
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-PHASE 1: Wire ratchets           Stream 5C: Regen script       Stream 0: Compositional
-  (no design, just plumbing)       · Fix module naming            Parser (R3)
-  · Emitted Rust error ratchet     · Fix serde imports           · SyntaxSpec extraction
-    (cargo check on stage0)        · cargo check gate            · parse_item reads spec
-  · Complexity ratchet test                                      · round-trip smoke test
-    (violations.len() == N)      Stream 5A: Emitted Rust
-  · L1 ratchet in CI               errors (~280→0)            Decidability invariant
-    (wrap l1-ratchet.sh)           · Bool→bool, Unit→()         · Audit iteration primitives
-  · Keyword arm count              · Remove serde derives        · Wire RecursionPattern
-                                   · Emit P5.11 accessors       · Confirm structural guarantee
-PHASE 2: Space complexity
-  (same walk, diff algebra)      Stream 3: Container           Stream 1: L1 Dissolution
-  · space: CostExpr peer field     Sharing (FF-8)               · Type constructors → 0
-  · Populate all branches          · Rc<Vec<{0}>> templates     · Type-name comparisons → 0
-  · Clone cost = fan-out × size    · emitter + runtime update   · CollectionKind dissolves
-                                   · stage0 regeneration
+✓ Emitted Rust error ratchet     Stream 5A: Codegen fixes      Stream 0: Compositional
+✓ Complexity ratchet (2)           (1184 → 0 errors)             Parser (R3)
+✓ L1 ratchet (51, via script)    ┌─────────────────────┐       · SyntaxSpec extraction
+✓ Keyword arm count (9)          │ E0425 (541): generic │       · parse_item reads spec
+                                 │   type params <T>    │       · round-trip smoke test
+Deferred:                        │ E0433 (404): serde   │
+· Space as peer dimension        │   NonEmpty wrappers  │     Decidability invariant
+                                 │ E0220 (140): derived │       · Audit iteration prims
+                                 └─────────────────────┘       · Wire RecursionPattern
+                                 Stream 5C: Regen script
+                                   · ✓ cargo run (Docker)     Stream 1: L1 Dissolution
+                                   · Regenerate + commit        · Type constructors → 0
+                                                                · Type-name comparisons
+                                 Stream 3: Container FF-8       · CollectionKind dissolves
+                                   · Rc<Vec<{0}>> templates
+                                   · Atomic with regen
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-Files: bootstrap.rs (tests),     Files: 05_emit_rust.dag,      Files: 02_parse.dag,
-  source_audit.rs,                 LanguageSpec templates,        complexity.dag,
-  complexity.dag (space),          runtime_rust.dag,              01_tokenize.dag (spec),
-  l1-ratchet.sh                    regenerate-stage0.sh,          04_infer.dag (L1)
-                                   stage0/*.rs
-─────────────────────────        ─────────────────────────     ─────────────────────────
-Exit: every Tier 3 item in       Exit: cargo check 0 errors    Exit: parse_item 0 keyword
-  Guarantee Map promoted to        on generated stage0;           arms; decidability is
-  Tier 2; space in complexity      FF-8 class eliminated          structural (Tier 1);
-  report                                                          L1 ratchet = 0
+Exit: ✓ Done                     Exit: cargo check 0 errors    Exit: parse_item 0 keyword
+                                   on generated stage0;           arms; decidability is
+                                   committed binary (not          structural (Tier 1);
+                                   source); FF-8 eliminated       L1 ratchet = 0
 ```
 
-### Why Lane A first
+### Lane A status (2026-03-28): DONE
 
-The emitted Rust error ratchet is the single most important test to
-add. Today:
-
-- Self-compile: 0 diagnostics (tested, green)
-- Generated Rust: ~280 errors (untested, invisible)
-- CI: green (false confidence)
-
-Adding one test — compile generated stage0, count errors, assert
-`<= RATCHET` — immediately makes the breakage visible. Every
-subsequent fix in Lane B mechanically ratchets the number down. Without
-this test, Lane B fixes are unverifiable.
-
-The other Lane A ratchets (complexity violations, L1 count, keyword
-arms) follow the same pattern: measure what exists, make the number
-visible, ratchet down. All are pure plumbing — no design decisions.
+All ratchets delivered in PR #227. The verification gap is closed:
+regressions in compiler output, L1 type knowledge, parser keyword
+arms, and complexity violations are now visible and mechanically
+tracked. Lane B progress is measurable via the emitted Rust error
+ratchet (1184 → target 0).
 
 ### Cross-lane dependencies
 
@@ -856,18 +880,22 @@ Lane C ──→ Lane A:  Compositional parser enables round-trip smoke
 
 ### Execution order
 
-**Lane A (start immediately):**
-1. Emitted Rust error ratchet test (~280 today)
-2. Complexity violation ratchet test
-3. L1 ratchet in CI
-4. Keyword arm count in source audit
-5. Space as peer dimension in complexity analyzer
+**Lane A: ✓ DONE** (PR #227)
 
-**Lane B (start after Lane A step 1):**
-1. Fix regen script (5C)
-2. Bool→bool + serde removal (clears ~95% of errors)
-3. P5.11 accessor emission
-4. Container sharing (FF-8, atomic with regen)
+**Lane B (current priority — 996 errors → 0):**
+1. ✓ Fix regen script for Docker (cargo run instead of binary path)
+2. ✓ Remove serde from NonEmpty wrappers (138 → 0 serde errors)
+3. ✓ Fix generics emission — `<T>` on struct/enum defs (~130 errors)
+4. ✓ Fix container/generic casing — FreeMonoid not free_monoid
+5. ✓ Fix callable error recovery — empty name, not "Callable" (Part 1)
+6. Callable rendering (Part 2) — zero-param fn() → Rc<dyn Fn() -> T>.
+   Structural identification works (inferred != none predicate) but
+   rendering change causes ~186 cascading type mismatches. Needs full
+   emit pipeline to agree: struct fields, function sigs, call sites.
+7. Remaining E0425 (388): `Tuple`, `Bool` type names unresolved
+8. Regenerate stage0, verify cargo check passes
+9. Committed binary approach (never hand-edit generated code again)
+10. Container sharing (FF-8, atomic with regen)
 
 **Lane C (runs in parallel, no blocking deps):**
 1. Decidability audit (review iteration primitives)
@@ -1022,16 +1050,12 @@ All C-series items complete. Key outcomes:
 | FO-4 | v2 emitter fan-out fact | Open |
 | FO-5 | Fan-out preservation ratchet | Blocked on FO-3 |
 
-### Phase 5 Milestones (2026-03-28)
+### Phase 5 Milestones (2026-03-27)
 
 - **Diagnostic ratchet: 0.** Zero type errors or warnings on self-compile.
-  (Note: stage0 regeneration currently blocked by pre-existing
-  04_resolve.dag parse diagnostic unrelated to Stream 0.)
 - **Fixed-point: PASSES.** Stage0 → stage1 → stage2 converges.
 - **Self-compile: 6.47s** (release). Tokenize 4.87s, Parse 78ms,
   Resolve 1ms, Reconcile 244ms, Emit 1.27s.
-- **Stream 0 landed (2026-03-28, PR #226).** `SyntaxSpec` types,
-  data-driven item/operator/literal dispatch. 148/148 tests pass.
 
 ### Phase 5 Exit Criteria
 
@@ -1059,7 +1083,7 @@ All C-series items complete. Key outcomes:
 |----|--------|-------------------|--------|
 | R1 | `00_core.dag` | C → A | Phase 1/3 |
 | R2 | `01_tokenize.dag` | A → A | Done |
-| R3 | `02_parse.dag` | D → B+ | **B+ (PR #226)** — spec-driven dispatch landed; statement/expression dispatch still hardcoded |
+| R3 | `02_parse.dag` | D → B+ | **ACTIVE (priority)** — compositional parser model |
 | R4 | `03_resolve.dag` | A → A | Done |
 | R5 | `04_infer.dag` | D → B+ | Phase 1 |
 | R6 | `05_emit*.dag` | D → B+ | Phase 4 (done) |
@@ -1069,28 +1093,29 @@ All C-series items complete. Key outcomes:
 
 ### R3 Detail: Compositional Parser Model
 
-**Landed (2026-03-28, PR #226).** The parser reads `SyntaxSpec` data.
+**Problem (2026-03-28).** The parser has accumulated structural debt.
+`parse_item` has 9 keyword match arms. Each new DSL syntax form adds
+dedicated parse functions and match arms. The keyword enum has 9 item
+types across 3 files.
 
-**What shipped:**
-- `SyntaxSpec` type with `ItemForm`, `BodyKind`, `OperatorSpec` in `languages.dag`
-- `.dag` syntax spec instance: `dsl/extdeps/languages/dag/syntax.dag`
-- `parse_item` → `find_item_form` lookup → `parse_item_by_form` dispatch on `BodyKind`
-- `infix_bp` → `find_operator_bp` lookup from `dag_operators` table
-- `parse_primary` literal dispatch → `dag_keyword_literals` map lookup
-- `TokenShape`: 30+ `ShKw*` → single `ShKeyword`; 70+ predicates deleted
-- 7 `*_after_kw` body parsers extracted from existing parse functions
+**Target model:**
 
-**Exit criteria (met):**
-- `parse_item` has 0 keyword-specific match arms
-- Adding a new item type with standard body = 1 file edit (`syntax.dag`)
-- `infix_bp` has 0 hardcoded match arms
+```
+Item     = Tag Name [TypeParams] [Params] [Return] [Uses] [Provides] Body
+Body     = BlockBody | FieldBody | AssignBody | DeclOnly
+Statement = LetBinding | NodeBinding | Return | Expr
+Binding  = Name [Constraints] (: | =) Expr [Return]
+```
 
-**Remaining (deferred):**
-- Statement dispatch (`parse_stmt`) — 3 keyword arms, stable, small
-- Expression keyword dispatch (match/if/for/let/return/fn) — structural forms, not data-drivable
-- Block/record disambiguation — still heuristic
-- Parse-emit round-trip test
-- Second language frontend
+Item identity is the tag string, not an enum variant. Adding a new item
+type requires zero parser changes. Block vs record resolved structurally:
+`{ ident : expr }` is always record; `{ stmt; stmt }` is always block.
+
+**Exit criteria:**
+- `parse_item` has no keyword-specific match arms
+- Adding a new item type requires editing 0 parser files
+- Block/record disambiguation is structural, not heuristic
+- Type params, constraints, return annotations available to any form
 
 ---
 
@@ -1104,7 +1129,7 @@ All C-series items complete. Key outcomes:
 | `[when]` string comparison | Only boolean fields supported; blocks conditional service dispatch |
 | `[when]`/`[after]` inside `for` | Bracket clauses only on top-level step bindings |
 | Multiple `uses` clauses | Only one per `func`; workaround: use `shell.Exec.Run` |
-| `fixture`/`test` blocks | **Unblocked by PR #226** — add `ItemForm` entry in `syntax.dag` with `BlockBody` |
+| `fixture`/`test` blocks | Blocked on compositional parser — would grow keyword enum |
 
 ### Desired Parser Features (2026-03-28)
 
@@ -1114,7 +1139,7 @@ All C-series items complete. Key outcomes:
 | `[after X, when X.field]` multi-clause brackets | Implicit data-flow ordering | Bracket clause accepts comma-separated constraints |
 | `[when]` string comparison `x == "foo"` | `match` + `shell.Exec.Run` | Bracket clause accepts arbitrary boolean expressions |
 | Multiple `uses` clauses per func | `shell.Exec.Run` for secondary resources | `uses net: Network, fs: Filesystem` |
-| `fixture`/`test` blocks | Comment out; tests via cargo test | **Unblocked:** add `ItemForm` to `syntax.dag` |
+| `fixture`/`test` blocks | Comment out; tests via cargo test | Structural item tags |
 | `and`/`or` as operators | `&&`/`||` | Parser recognizes as boolean operators |
 | `{ ident: value }` in match arms | Named types or `let` bindings | Structural block/record disambiguation |
 | `pattern<T>` generics on patterns | Monomorphize manually | Type params on any structural form |

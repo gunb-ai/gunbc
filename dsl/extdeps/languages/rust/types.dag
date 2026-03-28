@@ -90,9 +90,9 @@ type SmartPointerKind
   | RcPtr                              // Rc<T> -- reference-counted, single-thread
   | ArcPtr                             // Arc<T> -- reference-counted, thread-safe
 
-data box_template: String = "Box<{0}>"
-data rc_template: String = "Rc<{0}>"
-data arc_template: String = "Arc<{0}>"
+data box_template: String = "Box<\{0\}>"
+data rc_template: String = "Rc<\{0\}>"
+data arc_template: String = "Arc<\{0\}>"
 
 // -- Trait bounds ----------------------------------------------------
 // Ref: Rust Reference 10.1.1 "Trait and lifetime bounds"

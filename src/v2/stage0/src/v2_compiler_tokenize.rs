@@ -796,7 +796,15 @@ let resolved = if (next.clone() == "\"".to_string()) {
                             if (next.clone() == "t".to_string()) {
                                 "	".to_string()
 } else {
-                                v2_rt::concat("\\".to_string(), next.clone())
+                                if (next.clone() == "{".to_string()) {
+                                    "{".to_string()
+} else {
+                                    if (next.clone() == "}".to_string()) {
+                                        "}".to_string()
+} else {
+                                        v2_rt::concat("\\".to_string(), next.clone())
+}
+}
 }
 }
 }
