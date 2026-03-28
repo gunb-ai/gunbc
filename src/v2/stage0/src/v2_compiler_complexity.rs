@@ -323,17 +323,12 @@ pub fn bounded_recursive_cost(pattern: Rc<RecursionPattern>, raw_cost: Rc<CostEx
                 upper: Rc::new(SizeExpr::SizeVar { name: var.clone() }),
                 body: per_iter.clone(),
             }),
-        RecursionPattern::DivideAndConquer { split_factor: k } => {
-            let depth_var = v2_rt::concat("depth_".to_string(), func_name.clone());
-            Rc::new(CostExpr::CostSum {
-                binder: depth_var.clone(),
-                upper: Rc::new(SizeExpr::SizeVar { name: depth_var.clone() }),
-                body: Rc::new(CostExpr::CostMul {
-                    left: Rc::new(CostExpr::CostConst { value: k.clone() }),
-                    right: per_iter.clone(),
-                }),
-            })
-        },
+        RecursionPattern::DivideAndConquer { split_factor: k } =>
+            Rc::new(CostExpr::CostUnknown {
+                reason: v2_rt::concat("branching recursion (".to_string(),
+                    v2_rt::concat(k.to_string(),
+                        v2_rt::concat(" self-calls) in ".to_string(), func_name.clone()))),
+            }),
         RecursionPattern::UnresolvableRecursion { reason: r } =>
             Rc::new(CostExpr::CostUnknown { reason: r.clone() }),
     }

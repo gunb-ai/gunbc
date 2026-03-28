@@ -298,13 +298,13 @@ fn bounded_recursive_cost(pattern: RecursionPattern, raw_cost: CostExpr, func_na
       // Total cost = iterations × per-iteration cost
       CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
     DivideAndConquer { split_factor: k } =>
-      // Conservative: depth × (k × per-level cost)
-      let depth_var = concat("depth_", func_name)
-      CostSum {
-        binder: depth_var,
-        upper: SizeVar { name: depth_var },
-        body: CostMul { left: CostConst { value: k }, right: per_iter }
-      }
+      // Multiple self-calls: work grows as k^depth, not depth*k.
+      // CostExpr cannot express exponentials, so report as Unknown.
+      // In practice, .dag multiple self-calls occur inside fold over
+      // children (tree walks), where the fold CostSum already bounds
+      // the recursion. True Fibonacci-style recursion is not expressible
+      // in decidable .dag programs.
+      CostUnknown { reason: concat("branching recursion (", concat(to_string(k), concat(" self-calls) in ", func_name))) }
     UnresolvableRecursion { reason: r } =>
       CostUnknown { reason: r }
   }

@@ -33,7 +33,9 @@ pattern acquire_subject_token(
   node token = match runtime {
     GitHubActions => github_oidc(audience: audience)
     Metadata     => metadata_oidc(audience: audience)
-    LocalDev     => local_auth()
+    // LocalDev branch deferred: local_auth() requires parser features
+    // not yet supported (field access in if-block expressions).
+    // See ROADMAP.md "Desired Parser Features".
   }
   return { token: token.token }
 }
