@@ -864,7 +864,7 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       let container_kind = non_empty_container_kind(collection: n.collection_kind, name: n.name, target: target)
       emit_container(kind: container_kind, inner: inner, target: target)
     } else {
-      n.name
+      emit_primitive_type(name: n.name, target: target)
     }
   }
 }
@@ -881,7 +881,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   if n.name == "Refined" {
     match n.children |> first {
       Some { value: base } => emit_node_type_rc(n: base, target: target, rc_types: rc_types)
-      None => n.name
+      None => emit_primitive_type(name: n.name, target: target)
     }
   } else if n.name == tuple_type_name {
     // Tuple children may have inferred set — unwrap to get the actual type.
@@ -909,11 +909,12 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    // Named product type — Rc wrapping for Rust
+    // Named product type — route through type map (invariant: all names via language spec).
+    let mapped = emit_primitive_type(name: n.name, target: target)
     if emit_map_has(m: rc_types, key: n.name) {
-      concat("Rc<", n.name, ">")
+      concat("Rc<", mapped, ">")
     } else {
-      n.name
+      mapped
     }
   } else {
     // Anonymous product: Rust renders as tuple, others as error marker.
@@ -948,11 +949,12 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
 
 fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name != "" {
-    // Named coproduct type — Rc wrapping for Rust
+    // Named coproduct type — route through type map (invariant: all names via language spec).
+    let mapped = emit_primitive_type(name: n.name, target: target)
     if emit_map_has(m: rc_types, key: n.name) {
-      concat("Rc<", n.name, ">")
+      concat("Rc<", mapped, ">")
     } else {
-      n.name
+      mapped
     }
   } else {
     // Anonymous coproduct — error in all targets.
@@ -970,6 +972,8 @@ fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
 // =========================================================================
 
 // Check if a return type indicates a type alias (not Unit).
+// Unit is the only return type that signals "this is not an alias" —
+// bare items like `type Unit` have rt_type name "Unit".
 fn is_type_alias_return_node(n: Node) -> Bool {
   n.name != "Unit"
 }
@@ -1060,10 +1064,16 @@ fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
   let item_has_structure = item.connective != NoConnective
-  let kind = if item_has_structure && item.transport == none {
-    TypedItemTypeDef
-  } else if item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
+  let is_bare_leaf = item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+  let kind = if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
     TypedItemTypeAlias
+  } else if is_bare_leaf && !is_type_alias_return_node(n: rt_type(n: item)) {
+    // Bare leaf declarations with no alias body (e.g., `type Bool`, `type Unit`).
+    // These are type-system declarations handled by the type map — emitting a
+    // definition would duplicate what the type map already provides.
+    TypedItemTypeDecl
+  } else if item_has_structure && item.transport == none {
+    TypedItemTypeDef
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
   } else if item.body != none && item.type_annotation != none {

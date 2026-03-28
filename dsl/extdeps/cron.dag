@@ -1,0 +1,85 @@
+// extdeps/cron.dag -- POSIX crontab scheduler
+//
+// Spec: POSIX.1-2017 crontab(1)
+// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html
+//
+// Models the local user crontab as a set of entries keyed by a tag
+// comment. Upsert and Remove are idempotent by construction:
+// Upsert matches on tag, replaces if present, appends if absent.
+// Remove matches on tag, no-ops if absent.
+//
+// Consumers:
+//   gunbc/tools/review.dag -- review workflow self-registers its schedule
+
+module extdeps.cron
+
+// -- Cron entry model -------------------------------------------------
+
+type CronSchedule {
+  minute: String
+  hour: String
+  day_of_month: String
+  month: String
+  day_of_week: String
+}
+
+type CronEntry {
+  tag: String
+  schedule: CronSchedule
+  command: String
+}
+
+// -- Service: shell transport -----------------------------------------
+
+service cron.Tab {
+  operation List {
+    input {}
+    output { entries: String }
+    readonly
+    transport shell { argv: ["crontab", "-l"] }
+    exit {
+      0 => Unit
+      1 => Unit "No crontab for user"
+    }
+    mock_response {
+      0 => { entries: "*/30 * * * * /usr/bin/review-agent run # tag:review-agent" } "Existing crontab"
+    }
+  }
+
+  operation Upsert {
+    input {
+      tag: String
+      schedule: String
+      command: String
+      log_path: String?
+    }
+    output { success: Bool, stdout: String, stderr: String }
+    transport shell {
+      argv: ["sh", "-c", "TAG='# tag:{tag}'; ENTRY='{schedule} {command} >> {log_path} 2>&1 $TAG'; CURRENT=$(crontab -l 2>/dev/null || true); if echo \"$CURRENT\" | grep -qF \"$TAG\"; then echo \"$CURRENT\" | sed \"/$TAG/c\\\\$ENTRY\" | crontab -; else (echo \"$CURRENT\"; echo \"$ENTRY\") | crontab -; fi"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Crontab upsert failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "Upsert succeeded"
+    }
+  }
+
+  operation Remove {
+    input {
+      tag: String
+    }
+    output { success: Bool, stdout: String, stderr: String }
+    transport shell {
+      argv: ["sh", "-c", "TAG='# tag:{tag}'; CURRENT=$(crontab -l 2>/dev/null || true); echo \"$CURRENT\" | grep -vF \"$TAG\" | crontab -"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Crontab remove failed"
+    }
+    mock_response {
+      0 => { success: true, stdout: "", stderr: "" } "Remove succeeded"
+    }
+  }
+}
