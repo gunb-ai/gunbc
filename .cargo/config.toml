@@ -1,0 +1,8 @@
+# Memory safety: v2_compiler tests use 5-11 GB each.
+# On 16 GB machines, parallel cargo runs cause OOM → system watchdog restart.
+
+[build]
+jobs = 2                          # max parallel rustc/linker invocations per cargo run
+
+[env]
+RUST_TEST_THREADS = { value = "1", force = false }  # max parallel test threads per binary
