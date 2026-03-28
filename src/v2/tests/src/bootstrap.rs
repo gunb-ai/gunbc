@@ -307,15 +307,15 @@ fn bootstrap_stage0_to_stage1() {
     for (code, count) in cats.iter().take(10) {
         eprintln!("  {}: {}", code, count);
     }
-    // Show sample errors for the top category
-    if let Some((top_code, _)) = cats.first() {
-        let top = top_code.trim_end_matches(']').trim_start_matches("error[");
+    // Show samples for top 3 categories
+    for (code, _) in cats.iter().take(3) {
+        let needle = code.trim_end_matches(']').trim_start_matches("error[");
         let samples: Vec<&str> = check_stderr.lines()
-            .filter(|l| l.contains(top))
-            .take(3)
+            .filter(|l| l.starts_with(&format!("error[{}]", needle)))
+            .take(2)
             .collect();
         for s in samples {
-            eprintln!("  sample: {}", &s[..s.len().min(200)]);
+            eprintln!("  {}", &s[..s.len().min(200)]);
         }
     }
 
