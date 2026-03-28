@@ -78,7 +78,7 @@ service github.Pulls {
     readonly
     transport rest {
       method: GET,
-      path: "/repos/{owner}/{repo}/pulls",
+      path: "/repos/\{owner\}/\{repo\}/pulls",
       query: { state: state, per_page: per_page }
     }
     response {
@@ -121,7 +121,7 @@ service github.Pulls {
     readonly
     transport rest {
       method: GET,
-      path: "/repos/{owner}/{repo}/pulls/{pull_number}"
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}"
     }
     response {
       200 => PullRequest
@@ -160,7 +160,7 @@ service github.Pulls {
     readonly
     transport rest {
       method: GET,
-      path: "/repos/{owner}/{repo}/pulls/{pull_number}",
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}",
       headers: { "Accept": "application/vnd.github.diff" }
     }
     response {
@@ -188,7 +188,7 @@ service github.Pulls {
     }
     transport rest {
       method: POST,
-      path: "/repos/{owner}/{repo}/issues/{issue_number}/comments",
+      path: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments",
       body: { body: body }
     }
     response {

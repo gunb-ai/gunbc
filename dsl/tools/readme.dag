@@ -28,7 +28,7 @@ fn render_tool_table(tools: List<ReadmeTool>) -> String {
   let header = "| Tool | Description |\n|------|-------------|"
   let rendered = map(tools, t => render_tool_row(tool: t))
   let rows = join(rendered, "\n")
-  "{header}\n{rows}"
+  "\{header\}\n\{rows\}"
 }
 
 fn render_title() -> String {

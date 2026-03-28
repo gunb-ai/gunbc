@@ -78,12 +78,12 @@ type TypeMapping {
 // Ref: Rust Reference 8.1, Go Spec "Short variable declarations",
 //      Python Reference 7 "Simple statements"
 type StatementSyntax {
-  let_binding: String              // e.g. "let {name}: {type} = {value};"
-  let_binding_inferred: String     // e.g. "let {name} = {value};"
-  assignment: String               // e.g. "{name} = {value};"
-  return_value: String             // e.g. "return {value};"
+  let_binding: String              // e.g. "let \{name\}: \{type\} = \{value\};"
+  let_binding_inferred: String     // e.g. "let \{name\} = \{value\};"
+  assignment: String               // e.g. "\{name\} = \{value\};"
+  return_value: String             // e.g. "return \{value\};"
   return_void: String              // e.g. "return;" or "return"
-  expression_statement: String     // e.g. "{expr};"
+  expression_statement: String     // e.g. "\{expr\};"
   statement_terminator: String     // e.g. ";" or "" (Python: none)
 }
 
@@ -91,27 +91,27 @@ type StatementSyntax {
 // Ref: Rust Reference 8.2, Go Spec "Expressions",
 //      Python Reference 6 "Expressions"
 type ExpressionSyntax {
-  binary_op: String                // e.g. "{lhs} {op} {rhs}"
-  unary_op: String                 // e.g. "{op}{expr}"
-  field_access: String             // e.g. "{object}.{field}"
-  method_call: String              // e.g. "{object}.{method}({args})"
-  function_call: String            // e.g. "{func}({args})"
-  index_access: String             // e.g. "{object}[{index}]"
-  string_interpolation: String?    // e.g. "f\"{expr}\"" or null if unsupported
-  closure: String                  // e.g. "|{params}| {body}" or "lambda {params}: {body}"
+  binary_op: String                // e.g. "\{lhs\} \{op\} \{rhs\}"
+  unary_op: String                 // e.g. "\{op\}\{expr\}"
+  field_access: String             // e.g. "\{object\}.\{field\}"
+  method_call: String              // e.g. "\{object\}.\{method\}(\{args\})"
+  function_call: String            // e.g. "\{func\}(\{args\})"
+  index_access: String             // e.g. "\{object\}[\{index\}]"
+  string_interpolation: String?    // e.g. "f\"\{expr\}\"" or null if unsupported
+  closure: String                  // e.g. "|\{params\}| \{body\}" or "lambda \{params\}: \{body\}"
 }
 
 // "How does a language write control flow?"
 // Ref: Rust Reference 8.2.16, Go Spec "Statements",
 //      Python Reference 8 "Compound statements"
 type ControlFlowSyntax {
-  if_then: String                  // e.g. "if {cond} { {body} }"
-  if_else: String                  // e.g. "if {cond} { {then} } else { {else} }"
-  match_header: String             // e.g. "match {expr} {" or "switch {expr} {"
-  match_arm: String                // e.g. "{pattern} => {body},"
-  for_each: String                 // e.g. "for {item} in {iter} { {body} }"
-  while_loop: String               // e.g. "while {cond} { {body} }"
-  loop_infinite: String?           // e.g. "loop { {body} }" or null
+  if_then: String                  // e.g. "if \{cond\} { \{body\} }"
+  if_else: String                  // e.g. "if \{cond\} { \{then\} } else { \{else\} }"
+  match_header: String             // e.g. "match \{expr\} {" or "switch \{expr\} {"
+  match_arm: String                // e.g. "\{pattern\} => \{body\},"
+  for_each: String                 // e.g. "for \{item\} in \{iter\} { \{body\} }"
+  while_loop: String               // e.g. "while \{cond\} { \{body\} }"
+  loop_infinite: String?           // e.g. "loop { \{body\} }" or null
   break_keyword: String            // e.g. "break"
   continue_keyword: String         // e.g. "continue"
 }
@@ -134,10 +134,10 @@ type LiteralSyntax {
 // Ref: Rust Reference 6.3 "Use declarations", Go Spec "Import declarations",
 //      Python Reference 7.11 "The import statement"
 type ModuleSyntax {
-  import_single: String            // e.g. "use {path};" or "import {path}"
-  import_from: String?             // e.g. "from {module} import {names}" or null
-  import_alias: String             // e.g. "use {path} as {alias};" or "import {path} as {alias}"
-  module_declaration: String?      // e.g. "mod {name};" or "package {name}" or null
+  import_single: String            // e.g. "use \{path\};" or "import \{path\}"
+  import_from: String?             // e.g. "from \{module\} import \{names\}" or null
+  import_alias: String             // e.g. "use \{path\} as \{alias\};" or "import \{path\} as \{alias\}"
+  module_declaration: String?      // e.g. "mod \{name\};" or "package \{name\}" or null
   visibility_public: String?       // e.g. "pub" or null (Python: convention only)
   visibility_private: String?      // e.g. null or null (Go: lowercase)
   path_separator: String           // e.g. "::" or "." or "/"
@@ -147,12 +147,12 @@ type ModuleSyntax {
 // Ref: Rust Reference 6.4, Go Spec "Function declarations",
 //      Python Reference 8.7 "Function definitions"
 type FunctionSyntax {
-  definition: String               // e.g. "fn {name}({params}) -> {ret} { {body} }"
-  definition_void: String          // e.g. "fn {name}({params}) { {body} }"
-  param_with_type: String          // e.g. "{name}: {type}" or "{name} {type}"
+  definition: String               // e.g. "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
+  definition_void: String          // e.g. "fn \{name\}(\{params\}) { \{body\} }"
+  param_with_type: String          // e.g. "\{name\}: \{type\}" or "\{name\} \{type\}"
   param_separator: String          // e.g. ", "
-  async_definition: String?        // e.g. "async fn {name}({params}) -> {ret} { {body} }" or null
-  async_await: String?             // e.g. "{expr}.await" or "await {expr}" or null
+  async_definition: String?        // e.g. "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }" or null
+  async_await: String?             // e.g. "\{expr\}.await" or "await \{expr\}" or null
   return_type_separator: String    // e.g. " -> " or " " (Go)
 }
 
@@ -161,37 +161,37 @@ type FunctionSyntax {
 //      Python Reference 8.4 "The try statement"
 type ErrorHandlingSyntax
   = ResultType {
-      ok_template: String          // e.g. "Result<{0}, {1}>"
-      err_constructor: String      // e.g. "Err({value})"
-      ok_constructor: String       // e.g. "Ok({value})"
-      try_operator: String         // e.g. "{expr}?"
+      ok_template: String          // e.g. "Result<\{0\}, \{1\}>"
+      err_constructor: String      // e.g. "Err(\{value\})"
+      ok_constructor: String       // e.g. "Ok(\{value\})"
+      try_operator: String         // e.g. "\{expr\}?"
     }
   | ExceptionBased {
-      try_block: String            // e.g. "try:\n    {body}"
-      except_clause: String        // e.g. "except {type} as {name}:\n    {handler}"
+      try_block: String            // e.g. "try:\n    \{body\}"
+      except_clause: String        // e.g. "except \{type\} as \{name\}:\n    \{handler\}"
       raise_keyword: String        // e.g. "raise" or "throw"
-      finally_block: String?       // e.g. "finally:\n    {body}" or null
+      finally_block: String?       // e.g. "finally:\n    \{body\}" or null
     }
   | MultiReturn {
       error_interface: String      // e.g. "error"
-      error_check: String          // e.g. "if {name} != nil { {handler} }"
-      error_return: String         // e.g. "return {zero}, fmt.Errorf({msg})"
-      error_format: String         // e.g. "fmt.Errorf(\"{template}\", {args})"
+      error_check: String          // e.g. "if \{name\} != nil { \{handler\} }"
+      error_return: String         // e.g. "return \{zero\}, fmt.Errorf(\{msg\})"
+      error_format: String         // e.g. "fmt.Errorf(\"\{template\}\", \{args\})"
     }
 
 // "How does a language define types?"
 // Ref: Rust Reference 6.1 "Structs"/6.2 "Enumerations"/8.1.4 "Type aliases",
 //      Go Spec "Type declarations", Python Reference 8.9 "Class definitions"
 type TypeDefinitionSyntax {
-  struct_def: String               // e.g. "pub struct {name} {\n{fields}\n}"
-  struct_empty: String             // e.g. "pub struct {name};" (unit struct)
-  struct_field: String             // e.g. "pub {name}: {type},"
-  enum_def: String                 // e.g. "pub enum {name} {\n{variants}\n}"
-  enum_unit_variant: String        // e.g. "{name},"
-  enum_data_variant: String        // e.g. "{name} {\n{fields}\n},"
-  type_alias: String               // e.g. "pub type {name} = {type};"
-  generic_param: String            // e.g. "<{params}>" or "[{params}]"
-  derive_attribute: String?        // e.g. "#[derive({traits})]" or "@dataclass" or null
+  struct_def: String               // e.g. "pub struct \{name\} {\n\{fields\}\n}"
+  struct_empty: String             // e.g. "pub struct \{name\};" (unit struct)
+  struct_field: String             // e.g. "pub \{name\}: \{type\},"
+  enum_def: String                 // e.g. "pub enum \{name\} {\n\{variants\}\n}"
+  enum_unit_variant: String        // e.g. "\{name\},"
+  enum_data_variant: String        // e.g. "\{name\} {\n\{fields\}\n},"
+  type_alias: String               // e.g. "pub type \{name\} = \{type\};"
+  generic_param: String            // e.g. "<\{params\}>" or "[\{params\}]"
+  derive_attribute: String?        // e.g. "#[derive(\{traits\})]" or "@dataclass" or null
   visibility_modifier: String?     // e.g. "pub " or null (Go: capitalization)
 }
 
@@ -199,15 +199,15 @@ type TypeDefinitionSyntax {
 // Ref: Rust Reference 18 "Patterns", Go Spec (no native patterns),
 //      Python PEP 634 "Structural Pattern Matching"
 type PatternMatchSyntax {
-  match_expr: String               // e.g. "match {expr} {\n{arms}\n}"
-  match_arm: String                // e.g. "{pattern} => {body},"
-  variant_pattern: String          // e.g. "{name} { {bindings} }"
-  variant_pattern_empty: String    // e.g. "{name}"
-  field_binding: String            // e.g. "{field}: {binding}"
+  match_expr: String               // e.g. "match \{expr\} {\n\{arms\}\n}"
+  match_arm: String                // e.g. "\{pattern\} => \{body\},"
+  variant_pattern: String          // e.g. "\{name\} { \{bindings\} }"
+  variant_pattern_empty: String    // e.g. "\{name\}"
+  field_binding: String            // e.g. "\{field\}: \{binding\}"
   field_binding_separator: String  // e.g. ", "
   wildcard: String                 // e.g. "_"
-  guard: String?                   // e.g. " if {cond}" or null
-  or_pattern: String?              // e.g. "{a} | {b}" or null
+  guard: String?                   // e.g. " if \{cond\}" or null
+  or_pattern: String?              // e.g. "\{a\} | \{b\}" or null
 }
 
 // "How does a language handle async execution?"
@@ -215,16 +215,16 @@ type PatternMatchSyntax {
 //      Go Spec "Go statements"
 type AsyncSyntax
   = AwaitBased {
-      async_fn_def: String         // e.g. "async fn {name}({params}) -> {ret} { {body} }"
-      await_expr: String           // e.g. "{expr}.await" or "await {expr}"
-      spawn_task: String?          // e.g. "tokio::spawn({expr})" or "asyncio.create_task({expr})"
-      gather: String?              // e.g. "futures::join!({exprs})" or "asyncio.gather({exprs})"
+      async_fn_def: String         // e.g. "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }"
+      await_expr: String           // e.g. "\{expr\}.await" or "await \{expr\}"
+      spawn_task: String?          // e.g. "tokio::spawn(\{expr\})" or "asyncio.create_task(\{expr\})"
+      gather: String?              // e.g. "futures::join!(\{exprs\})" or "asyncio.gather(\{exprs\})"
     }
   | GoroutineBased {
-      go_stmt: String              // e.g. "go {expr}"
-      channel_send: String         // e.g. "{chan} <- {value}"
-      channel_recv: String         // e.g. "<-{chan}"
-      select_stmt: String          // e.g. "select {\n{cases}\n}"
+      go_stmt: String              // e.g. "go \{expr\}"
+      channel_send: String         // e.g. "\{chan\} <- \{value\}"
+      channel_recv: String         // e.g. "<-\{chan\}"
+      select_stmt: String          // e.g. "select {\n\{cases\}\n}"
     }
 
 // -- Layer 0c: Runtime operation mappings ----------------------------
@@ -240,40 +240,40 @@ type AsyncSyntax
 // "How does a language operate on collections?"
 // Ref: Rust Iterator trait, Python builtins/itertools, Go slices package
 type CollectionOps {
-  count: String                  // e.g. "{recv}.len()" or "len({recv})"
-  first: String                  // e.g. "{recv}.first().cloned()" or "{recv}[0] if {recv} else None"
-  last: String                   // e.g. "{recv}.last().cloned()" or "{recv}[-1] if {recv} else None"
-  enumerate: String              // e.g. "{recv}.iter().enumerate()..." or "list(enumerate({recv}))"
-  join: String                   // e.g. "{recv}.join(&{arg})" or "{arg}.join({recv})"
-  map: String                    // e.g. "{recv}.into_iter().map({body}).collect()" or "[{body} for {param} in {recv}]"
-  filter: String                 // e.g. "{recv}.into_iter().filter({body}).collect()" or "[x for x in {recv} if {body}]"
-  flat_map: String               // e.g. "{recv}.into_iter().flat_map({body}).collect()"
-  fold: String                   // e.g. "{recv}.into_iter().fold({init}, {body})"
-  any: String                    // e.g. "{recv}.iter().any({body})" or "any({body} for {param} in {recv})"
-  all: String                    // e.g. "{recv}.iter().all({body})" or "all({body} for {param} in {recv})"
+  count: String                  // e.g. "\{recv\}.len()" or "len(\{recv\})"
+  first: String                  // e.g. "\{recv\}.first().cloned()" or "\{recv\}[0] if \{recv\} else None"
+  last: String                   // e.g. "\{recv\}.last().cloned()" or "\{recv\}[-1] if \{recv\} else None"
+  enumerate: String              // e.g. "\{recv\}.iter().enumerate()..." or "list(enumerate(\{recv\}))"
+  join: String                   // e.g. "\{recv\}.join(&\{arg\})" or "\{arg\}.join(\{recv\})"
+  map: String                    // e.g. "\{recv\}.into_iter().map(\{body\}).collect()" or "[\{body\} for \{param\} in \{recv\}]"
+  filter: String                 // e.g. "\{recv\}.into_iter().filter(\{body\}).collect()" or "[x for x in \{recv\} if \{body\}]"
+  flat_map: String               // e.g. "\{recv\}.into_iter().flat_map(\{body\}).collect()"
+  fold: String                   // e.g. "\{recv\}.into_iter().fold(\{init\}, \{body\})"
+  any: String                    // e.g. "\{recv\}.iter().any(\{body\})" or "any(\{body\} for \{param\} in \{recv\})"
+  all: String                    // e.g. "\{recv\}.iter().all(\{body\})" or "all(\{body\} for \{param\} in \{recv\})"
   empty_list: String             // e.g. "vec![]" or "[]"
-  list_literal: String           // e.g. "vec![{elements}]" or "[{elements}]"
+  list_literal: String           // e.g. "vec![\{elements\}]" or "[\{elements\}]"
 }
 
 // "How does a language operate on strings?"
 // Ref: Rust String methods, Python str methods, Go strings package
 type StringOps {
-  split: String                  // e.g. "{recv}.split(&{arg})...collect()" or "{recv}.split({arg})"
-  chars: String                  // e.g. "{recv}.chars()...collect()" or "list({recv})"
-  concat: String                 // e.g. "format!(\"{}\", {args})" or "f\"{args}\""
-  string_literal: String         // e.g. "\"{value}\".to_string()" or "\"{value}\""
-  string_interp: String          // e.g. "format!(\"{fmt}\", {args})" or "f\"{fmt}\""
-  code_point: String             // e.g. "{recv} as u32 as i64" or "ord({recv})"
-  from_code_point: String        // e.g. "char::from_u32({arg} as u32)..." or "chr({arg})"
+  split: String                  // e.g. "\{recv\}.split(&\{arg\})...collect()" or "\{recv\}.split(\{arg\})"
+  chars: String                  // e.g. "\{recv\}.chars()...collect()" or "list(\{recv\})"
+  concat: String                 // e.g. "format!(\"{}\", \{args\})" or "f\"\{args\}\""
+  string_literal: String         // e.g. "\"\{value\}\".to_string()" or "\"\{value\}\""
+  string_interp: String          // e.g. "format!(\"\{fmt\}\", \{args\})" or "f\"\{fmt\}\""
+  code_point: String             // e.g. "\{recv\} as u32 as i64" or "ord(\{recv\})"
+  from_code_point: String        // e.g. "char::from_u32(\{arg\} as u32)..." or "chr(\{arg\})"
 }
 
 // "How does a language operate on maps?"
 // Ref: Rust HashMap/BTreeMap, Python dict, Go map
 type MapOps {
   empty_map: String              // e.g. "BTreeMap::new()" or "{}" or "map[K]V{}"
-  map_insert: String             // e.g. "{recv}.insert({key}, {value})" or "{recv}[{key}] = {value}"
-  map_get: String                // e.g. "{recv}.get(&{key}).cloned()" or "{recv}.get({key})"
-  map_contains: String           // e.g. "{recv}.contains_key(&{key})" or "{key} in {recv}"
+  map_insert: String             // e.g. "\{recv\}.insert(\{key\}, \{value\})" or "\{recv\}[\{key\}] = \{value\}"
+  map_get: String                // e.g. "\{recv\}.get(&\{key\}).cloned()" or "\{recv\}.get(\{key\})"
+  map_contains: String           // e.g. "\{recv\}.contains_key(&\{key\})" or "\{key\} in \{recv\}"
 }
 
 // "How does a language handle null/optional coalescing?"
@@ -281,13 +281,13 @@ type MapOps {
 // Ref: Rust Option::unwrap_or_else, Python ternary, Go nil check
 type NullCoalesceStrategy
   = MethodBased {
-      template: String           // e.g. "{lhs}.unwrap_or_else(|| {rhs})"
+      template: String           // e.g. "\{lhs\}.unwrap_or_else(|| \{rhs\})"
     }
   | TernaryBased {
-      template: String           // e.g. "({lhs} if {lhs} is not None else {rhs})"
+      template: String           // e.g. "(\{lhs\} if \{lhs\} is not None else \{rhs\})"
     }
   | IIFEBased {
-      template: String           // e.g. "func() ... { if {lhs} != nil ... }()"
+      template: String           // e.g. "func() ... { if \{lhs\} != nil ... }()"
     }
 
 // "How does a language handle identifier conflicts with reserved words?"
@@ -329,9 +329,9 @@ type SerializationFramework {
   struct_derives: String?        // e.g. "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
   enum_derives: String?          // e.g. "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"
   tag_attribute: String?         // e.g. "#[serde(tag = \"_variant\")]" for tagged enums
-  rename_attribute: String?      // e.g. "#[serde(rename = \"{key}\")]" for field renaming
-  json_parse: String?            // e.g. "serde_json::from_str({input})?" or "json.loads({input})"
-  json_emit: String?             // e.g. "serde_json::to_string({value})?" or "json.dumps({value})"
+  rename_attribute: String?      // e.g. "#[serde(rename = \"\{key\}\")]" for field renaming
+  json_parse: String?            // e.g. "serde_json::from_str(\{input\})?" or "json.loads(\{input\})"
+  json_emit: String?             // e.g. "serde_json::to_string(\{value\})?" or "json.dumps(\{value\})"
   json_type: String              // e.g. "serde_json::Value" or "dict" or "interface{}"
   default_value: String          // e.g. "Default::default()" or "None" or "nil"
 }
@@ -353,13 +353,13 @@ type ProjectScaffold {
 // Ref: Rust `.await?`, Python `await`, Go multi-return error check
 type ServiceCallSemantics
   = AwaitQuestion {
-      template: String           // e.g. "{call}.await?" -- Rust: Result-returning async
+      template: String           // e.g. "\{call\}.await?" -- Rust: Result-returning async
     }
   | AwaitPrefix {
-      template: String           // e.g. "await {call}" -- Python: exception-based async
+      template: String           // e.g. "await \{call\}" -- Python: exception-based async
     }
   | MultiReturnError {
-      template: String           // e.g. "{result}, {err} := {call}" -- Go: multi-return
+      template: String           // e.g. "\{result\}, \{err\} := \{call\}" -- Go: multi-return
     }
 // -- Layer 1: Categories ----------------------------------------------
 
@@ -471,9 +471,9 @@ data rust_language: Language = {
     float: "f64",
     bool: "bool",
     bytes: "Vec<u8>",
-    list_template: "Vec<{0}>",
-    optional_template: "Option<{0}>",
-    map_template: "HashMap<{0}, {1}>"
+    list_template: "Vec<\{0\}>",
+    optional_template: "Option<\{0\}>",
+    map_template: "HashMap<\{0\}, \{1\}>"
   }
 }
 
@@ -501,9 +501,9 @@ data go_language: Language = {
     float: "float64",
     bool: "bool",
     bytes: "[]byte",
-    list_template: "[]{0}",
-    optional_template: "*{0}",
-    map_template: "map[{0}]{1}"
+    list_template: "[]\{0\}",
+    optional_template: "*\{0\}",
+    map_template: "map[\{0\}]\{1\}"
   }
 }
 
@@ -531,9 +531,9 @@ data python_language: Language = {
     float: "float",
     bool: "bool",
     bytes: "bytes",
-    list_template: "list[{0}]",
-    optional_template: "{0} | None",
-    map_template: "dict[{0}, {1}]"
+    list_template: "list[\{0\}]",
+    optional_template: "\{0\} | None",
+    map_template: "dict[\{0\}, \{1\}]"
   }
 }
 
@@ -561,9 +561,9 @@ data typescript_language: Language = {
     float: "number",
     bool: "boolean",
     bytes: "Uint8Array",
-    list_template: "{0}[]",
-    optional_template: "{0} | undefined",
-    map_template: "Map<{0}, {1}>"
+    list_template: "\{0\}[]",
+    optional_template: "\{0\} | undefined",
+    map_template: "Map<\{0\}, \{1\}>"
   }
 }
 
@@ -577,36 +577,36 @@ data typescript_language: Language = {
 
 // "How does Rust write statements?"
 data rust_statements: StatementSyntax = {
-  let_binding: "let {name}: {type} = {value};",
-  let_binding_inferred: "let {name} = {value};",
-  assignment: "{name} = {value};",
-  return_value: "return {value};",
+  let_binding: "let \{name\}: \{type\} = \{value\};",
+  let_binding_inferred: "let \{name\} = \{value\};",
+  assignment: "\{name\} = \{value\};",
+  return_value: "return \{value\};",
   return_void: "return;",
-  expression_statement: "{expr};",
+  expression_statement: "\{expr\};",
   statement_terminator: ";"
 }
 
 // "How does Rust write expressions?"
 data rust_expressions: ExpressionSyntax = {
-  binary_op: "{lhs} {op} {rhs}",
-  unary_op: "{op}{expr}",
-  field_access: "{object}.{field}",
-  method_call: "{object}.{method}({args})",
-  function_call: "{func}({args})",
-  index_access: "{object}[{index}]",
+  binary_op: "\{lhs\} \{op\} \{rhs\}",
+  unary_op: "\{op\}\{expr\}",
+  field_access: "\{object\}.\{field\}",
+  method_call: "\{object\}.\{method\}(\{args\})",
+  function_call: "\{func\}(\{args\})",
+  index_access: "\{object\}[\{index\}]",
   string_interpolation: null,
-  closure: "|{params}| {body}"
+  closure: "|\{params\}| \{body\}"
 }
 
 // "How does Rust write control flow?"
 data rust_control_flow: ControlFlowSyntax = {
-  if_then: "if {cond} { {body} }",
-  if_else: "if {cond} { {then} } else { {else} }",
-  match_header: "match {expr} {",
-  match_arm: "{pattern} => {body},",
-  for_each: "for {item} in {iter} { {body} }",
-  while_loop: "while {cond} { {body} }",
-  loop_infinite: "loop { {body} }",
+  if_then: "if \{cond\} { \{body\} }",
+  if_else: "if \{cond\} { \{then\} } else { \{else\} }",
+  match_header: "match \{expr\} {",
+  match_arm: "\{pattern\} => \{body\},",
+  for_each: "for \{item\} in \{iter\} { \{body\} }",
+  while_loop: "while \{cond\} { \{body\} }",
+  loop_infinite: "loop { \{body\} }",
   break_keyword: "break",
   continue_keyword: "continue"
 }
@@ -625,10 +625,10 @@ data rust_literals: LiteralSyntax = {
 
 // "How does Rust organize modules?"
 data rust_modules: ModuleSyntax = {
-  import_single: "use {path};",
-  import_from: "use {module}::{names};",
-  import_alias: "use {path} as {alias};",
-  module_declaration: "mod {name};",
+  import_single: "use \{path\};",
+  import_from: "use \{module\}::\{names\};",
+  import_alias: "use \{path\} as \{alias\};",
+  module_declaration: "mod \{name\};",
   visibility_public: "pub",
   visibility_private: null,
   path_separator: "::"
@@ -636,59 +636,59 @@ data rust_modules: ModuleSyntax = {
 
 // "How does Rust define functions?"
 data rust_functions: FunctionSyntax = {
-  definition: "fn {name}({params}) -> {ret} { {body} }",
-  definition_void: "fn {name}({params}) { {body} }",
-  param_with_type: "{name}: {type}",
+  definition: "fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  definition_void: "fn \{name\}(\{params\}) { \{body\} }",
+  param_with_type: "\{name\}: \{type\}",
   param_separator: ", ",
-  async_definition: "async fn {name}({params}) -> {ret} { {body} }",
-  async_await: "{expr}.await",
+  async_definition: "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  async_await: "\{expr\}.await",
   return_type_separator: " -> "
 }
 
 // "How does Rust handle errors?"
 data rust_errors: ErrorHandlingSyntax = ResultType {
-  ok_template: "Result<{0}, {1}>",
-  err_constructor: "Err({value})",
-  ok_constructor: "Ok({value})",
-  try_operator: "{expr}?"
+  ok_template: "Result<\{0\}, \{1\}>",
+  err_constructor: "Err(\{value\})",
+  ok_constructor: "Ok(\{value\})",
+  try_operator: "\{expr\}?"
 }
 
 // "How does Rust define types?"
 // Ref: Rust Reference 6.1, 6.2, 8.1.4, 19.2 "Derive macros"
 data rust_type_defs: TypeDefinitionSyntax = {
-  struct_def: "pub struct {name} {\n{fields}\n}",
-  struct_empty: "pub struct {name};",
-  struct_field: "    pub {name}: {type},",
-  enum_def: "pub enum {name} {\n{variants}\n}",
-  enum_unit_variant: "    {name},",
-  enum_data_variant: "    {name} {\n{fields}\n    },",
-  type_alias: "pub type {name} = {type};",
-  generic_param: "<{params}>",
-  derive_attribute: "#[derive({traits})]",
+  struct_def: "pub struct \{name\} {\n\{fields\}\n}",
+  struct_empty: "pub struct \{name\};",
+  struct_field: "    pub \{name\}: \{type\},",
+  enum_def: "pub enum \{name\} {\n\{variants\}\n}",
+  enum_unit_variant: "    \{name\},",
+  enum_data_variant: "    \{name\} {\n\{fields\}\n    },",
+  type_alias: "pub type \{name\} = \{type\};",
+  generic_param: "<\{params\}>",
+  derive_attribute: "#[derive(\{traits\})]",
   visibility_modifier: "pub "
 }
 
 // "How does Rust destructure values?"
 // Ref: Rust Reference 18 "Patterns"
 data rust_patterns: PatternMatchSyntax = {
-  match_expr: "match {expr} {\n{arms}\n}",
-  match_arm: "    {pattern} => {body},",
-  variant_pattern: "{name} { {bindings} }",
-  variant_pattern_empty: "{name}",
-  field_binding: "{field}: {binding}",
+  match_expr: "match \{expr\} {\n\{arms\}\n}",
+  match_arm: "    \{pattern\} => \{body\},",
+  variant_pattern: "\{name\} { \{bindings\} }",
+  variant_pattern_empty: "\{name\}",
+  field_binding: "\{field\}: \{binding\}",
   field_binding_separator: ", ",
   wildcard: "_",
-  guard: " if {cond}",
-  or_pattern: "{a} | {b}"
+  guard: " if \{cond\}",
+  or_pattern: "\{a\} | \{b\}"
 }
 
 // "How does Rust handle async?"
 // Ref: Rust Reference 15 "Async and await", tokio runtime docs
 data rust_async: AsyncSyntax = AwaitBased {
-  async_fn_def: "async fn {name}({params}) -> {ret} { {body} }",
-  await_expr: "{expr}.await",
-  spawn_task: "tokio::spawn({expr})",
-  gather: "futures::join!({exprs})"
+  async_fn_def: "async fn \{name\}(\{params\}) -> \{ret\} { \{body\} }",
+  await_expr: "\{expr\}.await",
+  spawn_task: "tokio::spawn(\{expr\})",
+  gather: "futures::join!(\{exprs\})"
 }
 
 // -- Go rendering syntax ---------------------------------------------
@@ -696,36 +696,36 @@ data rust_async: AsyncSyntax = AwaitBased {
 
 // "How does Go write statements?"
 data go_statements: StatementSyntax = {
-  let_binding: "var {name} {type} = {value}",
-  let_binding_inferred: "{name} := {value}",
-  assignment: "{name} = {value}",
-  return_value: "return {value}",
+  let_binding: "var \{name\} \{type\} = \{value\}",
+  let_binding_inferred: "\{name\} := \{value\}",
+  assignment: "\{name\} = \{value\}",
+  return_value: "return \{value\}",
   return_void: "return",
-  expression_statement: "{expr}",
+  expression_statement: "\{expr\}",
   statement_terminator: ""
 }
 
 // "How does Go write expressions?"
 data go_expressions: ExpressionSyntax = {
-  binary_op: "{lhs} {op} {rhs}",
-  unary_op: "{op}{expr}",
-  field_access: "{object}.{field}",
-  method_call: "{object}.{method}({args})",
-  function_call: "{func}({args})",
-  index_access: "{object}[{index}]",
+  binary_op: "\{lhs\} \{op\} \{rhs\}",
+  unary_op: "\{op\}\{expr\}",
+  field_access: "\{object\}.\{field\}",
+  method_call: "\{object\}.\{method\}(\{args\})",
+  function_call: "\{func\}(\{args\})",
+  index_access: "\{object\}[\{index\}]",
   string_interpolation: null,
-  closure: "func({params}) {ret} { {body} }"
+  closure: "func(\{params\}) \{ret\} { \{body\} }"
 }
 
 // "How does Go write control flow?"
 data go_control_flow: ControlFlowSyntax = {
-  if_then: "if {cond} { {body} }",
-  if_else: "if {cond} { {then} } else { {else} }",
-  match_header: "switch {expr} {",
-  match_arm: "case {pattern}: {body}",
-  for_each: "for {item} := range {iter} { {body} }",
-  while_loop: "for {cond} { {body} }",
-  loop_infinite: "for { {body} }",
+  if_then: "if \{cond\} { \{body\} }",
+  if_else: "if \{cond\} { \{then\} } else { \{else\} }",
+  match_header: "switch \{expr\} {",
+  match_arm: "case \{pattern\}: \{body\}",
+  for_each: "for \{item\} := range \{iter\} { \{body\} }",
+  while_loop: "for \{cond\} { \{body\} }",
+  loop_infinite: "for { \{body\} }",
   break_keyword: "break",
   continue_keyword: "continue"
 }
@@ -744,10 +744,10 @@ data go_literals: LiteralSyntax = {
 
 // "How does Go organize modules?"
 data go_modules: ModuleSyntax = {
-  import_single: "import \"{path}\"",
+  import_single: "import \"\{path\}\"",
   import_from: null,
-  import_alias: "import {alias} \"{path}\"",
-  module_declaration: "package {name}",
+  import_alias: "import \{alias\} \"\{path\}\"",
+  module_declaration: "package \{name\}",
   visibility_public: null,
   visibility_private: null,
   path_separator: "/"
@@ -755,9 +755,9 @@ data go_modules: ModuleSyntax = {
 
 // "How does Go define functions?"
 data go_functions: FunctionSyntax = {
-  definition: "func {name}({params}) {ret} { {body} }",
-  definition_void: "func {name}({params}) { {body} }",
-  param_with_type: "{name} {type}",
+  definition: "func \{name\}(\{params\}) \{ret\} { \{body\} }",
+  definition_void: "func \{name\}(\{params\}) { \{body\} }",
+  param_with_type: "\{name\} \{type\}",
   param_separator: ", ",
   async_definition: null,
   async_await: null,
@@ -767,22 +767,22 @@ data go_functions: FunctionSyntax = {
 // "How does Go handle errors?"
 data go_errors: ErrorHandlingSyntax = MultiReturn {
   error_interface: "error",
-  error_check: "if {name} != nil { {handler} }",
-  error_return: "return {zero}, fmt.Errorf({msg})",
-  error_format: "fmt.Errorf(\"{template}\", {args})"
+  error_check: "if \{name\} != nil { \{handler\} }",
+  error_return: "return \{zero\}, fmt.Errorf(\{msg\})",
+  error_format: "fmt.Errorf(\"\{template\}\", \{args\})"
 }
 
 // "How does Go define types?"
 // Ref: Go Spec "Type declarations", "Struct types", "Interface types"
 data go_type_defs: TypeDefinitionSyntax = {
-  struct_def: "type {name} struct {\n{fields}\n}",
-  struct_empty: "type {name} struct{}",
-  struct_field: "\t{name} {type}",
-  enum_def: "type {name} int\n\nconst (\n{variants}\n)",
-  enum_unit_variant: "\t{name} {type} = iota",
-  enum_data_variant: "\t{name} {type} = iota",
-  type_alias: "type {name} = {type}",
-  generic_param: "[{params}]",
+  struct_def: "type \{name\} struct {\n\{fields\}\n}",
+  struct_empty: "type \{name\} struct{}",
+  struct_field: "\t\{name\} \{type\}",
+  enum_def: "type \{name\} int\n\nconst (\n\{variants\}\n)",
+  enum_unit_variant: "\t\{name\} \{type\} = iota",
+  enum_data_variant: "\t\{name\} \{type\} = iota",
+  type_alias: "type \{name\} = \{type\}",
+  generic_param: "[\{params\}]",
   derive_attribute: null,
   visibility_modifier: null
 }
@@ -791,24 +791,24 @@ data go_type_defs: TypeDefinitionSyntax = {
 // Ref: Go Spec "Switch statements" -- Go has type switches, not structural
 // pattern matching. Templates model what Go actually provides.
 data go_patterns: PatternMatchSyntax = {
-  match_expr: "switch {expr} {\n{arms}\n}",
-  match_arm: "case {pattern}:\n\t{body}",
-  variant_pattern: "{name}",
-  variant_pattern_empty: "{name}",
-  field_binding: "{field}",
+  match_expr: "switch \{expr\} {\n\{arms\}\n}",
+  match_arm: "case \{pattern\}:\n\t\{body\}",
+  variant_pattern: "\{name\}",
+  variant_pattern_empty: "\{name\}",
+  field_binding: "\{field\}",
   field_binding_separator: ", ",
   wildcard: "_",
   guard: null,
-  or_pattern: "{a}, {b}"
+  or_pattern: "\{a\}, \{b\}"
 }
 
 // "How does Go handle concurrency?"
 // Ref: Go Spec "Go statements", "Channel types", "Select statements"
 data go_async: AsyncSyntax = GoroutineBased {
-  go_stmt: "go {expr}",
-  channel_send: "{chan} <- {value}",
-  channel_recv: "<-{chan}",
-  select_stmt: "select {\n{cases}\n}"
+  go_stmt: "go \{expr\}",
+  channel_send: "\{chan\} <- \{value\}",
+  channel_recv: "<-\{chan\}",
+  select_stmt: "select {\n\{cases\}\n}"
 }
 
 // -- Python rendering syntax -----------------------------------------
@@ -816,36 +816,36 @@ data go_async: AsyncSyntax = GoroutineBased {
 
 // "How does Python write statements?"
 data python_statements: StatementSyntax = {
-  let_binding: "{name}: {type} = {value}",
-  let_binding_inferred: "{name} = {value}",
-  assignment: "{name} = {value}",
-  return_value: "return {value}",
+  let_binding: "\{name\}: \{type\} = \{value\}",
+  let_binding_inferred: "\{name\} = \{value\}",
+  assignment: "\{name\} = \{value\}",
+  return_value: "return \{value\}",
   return_void: "return",
-  expression_statement: "{expr}",
+  expression_statement: "\{expr\}",
   statement_terminator: ""
 }
 
 // "How does Python write expressions?"
 data python_expressions: ExpressionSyntax = {
-  binary_op: "{lhs} {op} {rhs}",
-  unary_op: "{op}{expr}",
-  field_access: "{object}.{field}",
-  method_call: "{object}.{method}({args})",
-  function_call: "{func}({args})",
-  index_access: "{object}[{index}]",
-  string_interpolation: "f\"{expr}\"",
-  closure: "lambda {params}: {body}"
+  binary_op: "\{lhs\} \{op\} \{rhs\}",
+  unary_op: "\{op\}\{expr\}",
+  field_access: "\{object\}.\{field\}",
+  method_call: "\{object\}.\{method\}(\{args\})",
+  function_call: "\{func\}(\{args\})",
+  index_access: "\{object\}[\{index\}]",
+  string_interpolation: "f\"\{expr\}\"",
+  closure: "lambda \{params\}: \{body\}"
 }
 
 // "How does Python write control flow?"
 data python_control_flow: ControlFlowSyntax = {
-  if_then: "if {cond}:\n    {body}",
-  if_else: "if {cond}:\n    {then}\nelse:\n    {else}",
-  match_header: "match {expr}:",
-  match_arm: "case {pattern}: {body}",
-  for_each: "for {item} in {iter}:\n    {body}",
-  while_loop: "while {cond}:\n    {body}",
-  loop_infinite: "while True:\n    {body}",
+  if_then: "if \{cond\}:\n    \{body\}",
+  if_else: "if \{cond\}:\n    \{then\}\nelse:\n    \{else\}",
+  match_header: "match \{expr\}:",
+  match_arm: "case \{pattern\}: \{body\}",
+  for_each: "for \{item\} in \{iter\}:\n    \{body\}",
+  while_loop: "while \{cond\}:\n    \{body\}",
+  loop_infinite: "while True:\n    \{body\}",
   break_keyword: "break",
   continue_keyword: "continue"
 }
@@ -864,9 +864,9 @@ data python_literals: LiteralSyntax = {
 
 // "How does Python organize modules?"
 data python_modules: ModuleSyntax = {
-  import_single: "import {path}",
-  import_from: "from {module} import {names}",
-  import_alias: "import {path} as {alias}",
+  import_single: "import \{path\}",
+  import_from: "from \{module\} import \{names\}",
+  import_alias: "import \{path\} as \{alias\}",
   module_declaration: null,
   visibility_public: null,
   visibility_private: null,
@@ -875,35 +875,35 @@ data python_modules: ModuleSyntax = {
 
 // "How does Python define functions?"
 data python_functions: FunctionSyntax = {
-  definition: "def {name}({params}) -> {ret}:\n    {body}",
-  definition_void: "def {name}({params}):\n    {body}",
-  param_with_type: "{name}: {type}",
+  definition: "def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  definition_void: "def \{name\}(\{params\}):\n    \{body\}",
+  param_with_type: "\{name\}: \{type\}",
   param_separator: ", ",
-  async_definition: "async def {name}({params}) -> {ret}:\n    {body}",
-  async_await: "await {expr}",
+  async_definition: "async def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  async_await: "await \{expr\}",
   return_type_separator: " -> "
 }
 
 // "How does Python handle errors?"
 data python_errors: ErrorHandlingSyntax = ExceptionBased {
-  try_block: "try:\n    {body}",
-  except_clause: "except {type} as {name}:\n    {handler}",
+  try_block: "try:\n    \{body\}",
+  except_clause: "except \{type\} as \{name\}:\n    \{handler\}",
   raise_keyword: "raise",
-  finally_block: "finally:\n    {body}"
+  finally_block: "finally:\n    \{body\}"
 }
 
 // "How does Python define types?"
 // Ref: Python Reference 8.9 "Class definitions", PEP 557 "Data Classes",
 //      PEP 484 "Type Hints", PEP 613 "TypeAlias"
 data python_type_defs: TypeDefinitionSyntax = {
-  struct_def: "@dataclass\nclass {name}:\n{fields}",
-  struct_empty: "@dataclass\nclass {name}:\n    pass",
-  struct_field: "    {name}: {type}",
-  enum_def: "class {name}(Enum):\n{variants}",
-  enum_unit_variant: "    {name} = auto()",
-  enum_data_variant: "@dataclass\nclass {name}:\n{fields}",
-  type_alias: "{name} = {type}",
-  generic_param: "[{params}]",
+  struct_def: "@dataclass\nclass \{name\}:\n\{fields\}",
+  struct_empty: "@dataclass\nclass \{name\}:\n    pass",
+  struct_field: "    \{name\}: \{type\}",
+  enum_def: "class \{name\}(Enum):\n\{variants\}",
+  enum_unit_variant: "    \{name\} = auto()",
+  enum_data_variant: "@dataclass\nclass \{name\}:\n\{fields\}",
+  type_alias: "\{name\} = \{type\}",
+  generic_param: "[\{params\}]",
   derive_attribute: "@dataclass",
   visibility_modifier: null
 }
@@ -911,25 +911,25 @@ data python_type_defs: TypeDefinitionSyntax = {
 // "How does Python destructure values?"
 // Ref: PEP 634 "Structural Pattern Matching"
 data python_patterns: PatternMatchSyntax = {
-  match_expr: "match {expr}:\n{arms}",
-  match_arm: "    case {pattern}:\n        {body}",
-  variant_pattern: "{name}({bindings})",
-  variant_pattern_empty: "{name}()",
-  field_binding: "{field}={binding}",
+  match_expr: "match \{expr\}:\n\{arms\}",
+  match_arm: "    case \{pattern\}:\n        \{body\}",
+  variant_pattern: "\{name\}(\{bindings\})",
+  variant_pattern_empty: "\{name\}()",
+  field_binding: "\{field\}=\{binding\}",
   field_binding_separator: ", ",
   wildcard: "_",
-  guard: " if {cond}",
-  or_pattern: "{a} | {b}"
+  guard: " if \{cond\}",
+  or_pattern: "\{a\} | \{b\}"
 }
 
 // "How does Python handle async?"
 // Ref: PEP 492 "Coroutines with async and await syntax",
 //      asyncio standard library docs
 data python_async: AsyncSyntax = AwaitBased {
-  async_fn_def: "async def {name}({params}) -> {ret}:\n    {body}",
-  await_expr: "await {expr}",
-  spawn_task: "asyncio.create_task({expr})",
-  gather: "asyncio.gather({exprs})"
+  async_fn_def: "async def \{name\}(\{params\}) -> \{ret\}:\n    \{body\}",
+  await_expr: "await \{expr\}",
+  spawn_task: "asyncio.create_task(\{expr\})",
+  gather: "asyncio.gather(\{exprs\})"
 }
 
 // -- Layer 2c: Runtime operation data ---------------------------------
@@ -942,40 +942,40 @@ data python_async: AsyncSyntax = AwaitBased {
 // Ref: Rust std::iter, std::collections, std::string
 
 data rust_collection_ops: CollectionOps = {
-  count: "{recv}.len()",
-  first: "{recv}.first().cloned()",
-  last: "{recv}.last().cloned()",
-  enumerate: "{recv}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()",
-  join: "{recv}.join(&{arg})",
-  map: "{recv}.into_iter().map({body}).collect::<Vec<_>>()",
-  filter: "{recv}.into_iter().filter({body}).collect::<Vec<_>>()",
-  flat_map: "{recv}.into_iter().flat_map({body}).collect::<Vec<_>>()",
-  fold: "{recv}.into_iter().fold({init}, {body})",
-  any: "{recv}.iter().any({body})",
-  all: "{recv}.iter().all({body})",
+  count: "\{recv\}.len()",
+  first: "\{recv\}.first().cloned()",
+  last: "\{recv\}.last().cloned()",
+  enumerate: "\{recv\}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()",
+  join: "\{recv\}.join(&\{arg\})",
+  map: "\{recv\}.into_iter().map(\{body\}).collect::<Vec<_>>()",
+  filter: "\{recv\}.into_iter().filter(\{body\}).collect::<Vec<_>>()",
+  flat_map: "\{recv\}.into_iter().flat_map(\{body\}).collect::<Vec<_>>()",
+  fold: "\{recv\}.into_iter().fold(\{init\}, \{body\})",
+  any: "\{recv\}.iter().any(\{body\})",
+  all: "\{recv\}.iter().all(\{body\})",
   empty_list: "vec![]",
-  list_literal: "vec![{elements}]"
+  list_literal: "vec![\{elements\}]"
 }
 
 data rust_string_ops: StringOps = {
-  split: "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()",
-  chars: "{recv}.chars().map(|c| c.to_string()).collect::<Vec<_>>()",
-  concat: "format!(\"{fmt}\", {args})",
-  string_literal: "\"{value}\".to_string()",
-  string_interp: "format!(\"{fmt}\", {args})",
-  code_point: "{recv} as u32 as i64",
-  from_code_point: "char::from_u32({arg} as u32).map(|c| c.to_string()).unwrap_or_default()"
+  split: "\{recv\}.split(&\{arg\}).map(|s| s.to_string()).collect::<Vec<_>>()",
+  chars: "\{recv\}.chars().map(|c| c.to_string()).collect::<Vec<_>>()",
+  concat: "format!(\"\{fmt\}\", \{args\})",
+  string_literal: "\"\{value\}\".to_string()",
+  string_interp: "format!(\"\{fmt\}\", \{args\})",
+  code_point: "\{recv\} as u32 as i64",
+  from_code_point: "char::from_u32(\{arg\} as u32).map(|c| c.to_string()).unwrap_or_default()"
 }
 
 data rust_map_ops: MapOps = {
   empty_map: "BTreeMap::new()",
-  map_insert: "{recv}.insert({key}, {value})",
-  map_get: "{recv}.get(&{key}).cloned()",
-  map_contains: "{recv}.contains_key(&{key})"
+  map_insert: "\{recv\}.insert(\{key\}, \{value\})",
+  map_get: "\{recv\}.get(&\{key\}).cloned()",
+  map_contains: "\{recv\}.contains_key(&\{key\})"
 }
 
 data rust_null_coalesce: NullCoalesceStrategy = MethodBased {
-  template: "{lhs}.unwrap_or_else(|| {rhs})"
+  template: "\{lhs\}.unwrap_or_else(|| \{rhs\})"
 }
 
 data rust_reserved_words: ReservedWords = {
@@ -1002,9 +1002,9 @@ data rust_serialization: SerializationFramework = {
   struct_derives: "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
   enum_derives: "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
   tag_attribute: "#[serde(tag = \"_variant\")]",
-  rename_attribute: "#[serde(rename = \"{key}\")]",
-  json_parse: "serde_json::from_str({input})?",
-  json_emit: "serde_json::to_string({value})?",
+  rename_attribute: "#[serde(rename = \"\{key\}\")]",
+  json_parse: "serde_json::from_str(\{input\})?",
+  json_emit: "serde_json::to_string(\{value\})?",
   json_type: "serde_json::Value",
   default_value: "Default::default()"
 }
@@ -1018,47 +1018,47 @@ data rust_scaffold: ProjectScaffold = {
 }
 
 data rust_service_calls: ServiceCallSemantics = AwaitQuestion {
-  template: "{call}.await?"
+  template: "\{call\}.await?"
 }
 
 // -- Go runtime ops ---------------------------------------------------
 // Ref: Go slices package, strings package, fmt package
 
 data go_collection_ops: CollectionOps = {
-  count: "len({recv})",
-  first: "{recv}[0]",
-  last: "{recv}[len({recv})-1]",
-  enumerate: "{recv}",
-  join: "strings.Join({recv}, {arg})",
-  map: "func() []interface{} { var r []interface{}; for _, v := range {recv} { r = append(r, {body}) }; return r }()",
-  filter: "func() []interface{} { var r []interface{}; for _, v := range {recv} { if {body} { r = append(r, v) } }; return r }()",
-  flat_map: "func() []interface{} { var r []interface{}; for _, v := range {recv} { r = append(r, {body}...) }; return r }()",
-  fold: "func() interface{} { acc := {init}; for _, v := range {recv} { acc = {body} }; return acc }()",
-  any: "func() bool { for _, v := range {recv} { if {body} { return true } }; return false }()",
-  all: "func() bool { for _, v := range {recv} { if !({body}) { return false } }; return true }()",
+  count: "len(\{recv\})",
+  first: "\{recv\}[0]",
+  last: "\{recv\}[len(\{recv\})-1]",
+  enumerate: "\{recv\}",
+  join: "strings.Join(\{recv\}, \{arg\})",
+  map: "func() []interface{} { var r []interface{}; for _, v := range \{recv\} { r = append(r, \{body\}) }; return r }()",
+  filter: "func() []interface{} { var r []interface{}; for _, v := range \{recv\} { if \{body\} { r = append(r, v) } }; return r }()",
+  flat_map: "func() []interface{} { var r []interface{}; for _, v := range \{recv\} { r = append(r, \{body\}...) }; return r }()",
+  fold: "func() interface{} { acc := \{init\}; for _, v := range \{recv\} { acc = \{body\} }; return acc }()",
+  any: "func() bool { for _, v := range \{recv\} { if \{body\} { return true } }; return false }()",
+  all: "func() bool { for _, v := range \{recv\} { if !(\{body\}) { return false } }; return true }()",
   empty_list: "nil",
-  list_literal: "[]{type}{ {elements} }"
+  list_literal: "[]\{type\}{ \{elements\} }"
 }
 
 data go_string_ops: StringOps = {
-  split: "strings.Split({recv}, {arg})",
-  chars: "strings.Split({recv}, \"\")",
-  concat: "fmt.Sprintf(\"{fmt}\", {args})",
-  string_literal: "\"{value}\"",
-  string_interp: "fmt.Sprintf(\"{fmt}\", {args})",
-  code_point: "int64([]rune({recv})[0])",
-  from_code_point: "string(rune({arg}))"
+  split: "strings.Split(\{recv\}, \{arg\})",
+  chars: "strings.Split(\{recv\}, \"\")",
+  concat: "fmt.Sprintf(\"\{fmt\}\", \{args\})",
+  string_literal: "\"\{value\}\"",
+  string_interp: "fmt.Sprintf(\"\{fmt\}\", \{args\})",
+  code_point: "int64([]rune(\{recv\})[0])",
+  from_code_point: "string(rune(\{arg\}))"
 }
 
 data go_map_ops: MapOps = {
-  empty_map: "make(map[{key_type}]{value_type})",
-  map_insert: "{recv}[{key}] = {value}",
-  map_get: "{recv}[{key}]",
-  map_contains: "func() bool { _, ok := {recv}[{key}]; return ok }()"
+  empty_map: "make(map[\{key_type\}]\{value_type\})",
+  map_insert: "\{recv\}[\{key\}] = \{value\}",
+  map_get: "\{recv\}[\{key\}]",
+  map_contains: "func() bool { _, ok := \{recv\}[\{key\}]; return ok }()"
 }
 
 data go_null_coalesce: NullCoalesceStrategy = IIFEBased {
-  template: "func() interface{} { if {lhs} != nil { return {lhs} }; return {rhs} }()"
+  template: "func() interface{} { if \{lhs\} != nil { return \{lhs\} }; return \{rhs\} }()"
 }
 
 data go_reserved_words: ReservedWords = {
@@ -1088,8 +1088,8 @@ data go_serialization: SerializationFramework = {
   enum_derives: null,
   tag_attribute: null,
   rename_attribute: null,
-  json_parse: "json.Unmarshal([]byte({input}), &{target})",
-  json_emit: "json.Marshal({value})",
+  json_parse: "json.Unmarshal([]byte(\{input\}), &\{target\})",
+  json_emit: "json.Marshal(\{value\})",
   json_type: "interface{}",
   default_value: "nil"
 }
@@ -1103,47 +1103,47 @@ data go_scaffold: ProjectScaffold = {
 }
 
 data go_service_calls: ServiceCallSemantics = MultiReturnError {
-  template: "{result}, {err} := {call}"
+  template: "\{result\}, \{err\} := \{call\}"
 }
 
 // -- Python runtime ops -----------------------------------------------
 // Ref: Python builtins, itertools, functools
 
 data python_collection_ops: CollectionOps = {
-  count: "len({recv})",
-  first: "{recv}[0] if {recv} else None",
-  last: "{recv}[-1] if {recv} else None",
-  enumerate: "list(enumerate({recv}))",
-  join: "{arg}.join({recv})",
-  map: "[{body} for {param} in {recv}]",
-  filter: "[x for x in {recv} if {body}]",
-  flat_map: "[item for sublist in [{body} for {param} in {recv}] for item in sublist]",
-  fold: "functools.reduce({body}, {recv}, {init})",
-  any: "any({body} for {param} in {recv})",
-  all: "all({body} for {param} in {recv})",
+  count: "len(\{recv\})",
+  first: "\{recv\}[0] if \{recv\} else None",
+  last: "\{recv\}[-1] if \{recv\} else None",
+  enumerate: "list(enumerate(\{recv\}))",
+  join: "\{arg\}.join(\{recv\})",
+  map: "[\{body\} for \{param\} in \{recv\}]",
+  filter: "[x for x in \{recv\} if \{body\}]",
+  flat_map: "[item for sublist in [\{body\} for \{param\} in \{recv\}] for item in sublist]",
+  fold: "functools.reduce(\{body\}, \{recv\}, \{init\})",
+  any: "any(\{body\} for \{param\} in \{recv\})",
+  all: "all(\{body\} for \{param\} in \{recv\})",
   empty_list: "[]",
-  list_literal: "[{elements}]"
+  list_literal: "[\{elements\}]"
 }
 
 data python_string_ops: StringOps = {
-  split: "{recv}.split({arg})",
-  chars: "list({recv})",
-  concat: "f\"{fmt}\"",
-  string_literal: "\"{value}\"",
-  string_interp: "f\"{fmt}\"",
-  code_point: "ord({recv})",
-  from_code_point: "chr({arg})"
+  split: "\{recv\}.split(\{arg\})",
+  chars: "list(\{recv\})",
+  concat: "f\"\{fmt\}\"",
+  string_literal: "\"\{value\}\"",
+  string_interp: "f\"\{fmt\}\"",
+  code_point: "ord(\{recv\})",
+  from_code_point: "chr(\{arg\})"
 }
 
 data python_map_ops: MapOps = {
   empty_map: "{}",
-  map_insert: "{recv}[{key}] = {value}",
-  map_get: "{recv}.get({key})",
-  map_contains: "{key} in {recv}"
+  map_insert: "\{recv\}[\{key\}] = \{value\}",
+  map_get: "\{recv\}.get(\{key\})",
+  map_contains: "\{key\} in \{recv\}"
 }
 
 data python_null_coalesce: NullCoalesceStrategy = TernaryBased {
-  template: "({lhs} if {lhs} is not None else {rhs})"
+  template: "(\{lhs\} if \{lhs\} is not None else \{rhs\})"
 }
 
 data python_reserved_words: ReservedWords = {
@@ -1165,8 +1165,8 @@ data python_serialization: SerializationFramework = {
   enum_derives: null,
   tag_attribute: null,
   rename_attribute: null,
-  json_parse: "json.loads({input})",
-  json_emit: "json.dumps({value})",
+  json_parse: "json.loads(\{input\})",
+  json_emit: "json.dumps(\{value\})",
   json_type: "dict",
   default_value: "None"
 }
@@ -1180,7 +1180,7 @@ data python_scaffold: ProjectScaffold = {
 }
 
 data python_service_calls: ServiceCallSemantics = AwaitPrefix {
-  template: "await {call}"
+  template: "await \{call\}"
 }
 
 // -- Layer 2d: LanguageSpec compositions ------------------------------

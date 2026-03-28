@@ -165,7 +165,7 @@ service shell.OAuth2 {
   operation RefreshToken {
     input { refresh_token: Secret }
     output { access_token: Secret, valid: Bool }
-    transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token={refresh_token}"] }
+    transport shell { argv: ["curl", "-s", "-X", "POST", "https://oauth2.googleapis.com/token", "-d", "grant_type=refresh_token&refresh_token=\{refresh_token\}"] }
     exit {
       0 => Unit
       nonzero => String "Token refresh failed"
@@ -199,7 +199,7 @@ service shell.GCloud {
     }
     output { secret_value: Secret }
     readonly
-    transport shell { argv: ["gcloud", "secrets", "versions", "access", "{version}", "--secret={secret_name}", "--project={project_id}"] }
+    transport shell { argv: ["gcloud", "secrets", "versions", "access", "\{version\}", "--secret=\{secret_name\}", "--project=\{project_id\}"] }
     exit {
       0 => Unit
       nonzero => String "Failed to access secret"
