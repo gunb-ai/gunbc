@@ -77,7 +77,7 @@ it was lost, (4) fix the rendering to exploit the guarantee.
 | FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **FIXED.** Indexed Kahn with in-degree map + reverse adjacency + queue drain. |
 | FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
 | FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
-| FF-8 | Per-binding operational metadata (fan-out, mutation pattern, access pattern) | Derivable from .dag graph structure (purity, lexical scope, structural composition) | Emitter type-category rendering: Rc for user-defined types, bare for built-in types (Vec, String, HashMap) | Backends guess representation from type category. O(n) collection clones where O(1) sharing suffices; O(n²) character access where indexed access suffices. | Parser: 37s → 0.4s. Tokenizer: 7s → 0.06s. Full compiler: hang → 0.65s. (Hand-patched generated files proved the class.) | **ROOT-CAUSED (2026-03-27), class OPEN.** The IR does not carry per-binding data-flow operational facts. These are derivable from the graph but not computed. Every backend guesses from type categories, producing the same regression class in every new code path. The fix is not target-specific (Rc for Rust) — it is modeling operational metadata as language-agnostic DAG facts that any backend consumes. See FF-8 detail. |
+| FF-8 | Container sharing representation | `.dag` value semantics (pure, lexical scope) | Rust container templates: Rc for user types, bare Vec/HashMap/String for built-ins | Emitter inserts `.clone()` on multi-use bindings; O(n) for bare collections, O(1) for Rc-wrapped types. Parser: 991 Vec clones per parse. | Parser: 37s → 0.4s. Tokenizer: 7s → 0.06s. Full compiler: hang → 0.65s. (Hand-patched generated files proved the class.) | **ROOT-CAUSED (2026-03-27), fix pending.** The Rust container templates in `LanguageSpec` must produce shared representations (`Rc<Vec<{0}>>`, etc.). Template + emitter + runtime changes must land atomically with stage0 regeneration. See FF-8 detail. |
 
 #### The fan-out fix (FF-1) in detail
 
@@ -108,106 +108,55 @@ Reconcile: ~20 minutes → 244ms (release mode).
 **Status: FIXED (2026-03-26).** `04_cycle.dag` rewritten with indexed
 in-degree map + reverse adjacency + queue drain. O(V+E), single pass.
 
-#### Missing operational metadata — the recurring performance class (FF-8)
+#### Container representation — the recurring performance class (FF-8)
 
 Every performance regression in this compiler (FF-1, FF-5, FF-8, the OOM
-incident) is an instance of the same structural gap: **the IR carries
-type facts but not data-flow operational facts.** The emitter receives
-types (what shape does data have?) but not operational metadata (how is
-each binding used?). So it guesses representation from type categories,
-and the guesses are wrong for any type whose clone cost is O(n).
+incident) traces to the same ad-hoc split in the Rust container
+templates: user-defined types get shared representations (Rc), but
+built-in collection types (List, Map, Set, String) get bare
+representations (Vec, HashMap, String). Since the `.dag` language has
+value semantics and the emitter inserts `.clone()` on every multi-use
+binding, the clone cost for bare collections is O(n) — catastrophic
+in any function that threads a collection through multiple calls.
 
-The `.dag` language provides all the information needed to derive these
-facts. Purity means no aliasing. Lexical scope means every binding's
-consumers are visible in the syntax tree. Structural composition means
-the data-flow graph IS the program text. But this information is not
-computed and not carried in the IR, so every backend independently
-guesses — and every guess based on type categories produces the same
-class of regression.
+**The ad-hoc split (in `dsl/extdeps/languages/rust/emit.dag`):**
 
-**The missing facts (all derivable from the graph, all language-agnostic):**
+| Type category | Template | Clone cost |
+|--------------|----------|-----------|
+| User-defined struct | Rc<T> | O(1) |
+| User-defined enum (with fields) | Rc<T> | O(1) |
+| Primitive (Int, Bool, Float) | bare | O(1) (Copy) |
+| **List<T>** | **Vec<T>** | **O(n)** |
+| **Map<K,V>** | **HashMap<K,V>** | **O(n)** |
+| **String** | **String** | **O(n)** |
 
-| Operational fact | Derivable from | What any backend needs to decide |
-|------------------|----------------|----------------------------------|
-| **Fan-out** | Count of edges from binding to consumers | fan-out=1: reuse storage. fan-out>1: share. |
-| **Mutation pattern** | Whether binding flows through append/push vs read-only | Accumulator: in-place. Read-only: share. |
-| **Access pattern** | Whether indexing ops appear inside a loop body | Sequential indexed: pre-index. Random: hash. |
+**The fix is a rendering change, not an IR change.** The container
+templates in `LanguageSpec` should produce shared representations for
+ownership-based languages. For Rust: `Rc<Vec<{0}>>`, `Rc<HashMap<{0},
+{1}>>`. For Python/Go: unchanged (GC/value semantics handle sharing).
+This is declarative language data, not compiler logic.
 
-These are not Rust-specific. They are graph facts:
-- Rust uses them to decide Rc vs move, &str vs String, Vec vs Rc<Vec>.
-- Go uses them to decide pointer vs value, slice sharing.
-- C uses them to decide heap vs stack, pointer vs copy.
-- Python mostly doesn't need them (GC), but can use them for preallocation.
+Fan-out is not "metadata" to be computed and carried — it is the
+out-degree of a binding's edges, already present in the graph structure.
+The emitter doesn't need new information. It needs the right default
+rendering per language, declared in `LanguageSpec`.
 
-**The current ad-hoc split:**
-
-| Type category | Emitter treatment | Clone cost | Correct? |
-|--------------|-------------------|-----------|----------|
-| User-defined struct | Rc<T> | O(1) | Yes |
-| User-defined enum (with fields) | Rc<T> | O(1) | Yes |
-| Primitive (Int, Bool, Float) | bare | O(1) (Copy) | Yes |
-| **List<T>** | bare Vec<T> | **O(n)** | **No** |
-| **Map<K,V>** | bare HashMap<K,V> | **O(n)** | **No** |
-| **String** | bare String | **O(n)** | **No** |
-
-This split is the root cause. It is type-category-based instead of
-cost-based, and it is embedded in the emitter's container templates
-(`extdeps_languages_rust_emit.rs:84`) rather than derived from the
-graph.
+The template change must land together with matching emitter updates
+in `05_emit_rust.dag` (collection-producing methods, runtime bridge
+call conventions) and a stage0 regeneration pass. A half-migration
+(templates changed, emitter unchanged) produces type mismatches on
+the next regeneration.
 
 **The 2026-03-27 incident (proof of class):**
 
-The emergency branch `perf/v2-tokenizer-root-cause` hand-patched
-generated stage0 files to prove the fix class works:
-- Parser: changed `Vec<Rc<Token>>` → `Rc<Vec<Rc<Token>>>` (991 sites
-  of `.clone()` go from O(n) to O(1))
-- Tokenizer: added pre-computed char index table (per-character access
-  goes from O(n) to O(1))
+Hand-patched generated stage0 files proved the fix class:
+- Parser: `Vec<Rc<Token>>` → `Rc<Vec<Rc<Token>>>` (991 clone sites,
+  O(n) → O(1))
 - Results: parse 37s → 0.4s, tokenize 7s → 0.06s, full compiler
   hang → 0.65s
 
-These hand-edits will be overwritten on next stage0 regeneration.
-The fix must be in the IR and emitter, not in generated output.
-
-**The fix is not "Rc-wrap everything for Rust."** That is a
-target-specific patch that makes one backend's default safe but
-does not model the underlying facts. The fix is: compute per-binding
-operational metadata during lowering (a graph analysis pass that
-counts fan-out, classifies mutation patterns, identifies access
-patterns), carry it in the IR, and let each backend render the
-target-appropriate construct from that metadata. This makes the
-operational decision a lookup against a DAG fact, not a guess from
-a type category — the same "smart facts + dumb compiler" pattern
-the rest of the architecture follows.
-
-#### Construction, not validation
-
-The goal is to make performance violations **unrepresentable**, not to
-catch them after the fact with ratchets. Ratchets are useful as
-diagnostics/warnings, but they are a form of validation — the system
-already produced the wrong output and the ratchet notices retroactively.
-
-The construction-based approach: if the IR carries per-binding
-operational metadata, then the emitter's rendering function takes that
-metadata as input. A backend cannot emit a representation without first
-consulting the operational facts. This makes "ignore fan-out and guess
-from type category" unrepresentable — the API requires the fact.
-
-**Structural properties to enforce by construction:**
-
-1. **No downstream recomputation.** Stage boundaries carry complete
-   facts. A downstream stage that imports analysis functions from
-   upstream is a design gap, not a performance bug to catch.
-
-2. **Fan-out drives representation.** The emitter receives per-binding
-   fan-out as part of the IR. The rendering decision is a function of
-   this fact, not a guess from type category. fan-out=1 → reuse.
-   fan-out>1 → share. This is the API contract, not a post-hoc check.
-
-3. **Operational facts are language-agnostic.** The metadata (fan-out,
-   mutation pattern, access pattern) is computed once in the IR layer.
-   Each backend reads it and renders the target-appropriate construct.
-   Adding a new backend does not require re-deriving operational facts.
+**Status: ROOT-CAUSED, fix pending.** Template + emitter + runtime
+changes must land atomically with a regeneration pass.
 
 ## Sustainability Invariants
 

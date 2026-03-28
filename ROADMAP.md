@@ -226,48 +226,36 @@ basis is not the set of named user types; it is the set of structural
 constructors and binding/cardinality facts from which named declarations
 are composed.
 
-**5. Operational metadata — the missing compositional layer (2026-03-27)**
+**5. Container sharing — rendering fix, not IR change (2026-03-27)**
 
-The structural basis above describes **what data is** (types,
-cardinality, composition). It does not describe **how data flows**
-at the binding level. This gap is the root cause of every recurring
-performance regression (FF-1, FF-5, FF-8, OOM incident).
+The Rust container templates in `LanguageSpec` produce bare
+representations for built-in collections (`Vec<{0}>`, `HashMap<{0},
+{1}>`), while user-defined types get shared representations (`Rc<T>`).
+Since the `.dag` language has value semantics and the emitter inserts
+`.clone()` on every multi-use binding, bare collections have O(n)
+clone cost — the root cause of every recurring performance regression
+(FF-1, FF-5, FF-8, OOM incident).
 
-The `.dag` language is pure-functional with lexical scope. These
-guarantees make the following facts derivable from the graph alone:
+Fan-out (how many consumers a binding has) is not "metadata" to be
+computed and stored in a side table. It is the out-degree of a
+binding's edges — already present in the graph structure. The emitter
+doesn't need new IR facts. It needs the right default rendering per
+language, declared in `LanguageSpec`.
 
-| Operational fact | Derivable from | What it tells the backend |
-|------------------|----------------|---------------------------|
-| **Fan-out** | Count of name references in binding scope | 1: reuse storage. >1: share. 0: dead code. |
-| **Mutation pattern** | Whether binding appears as fold/loop accumulator vs read-only consumer | Accumulator: in-place mutation safe. Read-only: sharing safe. |
-| **Access pattern** | Whether index operations appear in a loop over the same binding | Sequential indexed: representation must support O(1) positional access. |
+**The fix:** Change the Rust container templates to produce shared
+representations (`Rc<Vec<{0}>>`, `Rc<HashMap<{0}, {1}>>`). Update
+`05_emit_rust.dag` so collection-producing methods and runtime bridge
+calls are coherent with the new types. Update `runtime_rust.dag` so
+mutating operations use `Rc::try_unwrap` (O(1) when refcount=1).
+Python/Go templates stay unchanged (GC/value semantics handle sharing).
 
-These are not target-language properties. They are **graph facts**,
-the same way cardinality and connective are graph facts. They are
-computable in a single pass over the binding scopes during lowering.
+These three changes (template + emitter + runtime) must land atomically
+with a stage0 regeneration pass. A half-migration produces type
+mismatches on the next regeneration.
 
-Currently the emitter does not receive these facts. Instead, it makes
-type-category-based guesses: user-defined types get shared
-representations (Rc in Rust), built-in types (List, String, Map)
-get bare representations. This guess is wrong for any built-in type
-with O(n) duplication cost, which is all of them except primitives.
-
-The fix is compositional: compute these facts during lowering, carry
-them in the IR alongside type facts, and require the emitter API to
-consume them. Each backend renders the target-appropriate construct
-from the operational metadata — Rust picks Rc vs move, Go picks
-pointer vs value, C picks heap vs stack. The decision is a lookup
-against a DAG fact, not a guess from a type category.
-
-This is the same "smart facts + dumb compiler" pattern the rest of
-the architecture follows: the graph carries the knowledge, the
-backend is a simple function from facts to target syntax.
-
-**Design status:** Root-caused (2026-03-27). The `perf/v2-tokenizer-
-root-cause` branch proved the class by hand-patching generated files
-(parser 37s → 0.4s). Holistic solution design is next — likely a
-compositional model where operational metadata is attached to
-bindings during the lowering pass and flows through the IR to emission.
+**Design status:** Root-caused (2026-03-27). Proof: hand-patched
+generated stage0 files, parser 37s → 0.4s. Fix is a rendering change
+in language data, not new compiler machinery.
 
 ### Composition Stack
 
@@ -1128,7 +1116,7 @@ the canonical stream assignments.
 |--------|--------|------|-------|
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors (158), type-name comparisons (40), CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.12 ExprData tag assessment, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
-| **Stream 3: Operational Metadata** | `perf/v2-tokenizer-root-cause` (proof branch) | Per-binding operational facts in IR (fan-out, mutation pattern, access pattern). Root-caused 2026-03-27. Design needed before implementation. | Eliminate recurring performance regression class (FF-8). See Compositional Basis §5. |
+| **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` (proof branch) | Rust container templates → `Rc<Vec<{0}>>` etc. + matching emitter + runtime updates + stage0 regeneration. Atomic change. | Eliminate O(n) clone class (FF-8). See Compositional Basis §5. |
 
 ### Completed work streams (Phases 1-4)
 
