@@ -331,6 +331,10 @@ Remaining violations are tracked in L1 dissolution (Stream 1).
 
 ---
 
+## PLACEHOLDER_DELETE_BELOW
+
+---
+
 ## Critical Path: review.dag → Binary
 
 The motivating use case: compile `review.dag` (a cyclical PR review

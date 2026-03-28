@@ -136,6 +136,48 @@ ownership-based languages. For Rust: `Rc<Vec<{0}>>`, `Rc<HashMap<{0},
 {1}>>`. For Python/Go: unchanged (GC/value semantics handle sharing).
 This is declarative language data, not compiler logic.
 
+#### Import resolution is the caller's job — it should be the compiler's (FF-9)
+
+**Status: PARTIALLY FIXED (2026-03-27).** Test harness now does
+import-driven transitive resolution via `resolve_imports_transitively`.
+Stage0 binary and bootstrap still use manual file assembly.
+
+**The violation:** The compiler takes a flat `List<SourceFile>` and compiles
+whatever it's given. Import declarations (`import std.types { List }`)
+are validated against the provided sources — if `std.types` isn't in the
+list, the import fails. The compiler has no way to discover and load a
+module that wasn't pre-loaded by the caller.
+
+This means:
+- The stage0 binary manually `collect_dag_files` from a directory
+- The test harness resolves imports transitively (fixed 2026-03-27)
+- The bootstrap test manually copies specific std files
+
+**What's lost:** The import declarations in `.dag` source files are the
+complete, authoritative dependency graph. The compiler already parses
+these imports and validates them. But it treats them as assertions about
+what the caller provided, not as demands for what to load.
+
+**The fix:** Import-driven source resolution. The compiler (or a thin
+layer above it) resolves imports to files:
+
+1. The caller provides a **source root** (or roots), not a flat file list
+2. The compiler parses the entry point, discovers imports, loads
+   transitively referenced modules from the source roots
+3. Only files reachable from the entry point's import graph are loaded
+4. The resolve stage already builds the dependency graph — the missing
+   piece is wiring it to file discovery
+
+Each module loaded exactly once (HashMap memoization). Diamond deps
+(A imports B and C, both import D) hit the seen check. O(V+E).
+
+**Impact:** Eliminates the kernel seed (modules that need `List` import
+it; the import loads `std.types` which loads `std.algebra`). Tests use
+the same resolution as production. Every compilation loads exactly what
+it needs — minimal and universal.
+
+#### Ratchet
+
 Fan-out is not "metadata" to be computed and carried — it is the
 out-degree of a binding's edges, already present in the graph structure.
 The emitter doesn't need new information. It needs the right default

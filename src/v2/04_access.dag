@@ -14,7 +14,8 @@ import v2.std.core {
   diagnostic_node, diagnostic_message,
   leaf_node, with_optional_cardinality,
   Connective, NoConnective,
-  CollectionKind, MapKind
+  CollectionKind, MapKind,
+  unit_type, string_type, int_type
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
@@ -58,12 +59,12 @@ fn access_result(inferred: Node, diagnostics: List<Node>, span: SourceSpan, fall
 
 fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
   let normed = normalize_access_type_node(n: base_type)
-  if normed.connective == NoConnective && normed.children |> count == 0 && normed.name == "String" {
+  if normed.connective == NoConnective && normed.children |> count == 0 && normed.name == string_type.name {
     // TODO P5.13: structural check via algebra
     let normed_index = normalize_access_type_node(n: index_type)
-    let diags = if normed_index.name == "Int" { [] }
+    let diags = if normed_index.name == int_type.name { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
-    access_result(inferred: leaf_node(name: "String"), diagnostics: diags, span: span, fallback_message: "invalid string index access")
+    access_result(inferred: string_type, diagnostics: diags, span: span, fallback_message: "invalid string index access")
   } else if normed.collection_kind == MapKind && normed.children |> count >= 2 {
     let key_node = match normed.children |> first {
       Some { value: k } => k
@@ -80,10 +81,10 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     let is_map = normed.collection_kind == MapKind
     if is_map {
       let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
-      access_result(inferred: leaf_node(name: "Unit"), diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
+      access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
     } else {
       let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
-      access_result(inferred: leaf_node(name: "Unit"), diagnostics: diags, span: span, fallback_message: "invalid index access")
+      access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")
     }
   }
 }
@@ -91,18 +92,18 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
 fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
   // TODO P5.13: structural check via algebra
   let normed_base = normalize_access_type_node(n: base_type)
-  let base_is_string = normed_base.name == "String"
+  let base_is_string = normed_base.name == string_type.name
   let base_diags = if base_is_string { [] }
   else { [access_error(message: "slice is only supported for String values", span: span, module_name: module_name)] }
   let normed_start = normalize_access_type_node(n: start_type)
-  let start_diags = if normed_start.name == "Int" { [] }
+  let start_diags = if normed_start.name == int_type.name { [] }
   else { [access_error(message: "slice start requires an Int index", span: span, module_name: module_name)] }
   let normed_end = normalize_access_type_node(n: end_type)
-  let end_diags = if normed_end.name == "Int" { [] }
+  let end_diags = if normed_end.name == int_type.name { [] }
   else { [access_error(message: "slice end requires an Int index", span: span, module_name: module_name)] }
   let all_diags = concat(base_diags, start_diags, end_diags)
   access_result(
-    inferred: leaf_node(name: "String"),
+    inferred: string_type,
     diagnostics: all_diags,
     span: span,
     fallback_message: "invalid slice access"

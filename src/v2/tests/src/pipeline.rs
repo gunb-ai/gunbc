@@ -1181,3 +1181,72 @@ fn sh4_resolved_graph_completeness() {
         assert!(items_field.is_some(), "typed module should have 'items' field");
     }
 }
+
+// ── Structural method resolution (Tier 0) ───────────────────────────────
+
+#[test]
+fn structural_method_resolution_with_std() {
+    // std modules loaded automatically by compile_dag/compile_multi.
+    // List<Int> → FreeMonoid<Int> → Conj { map, filter, count, ... }
+    // Method calls resolve via lookup_structural_method (Tier 0).
+    let user = r#"module user_test
+import std.types { List, Map }
+
+// FreeMonoid methods on List
+fn identity(xs: List<Int>) -> List<Int> { xs |> map(x => x) }
+fn evens(xs: List<Int>) -> List<Int> { xs |> filter(x => x == 0) }
+fn total(xs: List<Int>) -> Int { xs |> count }
+fn has_any(xs: List<Int>) -> Bool { xs |> any(x => x == 0) }
+fn has_all(xs: List<Int>) -> Bool { xs |> all(x => x == 0) }
+fn head(xs: List<Int>) -> Int? { xs |> first }
+fn tail_el(xs: List<Int>) -> Int? { xs |> last }
+fn prefix(xs: List<Int>) -> List<Int> { xs |> take(3) }
+fn suffix(xs: List<Int>) -> List<Int> { xs |> skip(1) }
+fn flipped(xs: List<Int>) -> List<Int> { xs |> reverse }
+fn with_el(xs: List<Int>) -> List<Int> { xs |> append(42) }
+fn has_it(xs: List<Int>) -> Bool { xs |> contains(1) }
+
+// PartialFunction methods on Map
+fn lookup_key(m: Map<String, Int>) -> Int? { m |> get("key") }
+fn has_key(m: Map<String, Int>) -> Bool { m |> has("key") }
+fn all_keys(m: Map<String, Int>) -> List<String> { m |> keys }
+fn all_vals(m: Map<String, Int>) -> List<Int> { m |> values }
+"#;
+    let result = compile_dag(user);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "structural method resolution should produce 0 diagnostics, got {}: {:?}",
+        msgs.len(),
+        msgs,
+    );
+}
+
+#[test]
+fn structural_method_colliding_name_no_bridge() {
+    // Regression: a user-defined type with a method named "count" or "has"
+    // must NOT be tagged with IntrinsicMethodSemantics. It should get
+    // PlainMethodSemantics so emit renders it as recv.method(args).
+    let source = r#"module test
+
+type Counter {
+  count: fn() -> Int
+  has: fn(String) -> Bool
+}
+
+fn get_count(c: Counter) -> Int {
+  c.count
+}
+
+fn check_has(c: Counter) -> Bool {
+  c.has("key")
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "user-defined structural methods with colliding names should compile, got: {:?}",
+        msgs,
+    );
+}
