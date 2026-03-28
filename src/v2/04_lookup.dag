@@ -264,29 +264,18 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
-  // Tier 0: Structural field lookup on the resolved type.
-  // If the receiver's type declaration has a field matching the method name
-  // (e.g., OrderedRing<T>.add), use its signature directly.
-  // Only backfill intrinsic/bridge semantics for collection types (have
-  // collection_kind) — user-defined types with colliding method names
-  // (e.g., MyThing.count) get PlainMethodSemantics so emit renders them
-  // as plain recv.method(args), not legacy bridge helpers.
-  match lookup_structural_method(receiver_type: receiver_type, method_name: method_name) {
+  // Tier 0: Structural field lookup for non-collection types only.
+  // Collection types (List, Map, Set) fall through to Tiers 2/3 which
+  // provide the correct IntrinsicMethodSemantics/RuntimeBridgeSemantics
+  // that emit needs for target-specific rendering patterns.
+  // Non-collection types (user-defined, algebra types) get
+  // PlainMethodSemantics — emit renders as plain recv.method(args).
+  let is_collection = receiver_type.collection_kind != NoCollection
+  let tier0_result = if is_collection { none } else { lookup_structural_method(receiver_type: receiver_type, method_name: method_name) }
+  match tier0_result {
     Some { value: result_type } =>
-      let is_collection = receiver_type.collection_kind != NoCollection
-      let tier0_semantics = if is_collection {
-        match classify_reconciled_intrinsic_method(method: method_name) {
-          Some { value: intrinsic } => Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } }
-          None => match classify_runtime_bridge_method(method: method_name) {
-            Some { value: bridge_method } => Some { value: RuntimeBridgeSemantics { method: bridge_method } }
-            None => Some { value: PlainMethodSemantics }
-          }
-        }
-      } else {
-        Some { value: PlainMethodSemantics }
-      }
       KnownMethodResolution {
-        semantics: tier0_semantics,
+        semantics: Some { value: PlainMethodSemantics },
         result_type: Some { value: result_type }
       }
     None =>
