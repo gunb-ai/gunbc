@@ -741,6 +741,77 @@ Concrete acceptance:
 
 ---
 
+## Frontend/Backend Design Direction: Parse-Emit Symmetry
+
+**Governing principle:** if we can emit a language, we should be able to
+parse it. The same `LanguageSpec` drives both directions.
+
+```
+parse(spec, source) → graph      // frontend
+emit(spec, graph)   → source     // backend
+```
+
+This is the natural extension of two established decisions:
+- Languages are extdeps modeled from specs (`dsl/extdeps/languages/`)
+- The compiler is a generic graph processor (no hardcoded language knowledge)
+
+Currently these decisions are applied asymmetrically: emission reads from
+`LanguageSpec` data, but parsing is hardcoded in Rust match arms. The
+parser and emitter are parallel implementations of language knowledge —
+one in code, one in data. Per invariants, they will diverge.
+
+### What LanguageSpec carries for symmetry
+
+| Fact | Emission | Parsing |
+|------|----------|---------|
+| Item tags | Which keyword to emit (`fn`, `def`) | Which keywords start items |
+| Structural forms | How to render params, return, body | How to recognize them |
+| Operators | Which symbol for BinAdd | Precedence, associativity |
+| Block delimiters | `{`/`}` vs indentation | Block boundary detection |
+| Type syntax | Template rendering (`Vec<{0}>`) | Template parsing |
+| Binding syntax | `let x =` vs `x :=` | Binding recognition |
+
+Every emission template has a parsing dual. `Vec<{0}>` renders
+`Vec<Int>` — reversed, it parses `Vec<Int>` back to
+`Generic("Vec", [Int])`.
+
+### The .dag language is the first instance
+
+The v1 of this design extracts the implicit .dag syntax spec from the
+hardcoded parser:
+1. Keyword table in `01_tokenize.dag` → data in a .dag spec
+2. Operator precedence in `02_parse.dag` → data in a .dag spec
+3. Item forms in `parse_item` → declarative structural spec
+4. Statement forms in `parse_stmt` → declarative binding spec
+
+The parser becomes a generic interpreter of syntax specs. The .dag spec
+is instance #1. Future frontends (Python, Go source → graph) use the
+same mechanism with different specs.
+
+### Round-trip invariant
+
+```
+parse(spec, emit(spec, graph)) ≅ graph
+```
+
+This is testable and catches spec drift between parse and emit.
+
+### Irreducible differences
+
+Some languages have structural parsing/emission differences that can't
+be captured as template data (Python indentation, Rust lifetimes, Go
+implicit interfaces). These stay as thin per-language modules — same
+pattern as the existing "irreducible semantic differences" in emission.
+
+### Relationship to R3 (compositional parser)
+
+R3 is the implementation path for the parsing side. The compositional
+parser recognizes structural forms driven by spec data. R3 exit criteria
+(no keyword match arms, item identity as data) directly enable the
+parse-emit symmetry.
+
+---
+
 ## Completed Milestones
 
 Status labels:
