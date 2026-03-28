@@ -326,7 +326,70 @@ invariant violations — I (incomplete types ~32), II (error-as-name ~18),
 III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
 Remaining violations are tracked in L1 dissolution (Stream 1).
 
-**Stream 0 (compositional parser R3) is now the active priority.**
+**Stream 0 (compositional parser R3) is the architectural priority.**
+**The practical priority is getting review.dag → compiled binary.**
+
+---
+
+## Critical Path: review.dag → Binary
+
+The motivating use case: compile `review.dag` (a cyclical PR review
+agent) into a native binary, replacing the current shell script runtime.
+This requires clearing 4 stages. Stages 1-2 are compiler work; stages
+3-4 are domain wiring.
+
+### Stage 1: Parser (9 → 3 remaining)
+
+Parser fixes for `uses Resource(mode:)`, `[after/when]`, `hermetic`,
+`where` predicates, `is_text_readable`, paren variant patterns, node
+declarations, and constrained assignments are written in both `.dag`
+source and stage0 Rust. 6 of 9 errors fixed. Remaining 3 are DSL-side
+workarounds (`and` → `&&`, block/record disambiguation, generics on
+patterns).
+
+**Blocker:** `regenerate-stage0.sh` has bugs (module renaming mismatch
+with lib.rs, serde imports, duplicate types). Manual stage0 porting
+works but the script needs fixing for sustainable regeneration.
+
+### Stage 2: Rust Codegen (~280 errors)
+
+| Gap | Errors | Root cause | Fix location |
+|-----|-------:|------------|--------------|
+| `Bool` → `bool` | ~153 | Primitive type mapping missing | `05_emit_rust.dag` |
+| `Deserialize` trait | ~124 | Emitter generates serde derives without deps | `05_emit_rust.dag` |
+| `expr_children` helpers | ~130 | P5.11 accessors emitted as calls but undefined | `05_emit.dag` |
+| Module name mismatch | ~15 | `regenerate-stage0.sh` renames vs `lib.rs` | Script fix |
+| `CodegenBackend` undeclared | ~10 | Type referenced but not emitted | `05_emit.dag` |
+| `Secret` duplicate | 1 | Two modules emit same struct | `05_emit.dag` namespace |
+| `Unit` unhandled | 1 | Not mapped to `()` | `05_emit_rust.dag` |
+
+Priority: `Bool`→`bool` clears ~153 of ~280 errors. Serde removal
+clears ~124. Together they resolve ~95% of codegen errors.
+
+### Stage 3: Domain Workflow Compilation
+
+| Gap | What's needed |
+|-----|---------------|
+| Cross-repo imports | `review.dag` imports from `gunbc/dsl/extdeps/`. Compiler needs multi-root `--source-dir` or review.dag moves into gunbc. |
+| `for` comprehension codegen | `for pr in open_prs.pulls { ... }` with service calls inside loop body. Works for gist but untested with REST services. |
+| REST transport codegen | `github.Pulls.List/Diff/CreateComment` → reqwest HTTP calls. Shell transport works; REST uses the gists.dag pattern. |
+| CLI entrypoint generation | `main.rs` with clap subcommands for `review-cycle` and `review-pr`. Currently hand-maintained. |
+| Auth injection | `github_token()` through GCP Secret Manager credential chain or env var fallback. |
+
+### Stage 4: Feature Parity with Shell Runtime
+
+| Gap | Shell has | .dag needs |
+|-----|-----------|------------|
+| Stateless dedup | Queries reviews API at commit SHA | `github.Pulls.ListReviews` service op |
+| Line-level comments | Posts via `gh api` reviews endpoint | `github.Pulls.CreateReview` service op |
+| Fix verification | Fetches prior violations, asks LLM if fixed | `verify_fixes` composing ListReviews + LLM |
+| Cron upsert | Tag-based idempotent crontab | Modeled in `extdeps/cron.dag`, blocked on Stage 1 |
+| Reference docs | Fetches algebra.dag, extdeps.md as review context | Pure function, easy to model once compilation works |
+
+**Critical path: Stage 1 → Stage 2 → Stage 3.** Stage 1 is one
+successful stage0 regeneration script fix. Stage 2 is codegen fixes
+in `05_emit_rust.dag`. Stage 3 is domain wiring. Stage 4 is
+incremental after the binary works.
 
 ---
 
