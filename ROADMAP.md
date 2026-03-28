@@ -541,12 +541,10 @@ Remaining 872 errors in 3 structural categories:
 for literal braces in strings. 775 brace templates escaped across 18
 DSL files. Remaining ~3 diagnostics: enum variant as standalone value.
 
-**Per-module emission (DSL user blocker):** The compiler gates ALL
-emission on ANY diagnostic (compile.dag line 773). A single unresolved
-type in an unused module blocks emission of all clean modules. The fix:
-emit files for modules that pass typecheck; report but don't block on
-diagnostics in other modules. This is an architectural change to
-`compile.dag` — the pipeline currently processes all modules as a unit.
+**DSL compilation gate:** The compiler correctly fails closed — 0 files
+emitted when any diagnostic exists. The fix is to get diagnostics to 0,
+not to weaken the gate. Remaining diagnostics (~7-8) are in pattern
+composition generics and module-specific issues.
 
 **Known parser limitation:** Stage0 parser misreads `{ fn(name: val) }`
 as record literal (block/record disambiguation). Workaround: use match
