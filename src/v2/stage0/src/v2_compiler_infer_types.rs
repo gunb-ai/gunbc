@@ -272,6 +272,122 @@ pub fn callable_node(func_params: Vec<Rc<Param>>, ret: Rc<Node>) -> Rc<Node> {
 })
 }
 
+pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        name: name.clone(),
+        span: no_span(),
+        children: vec![],
+        connective: None,
+        collection_kind: None,
+        params: vec![],
+        inferred: Some(Rc::new(InferredNode::Resolved { node: type_node.clone() })),
+        return_cardinality: Cardinality::Required,
+        uses: vec![],
+        body: None,
+        transport: None,
+        properties: vec![],
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
+pub fn algebra_method_field(name: String, param_types: Vec<Rc<Node>>, return_type: Rc<Node>) -> Rc<Node> {
+    let params: Vec<Rc<Param>> = param_types.iter().cloned().map(|t| {
+        Rc::new(Param {
+            name: "_".to_string(),
+            type_expr: t.clone(),
+            default_value: None,
+            span: no_span(),
+        })
+    }).collect();
+    Rc::new(Node {
+        name: name.clone(),
+        span: no_span(),
+        children: vec![],
+        connective: None,
+        collection_kind: None,
+        params: vec![],
+        inferred: Some(Rc::new(InferredNode::Resolved { node: callable_node(params, return_type.clone()) })),
+        return_cardinality: Cardinality::Required,
+        uses: vec![],
+        body: None,
+        transport: None,
+        properties: vec![],
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
+pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
+    let self_type = leaf_node(name.clone());
+    let ordering_type = leaf_node("Ordering".to_string());
+    if (name.clone() == "Int".to_string()) {
+        let fields = vec![
+            algebra_method_field("add".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_value_field("zero".to_string(), self_type.clone()),
+            algebra_method_field("negate".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_method_field("mul".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_value_field("one".to_string(), self_type.clone()),
+            algebra_method_field("compare".to_string(), vec![self_type.clone(), self_type.clone()], ordering_type.clone()),
+        ];
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+    } else if (name.clone() == "Float".to_string()) {
+        let fields = vec![
+            algebra_method_field("add".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_value_field("zero".to_string(), self_type.clone()),
+            algebra_method_field("negate".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_method_field("mul".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_value_field("one".to_string(), self_type.clone()),
+            algebra_method_field("reciprocal".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_method_field("compare".to_string(), vec![self_type.clone(), self_type.clone()], ordering_type.clone()),
+        ];
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+    } else if (name.clone() == "Bool".to_string()) {
+        let fields = vec![
+            algebra_method_field("meet".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_method_field("join".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_method_field("complement".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_value_field("top".to_string(), self_type.clone()),
+            algebra_value_field("bottom".to_string(), self_type.clone()),
+        ];
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+    } else if (name.clone() == "String".to_string()) {
+        let int_type = leaf_node("Int".to_string());
+        let bool_type = leaf_node("Bool".to_string());
+        let char_type = leaf_node("Char".to_string());
+        let list_of_string = container_node("List".to_string(), self_type.clone());
+        let list_of_char = container_node("List".to_string(), char_type.clone());
+        let fields = vec![
+            algebra_method_field("concat".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_value_field("empty".to_string(), self_type.clone()),
+            algebra_method_field("length".to_string(), vec![self_type.clone()], int_type.clone()),
+            algebra_method_field("chars".to_string(), vec![self_type.clone()], list_of_char.clone()),
+            algebra_method_field("split".to_string(), vec![self_type.clone(), self_type.clone()], list_of_string.clone()),
+            algebra_method_field("join".to_string(), vec![list_of_string.clone(), self_type.clone()], self_type.clone()),
+            algebra_method_field("contains".to_string(), vec![self_type.clone(), self_type.clone()], bool_type.clone()),
+            algebra_method_field("starts_with".to_string(), vec![self_type.clone(), self_type.clone()], bool_type.clone()),
+            algebra_method_field("ends_with".to_string(), vec![self_type.clone(), self_type.clone()], bool_type.clone()),
+            algebra_method_field("trim".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_method_field("to_lower".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_method_field("to_upper".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_method_field("replace".to_string(), vec![self_type.clone(), self_type.clone(), self_type.clone()], self_type.clone()),
+            algebra_method_field("substring".to_string(), vec![self_type.clone(), int_type.clone(), int_type.clone()], self_type.clone()),
+            algebra_method_field("to_int".to_string(), vec![self_type.clone()], int_type.clone()),
+            algebra_method_field("to_string".to_string(), vec![self_type.clone()], self_type.clone()),
+            algebra_method_field("reverse".to_string(), vec![self_type.clone()], self_type.clone()),
+        ];
+        Rc::new(Node { name: name.clone(), span: base.span.clone(), children: fields, connective: Some(Connective::Conj), collection_kind: base.collection_kind.clone(), params: base.params.clone(), inferred: base.inferred.clone(), return_cardinality: base.return_cardinality.clone(), uses: base.uses.clone(), body: base.body.clone(), transport: base.transport.clone(), properties: base.properties.clone(), type_annotation: base.type_annotation.clone(), is_self_recursive: base.is_self_recursive.clone(), has_non_tail_self_call: base.has_non_tail_self_call.clone(), match_pattern: base.match_pattern.clone(), expr_data: base.expr_data.clone() })
+    } else {
+        base.clone()
+    }
+}
+
 pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
     if (n.name.clone() == "Callable".to_string()) {
         match n.inferred.clone().as_deref().cloned() {

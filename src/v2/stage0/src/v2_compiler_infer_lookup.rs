@@ -57,7 +57,7 @@ use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::IntrinsicMethod::*;
 use crate::v2_std_core::RuntimeBridgeMethod::*;
-pub use crate::v2_compiler_infer_types::{child_inferred_or_name, error_type_node, node_is_optional, node_is_map, normalize_access_type_node, rt_type, rt_node, emit_map_has};
+pub use crate::v2_compiler_infer_types::{child_inferred_or_name, error_type_node, node_is_optional, node_is_map, normalize_access_type_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
 pub use crate::v2_compiler_infer_method::{classify_reconciled_intrinsic_method, classify_runtime_bridge_method, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node};
@@ -249,7 +249,54 @@ match field_summary_for_type(inner.clone(), env.clone(), field.clone()) {
     })
 }
 
+pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option<Rc<Node>> {
+    let matching: Vec<Rc<Node>> = product.children.clone().iter().cloned().filter(|c| c.name.clone() == method_name.clone()).collect();
+    match matching.first().cloned() {
+        Some(field) => match field.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt }) => {
+                if (rt.params.clone().len() as i64) > 0 {
+                    match rt.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: return_type }) => Some(return_type.clone()),
+                        _ => Some(rt.clone()),
+                    }
+                } else {
+                    Some(rt.clone())
+                }
+            },
+            _ => None,
+        },
+        None => None,
+    }
+}
+
+pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: String) -> Option<Rc<Node>> {
+    let is_product = node_is_product(receiver_type.clone());
+    if is_product {
+        let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone());
+        match direct {
+            Some(_) => direct,
+            None => None,
+        }
+    } else {
+        let enriched = enrich_kernel_type(receiver_type.name.clone(), receiver_type.clone());
+        if (node_is_product(enriched.clone()) && (enriched.children.clone().len() as i64) > 0) {
+            lookup_field_in_product(enriched.clone(), method_name.clone())
+        } else {
+            None
+        }
+    }
+}
+
 pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: String, fold_accumulator_type: Option<Rc<Node>>, service_registry: HashMap<String, Vec<Rc<OpEntry>>>) -> Rc<KnownMethodResolution> {
+    // Tier 0: Structural field lookup (including algebra registry for kernel types)
+    let is_collection = receiver_type.collection_kind.clone().is_some();
+    let tier0_result = if is_collection { None } else { lookup_structural_method(receiver_type.clone(), method_name.clone()) };
+    match tier0_result {
+        Some(result_type) => Rc::new(KnownMethodResolution {
+            semantics: Some(Rc::new(MethodSemantics::PlainMethodSemantics)),
+            result_type: Some(result_type.clone()),
+        }),
+        None =>
     match check_service_method_call_node(receiver_type.clone(), method_name.clone(), service_registry.clone()) {
     Some(svc_result) => Rc::new(KnownMethodResolution {
     semantics: Some(Rc::new(MethodSemantics::ServiceMethodSemantics {
@@ -277,6 +324,7 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
     semantics: None,
     result_type: None,
 }),
+},
 },
 },
 }

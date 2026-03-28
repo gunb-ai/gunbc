@@ -92,7 +92,8 @@ import v2.compiler.infer_types {
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
   rt_type,
-  emit_map_has
+  emit_map_has,
+  enrich_kernel_type
 }
 import v2.compiler.infer_method {
   classify_reconciled_intrinsic_method, classify_runtime_bridge_method,

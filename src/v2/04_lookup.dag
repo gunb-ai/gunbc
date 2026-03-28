@@ -29,7 +29,8 @@ import v2.compiler.infer_types {
   child_inferred_or_name,
   normalize_access_type_node,
   rt_type, rt_node,
-  emit_map_has
+  emit_map_has,
+  enrich_kernel_type
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
@@ -234,33 +235,48 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 // a child with the requested method name (e.g., OrderedRing<T>.add).
 // Returns the RETURN TYPE of calling that method, not the method's
 // signature. For add: fn(T,T)->T, returns T (the call result type).
+fn lookup_field_in_product(product: Node, method_name: String) -> Node? {
+  let matching = product.children |> filter(c => c.name == method_name)
+  match matching |> first {
+    Some { value: field } =>
+      match field.inferred {
+        Some { value: Resolved { node: rt } } =>
+          if rt.params |> count > 0 {
+            match rt.inferred {
+              Some { value: Resolved { node: return_type } } => Some { value: return_type }
+              _ => Some { value: rt }
+            }
+          } else {
+            Some { value: rt }
+          }
+        _ => none
+      }
+    None => none
+  }
+}
+
 fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
+  // First: check the receiver's own structural fields (Conj product).
   let is_product = receiver_type.connective == Conj
   if is_product {
-    let matching = receiver_type.children |> filter(c => c.name == method_name)
-    match matching |> first {
-      Some { value: field } =>
-        // Found a structural field matching the method name.
-        // The field's inferred type is the method's signature.
-        // If it's a callable (has params), extract its return type.
-        // If it's a non-callable (e.g., zero: T), return its type directly.
-        match field.inferred {
-          Some { value: Resolved { node: rt } } =>
-            if rt.params |> count > 0 {
-              // Callable field: return type is the callable's own inferred type
-              match rt.inferred {
-                Some { value: Resolved { node: return_type } } => Some { value: return_type }
-                _ => Some { value: rt }
-              }
-            } else {
-              // Non-callable field (e.g., zero: T, one: T): return type directly
-              Some { value: rt }
-            }
-          _ => none
-        }
+    let direct = lookup_field_in_product(product: receiver_type, method_name: method_name)
+    match direct {
+      Some { value: _ } => direct
       None => none
     }
-  } else { none }
+  } else {
+    // Second: check the algebra registry for kernel type methods.
+    // enrich_kernel_type builds a Conj product with algebraic fields
+    // (add, mul, compare, concat, etc.) for Int/Float/Bool/String.
+    // The enriched node is NOT the type binding — it's a side table
+    // so that type nodes in the graph stay as bare leaves.
+    let enriched = enrich_kernel_type(name: receiver_type.name, base: receiver_type)
+    if enriched.connective == Conj && enriched.children |> count > 0 {
+      lookup_field_in_product(product: enriched, method_name: method_name)
+    } else {
+      none
+    }
+  }
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
