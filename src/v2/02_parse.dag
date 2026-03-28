@@ -1528,12 +1528,13 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         PredResult { predicate: dummy_pred, state: e.state, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: e.state)) } }
     }
   } else {
-    // No args -- handle bare predicate names
+    // No args -- bare predicate names (non_empty, is_text_readable, etc.)
+    // Accept any identifier; later phases validate semantics.
     match pred_name {
       "non_empty" =>
         PredResult { predicate: FieldInit { name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
       _ =>
-        PredResult { predicate: dummy_pred, state: s, err: Some { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: current_span(tokens: tokens, state: s)) } }
+        PredResult { predicate: FieldInit { name: pred_name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span) }, state: s, err: none }
     }
   }
 }
@@ -2035,8 +2036,58 @@ fn parse_uses_entry(tokens: List<Token>, state: ParserState) -> ResUseResult {
 
   let r3 = parse_type_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return ResUseResult { resource_use: dummy, state: r3.state, err: r3.err } }
-  let ru = ResourceUse { name: name, resource: r3.type_expr, span: start_span }
-  ResUseResult { resource_use: ru, state: r3.state, err: none }
+
+  // Optional resource params: Filesystem(mode: ReadWrite)
+  let e = eat(tokens: tokens, state: r3.state, expected: ExpectLParen)
+  if e.consumed {
+    let ar = parse_resource_config_args(tokens: tokens, state: e.state)
+    if has_err(err: ar.err) { return ResUseResult { resource_use: dummy, state: ar.state, err: ar.err } }
+    let r4 = expect(tokens: tokens, state: ar.state, expected: ExpectRParen)
+    if has_err(err: r4.err) { return ResUseResult { resource_use: dummy, state: r4.state, err: r4.err } }
+    // Store config as properties on the resource type node
+    let res_node = Node { name: r3.type_expr.name, span: r3.type_expr.span, children: r3.type_expr.children,
+      params: r3.type_expr.params, inferred: r3.type_expr.inferred, return_cardinality: r3.type_expr.return_cardinality,
+      uses: r3.type_expr.uses, body: r3.type_expr.body, collection_kind: r3.type_expr.collection_kind,
+      connective: r3.type_expr.connective, transport: r3.type_expr.transport,
+      properties: ar.fields, type_annotation: r3.type_expr.type_annotation,
+      is_self_recursive: r3.type_expr.is_self_recursive, has_non_tail_self_call: r3.type_expr.has_non_tail_self_call,
+      match_pattern: r3.type_expr.match_pattern, expr_data: r3.type_expr.expr_data }
+    let ru = ResourceUse { name: name, resource: res_node, span: start_span }
+    ResUseResult { resource_use: ru, state: r4.state, err: none }
+  } else {
+    let ru = ResourceUse { name: name, resource: r3.type_expr, span: start_span }
+    ResUseResult { resource_use: ru, state: r3.state, err: none }
+  }
+}
+
+// Parse resource config args: comma-separated name: ident pairs.
+// e.g. mode: ReadWrite, scope: Local
+type ResConfigResult { fields: List<FieldInit>, state: ParserState, err: Node? }
+
+fn parse_resource_config_args(tokens: List<Token>, state: ParserState) -> ResConfigResult {
+  parse_resource_config_acc(tokens: tokens, state: skip_newlines(tokens: tokens, state: state), acc: [])
+}
+
+fn parse_resource_config_acc(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> ResConfigResult {
+  if peek_is_rparen(tokens: tokens, state: state) {
+    return ResConfigResult { fields: acc, state: state, err: none }
+  }
+  let zero_span = SourceSpan { start: 0, end: 0 }
+  let r = expect_name(tokens: tokens, state: state)
+  if has_err(err: r.err) { return ResConfigResult { fields: [], state: r.state, err: r.err } }
+  let field_name = r.name
+  let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
+  if has_err(err: r2.err) { return ResConfigResult { fields: [], state: r2.state, err: r2.err } }
+  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  if has_err(err: r3.err) { return ResConfigResult { fields: [], state: r3.state, err: r3.err } }
+  let fi = FieldInit { name: field_name, value: r3.expr }
+  let acc = list_push(acc, fi)
+  let e = eat(tokens: tokens, state: r3.state, expected: ExpectComma)
+  if e.consumed {
+    parse_resource_config_acc(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state), acc: acc)
+  } else {
+    ResConfigResult { fields: acc, state: r3.state, err: none }
+  }
 }
 
 fn parse_optional_inferred(tokens: List<Token>, state: ParserState) -> OptRetResult {
@@ -3217,7 +3268,12 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
 
   let r3 = parse_type_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return ParamResult { param: dummy_param, state: r3.state, err: r3.err } }
-  let s = r3.state
+
+  // Optional where clause: param: Type where range(min: 1, max: 100)
+  let wr = try_where_clause(tokens: tokens, state: r3.state, base_te: r3.type_expr, start_span: start_span)
+  if has_err(err: wr.err) { return ParamResult { param: dummy_param, state: wr.state, err: wr.err } }
+  let type_expr = wr.type_expr
+  let s = wr.state
 
   // Optional default value
   let e = eat(tokens: tokens, state: s, expected: ExpectEq)
@@ -3225,13 +3281,13 @@ fn parse_param(tokens: List<Token>, state: ParserState) -> ParamResult {
     let r4 = parse_expr(tokens: tokens, state: e.state)
     if has_err(err: r4.err) { return ParamResult { param: dummy_param, state: r4.state, err: r4.err } }
     let p = Param {
-      name: name, type_expr: r3.type_expr,
+      name: name, type_expr: type_expr,
       default_value: Some { value: r4.expr }, span: start_span
     }
     ParamResult { param: p, state: r4.state, err: none }
   } else {
     let p = Param {
-      name: name, type_expr: r3.type_expr,
+      name: name, type_expr: type_expr,
       default_value: none, span: start_span
     }
     ParamResult { param: p, state: s, err: none }
@@ -3287,13 +3343,22 @@ fn parse_stmt(tokens: List<Token>, state: ParserState) -> ExprResult {
     Some { value: ShKwLet } => parse_let(tokens: tokens, state: state)
     Some { value: ShKwReturn } => parse_return(tokens: tokens, state: state)
     Some { value: ShIdent } => {
-      if peek_is_eq_after_ident(tokens: tokens, state: state) {
+      if peek_text_is(tokens: tokens, state: state, expected: "node") && peek_is_node_decl(tokens: tokens, state: state) {
+        parse_node_decl(tokens: tokens, state: state)
+      } else if peek_is_eq_after_ident(tokens: tokens, state: state) {
         parse_bare_assignment(tokens: tokens, state: state)
       } else {
         parse_expr(tokens: tokens, state: state)
       }
     }
-    _ => parse_expr(tokens: tokens, state: state)
+    _ => {
+      // Keywords used as binding names: `hermetic = ...` etc.
+      if is_name_keyword_shape(shape: sh.value) && peek_is_eq_after_ident(tokens: tokens, state: state) {
+        parse_bare_assignment(tokens: tokens, state: state)
+      } else {
+        parse_expr(tokens: tokens, state: state)
+      }
+    }
   }
 }
 
@@ -3310,18 +3375,90 @@ fn peek_is_eq_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
   }
 }
 
+// Check if "node <name> :" or "node <name> [" pattern (node declaration, not variable use).
+fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
+  // pos is at "node", pos+1 should be name (ident), pos+2 should be : or [
+  if state.pos + 2 < count(tokens) {
+    let t1 = get(tokens, state.pos + 1)
+    let t2 = get(tokens, state.pos + 2)
+    let name_ok = match t1 {
+      Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword_shape(shape: t.shape)
+      None => false
+    }
+    let decl_ok = match t2 {
+      Some { value: t } => is_colon_shape(shape: t.shape) || is_lbracket_shape(shape: t.shape)
+      None => false
+    }
+    name_ok && decl_ok
+  } else { false }
+}
+
+// Check if current token is an identifier with a specific text.
+fn peek_text_is(tokens: List<Token>, state: ParserState, expected: String) -> Bool {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } => is_ident_shape(shape: t.shape) && t.text == expected
+    None => false
+  }
+}
+
+// Parse node declaration: node <name> [constraints]: <expr>
+// Represented as ExprLet with type_annotation for the node type and properties for constraints.
+fn parse_node_decl(tokens: List<Token>, state: ParserState) -> ExprResult {
+  let span = current_span(tokens: tokens, state: state)
+  let dummy_expr = parse_recovery_placeholder()
+  // Consume "node" identifier
+  let adv = advance(tokens: tokens, state: state)
+  // Parse node name
+  let r = expect_name(tokens: tokens, state: adv.state)
+  if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
+  let name = r.name
+  // Optional constraint annotations: [after X, when Y]
+  let cr = try_constraint_annotations(tokens: tokens, state: r.state)
+  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, state: cr.state, err: cr.err } }
+  // Expect colon
+  let r2 = expect(tokens: tokens, state: cr.state, expected: ExpectColon)
+  if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
+  // Parse node type/value expression
+  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  if has_err(err: r3.err) { return r3 }
+  // Build node: ExprLet with type_annotation holding the type expression
+  let node = Node { name: "", span: span, children: [r3.expr],
+    connective: NoConnective, collection_kind: NoCollection,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: cr.constraints,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none,
+    expr_data: ExprLet { name: name } }
+  ExprResult { expr: node, state: r3.state, err: none }
+}
+
 // Parse bare assignment: name = expr -> desugar to Let { name, value, body: none }
 fn parse_bare_assignment(tokens: List<Token>, state: ParserState) -> ExprResult {
   let span = current_span(tokens: tokens, state: state)
   let dummy_expr = parse_recovery_placeholder()
-  let r = expect_ident(tokens: tokens, state: state)
+  let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let name = r.name
   let r2 = expect(tokens: tokens, state: r.state, expected: ExpectEq)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
   let r3 = parse_expr(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return r3 }
-  ExprResult { expr: make_expr_node(expr_data: ExprLet { name: name }, children: [r3.expr], inferred: none, span: span), state: r3.state, err: none }
+  // Optional constraint annotations: name = expr [after X, when Y]
+  let cr = try_constraint_annotations(tokens: tokens, state: r3.state)
+  if has_err(err: cr.err) { return ExprResult { expr: dummy_expr, state: cr.state, err: cr.err } }
+  let node = make_expr_node(expr_data: ExprLet { name: name }, children: [r3.expr], inferred: none, span: span)
+  if count(cr.constraints) > 0 {
+    let node = Node { name: node.name, span: node.span, children: node.children, params: node.params,
+      inferred: node.inferred, return_cardinality: node.return_cardinality, uses: node.uses,
+      body: node.body, collection_kind: node.collection_kind, connective: node.connective,
+      transport: node.transport, properties: cr.constraints, type_annotation: node.type_annotation,
+      is_self_recursive: node.is_self_recursive, has_non_tail_self_call: node.has_non_tail_self_call,
+      match_pattern: node.match_pattern, expr_data: node.expr_data }
+    ExprResult { expr: node, state: cr.state, err: none }
+  } else {
+    ExprResult { expr: node, state: cr.state, err: none }
+  }
 }
 
 // =========================================================================
@@ -3661,9 +3798,14 @@ fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) 
       if 14 < min_bp {
         PostfixResult { expr: lhs, changed: false, state: state, err: none }
       } else {
-        let r = parse_index_or_slice(tokens: tokens, state: state, base: lhs, span: span)
-        if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
-        PostfixResult { expr: r.expr, changed: true, state: r.state, err: none }
+        // Bail if this is a constraint annotation [after ...] or [when ...]
+        if is_constraint_bracket(tokens: tokens, state: state) {
+          PostfixResult { expr: lhs, changed: false, state: state, err: none }
+        } else {
+          let r = parse_index_or_slice(tokens: tokens, state: state, base: lhs, span: span)
+          if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, state: r.state, err: r.err } }
+          PostfixResult { expr: r.expr, changed: true, state: r.state, err: none }
+        }
       }
     }
     Some { value: ShLBrace } => {
@@ -3685,6 +3827,74 @@ fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) 
       }
     }
     _ => PostfixResult { expr: lhs, changed: false, state: state, err: none }
+  }
+}
+
+// Check if `[` starts a constraint annotation ([after ...] or [when ...])
+// by peeking at the token after `[`.
+fn is_constraint_bracket(tokens: List<Token>, state: ParserState) -> Bool {
+  // state is at `[`, check token at pos+1
+  if state.pos + 1 < count(tokens) {
+    let next_tok = get(tokens, state.pos + 1)
+    match next_tok {
+      Some { value: t } => {
+        if is_ident_shape(shape: t.shape) {
+          t.text == "after" || t.text == "when"
+        } else { false }
+      }
+      None => false
+    }
+  } else { false }
+}
+
+// Parse constraint annotations: [after X, when Y, ...]
+// Returns list of FieldInit where name is "after" or "when" and value is the expression.
+type ConstraintsResult { constraints: List<FieldInit>, state: ParserState, err: Node? }
+
+fn parse_constraint_annotations(tokens: List<Token>, state: ParserState) -> ConstraintsResult {
+  let e = eat(tokens: tokens, state: state, expected: ExpectLBracket)
+  if e.consumed {
+    let r = parse_constraint_list(tokens: tokens, state: e.state, acc: [])
+    if has_err(err: r.err) { return r }
+    let r2 = expect(tokens: tokens, state: r.state, expected: ExpectRBracket)
+    if has_err(err: r2.err) { return ConstraintsResult { constraints: [], state: r2.state, err: r2.err } }
+    ConstraintsResult { constraints: r.constraints, state: r2.state, err: none }
+  } else {
+    ConstraintsResult { constraints: [], state: state, err: none }
+  }
+}
+
+fn parse_constraint_list(tokens: List<Token>, state: ParserState, acc: List<FieldInit>) -> ConstraintsResult {
+  let s = skip_newlines(tokens: tokens, state: state)
+  // Expect "after" or "when" identifier
+  let tok = peek(tokens: tokens, state: s)
+  let is_constraint_kw = match tok {
+    Some { value: t } => is_ident_shape(shape: t.shape) && (t.text == "after" || t.text == "when")
+    None => false
+  }
+  if !is_constraint_kw {
+    return ConstraintsResult { constraints: acc, state: s, err: none }
+  }
+  let kw_name = tok.value.text
+  let adv = advance(tokens: tokens, state: s)
+  let r = parse_expr(tokens: tokens, state: adv.state)
+  if has_err(err: r.err) { return ConstraintsResult { constraints: [], state: r.state, err: r.err } }
+  let fi = FieldInit { name: kw_name, value: r.expr }
+  let acc = list_push(acc, fi)
+  let ec = eat(tokens: tokens, state: r.state, expected: ExpectComma)
+  if ec.consumed {
+    parse_constraint_list(tokens: tokens, state: ec.state, acc: acc)
+  } else {
+    ConstraintsResult { constraints: acc, state: r.state, err: none }
+  }
+}
+
+// Try to parse optional constraint annotations if next token starts [after/when.
+fn try_constraint_annotations(tokens: List<Token>, state: ParserState) -> ConstraintsResult {
+  if is_constraint_bracket(tokens: tokens, state: state) {
+    parse_constraint_annotations(tokens: tokens, state: state)
+  } else {
+    ConstraintsResult { constraints: [], state: state, err: none }
   }
 }
 
@@ -4236,7 +4446,7 @@ fn parse_let(tokens: List<Token>, state: ParserState) -> ExprResult {
   let r = expect(tokens: tokens, state: state, expected: ExpectKwLet)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
-  let r = expect_ident(tokens: tokens, state: r.state)
+  let r = expect_name(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let name = r.name
 
@@ -4274,7 +4484,7 @@ fn parse_for(tokens: List<Token>, state: ParserState) -> ExprResult {
   let r = expect(tokens: tokens, state: state, expected: ExpectKwFor)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
 
-  let r = expect_ident(tokens: tokens, state: r.state)
+  let r = expect_name(tokens: tokens, state: r.state)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, state: r.state, err: r.err } }
   let var_name = r.name
 
