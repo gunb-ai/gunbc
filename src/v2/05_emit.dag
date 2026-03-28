@@ -18,7 +18,7 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error, is_kernel_type,
   module_imports, module_items,
   Field, Param,
   ExprData, NoExprData,
@@ -863,7 +863,7 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       let container_kind = non_empty_container_kind(collection: n.collection_kind, name: n.name, target: target)
       emit_container(kind: container_kind, inner: inner, target: target)
     } else {
-      n.name
+      emit_primitive_type(name: n.name, target: target)
     }
   }
 }
@@ -880,7 +880,7 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   if n.name == "Refined" {
     match n.children |> first {
       Some { value: base } => emit_node_type_rc(n: base, target: target, rc_types: rc_types)
-      None => n.name
+      None => emit_primitive_type(name: n.name, target: target)
     }
   } else if n.name == "Tuple" {
     // Tuple children may have inferred set — unwrap to get the actual type.
@@ -908,11 +908,12 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       _ => concat("(", first_str, ", ", second_str, ")")
     }
   } else if n.name != "" {
-    // Named product type — Rc wrapping for Rust
+    // Named product type — route through type map (invariant: all names via language spec).
+    let mapped = emit_primitive_type(name: n.name, target: target)
     if emit_map_has(m: rc_types, key: n.name) {
-      concat("Rc<", n.name, ">")
+      concat("Rc<", mapped, ">")
     } else {
-      n.name
+      mapped
     }
   } else {
     // Anonymous product: Rust renders as tuple, others as error marker.
@@ -947,11 +948,12 @@ fn emit_node_type_conj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
 
 fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>) -> String {
   if n.name != "" {
-    // Named coproduct type — Rc wrapping for Rust
+    // Named coproduct type — route through type map (invariant: all names via language spec).
+    let mapped = emit_primitive_type(name: n.name, target: target)
     if emit_map_has(m: rc_types, key: n.name) {
-      concat("Rc<", n.name, ">")
+      concat("Rc<", mapped, ">")
     } else {
-      n.name
+      mapped
     }
   } else {
     // Anonymous coproduct — error in all targets.
@@ -969,6 +971,8 @@ fn emit_node_type_disj_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
 // =========================================================================
 
 // Check if a return type indicates a type alias (not Unit).
+// Unit is the only return type that signals "this is not an alias" —
+// bare items like `type Unit` have rt_type name "Unit".
 fn is_type_alias_return_node(n: Node) -> Bool {
   n.name != "Unit"
 }
@@ -1058,6 +1062,11 @@ fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
+  // Kernel types (Bool, Int, String, Unit, Secret, etc.) are handled by the
+  // type map — emitting a type definition or alias for them would be duplication.
+  if is_kernel_type(name: item.name) {
+    return TypedItemTypeDecl
+  }
   let item_has_structure = item.connective != NoConnective
   let kind = if item_has_structure && item.transport == none {
     TypedItemTypeDef

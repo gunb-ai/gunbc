@@ -65,8 +65,8 @@ type Bool = True | False
 // Unit: terminal object (zero-field product, single inhabitant).
 type Unit
 
-// Secret, Json, Bytes: opaque kernel types.
-type Secret
+// Json, Bytes: opaque kernel types.
+// Secret: kernel type aliased to String (type map handles target rendering).
 type Json
 type Bytes
 
