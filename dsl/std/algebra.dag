@@ -234,12 +234,31 @@ type BooleanAlgebra<T> {
 //   filter(FreeMonoid<T>, fn(T) -> Bool) -> FreeMonoid<T>    (predicated subsequence)
 //   reverse(FreeMonoid<T>) -> FreeMonoid<T>                  (anti-involution)
 type FreeMonoid<T> {
+  // Monoid operations
   concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
   empty: FreeMonoid<T>
+  append: fn(T) -> FreeMonoid<T>
   // Positional access — falls out of the carrier being Fin(n) → T
   index: fn(Int) -> T
   slice: fn(Int, Int) -> FreeMonoid<T>
   length: fn() -> Int
+  count: fn() -> Int
+  first: fn() -> T?
+  last: fn() -> T?
+  // Catamorphic / functorial operations
+  map: fn(fn(T) -> T) -> FreeMonoid<T>
+  filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
+  fold: fn(T, fn(T, T) -> T) -> T
+  flat_map: fn(fn(T) -> FreeMonoid<T>) -> FreeMonoid<T>
+  any: fn(fn(T) -> Bool) -> Bool
+  all: fn(fn(T) -> Bool) -> Bool
+  // Structural transformations
+  enumerate: fn() -> FreeMonoid<Tuple<Int, T>>
+  reverse: fn() -> FreeMonoid<T>
+  skip: fn(Int) -> FreeMonoid<T>
+  take: fn(Int) -> FreeMonoid<T>
+  sort_by: fn(fn(T, T) -> Int) -> FreeMonoid<T>
+  contains: fn(T) -> Bool
 }
 
 // PartialFunction<K, V>: finite partial function (Map algebra).
@@ -256,6 +275,14 @@ type FreeMonoid<T> {
 type PartialFunction<K, V> {
   lookup: fn(K) -> V?
   empty: PartialFunction<K, V>
+  get: fn(K) -> V?
+  insert: fn(K, V) -> PartialFunction<K, V>
+  merge: fn(PartialFunction<K, V>) -> PartialFunction<K, V>
+  keys: fn() -> FreeMonoid<K>
+  values: fn() -> FreeMonoid<V>
+  has: fn(K) -> Bool
+  contains_key: fn(K) -> Bool
+  size: fn() -> Int
 }
 
 // =========================================================================

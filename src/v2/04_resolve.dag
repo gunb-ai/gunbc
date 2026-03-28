@@ -37,7 +37,8 @@ import v2.std.core {
   leaf_node, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
-  CardOptional, no_span
+  CardOptional, no_span,
+  unit_type, string_type
 }
 import v2.compiler.infer_types {
   rt_type, collection_kind_for_name
@@ -135,18 +136,26 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 // type declaration with params that's NOT a built-in parameterized type.
 fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
-  let is_map = n.collection_kind == MapKind
   if has_structure { false }
-  else if is_map { false }
   else {
-    let ck = n.collection_kind
-    let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
-    if __is_container { false }
-    else {
-      match lookup_type(env: env, name: n.name) {
-        Some { value: decl } => decl.params |> count > 0
-        None => false
-      }
+    match lookup_type(env: env, name: n.name) {
+      Some { value: decl } =>
+        if decl.params |> count > 0 {
+          // Parameterized alias (e.g., List<T> = FreeMonoid<T>): treat as
+          // generic use site so the alias chain is followed and the structural
+          // Conj definition (with method children) is produced via substitution.
+          if decl.inferred != none { true }
+          // Bare parameterized stub (no alias): only treat as generic use site
+          // if NOT a known container (containers have their own resolution path).
+          else {
+            let is_map = n.collection_kind == MapKind
+            let ck = n.collection_kind
+            let __is_container = ck == ListKind || ck == SetKind || ck == NonEmptyListKind || ck == NonEmptySetKind
+            if is_map || __is_container { false }
+            else { true }
+          }
+        } else { false }
+      None => false
     }
   }
 }
@@ -322,28 +331,48 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         None => acc
       }
     )
-    let substituted_children = decl.children |> map(child =>
-      substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: n.name)
-    )
-    let is_recursive = is_recursive_type(env: env, name: n.name)
-    // Derive collection_kind from name (declarations from parser don't carry it;
-    // collection_kind_for_name is the single authority for name → CollectionKind)
-    let result = NodeResolveResult {
-      resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: collection_kind_for_name(name: n.name), params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
-      diagnostics: concat(arity_diags, arg_diags)
+    // For parameterized aliases (e.g., List<element> = FreeMonoid<element>),
+    // follow the alias target and resolve it with substituted slot bindings.
+    // This produces the structural Conj definition with method children.
+    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+    if is_parameterized_alias {
+      // Extract the alias target (e.g., FreeMonoid<element>), substitute
+      // slots (element → Int), then resolve the result to expand the
+      // structural definition.
+      let alias_target = match rt_node(n: decl) {
+        Typed { node: target } => substitute_type_slots(n: target, slot_bindings: slot_bindings, decl_name: n.name)
+        InferError { message: _, span: _ } => n
+        InferVariable { id: _ } => n
+        Untyped => n
+      }
+      let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
+      let is_recursive = is_recursive_type(env: env, name: n.name)
+      let resolved_node = Node { name: n.name, span: n.span, children: target_result.resolved.children, connective: target_result.resolved.connective, collection_kind: collection_kind_for_name(name: n.name), params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+      NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
+    } else {
+      let substituted_children = decl.children |> map(child =>
+        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: n.name)
+      )
+      let is_recursive = is_recursive_type(env: env, name: n.name)
+      // Derive collection_kind from name (declarations from parser don't carry it;
+      // collection_kind_for_name is the single authority for name → CollectionKind)
+      let result = NodeResolveResult {
+        resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, collection_kind: collection_kind_for_name(name: n.name), params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
+        diagnostics: concat(arity_diags, arg_diags)
+      }
+      result
     }
-    result
   } else {
     let is_map = n.collection_kind == MapKind
     if is_map {
       // Map: recurse on both key and value children
       let key_child = match n.children |> first {
         Some { value: k } => k
-        None => leaf_node(name: "String")
+        None => string_type
       }
       let val_child = match skip(n.children, 1) |> first {
         Some { value: v } => v
-        None => leaf_node(name: "Unit")
+        None => unit_type
       }
       let key_result = resolve_node_bounded(n: key_child, env: env, module_name: module_name, depth: depth + 1)
       let key_resolved = key_result.resolved
@@ -393,7 +422,22 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match rt_node(n: resolved) {
-              Typed { node: target } => target
+              Typed { node: target } =>
+                // C2.3+: If the alias target is a parameterized reference
+                // (e.g., OrderedRing<Word64>), resolve it to expand generic
+                // substitution and produce the structural Conj definition.
+                // If it's a bare leaf (e.g., Int64), look it up in the env
+                // to follow the alias chain one more level.
+                // Topo ordering guarantees the target is already resolved.
+                if target.children |> count > 0 && target.connective == NoConnective {
+                  let target_result = resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1)
+                  target_result.resolved
+                } else if target.children |> count == 0 && target.connective == NoConnective && target.name != "" {
+                  match lookup_type(env: env, name: target.name) {
+                    Some { value: env_target } => env_target
+                    None => target
+                  }
+                } else { target }
               InferError { message: _, span: _ } => resolved
               InferVariable { id: _ } => resolved
               Untyped => resolved
@@ -424,7 +468,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
 }
 
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
-  if n == none { NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+  if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
     match n.value {
       Resolved { node: inner } => resolve_node(n: inner, env: env, module_name: module_name)
@@ -438,7 +482,7 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
         }
       TypeVariable { id: _ } =>
         // TypeVariable: unresolved type variable, preserve structurally.
-        NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
+        NodeResolveResult { resolved: unit_type, diagnostics: [] }
     }
   }
 }
@@ -800,7 +844,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       // children: [expr, target_type]
       let ch = texpr.children
       let r = match ch |> first { Some { value: inner } => resolve_expr_types(texpr: inner, env: env, module_name: module_name)  None => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      let tr = match ch |> skip(1) |> first { Some { value: target } => resolve_node(n: target, env: env, module_name: module_name)  None => NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] } }
+      let tr = match ch |> skip(1) |> first { Some { value: target } => resolve_node(n: target, env: env, module_name: module_name)  None => NodeResolveResult { resolved: unit_type, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(expr_data: ExprCast, children: [r.expr, tr.resolved], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(r.diagnostics, tr.diagnostics) }
     ExprForEach { variable: variable } =>
       // children: [collection, body]
@@ -864,7 +908,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
 
   // Resolve type_annotation if present
   let anno_resolved = if item.type_annotation == none {
-    NodeResolveResult { resolved: leaf_node(name: "Unit"), diagnostics: [] }
+    NodeResolveResult { resolved: unit_type, diagnostics: [] }
   } else {
     resolve_node(n: item.type_annotation.value, env: env, module_name: module_name)
   }

@@ -20,11 +20,11 @@ import v2.std.core {
   CardOptional,
   diagnostic_node,
   MatchArm, MatchPattern,
-  leaf_node, with_optional_cardinality
+  leaf_node, with_optional_cardinality,
+  none_type, error_type
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  error_type_node,
   extract_optional_inner_node,
   emit_map_has
 }
@@ -118,8 +118,8 @@ fn lookup_result_subject(result: NodeLookupResult) -> PatternSubject {
 fn pattern_binding_type(subject: PatternSubject) -> Node {
   match subject {
     PatternResolved { node: resolved } => resolved
-    PatternDynamic { span: _ } => error_type_node()
-    PatternLookupBlocked => error_type_node()
+    PatternDynamic { span: _ } => error_type
+    PatternLookupBlocked => error_type
   }
 }
 
@@ -145,7 +145,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         let fallback = if scrut_opt && variant_name == "Some" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
         } else if scrut_opt && variant_name == "None" {
-          node_lookup_resolved(node: leaf_node(name: "None"))
+          node_lookup_resolved(node: none_type)
         } else {
           variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name)
         }

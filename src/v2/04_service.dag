@@ -17,7 +17,8 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
-  leaf_node, no_span
+  leaf_node, no_span,
+  unit_type
 }
 import v2.compiler.infer_types {
   emit_map_has
@@ -218,7 +219,7 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
         match matching |> first {
           Some { value: op } =>
             if op.outputs |> count == 0 {
-              Some { value: ServiceMethodResult { result_type: leaf_node(name: "Unit"), op_params: op.params } }
+              Some { value: ServiceMethodResult { result_type: unit_type, op_params: op.params } }
             } else {
               Some { value: ServiceMethodResult {
                 result_type: Node {

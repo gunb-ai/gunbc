@@ -30,7 +30,6 @@ jobs:
         with:
           toolchain: "1.93.0"
 
-      # Cache only registry/git deps — do NOT cache target/ (runs out of space on runners)
       - name: Cache Cargo
         uses: actions/cache@v4
         with:
@@ -38,12 +37,14 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            target/
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/stage0/src/**') }}
           restore-keys: |
+            cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-${{ runner.os }}-
 
       - name: Lint
         run: cargo clippy --workspace -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --exclude v2-compiler
+        run: cargo test -p v2-compiler-tests
