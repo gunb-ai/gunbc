@@ -1,7 +1,0 @@
-// std/policy.dag -- Lint and build policy types.
-//
-// Warning treatment policy for the build system.
-
-module std.policy
-
-type WarningPolicy = DenyAll | Default

@@ -1,9 +1,0 @@
-// std/cloud.dag -- Cloud runtime and authentication types.
-//
-// Abstract cloud deployment and authentication classification.
-
-module std.cloud
-
-type CloudRuntime = GitHubActions | Metadata | LocalDev
-
-type AuthScheme = Bearer | Header | Basic
