@@ -1114,6 +1114,7 @@ the canonical stream assignments.
 
 | Stream | Branch | What | Scope |
 |--------|--------|------|-------|
+| **Stream 0: Compositional Parser (R3)** | `sharp-lynx-892` | Replace keyword-driven `parse_item`/`parse_stmt` with structure-driven model. Item identity = tag string. Fixed structural forms. Block/record disambiguation. | `parse_item` has 0 keyword match arms. Adding an item type = 0 parser edits. |
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors (158), type-name comparisons (40), CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.12 ExprData tag assessment, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` (proof branch) | Rust container templates → `Rc<Vec<{0}>>` etc. + matching emitter + runtime updates + stage0 regeneration. Atomic change. | Eliminate O(n) clone class (FF-8). See Compositional Basis §5. |
@@ -3134,7 +3135,7 @@ These are written in post-M1 names.
 |----|--------|-------------------|---------------|------|
 | R1 | `00_core.dag` | C -> A | Phase 1 / 3 | Remove emit/pipeline-only types from core |
 | R2 | `01_tokenize.dag` | A -> A | Done | No structural refactor required |
-| R3 | `02_parse.dag` | C -> B+ | Phase 5 (L3) | `kind_tag` string dispatch (~200 sites) is the primary L3 debt; service/resource lowering is already clean |
+| R3 | `02_parse.dag` | D -> B+ | **ACTIVE (priority)** | Compositional parser model. Current parser is keyword-driven with 9+ item match arms, growing special-case functions (node decl, constrained assignment, paren variants). Each DSL feature request adds match arms across 3 files. Must become structure-driven: fixed set of structural forms, item identity as data. See §R3 detail below. |
 | R4 | `03_resolve.dag` | A -> A | Done | No structural refactor required |
 | R5 | `04_infer.dag` | D -> B+ | Phase 1 | Bootstrap-critical infer cleanup |
 | R6 | `05_emit*.dag` | D -> B+ | Phase 4 | Shared traversal plus target adapters |
@@ -3150,6 +3151,58 @@ Practical notes:
   contract and naming cleanup are stable enough to support it.
 - **R8 and R9 are Phase 3 work.** They should not wait for deep
   convergence.
+
+### R3 Detail: Compositional Parser Model
+
+**Problem (2026-03-28).** The parser has accumulated structural debt from
+feature-driven additions. Each new DSL syntax form (node declarations,
+constraint annotations, paren variant patterns, resource config params,
+where-in-fields, constrained assignments) added dedicated parse functions
+and match arms to `parse_item` / `parse_stmt`. The keyword enum now has
+9 item types across 3 files (tokenizer, core types, parser). Adding
+`fixture`/`test` blocks was explicitly deferred because it would grow
+the enum further — the right answer was to stop growing it.
+
+**Evidence of debt:**
+- `parse_item`: 9-arm match on keywords (type/fn/func/service/resource/data/extern/pattern/interface)
+- `parse_stmt`: 5 dispatch paths (let/return/node/constrained-assignment/bare-assignment) plus keyword fallback
+- `parse_variant_pattern`: added paren support as a special case
+- `parse_node_decl`: added `:` vs `=` as special case, `->` return annotation as special case
+- Block vs record ambiguity in `{`: unresolved because fixing it requires grammar-level structure
+- Generics on patterns: needs `parse_optional_type_params` but only `parse_type_def` calls it
+
+Each of these violated "no case enumeration for open sets" or added
+heuristic disambiguation that should be structural.
+
+**Target model.** The parser recognizes a fixed set of structural forms:
+
+```
+Item     = Tag Name [TypeParams] [Params] [Return] [Uses] [Provides] Body
+Body     = BlockBody | FieldBody | AssignBody | DeclOnly
+Statement = LetBinding | NodeBinding | Return | Expr
+Binding  = Name [Constraints] (: | =) Expr [Return]
+```
+
+Item identity is the tag string ("fn", "fixture", "test"), not an enum
+variant. Adding a new item type requires zero parser changes — the
+parser recognizes the structural pattern, downstream phases interpret
+the tag. Type params, constraints, uses clauses, return annotations
+are all optional structural modifiers available to any item/binding.
+
+Block vs record is resolved structurally: `{ ident : expr }` is always
+a record (`:` after identifier has no other meaning in expression
+position). `{ stmt; stmt }` is always a block.
+
+**Workarounds for blocked syntax (use DSL changes, not parser changes):**
+- `and` → `&&` in filesystem.dag (already agreed)
+- `{ token: value }` in match arms → rewrite to use named types or `let` bindings
+- `pattern ensure<Check, Action>` → defer until compositional parser lands
+
+**Exit criteria:**
+- `parse_item` has no keyword-specific match arms
+- Adding a new item type requires editing 0 parser files
+- Block/record disambiguation is structural, not heuristic
+- Type params, constraints, return annotations available to any structural form
 
 ### Architecture Migration Tracks (`M*`)
 
@@ -3196,7 +3249,6 @@ current phase order.
 | `assemble_stage0` fixups (5 known issues) | Not blocking active phases. 5 post-regeneration manual corrections needed each time. | Stream 2 |
 | Statement/expression emit classification | Python (and partially Go) are statement-oriented; emit assumes expression-orientation. Three symptoms: `return let` at block tail, incomplete `functools.reduce` fold, `return match` as expression. Root cause: emit boundary loses statement/expression structural distinction. Fix: pre-emit metadata tags bindings vs tail expression in blocks; backends render the structural fact. Relates to FO-* (fan-out preservation) and P5.11 (ExprData dissolution). | Stream 2 |
 | Cross-language test generation parity | Generated tests must cover all target languages equally. Currently Rust test generation is most complete; Go and Python test emission needs parity audit and gaps filled. | Stream 2 |
-| Compositional parser model | `parse_item` is a growing match on keywords (type/fn/func/service/resource/data/extern/pattern/interface). Adding fixture/test requires more keywords, more match arms, more `parse_*_def` functions — case enumeration for an open set. The parser should recognize a fixed set of structural forms (named blocks, parameterized declarations, typed bindings) and item identity should be data (the tag string), not code (an enum variant). All existing items compose from: Tag + Name + optional [TypeParams, Params, Return, Uses, Provides] + Body. Body sub-grammars (fields, statements, operations) also decompose. Blocked on: fixture/test syntax design needs this; also prerequisite for language-extdep-defined item types. | — |
 
 ### Rust Codegen Issues (stage0 regeneration blockers, 2026-03-28)
 
