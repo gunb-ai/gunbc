@@ -11,7 +11,8 @@ module v2.compiler.languages
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.std.core {
   BinOpKind, Add, Sub, Mul, Div, Mod,
-  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce
+  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
+  LiteralValue
 }
 
 import extdeps.languages.rust.emit {
@@ -116,12 +117,14 @@ type OperatorSpec {
   symbol: String
   left_bp: Int
   right_bp: Int
-  binop: BinOpKind
+  binop: BinOpKind?
 }
 
 type SyntaxSpec {
   item_forms: List<ItemForm>
   operators: List<OperatorSpec>
+  keyword_literals: Map<String, LiteralValue>
+  all_keywords: List<String>
 }
 
 fn rust_spec() -> LanguageSpec {

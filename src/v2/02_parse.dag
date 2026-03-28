@@ -61,10 +61,10 @@ import v2.compiler.languages {
   ItemForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
-  OperatorSpec
+  OperatorSpec, SyntaxSpec
 }
 
-import extdeps.languages.dag.syntax { dag_item_forms, dag_operators, dag_keyword_literals }
+import extdeps.languages.dag.syntax { dag_syntax_spec }
 
 // =========================================================================
 // Parser state types
@@ -107,6 +107,18 @@ type ArgResult { arg: NamedArg, state: ParserState, err: Node? }
 type FieldResult { field: Field, state: ParserState, err: Node? }
 type FieldInitResult { field: FieldInit, state: ParserState, err: Node? }
 type ResUseResult { resource_use: ResourceUse, state: ParserState, err: Node? }
+
+// Generic prefix result: shared across TypeBody, ExprBody, BlockBody items.
+type ItemPrefixResult {
+  name: String
+  type_params: List<Param>
+  params: List<Param>
+  inferred: InferredNode?
+  uses: List<ResourceUse>
+  state: ParserState
+  err: Node?
+}
+
 // Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
 // service Node construction boundary. This type exists only inside the parser.
 type ServiceConfig { endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node? }
@@ -660,20 +672,20 @@ fn keyword_to_name(tokens: List<Token>, state: ParserState) -> String? {
 }
 
 // Keywords that are valid as names (field names, type names).
-// Excludes literal keywords (true, false, none) and acquire/release.
-// With ShKeyword consolidation, checks shape + text membership.
-data name_keyword_texts: List<String> = [
-  "module", "import", "type", "fn", "func",
-  "service", "resource", "data", "extern",
-  "interface", "pipeline", "profile", "pattern",
-  "let", "return", "match", "if", "else",
-  "for", "in", "where", "with",
-  "capability", "operation", "input", "output",
-  "idempotent", "readonly", "hermetic"
-]
-
+// Derived structurally: any keyword that is NOT a literal keyword
+// and NOT a resource lifecycle keyword (acquire/release).
+// No local enumeration — the keyword set comes from SyntaxSpec.
 fn is_name_keyword(token: Token) -> Bool {
-  is_keyword_shape(shape: token.shape) && name_keyword_texts |> any(k => k == token.text)
+  if is_keyword_shape(shape: token.shape) {
+    let is_literal = match lookup(dag_syntax_spec.keyword_literals, key: token.text) {
+      Some { value: _ } => true
+      None => false
+    }
+    let is_lifecycle = token.text == "acquire" || token.text == "release"
+    !is_literal && !is_lifecycle
+  } else {
+    false
+  }
 }
 
 fn skip_newlines(tokens: List<Token>, state: ParserState) -> ParserState {
@@ -932,7 +944,7 @@ fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Str
 // =========================================================================
 // 4. parse_item -- spec-driven dispatch
 //
-// Looks up the keyword in dag_item_forms (from SyntaxSpec).
+// Looks up the keyword in dag_syntax_spec.item_forms (from SyntaxSpec).
 // Adding a new item type with a standard body kind = one entry in syntax.dag.
 // =========================================================================
 
@@ -947,11 +959,53 @@ fn find_item_form(forms: List<ItemForm>, keyword: String) -> ItemForm? {
 fn parse_item(tokens: List<Token>, state: ParserState) -> ItemResult {
   let s = skip_newlines(tokens: tokens, state: state)
   let kw = peek_keyword_text(tokens: tokens, state: s)
-  let form = find_item_form(forms: dag_item_forms, keyword: kw)
+  let form = find_item_form(forms: dag_syntax_spec.item_forms, keyword: kw)
   match form {
     Some { value: f } => parse_item_by_form(tokens: tokens, state: s, form: f)
     None => ItemResult { item: Node { name: "<unknown>", span: current_span(tokens: tokens, state: s), children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, state: s, err: Some { value: parse_error(msg: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)", span: current_span(tokens: tokens, state: s)) } }
   }
+}
+
+// Generic prefix parser: consumes ident, optional type_params, optional params,
+// optional return type, and optional uses clause based on ItemForm fields.
+fn parse_item_prefix(tokens: List<Token>, state: ParserState, form: ItemForm) -> ItemPrefixResult {
+  // 1. Expect identifier
+  let r = expect_ident(tokens: tokens, state: state)
+  if has_err(err: r.err) { return ItemPrefixResult { name: "", type_params: [], params: [], inferred: none, uses: [], state: r.state, err: r.err } }
+  let name = r.name
+
+  // 2. Optional type params (if form.has_type_params)
+  let tp_result = if form.has_type_params {
+    parse_optional_type_params(tokens: tokens, state: r.state)
+  } else {
+    TypeParamsResult { params: [], state: r.state }
+  }
+
+  // 3. Params (if form.has_params)
+  let params_result = if form.has_params {
+    parse_params(tokens: tokens, state: tp_result.state)
+  } else {
+    ParamsResult { params: [], state: tp_result.state, err: none }
+  }
+  if has_err(err: params_result.err) { return ItemPrefixResult { name: name, type_params: tp_result.params, params: [], inferred: none, uses: [], state: params_result.state, err: params_result.err } }
+
+  // 4. Return type (if form.has_return_type)
+  let ret_result = if form.has_return_type {
+    parse_optional_inferred(tokens: tokens, state: params_result.state)
+  } else {
+    OptRetResult { inferred: none, state: params_result.state, err: none }
+  }
+  if has_err(err: ret_result.err) { return ItemPrefixResult { name: name, type_params: tp_result.params, params: params_result.params, inferred: none, uses: [], state: ret_result.state, err: ret_result.err } }
+
+  // 5. Uses clause (if form.has_uses)
+  let uses_result = if form.has_uses {
+    parse_uses_clause(tokens: tokens, state: skip_newlines(tokens: tokens, state: ret_result.state))
+  } else {
+    UsesResult { uses: [], state: ret_result.state, err: none }
+  }
+  if has_err(err: uses_result.err) { return ItemPrefixResult { name: name, type_params: tp_result.params, params: params_result.params, inferred: ret_result.inferred, uses: [], state: uses_result.state, err: uses_result.err } }
+
+  ItemPrefixResult { name: name, type_params: tp_result.params, params: params_result.params, inferred: ret_result.inferred, uses: uses_result.uses, state: uses_result.state, err: none }
 }
 
 fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -> ItemResult {
@@ -960,11 +1014,24 @@ fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -
   // Eat the keyword generically — enables new keywords with existing body kinds
   let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: form.keyword })
   if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
-  // Dispatch on body kind to the appropriate parser (after keyword)
+  // Standard body kinds: generic prefix, then body-specific parser
   match form.body_kind {
-    TypeBody => parse_type_after_kw(tokens: tokens, state: r.state, start_span: start_span)
-    ExprBody => parse_fn_after_kw(tokens: tokens, state: r.state, start_span: start_span)
-    BlockBody => parse_block_item_after_kw(tokens: tokens, state: r.state, start_span: start_span, form: form)
+    TypeBody => {
+      let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+      if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+      parse_type_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+    }
+    ExprBody => {
+      let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+      if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+      parse_fn_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+    }
+    BlockBody => {
+      let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+      if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+      parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
+    }
+    // Non-standard prefixes: keep their own prefix logic
     ServiceBody => parse_service_after_kw(tokens: tokens, state: r.state, start_span: start_span)
     ResourceBody => parse_resource_after_kw(tokens: tokens, state: r.state, start_span: start_span)
     ValueBody => parse_data_after_kw(tokens: tokens, state: r.state, start_span: start_span)
@@ -1048,6 +1115,40 @@ fn parse_type_after_kw(tokens: List<Token>, state: ParserState, start_span: Sour
   if e.consumed {
     let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
     let named_dummy = Node { name: name, span: start_span, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+    let s = skip_newlines(tokens: tokens, state: r.state)
+    let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
+    if has_err(err: r2.err) { return ItemResult { item: named_dummy, state: r2.state, err: r2.err } }
+    let type_children = r.fields |> map(f => field_to_child_node(field: f))
+    let item = Node { name: name, span: start_span, children: type_children, connective: Conj, collection_kind: NoCollection, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r2.state), err: none }
+  } else {
+    // Sum type or alias: type Name = ...
+    // Or bare primitive declaration: type Name (no body)
+    let eq = eat(tokens: tokens, state: s, expected: ExpectEq)
+    if eq.consumed {
+      let s = skip_newlines(tokens: tokens, state: eq.state)
+      parse_type_body_after_eq(tokens: tokens, state: s, name: name, start_span: start_span, type_params: type_params)
+    } else {
+      // Bare type declaration -- primitive type with no structural expansion
+      let item = Node { name: name, span: start_span, children: [], connective: NoConnective, collection_kind: NoCollection, params: type_params, inferred: Some { value: Resolved { node: leaf_type_node(name: name, span: start_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      ItemResult { item: item, state: s, err: none }
+    }
+  }
+}
+
+// Body-only parser for TypeBody items. Receives prefix (name, type_params) from parse_item_prefix.
+// Handles { fields } (record), = variants (sum), = alias, or bare declaration.
+fn parse_type_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+  let name = prefix.name
+  let type_params = prefix.type_params
+  let named_dummy = Node { name: name, span: start_span, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let s = skip_newlines(tokens: tokens, state: prefix.state)
+
+  // Record type: type Name { fields }
+  let e = eat(tokens: tokens, state: s, expected: ExpectLBrace)
+  if e.consumed {
+    let r = parse_field_list(tokens: tokens, state: skip_newlines(tokens: tokens, state: e.state))
     if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
     let s = skip_newlines(tokens: tokens, state: r.state)
     let r2 = expect(tokens: tokens, state: s, expected: ExpectRBrace)
@@ -1648,6 +1749,27 @@ fn parse_fn_after_kw(tokens: List<Token>, state: ParserState, start_span: Source
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }
 
+// Body-only parser for ExprBody items. Receives prefix (name, params, inferred)
+// from parse_item_prefix. Parses the block body and assembles the Node.
+fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+  let name = prefix.name
+  let params = prefix.params
+  let inferred = prefix.inferred
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  // Body: { exprs }
+  let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: prefix.state))
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let body = r.expr
+
+  let item = Node { name: name, span: start_span, children: [], params: params,
+    inferred: inferred, return_cardinality: Required, uses: [],
+    body: Some { value: body }, collection_kind: NoCollection, connective: NoConnective, transport: none,
+    properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
+}
+
 // =========================================================================
 // 9. parse_func_def: func name(params) -> RetType uses res: Type { body }
 // =========================================================================
@@ -1665,7 +1787,9 @@ fn parse_func_def(tokens: List<Token>, state: ParserState) -> ItemResult {
   // All three keywords use BlockBody with has_uses varying per form
   let has_uses = kw == "func"
   let form = ItemForm { keyword: kw, has_type_params: false, has_params: true, has_return_type: true, return_required: false, has_uses: has_uses, body_kind: BlockBody }
-  parse_block_item_after_kw(tokens: tokens, state: r.state, start_span: start_span, form: form)
+  let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+  if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+  parse_block_body_from_prefix(tokens: tokens, prefix: prefix, start_span: start_span)
 }
 
 fn parse_block_item_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan, form: ItemForm) -> ItemResult {
@@ -1694,6 +1818,27 @@ fn parse_block_item_after_kw(tokens: List<Token>, state: ParserState, start_span
   let s = uses_r.state
 
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: s))
+  if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
+  let body = r.expr
+
+  let item = Node { name: name, span: start_span, children: [], params: params,
+    inferred: inferred, return_cardinality: Required, uses: uses,
+    body: Some { value: body }, collection_kind: NoCollection, connective: NoConnective, transport: none,
+    properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
+}
+
+// Body-only parser for BlockBody items. Receives prefix (name, params, inferred, uses)
+// from parse_item_prefix. Parses block body and assembles the Node.
+fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+  let name = prefix.name
+  let params = prefix.params
+  let inferred = prefix.inferred
+  let uses = prefix.uses
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, collection_kind: NoCollection, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+
+  let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: prefix.state))
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
@@ -3291,7 +3436,7 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
               let r = parse_expr_bp(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: state)
-              let binop = find_operator_binop(ops: dag_operators, symbol: adv.token.text)
+              let binop = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
               parse_expr_loop(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
             }
@@ -3304,7 +3449,7 @@ fn parse_expr_loop(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: I
   }
 }
 
-// Operator precedence: data-driven from dag_operators (SyntaxSpec).
+// Operator precedence: data-driven from dag_syntax_spec.operators (SyntaxSpec).
 // Adding a new operator = one entry in syntax.dag.
 
 fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
@@ -3320,7 +3465,7 @@ fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
 fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
   let tok = peek(tokens: tokens, state: state)
   match tok {
-    Some { value: t } => find_operator_bp(ops: dag_operators, symbol: t.text)
+    Some { value: t } => find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text)
     None => none
   }
 }
@@ -3328,7 +3473,10 @@ fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
 fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOpKind {
   let matching = ops |> filter(op => op.symbol == symbol)
   if matching |> count > 0 {
-    first(matching).value.binop
+    match first(matching).value.binop {
+      Some { value: bk } => bk
+      None => Add
+    }
   } else {
     Add
   }
@@ -3388,7 +3536,7 @@ fn parse_primary(tokens: List<Token>, state: ParserState) -> ExprResult {
     Some { value: ShKeyword } => {
       let kw_text = tok.value.text
       // Check literal keywords from spec (true, false, none, null)
-      let lit_val = lookup(dag_keyword_literals, key: kw_text)
+      let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Some { value: lv } => {
           let adv = advance(tokens: tokens, state: state)
@@ -3863,7 +4011,7 @@ fn parse_expr_loop_no_brace(tokens: List<Token>, state: ParserState, lhs: Node, 
               let r = parse_expr_bp_no_brace(tokens: tokens, state: rhs_state, min_bp: bps.right)
               if has_err(err: r.err) { return ExprResult { expr: r.expr, state: r.state, err: r.err } }
               let span = current_span(tokens: tokens, state: s)
-              let binop = find_operator_binop(ops: dag_operators, symbol: adv.token.text)
+              let binop = find_operator_binop(ops: dag_syntax_spec.operators, symbol: adv.token.text)
               let new_lhs = make_expr_node(expr_data: ExprBinOp { op: binop }, children: [lhs, r.expr], inferred: none, span: span)
               parse_expr_loop_no_brace(tokens: tokens, state: r.state, lhs: new_lhs, min_bp: min_bp)
             }
@@ -4083,7 +4231,7 @@ fn parse_pattern(tokens: List<Token>, state: ParserState) -> PatternResult {
     }
     Some { value: ShKeyword } => {
       let kw_text = tok.value.text
-      let lit_val = lookup(dag_keyword_literals, key: kw_text)
+      let lit_val = lookup(dag_syntax_spec.keyword_literals, key: kw_text)
       match lit_val {
         Some { value: lv } => {
           let adv = advance(tokens: tokens, state: state)

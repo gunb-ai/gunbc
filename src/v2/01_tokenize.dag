@@ -26,25 +26,15 @@ import v2.std.core {
   ShNewline, ShEof, ShUnknown
 }
 
-// === Keyword table ===
-//
-// Data declaration, not match arms. Adding a keyword = one entry here.
+import extdeps.languages.dag.syntax { dag_all_keywords }
 
-data keywords: Map<String, TokenShape> = {
-  "module": ShKeyword, "import": ShKeyword, "type": ShKeyword,
-  "fn": ShKeyword, "func": ShKeyword, "service": ShKeyword,
-  "resource": ShKeyword, "data": ShKeyword, "extern": ShKeyword,
-  "interface": ShKeyword, "pipeline": ShKeyword,
-  "profile": ShKeyword, "pattern": ShKeyword,
-  "let": ShKeyword, "return": ShKeyword, "match": ShKeyword,
-  "if": ShKeyword, "else": ShKeyword, "for": ShKeyword, "in": ShKeyword,
-  "where": ShKeyword, "with": ShKeyword,
-  "true": ShKeyword, "false": ShKeyword, "none": ShKeyword, "null": ShKeyword,
-  "acquire": ShKeyword, "release": ShKeyword,
-  "capability": ShKeyword, "operation": ShKeyword,
-  "input": ShKeyword, "output": ShKeyword,
-  "idempotent": ShKeyword, "readonly": ShKeyword,
-  "hermetic": ShKeyword
+// === Keyword recognition ===
+//
+// Keyword set derived from dag_all_keywords (the single authority in SyntaxSpec).
+// No local keyword enumeration — adding a keyword = one entry in syntax.dag.
+
+fn is_keyword_text(text: String) -> Bool {
+  dag_all_keywords |> any(k => k == text)
 }
 
 // === Single-char punctuation table ===
@@ -240,10 +230,7 @@ fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int) -> ScanResult {
 fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = scan_while(s: source.text, start: pos.pos, pred: is_ident_char)
   let text = substring(s: source.text, start: pos.pos, end: end)
-  let shape = match lookup(keywords, key: text) {
-    Some { value: sh } => sh
-    None => ShIdent
-  }
+  let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
   let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: end }, shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }

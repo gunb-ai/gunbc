@@ -64,6 +64,18 @@ data dag_keyword_literals: Map<String, LiteralValue> = {
   "null": LitNull
 }
 
+// Complete keyword list — the single authority for what strings are keywords.
+// The tokenizer and parser both derive from this list.
+
+data dag_all_keywords: List<String> = [
+  "module", "import", "type", "fn", "func", "service", "resource",
+  "data", "extern", "interface", "pipeline", "profile", "pattern",
+  "let", "return", "match", "if", "else", "for", "in", "where", "with",
+  "true", "false", "none", "null",
+  "acquire", "release", "capability", "operation", "input", "output",
+  "idempotent", "readonly", "hermetic"
+]
+
 // Operator precedence table.
 // ?? < || < && < cmp < add < mul < |> < .
 // |> and . have binding power entries but their binop field is unused
@@ -84,11 +96,13 @@ data dag_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul },
   OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div },
   OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod },
-  OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: Add },
-  OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: Add }
+  OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: none },
+  OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none }
 ]
 
 data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
   item_forms: dag_item_forms,
-  operators: dag_operators
+  operators: dag_operators,
+  keyword_literals: dag_keyword_literals,
+  all_keywords: dag_all_keywords
 }
