@@ -18,7 +18,7 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error, is_kernel_type,
+  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
   Field, Param,
   ExprData, NoExprData,
@@ -1063,16 +1063,17 @@ fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
 //          "service_def", "resource_def", "extern_func", or "unhandled".
 // For "function", callers must further check item.uses to distinguish fn vs func.
 fn classify_typed_item(item: Node) -> TypedItemKind {
-  // Kernel types (Bool, Int, String, Unit, Secret, etc.) are handled by the
-  // type map — emitting a type definition or alias for them would be duplication.
-  if is_kernel_type(name: item.name) {
-    return TypedItemTypeDecl
-  }
   let item_has_structure = item.connective != NoConnective
-  let kind = if item_has_structure && item.transport == none {
-    TypedItemTypeDef
-  } else if item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0 && is_type_alias_return_node(n: rt_type(n: item)) {
+  let is_bare_leaf = item_has_structure == false && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
+  let kind = if is_bare_leaf && is_type_alias_return_node(n: rt_type(n: item)) {
     TypedItemTypeAlias
+  } else if is_bare_leaf && !is_type_alias_return_node(n: rt_type(n: item)) {
+    // Bare leaf declarations with no alias body (e.g., `type Bool`, `type Unit`).
+    // These are type-system declarations handled by the type map — emitting a
+    // definition would duplicate what the type map already provides.
+    TypedItemTypeDecl
+  } else if item_has_structure && item.transport == none {
+    TypedItemTypeDef
   } else if item.body != none && item.type_annotation == none {
     TypedItemFunction
   } else if item.body != none && item.type_annotation != none {

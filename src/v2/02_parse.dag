@@ -3470,12 +3470,14 @@ fn parse_node_decl(tokens: List<Token>, state: ParserState) -> ExprResult {
   // Optional return type annotation: node x: call() -> { fields }
   let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
   if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, state: ret.state, err: ret.err } }
-  // Build node: ExprLet with type_annotation holding the type expression
+  // If colon form was used (node x: Type), the expression IS the type annotation.
+  // Preserve this fact for downstream phases.
+  let type_ann = if e_colon.consumed { Some { value: r3.expr } } else { none }
   let node = Node { name: "", span: span, children: [r3.expr],
     connective: NoConnective, collection_kind: NoCollection,
     params: [], inferred: ret.inferred, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: cr.constraints,
-    type_annotation: none, is_self_recursive: false,
+    type_annotation: type_ann, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,
     expr_data: ExprLet { name: name } }
   ExprResult { expr: node, state: ret.state, err: none }

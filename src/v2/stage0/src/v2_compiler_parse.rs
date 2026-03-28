@@ -7911,11 +7911,13 @@ pub fn parse_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
     // Optional return type annotation: node x: call() -> { fields }
     let ret = parse_optional_inferred(tokens.clone(), r3.state.clone());
     if has_err(ret.err.clone()) { return Rc::new(ExprResult { expr: dummy_expr.clone(), state: ret.state.clone(), err: ret.err.clone() }) }
+    // If colon form was used (node x: Type), the expression IS the type annotation.
+    let type_ann = if e_colon.consumed.clone() { Some(r3.expr.clone()) } else { None };
     Rc::new(ExprResult { expr: Rc::new(Node {
         name: "".to_string(), span: span.clone(), children: vec![r3.expr.clone()],
         connective: None, collection_kind: None, params: vec![], inferred: ret.inferred.clone(),
         return_cardinality: Cardinality::Required, uses: vec![], body: None, transport: None,
-        properties: cr.constraints.clone(), type_annotation: None, is_self_recursive: false,
+        properties: cr.constraints.clone(), type_annotation: type_ann, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: None,
         expr_data: Rc::new(ExprData::ExprLet { name: name.clone() }),
     }), state: ret.state.clone(), err: None })

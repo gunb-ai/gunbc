@@ -3566,9 +3566,9 @@ fn emit_rust_default_value(param: Param) -> String {
   else if type_name == "Json" { "serde_json::Value::Null" }
   else if type_name == "Bytes" { "Vec::new()" }
   else {
-    // Non-kernel types: construct a default via Default trait.
-    // Serde deserialization removed (derives don't include Deserialize).
-    concat(emit_node_type(n: param.type_expr, target: Rust), "::default()")
+    // No default value known for this type. Emit a compile_error! so the
+    // generated test fails clearly instead of fabricating a valid-looking value.
+    concat("compile_error!(\"no test default for type: ", type_name, "\")")
   }
 }
 
