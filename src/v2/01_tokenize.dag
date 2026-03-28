@@ -26,15 +26,18 @@ import v2.std.core {
   ShNewline, ShEof, ShUnknown
 }
 
-import extdeps.languages.dag.syntax { dag_all_keywords }
+import extdeps.languages.dag.syntax { dag_keyword_set }
 
 // === Keyword recognition ===
 //
-// Keyword set derived from dag_all_keywords (the single authority in SyntaxSpec).
-// No local keyword enumeration — adding a keyword = one entry in syntax.dag.
+// Keyword set derived from dag_keyword_set (the single authority in SyntaxSpec).
+// O(1) map lookup per identifier token. Adding a keyword = one entry in syntax.dag.
 
 fn is_keyword_text(text: String) -> Bool {
-  dag_all_keywords |> any(k => k == text)
+  match lookup(dag_keyword_set, key: text) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // === Single-char punctuation table ===
