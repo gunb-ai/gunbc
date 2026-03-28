@@ -1,0 +1,152 @@
+// gunbc/tools/review.dag -- PR review workflow.
+//
+// Composes GitHub PR service, CLI LLM backends, and git operations
+// into a review cycle: list open PRs, review with an LLM, post a
+// comment.
+//
+// Two entrypoints:
+//   review_cycle() -- review all open PRs
+//   review_pr()    -- review a single PR by number
+//
+// Backend selection is config-driven (config/review.dag). The backend
+// CLI command is built as a string and invoked via shell.Exec.Run,
+// which gives uniform dispatch across codex/claude/gemini without
+// needing conditional service calls.
+//
+// State management (skip-if-already-reviewed) is handled externally
+// by the cron wrapper script, not by this workflow.
+
+module gunbc.tools.review
+
+import extdeps.git
+import extdeps.github.auth { github_token }
+import extdeps.github.pulls
+import extdeps.shell
+import config.review {
+  default_backend,
+  default_codex_model,
+  default_claude_model,
+  owner,
+  repo,
+  review_objective
+}
+import std.resources { Network }
+import std.types { Url }
+
+// -- Pure helper functions --------------------------------------------
+
+fn backend_command(backend: String, prompt_file: String, cwd: String) -> String {
+  match backend {
+    "codex" => "codex exec -m {default_codex_model} -C {cwd} - < {prompt_file}"
+    "claude" => "claude -p --output-format text --permission-mode plan --model {default_claude_model} --effort max < {prompt_file}"
+    "gemini" => "gemini -p --output-format text --approval-mode plan < {prompt_file}"
+    _ => "echo unknown backend && exit 1"
+  }
+}
+
+fn build_review_prompt(
+  pr_title: String,
+  pr_number: Int,
+  pr_url: String,
+  branch: String,
+  base_ref: String,
+  diff: String,
+  diffstat: String,
+  objective: String
+) -> String {
+  let header = "# PR Review: #{pr_number} {pr_title}"
+  let overview = "## Overview\n\n- Branch: {branch} -> {base_ref}\n- PR: {pr_url}"
+  let stats = "## Diffstat\n\n```\n{diffstat}\n```"
+  let changes = "## Diff\n\n```diff\n{diff}\n```"
+  let task = "## Task\n\n{objective}\n\n## Rules\n\n- This is a read-only review. Do not modify any files.\n- End with exactly one PR-COMMENT: line (1-2 sentences, concrete).\n- If no comment warranted, emit: PR-COMMENT: none\n- Optionally emit FOLLOW-UP: <task> lines for concrete next actions."
+  "{header}\n\n{overview}\n\n{stats}\n\n{changes}\n\n{task}"
+}
+
+fn format_comment_body(raw_output: String, backend: String) -> String {
+  "**Review** (via {backend})\n\n{raw_output}"
+}
+
+// -- Review a single PR -----------------------------------------------
+
+func review_pr(
+  pr_number: Int,
+  pr_title: String,
+  pr_url: String,
+  branch: String,
+  base_ref: String,
+  backend: String = default_backend
+) -> { comment_url: String }
+  uses net: Network
+{
+  token = github_token()
+  prompt_file = "/Users/briansrls/.local/share/gunbc-review/prompt.md"
+
+  // Step 1: Fetch PR diff via GitHub API and diffstat locally (parallel)
+  pr_diff = github.Pulls.Diff(
+    auth_token: token.token,
+    owner: owner,
+    repo: repo,
+    pull_number: pr_number
+  )
+  diffstat = shell.Exec.Run(
+    script: "cd /Users/briansrls/gunbc && git diff --stat --find-renames origin/{base_ref}...origin/{branch} 2>/dev/null || echo '(diffstat unavailable)'"
+  )
+
+  // Step 2: Build prompt, write to file, and invoke LLM backend
+  prompt = build_review_prompt(
+    pr_title: pr_title,
+    pr_number: pr_number,
+    pr_url: pr_url,
+    branch: branch,
+    base_ref: base_ref,
+    diff: pr_diff.diff,
+    diffstat: diffstat.stdout,
+    objective: review_objective
+  )
+  command = backend_command(backend: backend, prompt_file: prompt_file, cwd: "/Users/briansrls/gunbc")
+  llm_result = shell.Exec.Run(
+    script: "mkdir -p /Users/briansrls/.local/share/gunbc-review && printf '%s' '{prompt}' > {prompt_file} && {command}"
+  )
+
+  // Step 4: Post review comment on PR
+  formatted = format_comment_body(raw_output: llm_result.stdout, backend: backend)
+  posted = github.Pulls.CreateComment(
+    auth_token: token.token,
+    owner: owner,
+    repo: repo,
+    issue_number: pr_number,
+    body: formatted
+  )
+
+  return { comment_url: posted.html_url }
+}
+
+// -- Top-level entrypoint: review all open PRs ------------------------
+
+func review_cycle(backend: String = default_backend) -> { reviewed_count: Int }
+  uses net: Network
+{
+  token = github_token()
+
+  // List open PRs
+  open_prs = github.Pulls.List(
+    auth_token: token.token,
+    owner: owner,
+    repo: repo,
+    state: "open"
+  )
+
+  // Review each open PR
+  results = for pr in open_prs.pulls {
+    review_pr(
+      pr_number: pr.number,
+      pr_title: pr.title,
+      pr_url: pr.html_url,
+      branch: pr.head.ref,
+      base_ref: pr.base.ref,
+      backend: backend
+    )
+  }
+
+  return { reviewed_count: count(results) }
+}

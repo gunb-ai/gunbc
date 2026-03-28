@@ -80,7 +80,10 @@ type Bytes
 //   Char = Brand("Char", Int)
 // String decomposes to List<Char> via the chars() builtin.
 //   [Char] = {n in Z | 0 <= n <= 1114111}
-type Char = Int where brand("Char"), range(min: 0, max: 1114111)
+//
+// v2-compatible alias. The `where` constraints (brand, range) are future
+// work — the v2 parser does not support field-level where syntax yet.
+type Char = Int
 
 // --- Container types (parameterized) -----------------------------------
 // Each container inhabits a specific algebraic structure from which its
