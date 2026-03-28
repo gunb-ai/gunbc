@@ -127,13 +127,15 @@ pattern read_binary_files(paths: List<FilePath>) -> { files: List<{ path: FilePa
 // (with a resolve step) and content_upsert specializes (with
 // file_content_matches as the check and fs.write as the action).
 
-pattern ensure<Check, Action>(
-  should_act: fn(Check.Output) -> Bool = c => !c.exists
-) -> { acted: Bool } {
-  node check: Check
-  node action [after check, when should_act(check)]: Action
-  return { acted: should_act(check) }
-}
+// Deferred: pattern generics require compositional parser.
+// See ROADMAP.md "Desired Parser Features".
+// pattern ensure<Check, Action>(
+//   should_act: fn(Check.Output) -> Bool = c => !c.exists
+// ) -> { acted: Bool } {
+//   node check: Check
+//   node action [after check, when should_act(check)]: Action
+//   return { acted: should_act(check) }
+// }
 
 // --- Upsert (check -> create -> resolve) ------------------------------
 // 3-step conditional: check, create if needed, then resolve a result.
@@ -148,14 +150,15 @@ pattern ensure<Check, Action>(
 //
 // Replaces gunbc's UpsertBuilder.
 
-pattern upsert<Check, Create, Resolve: -> R>(
-  should_create: fn(Check.Output) -> Bool = c => !c.exists
-) -> { value: R } {
-  node check: Check
-  node create [after check, when should_create(check)]: Create
-  node resolve [after check, after create]: Resolve
-  return { value: resolve }
-}
+// Deferred: pattern generics require compositional parser.
+// pattern upsert<Check, Create, Resolve: -> R>(
+//   should_create: fn(Check.Output) -> Bool = c => !c.exists
+// ) -> { value: R } {
+//   node check: Check
+//   node create [after check, when should_create(check)]: Create
+//   node resolve [after check, after create]: Resolve
+//   return { value: resolve }
+// }
 
 // --- Content Upsert (check -> conditional write) ----------------------
 // Specializes ensure: check = file_content_matches, action = fs.write.
@@ -181,18 +184,20 @@ pattern content_upsert(content: String, path: String) -> { written: Bool }
 //   - Begin: -> R    (output type variable)
 //   - fn(T) -> Bool  (higher-order parameter)
 
-pattern transaction<Begin: -> R, Body, Commit, Rollback>(
-  succeeded: fn(Body.Output) -> Bool = b => b.success
-) -> { value: R } {
-  node begin: Begin
-  node body: Body
-  node commit [when succeeded(body)]: Commit
-  node rollback [when !succeeded(body)]: Rollback
-  return { value: begin }
-}
+// Deferred: pattern generics require compositional parser.
+// pattern transaction<Begin: -> R, Body, Commit, Rollback>(
+//   succeeded: fn(Body.Output) -> Bool = b => b.success
+// ) -> { value: R } {
+//   node begin: Begin
+//   node body: Body
+//   node commit [when succeeded(body)]: Commit
+//   node rollback [when !succeeded(body)]: Rollback
+//   return { value: begin }
+// }
 
 // --- Retry ------------------------------------------------------------
 
-pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} {
-  node op: Op
-}
+// Deferred: pattern generics require compositional parser.
+// pattern retry<Op>(max_attempts: Int = 3, backoff_ms: Milliseconds = 1000) -> {} {
+//   node op: Op
+// }
