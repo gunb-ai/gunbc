@@ -508,7 +508,7 @@ fn serializer_has_no_expr_other_fallback() {
 // These tests make invisible breakage visible by counting structural
 // properties and asserting they stay within known bounds.
 
-const PARSE_ITEM_KEYWORD_ARM_RATCHET: usize = 9;
+const PARSE_ITEM_KEYWORD_ARM_RATCHET: usize = 0;
 
 #[test]
 fn parse_item_keyword_arm_count() {
