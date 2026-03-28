@@ -855,14 +855,23 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       }
       emit_map_type(key_type: k, val_type: v, target: target)
     } else if n.children |> count == 1 {
-      // Single-child container. count == 1 guarantees first succeeds.
       let inner = match n.children |> first {
         Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
         None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__"
       }
-      // NonEmpty variants: Rust uses distinct types, others map to base container
-      let container_kind = non_empty_container_kind(collection: n.collection_kind, name: n.name, target: target)
-      emit_container(kind: container_kind, inner: inner, target: target)
+      // Only use container templates for actual containers (has collection_kind).
+      // Non-container generic types (e.g., FreeMonoid<T>) emit as Name<Inner>
+      // without snake_casing — type names stay in their declared casing.
+      let is_container = n.collection_kind != NoCollection
+      if is_container {
+        let container_kind = non_empty_container_kind(collection: n.collection_kind, name: n.name, target: target)
+        emit_container(kind: container_kind, inner: inner, target: target)
+      } else {
+        let base = emit_primitive_type(name: n.name, target: target)
+        let wrapped = concat(base, "<", inner, ">")
+        if emit_map_has(m: rc_types, key: n.name) { concat("Rc<", wrapped, ">") }
+        else { wrapped }
+      }
     } else {
       emit_primitive_type(name: n.name, target: target)
     }
