@@ -117,37 +117,28 @@ fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::
     }
 }
 
-/// Read just the `module` declaration from a .dag file. Scans for the
-/// first line matching `module <path>` — O(1) lines for well-formed files.
+/// Extract the module declaration path from a .dag file using the parser.
+/// Single authority — no parallel string-scanning implementation.
 fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("module ") {
-            return Some(rest.trim().to_string());
-        }
-        // Skip comments and blank lines
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            break; // module declaration must come before any other content
-        }
-    }
-    None
+    let result = parse_source(&content);
+    result.module.as_ref().map(|m| m.name.clone())
 }
 
-/// Extract import module paths from source text. Scans for `import <path> {`.
+/// Extract import module paths using the actual parser — no parallel
+/// string-scanning implementation. The parser is the single authority
+/// for import syntax.
 fn extract_imports(source: &str) -> Vec<String> {
-    let mut imports = Vec::new();
-    for line in source.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("import ") {
-            // import std.types { ... } → extract "std.types"
-            let rest = rest.trim();
-            if let Some(space_pos) = rest.find([' ', '{']) {
-                imports.push(rest[..space_pos].trim().to_string());
-            }
+    let result = parse_source(source);
+    match &result.module {
+        Some(module) => {
+            v2_compiler::v2_std_core::module_imports(module.clone())
+                .into_iter()
+                .map(|imp| imp.name.clone())
+                .collect()
         }
+        None => vec![],
     }
-    imports
 }
 
 /// Resolve imports transitively from an entry source. Returns the minimal
@@ -200,6 +191,8 @@ fn resolve_imports_transitively(
 }
 
 // Lazily built module index — shared across all tests in a run.
+// Reads dsl/ and src/v2/ source trees (corpus/integration exception per
+// INVARIANTS.md testing invariants). Built once via OnceLock.
 use std::sync::OnceLock;
 static MODULE_INDEX: OnceLock<HashMap<String, std::path::PathBuf>> = OnceLock::new();
 
