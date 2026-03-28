@@ -3129,9 +3129,14 @@ Rc::new(PredResult {
     err: None,
 }),
     _ => Rc::new(PredResult {
-    predicate: dummy_pred.clone(),
+    predicate: Rc::new(FieldInit {
+    name: pred_name.clone(),
+    value: make_expr_node(Rc::new(ExprData::ExprLiteral {
+    value: Rc::new(LiteralValue::LitBool { value: true }),
+}), vec![], None, zero_span.clone()),
+}),
     state: s.clone(),
-    err: Some(parse_error(v2_rt::concat(v2_rt::concat("unknown where predicate `".to_string(), pred_name.clone()), "`".to_string()), current_span(tokens.clone(), s.clone()))),
+    err: None,
 }),
 }
 }
@@ -7608,7 +7613,16 @@ if has_err(r3.err.clone()) {
     err: r3.err.clone(),
 })
 }
-let s = r3.state.clone();
+let wr = try_where_clause(tokens.clone(), r3.state.clone(), r3.type_expr.clone(), start_span.clone());
+if has_err(wr.err.clone()) {
+            return Rc::new(ParamResult {
+    param: dummy_param.clone(),
+    state: wr.state.clone(),
+    err: wr.err.clone(),
+})
+}
+let type_expr = wr.type_expr.clone();
+let s = wr.state.clone();
 let e = eat(tokens.clone(), s.clone(), ExpectedToken::ExpectEq);
 if e.consumed.clone() {
             {
@@ -7622,7 +7636,7 @@ if has_err(r4.err.clone()) {
 }
 let p = Rc::new(Param {
     name: name.clone(),
-    type_expr: r3.type_expr.clone(),
+    type_expr: type_expr.clone(),
     default_value: Some(r4.expr.clone()),
     span: start_span.clone(),
 });
@@ -7636,7 +7650,7 @@ Rc::new(ParamResult {
             {
                 let p = Rc::new(Param {
     name: name.clone(),
-    type_expr: r3.type_expr.clone(),
+    type_expr: type_expr.clone(),
     default_value: None,
     span: start_span.clone(),
 });
@@ -9777,7 +9791,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let r = expect_ident(tokens.clone(), r.state.clone());
+let r = expect_name(tokens.clone(), r.state.clone());
 if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
     expr: dummy_expr.clone(),
@@ -9844,7 +9858,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let r = expect_ident(tokens.clone(), r.state.clone());
+let r = expect_name(tokens.clone(), r.state.clone());
 if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
     expr: dummy_expr.clone(),
