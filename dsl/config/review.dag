@@ -1,0 +1,31 @@
+// config/review.dag -- PR review agent configuration.
+//
+// Data declarations for the review workflow: target repo, backend
+// selection, review objective, and state persistence path.
+//
+// To change the default backend, edit default_backend below.
+// To review a different repo, edit owner/repo.
+
+module config.review
+
+// -- Backend selection ------------------------------------------------
+
+data default_backend: String = "codex"
+
+data default_codex_model: String = "gpt-5.4"
+
+data default_claude_model: String = "opus"
+
+// -- Target repository ------------------------------------------------
+
+data owner: String = "gunb-ai"
+
+data repo: String = "gunbc"
+
+// -- Review objective -------------------------------------------------
+
+data review_objective: String = "Review this pull request for structural correctness, regressions, test coverage gaps, and whether the changes achieve their stated objective coherently. Focus on substance over style. Prefer pipeline-level guidance over file-by-file nitpicks."
+
+// -- State persistence ------------------------------------------------
+
+data state_path: String = "~/.local/share/gunbc-review/state.json"

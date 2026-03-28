@@ -9,6 +9,7 @@
 module std.string_type
 
 import std.algebra { FreeMonoid }
+import std.types { Char }
 
 // String is the free monoid over Char — a sequence of characters
 // under concatenation with empty string as identity.

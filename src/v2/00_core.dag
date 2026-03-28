@@ -173,12 +173,14 @@ fn is_kernel_type(name: String) -> Bool {
 type InferredNode
   = Resolved { node: Node }
   | CompilerError { message: String, span: SourceSpan }
+  | TypeVariable { id: String }
 
 // Extract the Node from an InferredNode, returning None for CompilerError.
 fn inferred_to_node(inferred: InferredNode) -> Node? {
   match inferred {
     Resolved { node: n } => Some { value: n }
     CompilerError { message: _, span: _ } => none
+    TypeVariable { id: _ } => none
   }
 }
 
@@ -187,27 +189,30 @@ fn is_compiler_error(inferred: InferredNode) -> Bool {
   match inferred {
     Resolved { node: _ } => false
     CompilerError { message: _, span: _ } => true
+    TypeVariable { id: _ } => false
   }
 }
 
-// Three-way result for extracting a Node's return type.
+// Four-way result for extracting a Node's return type.
 // Typed: successfully resolved type node.
 // InferError: type inference failed (error already reported as diagnostic).
+// InferVariable: unresolved type variable (generics).
 // Untyped: no inferred set (statements, unprocessed nodes).
 type NodeType
   = Typed { node: Node }
   | InferError { message: String, span: SourceSpan }
+  | InferVariable { id: String }
   | Untyped
 
 // Extract the type Node from a Node's inferred field.
-// Returns Typed/InferError/Untyped so callers can distinguish
-// "no type" from "type inference failed".
+// Returns Typed/InferError/InferVariable/Untyped so callers can distinguish.
 fn rt_node(n: Node) -> NodeType {
   if n.inferred == none { Untyped }
   else {
     match n.inferred.value {
       Resolved { node: rt } => Typed { node: rt }
       CompilerError { message: m, span: s } => InferError { message: m, span: s }
+      TypeVariable { id: id } => InferVariable { id: id }
     }
   }
 }

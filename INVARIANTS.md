@@ -77,7 +77,7 @@ it was lost, (4) fix the rendering to exploit the guarantee.
 | FF-5 | Adjacency structure | `node_type_deps` | Kahn re-scans all items each iteration | Filter-based ready detection | O(n²×d) per module vs O(V+E) | **FIXED.** Indexed Kahn with in-degree map + reverse adjacency + queue drain. |
 | FF-6 | Diagnostic properties | Construction (`diagnostic_node()`) | (Previously: separate types) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.3) |
 | FF-7 | Service operation structure | Parse (declaration) | (Previously: separate OperationDef) | (Previously: type-specific accessors) | Minor | **FIXED** (P5.4) |
-| FF-8 | Tokenize cost (unknown root cause) | .dag source | Unknown — `char_at` allocation is ~15ms, not the 4.87s bottleneck | Unknown | Tokenize 4.87s (75% of pipeline) | **OPEN — needs flamegraph profiling.** Initial hypothesis (char_at heap allocation) was wrong by ~300x. The real cost is elsewhere in the tokenizer. Candidates: `source.to_string()` per-file copy, Rc::try_unwrap failures on token list, `string_length` per-iteration, or an algorithmic issue. Use `cargo flamegraph` or the complexity analysis stage to identify. |
+| FF-8 | Container sharing representation | `.dag` value semantics (pure, lexical scope) | Rust container templates: Rc for user types, bare Vec/HashMap/String for built-ins | Emitter inserts `.clone()` on multi-use bindings; O(n) for bare collections, O(1) for Rc-wrapped types. Parser: 991 Vec clones per parse. | Parser: 37s → 0.4s. Tokenizer: 7s → 0.06s. Full compiler: hang → 0.65s. (Hand-patched generated files proved the class.) | **ROOT-CAUSED (2026-03-27), fix pending.** The Rust container templates in `LanguageSpec` must produce shared representations (`Rc<Vec<{0}>>`, etc.). Template + emitter + runtime changes must land atomically with stage0 regeneration. See FF-8 detail. |
 
 #### The fan-out fix (FF-1) in detail
 
@@ -108,28 +108,39 @@ Reconcile: ~20 minutes → 244ms (release mode).
 **Status: FIXED (2026-03-26).** `04_cycle.dag` rewritten with indexed
 in-degree map + reverse adjacency + queue drain. O(V+E), single pass.
 
-#### Tokenize bottleneck (FF-8) — needs profiling
+#### Container representation — the recurring performance class (FF-8)
 
-Tokenize takes 4.87s (75% of the 6.47s pipeline). Initial hypothesis
-was `char_at` heap allocation, but back-of-envelope math shows that's
-~15ms — off by 300x. The real root cause is unknown.
+Every performance regression in this compiler (FF-1, FF-5, FF-8, the OOM
+incident) traces to the same ad-hoc split in the Rust container
+templates: user-defined types get shared representations (Rc), but
+built-in collection types (List, Map, Set, String) get bare
+representations (Vec, HashMap, String). Since the `.dag` language has
+value semantics and the emitter inserts `.clone()` on every multi-use
+binding, the clone cost for bare collections is O(n) — catastrophic
+in any function that threads a collection through multiple calls.
 
-Candidates to investigate with flamegraph profiling:
-- `source.to_string()` in `tokenize()` — copies entire source file
-  into a new String per call (line 44 of tokenize.rs)
-- Rc::try_unwrap failures on the token list accumulation — would
-  cause O(n²) deep-clone per token, same class as the reconcile fix
-- `string_length` called per-iteration in the loop guard — O(n) for
-  the string even on ASCII (function call overhead)
-- Algorithmic issue in `skip_spaces_and_comments` or `scan_token`
+**The ad-hoc split (in `dsl/extdeps/languages/rust/emit.dag`):**
 
-The value-representation principle (immutable strings should be
-zero-copy reads) is correct but applies to ~15ms of the cost.
-The dominant cost is something else. Profile first, theorize second.
+| Type category | Template | Clone cost |
+|--------------|----------|-----------|
+| User-defined struct | Rc<T> | O(1) |
+| User-defined enum (with fields) | Rc<T> | O(1) |
+| Primitive (Int, Bool, Float) | bare | O(1) (Copy) |
+| **List<T>** | **Vec<T>** | **O(n)** |
+| **Map<K,V>** | **HashMap<K,V>** | **O(n)** |
+| **String** | **String** | **O(n)** |
+
+**The fix is a rendering change, not an IR change.** The container
+templates in `LanguageSpec` should produce shared representations for
+ownership-based languages. For Rust: `Rc<Vec<{0}>>`, `Rc<HashMap<{0},
+{1}>>`. For Python/Go: unchanged (GC/value semantics handle sharing).
+This is declarative language data, not compiler logic.
 
 #### Import resolution is the caller's job — it should be the compiler's (FF-9)
 
-**Status: OPEN (2026-03-27).**
+**Status: PARTIALLY FIXED (2026-03-27).** Test harness now does
+import-driven transitive resolution via `resolve_imports_transitively`.
+Stage0 binary and bootstrap still use manual file assembly.
 
 **The violation:** The compiler takes a flat `List<SourceFile>` and compiles
 whatever it's given. Import declarations (`import std.types { List }`)
@@ -139,26 +150,13 @@ module that wasn't pre-loaded by the caller.
 
 This means:
 - The stage0 binary manually `collect_dag_files` from a directory
-- The test harness manually assembles source lists per test
+- The test harness resolves imports transitively (fixed 2026-03-27)
 - The bootstrap test manually copies specific std files
-- Three callers, three different "import resolution" strategies
 
 **What's lost:** The import declarations in `.dag` source files are the
 complete, authoritative dependency graph. The compiler already parses
 these imports and validates them. But it treats them as assertions about
 what the caller provided, not as demands for what to load.
-
-**The compensation:** Each caller reinvents import resolution:
-- stage0 binary: recursive directory walk, loads everything
-- `compile_dag()`: loads nothing extra (kernel seed only)
-- `compile_with_std()`: hardcodes algebra.dag + types.dag
-- bootstrap: hardcodes a specific list of std files
-- gist test: hardcodes a specific list of dsl files
-
-Adding a new std module (e.g., `std.sorting`) requires updating every
-caller that might need it. This violates "No parallel implementations"
-and "Single-authority metadata" — the `.dag` import declaration should
-be the single authority for what's needed.
 
 **The fix:** Import-driven source resolution. The compiler (or a thin
 layer above it) resolves imports to files:
@@ -170,54 +168,37 @@ layer above it) resolves imports to files:
 4. The resolve stage already builds the dependency graph — the missing
    piece is wiring it to file discovery
 
-This is the standard approach (Go, Rust, Python all resolve imports to
-files). The compiler's pure-function constraint is preserved: the I/O
-layer (file reading) wraps the pure compiler, and the pure compiler
-receives exactly the transitive closure of imported sources.
-
-**Concrete mechanism:**
-
-```
-// Current: caller assembles all sources upfront
-compile_sources(sources: List<SourceFile>, target) -> PipelineResult
-
-// Target: caller provides roots, compiler discovers imports
-compile_from_roots(entry: SourceFile, roots: List<SourceRoot>, target) -> PipelineResult
-```
-
-Where `SourceRoot` is a path prefix that maps module paths to files:
-`std.types` → `<root>/std/types.dag`. The I/O wrapper reads files on
-demand as imports are discovered.
+Each module loaded exactly once (HashMap memoization). Diamond deps
+(A imports B and C, both import D) hit the seen check. O(V+E).
 
 **Impact:** Eliminates the kernel seed (modules that need `List` import
-it; the import loads `std.types` which loads `std.algebra`). Eliminates
-`compile_with_std` vs `compile_dag` distinction. Tests use the same
-resolution as production. Every compilation loads exactly what it needs
-— minimal and universal.
-
-**Depends on:** No compiler changes needed — the resolve stage already
-validates imports. The new piece is a pre-resolve import discovery pass
-that reads files. This can be implemented in the Rust test harness and
-stage0 binary without changing any `.dag` code.
+it; the import loads `std.types` which loads `std.algebra`). Tests use
+the same resolution as production. Every compilation loads exactly what
+it needs — minimal and universal.
 
 #### Ratchet
 
-After all open instances are fixed:
+Fan-out is not "metadata" to be computed and carried — it is the
+out-degree of a binding's edges, already present in the graph structure.
+The emitter doesn't need new information. It needs the right default
+rendering per language, declared in `LanguageSpec`.
 
-1. **No downstream recomputation.** For each stage boundary, the
-   downstream stage does not import analysis functions from upstream.
-   Import across a stage boundary = potential recomputation = potential
-   lost fact.
+The template change must land together with matching emitter updates
+in `05_emit_rust.dag` (collection-producing methods, runtime bridge
+call conventions) and a stage0 regeneration pass. A half-migration
+(templates changed, emitter unchanged) produces type mismatches on
+the next regeneration.
 
-2. **Fan-out preservation.** Each `.clone()` in generated stage0
-   corresponds to a source binding with fan-out > 1. Any clone on a
-   fan-out=1 binding is a violation. Target: 0 violations.
+**The 2026-03-27 incident (proof of class):**
 
-3. **Performance ratchet.** Self-compile time is a ratchet value.
-   Regressions indicate a new lost-fact instance.
-   Release-mode baseline (2026-03-26): **6.47s total pipeline**
-   (Tokenize 4.87s, Parse 78ms, Resolve 1ms, Reconcile 244ms,
-   Emit 1.27s). Target: <2s total.
+Hand-patched generated stage0 files proved the fix class:
+- Parser: `Vec<Rc<Token>>` → `Rc<Vec<Rc<Token>>>` (991 clone sites,
+  O(n) → O(1))
+- Results: parse 37s → 0.4s, tokenize 7s → 0.06s, full compiler
+  hang → 0.65s
+
+**Status: ROOT-CAUSED, fix pending.** Template + emitter + runtime
+changes must land atomically with a regeneration pass.
 
 ## Sustainability Invariants
 

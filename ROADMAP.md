@@ -226,6 +226,37 @@ basis is not the set of named user types; it is the set of structural
 constructors and binding/cardinality facts from which named declarations
 are composed.
 
+**5. Container sharing — rendering fix, not IR change (2026-03-27)**
+
+The Rust container templates in `LanguageSpec` produce bare
+representations for built-in collections (`Vec<{0}>`, `HashMap<{0},
+{1}>`), while user-defined types get shared representations (`Rc<T>`).
+Since the `.dag` language has value semantics and the emitter inserts
+`.clone()` on every multi-use binding, bare collections have O(n)
+clone cost — the root cause of every recurring performance regression
+(FF-1, FF-5, FF-8, OOM incident).
+
+Fan-out (how many consumers a binding has) is not "metadata" to be
+computed and stored in a side table. It is the out-degree of a
+binding's edges — already present in the graph structure. The emitter
+doesn't need new IR facts. It needs the right default rendering per
+language, declared in `LanguageSpec`.
+
+**The fix:** Change the Rust container templates to produce shared
+representations (`Rc<Vec<{0}>>`, `Rc<HashMap<{0}, {1}>>`). Update
+`05_emit_rust.dag` so collection-producing methods and runtime bridge
+calls are coherent with the new types. Update `runtime_rust.dag` so
+mutating operations use `Rc::try_unwrap` (O(1) when refcount=1).
+Python/Go templates stay unchanged (GC/value semantics handle sharing).
+
+These three changes (template + emitter + runtime) must land atomically
+with a stage0 regeneration pass. A half-migration produces type
+mismatches on the next regeneration.
+
+**Design status:** Root-caused (2026-03-27). Proof: hand-patched
+generated stage0 files, parser 37s → 0.4s. Fix is a rendering change
+in language data, not new compiler machinery.
+
 ### Composition Stack
 
 The algebraic type vision (above) covers Layers 0-3: logic, machine
@@ -1088,6 +1119,7 @@ the canonical stream assignments.
 |--------|--------|------|-------|
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors (158), type-name comparisons (40), CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.12 ExprData tag assessment, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
+| **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` (proof branch) | Rust container templates → `Rc<Vec<{0}>>` etc. + matching emitter + runtime updates + stage0 regeneration. Atomic change. | Eliminate O(n) clone class (FF-8). See Compositional Basis §5. |
 
 ### Completed work streams (Phases 1-4)
 
@@ -2813,6 +2845,38 @@ environment — not that it must be eagerly inlined into a deep copy.
 Graph sharing and canonical resolved nodes are fine; what matters is
 that the authority is structural, not name-based.)
 
+**2026-03-27 regression example:** the v2 source already documented the
+desired cost model in `01_tokenize.dag`:
+- token accumulation should stay O(1) by threading the accumulator
+  separately
+- source text should be shared structurally, not recopied
+
+But that intent was only documented, not compositionally enforced.
+Generated stage0 Rust reintroduced:
+- whole-`Vec<Token>` clone traffic in parser/token helper paths
+- repeated Unicode character rescans (`chars().nth()` / `skip()`) for
+  any source file containing non-ASCII text, including comments
+- by-value token-stream helper APIs that made accidental cloning easy
+
+This is the roadmap lesson: **performance intent must be modeled at the
+generation/runtime boundary, not left as a source-level comment.**
+When the boundary type admits both the cheap representation and the
+compensating fallback, regressions will keep returning.
+
+The emergency branch `perf/v2-tokenizer-root-cause` proved the class:
+- isolated `02_parse.dag` probe: ~37.2s → ~0.43s
+- isolated `04_infer.dag` probe: ~7.18s → ~0.06s
+- live `target/debug/v2-compiler compile --source-dir src/v2 ...`:
+  hang/minutes → ~0.65s returning diagnostics
+
+**Roadmap implication:** add explicit modeling and ratchets for
+operational contracts at the generated boundary:
+- token streams should be shared/indexed by construction
+- immutable source text should have indexed access without repeated
+  rescans
+- compiler-sized perf probes must run through the live generated binary,
+  not only tiny smoke DAGs
+
 #### The Fact Composition Contract
 
 The pipeline has three fact-producing boundaries. Each boundary produces
@@ -3127,6 +3191,9 @@ current phase order.
 | Callable-type parameters | **Done** (P4.7). All 6 steps complete. Unblocks P4.2 step 5. |
 | Full linear type checking | Ownership proof work has started, but full proof remains beyond the current migration |
 | Widen V5 | The conservative version covers current hot paths |
+| `[when]` string comparison | `[when x == "foo"]` is not supported; only boolean fields, negation (`!x.field`), and `!= None` work. Blocks conditional service dispatch in workflows. Workaround: `match` + `shell.Exec.Run` with computed command strings. |
+| `[when]`/`[after]` inside `for` comprehensions | Bracket clauses are only supported on top-level step bindings, not inside `for` loops. Blocks conditional execution per iteration. |
+| Multiple `uses` clauses | Only one `uses` clause per `func` is supported. Workaround: use `shell.Exec.Run` for file I/O instead of `Filesystem` resource when `Network` is already declared. |
 
 ### Compiler Improvements
 
