@@ -541,9 +541,25 @@ binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
 map routing, callable error recovery. Remaining: callable rendering,
 cross-module imports, cascading type mismatches.
 
-**DSL compilation:** Added `\{` `\}` escape sequences. 775 brace
-templates escaped across 18 DSL files. Remaining ~1 parse diagnostic
-(block/record disambiguation). Compiler correctly fails closed.
+**DSL compilation:** 78 files, 0 diagnostics, 94 files emitted (PR #228).
+Compiler correctly fails closed (0 files emitted when any diagnostic exists).
+
+**Known compiler invariant violations (worked around in DSL, must fix):**
+
+Three structural bugs in the compiler forced DSL workarounds to reach 0
+diagnostics. Each violates a core invariant. All workarounds are marked
+in the DSL source with comments explaining what they work around.
+
+| Bug | Invariant violated | Workaround | Files affected |
+|-----|--------------------|------------|----------------|
+| **`uses` variables not bound in scope.** Compiler parses `uses fs: Filesystem` and collects resource names for metadata, but never adds them to `scope.locals` during inference. Any pattern/func body that references `fs.read()`, `fs.probe()`, `fs.write()` fails with "undefined variable 'fs'". | Resources declared in `uses` clauses must be available as typed variables in the body scope. | Commented out 4 pattern bodies in `std.patterns` and 1 func body in `tools.codegen`. | `v2_compiler_infer.rs` — scope construction for func/pattern items |
+| **Optional exhaustiveness hardcodes `Some`/`None`.** When matching on `T?`, the checker uses `vec!["Some", "None"]` as the variant names. Inner type variants (`TargetDir`, `Broken`, etc.) don't satisfy it. `null` keyword also doesn't satisfy it. Only a wildcard `_` or bind pattern bypasses the check. | Exhaustiveness checking must recognize the scrutinee's inner type variants when matching through an optional wrapper. | Added `_` wildcard arms in `std.filesystem` `skip_reason`. | `v2_compiler_infer_patterns.rs:264-265` |
+| **Single-variant enums parsed as type aliases.** `type X = Y` where Y is a new variant name is treated as a type alias (lookup of existing type Y), not a one-variant enum definition. Fails with "unresolved type 'Y'". | `type X = Y` must define a one-variant coproduct, not alias an existing type. Parser/resolver must distinguish variant introduction from type reference. | Changed `StsGrantType = TokenExchange` to `String`. `CacheControl = Ephemeral` fixed on main (PR #229) similarly. | Parser or `v2_compiler_infer_env.rs` — type definition processing |
+
+Additional workarounds applied (not compiler bugs, parser limitations):
+- `local_auth()` commented out: parser doesn't support `if/else` as inline expression (`expected LBrace, found KwElse`).
+- `scheme: AuthScheme = Bearer` changed to `String = "Bearer"`: compiler expects CLI parameter defaults to be string literals, not enum constructors.
+- `char_display_width` restructured: ownership checker flags enum constructors used in multiple return paths as "2 consumers" (false positive on constructors vs bindings).
 
 **Diagnostic quality: INSUFFICIENT.** Diagnostics report byte offsets
 with no file name, no line:column, no source context. Implementation
