@@ -1,0 +1,66 @@
+// extdeps/languages/go/emit.dag -- Go language facts for the v2 emitter.
+//
+// Single source of truth for Go-specific data consumed by the emitter.
+// No imports -- these are leaf data declarations.
+//
+// Ref: The Go Programming Language Specification (go.dev/ref/spec)
+//      Go Standard Library (pkg.go.dev/std)
+//
+// Consumers:
+//   v2/05_emit.dag -- type mapping, keywords, container templates
+
+module extdeps.languages.go.emit
+
+// -- Type mapping --------------------------------------------------------
+// DAG abstract type -> Go concrete type.
+// Ref: Go Spec, Types
+data go_type_map: Map<String, String> = {
+  "String": "string", "Int": "int64", "Float": "float64", "Bool": "bool",
+  "Bytes": "[]byte", "Unit": "struct{}", "Secret": "string", "Json": "interface{}"
+}
+
+// -- Keyword/operator translation ----------------------------------------
+// DAG keywords/operators -> Go syntax.
+// Ref: Go Spec, Operators and punctuation
+data go_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "nil",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+// -- Container type templates --------------------------------------------
+// {0} = element type, {1} = second type (maps).
+// Ref: Go Spec, Composite literals
+data go_container_templates: Map<String, String> = {
+  "list": "[]\{0\}", "set": "map[\{0\}]struct{}",
+  "optional": "*\{0\}", "map": "map[\{0\}]\{1\}"
+}
+
+// -- Reserved words ------------------------------------------------------
+// Ref: Go Spec "Keywords" + predeclared identifiers
+data go_reserved: List<String> = [
+  "break", "case", "chan", "const", "continue",
+  "default", "defer", "else", "fallthrough", "for",
+  "func", "go", "goto", "if", "import",
+  "interface", "map", "package", "range", "return",
+  "select", "struct", "switch", "type", "var",
+  "bool", "byte", "complex64", "complex128", "error",
+  "float32", "float64", "int", "int8", "int16", "int32", "int64",
+  "rune", "string", "uint", "uint8", "uint16", "uint32", "uint64",
+  "uintptr", "true", "false", "iota", "nil",
+  "append", "cap", "close", "complex", "copy", "delete",
+  "imag", "len", "make", "new", "panic", "print", "println",
+  "real", "recover"
+]
+
+// -- Reserved word escape ------------------------------------------------
+// Ref: Go Spec -- Go uses no raw identifier escape; underscore suffix by convention.
+// Mirrors go_reserved_words.strategy from std.languages (NoEscape, but
+// the emitter appends "_" for keywords that clash with identifiers).
+data go_reserved_escape_suffix: String = "_"
+
+// -- Project scaffold ----------------------------------------------------
+// Ref: Go modules reference (go.dev/ref/mod)
+// Mirrors go_scaffold from std.languages.
+data go_source_extension: String = ".go"
+data go_manifest_file: String = "go.mod"

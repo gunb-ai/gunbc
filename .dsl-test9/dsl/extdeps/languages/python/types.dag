@@ -1,0 +1,118 @@
+// extdeps/languages/python/types.dag -- "What is the Python type system?"
+//
+// Duck typing, type hints (PEP 484), dataclasses (PEP 557),
+// enums, and value semantics as specified in the Python Language
+// Reference and typing module documentation.
+//
+// Ref: Python Language Reference (docs.python.org/3/reference)
+//      PEP 484 "Type Hints"
+//      PEP 557 "Data Classes"
+//      PEP 613 "TypeAlias"
+//      PEP 604 "Union types with X | Y"
+//
+// Consumers:
+//   v2/05_emit_python.dag -- type emission, class generation, decorator usage
+
+module extdeps.languages.python.types
+
+import std.languages {
+  TypeMapping, NamingConvention, NamingCase,
+  TypeDefinitionSyntax, LiteralSyntax
+}
+
+// -- Type system model -----------------------------------------------
+// Ref: Python Reference 3 "Data model"
+
+// Python is dynamically typed. Type hints are optional annotations
+// checked by external tools (mypy, pyright), not the runtime.
+type PythonTypeKind
+  = DynamicType                        // no annotation, duck-typed
+  | AnnotatedType                      // type hint present, checked by mypy
+
+// "Which types are mutable?"
+// Ref: Python Reference 3 "Data model" -- mutable vs immutable
+type PythonMutability
+  = Immutable                          // str, int, float, bool, tuple, frozenset, bytes
+  | Mutable                            // list, dict, set, bytearray, user objects
+
+// Primitive type facts with mutability.
+type PythonPrimitiveInfo {
+  dag_name: String                     // DAG abstract name
+  python_name: String                  // Python concrete type
+  mutability: PythonMutability
+  falsy_value: String                  // what value is falsy
+}
+
+data python_primitives: List<PythonPrimitiveInfo> = [
+  { dag_name: "Int",    python_name: "int",   mutability: Immutable, falsy_value: "0" },
+  { dag_name: "Float",  python_name: "float", mutability: Immutable, falsy_value: "0.0" },
+  { dag_name: "Bool",   python_name: "bool",  mutability: Immutable, falsy_value: "False" },
+  { dag_name: "Unit",   python_name: "None",  mutability: Immutable, falsy_value: "None" },
+  { dag_name: "String", python_name: "str",   mutability: Immutable, falsy_value: "\"\"" },
+  { dag_name: "Bytes",  python_name: "bytes", mutability: Immutable, falsy_value: "b\"\"" },
+  { dag_name: "Secret", python_name: "str",   mutability: Immutable, falsy_value: "\"\"" },
+  { dag_name: "Json",   python_name: "dict",  mutability: Mutable,   falsy_value: "{}" }
+]
+
+// -- Dataclass model -------------------------------------------------
+// Ref: PEP 557 "Data Classes" (Python 3.7+)
+
+// "How does Python define structured data?"
+// @dataclass decorator auto-generates __init__, __repr__, __eq__.
+data dataclass_decorator: String = "@dataclass"
+data dataclass_import: String = "from dataclasses import dataclass, field"
+
+// Dataclass field with default value.
+data field_default_template: String = "field(default=\{value\})"
+data field_default_factory_template: String = "field(default_factory=\{factory\})"
+
+// -- Enum model ------------------------------------------------------
+// Ref: Python enum module (docs.python.org/3/library/enum.html)
+
+data enum_import: String = "from enum import Enum, auto"
+data enum_class_template: String = "class \{name\}(Enum):\n\{variants\}"
+data enum_auto_value: String = "auto()"
+
+// -- Union / Optional types ------------------------------------------
+// Ref: PEP 604 "Allow writing union types as X | Y" (Python 3.10+)
+
+// Python 3.10+ union syntax: X | Y instead of Union[X, Y].
+data union_syntax: String = "\{a\} | \{b\}"
+data optional_syntax: String = "\{type\} | None"
+
+// Pre-3.10 syntax (typing module).
+data typing_optional: String = "Optional[\{type\}]"
+data typing_union: String = "Union[\{types\}]"
+data typing_import: String = "from typing import Optional, Union"
+
+// -- Type alias ------------------------------------------------------
+// Ref: PEP 613 "TypeAlias" (Python 3.10+)
+
+data type_alias_template: String = "\{name\} = \{type\}"
+
+// -- Generic types ---------------------------------------------------
+// Ref: PEP 484, typing module
+
+data generic_param_template: String = "[\{params\}]"
+data typing_generic_import: String = "from typing import Generic, TypeVar"
+
+// -- None handling ---------------------------------------------------
+// Ref: Python Reference 3 "Data model"
+
+data none_literal: String = "None"
+data none_check_template: String = "\{expr\} is None"
+data none_not_check_template: String = "\{expr\} is not None"
+
+// -- Pass statement --------------------------------------------------
+// Ref: Python Reference 7.4 "The pass statement"
+
+data pass_statement: String = "pass"
+
+// -- Type checking tools ---------------------------------------------
+// The canonical type checkers for Python type hints.
+
+data type_checker: String = "mypy"
+data type_checker_strict: String = "mypy --strict"
+
+// Emission-facing maps (python_type_map, python_keywords, python_container_templates)
+// now live in extdeps.languages.python.emit -- single source of truth.

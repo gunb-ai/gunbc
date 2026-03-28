@@ -1,0 +1,575 @@
+// std/types.dag -- Base types and domain enums for the gunbc DSL.
+//
+// SET-THEORETIC FOUNDATION:
+// Every type T denotes a set [T] of values. Subtyping is set inclusion:
+//   A <: B  iff  [A] <= [B]
+//
+// The type universe is a bounded lattice:
+//   _|_ = Unit = {}        (empty set)
+//   T = Json             (universal structured value)
+//
+// See dsl-design.md S4.1 "Type-Theoretic Foundations" for the full
+// axiom system and coercion theorem.
+//
+// TYPES ARE DAGS: Every type T is itself a Dag<TypeOp>. The set [T]
+// is the set of values that PASS the type's DAG when executed:
+//   [T] = {v | execute(T.dag, v) succeeds}
+//
+// Primitives are Identity DAGs (single node). Refinements add Validate
+// nodes. Records are Product nodes (parallel field DAGs). Enums are
+// Coproduct nodes (branching on variant tag). Generics are Apply nodes
+// (parameterized SubDags). Brands are Brand nodes (nominal disjointness).
+//
+// This means type checking is DAG analysis, coercion insertion is DAG
+// transformation, and test generation is DAG traversal. Same tooling
+// as business logic -- one recursive Dag<Op> structure for everything.
+//
+// The compiler's internal model uses full cardinality algebra (lattice +
+// semiring) and predicate entailment (Heyting algebra). The surface
+// syntax keeps it simple: T, T?, List<T>.
+
+module std.types
+
+import std.algebra { FreeMonoid, PartialFunction }
+
+// --- Primitives (Level 0: Atoms) --------------------------------------
+// Each is a single-node Identity DAG -- no validation, just a base carrier.
+//
+// DAG representation:         Set denotation:
+//   String = Dag{Identity}      [String] = Sigma*
+//   Int    = Dag{Identity}      [Int]    = Z
+//   Bool   = Dag{Identity}      [Bool]   = {true, false}
+//   Float  = Dag{Identity}      [Float]  = F64
+//   Bytes  = Dag{Identity}      [Bytes]  = {0..255}*
+//   Secret = Dag{Identity}      [Secret] = Sigma* (security-policy distinction)
+//   Unit   = Dag{Identity}      [Unit]   = {} (bottom, _|_)
+//   Json   = Dag{Identity}      [Json]   = [Bool] U [Int] U ... U {null} (top, T)
+//
+// Kernel type declarations.
+//
+// The compiler's bootstrap kernel seed (leaf nodes) provides fallback
+// bindings for isolated tests. These declarations override the seed via
+// the normal merge order (kernel < imports < local).
+//
+// COMPOSITIONAL TARGET (Part B of P5.13):
+// These types will compose from algebraic structures in std/algebra.dag:
+//   Int    = OrderedRing<Word64>      — arithmetic emerges from Ring
+//   Float  = Field<Word64>            — division emerges from Field
+//   String = FreeMonoid<Char>         — concat/length emerge from Monoid
+//   Bool   = BooleanAlgebra<{T,F}>    — and/or/not emerge from Lattice
+// Until Part B lands (inference resolves methods from type fields),
+// the compiler still uses kernel_types/is_kernel_type for these.
+
+// Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
+// Target: Bool = BooleanAlgebra over {True, False}.
+type Bool = True | False
+
+// Unit: terminal object (zero-field product, single inhabitant).
+type Unit
+
+// Json, Bytes: opaque kernel types.
+// Secret: kernel type aliased to String (type map handles target rendering).
+type Json
+type Bytes
+
+// Int, Float, String declared in std/integer.dag, std/float.dag,
+// std/string_type.dag respectively. Currently use v1-era where syntax;
+// will be rewritten as algebra.dag compositions in Part B.
+
+// --- Char type (structural primitive) ----------------------------------
+// Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
+// Structural definition per structural-primitives-codegen.md:
+//   Char = Brand("Char", Int)
+// String decomposes to List<Char> via the chars() builtin.
+//   [Char] = {n in Z | 0 <= n <= 1114111}
+//
+// v2-compatible alias. The `where` constraints (brand, range) are future
+// work — the v2 parser does not support field-level where syntax yet.
+type Char = Int
+
+// --- Container types (parameterized) -----------------------------------
+// Each container inhabits a specific algebraic structure from which its
+// operations emerge (see std/algebra.dag).
+//
+// Denotational equations (from Collection Denotational Model in ROADMAP):
+//   List<A>  = Σ n. Fin(n) → A         (positional, ordered, duplicates OK)
+//   Set<A>   = A → Bool                 (membership, unordered, unique)
+//   Map<K,V> = K → (1 + V)             (keyed partial function)
+//
+// Algebraic inhabitation:
+//   List<T>  inhabits FreeMonoid<T>     → append, empty, length, map, fold, filter
+//   Set<A>   inhabits BooleanAlgebra<A> → union, intersect, diff, member
+//   Map<K,V> inhabits PartialFunction<K,V> → lookup, insert, delete, merge
+type List<element> = FreeMonoid<element>
+type Set<element>
+type Map<key, value> = PartialFunction<key, value>
+
+// --- Refinement types (Level 1: Subset Comprehension) -----------------
+// Each adds a Validate node to the base type's DAG:
+//   Url = Dag { Identity("String") -> Validate(NonEmpty) -> Validate(Matches("^https?://")) }
+//
+// Set meaning: [T @pred(P)] = {x in [T] | P(x)}
+// DAG meaning: execute base Identity, then each Validate; value passes iff all pass.
+//
+// Always a subtype of the base: T @pred(P) <: T  (the DAG is strictly longer)
+// Conjunction is intersection: @pred(P) @pred(Q) chains two Validate nodes
+//
+// The compiler uses refinements for:
+//   1. Validation at type-check time (compile error if [source] !<= [target])
+//   2. Auto-generation of test inputs (valid from [T], invalid from [T]^c)
+//   3. Documentation of expected shapes
+
+type CommitSha    = String where pattern("^[a-f0-9]\{40\}$")
+type Sha256       = String where pattern("^[a-f0-9]\{64\}$")
+type RetryCount   = Int where range(min: 1, max: 5)
+type HttpStatus   = Int where range(min: 100, max: 599)
+type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
+type Port         = Int where range(min: 1, max: 65535)
+type GistId       = String where format(uuid)
+type Secret       = String
+type SecretValue  = Secret where non_empty
+type Url          = String where pattern("^https?://")
+type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
+type NonEmptyStr     = String where non_empty
+type NonEmptyString  = String where non_empty
+type LanguageId      = String where non_empty
+type SecretName      = String where non_empty
+type PositiveInt     = Int where range(min: 1)
+type NonNegativeInt  = Int where range(min: 0)
+
+// Path modeling (EX-2):
+// - FilePath remains a compatibility alias for existing modules.
+// - FilePathParts and GlobPattern provide structured forms for new DSL code.
+type PathSegment   = NonEmptyStr where brand("PathSegment")
+type GlobSegment   = NonEmptyStr where brand("GlobSegment")
+type FilePathParts {
+  segments: List<PathSegment>
+}
+type GlobPattern {
+  segments: List<GlobSegment>
+}
+type FilePath      = String where non_empty
+type Path          = String where non_empty
+
+// --- Temporal types (Level 1: Refinements for time) -----------------------
+// Addresses deficit D14 from domain-modeling-comprehensive.md S9.
+//
+// Timestamp is an ISO 8601 string (not epoch). Duration is milliseconds.
+// These are refinements, not opaque wrappers -- the pipeline can still
+// pass them where String/Int is expected (widening), but String/Int
+// cannot be passed where Timestamp/Duration is expected (narrowing error).
+//
+//   [Timestamp] < [NonEmptyStr] < [String]
+//   [Duration]  < [Int]
+//   [EpochMs]   < [Int]
+
+// --- Source locations (Level 1: Positional refinements) -------------------
+
+type SourceSpan {
+  start: Int
+  end: Int
+}
+
+type Timestamp    = String where pattern("^\\d\{4\}-\\d\{2\}-\\d\{2\}T\\d\{2\}:\\d\{2\}:\\d\{2\}")
+type EpochMs       = Int where range(min: 0)
+type Duration      = Int where range(min: 0)
+type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
+type Seconds       = Int where range(min: 0), brand("Seconds")
+
+// --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
+// Addresses deficit D15 from domain-modeling-comprehensive.md S9.
+//
+// Branded types are structurally identical (all NonEmptyStr) but nominally
+// disjoint. The @brand annotation adds a Brand node to the type's DAG,
+// making set membership check type-aware:
+//   [IssueId] intersect [IntentId] = {}   even though both < [NonEmptyStr]
+//
+// This prevents accidental mixups (passing an IntentId where IssueId
+// is expected) at compile time.
+
+type IntentId     = NonEmptyStr where brand("IntentId")
+type IssueId      = NonEmptyStr where brand("IssueId")
+type RunKey       = NonEmptyStr where brand("RunKey")
+type ArtifactId   = NonEmptyStr where brand("ArtifactId")
+type LeaseToken   = NonEmptyStr where brand("LeaseToken")
+type WorkerId     = NonEmptyStr where brand("WorkerId")
+type CommentId    = NonEmptyStr where brand("CommentId")
+type SignalKey    = NonEmptyStr where brand("SignalKey")
+type ContentHash  = NonEmptyStr where brand("ContentHash")
+
+// --- Git types (refinements of String) ------------------------------------
+type GitRef       = String where non_empty
+// Note: CommitSha <: GitRef <: String. A SHA is always a valid ref,
+// but a ref is not always a SHA (e.g., "main", "HEAD~1").
+
+// --- GCP / OIDC types (refinements for cloud identifiers) ----------------
+type ProjectId    = String where non_empty, pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+type ServiceAccountEmail = String where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")
+type GcpProjectId           = String where non_empty
+type GcpSecretId            = String where non_empty
+type GcpServiceAccountEmail = String where non_empty
+type GcpSubjectToken        = String where non_empty
+type OidcAudience           = String where non_empty
+type OidcSubjectToken       = String where non_empty
+type WifAudience            = String where non_empty
+
+// Refinement chain example (transitive subtyping):
+//   [Url] < [NonEmptyStr] < [String] < [Json]
+// Each step narrows by predicate (subset comprehension).
+// The compiler walks this chain for coercion: passing Url where String
+// expected is safe (<=); passing String where Url expected is an error (!<=).
+
+// --- Domain enums (Level 4: Finite Coproducts) ------------------------
+
+type WarningPolicy = DenyAll | Default                    // |[WarningPolicy]| = 2
+type CloudRuntime = GitHubActions | Metadata | LocalDev  // |[CloudRuntime]| = 3
+type Platform     = Linux | Macos | Windows              // aligned with canonical Os tokens
+
+// --- Extracted enums (WS1-2: stringly-typed -> sum types) ---------------
+
+type TopologyNodeKind = Pure | Transport | SubDag | Env
+type DocSourceKind    = Template | Generated | Static
+
+type FermiDepth = Xs | S | M | L | Xl
+
+// --- Credential model (Level 4: D-2 credential flow sum type) ---------
+// How to acquire a credential. Ported from the-gunbai.
+// The flow type drives the acquisition strategy; the provider is
+// resolved at compile time via profile binding.
+
+type CredentialFlow
+  = Stored { secret_name: NonEmptyStr }
+  | PlatformInjected { env_var: NonEmptyStr }
+  | WorkloadIdentity {
+      audience: NonEmptyStr
+      service_account: ServiceAccountEmail?
+      scopes: List<String>
+    }
+  | InteractiveAuth { scopes: List<String> }
+  | Chained { steps: List<CredentialFlow> }
+
+// Canonical platform/target vocabulary (aligned with core/ir::platform)
+type Arch = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
+type Vendor = UnknownVendor | Pc | Apple | W64
+type Os = Linux | Macos | Windows | Freebsd | Android | Ios | Wasi
+type AbiEnv = NoneAbi | Gnu | GnuEabi | GnuEabihf | Musl | Msvc | AndroidAbi | Eabi | Eabihf
+type ExecutionEnv = Native | Wsl | Container | Ci | Emulator
+
+type TargetTriple {
+  arch: Arch
+  vendor: Vendor
+  os: Os
+  env: AbiEnv?
+}
+
+type RuntimePlatform {
+  host: TargetTriple
+  env: ExecutionEnv
+}
+
+// Simple enums are finite sets. Pattern matching must be exhaustive
+// (cover the full |). CloudRuntime <: Json (by injection into String).
+
+// --- Filesystem entry kinds (Level 4: Finite Coproducts) ----------------
+// "What can a path point to?" -- exhaustive over POSIX entry types.
+// Canonical definition. Re-used by std/filesystem.dag's FileEntry.
+
+type EntryKind
+  = RegularFile
+  | Directory
+  | Symlink
+  | Missing
+  | Other                        // device, socket, pipe, fifo
+
+// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
+type SymlinkTarget
+  = TargetFile
+  | TargetDir
+  | Broken                       // dangling symlink
+
+// --- Content encoding (Level 4+1: Coproduct with lattice structure) ----
+// Content encodings classify what a file path's referent contains.
+// This is NOT a property of the path string -- it's a property of the
+// content at that path. The lattice enables compile-time narrowing:
+//
+//            Unknown (T)
+//           /       \
+//        Text      Binary
+//       /    \
+//    UTF8   Latin1
+//       \    /
+//       ASCII
+//
+// Set meaning: [ContentEncoding] = {UTF8, ASCII, Latin1, Binary}
+// Lattice: UTF8 | Binary = Unknown, ASCII <: UTF8, ASCII <: Latin1
+//
+// The compiler uses ContentEncoding to:
+//   1. Verify domain compatibility at I/O boundaries (compile-time)
+//   2. Generate coproduct branch scenarios in tests (text vs binary)
+//   3. Produce diverse mock file lists from @file_types rules
+
+type ContentEncoding
+  = UTF8                        // valid Unicode (Sigma* decodable)
+  | ASCII                       // 7-bit subset (ASCII <: UTF8 & ASCII <: Latin1)
+  | Latin1                      // ISO 8859-1
+  | Binary                      // opaque byte sequence ({0..255}*)
+
+// --- File content types (Level 1+4: Refinement x Coproduct) -----------
+// Model BOTH sides of the file I/O equation:
+//   Producer side: what files actually exist (content encoding)
+//   Consumer side: what operations require (TextFilePath vs FilePath)
+//
+// A FilePath names a location; its referent has a content encoding.
+// TextFilePath and BinaryFilePath are content-indexed refinements:
+//   [TextFilePath] < [FilePath]         (subset)
+//   [BinaryFilePath] < [FilePath]       (subset)
+//   [TextFilePath] intersect [BinaryFilePath] = {}   (disjoint via @content brand)
+//   [TextFilePath] | [BinaryFilePath] = [FilePath]  (exhaustive partition)
+//
+// Passing FilePath where TextFilePath is expected is a compile error:
+//   [FilePath] !<= [TextFilePath]  ->  "cannot prove content is text"
+// The developer must insert an explicit classification step.
+
+type TextFilePath   = FilePath where content(Text)
+type BinaryFilePath = FilePath where content(Binary)
+
+// What Filesystem.probe returns -- classifies a path's referent.
+// Now includes entry kind (regular file, directory, symlink, etc.)
+// and symlink target resolution. The encoding field is optional
+// because directories, missing paths, and special files have no encoding.
+type FileClassification {
+  path: FilePath
+  kind: EntryKind
+  encoding: ContentEncoding?     // null for dirs/missing/other
+  symlink_target: SymlinkTarget? // null unless kind = Symlink
+  size: Int
+  mime: MimeType?
+}
+
+type MimeType = String where pattern("^[a-z]+/[a-z0-9.+-]+$")
+
+// File type rules -- declarative extension-to-encoding mapping.
+// This is compile-time data the compiler uses for:
+//   1. Static narrowing: path literal "foo.rs" -> TextFilePath (from @file_types)
+//   2. Test fixture generation: diverse mock file lists across branches
+//   3. Default classification in dry-run mode (no filesystem access)
+//   4. Repo integration tests: expected binary/text file counts
+//
+// Defines the partitioning:  classify: [FilePath] -> TextFilePath | BinaryFilePath
+// file_types configuration removed (was annotation)
+
+// --- Auth types (Level 3+4: Product and Coproduct DAGs) ---------------
+// Records compile to Product nodes with parallel SubDag fields.
+// Sums compile to Coproduct nodes that branch on variant tag.
+
+// [AuthScheme] = {Bearer} | ({Header} x [String]) | ({Basic} x [String])
+// Sum type with payloads: tagged disjoint union.
+type AuthScheme
+  = Bearer
+  | Header { name: String }
+  | Basic { username: String }
+
+// [AccessToken] = [Secret] x [AuthScheme] x [String?]
+//               = [Secret] x [AuthScheme] x ([String] U {none})
+type AccessToken {
+  token: Secret
+  scheme: AuthScheme
+  expires_at: Timestamp?       // Level 5: Optional -- [Timestamp] U {none}
+}
+
+type CloudSecretConfig {
+  project_id: String
+  secret: String
+  version: String = "latest"
+  service_account: String?
+  audience: String = "sigstore"
+  scheme: AuthScheme = Bearer
+  header_name: String?
+  source_id: String
+  required_scopes: List<String>
+}
+
+type Credential {
+  token: Secret
+  scheme: AuthScheme
+  header_name: String?
+  source_id: String
+  required_scopes: List<String>
+  expires_in: Int?
+}
+
+// --- Handle types (branded wrappers for resource capabilities) --------
+
+type FilesystemHandle = FilePath where brand("FilesystemHandle")
+type NetworkHandle    = Unit where brand("NetworkHandle")
+type ToolHandle       = String where brand("ToolHandle")
+
+// --- Transport types (Level 3: Labeled Products) ----------------------
+
+type TransportRequest {
+  method: String
+  url: String
+  headers: Json
+  body: String
+}
+
+type TransportResponse {
+  status: Int
+  headers: Json
+  body: String
+}
+
+type FileResponse {
+  path: String
+  success: Bool
+  content: String
+}
+
+type ShellResponse {
+  exit_code: Int
+  stdout: String
+  stderr: String
+}
+
+type RestResponse {
+  status: Int
+  headers: Json
+  body: Json
+}
+
+type HttpResponse {
+  status: Int
+  headers: Json
+  body: String
+}
+
+type CliResult {
+  stdout: String
+  stderr: String
+  exit_code: Int
+}
+
+// --- Test / CI types (Level 3: Labeled Products) ----------------------
+
+type TestResult {
+  name: String
+  ok: Bool
+  stdout: String
+  stderr: String
+  duration_ms: Milliseconds
+}
+
+type Summary {
+  total: Int
+  passed: Int
+  failed: Int
+}
+
+type StageResult {
+  name: String
+  success: Bool
+  stdout: String
+  stderr: String
+  skipped: Bool
+}
+
+// --- Structured text rendering (EX-7) ----------------------------------
+// Document trees are built structurally, then rendered by shared helpers.
+
+type DocumentLine {
+  text: String
+  is_comment: Bool
+  is_blank: Bool
+}
+
+type DocumentSection {
+  title: String
+  has_title: Bool
+  lines: List<DocumentLine>
+}
+
+type Document {
+  header: String
+  has_header: Bool
+  comment_prefix: String
+  sections: List<DocumentSection>
+  trailing_newline: Bool
+}
+
+type TextFile {
+  path: String
+  document: Document
+}
+
+type RenderedTextFile {
+  path: String
+  content: String
+}
+
+// --- Tool registry (Level 3+6: Products with Collections) -------------
+
+type ToolEntry {
+  name: String
+  command: String
+  description: String?
+}
+
+type ToolRegistry {
+  tools: List<ToolEntry>
+}
+
+// --- Dag visualization (nested products + collections) ----------------
+
+// DAG: Product { nodes: Wrap(List) -> SubDag(TopologyNode), edges: ..., ... }
+// Set: [DagTopology] = (Union_n [TopologyNode]^n) x (Union_m [TopologyEdge]^m) x (Union_k [String]^k)
+type DagTopology {
+  nodes: List<TopologyNode>
+  edges: List<TopologyEdge>
+  subdag_boundaries: List<String>
+}
+
+type TopologyNode {
+  id: String
+  label: String
+  kind: TopologyNodeKind
+  parent: String?        // SubDag parent id
+}
+
+type TopologyEdge {
+  from: String
+  to: String
+  port: String?
+}
+
+type DagDiff {
+  added: List<String>
+  removed: List<String>
+  changed: List<String>
+}
+
+// --- Codegen (simple products) --------------------------------
+
+type CodegenTarget {
+  name: String
+  path: FilePath
+  backend: CodegenBackend?
+  target: TargetTriple?
+  runtime_env: ExecutionEnv?
+}
+
+type CodegenBackend = Rust | Go | C | Mips
+
+type PragmaDirective {
+  key: String
+  value: String
+  scope: String?
+}
+
+// Workflow/repo-specific types live in gunbc.workflow.types.
+
+// --- Docgen (product with refinement) ----------------------------------
+
+type DocSource {
+  path: FilePath
+  kind: DocSourceKind
+}

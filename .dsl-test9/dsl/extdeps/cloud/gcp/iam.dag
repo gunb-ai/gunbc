@@ -1,0 +1,161 @@
+// extdeps/cloud/gcp/iam.dag -- "What is GCP IAM?"
+//
+// IAM resource model: roles, bindings, policies, impersonation
+// chains, token lifetimes.
+//
+// Consumers:
+//   gunbc/auth/patterns.dag        -- credential_chain pattern
+//   gunbc/auth/patterns.dag        -- credential_chain pattern
+
+module extdeps.cloud.gcp.iam
+
+import extdeps.cloud.gcp.gcp { GcpServiceAccount, GcpProject }
+import std.errors { GcpErrorShape }
+
+// -- Roles ---------------------------------------------------------
+
+type GcpRole {
+  name: String
+  title: String
+  permissions: List<String>?
+  predefined: Bool
+}
+
+data common_roles: List<GcpRole> = [
+  { name: "roles/viewer", title: "Viewer", permissions: null, predefined: true },
+  { name: "roles/editor", title: "Editor", permissions: null, predefined: true },
+  { name: "roles/owner", title: "Owner", permissions: null, predefined: true },
+  { name: "roles/storage.objectViewer", title: "Storage Object Viewer", permissions: null, predefined: true },
+  { name: "roles/storage.objectAdmin", title: "Storage Object Admin", permissions: null, predefined: true },
+  { name: "roles/secretmanager.secretAccessor", title: "Secret Manager Secret Accessor", permissions: null, predefined: true },
+  { name: "roles/iam.serviceAccountTokenCreator", title: "Service Account Token Creator", permissions: null, predefined: true },
+  { name: "roles/run.invoker", title: "Cloud Run Invoker", permissions: null, predefined: true }
+]
+
+// -- Bindings & policies -------------------------------------------
+
+type IamCondition {
+  title: String
+  expression: String
+  description: String?
+}
+
+type GcpBinding {
+  role: String
+  members: List<String>
+  condition: IamCondition?
+}
+
+type GcpPolicy {
+  bindings: List<GcpBinding>
+  etag: String
+  version: Int
+}
+
+// -- Impersonation -------------------------------------------------
+
+type ImpersonationChain {
+  source: String
+  target: String
+  delegates: List<String>
+}
+
+// -- Token lifetimes -----------------------------------------------
+
+type TokenLifetime {
+  default_seconds: Int
+  max_seconds: Int
+}
+
+data default_token_lifetime: TokenLifetime = {
+  default_seconds: 3600,
+  max_seconds: 43200
+}
+
+// -- Service: REST transport wiring ------------------------------
+
+service gcp.IAM {
+  config {
+    endpoint: "https://iamcredentials.googleapis.com"
+    auth: BearerToken
+    auth_input: access_token
+    // GCP IAM Credentials rate limits: 60 requests/min per service account
+    rate_limit: { requests: 60, per: minute, scope: iam_credentials }
+    // Retry on quota exceeded and server errors with exponential backoff
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
+  }
+
+  operation GenerateAccessToken {
+    input {
+      access_token: Secret
+      target_sa: ServiceAccountEmail
+      lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
+    }
+    output {
+      access_token: Secret from "accessToken"
+      expire_time: String from "expireTime"
+    }
+    idempotent
+    transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
+    response {
+      200 => Json
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+    mock_response {
+      200 => { accessToken: "ya29.mock-impersonated-token", expireTime: "2026-01-01T01:00:00Z" } "Access token generated",
+      403 => { error: { code: 403, message: "Permission iam.serviceAccounts.getAccessToken denied", status: "PERMISSION_DENIED" } } "Permission denied",
+      404 => { error: { code: 404, message: "Service account not found", status: "NOT_FOUND" } } "SA not found"
+    }
+  }
+}
+
+service gcp.ResourceManager {
+  config { endpoint: "https://cloudresourcemanager.googleapis.com", auth: BearerToken, auth_input: access_token }
+
+  operation GetIamPolicy {
+    input { access_token: Secret, project_id: ProjectId }
+    output { bindings: Json, etag: String }
+    readonly
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+    mock_response {
+      200 => { bindings: [{ role: "roles/viewer", members: ["user:test@example.com"] }], etag: "BwXmock123=", version: 1 } "Policy retrieved",
+      403 => { error: { code: 403, message: "Permission denied on resource project", status: "PERMISSION_DENIED" } } "Permission denied"
+    }
+  }
+
+  operation SetIamPolicy {
+    input {
+      access_token: Secret
+      project_id: ProjectId
+      bindings: Json
+      etag: NonEmptyStr
+    }
+    output { ok: Bool }
+    transport rest { method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy" }
+    response {
+      200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      409 => GcpErrorShape
+      412 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+    mock_response {
+      200 => { bindings: [{ role: "roles/viewer", members: ["user:test@example.com"] }], etag: "BwXmock456=", version: 1 } "Policy updated",
+      403 => { error: { code: 403, message: "Permission denied", status: "PERMISSION_DENIED" } } "Permission denied",
+      409 => { error: { code: 409, message: "Etag mismatch", status: "ABORTED" } } "Concurrent modification"
+    }
+  }
+}

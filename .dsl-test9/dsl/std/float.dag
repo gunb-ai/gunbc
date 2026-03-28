@@ -1,0 +1,18 @@
+// std/float.dag -- Floating-point types as algebraic compositions.
+//
+// Float IS a Field over Word64. All ring operations plus division
+// emerge from the field structure. "Approximate" is honest — IEEE 754
+// rounding means associativity of add fails. The algebra captures
+// intent (field operations); the target language handles precision.
+
+module std.float
+
+import std.algebra { Field }
+import std.bit { Word32, Word64 }
+
+// IEEE 754 floating-point types: fields (ring + division)
+type Float32 = Field<Word32>
+type Float64 = Field<Word64>
+
+// Default alias
+type Float = Float64

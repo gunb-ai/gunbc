@@ -138,7 +138,7 @@ func metadata_oidc(audience: String) -> { token: Secret }
 
 // ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
 
-func local_auth() -> Secret
+func local_auth() -> { token: Secret }
   uses fs: Filesystem
 {
   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
@@ -149,6 +149,6 @@ func local_auth() -> Secret
 
   let adc_token = adc_refresh.access_token
   let gcloud_token = gcloud_auth.access_token
-  let result = if adc_path.value != None { adc_token } else { gcloud_token }
-  return result
+  let result_token = if adc_path.value != None { adc_token } else { gcloud_token }
+  return { token: result_token }
 }

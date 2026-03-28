@@ -1,0 +1,48 @@
+// extdeps/llm/core.dag -- "What is an LLM API?"
+//
+// Universal message protocol types shared across Anthropic, OpenAI,
+// and any future LLM provider. Covers the conversation primitive,
+// not provider-specific features.
+//
+// Complements extdeps/llm/pricing.dag (which covers model specs and pricing).
+//
+// Consumers:
+//   extdeps/llm/anthropic.dag -- Anthropic-specific content blocks, tools
+//   extdeps/llm/openai.dag    -- OpenAI-specific response formats, tool choice
+//   services/llm/*            -- transport wiring
+
+module extdeps.llm.llm
+
+// -- Message protocol ----------------------------------------------
+
+type Role = LlmSystem | LlmUser | LlmAssistant | LlmTool
+
+type LlmMessage {
+  role: Role
+  content: String
+}
+
+// -- Token accounting ----------------------------------------------
+
+type TokenUsage {
+  input_tokens: Int
+  output_tokens: Int
+  total_tokens: Int
+}
+
+// -- Stop reasons --------------------------------------------------
+
+type StopReason = EndTurn | MaxTokens | StopSequence | ToolUse
+
+// -- Streaming -----------------------------------------------------
+
+type StreamEvent
+  = StreamStart
+  | StreamDelta { text: String }
+  | StreamStop { reason: StopReason }
+
+// -- Defaults ------------------------------------------------------
+
+data default_temperature: Float = 1.0
+
+data default_max_tokens: Int = 4096

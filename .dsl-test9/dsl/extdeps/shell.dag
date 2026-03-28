@@ -1,0 +1,76 @@
+// extdeps/shell.dag -- Generic OS/POSIX shell utilities.
+//
+// Operations wrapping POSIX commands: find, which, env/printenv.
+// These are facts about the host OS, not about any specific
+// external service.
+//
+// Consumers:
+//   tools/bootstrap.dag     -- find directories
+//   tools/clippy.dag        -- which command
+//   tools/deps.dag          -- run install scripts, check commands
+
+module extdeps.shell
+
+import std.types { FilePath, NonEmptyStr }
+
+service shell.Find {
+  operation ListDirs {
+    input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
+    output { dirs: List<FilePath> }
+    readonly
+    transport shell { argv: ["find", "\{path\}", "-maxdepth", "\{max_depth\}", "-mindepth", "\{min_depth\}", "-type", "d"] }
+    exit {
+      0 => Unit
+      nonzero => String "Find command failed"
+    }
+  }
+}
+
+service shell.Env {
+  operation Get {
+    input { name: NonEmptyStr }
+    output { value: String? }
+    readonly
+    transport shell { argv: ["printenv", "\{name\}"] }
+    exit {
+      0 => Unit
+      1 => Unit "Variable not set"
+    }
+  }
+}
+
+service shell.Which {
+  operation Check {
+    input { command: NonEmptyStr }
+    output { exists: Bool, path: FilePath? }
+    readonly
+    transport shell { argv: ["which", "\{command\}"] }
+    exit {
+      0 => Unit "Command found"
+      1 => Unit "Command not found"
+    }
+  }
+}
+
+service shell.Exec {
+  operation Run {
+    input { script: String }
+    output { success: Bool, stdout: String, stderr: String }
+    transport shell { argv: ["sh", "-lc", "\{script\}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Script failed"
+    }
+  }
+
+  operation Check {
+    input { command: String }
+    output { exists: Bool }
+    readonly
+    transport shell { argv: ["sh", "-lc", "\{command\}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Command failed"
+    }
+  }
+}

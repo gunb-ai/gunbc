@@ -543,8 +543,39 @@ DSL files. Remaining ~3 diagnostics: enum variant as standalone value.
 
 **DSL compilation gate:** The compiler correctly fails closed — 0 files
 emitted when any diagnostic exists. The fix is to get diagnostics to 0,
-not to weaken the gate. Remaining diagnostics (~7-8) are in pattern
-composition generics and module-specific issues.
+not to weaken the gate. Remaining diagnostics (~1-3) are parser
+limitations (block/record disambiguation, generics on patterns).
+
+**Diagnostic quality: INSUFFICIENT.** Current diagnostics report:
+- What token was expected vs found ("expected LBrace, found KwElse")
+- A byte offset into the source (no file name, no line, no column)
+
+This is unusable for anyone except compiler developers with hex editors.
+Diagnostics must include at minimum:
+1. **File name** — which .dag file has the error
+2. **Line and column** — human-readable position
+3. **Source context** — the line of code with a caret pointing to the error
+4. **What construct was being parsed** — "while parsing if-expression"
+   or "while parsing match arm body"
+5. **Suggestion** — "did you mean `&&` instead of `and`?" or "record
+   literals in this position need a `let` binding"
+
+The goal: a user who has never seen the compiler internals can read
+the diagnostic and fix their code. "Expected LBrace, found KwElse at
+offset 4651" fails this test completely.
+
+**Implementation path:** The `SourceSpan { start, end }` already
+carries byte offsets. The missing pieces:
+- The span doesn't carry a file name (spans are per-file but the
+  diagnostic doesn't say which file)
+- The compiler doesn't convert byte offsets to line:column
+- No source-context rendering (show the line, underline the error)
+- No "while parsing X" context (the parser knows what it's parsing
+  but doesn't thread that into the diagnostic)
+
+This is foundational infrastructure — every other improvement (better
+parse errors, type mismatch messages, inference failure explanations)
+depends on the diagnostic rendering pipeline existing.
 
 **Known parser limitation:** Stage0 parser misreads `{ fn(name: val) }`
 as record literal (block/record disambiguation). Workaround: use match

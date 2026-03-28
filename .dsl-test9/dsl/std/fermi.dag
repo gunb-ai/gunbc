@@ -1,0 +1,84 @@
+// std/fermi.dag -- Fermi estimation: order-of-magnitude reasoning.
+//
+// Abstract vocabulary for magnitude bucketing. Used by:
+//   - Test classification (transport cost -> test tier)
+//   - Timeout estimation (magnitude -> milliseconds)
+//   - Scope estimation (design depth -> LOC/days)
+//   - Resource budgeting (cost -> CI budget gate)
+//
+// Follows the state_machines.dag pattern: type + ordinal fn + comparison fns.
+// No repo-specific policy here -- that lives in config/test_policy.dag.
+
+module std.fermi
+
+import std.types { FermiDepth, Milliseconds }
+
+// --- Ordinal mapping (like stage_ordinal in state_machines.dag) -----
+
+fn fermi_ordinal(depth: FermiDepth) -> Int {
+  match depth {
+    Xs => 0
+    S  => 1
+    M  => 2
+    L  => 3
+    Xl => 4
+  }
+}
+
+// --- Comparison fns -------------------------------------------------
+
+fn fermi_gt(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
+  fermi_ordinal(depth: lhs) > fermi_ordinal(depth: rhs)
+}
+
+fn fermi_gte(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
+  fermi_ordinal(depth: lhs) >= fermi_ordinal(depth: rhs)
+}
+
+fn fermi_eq(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
+  fermi_ordinal(depth: lhs) == fermi_ordinal(depth: rhs)
+}
+
+// --- Composition: max of two magnitudes (the "big-O" rule) ----------
+
+fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+  if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
+}
+
+// --- Composition: max over a list (transitive dominance) ------------
+
+fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
+  fold(depths, init: Xs, f: (acc, d) => fermi_max(lhs: acc, rhs: d))
+}
+
+// --- Guard: is depth within budget? ---------------------------------
+
+fn fermi_within_budget(depth: FermiDepth, budget: FermiDepth) -> Bool {
+  fermi_ordinal(depth: depth) <= fermi_ordinal(depth: budget)
+}
+
+// --- Timeout data (tautological facts, not policy) ------------------
+
+type FermiTimeout {
+  depth: FermiDepth
+  timeout_ms: Milliseconds
+  label: String
+}
+
+data fermi_timeouts: List<FermiTimeout> = [
+  FermiTimeout { depth: Xs, timeout_ms: 30000,    label: "30 seconds" },
+  FermiTimeout { depth: S,  timeout_ms: 300000,   label: "5 minutes" },
+  FermiTimeout { depth: M,  timeout_ms: 600000,   label: "10 minutes" },
+  FermiTimeout { depth: L,  timeout_ms: 1800000,  label: "30 minutes" },
+  FermiTimeout { depth: Xl, timeout_ms: 3600000,  label: "60 minutes" },
+]
+
+fn timeout_for_depth(depth: FermiDepth) -> Int {
+  match depth {
+    Xs => 30000
+    S  => 300000
+    M  => 600000
+    L  => 1800000
+    Xl => 3600000
+  }
+}

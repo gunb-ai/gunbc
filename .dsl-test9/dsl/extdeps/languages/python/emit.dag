@@ -1,0 +1,69 @@
+// extdeps/languages/python/emit.dag -- Python language facts for the v2 emitter.
+//
+// Single source of truth for Python-specific data consumed by the emitter.
+// No imports -- these are leaf data declarations.
+//
+// Ref: Python Language Reference (docs.python.org/3/reference)
+//      Python Standard Library (docs.python.org/3/library)
+//
+// Consumers:
+//   v2/05_emit.dag -- type mapping, keywords, container templates
+
+module extdeps.languages.python.emit
+
+// -- Type mapping --------------------------------------------------------
+// DAG abstract type -> Python concrete type.
+// Ref: Python Reference, Built-in Types
+data python_type_map: Map<String, String> = {
+  "String": "str", "Int": "int", "Float": "float", "Bool": "bool",
+  "Bytes": "bytes", "Unit": "None", "Secret": "str", "Json": "dict"
+}
+
+// -- Keyword/operator translation ----------------------------------------
+// DAG keywords/operators -> Python syntax.
+// Ref: Python Reference 6.10-6.12 "Comparisons", "Boolean operations"
+data python_keywords: Map<String, String> = {
+  "true": "True", "false": "False", "null": "None",
+  "and": "and", "or": "or", "not": "not ",
+  "div": "//"
+}
+
+// -- Container type templates --------------------------------------------
+// {0} = element type, {1} = second type (maps).
+// Ref: typing module (PEP 585)
+data python_container_templates: Map<String, String> = {
+  "list": "list[\{0\}]", "set": "set[\{0\}]",
+  "optional": "Optional[\{0\}]", "map": "dict[\{0\}, \{1\}]"
+}
+
+// -- Reserved words ------------------------------------------------------
+// Ref: Python Reference 2.3.1 Keywords
+data python_reserved: List<String> = [
+  "False", "None", "True", "and", "as", "assert", "async", "await",
+  "break", "class", "continue", "def", "del", "elif", "else",
+  "except", "finally", "for", "from", "global", "if", "import",
+  "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
+  "return", "try", "while", "with", "yield",
+  "type", "match", "case"
+]
+
+// -- Reserved word escape ------------------------------------------------
+// Ref: PEP 8 -- trailing underscore convention for keyword conflicts.
+// Mirrors python_reserved_words.strategy.suffix from std.languages.
+data python_reserved_escape_suffix: String = "_"
+
+// -- Type definitions ----------------------------------------------------
+// Ref: PEP 557 "Data Classes", PEP 484 "Type Hints"
+// Mirrors python_type_defs.derive_attribute from std.languages.
+data python_derive_attribute: String = "@dataclass"
+
+// -- Serialization -------------------------------------------------------
+// Ref: Python builtins
+// Mirrors python_serialization.default_value from std.languages.
+data python_default_value: String = "None"
+
+// -- Project scaffold ----------------------------------------------------
+// Ref: Python packaging conventions
+// Mirrors python_scaffold from std.languages.
+data python_source_extension: String = ".py"
+data python_module_init: String = "__init__.py"

@@ -1,0 +1,87 @@
+// std/errors.dag -- Canonical provider error-shape vocabulary.
+
+module std.errors
+
+type HttpErrorShape {
+  status: Int
+  error_type: String
+  message: String
+  detail: String?
+}
+
+type AuthError = Expired | InvalidToken | MissingCredential | InsufficientScope | Forbidden
+
+type RateLimitError {
+  retry_after_seconds: Int?
+  scope: String
+}
+
+type ConflictError {
+  resource: String
+  expected_version: String?
+  actual_version: String?
+}
+
+type ProviderError {
+  provider: String
+  operation: String
+  http_status: Int?
+  message: String
+}
+
+type GitHubErrorShape {
+  message: String
+  documentation_url: String?
+}
+
+type GcpErrorDetails {
+  code: Int
+  message: String
+  status: String?
+}
+
+type GcpErrorShape {
+  error: GcpErrorDetails
+}
+
+type AnthropicErrorDetails {
+  type: String
+  message: String
+}
+
+type AnthropicErrorShape {
+  type: String
+  error: AnthropicErrorDetails
+}
+
+type OpenAiErrorDetails {
+  message: String
+  type: String
+  param: String?
+  code: String?
+}
+
+type OpenAiErrorShape {
+  error: OpenAiErrorDetails
+}
+
+data github_error_example: GitHubErrorShape = {
+  message: "Not Found",
+  documentation_url: "https://docs.github.com/rest"
+}
+
+data gcp_error_example: GcpErrorShape = {
+  error: {
+    code: 403,
+    message: "Permission denied",
+    status: "PERMISSION_DENIED"
+  }
+}
+
+data anthropic_error_example: AnthropicErrorShape = {
+  type: "error",
+  error: {
+    type: "authentication_error",
+    message: "invalid x-api-key"
+  }
+}
