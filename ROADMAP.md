@@ -547,7 +547,15 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ## Current State (2026-03-28)
 
-**TOP PRIORITY: Diagnostic quality.** The DSL is unusable until
+**TOP PRIORITY: Compiler thesis inversion (~362 hardcoded name-based
+branches).** The compiler encodes knowledge as code branches instead of
+reading data. Three themes: (A) type/method dispatch by string
+comparison, (B) emission hardcodes target syntax instead of reading
+LanguageSpec, (C) testgen doesn't test compiler. See "Compiler
+structural audit" section below. Until this is fixed, every new type,
+method, or language target requires editing compiler source.
+
+**PRIORITY 2: Diagnostic quality.** The DSL is unusable until
 diagnostics include file name, line:column, source context, and
 actionable suggestions. See "Diagnostic quality" section below.
 
@@ -700,10 +708,11 @@ invariant violations — I (incomplete types ~32), II (error-as-name ~18),
 III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
 
 **Foundational directions for Phase 5 exit:**
+- **Compiler thesis inversion — TOP PRIORITY (~362 name-based branches)**
+- **Diagnostic quality — PRIORITY 2 (blocks DSL usability)**
 - **Stream 0 (compositional parser) — LANDED (PR #226)**
 - **Decidability (DAG-reducibility) — active**
 - **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
-- **Diagnostic quality — TOP PRIORITY (blocks DSL usability)**
 
 ---
 
