@@ -50,64 +50,16 @@ import v2.compiler.infer_types {
 // Method return type inference
 // =========================================================================
 
-fn infer_intrinsic_method_type_node(receiver_type: Node, intrinsic: IntrinsicMethod, fold_accumulator_type: Node?) -> Node? {
-  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
-  match intrinsic {
-    MethodMap => Some { value: receiver_type }
-    MethodFilter => Some { value: receiver_type }
-    MethodEnumerate => Some { value: container_node(kind_name: "List", element: tuple_node(first: int_type, second: elem_node)) }
-    MethodFirst => Some { value: with_optional_cardinality(n: elem_node) }
-    MethodLast => Some { value: with_optional_cardinality(n: elem_node) }
-    MethodCount => Some { value: int_type }
-    MethodJoin => Some { value: string_type }
-    MethodAny => Some { value: bool_type }
-    MethodAll => Some { value: bool_type }
-    MethodSplit => Some { value: container_node(kind_name: "List", element: string_type) }
-    MethodChars => Some { value: container_node(kind_name: "List", element: string_type) }
-    MethodFlatMap => Some { value: receiver_type }
-    MethodSkip => Some { value: receiver_type }
-    MethodTake => Some { value: receiver_type }
-    MethodFold => fold_accumulator_type
-    MethodSortBy => Some { value: receiver_type }
-    MethodAppend => Some { value: receiver_type }
-    MethodStringContains => Some { value: bool_type }
-    MethodConcat => Some { value: receiver_type }
-  }
-}
+// infer_intrinsic_method_type_node DELETED (2026-03-28).
+// Return types now come from algebra field + substitute_algebra_result
+// in resolve_known_method_node. The algebra registry provides base types;
+// substitute_algebra_result maps self_type→receiver_type and handles
+// Optional wrapping. refine_collection_result_type specializes polymorphic
+// cases (map, flat_map, fold) using typed callback args.
 
-fn infer_runtime_bridge_method_type_node(receiver_type: Node, method: RuntimeBridgeMethod) -> Node? {
-  let elem_node = method_receiver_element_node(receiver_type: receiver_type)
-  match method {
-    BridgeGet => Some { value: with_optional_cardinality(n: elem_node) }
-    BridgeWith => Some { value: receiver_type }
-    BridgeListPush => Some { value: receiver_type }
-    BridgeMapInsert => Some { value: receiver_type }
-    BridgeMapMerge => Some { value: receiver_type }
-    BridgeMapGet => Some { value: with_optional_cardinality(n: elem_node) }
-    BridgeMapHas => Some { value: bool_type }
-    BridgeEmitMapHas => Some { value: bool_type }
-    BridgeMapContainsKey => Some { value: bool_type }
-    BridgeContains => Some { value: bool_type }
-    BridgeMapValues => Some { value: container_node(kind_name: "List", element: elem_node) }
-    BridgeMapKeys => Some { value: container_node(kind_name: "List", element: string_type) }
-    BridgeCharAt => Some { value: string_type }
-    BridgeStringAt => Some { value: string_type }
-    BridgeStringLength => Some { value: int_type }
-    BridgeLength => Some { value: int_type }
-    BridgeStartsWith => Some { value: bool_type }
-    BridgeEndsWith => Some { value: bool_type }
-    BridgeToString => Some { value: string_type }
-    BridgeTrim => Some { value: string_type }
-    BridgeToLower => Some { value: string_type }
-    BridgeToUpper => Some { value: string_type }
-    BridgeReplace => Some { value: string_type }
-    BridgeSubstring => Some { value: string_type }
-    BridgeToInt => Some { value: int_type }
-    BridgeEmptyMap => Some { value: bare_map_node() }
-    BridgeLookup => Some { value: with_optional_cardinality(n: elem_node) }
-    BridgeReverse => Some { value: receiver_type }
-  }
-}
+// infer_runtime_bridge_method_type_node DELETED (2026-03-28).
+// Same as infer_intrinsic_method_type_node — replaced by algebra field
+// return types + substitute_algebra_result.
 
 // =========================================================================
 // Builtin call type inference
