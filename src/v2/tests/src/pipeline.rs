@@ -475,7 +475,7 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
 //
 // These tests verify that inference is name-opaque: replacing all user-defined
 // type names with arbitrary strings produces identical structural decisions
-// (typed graph shape, connective, cardinality, collection_kind, expr_data).
+// (typed graph shape, connective, cardinality, expr_data).
 //
 // Implementation: compile both variants with RenderTarget::Dag to get the
 // full typed graph as JSON, then normalize names and strip spans before
