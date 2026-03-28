@@ -65,6 +65,11 @@ node_modules/
 # Temporary agent worktrees; not project state
 .claude/worktrees/
 
+# --- Stage0 regeneration temp dirs ---
+# Created by scripts/regenerate-stage0.sh; cleaned up on exit
+.regen-sources/
+.regen-output/
+
 # --- Interactive auth/session transcripts ---
 # Should never be committed; may contain OAuth URLs or session state
 out.txt
