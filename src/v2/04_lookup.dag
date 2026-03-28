@@ -15,14 +15,14 @@ import v2.std.core {
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   IntrinsicMethod,
-  MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
   RuntimeBridgeMethod,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
   leaf_node, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, MapKind,
+  CollectionKind, MapKind, NoCollection,
   CardOptional
 }
 import v2.compiler.infer_types {
@@ -267,16 +267,23 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   // Tier 0: Structural field lookup on the resolved type.
   // If the receiver's type declaration has a field matching the method name
   // (e.g., OrderedRing<T>.add), use its signature directly.
-  // Populate semantics from Tier 2/3 classifiers so emit can still dispatch
-  // on method_semantics for target-specific rendering patterns.
+  // Only backfill intrinsic/bridge semantics for collection types (have
+  // collection_kind) — user-defined types with colliding method names
+  // (e.g., MyThing.count) get PlainMethodSemantics so emit renders them
+  // as plain recv.method(args), not legacy bridge helpers.
   match lookup_structural_method(receiver_type: receiver_type, method_name: method_name) {
     Some { value: result_type } =>
-      let tier0_semantics = match classify_reconciled_intrinsic_method(method: method_name) {
-        Some { value: intrinsic } => Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } }
-        None => match classify_runtime_bridge_method(method: method_name) {
-          Some { value: bridge_method } => Some { value: RuntimeBridgeSemantics { method: bridge_method } }
-          None => none
+      let is_collection = receiver_type.collection_kind != NoCollection
+      let tier0_semantics = if is_collection {
+        match classify_reconciled_intrinsic_method(method: method_name) {
+          Some { value: intrinsic } => Some { value: IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } }
+          None => match classify_runtime_bridge_method(method: method_name) {
+            Some { value: bridge_method } => Some { value: RuntimeBridgeSemantics { method: bridge_method } }
+            None => Some { value: PlainMethodSemantics }
+          }
         }
+      } else {
+        Some { value: PlainMethodSemantics }
       }
       KnownMethodResolution {
         semantics: tier0_semantics,

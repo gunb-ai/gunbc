@@ -1221,3 +1221,32 @@ fn all_vals(m: Map<String, Int>) -> List<Int> { m |> values }
         msgs,
     );
 }
+
+#[test]
+fn structural_method_colliding_name_no_bridge() {
+    // Regression: a user-defined type with a method named "count" or "has"
+    // must NOT be tagged with IntrinsicMethodSemantics. It should get
+    // PlainMethodSemantics so emit renders it as recv.method(args).
+    let source = r#"module test
+
+type Counter {
+  count: fn() -> Int
+  has: fn(String) -> Bool
+}
+
+fn get_count(c: Counter) -> Int {
+  c.count
+}
+
+fn check_has(c: Counter) -> Bool {
+  c.has("key")
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "user-defined structural methods with colliding names should compile, got: {:?}",
+        msgs,
+    );
+}

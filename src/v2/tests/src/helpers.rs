@@ -123,8 +123,8 @@ fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
     let content = std::fs::read_to_string(path).ok()?;
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("module ") {
-            return Some(trimmed["module ".len()..].trim().to_string());
+        if let Some(rest) = trimmed.strip_prefix("module ") {
+            return Some(rest.trim().to_string());
         }
         // Skip comments and blank lines
         if !trimmed.is_empty() && !trimmed.starts_with("//") {
@@ -139,10 +139,10 @@ fn extract_imports(source: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("import ") {
+        if let Some(rest) = trimmed.strip_prefix("import ") {
             // import std.types { ... } → extract "std.types"
-            let rest = trimmed["import ".len()..].trim();
-            if let Some(space_pos) = rest.find(|c: char| c == ' ' || c == '{') {
+            let rest = rest.trim();
+            if let Some(space_pos) = rest.find([' ', '{']) {
                 imports.push(rest[..space_pos].trim().to_string());
             }
         }
@@ -163,7 +163,7 @@ fn resolve_imports_transitively(
     // Seed with the entry
     queue.push((entry_path.to_string(), entry_content.to_string()));
 
-    while let Some((path, content)) = queue.pop() {
+    while let Some((_path, content)) = queue.pop() {
         let imports = extract_imports(&content);
         for module_path in imports {
             if seen.contains_key(&module_path) {
