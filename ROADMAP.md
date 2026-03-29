@@ -489,37 +489,43 @@ get(s, i)       // List:  indexed access  → compiler selects array
 append(s, x)    // List:  add at tail     → compiler selects array
 ```
 
-### How representation inference works
+### How representation falls out of the operations
 
-The compiler analyzes which operations are used on each `Seq<T>` binding
-(the same way fan-out analysis counts uses per binding). The access
-pattern determines the representation:
+There is no inference pass, no solver, no heuristic. The operations
+themselves ARE the representation. Each operation belongs to exactly
+one access discipline, and each discipline has exactly one
+representation. The mapping is a static table, not a computation:
 
-| Operations used | Inferred representation | Cost guarantee |
-|---|---|---|
-| push, pop, peek only | Cons list | O(1) push/pop |
-| append, get only | Array (Vec) | O(1) append/index |
-| enqueue, dequeue only | Ring buffer or two-stack queue | O(1) amortized both |
-| push + get (mixed) | Array with O(n) push, or conversion at boundary | Compiler warns on mixed-cost |
-| All operations | Finger tree (or explicit conversion points) | O(log n) amortized |
+| Operation | Discipline | Representation | Cost |
+|---|---|---|---|
+| `push`, `pop`, `peek` | LIFO | Cons list | O(1) |
+| `append`, `get` | Indexed | Array (Vec) | O(1) |
+| `enqueue`, `dequeue` | FIFO | Two-stack queue | O(1) amortized |
 
-This is the same principle as fan-out → clone/move: the compiler reads
-a syntactic property of the binding (which operations appear in its
-scope) and makes a rendering decision. No developer annotation needed.
+The compiler does not "analyze" or "choose." It reads the operation
+and looks up the representation. This is the same as how `Conj` means
+product and `Disj` means coproduct — no analysis, just a definition.
 
-### Mixed access and conversion boundaries
+**Mixed access is a type error, not an optimization problem.** If a
+binding uses `push` (LIFO) and `get(i)` (indexed) on the same value,
+that's two incompatible disciplines. The fix is not a hybrid structure
+— it's an explicit conversion at the boundary:
 
-When a binding uses operations from different cost classes (e.g., stack
-push + indexed get), the compiler has two options:
+```dag
+let stack = push(push(Empty, 1), 2)  // cons list
+let list = to_list(stack)             // O(n) conversion, once
+let x = get(list, 0)                 // array access
+```
 
-1. **Select a hybrid structure** (finger tree) that handles both
-   acceptably (O(log n) amortized).
-2. **Insert a conversion** at the boundary where the access pattern
-   changes — analogous to `.clone()` at fan-out boundaries. The
-   conversion is O(n) but happens once, not per-operation.
+The conversion is explicit in the source, visible to the cost algebra,
+and O(n) exactly once. No hidden costs. No compiler magic. The
+developer writes the conversion; the compiler renders it.
 
-The cost algebra models both: option (1) introduces `CostLog` terms;
-option (2) introduces a one-time O(n) conversion cost.
+This is the same principle as the decidability design: correctness
+falls out of the structure, not from validation. A `push` on an
+array-backed value is not "detected and warned about" — it doesn't
+exist as a concept. `push` means cons list. If you want array
+semantics, use `append`.
 
 ### Relationship to existing work
 
