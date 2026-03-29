@@ -60,7 +60,7 @@ use crate::v2_std_core::RuntimeBridgeMethod::*;
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, error_type_node, node_is_optional, node_is_map, normalize_access_type_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
-pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index};
+pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node};
 pub use crate::v2_compiler_infer_types::{method_receiver_element_node};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult, check_service_method_call_node};
@@ -294,14 +294,22 @@ pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>,
             Some(fat) => fat.clone(),
             None => result_type.clone(),
         }
-    } else if (result_type.name.clone() == receiver_type.name.clone()) && result_type.children.is_empty() {
-        // Same collection type with no specific children: use concrete receiver
-        // (e.g., algebra says "returns List", receiver is List<Node> → use List<Node>)
-        receiver_type.clone()
     } else if (result_type.name.clone() == receiver_type.name.clone()) {
-        // Same collection name but result already has specific children
-        // (e.g., enumerate returns List<Tuple<Int, Elem>> — keep the Tuple wrapping)
-        result_type.clone()
+        // BOOTSTRAP GAP: This branch replaces the result with the receiver
+        // when both have the same collection name (e.g., both "List").
+        // This is correct for filter/map/skip/take (where result IS the
+        // receiver already) but WRONG for enumerate (which wraps elements
+        // in Tuple<Int, Elem>, changing the inner structure).
+        //
+        // The fix needs to detect when the result's inner structure differs
+        // from the receiver's (enumerate: first child is "Tuple" vs element
+        // type). See ROADMAP "Design Direction: Bootstrap Sustainability"
+        // for the detailed fix plan with all method cases enumerated.
+        //
+        // Until fixed, .dag code using `pair.first`/`pair.second` on
+        // enumerate results will produce "no field 'first' on type X"
+        // diagnostics, blocking regeneration (20 diagnostics).
+        receiver_type.clone()
     } else if (matches!(result_type.return_cardinality.clone(), Cardinality::CardOptional)) {
         let inner = with_required_cardinality(result_type.clone());
         let elem = method_receiver_element_node(receiver_type.clone());
@@ -335,11 +343,33 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
                     None => Rc::new(MethodSemantics::PlainMethodSemantics),
                 },
             };
-            let resolved_type = substitute_algebra_result(
-                result_type.clone(),
-                receiver_type.clone(),
-                fold_accumulator_type.clone(),
-            );
+            // BOOTSTRAP FIX: Use intrinsic/bridge return type functions when
+            // the method is known. This avoids substitute_algebra_result's
+            // name-matching heuristic (line 297) which is wrong for enumerate
+            // (loses Tuple<Int, Elem> wrapping because both sides are "List").
+            let resolved_type = match intrinsic_match.clone() {
+                Some(intrinsic) => match infer_intrinsic_method_type_node(
+                    receiver_type.clone(), intrinsic.clone(), fold_accumulator_type.clone(),
+                ) {
+                    Some(rt) => rt,
+                    None => substitute_algebra_result(
+                        result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone(),
+                    ),
+                },
+                None => match bridge_match.clone() {
+                    Some(bridge) => match infer_runtime_bridge_method_type_node(
+                        receiver_type.clone(), bridge.clone(),
+                    ) {
+                        Some(rt) => rt,
+                        None => substitute_algebra_result(
+                            result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone(),
+                        ),
+                    },
+                    None => substitute_algebra_result(
+                        result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone(),
+                    ),
+                },
+            };
             Rc::new(KnownMethodResolution {
                 semantics: Some(semantics),
                 result_type: Some(resolved_type),

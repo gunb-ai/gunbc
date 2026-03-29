@@ -16,6 +16,52 @@ position, value/expression position, pattern position, and binding-site
 descriptor are operational roles in the pipeline, not separate
 ontological categories of node.
 
+### Priority Zero: Eliminate the Stage0 Dual Representation
+
+**Problem:** The .dag source and the stage0 .rs files are two
+representations of the same compiler. Every manual edit to stage0 .rs
+is a divergence from .dag source — a dual representation that violates
+the single-source-of-truth invariant. This session proved the cost:
+changing the container template (one line in an extdep) silently broke
+34 emission sites and the entire runtime, producing 1000+ errors that
+required hours of manual debugging.
+
+**Root cause:** The container template, the emitter patterns, and the
+runtime function signatures are three independent declarations of the
+same fact: "how collections are represented in Rust." They can diverge
+because nothing structurally couples them.
+
+**The fix: derive everything from the container template.**
+
+The container template (`dsl/extdeps/languages/rust/emit.dag`) is the
+single source of truth for collection representation. Two things must
+be derived from it, not independently declared:
+
+1. **The runtime** (`runtime_rust.dag`): function signatures like
+   `list_push(???, T) -> ???` where `???` is the template's list type.
+   Currently hardcoded as both bare and Rc variants independently.
+
+2. **The emitter patterns** (`05_emit_rust.dag`): init, iteration,
+   mutation, data def rendering. Currently 34 sites with hardcoded
+   strings like `"Rc::new(Vec::new())"`.
+
+Both must read the template and derive their output. When the template
+changes, the runtime and emitter change automatically — not because
+someone remembered to update them, but because they are computed from
+the template. Forgetting to pass the template is a compile error in
+the .dag source.
+
+**After this fix:**
+- `regenerate-stage0.sh` is a single reliable command
+- Changing a container template requires zero manual stage0 edits
+- The .dag source is the only representation; stage0 .rs is a derived
+  artifact that is never manually edited
+
+**Scope:** ~80 lines of type definition + data declaration, ~34 site
+changes in the emitter (mechanical template application), one
+`runtime_rust.dag` rewrite to derive from the template. One bootstrap
+dual-patch, after which dual-patching is never needed again.
+
 ### Three Structural Principles
 
 These principles refine the thesis based on root-cause analysis of the
@@ -842,6 +888,378 @@ Fix direction: golden-output tests, cross-language parity.
 ---
 
 ## Backlog: review.dag → Binary
+
+Deferred pipeline. Not the current architectural priority (Stream 0
+parse-emit symmetry takes precedence). When revisited: Stage 1 parser
+(3 remaining diagnostics) → Stage 2 Rust codegen (~280 errors) →
+Stage 3 domain wiring → Stage 4 feature parity with shell runtime.
+See git history for full stage breakdown.
+
+---
+
+## Design Direction: Bootstrap Sustainability
+
+**Problem (2026-03-28):** Stage0 regeneration was blocked by a cascade
+of issues: manual file list assembly, stale imports, syntax type
+conflicts, and a type inference bug in `substitute_algebra_result`.
+Each fix attempt took ~5 minutes (260s compile) and each "fix" broke
+other method return types. The bootstrap process violated 4 invariants:
+duplicate representations, parallel implementations, fabrication
+fallbacks, and heuristic file assembly.
+
+**Root cause:** The compiler didn't own its source resolution. The
+caller (regen script) guessed which files to include. When the guess
+was wrong, compilation failed. This is FF-9.
+
+### What was fixed (this session)
+
+**FF-9 (import-driven source resolution):** The stage0 binary now takes
+`--source-root` paths and transitively resolves imports. No manual file
+lists. The regen script is now:
+```bash
+v2-compiler compile --source-root src/v2 --source-root dsl --output-dir stage0
+```
+
+### What remains (bootstrap gap)
+
+20 diagnostics from `substitute_algebra_result` in stage0's method
+return type inference. The function replaces a method's return type with
+the receiver's concrete type when both have the same collection name
+(e.g., both named "List"). This loses transformations like `enumerate`
+which wraps elements in `Tuple<Int, Elem>`.
+
+**The specific bug:** `enumerate` on `List<Node>` returns
+`List<Tuple<Int, Node>>`. `substitute_algebra_result` sees
+`result.name == "List" == receiver.name` and replaces result with
+receiver → `List<Node>`. The Tuple wrapping is lost. Downstream code
+does `pair.first` / `pair.second` on what it expects is a Tuple, but
+the compiler sees `Node` → diagnostic.
+
+**Why naive fixes fail:** The function is load-bearing for ALL method
+return types. Filter, map, flatMap, skip, take all rely on the "same
+name → use receiver" logic to propagate concrete element types from
+the receiver. Any fix that changes this logic for enumerate breaks
+other methods.
+
+**The correct fix (for next session):**
+
+1. Trace ALL callers of `substitute_algebra_result` and document what
+   each method expects:
+   - `filter/map/flatMap/skip/take`: result IS `receiver_type.clone()`
+     already — substitution is a no-op (these never hit the name check)
+   - `enumerate`: result is `List<Tuple<Int, Elem>>` — name matches
+     receiver but MUST NOT be substituted
+   - `fold`: handled by the fold_accumulator_type check (correct)
+   - `first/last`: result is `Optional<Elem>` — different name, not
+     substituted (correct)
+   - `count/join/any/all`: result is leaf type — different name (correct)
+
+2. The discriminant is: does the result's FIRST CHILD differ from the
+   receiver's first child? For enumerate, result first child is "Tuple"
+   but receiver's is "Node" (or whatever the element type is). For
+   filter, result IS receiver — children are identical.
+
+3. Apply the fix only when `result.children[0].name != receiver.children[0].name`
+   AND both have children. This preserves all existing behavior except
+   for enumerate's Tuple wrapping.
+
+4. Also address the 2 `variant 'Some'/'None' not found in type 'Map'`
+   diagnostics in `04_resolve.dag` — likely a similar inference gap
+   where a `lookup` result is typed as Map instead of Optional.
+
+### What was fixed (2026-03-29 session)
+
+**Enumerate inference:** Bypassed `substitute_algebra_result`'s name-matching
+heuristic by using `infer_intrinsic_method_type_node` for known methods.
+Verified by `enumerate_returns_tuple_type` test.
+
+**O(n^2) memory (17GB to 103MB):** Two root causes:
+- `typecheck_modules` TCO loop cloned every accumulator per iteration
+- `build_complexity_report` cloned func_index HashMap per function
+Fix: in-place mutation loop + GUNBC_SKIP_COMPLEXITY short-circuit.
+
+**Self-compile diagnostics (14 to 0):** Fixed bare function calls
+(`get(tokens, pos)` to `tokens |> skip(pos) |> first`) and method
+syntax for bridge methods.
+
+**Self-compile now works:** 0 diagnostics, 40 files, 103MB, ~30s.
+
+### Current blocker: FF-8 container transition
+
+The emitter generates Rc-wrapped Rust (`Rc<Vec<T>>`, `Rc<HashMap<K,V>>`)
+but ~30 emission sites hardcode container patterns independently:
+`Rc::new(Vec::new())`, `.iter().cloned()`, `Rc::make_mut`, `lazy_static`.
+When the container template changes, these break silently. Result: 1000+
+compile errors in regenerated output.
+
+**Root cause:** Container-representation-specific patterns are scattered
+across the emitter as string literals. They are decoupled from the
+container template that defines the representation.
+
+### Structural fix: ContainerOps
+
+**Principle:** The container template is the single source of truth.
+All rendering patterns are derived from it, not hardcoded.
+
+**Design:** Define a `ContainerOps` data type in `languages.dag` with
+fields for every container rendering pattern:
+
+```
+type ContainerOps {
+  list_empty: String        // "Rc::new(Vec::new())"
+  list_literal: String      // "Rc::new(vec![{0}])"
+  list_iterate: String      // "{0}.iter().cloned()"
+  list_collect: String      // "Rc::new({0}.collect::<Vec<_>>())"
+  list_push_mut: String     // "Rc::make_mut(&mut {0}).push({1})"
+  list_extend_mut: String   // "Rc::make_mut(&mut {0}).extend({1})"
+  list_sort_mut: String     // "Rc::make_mut(&mut {0}).sort_by({1})"
+  map_empty: String         // "Rc::new(HashMap::new())"
+  map_bare_new: String      // "HashMap::new()" (for builders)
+  map_wrap: String           // "Rc::new({0})"
+  rt_list_push: String      // "v2_rt::list_push"
+  rt_map_insert: String     // "v2_rt::map_insert"
+  rt_map_merge: String      // "v2_rt::map_merge"
+  struct_wrap: String       // "Rc::new({0})"
+  struct_spread: String     // "(*{0}).clone()"
+  data_def_style: String    // "function" (not "lazy_static" — Rc isn't Sync)
+}
+```
+
+Concrete values live in `dsl/extdeps/languages/rust/emit.dag` next to
+the container templates. The emitter reads ContainerOps once and threads
+it through all emission functions. Each of the ~34 hardcoded sites becomes
+a template application: `apply_template(cops.list_push_mut, var, value)`.
+
+**Three layers of protection:**
+1. **Construction:** ContainerOps API functions -- emission sites call
+   `container_empty_list(cops)` not `concat("Rc::new(Vec::new())")`.
+   Missing function = compile error.
+2. **Validation:** Ratchet test greps emitter source for hardcoded
+   container strings (`Rc::new(Vec`, `Rc::make_mut`, `.iter().cloned()`).
+   Any outside ContainerOps definition = test failure.
+3. **Enforcement:** `regenerate-stage0.sh` + `cargo check` in CI.
+   Structural breakage is caught at commit time, not debugging time.
+
+**Bootstrap:** First regen requires dual-patching (~80 lines across 2
+stage0 .rs files). After that, ContainerOps is in the generated code
+and all future template changes propagate automatically.
+
+### Long-term: eliminate the bootstrap gap structurally
+
+Once stage0 is regenerated successfully:
+
+1. **Committed binary approach (#21):** Commit the regenerated stage0
+   source. CI verifies: regenerate → diff → must be empty.
+2. **Diagnostic ratchet at 0:** Any .dag source change that introduces
+   a diagnostic blocks the commit.
+3. **FF-9 everywhere:** Tests, regen, and production all use the same
+   import-driven resolution. No parallel file list implementations.
+4. **Self-compile performance gate:** Self-compile < 30s at 103MB,
+   enabling fast iteration on future bootstrap issues.
+
+---
+
+## Current State (2026-03-28)
+
+**TOP PRIORITY: Compiler thesis inversion (~362 hardcoded name-based
+branches).** The compiler encodes knowledge as code branches instead of
+reading data. Three themes: (A) type/method dispatch by string
+comparison, (B) emission hardcodes target syntax instead of reading
+LanguageSpec, (C) testgen doesn't test compiler. See "Compiler
+structural audit" section below. **Fix direction: Boundary Sufficiency
+(BS-1 through BS-4).** The data already exists (LanguageSpec is fully
+populated, algebra products are correct); stages bypass it. See
+"Design Direction: Boundary Sufficiency" for the 4-gap analysis and
+execution phases.
+
+**PRIORITY 2: Diagnostic quality.** The DSL is unusable until
+diagnostics include file name, line:column, source context, and
+actionable suggestions. See "Diagnostic quality" section below.
+
+**Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
+landed (PR #226).**
+
+**Stream 0 complete (2026-03-28, PR #226).** `SyntaxSpec` type landed
+in `languages.dag`. Item dispatch, operator precedence, and literal
+keywords are all spec-driven. `parse_item` has 0 keyword match arms.
+30+ `ShKw*` variants consolidated to single `ShKeyword`. 70+ keyword
+predicates deleted. Net -170 lines.
+
+
+**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Stage0
+binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
+151 fast tests pass, clippy clean. Self-compile time: ~260s (FF-8).
+
+**Verification ratchets (Lane A complete, PR #227):**
+- Diagnostic ratchet: 0 (passes)
+- Emitted Rust error ratchet: 589 errors (down from 872)
+- L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
+- Keyword arm count: 9 (exact match)
+- Complexity ratchet: 2 violations (pre-existing)
+
+**Codegen audit (2026-03-28): 589 Rust errors, 9 categories.**
+Prior fixes (PR #229) were partial -- serde removed from NonEmpty
+wrappers but `impl Deserialize` still emitted without `use` imports;
+generics fixed for some types but `FreeMonoid<T>` etc. still emit `T`
+undeclared. Full breakdown:
+
+| Category | Count | Root cause |
+|----------|------:|------------|
+| Deserialize trait not found | 316 | Emitter generates `impl Deserialize` but doesn't add `use serde::Deserialize;` at module top |
+| Type param `T` not found | 122 | Generic types like `FreeMonoid<T>` emit `T` without declaring it as a type parameter |
+| `Bool` type not found | 40 | `.dag` `Bool` to Rust should be `bool` (primitive lowering) |
+| Service vars not in scope | ~20 | `github_pulls`, `shell_exec`, `cron_tab` etc. -- service instances not instantiated |
+| `await` outside async | 17 | `func` should emit `async fn` but emits sync `fn` |
+| `free_monoid` type not found | 12 | `FreeMonoid<T>` not lowered to `Vec<T>` |
+| `Callable` type not found | 9 | `fn(T) -> U` type syntax not mapped to Rust `Fn` trait |
+| String escape `\{ \}` | 6 | Literal brace escapes in strings not handled |
+| Missing mock data | 6 | Dry-run mode references missing mock responses |
+| Other | ~41 | Missing values/imports, trait resolution |
+
+Top 5 by impact (fixing these clears ~95%):
+1. **Deserialize `use` statement** (316) -- add `use serde::Deserialize;` to every module that has `impl Deserialize`
+2. **Generic type params** (122) -- `FreeMonoid<T>`, `PartialFunction<K,V>` need actual generic `struct` declarations with `<T>`, `<K,V>`
+3. **`Bool` to `bool`** (40) -- primitive type lowering
+4. **`async fn`** (17) -- `func` should emit `async fn`; service instances should be passed as params or constructed
+5. **`FreeMonoid` to `Vec`** (12) -- algebraic types should lower to Rust stdlib types
+
+**Python codegen has the same structural issues** (match syntax,
+statement/expression confusion, async). Both backends need the same
+set of fixes in the emit pipeline -- the root cause is shared emit
+not reading enough from `LanguageSpec`.
+
+**DSL compilation:** 78 files, 0 diagnostics, 94 files emitted (PR #228).
+Compiler correctly fails closed (0 files emitted when any diagnostic exists).
+
+**Known compiler invariant violations (worked around in DSL, must fix):**
+
+Three structural bugs in the compiler forced DSL workarounds to reach 0
+diagnostics. Each violates a core invariant. All workarounds are marked
+in the DSL source with comments explaining what they work around.
+
+| Bug | Invariant violated | Workaround | Files affected |
+|-----|--------------------|------------|----------------|
+| **`uses` variables not bound in scope.** Compiler parses `uses fs: Filesystem` and collects resource names for metadata, but never adds them to `scope.locals` during inference. Any pattern/func body that references `fs.read()`, `fs.probe()`, `fs.write()` fails with "undefined variable 'fs'". | Resources declared in `uses` clauses must be available as typed variables in the body scope. | Commented out 4 pattern bodies in `std.patterns` and 1 func body in `tools.codegen`. | `v2_compiler_infer.rs` — scope construction for func/pattern items |
+| **Optional exhaustiveness hardcodes `Some`/`None`.** When matching on `T?`, the checker uses `vec!["Some", "None"]` as the variant names. Inner type variants (`TargetDir`, `Broken`, etc.) don't satisfy it. `null` keyword also doesn't satisfy it. Only a wildcard `_` or bind pattern bypasses the check. | Exhaustiveness checking must recognize the scrutinee's inner type variants when matching through an optional wrapper. | Added `_` wildcard arms in `std.filesystem` `skip_reason`. | `v2_compiler_infer_patterns.rs:264-265` |
+| **Single-variant enums parsed as type aliases.** `type X = Y` where Y is a new variant name is treated as a type alias (lookup of existing type Y), not a one-variant enum definition. Fails with "unresolved type 'Y'". | `type X = Y` must define a one-variant coproduct, not alias an existing type. Parser/resolver must distinguish variant introduction from type reference. | Changed `StsGrantType = TokenExchange` to `String`. `CacheControl = Ephemeral` fixed on main (PR #229) similarly. | Parser or `v2_compiler_infer_env.rs` — type definition processing |
+
+Additional workarounds applied (not compiler bugs, parser limitations):
+- `local_auth()` commented out: parser doesn't support `if/else` as inline expression (`expected LBrace, found KwElse`).
+- `scheme: AuthScheme = Bearer` changed to `String = "Bearer"`: compiler expects CLI parameter defaults to be string literals, not enum constructors.
+- `char_display_width` restructured: ownership checker flags enum constructors used in multiple return paths as "2 consumers" (false positive on constructors vs bindings).
+
+**Compiler structural audit (2026-03-28): ~362 hardcoded name-based branches.**
+
+The compiler encodes knowledge as code branches rather than as data it
+reads. This inverts the project thesis ("smart facts, dumb compiler").
+Three themes, all rooted in the same cause: the compiler "knows" names.
+
+**Theme A: Type/method dispatch is name-based (~177 sites).**
+
+`infer_types.rs` has an `if/else` chain checking `"Int"`, `"Float"`,
+`"Bool"`, `"String"`, `"List"`, `"Map"`, `"Callable"` — each branch
+injects algebra methods. `infer_method.rs` has a 56-branch `if/else`
+chain dispatching on method name strings (`"fold"`, `"map"`, `"count"`,
+`"join"`, etc.). This is why `sum` and `repeat` were missing — adding a
+method means editing compiler source. 107 hardcoded type-name
+comparisons, 70 method-name comparisons.
+
+| File | Type-name checks | Method-name checks | Total |
+|------|------------------|--------------------|-------|
+| `v2_compiler_infer_method.rs` | 0 | 56 | 56 |
+| `v2_compiler_infer_types.rs` | 27 | 0 | 27 |
+| `v2_compiler_infer.rs` | 7 | 10 | 17 |
+| Other (5 files) | 5 | 4 | 9 |
+
+**Invariant violated:** Types and methods should be defined in `.dag`
+data declarations and resolved structurally. The compiler should read
+the algebra registry, not contain it.
+
+**Fix direction:** The algebra registry (`std.algebra`) already exists
+in the DSL. The compiler should load it at startup and use it for method
+resolution, replacing the `if/else` chains. This is a data-loading
+change, not an architecture change.
+
+**Theme B: Emission hardcodes target-language syntax (~57 sites).**
+
+`v2_compiler_emit.rs` contains `"let "`, `"vec![]"`,
+`.unwrap_or_else(|| ...)`, `"compile_error!()"`, `"|x| "` (lambda
+syntax) — all hardcoded per `RenderTarget`. The `LanguageSpec` type
+exists and the language extdep data files already provide type maps and
+container templates, but the emitter bypasses them for ~57 constructs.
+
+Missing from `LanguageSpec` (11 fields needed):
+
+| Missing field | Currently hardcoded as |
+|---------------|----------------------|
+| `statement_terminator` | `";"` (Rust), `""` (Python/Go) |
+| `variable_declaration_keyword` | `"let "` (Rust), `""` (Python/Go) |
+| `assignment_operator` | `" = "` (Rust/Python), `" := "` (Go) |
+| `lambda_syntax` | `"\|x\| "` (Rust), `"lambda x: "` (Python), `"func(x) { }"` (Go) |
+| `callable_type_template` | `"Rc<dyn Fn(...)>"` (Rust), `"Callable[...]"` (Python) |
+| `error_expression` | `"compile_error!()"` (Rust), `"raise RuntimeError()"` (Python) |
+| `null_coalesce` | `.unwrap_or_else(...)` (Rust), `"or"` (Python) |
+| `string_interpolation` | `format!(...)` (Rust), `f"..."` (Python), `fmt.Sprintf(...)` (Go) |
+| `container_bracket` | `"<>"` (Rust/Go), `"[]"` (Python) |
+| `tuple_type_template` | `"(A, B)"` (Rust), `"Tuple[A, B]"` (Python) |
+| `indentation_width` | `4` (all targets) |
+
+**Invariant violated:** Languages are extdeps modeled from specs.
+Emission must read language data, not contain it.
+
+**Fix direction:** Extend `LanguageSpec` with the 11 missing fields,
+populate them in the language extdep `.dag` files, and replace the
+`match render_target` branches in the emitter with spec lookups.
+
+**Theme C: Testgen doesn't test the compiler; Go/Python are stubs.**
+
+- `generated_tests.rs` (26,692 lines) is a static snapshot of `.dag`
+  source embedded as const strings for tokenizer tests — not generated
+  tests of compiler behavior.
+- Rust test emission (`emit_test_file()`) works but Go/Python emit
+  `assert True` placeholder stubs.
+- Bootstrap tests verify the compiler produces 0 diagnostics and that
+  stage0→stage1 is a fixed point, but the emitted Rust has ~872
+  `cargo check` errors — so the compiler cannot verify its output
+  actually compiles.
+- No test that inference/emission produces *correct* code, only that
+  it produces *some* code with 0 diagnostics.
+
+**Fix direction:** (1) Fix the 872 codegen errors so emitted Rust
+compiles. (2) Add a "golden output" test: compile a small `.dag` file,
+`cargo check` the output, run the generated tests. (3) Fill Go/Python
+test stubs so cross-language parity is testable.
+
+**Diagnostic quality: INSUFFICIENT.** Diagnostics report byte offsets
+with no file name, no line:column, no source context. Implementation
+path: file name in SourceSpan, byte→line:column, source-context
+rendering, parse-context threading, suggestions.
+
+**Known invariant violation: Option rendering splits absence variants.**
+Absence-variant rendering should be a LanguageSpec declaration, not
+an emitter heuristic. See details below.
+
+**L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
+in `node.children`. Bridge functions deleted.
+
+**Container sharing (FF-8):** Root-caused 2026-03-27. Rendering change
+in `LanguageSpec` container templates. Hand-patch proof: 37s → 0.4s.
+Fix pending (Stream 3).
+
+**Root-cause audit (2026-03-23):** Three root causes behind all ~66
+invariant violations — I (incomplete types ~32), II (error-as-name ~18),
+III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
+
+**Foundational directions for Phase 5 exit:**
+- **Compiler thesis inversion — TOP PRIORITY (~362 name-based branches)**
+- **Diagnostic quality — PRIORITY 2 (blocks DSL usability)**
+- **Stream 0 (compositional parser) — LANDED (PR #226)**
+- **Decidability (DAG-reducibility) — active**
+- **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
+
+---
+
+## Critical Path: review.dag → Binary
 
 Deferred pipeline. Not the current architectural priority (Stream 0
 parse-emit symmetry takes precedence). When revisited: Stage 1 parser

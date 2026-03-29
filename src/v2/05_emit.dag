@@ -209,7 +209,7 @@ fn collect_type_names_from_items(items: List<Node>) -> List<String> {
 fn collect_type_names_from_node(n: Node) -> List<String> {
   let self_name = if n.name != "" { [n.name] } else { [] }
   let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child))
-  list_concat(self_name, child_names)
+  self_name |> concat(child_names)
 }
 
 // Intermediate type for string interpolation segments
@@ -1450,7 +1450,7 @@ fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String
 fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> String {
   if element_strs |> count == 0 {
     match target {
-      Rust => "vec![]"
+      Rust => "Rc::new(vec![])"
       Python => "[]"
       Go => "[]interface{}{}"
       Dag => "[]"
@@ -1458,7 +1458,7 @@ fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> Strin
   } else {
     let els_str = element_strs |> join(separator: ", ")
     match target {
-      Rust => concat("vec![", els_str, "]")
+      Rust => concat("Rc::new(vec![", els_str, "])")
       Python => concat("[", els_str, "]")
       Go => concat("[]interface{}{", els_str, "}")
       Dag => concat("[", els_str, "]")

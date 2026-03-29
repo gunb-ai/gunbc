@@ -213,7 +213,7 @@ type DescResult { desc: String?, state: ParserState }
 // =========================================================================
 
 fn peek(tokens: List<Token>, state: ParserState) -> Token? {
-  get(tokens, state.pos)
+  tokens |> skip(state.pos) |> first
 }
 
 fn peek_shape(tokens: List<Token>, state: ParserState) -> TokenShape? {
@@ -2636,7 +2636,7 @@ fn parse_status_pattern(tokens: List<Token>, state: ParserState) -> ExprResult {
       let n = match n_opt { Some { value: v } => v  None => { return ExprResult { expr: make_expr_error_node(kind: InternalExprError, message: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: current_span(tokens: tokens, state: state)), state: state, err: none } } }
       // Check if next token is Ident("xx") -> wildcard like 5xx
       if state.pos + 1 < count(tokens) {
-        let next_tok = get(tokens, state.pos + 1)
+        let next_tok = tokens |> skip(state.pos + 1) |> first
         match next_tok {
           Some { value: t } => {
             if is_ident_shape(shape: t.shape) && t.text == "xx" {
@@ -3231,7 +3231,7 @@ fn parse_stmt(tokens: List<Token>, state: ParserState) -> ExprResult {
 // Peek two tokens: is pos+1 an Eq (=) token? Used for bare assignment detection.
 fn peek_is_eq_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
   if state.pos + 1 < count(tokens) {
-    let next_tok = get(tokens, state.pos + 1)
+    let next_tok = tokens |> skip(state.pos + 1) |> first
     match next_tok {
       Some { value: t } => is_eq_shape(shape: t.shape)
       None => false
@@ -3245,8 +3245,8 @@ fn peek_is_eq_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
 fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
   // pos is at "node", pos+1 should be name (ident), pos+2 should be : or [
   if state.pos + 2 < count(tokens) {
-    let t1 = get(tokens, state.pos + 1)
-    let t2 = get(tokens, state.pos + 2)
+    let t1 = tokens |> skip(state.pos + 1) |> first
+    let t2 = tokens |> skip(state.pos + 2) |> first
     let name_ok = match t1 {
       Some { value: t } => is_ident_shape(shape: t.shape) || is_name_keyword(token: t)
       None => false
@@ -3262,7 +3262,7 @@ fn peek_is_node_decl(tokens: List<Token>, state: ParserState) -> Bool {
 // Check if ident [after/when ...] = ... pattern (constraint before assignment)
 fn is_constraint_bracket_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
   if state.pos + 1 < count(tokens) {
-    let t1 = get(tokens, state.pos + 1)
+    let t1 = tokens |> skip(state.pos + 1) |> first
     match t1 {
       Some { value: t } => is_lbracket_shape(shape: t.shape) && is_constraint_bracket(tokens: tokens, state: ParserState { pos: state.pos + 1 })
       None => false
@@ -3739,7 +3739,7 @@ fn try_postfix(tokens: List<Token>, state: ParserState, lhs: Node, min_bp: Int) 
 fn is_constraint_bracket(tokens: List<Token>, state: ParserState) -> Bool {
   // state is at `[`, check token at pos+1
   if state.pos + 1 < count(tokens) {
-    let next_tok = get(tokens, state.pos + 1)
+    let next_tok = tokens |> skip(state.pos + 1) |> first
     match next_tok {
       Some { value: t } => {
         if is_ident_shape(shape: t.shape) {
@@ -4139,7 +4139,7 @@ fn looks_like_arm_start(tokens: List<Token>, state: ParserState) -> Bool {
 // Check if token at (pos + offset) is a FatArrow.
 fn peek_is_fat_arrow_at(tokens: List<Token>, state: ParserState, offset: Int) -> Bool {
   if state.pos + offset < count(tokens) {
-    let tok = get(tokens, state.pos + offset)
+    let tok = tokens |> skip(state.pos + offset) |> first
     match tok {
       Some { value: t } => is_fat_arrow_shape(shape: t.shape)
       None => false
@@ -4152,7 +4152,7 @@ fn peek_is_fat_arrow_at(tokens: List<Token>, state: ParserState, offset: Int) ->
 // Check if token at (pos + offset) matches the expected token shape.
 fn peek_is_expected_at(tokens: List<Token>, state: ParserState, offset: Int, expected: ExpectedToken) -> Bool {
   if state.pos + offset < count(tokens) {
-    let tok = get(tokens, state.pos + offset)
+    let tok = tokens |> skip(state.pos + offset) |> first
     match tok {
       Some { value: t } => token_matches_expected(token: t, expected: expected)
       None => false
@@ -4172,7 +4172,7 @@ fn scan_braces_depth(tokens: List<Token>, state: ParserState, idx: Int, depth: I
     if depth == 0 {
       // Check if token at idx is FatArrow
       if idx < count(tokens) {
-        let tok = get(tokens, idx)
+        let tok = tokens |> skip(idx) |> first
         match tok {
           Some { value: t } => is_fat_arrow_shape(shape: t.shape)
           None => false
@@ -4184,7 +4184,7 @@ fn scan_braces_depth(tokens: List<Token>, state: ParserState, idx: Int, depth: I
       false
     }
   } else {
-    let tok = get(tokens, idx)
+    let tok = tokens |> skip(idx) |> first
     match tok {
       Some { value: t } => {
         if is_lbrace_shape(shape: t.shape) {
@@ -4805,7 +4805,7 @@ fn parse_brace_expr(tokens: List<Token>, state: ParserState) -> ExprResult {
 fn peek_is_colon_after_ident(tokens: List<Token>, state: ParserState) -> Bool {
   // Peek two tokens ahead: ident then colon
   if state.pos + 1 < count(tokens) {
-    let next_tok = get(tokens, state.pos + 1)
+    let next_tok = tokens |> skip(state.pos + 1) |> first
     match next_tok {
       Some { value: t } => is_colon_shape(shape: t.shape)
       None => false

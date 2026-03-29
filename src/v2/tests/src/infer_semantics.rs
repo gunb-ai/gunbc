@@ -150,7 +150,7 @@ fn optional_match_exhaustiveness_reports_missing_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         vec![variant_arm("Some")],
-        Rc::new(TypeEnv { bindings: std::collections::HashMap::new(), recursive_types: vec![], recursive_type_set: std::collections::HashMap::new() }),
+        Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(vec![]), recursive_type_set: Rc::new(std::collections::HashMap::new()) }),
         zero_span(),
         "test".to_string(),
     );
@@ -166,7 +166,7 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         vec![variant_arm("Some"), variant_arm("None")],
-        Rc::new(TypeEnv { bindings: std::collections::HashMap::new(), recursive_types: vec![], recursive_type_set: std::collections::HashMap::new() }),
+        Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(vec![]), recursive_type_set: Rc::new(std::collections::HashMap::new()) }),
         zero_span(),
         "test".to_string(),
     );

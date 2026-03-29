@@ -2184,21 +2184,21 @@ let kernel_bindings = v2_rt::map_insert(kernel_bindings.clone(), "Optional".to_s
     resolved: kernel_optional.clone(),
 }));
 let kernel = Rc::new(TypeEnv {
-    bindings: kernel_bindings.clone(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(kernel_bindings.clone()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 });
 let parent_envs = { let mut __result = Vec::new(); for imp in module.resolved_imports.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(typed_parent) => vec![typed_parent.type_env.clone()],
     None => vec![],
 }); } __result };
-let import_bindings = parent_envs.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), env.bindings.clone()));
-let import_recursive = parent_envs.clone().iter().cloned().fold(vec![], |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let import_recursive_set = parent_envs.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), env.recursive_type_set.clone()));
+let import_bindings = parent_envs.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.bindings).clone()));
+let import_recursive = parent_envs.clone().iter().cloned().fold(vec![], |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), (*env.recursive_types).clone()));
+let import_recursive_set = parent_envs.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.recursive_type_set).clone()));
 let import_env = Rc::new(TypeEnv {
-    bindings: import_bindings.clone(),
-    recursive_types: import_recursive.clone(),
-    recursive_type_set: import_recursive_set.clone(),
+    bindings: Rc::new(import_bindings.clone()),
+    recursive_types: Rc::new(import_recursive.clone()),
+    recursive_type_set: Rc::new(import_recursive_set.clone()),
 });
 let import_diags = { let mut __result = Vec::new(); for imp in module.resolved_imports.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(_) => vec![],
@@ -2342,18 +2342,18 @@ result.clone()
 let local_name_set = v2_rt::map_values(&local_bindings).iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, b: Rc<TypeBinding>| v2_rt::map_insert(acc.clone(), b.name.clone(), true));
 let all_local_bindings = v2_rt::map_merge(local_bindings.clone(), param_bindings.clone());
 let local_env = Rc::new(TypeEnv {
-    bindings: all_local_bindings.clone(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(all_local_bindings.clone()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 });
 let merged = merge_envs(vec![kernel.clone(), import_env.clone(), local_env.clone()]);
 let all_deps_map = v2_rt::map_values(&merged.bindings.clone()).iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc: _, b: Rc<TypeBinding>| v2_rt::map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
-let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
+let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), (*merged.bindings).clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), true));
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),
-    recursive_types: cycle_set.clone(),
-    recursive_type_set: cycle_map.clone(),
+    recursive_types: Rc::new(cycle_set.clone()),
+    recursive_type_set: Rc::new(cycle_map.clone()),
 });
 let resolved = resolve_env_bindings(unresolved_env.clone(), module.module.clone().name.clone(), local_name_set.clone(), all_deps_map.clone());
 let resolved_env_out = resolved.env.clone();
@@ -2450,21 +2450,21 @@ let kernel_bindings = v2_rt::map_insert(kernel_bindings.clone(), "Optional".to_s
     resolved: kernel_optional.clone(),
 }));
 let kernel = Rc::new(TypeEnv {
-    bindings: kernel_bindings.clone(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(kernel_bindings.clone()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 });
 let parent_envs = { let mut __result = Vec::new(); for imp in module.resolved_imports.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(typed_parent) => vec![typed_parent.type_env.clone()],
     None => vec![],
 }); } __result };
-let import_bindings = parent_envs.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), env.bindings.clone()));
-let import_recursive = parent_envs.clone().iter().cloned().fold(vec![], |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), env.recursive_types.clone()));
-let import_recursive_set = parent_envs.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), env.recursive_type_set.clone()));
+let import_bindings = parent_envs.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.bindings).clone()));
+let import_recursive = parent_envs.clone().iter().cloned().fold(vec![], |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), (*env.recursive_types).clone()));
+let import_recursive_set = parent_envs.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.recursive_type_set).clone()));
 let import_env = Rc::new(TypeEnv {
-    bindings: import_bindings.clone(),
-    recursive_types: import_recursive.clone(),
-    recursive_type_set: import_recursive_set.clone(),
+    bindings: Rc::new(import_bindings.clone()),
+    recursive_types: Rc::new(import_recursive.clone()),
+    recursive_type_set: Rc::new(import_recursive_set.clone()),
 });
 let local_bindings = module_items(module.module.clone()).iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, item: Rc<Node>| if node_has_structure(item.clone()) {
             {
@@ -2558,18 +2558,18 @@ v2_rt::map_insert(acc.clone(), item.name.clone(), Rc::new(TypeBinding {
 }
 });
 let local_env = Rc::new(TypeEnv {
-    bindings: local_bindings.clone(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(local_bindings.clone()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 });
 let merged = merge_envs(vec![kernel.clone(), import_env.clone(), local_env.clone()]);
 let all_deps_map = v2_rt::map_values(&merged.bindings.clone()).iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc: _, b: Rc<TypeBinding>| v2_rt::map_insert(acc.clone(), b.name.clone(), node_type_deps(b.resolved.clone())));
-let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), merged.bindings.clone());
+let cycle_set = detect_type_cycles_kahn(all_deps_map.clone(), (*merged.bindings).clone());
 let cycle_map = cycle_set.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), true));
 let unresolved_env = Rc::new(TypeEnv {
     bindings: merged.bindings.clone(),
-    recursive_types: cycle_set.clone(),
-    recursive_type_set: cycle_map.clone(),
+    recursive_types: Rc::new(cycle_set.clone()),
+    recursive_type_set: Rc::new(cycle_map.clone()),
 });
 Rc::new(BuildTypeEnvResult {
     env: unresolved_env.clone(),
@@ -2850,7 +2850,7 @@ let ready = { let mut __result = Vec::new(); for name in remaining.clone().iter(
 if ((ready.clone().len() as i64) == 0) {
             {
                 let stuck_accum = remaining.clone().iter().cloned().fold(Rc::new(BindingsAccum {
-    bindings: env.bindings.clone(),
+    bindings: (*env.bindings).clone(),
     diagnostics: vec![],
 }), |acc: _, name: String| match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
     Some(binding) => {
@@ -2867,7 +2867,7 @@ Rc::new(BindingsAccum {
 });
 return Rc::new(EnvResolveResult {
     env: Rc::new(TypeEnv {
-    bindings: stuck_accum.bindings.clone(),
+    bindings: Rc::new(stuck_accum.bindings.clone()),
     recursive_types: env.recursive_types.clone(),
     recursive_type_set: env.recursive_type_set.clone(),
 }),
@@ -2876,7 +2876,7 @@ return Rc::new(EnvResolveResult {
 }
 }
 let ready_accum = ready.clone().iter().cloned().fold(Rc::new(BindingsAccum {
-    bindings: env.bindings.clone(),
+    bindings: (*env.bindings).clone(),
     diagnostics: vec![],
 }), |acc: _, name: String| match v2_rt::map_get(&env.bindings.clone(), name.clone()) {
     Some(binding) => {
@@ -2896,7 +2896,7 @@ let next_remaining = { let mut __result = Vec::new(); for name in remaining.clon
 {
             let __tco_0 = next_remaining.clone();
 let __tco_1 = Rc::new(TypeEnv {
-    bindings: ready_accum.bindings.clone(),
+    bindings: Rc::new(ready_accum.bindings.clone()),
     recursive_types: env.recursive_types.clone(),
     recursive_type_set: env.recursive_type_set.clone(),
 });
@@ -2941,7 +2941,7 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
     field_type_names: <HashMap<_, _>>::new(),
 });
 let built = modules.clone().iter().cloned().fold(init.clone(), |state: _, typed_module: Rc<TypedModule>| typed_module.items.clone().iter().cloned().fold(state.clone(), |inner_state: _, item: Rc<Node>| add_emit_item_summary(inner_state.clone(), item.clone())));
-let all_recursive = modules.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, m: Rc<TypedModule>| v2_rt::map_merge(acc.clone(), m.type_env.clone().recursive_type_set.clone()));
+let all_recursive = modules.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, m: Rc<TypedModule>| v2_rt::map_merge(acc.clone(), (*m.type_env.clone().recursive_type_set).clone()));
 Rc::new(EmitGraphInfo {
     type_summaries: built.type_summaries.clone(),
     variant_to_enum: built.variant_to_enum.clone(),
@@ -2956,40 +2956,40 @@ pub fn typecheck(graph: Rc<ModuleGraph>) -> Rc<TypedGraph> {
     typecheck_modules(graph.modules.clone(), vec![], <HashMap<_, _>>::new(), <HashMap<_, _>>::new(), vec![])
 }
 
+// BOOTSTRAP PERF: Rewritten from generated TCO pattern (clone+reassign) to
+// in-place mutation. The original cloned every accumulator on every iteration,
+// causing O(n^2) memory for n modules (~17GB for 36 modules). This version
+// mutates in place: O(n) total.
 pub fn typecheck_modules(mut remaining: Vec<Rc<ResolvedModule>>, mut modules: Vec<Rc<TypedModule>>, mut module_index: HashMap<String, Rc<TypedModule>>, mut item_registry: HashMap<String, Rc<ItemInfo>>, mut diag_chunks: Vec<Vec<Rc<ErrorNode>>>) -> Rc<TypedGraph> {
-    loop {
-        match remaining.clone().first().cloned() {
-    None => { let expanded_registry = expand_transitive_services(modules.clone(), item_registry.clone(), 5);
-break Rc::new(TypedGraph {
-    modules: modules.clone(),
-    item_registry: expanded_registry.clone(),
-    diagnostics: { let mut __result = Vec::new(); for c in diag_chunks.clone().iter().cloned() { __result.extend(c.clone()); } __result },
-}); },
-    Some(resolved) => { let parent_result = collect_parent_envs(resolved.clone(), module_index.clone());
-let tc_result = typecheck_module(resolved.clone(), module_index.clone());
-let typed = tc_result.typed.clone();
-let tc_diags = tc_result.diagnostics.clone();
-{
-            let __tco_0 = remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>();
-let __tco_1 = v2_rt::list_push(modules.clone(), typed.clone());
-let __tco_2 = v2_rt::map_insert(module_index.clone(), typed.module.clone().name.clone(), typed.clone());
-let __tco_3 = v2_rt::map_merge(item_registry.clone(), typed.item_registry.clone());
-let __tco_4 = v2_rt::list_push(v2_rt::list_push(diag_chunks.clone(), parent_result.diagnostics.clone()), tc_diags.clone());
-remaining = __tco_0;
-modules = __tco_1;
-module_index = __tco_2;
-item_registry = __tco_3;
-diag_chunks = __tco_4;
-continue;
-} },
-}
-}
+    while let Some(resolved) = remaining.first().cloned() {
+        eprintln!("[mem] typecheck module '{}': {}MB", resolved.module.name, crate::v2_compiler_compile::rss_mb());
+        let parent_result = collect_parent_envs(resolved.clone(), module_index.clone());
+        let tc_result = typecheck_module(resolved.clone(), module_index.clone());
+        let typed = tc_result.typed.clone();
+        let tc_diags = tc_result.diagnostics.clone();
+        remaining = remaining.split_off(1);
+        modules.push(typed.clone());
+        module_index.insert(typed.module.name.clone(), typed.clone());
+        for (k, v) in typed.item_registry.iter() {
+            item_registry.insert(k.clone(), v.clone());
+        }
+        diag_chunks.push(parent_result.diagnostics.clone());
+        diag_chunks.push(tc_diags);
+    }
+    let expanded_registry = expand_transitive_services(modules.clone(), item_registry.clone(), 5);
+    Rc::new(TypedGraph {
+        modules,
+        item_registry: expanded_registry,
+        diagnostics: diag_chunks.into_iter().flatten().collect(),
+    })
 }
 
 pub fn reconcile(graph: Rc<ModuleGraph>) -> Rc<ResolvedGraph> {
     {
         let typed = typecheck(graph.clone());
+eprintln!("[mem] after typecheck, before build_emit_graph_info: {}MB", crate::v2_compiler_compile::rss_mb());
 let emit_info = build_emit_graph_info(typed.modules.clone());
+eprintln!("[mem] after build_emit_graph_info: {}MB", crate::v2_compiler_compile::rss_mb());
 Rc::new(ResolvedGraph {
     modules: typed.modules.clone(),
     item_registry: typed.item_registry.clone(),
