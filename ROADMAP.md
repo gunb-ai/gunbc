@@ -1020,14 +1020,73 @@ InferredNode (3), NodeType (4). Inference result discriminators. (2 types)
 **Design principle for D5b:** The compiler's job is NOT to classify
 identifiers into enum variants. The compiler walks a graph of Nodes.
 Every method, transport, config key, and function is a Node defined
-in .dag source. The call site has an edge (via `inferred`) to the
-method/function's definition Node. The compiler never classifies by
-name — it follows edges.
+in .dag source. The compiler never classifies by name — it follows
+edges.
 
-- `list.map(f)` → method_semantics points at `List.map` (a Node
-  defined in `std/types.dag` via `FreeMonoid` algebra)
-- `shell.exec(cmd)` → transport edge points at `Shell.exec`
-  (a Node defined in the transport .dag)
+**Key finding: the .dag modeling already exists.** `std/algebra.dag`
+already defines methods as structural fields on algebra types:
+`FreeMonoid<T>` has `map`, `filter`, `fold`, `concat`, etc. as
+typed fields. `PartialFunction<K,V>` has `get`, `insert`, `merge`.
+The compiler ignores these definitions and instead hardcodes the
+same information as `IntrinsicMethod` enum variants with string
+classification in `04_method.dag`. The modeling is done — the
+compiler just needs to read it.
+
+**Same pattern as Stream 0 (SyntaxSpec).** Parser keywords were
+hardcoded match arms. SyntaxSpec moved them to .dag data. The parser
+reads the data. Adding a keyword = one data entry, not a code change.
+Method classification is the same: hardcoded enum match arms. Moving
+them to .dag algebra data = the compiler reads from type definitions.
+Adding a method = one field in the algebra type, not a compiler
+enum variant.
+
+**D5b execution plan:**
+
+1. **Compiler reads methods from type algebra Nodes.** During type
+   resolution, when the compiler resolves `List<T>`, it has the
+   `FreeMonoid<T>` Node from `std/algebra.dag`. That Node's fields
+   (children) ARE the method definitions — `map`, `filter`, `fold`
+   etc. Method resolution matches the method name against the type's
+   structural children, not against a hardcoded index map.
+
+2. **Delete `04_method.dag` classification functions.**
+   `intrinsic_method_index()` and `runtime_bridge_method_index()`
+   are the string→enum maps. Delete them. The type algebra IS the
+   method registry.
+
+3. **Delete enums.** IntrinsicMethod (20 variants),
+   RuntimeBridgeMethod (25+ variants). Method identity is the
+   algebra field Node, not an enum variant.
+
+4. **MethodSemantics simplifies.** Currently 4 variants:
+   PlainMethodSemantics, IntrinsicMethodSemantics { intrinsic, ... },
+   RuntimeBridgeSemantics { method }, ServiceMethodSemantics { ... }.
+   With algebra-based resolution, all methods are just Nodes with
+   different properties. The envelope flattens.
+
+5. **Per-language rendering templates.** Emit needs to know how to
+   render `FreeMonoid.map` in Rust vs Python vs Go. This is a
+   language extdep fact — add method rendering templates to
+   `dsl/extdeps/languages/*/runtime.dag`. The pattern matches
+   `SyntaxSpec` in `dsl/extdeps/languages/dag/syntax.dag`.
+
+6. **Cost model on method definitions.** `FreeMonoid.map` is O(n)
+   by definition (spec fact). `PartialFunction.get` is O(1)
+   amortized (spec fact). Add cost annotations to the algebra type
+   fields. Complexity analyzer reads them instead of hardcoding
+   `intrinsic_method_cost_shape()`.
+
+7. **TransportKind + ConfigPropertyKey.** Same pattern — transports
+   and config properties are already parsed as Nodes. Delete the
+   string→enum classification functions. Replace with structural
+   property checks on the transport Node.
+
+**Runtime bridge methods as language extdeps.** `to_string`,
+`char_at`, `starts_with` etc. are language-specific runtime bindings.
+They belong in `dsl/extdeps/languages/*/runtime.dag`. The algebra
+defines the abstract operation; the language extdep defines the
+concrete rendering. This is the same split as SyntaxSpec (abstract
+grammar) vs per-language syntax (concrete tokens).
 
 **On D5a (assessed, no change):** The current inference model is
 already correct. `inferred` stores `Resolved { node: type }` where
