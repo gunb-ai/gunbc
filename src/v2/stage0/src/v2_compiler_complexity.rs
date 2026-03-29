@@ -287,7 +287,7 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
 
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { func: f, call_semantics: _ } =>
+        ExprData::ExprCall { call_semantics: _ } =>
             if (f.clone() == func_name.clone()) { 1 } else { 0 },
         _ => 0,
     };
@@ -406,10 +406,10 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
 pub fn receiver_size_var(mut recv: Rc<Node>) -> Rc<SizeExpr> {
     loop {
         match (*recv.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: vname, .. } => { break Rc::new(SizeExpr::SizeLen {
+    ExprData::ExprVar { .. } => { let vname = expr_var_name(recv.clone()); break Rc::new(SizeExpr::SizeLen {
     collection: vname.clone(),
 }); },
-    ExprData::ExprFieldAccess { field: fname, .. } => { break Rc::new(SizeExpr::SizeLen {
+    ExprData::ExprFieldAccess { .. } => { let fname = field_access_field(recv.clone()); break Rc::new(SizeExpr::SizeLen {
     collection: fname.clone(),
 }); },
     ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => { let inner_recv = match recv.children.clone().first().cloned() {
@@ -455,10 +455,10 @@ match f_arg.clone() {
 pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryResult>, func_index: HashMap<String, Rc<FuncEntry>>) -> Rc<SummaryResult> {
     match lambda_arg.clone() {
     Some(la) => match (*la.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: fn_ref, .. } => match v2_rt::map_get(&func_index, fn_ref.clone()) {
+    ExprData::ExprVar { .. } => { let fn_ref = expr_var_name(la.clone()); match v2_rt::map_get(&func_index, fn_ref.clone()) {
     Some(_) => get_or_compute_summary(fn_ref.clone(), func_index.clone(), recv_r.table.clone()),
     None => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
-},
+} },
     _ => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
 },
     None => Rc::new(SummaryResult {
@@ -991,9 +991,8 @@ Rc::new(SummaryResult {
     table: rr.table.clone(),
 })
 },
-    ExprData::ExprCall { func: fname, .. } => {
+    ExprData::ExprCall { .. } => { let fname = expr_call_func(texpr.clone());
             let callee_result = match v2_rt::map_get(&func_index, fname.clone()) {
-    Some(entry) => get_or_compute_summary(fname.clone(), func_index.clone(), table.clone()),
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
@@ -1042,7 +1041,7 @@ Rc::new(SummaryResult {
     table: args_result.table.clone(),
 })
 },
-    ExprData::ExprMethodCall { method: mname, method_semantics: ms, .. } => {
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
             let recv = method_receiver(texpr.clone());
 let mc_args = method_arg_nodes(texpr.clone());
 let recv_r = cost_of_expr(recv.clone(), func_index.clone(), table.clone());
@@ -1196,7 +1195,7 @@ Rc::new(SummaryResult {
     table: e_result.table.clone(),
 })
 },
-    ExprData::ExprLet { .. } => {
+    ExprData::ExprLet => {
             let v = let_value(texpr.clone());
 let v_r = cost_of_expr(v.clone(), func_index.clone(), table.clone());
 match let_body(texpr.clone()) {
@@ -1239,7 +1238,7 @@ Rc::new(SummaryResult {
     table: sr.table.clone(),
 })
 }),
-    ExprData::ExprForEach { .. } => {
+    ExprData::ExprForEach => {
             let c = foreach_collection(texpr.clone());
 let bd = foreach_body(texpr.clone());
 let c_r = cost_of_expr(c.clone(), func_index.clone(), table.clone());

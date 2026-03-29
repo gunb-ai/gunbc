@@ -581,14 +581,14 @@ match summary.clone() {
 
 pub fn emit_py_expr_var(expr: Rc<Node>) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: n, .. } => emit_ident(n.clone(), RenderTarget::Python),
+    ExprData::ExprVar { .. } => emit_ident(n.clone(), RenderTarget::Python),
     _ => emit_error_expr("emit_py_expr_var expected ExprVar".to_string(), RenderTarget::Python),
 }
 }
 
 pub fn emit_py_expr_field_access(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { field: f, summary: summary, .. } => {
+    ExprData::ExprFieldAccess { summary: summary, .. } => {
         let b = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -608,7 +608,7 @@ if is_typed_service_call_receiver(expr.clone()) {
 
 pub fn emit_py_expr_call(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => {
+    ExprData::ExprCall { .. } => {
         let a = expr.children.clone();
 emit_py_typed_call(f.clone(), a.clone(), registry.clone(), scope.clone(), depth.clone())
 },
@@ -618,7 +618,7 @@ emit_py_typed_call(f.clone(), a.clone(), registry.clone(), scope.clone(), depth.
 
 pub fn emit_py_expr_method_call(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { method: m, method_semantics: method_semantics, .. } => {
+    ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
         let r = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -664,7 +664,7 @@ emit_py_typed_if(c.clone(), t.clone(), e.clone(), registry.clone(), scope.clone(
 
 pub fn emit_py_expr_let(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprLet { name: n, .. } => {
+    ExprData::ExprLet => {
         let v = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -678,7 +678,7 @@ emit_py_typed_let(n.clone(), v.clone(), bd.clone(), registry.clone(), scope.clon
 
 pub fn emit_py_expr_record_lit(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { type_name: tn, .. } => {
+    ExprData::ExprRecordLit { .. } => {
         let fs = expr.children.clone();
 emit_py_typed_record_lit(tn.clone(), fs.clone(), registry.clone(), scope.clone(), depth.clone())
 },
@@ -732,7 +732,7 @@ emit_py_typed_cast(e.clone(), t.clone(), registry.clone(), scope.clone(), depth.
 
 pub fn emit_py_expr_for_each(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprForEach { variable: v, .. } => {
+    ExprData::ExprForEach => {
         let c = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -1073,7 +1073,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(ty_str.clone(), "(".to_string()), expr
 pub fn emit_py_typed_func_body(body: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLet { name: n, .. } => {
+    ExprData::ExprLet => {
             let ch = body.children.clone();
 let v = match ch.clone().first().cloned() {
     Some(val) => val.clone(),
@@ -1126,7 +1126,7 @@ v2_rt::concat(v2_rt::concat("while True:
 
 pub fn emit_py_tco_non_self_call(frame: Rc<TcoFrame>, registry: HashMap<String, Rc<ItemInfo>>) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => {
+    ExprData::ExprCall { .. } => {
         let a = frame.expr.clone().children.clone();
 let call_str = emit_py_typed_call(f.clone(), a.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone());
 v2_rt::concat("return ".to_string(), call_str.clone())
@@ -1186,7 +1186,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone(
 
 pub fn emit_py_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprLet { name: n, .. } => {
+    ExprData::ExprLet => {
         let v = match frame.expr.clone().children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => frame.expr.clone(),

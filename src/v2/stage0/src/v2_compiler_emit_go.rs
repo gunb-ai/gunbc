@@ -596,7 +596,7 @@ pub fn emit_go_expr_var(expr: Rc<Node>, depth: i64) -> String {
     {
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: n, .. } => v2_rt::concat(prefix.clone(), emit_ident(n.clone(), RenderTarget::Go)),
+    ExprData::ExprVar { .. } => v2_rt::concat(prefix.clone(), emit_ident(n.clone(), RenderTarget::Go)),
     _ => v2_rt::concat(prefix.clone(), emit_error_expr("emit_go_expr_var expected ExprVar".to_string(), RenderTarget::Go)),
 }
 }
@@ -606,7 +606,7 @@ pub fn emit_go_expr_field_access(expr: Rc<Node>, registry: HashMap<String, Rc<It
     {
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { field: f, summary: summary, .. } => {
+    ExprData::ExprFieldAccess { summary: summary, .. } => {
             let b = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -629,7 +629,7 @@ pub fn emit_go_expr_call(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>
     {
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => {
+    ExprData::ExprCall { .. } => {
             let a = expr.children.clone();
 v2_rt::concat(prefix.clone(), emit_go_typed_call(f.clone(), a.clone(), registry.clone(), scope.clone()))
 },
@@ -642,7 +642,7 @@ pub fn emit_go_expr_method_call(expr: Rc<Node>, registry: HashMap<String, Rc<Ite
     {
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprMethodCall { method: m, method_semantics: method_semantics, .. } => {
+    ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
             let r = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -689,7 +689,7 @@ emit_go_typed_if(c.clone(), t.clone(), e.clone(), registry.clone(), scope.clone(
 
 pub fn emit_go_expr_let(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprLet { name: n, .. } => {
+    ExprData::ExprLet => {
         let v = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -705,7 +705,7 @@ pub fn emit_go_expr_record_lit(expr: Rc<Node>, registry: HashMap<String, Rc<Item
     {
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { type_name: tn, .. } => {
+    ExprData::ExprRecordLit { .. } => {
             let fs = expr.children.clone();
 v2_rt::concat(prefix.clone(), emit_go_typed_record_lit(tn.clone(), fs.clone(), registry.clone(), scope.clone()))
 },
@@ -766,7 +766,7 @@ v2_rt::concat(prefix.clone(), emit_go_typed_cast(e.clone(), t.clone(), registry.
 
 pub fn emit_go_expr_for_each(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprForEach { variable: v, .. } => {
+    ExprData::ExprForEach => {
         let c = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -1139,7 +1139,7 @@ pub fn emit_go_typed_func_body(body: Rc<Node>, registry: HashMap<String, Rc<Item
         {
             let prefix = make_indent(depth.clone());
 match (*body.expr_data.clone()).clone() {
-    ExprData::ExprLet { name: n, .. } => {
+    ExprData::ExprLet => {
                 let ch = body.children.clone();
 let v = match ch.clone().first().cloned() {
     Some(val) => val.clone(),
@@ -1196,7 +1196,7 @@ pub fn emit_go_tco_non_self_call(frame: Rc<TcoFrame>, registry: HashMap<String, 
     {
         let prefix = make_indent(frame.depth.clone());
 match (*frame.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => {
+    ExprData::ExprCall { .. } => {
             let a = frame.expr.clone().children.clone();
 let call_str = emit_go_typed_call(f.clone(), a.clone(), registry.clone(), frame.scope.clone());
 v2_rt::concat(v2_rt::concat(prefix.clone(), "return ".to_string()), call_str.clone())
@@ -1268,7 +1268,7 @@ pub fn emit_go_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Vec<Rc<Node
     {
         let prefix = make_indent(frame.depth.clone());
 match (*frame.expr.clone().expr_data.clone()).clone() {
-    ExprData::ExprLet { name: n, .. } => {
+    ExprData::ExprLet => {
             let v = match frame.expr.clone().children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => frame.expr.clone(),

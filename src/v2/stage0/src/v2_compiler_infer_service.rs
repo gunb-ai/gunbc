@@ -79,7 +79,8 @@ pub struct ServiceMethodResult {
 
 pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
     match (*receiver.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { field: f, .. } => {
+    ExprData::ExprFieldAccess { .. } => {
+        let f = field_access_field(receiver.clone());
         let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => match f.clone().chars().map(|c| c.to_string()).collect::<Vec<_>>().first().cloned() {
@@ -95,10 +96,11 @@ match (*b.expr_data.clone()).clone() {
 
 pub fn extract_typed_service_name(receiver: Rc<Node>) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
-    ExprData::ExprFieldAccess { field: f, .. } => {
+    ExprData::ExprFieldAccess { .. } => {
+        let f = field_access_field(receiver.clone());
         let b = field_access_base(receiver.clone());
 match (*b.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: ns, .. } => Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone())),
+    ExprData::ExprVar { .. } => { let ns = expr_var_name(b.clone()); Some(v2_rt::concat(v2_rt::concat(ns.clone(), ".".to_string()), f.clone())) },
     _ => None,
 }
 },
@@ -150,13 +152,14 @@ pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> 
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_acc = match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => if emit_map_has(acc.seen.clone(), f.clone()) {
+    ExprData::ExprCall { .. } => { let f = expr_call_func(texpr.clone()); if emit_map_has(acc.seen.clone(), f.clone()) {
                 acc.clone()
 } else {
                 Rc::new(UniqueAccum {
     seen: v2_rt::map_insert(acc.seen.clone(), f.clone(), true),
     result: v2_rt::list_push(acc.result.clone(), f.clone()),
 })
+}
 },
     _ => acc.clone(),
 };

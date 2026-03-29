@@ -95,7 +95,7 @@ pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Ha
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_edges = match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => if emit_map_has(local_func_set.clone(), f.clone()) {
+    ExprData::ExprCall { .. } => if emit_map_has(local_func_set.clone(), f.clone()) {
                 vec![Rc::new(CallEdge {
     caller: caller.clone(),
     callee: f.clone(),

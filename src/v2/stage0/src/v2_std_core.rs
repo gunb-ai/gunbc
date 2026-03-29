@@ -439,28 +439,21 @@ pub enum ExprData {
         message: String,
     },
     ExprVar {
-        name: String,
         binding_kind: Option<Rc<VarBindingKind>>,
     },
     ExprFieldAccess {
-        field: String,
         summary: Option<Rc<FieldSummary>>,
     },
     ExprCall {
-        func: String,
         call_semantics: Option<CallSemantics>,
     },
     ExprMethodCall {
-        method: String,
         method_semantics: Option<Rc<MethodSemantics>>,
     },
     ExprMatch,
     ExprIf,
-    ExprLet {
-        name: String,
-    },
+    ExprLet,
     ExprRecordLit {
-        type_name: Option<String>,
         parent_enum: Option<String>,
     },
     ExprListLit,
@@ -471,15 +464,12 @@ pub enum ExprData {
         op: UnaryOpKind,
     },
     ExprLambda {
-        params: Vec<String>,
         semantics: Option<Rc<LambdaSemantics>>,
     },
     ExprStringInterp,
     ExprBlock,
     ExprCast,
-    ExprForEach {
-        variable: String,
-    },
+    ExprForEach,
     ExprIndex,
     ExprSlice,
     ExprReturn,
@@ -628,6 +618,42 @@ pub fn make_expr_node(expr_data: Rc<ExprData>, children: Vec<Rc<Node>>, inferred
     match_pattern: None,
     expr_data: expr_data.clone(),
 })
+}
+
+pub fn make_named_expr_node(name: String, expr_data: Rc<ExprData>, children: Vec<Rc<Node>>, inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Node> {
+    Rc::new(Node {
+    name: name.clone(),
+    span: span.clone(),
+    children: children.clone(),
+    connective: None,
+
+    params: vec![],
+    inferred: inferred.clone(),
+    return_cardinality: Cardinality::Required,
+    uses: vec![],
+    body: None,
+    transport: None,
+    properties: vec![],
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: expr_data.clone(),
+})
+}
+
+// D3 accessors: read dissolved String fields from Node.name
+pub fn expr_var_name(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn field_access_field(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn expr_call_func(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn expr_method_name(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn let_binding_name(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn foreach_variable(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn lambda_param_names(texpr: Rc<Node>) -> Vec<String> {
+    texpr.children.iter().skip(1).map(|n| n.name.clone()).collect()
+}
+pub fn record_lit_type_name(texpr: Rc<Node>) -> Option<String> {
+    if texpr.name.is_empty() { None } else { Some(texpr.name.clone()) }
 }
 
 pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<SourceSpan>) -> Rc<Node> {
@@ -1383,7 +1409,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) ->
 pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => if (f.clone() == fn_name.clone()) {
+    ExprData::ExprCall { .. } => if (f.clone() == fn_name.clone()) {
             true
 } else {
             { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found }
@@ -1396,7 +1422,7 @@ pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
 pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bool) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => if (f.clone() == fn_name.clone()) {
+    ExprData::ExprCall { .. } => if (f.clone() == fn_name.clone()) {
             if (in_tail.clone() == false) {
                 true
 } else {
@@ -1424,7 +1450,7 @@ let else_bad = match if_else_branch(texpr.clone()) {
 let arms_bad = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(arm_body(arm_node.clone()), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found };
 (scrut_bad.clone() || arms_bad.clone())
 },
-    ExprData::ExprLet { .. } => {
+    ExprData::ExprLet => {
             let val_bad = expr_has_non_tail_self_call(let_value(texpr.clone()), fn_name.clone(), false);
 let body_bad = match let_body(texpr.clone()) {
     Some(b) => expr_has_non_tail_self_call(b.clone(), fn_name.clone(), in_tail.clone()),

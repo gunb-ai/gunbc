@@ -167,27 +167,28 @@ if (branch_count.clone() > current_count.clone()) {
 pub fn walk_expr(accum: Rc<UsageAccum>, texpr: Rc<Node>, in_tail: bool) -> Rc<UsageAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: n, .. } => if in_tail.clone() {
+    ExprData::ExprVar { .. } => { let n = expr_var_name(texpr.clone()); if in_tail.clone() {
             record_use(accum.clone(), n.clone(), EdgeKind::Consumed, "return".to_string())
 } else {
             record_use(accum.clone(), n.clone(), EdgeKind::Read, "read".to_string())
-},
+} },
     ExprData::ExprLiteral { .. } => accum.clone(),
-    ExprData::ExprFieldAccess { field: f, .. } => {
+    ExprData::ExprFieldAccess { .. } => {
+            let f = field_access_field(texpr.clone());
             let base_node = field_access_base(texpr.clone());
 match (*base_node.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: vn, .. } => record_use(accum.clone(), vn.clone(), EdgeKind::Projected, v2_rt::concat(".".to_string(), f.clone())),
+    ExprData::ExprVar { .. } => { let vn = expr_var_name(base_node.clone()); record_use(accum.clone(), vn.clone(), EdgeKind::Projected, v2_rt::concat(".".to_string(), f.clone())) },
     _ => walk_expr(accum.clone(), base_node.clone(), false),
 }
 },
-    ExprData::ExprCall { func: fname, .. } => if (fname.clone() == "fold".to_string()) {
+    ExprData::ExprCall { .. } => { let fname = expr_call_func(texpr.clone()); if (fname.clone() == "fold".to_string()) {
             {
                 let init_arg = { let mut __result = Vec::new(); for a in texpr.children.clone().iter().cloned() { if (a.name.clone() == "init".to_string()) { __result.push(a); } } __result }.first().cloned();
 let threaded_accum = match init_arg.clone() {
     Some(ia) => {
                     let ia_val = arg_value(ia.clone());
 match (*ia_val.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: vn, .. } => record_use(accum.clone(), vn.clone(), EdgeKind::Threaded, "fold_init".to_string()),
+    ExprData::ExprVar { .. } => { let vn = expr_var_name(ia_val.clone()); record_use(accum.clone(), vn.clone(), EdgeKind::Threaded, "fold_init".to_string()) },
     _ => walk_expr(accum.clone(), ia_val.clone(), false),
 }
 },
@@ -198,8 +199,9 @@ non_init.clone().iter().cloned().fold(threaded_accum.clone(), |acc: _, a: Rc<Nod
 }
 } else {
             texpr.children.clone().iter().cloned().fold(accum.clone(), |acc: _, a: Rc<Node>| walk_expr(acc.clone(), arg_value(a.clone()), false))
-},
-    ExprData::ExprMethodCall { method: mname, .. } => {
+} },
+    ExprData::ExprMethodCall { .. } => {
+            let mname = expr_method_name(texpr.clone());
             let recv = method_receiver(texpr.clone());
 let mc_args = method_arg_nodes(texpr.clone());
 if (mname.clone() == "fold".to_string()) {
@@ -210,7 +212,7 @@ let threaded_accum = match init_arg.clone() {
     Some(ia) => {
                         let ia_val = arg_value(ia.clone());
 match (*ia_val.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: vn, .. } => record_use(recv_accum.clone(), vn.clone(), EdgeKind::Threaded, "fold_init".to_string()),
+    ExprData::ExprVar { .. } => { let vn = expr_var_name(ia_val.clone()); record_use(recv_accum.clone(), vn.clone(), EdgeKind::Threaded, "fold_init".to_string()) },
     _ => walk_expr(recv_accum.clone(), ia_val.clone(), false),
 }
 },
@@ -244,7 +246,7 @@ let e_accum = match if_else_branch(texpr.clone()) {
 };
 merge_branch_usages(c_accum.clone(), vec![t_accum.clone(), e_accum.clone()])
 },
-    ExprData::ExprLet { .. } => {
+    ExprData::ExprLet => {
             let v = let_value(texpr.clone());
 let v_accum = walk_expr(accum.clone(), v.clone(), false);
 match let_body(texpr.clone()) {

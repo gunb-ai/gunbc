@@ -832,7 +832,7 @@ Rc::new(ExprResolveResult {
     diagnostics: r.diagnostics.clone(),
 })
 },
-    ExprData::ExprCall { func: func, call_semantics: cs, .. } => {
+    ExprData::ExprCall { call_semantics: cs, .. } => {
             let resolved_children = { let mut __result = Vec::new(); for arg_node in texpr.children.clone().iter().cloned() { __result.push({
                 let val = match arg_node.children.clone().first().cloned() {
     Some(v) => v.clone(),
@@ -855,13 +855,12 @@ vr.diagnostics.clone()
 }); } __result };
 Rc::new(ExprResolveResult {
     expr: make_expr_node(Rc::new(ExprData::ExprCall {
-    func: func.clone(),
-    call_semantics: cs.clone(),
+call_semantics: cs.clone(),
 }), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags.clone(),
 })
 },
-    ExprData::ExprMethodCall { method: method, method_semantics: ms, .. } => {
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
             let resolved_children = { let mut __result = Vec::new(); for pair in texpr.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { __result.push({
                 let idx = pair.0.clone();
 let child = pair.1.clone();
@@ -906,8 +905,7 @@ vr.diagnostics.clone()
 }); } __result };
 Rc::new(ExprResolveResult {
     expr: make_expr_node(Rc::new(ExprData::ExprMethodCall {
-    method: method.clone(),
-    method_semantics: ms.clone(),
+method_semantics: ms.clone(),
 }), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags.clone(),
 })
@@ -1046,7 +1044,7 @@ Rc::new(ExprResolveResult {
 }),
 })
 },
-    ExprData::ExprLet { name: name, .. } => {
+    ExprData::ExprLet => {
             let ch = texpr.children.clone();
 let vr = match ch.clone().first().cloned() {
     Some(v) => resolve_expr_types(v.clone(), env.clone(), module_name.clone()),
@@ -1064,16 +1062,14 @@ let resolved_children = match br.clone() {
     None => vec![vr.expr.clone()],
 };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprLet {
-    name: name.clone(),
-}), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
+    expr: make_expr_node(Rc::new(ExprData::ExprLet), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: v2_rt::concat(vr.diagnostics.clone(), match br.clone() {
     Some(r) => r.diagnostics.clone(),
     None => vec![],
 }),
 })
 },
-    ExprData::ExprRecordLit { type_name: tn, parent_enum: pe, .. } => {
+    ExprData::ExprRecordLit { parent_enum: pe, .. } => {
             let resolved_children = { let mut __result = Vec::new(); for fi_node in texpr.children.clone().iter().cloned() { __result.push({
                 let val = match fi_node.children.clone().first().cloned() {
     Some(v) => v.clone(),
@@ -1092,8 +1088,7 @@ vr.diagnostics.clone()
 }); } __result };
 Rc::new(ExprResolveResult {
     expr: make_expr_node(Rc::new(ExprData::ExprRecordLit {
-    type_name: tn.clone(),
-    parent_enum: pe.clone(),
+parent_enum: pe.clone(),
 }), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags.clone(),
 })
@@ -1145,7 +1140,7 @@ Rc::new(ExprResolveResult {
     diagnostics: r.diagnostics.clone(),
 })
 },
-    ExprData::ExprLambda { params: p, semantics: s, .. } => {
+    ExprData::ExprLambda { semantics: s, .. } => {
             let r = match texpr.children.clone().first().cloned() {
     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
     None => Rc::new(ExprResolveResult {
@@ -1155,8 +1150,7 @@ Rc::new(ExprResolveResult {
 };
 Rc::new(ExprResolveResult {
     expr: make_expr_node(Rc::new(ExprData::ExprLambda {
-    params: p.clone(),
-    semantics: s.clone(),
+semantics: s.clone(),
 }), vec![r.expr.clone()], texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: r.diagnostics.clone(),
 })
@@ -1217,7 +1211,7 @@ Rc::new(ExprResolveResult {
     diagnostics: v2_rt::concat(r.diagnostics.clone(), tr.diagnostics.clone()),
 })
 },
-    ExprData::ExprForEach { variable: variable, .. } => {
+    ExprData::ExprForEach => {
             let ch = texpr.children.clone();
 let cr = match ch.clone().first().cloned() {
     Some(c) => resolve_expr_types(c.clone(), env.clone(), module_name.clone()),
@@ -1234,9 +1228,7 @@ let br = match ch.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().f
 }),
 };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprForEach {
-    variable: variable.clone(),
-}), vec![cr.expr.clone(), br.expr.clone()], texpr.inferred.clone(), texpr.span.clone()),
+    expr: make_expr_node(Rc::new(ExprData::ExprForEach), vec![cr.expr.clone(), br.expr.clone()], texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: v2_rt::concat(cr.diagnostics.clone(), br.diagnostics.clone()),
 })
 },

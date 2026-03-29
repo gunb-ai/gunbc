@@ -401,7 +401,7 @@ fn serialize_expr_data(expr_node: Node) -> String {
         "{\"kind\": \"ExprError\", \"error_kind\": ", json_quote(s: expr_error_kind_name(value: kind)),
         ", \"message\": ", json_quote(s: message),
         "}")
-    ExprVar { name: name, binding_kind: binding_kind } =>
+    ExprVar { binding_kind: binding_kind } =>
       concat(
         "{\"kind\": \"ExprVar\", \"name\": ", json_quote(s: name),
         ", \"binding_kind\": ",
@@ -417,7 +417,7 @@ fn serialize_expr_data(expr_node: Node) -> String {
           None => "null"
         },
         "}")
-    ExprFieldAccess { field: field, summary: summary } =>
+    ExprFieldAccess { summary: summary } =>
       concat(
         "{\"kind\": \"ExprFieldAccess\", \"field\": ", json_quote(s: field),
         ", \"summary\": ",
@@ -427,13 +427,13 @@ fn serialize_expr_data(expr_node: Node) -> String {
         },
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprCall { func: func, call_semantics: call_semantics } =>
+    ExprCall { call_semantics: call_semantics } =>
       concat(
         "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
         ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprMethodCall { method: method, method_semantics: method_semantics } =>
+    ExprMethodCall { method_semantics: method_semantics } =>
       concat(
         "{\"kind\": \"ExprMethodCall\", \"method\": ", json_quote(s: method),
         ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics),
@@ -449,24 +449,24 @@ fn serialize_expr_data(expr_node: Node) -> String {
         "{\"kind\": \"ExprUnaryOp\", \"op\": ", json_quote(s: unary_op_name(value: op)),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprLambda { params: params, semantics: semantics } =>
+    ExprLambda { semantics: semantics } =>
       concat(
         "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => json_quote(s: p))),
         ", \"semantics\": ", serialize_lambda_semantics(value: semantics),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprLet { name: name } =>
+    ExprLet =>
       concat(
         "{\"kind\": \"ExprLet\", \"name\": ", json_quote(s: name),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprRecordLit { type_name: type_name, parent_enum: parent_enum } =>
+    ExprRecordLit { parent_enum: parent_enum } =>
       concat(
         "{\"kind\": \"ExprRecordLit\", \"type_name\": ", json_optional_string(value: type_name),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
-    ExprForEach { variable: variable } =>
+    ExprForEach =>
       concat(
         "{\"kind\": \"ExprForEach\", \"variable\": ", json_quote(s: variable),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),

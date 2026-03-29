@@ -586,7 +586,7 @@ fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, regis
 fn emit_go_expr_var(expr: Node, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprVar { name: n, binding_kind: _ } => concat(prefix, emit_ident(name: n, target: Go))
+    ExprVar { binding_kind: _ } => concat(prefix, emit_ident(name: n, target: Go))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_var expected ExprVar", target: Go))
   }
 }
@@ -594,7 +594,7 @@ fn emit_go_expr_var(expr: Node, depth: Int) -> String {
 fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprFieldAccess { field: f, summary: summary } =>
+    ExprFieldAccess { summary: summary } =>
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
@@ -611,7 +611,7 @@ fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope:
 fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       concat(prefix, emit_go_typed_call(func: f, args: expr.children, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_call expected ExprCall", target: Go))
   }
@@ -620,7 +620,7 @@ fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 fn emit_go_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprMethodCall { method: m, method_semantics: method_semantics } =>
+    ExprMethodCall { method_semantics: method_semantics } =>
       let r = method_receiver(texpr: expr)
       let a = method_arg_nodes(texpr: expr)
       concat(prefix, emit_go_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope))
@@ -651,7 +651,7 @@ fn emit_go_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScop
 
 fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprLet { name: n } =>
+    ExprLet =>
       let v = let_value(texpr: expr)
       let bd = let_body(texpr: expr)
       emit_go_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
@@ -662,7 +662,7 @@ fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 fn emit_go_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprRecordLit { type_name: tn, parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       let fs = expr.children
       concat(prefix, emit_go_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_record_lit expected ExprRecordLit", target: Go))
@@ -703,7 +703,7 @@ fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 
 fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprForEach { variable: v } =>
+    ExprForEach =>
       let c = foreach_collection(texpr: expr)
       let bd = foreach_body(texpr: expr)
       emit_go_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
@@ -1010,7 +1010,7 @@ fn emit_go_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>,
 fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match body.expr_data {
-    ExprLet { name: n } => {
+    ExprLet => {
       let ch = body.children
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
@@ -1057,7 +1057,7 @@ fn emit_go_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, regi
 fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       let call_str = emit_go_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope)
       concat(prefix, "return ", call_str)
     _ => concat(prefix, emit_error_expr(message: "emit_go_tco_non_self_call expected ExprCall", target: Go))
@@ -1105,7 +1105,7 @@ fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, regis
 fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprLet { name: n } =>
+    ExprLet =>
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: 0)

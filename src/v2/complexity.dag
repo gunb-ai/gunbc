@@ -259,7 +259,7 @@ fn replace_computing_ref(expr: CostExpr, func_name: String, replacement: CostExp
 // Count direct self-calls in a function body expression tree.
 fn count_self_calls(body: Node, func_name: String) -> Int {
   let own = match body.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       if f == func_name { 1 } else { 0 }
     _ => 0
   }
@@ -374,11 +374,11 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
 
 fn receiver_size_var(recv: Node) -> SizeExpr {
   match recv.expr_data {
-    ExprVar { name: vname } =>
+    ExprVar =>
       SizeLen { collection: vname }
-    ExprFieldAccess { field: fname } =>
+    ExprFieldAccess =>
       SizeLen { collection: fname }
-    ExprMethodCall { method: _, method_semantics: method_semantics } =>
+    ExprMethodCall { method_semantics: method_semantics } =>
       let inner_recv = match recv.children |> first { Some { value: r } => r  None => recv }
       if method_preserves_collection_size(method_semantics: method_semantics) {
         receiver_size_var(recv: inner_recv)
@@ -420,7 +420,7 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
   match lambda_arg {
     Some { value: la } =>
       match la.expr_data {
-        ExprVar { name: fn_ref } =>
+        ExprVar =>
           match map_get(func_index, fn_ref) {
             Some { value: _ } =>
               get_or_compute_summary(func_name: fn_ref, func_index: func_index, table: recv_r.table)
@@ -847,7 +847,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: table
       }
 
-    ExprVar { name: _ } =>
+    ExprVar =>
       SummaryResult {
         summary: ComplexitySummary {
           work: CostConst { value: 1 },
@@ -873,7 +873,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: rr.table
       }
 
-    ExprCall { func: fname } =>
+    ExprCall =>
       // Look up callee summary (recursive via get_or_compute_summary)
       let callee_result = match map_get(func_index, fname) {
         Some { value: entry } =>
@@ -920,7 +920,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: args_result.table
       }
 
-    ExprMethodCall { method: mname, method_semantics: ms } =>
+    ExprMethodCall { method_semantics: ms } =>
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
       let recv_r = cost_of_expr(texpr: recv, func_index: func_index, table: table)
@@ -1059,7 +1059,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         table: e_result.table
       }
 
-    ExprLet { name: _ } =>
+    ExprLet =>
       let v = let_value(texpr: texpr)
       let v_r = cost_of_expr(texpr: v, func_index: func_index, table: table)
       match let_body(texpr: texpr) {
@@ -1099,7 +1099,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
         }
       })
 
-    ExprForEach { variable: _ } =>
+    ExprForEach =>
       let c = foreach_collection(texpr: texpr)
       let bd = foreach_body(texpr: texpr)
       let c_r = cost_of_expr(texpr: c, func_index: func_index, table: table)
