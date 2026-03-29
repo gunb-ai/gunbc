@@ -312,44 +312,49 @@ match method.clone() {
 }
 }
 
+/// Builtin function return type registry — data table, not if/else branches.
+/// Each entry maps a function name to its return type Node.
+pub fn builtin_function_registry() -> HashMap<String, Rc<Node>> {
+    let mut m: HashMap<String, Rc<Node>> = HashMap::new();
+    // Int-returning functions
+    m.insert("string_length".to_string(), leaf_node("Int".to_string()));
+    m.insert("code_point".to_string(), leaf_node("Int".to_string()));
+    m.insert("to_int".to_string(), leaf_node("Int".to_string()));
+    m.insert("scan_while".to_string(), leaf_node("Int".to_string()));
+    m.insert("scan_string_end".to_string(), leaf_node("Int".to_string()));
+    m.insert("scan_to_eol".to_string(), leaf_node("Int".to_string()));
+    m.insert("skip_horizontal_ws".to_string(), leaf_node("Int".to_string()));
+    // Int?-returning functions
+    m.insert("parse_int".to_string(), with_optional_cardinality(leaf_node("Int".to_string())));
+    // String-returning functions
+    m.insert("char_at".to_string(), leaf_node("String".to_string()));
+    m.insert("substring".to_string(), leaf_node("String".to_string()));
+    m.insert("from_code_point".to_string(), leaf_node("String".to_string()));
+    m.insert("to_string".to_string(), leaf_node("String".to_string()));
+    m.insert("concat".to_string(), leaf_node("String".to_string()));
+    // Map-returning functions
+    m.insert("map_insert".to_string(), bare_map_node());
+    m.insert("map_merge".to_string(), bare_map_node());
+    m.insert("with".to_string(), bare_map_node());
+    // Bool-returning functions
+    m.insert("map_contains_key".to_string(), leaf_node("Bool".to_string()));
+    m.insert("map_has".to_string(), leaf_node("Bool".to_string()));
+    m.insert("emit_map_has".to_string(), leaf_node("Bool".to_string()));
+    // Optional-returning functions (Dynamic placeholder for type variable;
+    // .dag source uses type_variable_node — stage0 gets it on next regen)
+    m.insert("lookup".to_string(), with_optional_cardinality(leaf_node("Dynamic".to_string())));
+    m.insert("map_get".to_string(), with_optional_cardinality(leaf_node("Dynamic".to_string())));
+    m.insert("Some".to_string(), with_optional_cardinality(leaf_node("Dynamic".to_string())));
+    // List-returning functions (Dynamic placeholder for type variable element)
+    m.insert("map_keys".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
+    m.insert("map_values".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
+    m.insert("reverse".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
+    m.insert("list_push".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
+    m
+}
+
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    if (((name.clone() == "string_length".to_string()) || (name.clone() == "code_point".to_string())) || (name.clone() == "to_int".to_string())) {
-        Some(leaf_node("Int".to_string()))
-} else {
-        if (name.clone() == "parse_int".to_string()) {
-            Some(with_optional_cardinality(leaf_node("Int".to_string())))
-} else {
-            if (((((name.clone() == "char_at".to_string()) || (name.clone() == "substring".to_string())) || (name.clone() == "from_code_point".to_string())) || (name.clone() == "to_string".to_string())) || (name.clone() == "concat".to_string())) {
-                Some(leaf_node("String".to_string()))
-} else {
-                if ((((name.clone() == "scan_while".to_string()) || (name.clone() == "scan_string_end".to_string())) || (name.clone() == "scan_to_eol".to_string())) || (name.clone() == "skip_horizontal_ws".to_string())) {
-                    Some(leaf_node("Int".to_string()))
-} else {
-                    if ((name.clone() == "lookup".to_string()) || (name.clone() == "map_get".to_string())) {
-                        Some(with_optional_cardinality(leaf_node("Dynamic".to_string())))
-} else {
-                        if (((name.clone() == "map_insert".to_string()) || (name.clone() == "map_merge".to_string())) || (name.clone() == "with".to_string())) {
-                            Some(bare_map_node())
-} else {
-                            if (((name.clone() == "map_contains_key".to_string()) || (name.clone() == "map_has".to_string())) || (name.clone() == "emit_map_has".to_string())) {
-                                Some(leaf_node("Bool".to_string()))
-} else {
-                                if ((((name.clone() == "map_keys".to_string()) || (name.clone() == "map_values".to_string())) || (name.clone() == "reverse".to_string())) || (name.clone() == "list_push".to_string())) {
-                                    Some(container_node("List".to_string(), leaf_node("Dynamic".to_string())))
-} else {
-                                    if (name.clone() == "Some".to_string()) {
-                                        Some(with_optional_cardinality(leaf_node("Dynamic".to_string())))
-} else {
-                                        None
-}
-}
-}
-}
-}
-}
-}
-}
-}
+    builtin_function_registry().get(&name).cloned()
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
