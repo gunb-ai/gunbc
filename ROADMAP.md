@@ -919,6 +919,92 @@ The data is modeled; the rules are not.
 
 ---
 
+## Design Direction: Bootstrap Sustainability
+
+**Problem (2026-03-28):** Stage0 regeneration was blocked by a cascade
+of issues: manual file list assembly, stale imports, syntax type
+conflicts, and a type inference bug in `substitute_algebra_result`.
+Each fix attempt took ~5 minutes (260s compile) and each "fix" broke
+other method return types. The bootstrap process violated 4 invariants:
+duplicate representations, parallel implementations, fabrication
+fallbacks, and heuristic file assembly.
+
+**Root cause:** The compiler didn't own its source resolution. The
+caller (regen script) guessed which files to include. When the guess
+was wrong, compilation failed. This is FF-9.
+
+### What was fixed (this session)
+
+**FF-9 (import-driven source resolution):** The stage0 binary now takes
+`--source-root` paths and transitively resolves imports. No manual file
+lists. The regen script is now:
+```bash
+v2-compiler compile --source-root src/v2 --source-root dsl --output-dir stage0
+```
+
+### What remains (bootstrap gap)
+
+20 diagnostics from `substitute_algebra_result` in stage0's method
+return type inference. The function replaces a method's return type with
+the receiver's concrete type when both have the same collection name
+(e.g., both named "List"). This loses transformations like `enumerate`
+which wraps elements in `Tuple<Int, Elem>`.
+
+**The specific bug:** `enumerate` on `List<Node>` returns
+`List<Tuple<Int, Node>>`. `substitute_algebra_result` sees
+`result.name == "List" == receiver.name` and replaces result with
+receiver → `List<Node>`. The Tuple wrapping is lost. Downstream code
+does `pair.first` / `pair.second` on what it expects is a Tuple, but
+the compiler sees `Node` → diagnostic.
+
+**Why naive fixes fail:** The function is load-bearing for ALL method
+return types. Filter, map, flatMap, skip, take all rely on the "same
+name → use receiver" logic to propagate concrete element types from
+the receiver. Any fix that changes this logic for enumerate breaks
+other methods.
+
+**The correct fix (for next session):**
+
+1. Trace ALL callers of `substitute_algebra_result` and document what
+   each method expects:
+   - `filter/map/flatMap/skip/take`: result IS `receiver_type.clone()`
+     already — substitution is a no-op (these never hit the name check)
+   - `enumerate`: result is `List<Tuple<Int, Elem>>` — name matches
+     receiver but MUST NOT be substituted
+   - `fold`: handled by the fold_accumulator_type check (correct)
+   - `first/last`: result is `Optional<Elem>` — different name, not
+     substituted (correct)
+   - `count/join/any/all`: result is leaf type — different name (correct)
+
+2. The discriminant is: does the result's FIRST CHILD differ from the
+   receiver's first child? For enumerate, result first child is "Tuple"
+   but receiver's is "Node" (or whatever the element type is). For
+   filter, result IS receiver — children are identical.
+
+3. Apply the fix only when `result.children[0].name != receiver.children[0].name`
+   AND both have children. This preserves all existing behavior except
+   for enumerate's Tuple wrapping.
+
+4. Also address the 2 `variant 'Some'/'None' not found in type 'Map'`
+   diagnostics in `04_resolve.dag` — likely a similar inference gap
+   where a `lookup` result is typed as Map instead of Optional.
+
+### Long-term: eliminate the bootstrap gap structurally
+
+Once stage0 is regenerated successfully:
+
+1. **Committed binary approach (#21):** Commit the regenerated stage0
+   source. CI verifies: regenerate → diff → must be empty.
+2. **Diagnostic ratchet at 0:** Any .dag source change that introduces
+   a diagnostic blocks the commit.
+3. **FF-9 everywhere:** Tests, regen, and production all use the same
+   import-driven resolution. No parallel file list implementations.
+4. **Self-compile performance gate:** FF-8 (Rc containers) must be in
+   the regenerated stage0 to make the compile time < 30s, enabling
+   fast iteration on future bootstrap issues.
+
+---
+
 ## Current State (2026-03-28)
 
 **TOP PRIORITY: Compiler thesis inversion (~362 hardcoded name-based
