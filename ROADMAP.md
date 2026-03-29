@@ -579,6 +579,71 @@ of truth. If a guarantee is not in the receipt, it does not exist.
 }
 ```
 
+#### Compositional mock generation
+
+Mock data is compositional, like everything else. Sample values live
+ON the type definition and propagate through composition. The compiler
+generates realistic mocks by composing child samples. Hand-written
+`mock_response` blocks are only needed for cross-field scenarios.
+
+**Two levels of mock data:**
+
+**Level 1 — Structural witnesses (compiler-generated, automatic):**
+Every type gets a canonical witness from its structure. No hand-written
+data. Tests plumbing: serialization, field access, pattern matching.
+
+| Type pattern | Canonical witness |
+|---|---|
+| Product (all edges) | All fields present with child witnesses |
+| Coproduct (one edge) | First variant + each variant separately |
+| Optional | BOTH: present(witness) AND absent |
+| Refinement (`where`) | Value satisfying the constraint |
+| Collection | Empty + one-element with child witness |
+| Leaf (Int, String, Bool) | Zero / empty / false |
+
+**Level 2 — Compositional samples (type-authored, domain-specific):**
+Types carry sample values as part of their definition. These propagate
+upward — any type using `Url` automatically gets realistic URLs.
+
+```dag
+// Sample data lives on the type, not in a separate mock file
+type Url = String where pattern("https?://.*") {
+  samples: [
+    "https://example.com",
+    "https://api.github.com/repos/owner/repo"
+  ]
+}
+
+type GitHubLogin = String where non_empty {
+  samples: ["octocat", "defunkt"]
+}
+
+// PullRequest mock is COMPOSED from field type samples:
+//   number ← Int.samples → [0, 1, -1]
+//   title ← String.samples → ["", "hello"]
+//   html_url ← Url.samples → ["https://example.com"]
+//   user.login ← GitHubLogin.samples → ["octocat"]
+// No hand-writing { number: 42, title: "Add widget support", ... }
+type PullRequest {
+  number: Int
+  title: String
+  html_url: Url
+  user: GitHubUser
+}
+```
+
+**Level 3 — Scenario mocks (hand-authored, cross-field):**
+Only needed when fields have cross-cutting constraints the type
+structure alone can't express: "when state is 'open', merged_at
+should be null." These are the existing `mock_response` blocks —
+they supplement compositional mocks, not replace them.
+
+**Why this avoids duplicate representation:** sample data lives on
+the type definition (one place), not copied into mock_response blocks
+(many places). Adding a sample to `Url` improves mocks everywhere
+`Url` is used. The mock_response blocks in existing .dag files can
+shrink to only the cross-field scenarios.
+
 #### Test generation tracks
 
 **Track 1 — Discovery gates:**
@@ -590,10 +655,12 @@ of truth. If a guarantee is not in the receipt, it does not exist.
 
 | .dag construct | Generated test | How it works | Status |
 |---|---|---|---|
-| **Service + `mock_response`** | Mock invocation test | DryRunMode, call operation, assert ok | Working — 6 syntax tests pass |
-| **Type (product/coproduct)** | Roundtrip test | Construct → serialize → deserialize → assert equal | Not yet |
-| **Pure function (`fn`)** | Property test | Type-driven input gen, assert no panics | Not yet |
-| **Workflow (`func`)** | Dry-run test | All services mocked, assert completes | Partial |
+| **Type** | Roundtrip (structural witness) | Construct from composed samples → serialize → deserialize → assert equal | Not yet |
+| **Type** | Sample coverage | Each sample value roundtrips correctly | Not yet |
+| **Service + `mock_response`** | Scenario invocation | DryRunMode, call with scenario mock, assert ok | Working (6 syntax tests) |
+| **Service (no mock_response)** | Structural invocation | DryRunMode with compositional witness, assert shape | Not yet |
+| **Pure function (`fn`)** | Property test | Composed sample inputs, assert no panics, assert return type | Not yet |
+| **Workflow (`func`)** | Dry-run test | All services use compositional mocks, assert completes | Partial |
 
 **Track 3 — Edge-contract coverage:**
 For every edge in every compiled DAG, generate a producer→consumer
