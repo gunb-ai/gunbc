@@ -1393,6 +1393,18 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 }
 
 pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<ComplexityReport> {
+    // BOOTSTRAP PERF: Short-circuit complexity analysis during self-compile.
+    // The fold below clones func_index (HashMap) and intern_table on every
+    // iteration — O(n²) for n functions, ~7GB for the compiler's ~500 funcs.
+    // Complexity reports don't affect code emission; re-enable after FF-8.
+    if std::env::var("GUNBC_SKIP_COMPLEXITY").is_ok() {
+        return Rc::new(ComplexityReport {
+            function_summaries: <HashMap<_, _>>::new(),
+            violations: vec![],
+            intern_table: empty_intern_table(),
+            formatted: "complexity analysis skipped (GUNBC_SKIP_COMPLEXITY)".to_string(),
+        });
+    }
     {
         let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
 let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {

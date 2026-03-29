@@ -539,9 +539,18 @@ Rc::new(CompileResult {
 }
 }
 
+pub fn rss_mb() -> usize {
+    std::fs::read_to_string("/proc/self/status").ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("VmRSS:")).map(|l| l.to_string()))
+        .and_then(|l| l.split_whitespace().nth(1).and_then(|v| v.parse::<usize>().ok()))
+        .map(|kb| kb / 1024).unwrap_or(0)
+}
+
 pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc<PipelineResult> {
     {
+        eprintln!("[mem] start: {}MB", rss_mb());
         let frontend = front_end_sources(sources.clone());
+        eprintln!("[mem] after frontend (parse+resolve): {}MB", rss_mb());
 match frontend.graph.clone() {
     None => Rc::new(PipelineResult {
     files: vec![],
@@ -562,6 +571,7 @@ if ((resolve_errors.clone().len() as i64) > 0) {
     artifact_plan: empty_artifact_plan(),
 })
 }
+eprintln!("[mem] before normalize: {}MB", rss_mb());
 let norm = normalize_graph(graph.clone());
 let norm_diags = norm.diagnostics.clone();
 let norm_errors = { let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };
@@ -574,11 +584,17 @@ if ((norm_errors.clone().len() as i64) > 0) {
     artifact_plan: empty_artifact_plan(),
 })
 }
+eprintln!("[mem] before reconcile (infer): {}MB", rss_mb());
 let typed = reconcile(norm.graph.clone());
+eprintln!("[mem] reconcile returned: {}MB", rss_mb());
 let typed_diags = typed.diagnostics.clone();
+eprintln!("[mem] after typed_diags: {}MB", rss_mb());
 let func_entries = extract_func_entries(typed.clone());
+eprintln!("[mem] after extract_func_entries: {}MB", rss_mb());
 let complexity = build_complexity_report(func_entries.clone());
+eprintln!("[mem] after complexity: {}MB", rss_mb());
 let typecheck_errors = { let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };
+eprintln!("[mem] typecheck_errors count: {}, mem: {}MB", typecheck_errors.len(), rss_mb());
 if ((typecheck_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: vec![],
@@ -588,10 +604,13 @@ if ((typecheck_errors.clone().len() as i64) > 0) {
     artifact_plan: empty_artifact_plan(),
 })
 }
+eprintln!("[mem] after reconcile: {}MB", rss_mb());
 let ownership = extract_ownership_proofs(typed.clone());
 let ownership_diags = ownership_diagnostics(ownership.clone());
 let artifact_plan = default_artifact_plan({ let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.push(m.module.clone().name.clone()); } __result }, target.clone());
+eprintln!("[mem] before emit: {}MB", rss_mb());
 let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
+eprintln!("[mem] after emit: {}MB", rss_mb());
 let emit_files = emit_result.files.clone();
 let emit_diags = emit_result.diagnostics.clone();
 let emit_errors = { let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };

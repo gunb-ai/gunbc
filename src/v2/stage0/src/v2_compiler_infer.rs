@@ -3004,40 +3004,40 @@ pub fn typecheck(graph: Rc<ModuleGraph>) -> Rc<TypedGraph> {
     typecheck_modules(graph.modules.clone(), vec![], <HashMap<_, _>>::new(), <HashMap<_, _>>::new(), vec![])
 }
 
+// BOOTSTRAP PERF: Rewritten from generated TCO pattern (clone+reassign) to
+// in-place mutation. The original cloned every accumulator on every iteration,
+// causing O(n²) memory for n modules (~17GB for 36 modules). This version
+// mutates in place: O(n) total.
 pub fn typecheck_modules(mut remaining: Vec<Rc<ResolvedModule>>, mut modules: Vec<Rc<TypedModule>>, mut module_index: HashMap<String, Rc<TypedModule>>, mut item_registry: HashMap<String, Rc<ItemInfo>>, mut diag_chunks: Vec<Vec<Rc<Node>>>) -> Rc<TypedGraph> {
-    loop {
-        match remaining.clone().first().cloned() {
-    None => { let expanded_registry = expand_transitive_services(modules.clone(), item_registry.clone(), 5);
-break Rc::new(TypedGraph {
-    modules: modules.clone(),
-    item_registry: expanded_registry.clone(),
-    diagnostics: { let mut __result = Vec::new(); for c in diag_chunks.clone().iter().cloned() { __result.extend(c.clone()); } __result },
-}); },
-    Some(resolved) => { let parent_result = collect_parent_envs(resolved.clone(), module_index.clone());
-let tc_result = typecheck_module(resolved.clone(), module_index.clone());
-let typed = tc_result.typed.clone();
-let tc_diags = tc_result.diagnostics.clone();
-{
-            let __tco_0 = remaining.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>();
-let __tco_1 = v2_rt::list_push(modules.clone(), typed.clone());
-let __tco_2 = v2_rt::map_insert(module_index.clone(), typed.module.clone().name.clone(), typed.clone());
-let __tco_3 = v2_rt::map_merge(item_registry.clone(), typed.item_registry.clone());
-let __tco_4 = v2_rt::list_push(v2_rt::list_push(diag_chunks.clone(), parent_result.diagnostics.clone()), tc_diags.clone());
-remaining = __tco_0;
-modules = __tco_1;
-module_index = __tco_2;
-item_registry = __tco_3;
-diag_chunks = __tco_4;
-continue;
-} },
-}
-}
+    while let Some(resolved) = remaining.first().cloned() {
+        eprintln!("[mem] typecheck module '{}': {}MB", resolved.module.name, crate::v2_compiler_compile::rss_mb());
+        let parent_result = collect_parent_envs(resolved.clone(), module_index.clone());
+        let tc_result = typecheck_module(resolved.clone(), module_index.clone());
+        let typed = tc_result.typed.clone();
+        let tc_diags = tc_result.diagnostics.clone();
+        remaining = remaining.split_off(1);
+        modules.push(typed.clone());
+        module_index.insert(typed.module.name.clone(), typed.clone());
+        for (k, v) in typed.item_registry.iter() {
+            item_registry.insert(k.clone(), v.clone());
+        }
+        diag_chunks.push(parent_result.diagnostics.clone());
+        diag_chunks.push(tc_diags);
+    }
+    let expanded_registry = expand_transitive_services(modules.clone(), item_registry.clone(), 5);
+    Rc::new(TypedGraph {
+        modules,
+        item_registry: expanded_registry,
+        diagnostics: diag_chunks.into_iter().flatten().collect(),
+    })
 }
 
 pub fn reconcile(graph: Rc<ModuleGraph>) -> Rc<ResolvedGraph> {
     {
         let typed = typecheck(graph.clone());
+eprintln!("[mem] after typecheck, before build_emit_graph_info: {}MB", crate::v2_compiler_compile::rss_mb());
 let emit_info = build_emit_graph_info(typed.modules.clone());
+eprintln!("[mem] after build_emit_graph_info: {}MB", crate::v2_compiler_compile::rss_mb());
 Rc::new(ResolvedGraph {
     modules: typed.modules.clone(),
     item_registry: typed.item_registry.clone(),
