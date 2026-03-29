@@ -796,62 +796,94 @@ authority. The invariants say: speculative or lossy boundary fact
 tables should be deleted rather than carried forward. "Temporary"
 without a ratchet means "permanent later."
 
-#### Backend model: capability-checked graph coercion
+#### Backend model: emergent graph coercion
 
-The backend is not a renderer or a universal emit IR. It is a
-**coercion engine** — a graph→graph transformation that finds the
-minimal semantics-preserving representation of each graph segment in
-the target's declared basis.
+Coercion is not a rule engine. It is **emergent from graph structure.**
+The compiler reads the source graph and the target's basis, and the
+coercion direction falls out of the subgraph relationship — no
+hand-written rules for things the graph already tells us.
 
 ```
-typed graph → capability check → graph coercion → target-basis graph → renderer
+typed graph → structural comparison → coercion direction → target-basis graph → renderer
 ```
 
-**Targets declare bases and coercion rules, not string templates.**
+**Three coercion directions, two are structural:**
 
-```dag
-type CapabilityLevel = Native | Lowered | Synthesized | Unsupported
+| Direction | Graph relationship | Cost | Example |
+|---|---|---|---|
+| **Upcast** (widen) | Source is subgraph of target | **Free** | `Url → String` — Url has every String edge plus more. Forget the extras. |
+| **Downcast** (narrow) | Target is subgraph of source | **Needs check** | `String → Url` — target has constraints source doesn't. Runtime validation or explicit `as`. |
+| **Sidecast** (lateral) | No subgraph relationship | **Needs .dag process** | `Celsius → Fahrenheit`, `List → Set`, `Int → String` — structural transformation, not deducible. |
 
-type CoercionRule {
-  source_pattern: GraphPattern     // what the source graph looks like
-  target_pattern: GraphPattern     // what the target basis looks like
-  level: CapabilityLevel           // how native this is
-  cost: CostExpr                   // what it costs
-  preserves: List<GuaranteeTag>    // what invariants survive
-}
+Upcasting and downcasting are NEVER hand-written rules. The compiler
+compares the source and target graphs: if one is a subgraph of the
+other, the direction and cost are determined. Only sidecasts need
+explicit `.dag` transformation processes — authored by users or
+libraries, not embedded in the compiler.
+
+**Worked examples:**
+
+```
+UPCAST (free, structural):
+  Url → String
+  Source graph: Node "Url" { scheme: String, host: String, ... }
+  Target graph: Node "String" (leaf)
+  Url IS a String (refinement). Source has all target edges + more.
+  Compiler sees: subgraph ✓. Cost: free. No rule needed.
+
+DOWNCAST (checked, structural):
+  Float → Int
+  Source graph: Node "Float" = Field<Word64>
+  Target graph: Node "Int" = OrderedRing<Word64>
+  Int has constraints Float doesn't (no fractional part).
+  Compiler sees: target has extra constraints. Cost: runtime check.
+  Developer must write explicit `as` or `truncate`.
+
+SIDECAST (explicit .dag process):
+  Celsius → Fahrenheit
+  No subgraph relationship — different structures entirely.
+  Requires: fn to_fahrenheit(c: Celsius) -> Fahrenheit { c * 9/5 + 32 }
+  This is a .dag function, not a compiler rule.
+
+  List → Set
+  Loses information (order, duplicates). Not a subgraph.
+  Requires: fn to_set(list: List<T>) -> Set<T> { ... }
+  User/library authored. The compiler can't deduce this.
 ```
 
-Capability is derived from the rules, not declared separately:
-- Pattern in target basis → `Native` (free)
-- Pattern has a preserving rewrite → `Lowered` (cheap)
-- Only expensive simulation path → `Synthesized` (FPU emulation)
-- No preserving path exists → `Unsupported` (compile error)
+**For language targets, the same model applies:**
 
-**Coercion is search, not heuristic.** The compiler finds the cheapest
-plan that preserves all required guarantees. If two plans tie, fail or
-require annotation. If no plan exists, the target doesn't support that
-graph segment. No free-form backend guessing.
+A language declares its **basis** — which structural patterns it can
+represent natively. The compiler compares each source graph segment
+against the basis:
 
-| Pattern | Rust (Native) | SPICE analog | Verilog | English |
-|---|---|---|---|---|
-| Product | struct | subcircuit ports | module ports | bullet list |
-| Coproduct | enum/match | **Lowered**: mux from comparators | case/mux | "either/or" |
-| Cardinality | Option | **Lowered**: tri-state | tri-state | "optionally" |
-| Sequence | let bindings | wire chain | assign chain | "then" |
-| Function | fn | subcircuit | module | paragraph |
+| Source pattern | Target basis has it? | What happens |
+|---|---|---|
+| Product | Rust: struct ✓ | **Identity** — same structure, different syntax |
+| Coproduct | Rust: enum ✓ | **Identity** |
+| Coproduct | SPICE: no native tagged union | **Sidecast** — needs `.dag` lowering process (mux from switches) |
+| Cardinality | Verilog: tri-state ✓ | **Identity** |
+| Function | English: paragraph ✓ | **Identity** |
 
-**Rendering happens AFTER coercion, never instead of it.** The
-renderer is trivial — it walks the target-basis graph (which is
-already in the target's native patterns) and produces text. All the
-intelligence is in the coercion rules. Target-local lowered IRs are
-fine (Rust coercion produces Rust-flavored structure, Verilog
-coercion produces hardware-flavored structure), but the compiler-wide
-universal interface stays the graph + coercion plan.
+When the source pattern IS in the target's basis → identity (free,
+structural). When it's NOT → the language plugin provides a `.dag`
+sidecast process for that pattern. Only the non-native patterns need
+explicit processes.
 
-**The guarantee receipt records the chosen coercion plan.** For each
-graph segment: which rules fired, what level (Native/Lowered/
-Synthesized), what cost, what guarantees preserved. This makes the
-backend deterministic and auditable — not a black box.
+**Why this avoids duplicate representations:** coercion rules for
+upcasting/downcasting would duplicate what the graph already
+expresses. The graph IS the type relationship. Reading it is free.
+Only sidecasts — where the relationship genuinely doesn't exist in
+the structure — need authored processes.
+
+**Rendering happens AFTER coercion.** The renderer walks the
+target-basis graph (already in native patterns) and produces text.
+Trivial. All intelligence is in the structural comparison (automatic)
+and the sidecast processes (authored in `.dag`).
+
+**The guarantee receipt records the coercion plan:** for each graph
+segment, what direction (upcast/downcast/sidecast), what cost, what
+the sidecast process was (if any). Deterministic and auditable.
 
 #### Execution lanes (expected diffs)
 
