@@ -562,7 +562,9 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
 
 fn emit_py_expr_var(expr: Node) -> String {
   match expr.expr_data {
-    ExprVar { binding_kind: _ } => emit_ident(name: n, target: Python)
+    ExprVar { binding_kind: _ } =>
+      let n = expr_var_name(texpr: expr)
+      emit_ident(name: n, target: Python)
     _ => emit_error_expr(message: "emit_py_expr_var expected ExprVar", target: Python)
   }
 }
@@ -570,6 +572,7 @@ fn emit_py_expr_var(expr: Node) -> String {
 fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprFieldAccess { summary: summary } =>
+      let f = field_access_field(texpr: expr)
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
@@ -586,6 +589,7 @@ fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope:
 fn emit_py_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
+      let f = expr_call_func(texpr: expr)
       emit_py_typed_call(func: f, args: expr.children, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_call expected ExprCall", target: Python)
   }
@@ -596,6 +600,7 @@ fn emit_py_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: 
     ExprMethodCall { method_semantics: method_semantics } =>
       let r = method_receiver(texpr: expr)
       let a = method_arg_nodes(texpr: expr)
+      let m = expr_method_name(texpr: expr)
       emit_py_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_method_call expected ExprMethodCall", target: Python)
   }
@@ -625,6 +630,7 @@ fn emit_py_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScop
 fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprLet =>
+      let n = let_binding_name(texpr: expr)
       let v = let_value(texpr: expr)
       let bd = let_body(texpr: expr)
       emit_py_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
@@ -635,6 +641,7 @@ fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 fn emit_py_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
+      let tn = record_lit_type_name(texpr: expr)
       let fs = expr.children
       emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_record_lit expected ExprRecordLit", target: Python)
@@ -965,6 +972,7 @@ fn emit_py_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>,
 fn emit_py_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match body.expr_data {
     ExprLet => {
+      let n = let_binding_name(texpr: body)
       let ch = body.children
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
@@ -1011,6 +1019,7 @@ fn emit_py_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, regi
 fn emit_py_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
     ExprCall { call_semantics: _ } =>
+      let f = expr_call_func(texpr: frame.expr)
       let call_str = emit_py_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth)
       concat("return ", call_str)
     _ => emit_error_expr(message: "emit_py_tco_non_self_call expected ExprCall", target: Python)
@@ -1056,6 +1065,7 @@ fn emit_py_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, regis
 fn emit_py_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
     ExprLet =>
+      let n = let_binding_name(texpr: frame.expr)
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_py_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth)

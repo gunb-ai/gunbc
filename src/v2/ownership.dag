@@ -140,6 +140,7 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
   match texpr.expr_data {
     ExprVar =>
+      let n = expr_var_name(texpr: texpr)
       if in_tail {
         record_use(accum: accum, name: n, kind: Consumed, site: "return")
       } else {

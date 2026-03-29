@@ -1695,9 +1695,9 @@ InferredNode (3), NodeType (4). Inference result discriminators. (2 types)
 |-------|------|--------|
 | D1 | **Satellite type dissolution.** FieldInit, ResourceUse, Param, Field, Variant → Node. | **DONE** (5 types deleted) |
 | D2 | **Remaining satellites.** NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef → Node. | **DONE** (5 types deleted) |
-| D3 | **ExprData String dissolution.** 9 String fields → child Nodes with spans. ExprData variants become unit. | **DONE** (~210 consumer sites) |
+| D3 | **ExprData String dissolution.** 9 String fields removed from ExprData. Identifiers bridged into `Node.name` via `make_named_expr_node`. 73 accessor call sites read `texpr.name`. | **BRIDGE** — enums deleted, but identifiers live in Node.name (not child Nodes). Increases D6 burden. Green = D6 (delete Node.name, derive text from span). |
 | D5a | *Binding edges.* | **NO CHANGE NEEDED.** Current architecture is correct: scope map is temporary, `inferred` carries Rc-shared type (no duplication), names die after inference. |
-| D5b | *Method/transport .dag modeling.* IntrinsicMethod (20), RuntimeBridgeMethod (27), TransportKind (5), ConfigPropertyKey (6) dissolved. MethodSemantics restructured to AlgebraMethodSemantics { method_name }. | **DONE** (58 enum variants deleted) |
+| D5b | *Method/transport enum dissolution.* IntrinsicMethod (20), RuntimeBridgeMethod (27), TransportKind (5), ConfigPropertyKey (6) enums deleted. MethodSemantics restructured to AlgebraMethodSemantics { method_name: String }. | **BRIDGE** — enums deleted (58 variants), but identity is now string-based dispatch (82 method comparisons, 20 transport comparisons across 5 files). Green = method/transport Nodes as structural edges from .dag algebra definitions, not string matching. |
 | D5c | *DeclaredFuncSig/Env cleanup.* TypeBinding.name redundancy cleans up with D6. DeclaredFuncSig.name same. | Deferred to D6 |
 | D6 | **Delete Node.name.** Identity is the node itself. Text derived from span. Also dissolve MatchPattern Bind/VariantPattern string fields. Delete scrambled-name tests. | **NEXT** — ~553 .name read sites across 20 files. See D6 scope notes below. |
 
@@ -1720,17 +1720,38 @@ Sub-phases:
 5. Update emit + diagnostic layers
 6. Delete Node.name field, delete scrambled-name tests
 
-2 merge regressions to fix first:
-- `complexity_class_sort_proven`: sort_by as ExprCall doesn't route
-  through AlgebraMethodSemantics cost shape path
-- `enumerate_returns_tuple_type`: enumerate type inference affected
-  by method dissolution
+**Bridge Inventory (current honest state, 2026-03-29):**
+
+D3 and D5b are structural improvements (enums/types deleted) but
+NOT at their target state. The roadmap must not describe the
+destination while the code is on the bridge.
+
+*D3 bridge debt (73 sites):*
+Identifiers moved from ExprData String fields to `Node.name`.
+73 accessor calls (`expr_var_name`, `expr_call_func`, etc.) all
+read `texpr.name`. Target: identifiers as child Nodes or span-
+derived text. Dissolves when D6 deletes Node.name.
+
+*D5b bridge debt (102 sites):*
+Enums deleted (58 variants), but replaced with string dispatch:
+- 82 method name comparisons (`method_name == "map"`, etc.)
+  across 05_emit_rust, 05_emit_python, 05_emit_go, complexity
+- 20 transport name comparisons (`transport.name == "rest"`, etc.)
+  across 05_emit_*, 05_emit, 04_resolve
+Target: structural Node edges from .dag algebra definitions.
+
+*D3+D5b path to green:*
+1. D6 deletes Node.name → D3 accessor bridge dissolves
+2. Emit reads method rendering from .dag data tables → D5b
+   method string comparisons dissolve (same pattern as SyntaxSpec)
+3. Transport identity becomes structural (Node edge, not name) →
+   D5b transport comparisons dissolve
 
 **Design principle for D5b:** The compiler's job is NOT to classify
 identifiers into enum variants. The compiler walks a graph of Nodes.
 Every method, transport, config key, and function is a Node defined
-in .dag source. The compiler never classifies by name — it follows
-edges.
+in .dag source. Target: the compiler follows edges, not names.
+Current state: enums are deleted but string dispatch remains.
 
 **Key finding: the .dag modeling already exists.** `std/algebra.dag`
 already defines methods as structural fields on algebra types:
