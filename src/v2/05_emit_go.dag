@@ -25,7 +25,7 @@ import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_name, param_node_type_expr,
-  MatchPattern, FieldBinding, LiteralValue,
+  MatchPattern, LiteralValue, field_binding_name, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_name, resource_use_resource,
   BinOpKind, NullCoalesce,
@@ -566,7 +566,7 @@ fn emit_go_pattern(pattern: MatchPattern) -> String {
   }
 }
 
-fn emit_go_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> String {
+fn emit_go_variant_pattern(name: String, field_bindings: List<Node>) -> String {
   // Go type switch: case TypeName:
   name
 }

@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, CompilerDiagnostic, ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, no_span, Connective, Cardinality, resource_use_name, resource_use_resource, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, FieldBinding, arm_pattern, arm_guard, arm_body, arg_name, arg_value, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node, NewlineIndex, build_newline_index, field_init_node_name, field_init_node_value, param_node_name, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, CompilerDiagnostic, ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, no_span, Connective, Cardinality, resource_use_name, resource_use_resource, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern, arm_pattern, arm_guard, arm_body, arg_name, arg_value, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node, NewlineIndex, build_newline_index, field_init_node_name, field_init_node_value, param_node_name, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::Connective::*;
@@ -295,8 +295,8 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
 }
 }
 
-pub fn serialize_field_binding(binding: Rc<FieldBinding>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"field_name\": ".to_string(), json_quote(binding.field_name.clone())), ", \"binding\": ".to_string()), serialize_match_pattern(binding.binding.clone())), "}".to_string())
+pub fn serialize_field_binding(binding: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"field_name\": ".to_string(), json_quote(field_binding_name(binding.clone()))), ", \"binding\": ".to_string()), serialize_match_pattern(field_binding_pattern(binding.clone()))), "}".to_string())
 }
 
 pub fn serialize_match_pattern(pattern: Rc<MatchPattern>) -> String {

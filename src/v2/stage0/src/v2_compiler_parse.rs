@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
+pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -396,7 +396,7 @@ pub struct ModsResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BindingsResult {
-    pub field_bindings: Vec<Rc<FieldBinding>>,
+    pub field_bindings: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -9441,7 +9441,7 @@ Rc::new(PatternResult {
         if has_err(r2.err.clone()) {
             return Rc::new(PatternResult { pattern: Rc::new(MatchPattern::Wildcard), state: r2.state.clone(), err: r2.err.clone() })
         }
-        let fb = Rc::new(FieldBinding { field_name: "0".to_string(), binding: r.pattern.clone() });
+        let fb = make_field_binding_node("0".to_string(), r.pattern.clone(), current_span(tokens.clone(), state.clone()));
         Rc::new(PatternResult {
     pattern: Rc::new(MatchPattern::VariantPattern {
     name: name.clone(),
@@ -9468,7 +9468,7 @@ pub fn parse_variant_bindings_brace(tokens: Rc<Vec<Rc<Token>>>, state: Rc<Parser
     parse_variant_bindings_brace_acc(tokens.clone(), state.clone(), vec![])
 }
 
-pub fn parse_variant_bindings_brace_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<Rc<FieldBinding>>) -> Rc<BindingsResult> {
+pub fn parse_variant_bindings_brace_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<Rc<Node>>) -> Rc<BindingsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
@@ -9505,10 +9505,7 @@ let s3 = skip_newlines(tokens.clone(), if e2.consumed.clone() {
 } else {
                     s2.clone()
 });
-let fb = Rc::new(FieldBinding {
-    field_name: field_name.clone(),
-    binding: r2.pattern.clone(),
-});
+let fb = make_field_binding_node(field_name.clone(), r2.pattern.clone(), current_span(tokens.clone(), s.clone()));
 {
                     let __tco_0 = tokens.clone();
 let __tco_1 = s3.clone();
@@ -9525,12 +9522,9 @@ let s2 = skip_newlines(tokens.clone(), if e2.consumed.clone() {
 } else {
                     s.clone()
 });
-let fb = Rc::new(FieldBinding {
-    field_name: field_name.clone(),
-    binding: Rc::new(MatchPattern::Bind {
+let fb = make_field_binding_node(field_name.clone(), Rc::new(MatchPattern::Bind {
     name: field_name.clone(),
-}),
-});
+}), current_span(tokens.clone(), s.clone()));
 {
                     let __tco_0 = tokens.clone();
 let __tco_1 = s2.clone();

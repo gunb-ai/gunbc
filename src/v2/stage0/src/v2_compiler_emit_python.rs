@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, FieldBinding, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -550,14 +550,14 @@ pub fn emit_py_pattern(pattern: Rc<MatchPattern>) -> String {
 }
 }
 
-pub fn emit_py_variant_pattern(name: String, field_bindings: Vec<Rc<FieldBinding>>) -> String {
+pub fn emit_py_variant_pattern(name: String, field_bindings: Vec<Rc<Node>>) -> String {
     if ((field_bindings.clone().len() as i64) == 0) {
         v2_rt::concat(name.clone(), "()".to_string())
 } else {
         {
             let binding_strs = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { __result.push({
-                let pat_str = emit_py_pattern(fb.binding.clone());
-v2_rt::concat(v2_rt::concat(emit_ident(fb.field_name.clone(), RenderTarget::Python), "=".to_string()), pat_str.clone())
+                let pat_str = emit_py_pattern(field_binding_pattern(fb.clone()));
+v2_rt::concat(v2_rt::concat(emit_ident(field_binding_name(fb.clone()), RenderTarget::Python), "=".to_string()), pat_str.clone())
 }); } __result };
 let bindings_str = binding_strs.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(name.clone(), "(".to_string()), bindings_str.clone()), ")".to_string())

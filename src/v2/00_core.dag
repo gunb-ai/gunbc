@@ -310,13 +310,14 @@ type ExprData
 type MatchPattern
   = Bind { name: String }
   | LitPattern { value: LiteralValue }
-  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<FieldBinding> }
+  | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
 
-type FieldBinding {
-  field_name: String
-  binding: MatchPattern
-}
+// FieldBinding dissolved into Node (D2c):
+//   field_name → node.name
+//   binding    → node.match_pattern
+// Constructor: make_field_binding_node
+// Accessors: field_binding_name, field_binding_pattern
 
 type LiteralValue
   = LitStr { value: String }
@@ -612,6 +613,23 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
+}
+
+// Field binding node (D2c): name carries the field name, match_pattern carries the binding pattern.
+fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan) -> Node {
+  Node {
+    name: field_name, span: span, children: [], connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: Some { value: binding }, expr_data: NoExprData
+  }
+}
+
+fn field_binding_name(n: Node) -> String { n.name }
+
+fn field_binding_pattern(n: Node) -> MatchPattern {
+  match n.match_pattern { Some { value: p } => p  None => Wildcard }
 }
 
 // Text part node: a literal string fragment in string interpolation.

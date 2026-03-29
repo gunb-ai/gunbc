@@ -967,7 +967,7 @@ diagnostics (~45).
 | D1 | **Satellite type dissolution.** Param, ResourceUse, FieldInit → `List<Node>`. Delete types. | 3 types, ~85 consumer sites | Satellite types: 10 → 7 |
 | D2 | **Parser produces Nodes directly.** `expect_name()` returns leaf Node. Field/Variant/OperationDef/CapabilityDef created as Nodes in parser, never as intermediates. | 4 types, ~80 parser sites | Satellite types: 7 → 3 |
 | D3 | **ExprData String dissolution.** String fields → children. ExprData variants become unit. Parser stores identifiers as child Nodes. | 9 String fields, ~210 consumer sites | ExprData Strings: 9 → 0 |
-| D4 | **Remaining dissolution.** NamedArg, MatchArm, FieldBinding → Node. MatchPattern names → Node.name. | 3 types, ~70 consumer sites | Satellite types: 3 → 0 |
+| D4 | **Remaining dissolution.** ~~NamedArg~~, ~~MatchArm~~, ~~FieldBinding~~ → Node (DONE). MatchPattern names → Node.name. | 3 types, ~70 consumer sites | Satellite types: 3 → 0 |
 | D5 | **Edge model.** Resolution produces structural edges (use → definition). Method dispatch via data tables. Inference walks edges. | ~120 scope lookups + ~165 name comparisons | Name reads in inference: current → 0 |
 | D6 | **Delete Node.name.** Emit extracts identifier text via `source_text_at(binding_site.span)`. No stored name field. Delete scrambled-name tests (nothing to scramble). | ~175 emit name reads + `Node.name` field | Node has no name field |
 

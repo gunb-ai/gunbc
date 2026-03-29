@@ -25,7 +25,7 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable,
   VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
-  ExprErrorKind, ExprData, MatchPattern, FieldBinding,
+  ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
   arm_pattern, arm_guard, arm_body,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node,
   NewlineIndex, build_newline_index
@@ -293,10 +293,10 @@ fn serialize_literal(value: LiteralValue) -> String {
   }
 }
 
-fn serialize_field_binding(binding: FieldBinding) -> String {
+fn serialize_field_binding(binding: Node) -> String {
   concat(
-    "{\"field_name\": ", json_quote(s: binding.field_name),
-    ", \"binding\": ", serialize_match_pattern(pattern: binding.binding),
+    "{\"field_name\": ", json_quote(s: field_binding_name(n: binding)),
+    ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding)),
     "}")
 }
 

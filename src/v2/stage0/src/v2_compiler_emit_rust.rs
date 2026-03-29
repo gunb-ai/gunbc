@@ -26,7 +26,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     pub fn as_set(&self) -> &std::collections::BTreeSet<T> { &self.0 }
     pub fn into_set(self) -> std::collections::BTreeSet<T> { self.0 }
 }
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, LiteralValue, ExprData, make_expr_node, make_arg_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, IntrinsicMethod, MatchPattern, FieldBinding, TextFile, CompilerDiagnostic, ErrorNode, make_error_node, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, TransportKind, is_transport_kind, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, leaf_node, with_required_cardinality, node_has_structure, node_is_product, node_is_coproduct, FieldAccessStyle, FieldValueShape};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, LiteralValue, ExprData, make_expr_node, make_arg_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, IntrinsicMethod, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, TextFile, CompilerDiagnostic, ErrorNode, make_error_node, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, TransportKind, is_transport_kind, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, leaf_node, with_required_cardinality, node_has_structure, node_is_product, node_is_coproduct, FieldAccessStyle, FieldValueShape};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
@@ -1027,14 +1027,14 @@ pub fn collect_pattern_string_guards(mut pattern: Rc<MatchPattern>) -> String {
         match (*pattern.clone()).clone() {
     MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => { if ((n.clone() == "Some".to_string()) && ((fbs.clone().len() as i64) == 1)) {
             match fbs.clone().first().cloned() {
-    Some(fb) => { if is_string_lit_pattern(fb.binding.clone()) {
-                match (*fb.binding.clone()).clone() {
+    Some(fb) => { let fb_pat = field_binding_pattern(fb.clone()); if is_string_lit_pattern(fb_pat.clone()) {
+                match (*fb_pat.clone()).clone() {
     MatchPattern::LitPattern { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; break v2_rt::concat("__some_val == ".to_string(), emit_string_literal(s.clone(), "".to_string())); },
     _ => { break "".to_string(); },
 }
 } else {
                 {
-                    let __tco_0 = fb.binding.clone();
+                    let __tco_0 = fb_pat.clone();
 pattern = __tco_0;
 continue;
 }
@@ -1042,9 +1042,9 @@ continue;
     None => { break "".to_string(); },
 }
 } else {
-            let str_bindings = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { if is_string_lit_pattern(fb.binding.clone()) { __result.push(fb); } } __result };
-let guards = { let mut __result = Vec::new(); for fb in str_bindings.clone().iter().cloned() { __result.push(match (*fb.binding.clone()).clone() {
-    MatchPattern::LitPattern { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat(emit_ident(fb.field_name.clone(), RenderTarget::Rust), " == ".to_string()), emit_string_literal(s.clone(), "".to_string())) },
+            let str_bindings = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { if is_string_lit_pattern(field_binding_pattern(fb.clone())) { __result.push(fb); } } __result };
+let guards = { let mut __result = Vec::new(); for fb in str_bindings.clone().iter().cloned() { __result.push(match (*field_binding_pattern(fb.clone()).clone()).clone() {
+    MatchPattern::LitPattern { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; v2_rt::concat(v2_rt::concat(emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust), " == ".to_string()), emit_string_literal(s.clone(), "".to_string())) },
     _ => "".to_string(),
 }); } __result };
 break guards.clone().join(&" && ".to_string());
@@ -1089,7 +1089,7 @@ if ((name.clone() == "Some".to_string()) || (name.clone() == "None".to_string())
 }
 }
 
-pub fn emit_variant_pattern(name: String, parent_enum: Option<String>, field_bindings: Vec<Rc<FieldBinding>>, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
+pub fn emit_variant_pattern(name: String, parent_enum: Option<String>, field_bindings: Vec<Rc<Node>>, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
     {
         let qualified = if ((name.clone() == "Some".to_string()) || (name.clone() == "None".to_string())) {
             name.clone()
@@ -1101,14 +1101,14 @@ pub fn emit_variant_pattern(name: String, parent_enum: Option<String>, field_bin
 };
 if ((name.clone() == "Some".to_string()) && ((field_bindings.clone().len() as i64) == 1)) {
             match field_bindings.clone().first().cloned() {
-    Some(fb) => if is_string_lit_pattern(fb.binding.clone()) {
+    Some(fb) => { let fb_pat = field_binding_pattern(fb.clone()); if is_string_lit_pattern(fb_pat.clone()) {
                 "Some(ref __some_val)".to_string()
 } else {
                 {
-                    let inner_pat = emit_pattern(fb.binding.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone());
+                    let inner_pat = emit_pattern(fb_pat.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone());
 v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_string())
 }
-},
+} },
     None => qualified.clone(),
 }
 } else {
@@ -1116,7 +1116,7 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
                 qualified.clone()
 } else {
                 {
-                    let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*fb.binding.clone()).clone() {
+                    let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
     MatchPattern::Wildcard => false,
     _ => true,
 } { __result.push(fb); } } __result };
@@ -1124,14 +1124,14 @@ if ((effective_bindings.clone().len() as i64) == 0) {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
 } else {
                         {
-                            let binding_strs = { let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push(if is_string_lit_pattern(fb.binding.clone()) {
-                                v2_rt::concat("ref ".to_string(), emit_ident(fb.field_name.clone(), RenderTarget::Rust))
+                            let binding_strs = { let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push({ let fb_pat = field_binding_pattern(fb.clone()); if is_string_lit_pattern(fb_pat.clone()) {
+                                v2_rt::concat("ref ".to_string(), emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust))
 } else {
                                 {
-                                    let pat_str = emit_pattern(fb.binding.clone(), vtoe.clone(), rc_types.clone(), "".to_string());
-v2_rt::concat(v2_rt::concat(emit_ident(fb.field_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+                                    let pat_str = emit_pattern(fb_pat.clone(), vtoe.clone(), rc_types.clone(), "".to_string());
+v2_rt::concat(v2_rt::concat(emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
 }
-}); } __result };
+} }); } __result };
 let bindings_str = binding_strs.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(qualified.clone(), " { ".to_string()), bindings_str.clone()), ", .. }".to_string())
 }
@@ -1176,7 +1176,7 @@ pub fn analyze_rc_pattern(pattern: Rc<MatchPattern>, scrut_type: String, vtoe: H
             if ((fbs.clone().len() as i64) == 1) {
                 match fbs.clone().first().cloned() {
     Some(fb) => {
-                    let inner = analyze_rc_pattern(fb.binding.clone(), "".to_string(), vtoe.clone(), rc_types.clone());
+                    let inner = analyze_rc_pattern(field_binding_pattern(fb.clone()), "".to_string(), vtoe.clone(), rc_types.clone());
 Rc::new(RcPatternAnalysis {
     matches_rc_variant: false,
     matches_option_rc_variant: ((n.clone() == "Some".to_string()) && inner.matches_rc_variant.clone()),
@@ -1195,8 +1195,8 @@ Rc::new(RcPatternAnalysis {
     Some(enum_name) => emit_map_has(rc_types.clone(), enum_name.clone()),
     None => false,
 };
-let ref_bound_fields = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.extend(if analyze_rc_pattern(fb.binding.clone(), "".to_string(), vtoe.clone(), rc_types.clone()).matches_rc_variant.clone() {
-                    vec![fb.field_name.clone()]
+let ref_bound_fields = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.extend(if analyze_rc_pattern(field_binding_pattern(fb.clone()), "".to_string(), vtoe.clone(), rc_types.clone()).matches_rc_variant.clone() {
+                    vec![field_binding_name(fb.clone())]
 } else {
                     vec![]
 }); } __result };
@@ -1250,7 +1250,7 @@ pub fn emit_pattern_rc_aware(pattern: Rc<MatchPattern>, rc_analysis: Rc<RcPatter
 }
 }
 
-pub fn emit_variant_pattern_rc_aware(name: String, parent_enum: Option<String>, field_bindings: Vec<Rc<FieldBinding>>, rc_analysis: Rc<RcPatternAnalysis>, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
+pub fn emit_variant_pattern_rc_aware(name: String, parent_enum: Option<String>, field_bindings: Vec<Rc<Node>>, rc_analysis: Rc<RcPatternAnalysis>, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
     {
         let qualified = if ((name.clone() == "Some".to_string()) || (name.clone() == "None".to_string())) {
             name.clone()
@@ -1262,15 +1262,15 @@ pub fn emit_variant_pattern_rc_aware(name: String, parent_enum: Option<String>, 
 };
 if ((name.clone() == "Some".to_string()) && ((field_bindings.clone().len() as i64) == 1)) {
             match field_bindings.clone().first().cloned() {
-    Some(fb) => if is_string_lit_pattern(fb.binding.clone()) {
+    Some(fb) => { let fb_pat = field_binding_pattern(fb.clone()); if is_string_lit_pattern(fb_pat.clone()) {
                 "Some(ref __some_val)".to_string()
 } else {
                 {
-                    let inner_analysis = analyze_rc_pattern(fb.binding.clone(), scrut_type.clone(), vtoe.clone(), rc_types.clone());
-let inner_pat = emit_pattern_rc_aware(fb.binding.clone(), inner_analysis.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone());
+                    let inner_analysis = analyze_rc_pattern(fb_pat.clone(), scrut_type.clone(), vtoe.clone(), rc_types.clone());
+let inner_pat = emit_pattern_rc_aware(fb_pat.clone(), inner_analysis.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone());
 v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_string())
 }
-},
+} },
     None => qualified.clone(),
 }
 } else {
@@ -1278,7 +1278,7 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
                 qualified.clone()
 } else {
                 {
-                    let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*fb.binding.clone()).clone() {
+                    let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
     MatchPattern::Wildcard => false,
     _ => true,
 } { __result.push(fb); } } __result };
@@ -1286,19 +1286,19 @@ if ((effective_bindings.clone().len() as i64) == 0) {
                         v2_rt::concat(qualified.clone(), " { .. }".to_string())
 } else {
                         {
-                            let binding_strs = { let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push(if is_string_lit_pattern(fb.binding.clone()) {
-                                v2_rt::concat("ref ".to_string(), emit_ident(fb.field_name.clone(), RenderTarget::Rust))
+                            let binding_strs = { let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push({ let fb_pat = field_binding_pattern(fb.clone()); if is_string_lit_pattern(fb_pat.clone()) {
+                                v2_rt::concat("ref ".to_string(), emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust))
 } else {
-                                if field_needs_rc_ref(fb.field_name.clone(), rc_analysis.clone()) {
-                                    v2_rt::concat("ref ".to_string(), emit_ident(fb.field_name.clone(), RenderTarget::Rust))
+                                if field_needs_rc_ref(field_binding_name(fb.clone()), rc_analysis.clone()) {
+                                    v2_rt::concat("ref ".to_string(), emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust))
 } else {
                                     {
-                                        let inner_analysis = analyze_rc_pattern(fb.binding.clone(), "".to_string(), vtoe.clone(), rc_types.clone());
-let pat_str = emit_pattern_rc_aware(fb.binding.clone(), inner_analysis.clone(), vtoe.clone(), rc_types.clone(), "".to_string());
-v2_rt::concat(v2_rt::concat(emit_ident(fb.field_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+                                        let inner_analysis = analyze_rc_pattern(fb_pat.clone(), "".to_string(), vtoe.clone(), rc_types.clone());
+let pat_str = emit_pattern_rc_aware(fb_pat.clone(), inner_analysis.clone(), vtoe.clone(), rc_types.clone(), "".to_string());
+v2_rt::concat(v2_rt::concat(emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
 }
 }
-}); } __result };
+} }); } __result };
 let bindings_str = binding_strs.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(qualified.clone(), " { ".to_string()), bindings_str.clone()), ", .. }".to_string())
 }
@@ -1315,9 +1315,9 @@ pub fn rc_pattern_preludes(mut pattern: Rc<MatchPattern>, mut rc_analysis: Rc<Rc
     MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => { if ((n.clone() == "Some".to_string()) || (n.clone() == "None".to_string())) {
             if ((fbs.clone().len() as i64) == 1) {
                 match fbs.clone().first().cloned() {
-    Some(fb) => { let inner_analysis = analyze_rc_pattern(fb.binding.clone(), "".to_string(), vtoe.clone(), rc_types.clone());
+    Some(fb) => { let fb_pat = field_binding_pattern(fb.clone()); let inner_analysis = analyze_rc_pattern(fb_pat.clone(), "".to_string(), vtoe.clone(), rc_types.clone());
 {
-                    let __tco_0 = fb.binding.clone();
+                    let __tco_0 = fb_pat.clone();
 let __tco_1 = inner_analysis.clone();
 let __tco_2 = vtoe.clone();
 let __tco_3 = rc_types.clone();
@@ -1333,8 +1333,8 @@ continue;
                 break "".to_string();
 }
 } else {
-            let preludes = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.extend(if field_needs_rc_ref(fb.field_name.clone(), rc_analysis.clone()) {
-                vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), emit_pattern(fb.binding.clone(), vtoe.clone(), rc_types.clone(), "".to_string())), " = ".to_string()), emit_ident(fb.field_name.clone(), RenderTarget::Rust)), ".as_ref() else { unreachable!() };".to_string())]
+            let preludes = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.extend(if field_needs_rc_ref(field_binding_name(fb.clone()), rc_analysis.clone()) {
+                vec![v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), emit_pattern(field_binding_pattern(fb.clone()), vtoe.clone(), rc_types.clone(), "".to_string())), " = ".to_string()), emit_ident(field_binding_name(fb.clone()), RenderTarget::Rust)), ".as_ref() else { unreachable!() };".to_string())]
 } else {
                 vec![]
 }); } __result };

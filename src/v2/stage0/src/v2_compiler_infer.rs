@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, resource_use_name, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, is_error_diagnostic, rt_node, has_inferred, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchPattern, FieldBinding, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, resource_use_name, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, is_error_diagnostic, rt_node, has_inferred, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
@@ -459,12 +459,9 @@ let inferred_parent = match (*resolved_scrut.clone()).clone() {
 let variant_lookup = lookup_variant_in_type(resolved_scrut.clone(), variant_name.clone(), scope.module_name.clone());
 let variant_subject = lookup_result_subject(variant_lookup.clone());
 let annotated_bindings = { let mut __result = Vec::new(); for binding in bindings.clone().iter().cloned() { __result.push({
-                let field_lookup = lookup_field_in_variant(variant_subject.clone(), binding.field_name.clone(), scope.module_name.clone());
+                let field_lookup = lookup_field_in_variant(variant_subject.clone(), field_binding_name(binding.clone()), scope.module_name.clone());
 let field_subject = lookup_result_subject(field_lookup.clone());
-Rc::new(FieldBinding {
-    field_name: binding.field_name.clone(),
-    binding: annotate_pattern_parent_enums(binding.binding.clone(), field_subject.clone(), scope.clone()),
-})
+make_field_binding_node(field_binding_name(binding.clone()), annotate_pattern_parent_enums(field_binding_pattern(binding.clone()), field_subject.clone(), scope.clone()), binding.span.clone())
 }); } __result };
 match inferred_parent.clone() {
     Some(parent_name) => Rc::new(MatchPattern::VariantPattern {
@@ -566,17 +563,18 @@ let variant_diags = variant_lookup.diagnostics.clone();
 bindings.clone().iter().cloned().fold(Rc::new(PatternScopeResult {
     scope: scope.clone(),
     diagnostics: variant_diags.clone(),
-}), |acc: _, fb: Rc<FieldBinding>| {
-                let field_lookup = lookup_field_in_variant(variant_subject.clone(), fb.field_name.clone(), scope.module_name.clone());
+}), |acc: _, fb: Rc<Node>| {
+                let field_lookup = lookup_field_in_variant(variant_subject.clone(), field_binding_name(fb.clone()), scope.module_name.clone());
 let field_subject = lookup_result_subject(field_lookup.clone());
 let field_type = pattern_binding_type(field_subject.clone());
-match (*fb.binding.clone()).clone() {
+let fb_pattern = field_binding_pattern(fb.clone());
+match (*fb_pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
     scope: extend_scope(acc.scope.clone(), n.clone(), field_type.clone()),
     diagnostics: v2_rt::concat(acc.diagnostics.clone(), field_lookup.diagnostics.clone()),
 }),
     _ => {
-                    let nested = extend_scope_with_pattern_node(acc.scope.clone(), fb.binding.clone(), field_subject.clone());
+                    let nested = extend_scope_with_pattern_node(acc.scope.clone(), fb_pattern.clone(), field_subject.clone());
 Rc::new(PatternScopeResult {
     scope: nested.scope.clone(),
     diagnostics: v2_rt::concat(acc.diagnostics.clone(), v2_rt::concat(field_lookup.diagnostics.clone(), nested.diagnostics.clone())),

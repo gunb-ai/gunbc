@@ -496,16 +496,14 @@ pub enum MatchPattern {
     VariantPattern {
         name: String,
         parent_enum: Option<String>,
-        field_bindings: Vec<Rc<FieldBinding>>,
+        field_bindings: Vec<Rc<Node>>,
     },
     Wildcard,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct FieldBinding {
-    pub field_name: String,
-    pub binding: Rc<MatchPattern>,
-}
+// FieldBinding dissolved into Node (D2c):
+//   field_name → node.name
+//   binding    → node.match_pattern
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LiteralValue {
@@ -757,6 +755,39 @@ pub fn make_field_init_node(name: String, value: Rc<Node>, span: Rc<SourceSpan>)
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 })
+}
+
+// Field binding node (D2c): name carries field name, match_pattern carries the binding pattern.
+pub fn make_field_binding_node(field_name: String, binding: Rc<MatchPattern>, span: Rc<SourceSpan>) -> Rc<Node> {
+    Rc::new(Node {
+    name: field_name.clone(),
+    span: span.clone(),
+    children: vec![],
+    connective: None,
+    params: vec![],
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: vec![],
+    body: None,
+    transport: None,
+    properties: vec![],
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: Some(binding.clone()),
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+
+pub fn field_binding_name(n: Rc<Node>) -> String {
+    n.name.clone()
+}
+
+pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
+    match &n.match_pattern {
+        Some(p) => p.clone(),
+        None => Rc::new(MatchPattern::Wildcard),
+    }
 }
 
 pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {

@@ -45,7 +45,7 @@ import v2.std.core {
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  MatchPattern, FieldBinding,
+  MatchPattern, field_binding_name, field_binding_pattern,
   TextFile, ErrorNode, make_error_node, InternalError, SourceSpan,
   resource_use_name, resource_use_resource,
   BinOpKind,
@@ -1122,23 +1122,24 @@ fn collect_pattern_string_guards(pattern: MatchPattern) -> String {
       if n == "Some" && fbs |> count == 1 {
         match fbs |> first {
           Some { value: fb } =>
-            if is_string_lit_pattern(p: fb.binding) {
-              match fb.binding {
+            let fb_pat = field_binding_pattern(n: fb)
+            if is_string_lit_pattern(p: fb_pat) {
+              match fb_pat {
                 LitPattern { value: LitStr { value: s } } =>
                   concat("__some_val == ", emit_string_literal(s: s, suffix: ""))
                 _ => ""
               }
             } else {
-              collect_pattern_string_guards(pattern: fb.binding)
+              collect_pattern_string_guards(pattern: fb_pat)
             }
           None => ""
         }
       } else {
-        let str_bindings = fbs |> filter(fb => is_string_lit_pattern(p: fb.binding))
+        let str_bindings = fbs |> filter(fb => is_string_lit_pattern(p: field_binding_pattern(n: fb)))
         let guards = str_bindings |> map(fb =>
-          match fb.binding {
+          match field_binding_pattern(n: fb) {
             LitPattern { value: LitStr { value: s } } =>
-              concat(emit_ident(name: fb.field_name, target: Rust), " == ", emit_string_literal(s: s, suffix: ""))
+              concat(emit_ident(name: field_binding_name(n: fb), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))
             _ => ""
           }
         )
@@ -1182,7 +1183,7 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, v
   }
 }
 
-fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<FieldBinding>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
+fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   // RC1: Qualify variant names with parent enum using scrutinee type.
   // Some/None are Rust builtins -- never qualify. For all others, use the
   // scrutinee type so that variant name collisions (e.g. LitStr in both
@@ -1197,10 +1198,11 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
-        if is_string_lit_pattern(p: fb.binding) {
+        let fb_pat = field_binding_pattern(n: fb)
+        if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+          let inner_pat = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
@@ -1209,17 +1211,18 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     qualified
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
-      match fb.binding { Wildcard => false  _ => true }
+      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
       concat(qualified, " { .. }")
     } else {
       let binding_strs = effective_bindings |> map(fb =>
-        if is_string_lit_pattern(p: fb.binding) {
-          concat("ref ", emit_ident(name: fb.field_name, target: Rust))
+        let fb_pat = field_binding_pattern(n: fb)
+        if is_string_lit_pattern(p: fb_pat) {
+          concat("ref ", emit_ident(name: field_binding_name(n: fb), target: Rust))
         } else {
-            let pat_str = emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
-            concat(emit_ident(name: fb.field_name, target: Rust), ": ", pat_str)
+            let pat_str = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+            concat(emit_ident(name: field_binding_name(n: fb), target: Rust), ": ", pat_str)
         }
       )
       let bindings_str = binding_strs |> join(separator: ", ")
@@ -1272,7 +1275,7 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, vtoe: Map<Strin
         if fbs |> count == 1 {
           match fbs |> first {
             Some { value: fb } =>
-              let inner = analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
+              let inner = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", vtoe: vtoe, rc_types: rc_types)
               RcPatternAnalysis {
                 matches_rc_variant: false,
                 matches_option_rc_variant: n == "Some" && inner.matches_rc_variant,
@@ -1288,8 +1291,8 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, vtoe: Map<Strin
           None => false
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
-          if analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types).matches_rc_variant {
-            [fb.field_name]
+          if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", vtoe: vtoe, rc_types: rc_types).matches_rc_variant {
+            [field_binding_name(n: fb)]
           } else { [] }
         )
         RcPatternAnalysis {
@@ -1340,7 +1343,7 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, 
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<FieldBinding>, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
+fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String) -> String {
   let qualified = if name == "Some" || name == "None" { name }
     else {
       match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
@@ -1351,11 +1354,12 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
-        if is_string_lit_pattern(p: fb.binding) {
+        let fb_pat = field_binding_pattern(n: fb)
+        if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_analysis = analyze_rc_pattern(pattern: fb.binding, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
-          let inner_pat = emit_pattern_rc_aware(pattern: fb.binding, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
+          let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
+          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
@@ -1364,21 +1368,22 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     qualified
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
-      match fb.binding { Wildcard => false  _ => true }
+      match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
       concat(qualified, " { .. }")
     } else {
       let binding_strs = effective_bindings |> map(fb =>
-        if is_string_lit_pattern(p: fb.binding) {
-          concat("ref ", emit_ident(name: fb.field_name, target: Rust))
+        let fb_pat = field_binding_pattern(n: fb)
+        if is_string_lit_pattern(p: fb_pat) {
+          concat("ref ", emit_ident(name: field_binding_name(n: fb), target: Rust))
         } else {
-          if field_needs_rc_ref(field_name: fb.field_name, rc_analysis: rc_analysis) {
-            concat("ref ", emit_ident(name: fb.field_name, target: Rust))
+          if field_needs_rc_ref(field_name: field_binding_name(n: fb), rc_analysis: rc_analysis) {
+            concat("ref ", emit_ident(name: field_binding_name(n: fb), target: Rust))
           } else {
-            let inner_analysis = analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
-            let pat_str = emit_pattern_rc_aware(pattern: fb.binding, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
-            concat(emit_ident(name: fb.field_name, target: Rust), ": ", pat_str)
+            let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
+            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "")
+            concat(emit_ident(name: field_binding_name(n: fb), target: Rust), ": ", pat_str)
           }
         }
       )
@@ -1395,15 +1400,16 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
         if fbs |> count == 1 {
           match fbs |> first {
             Some { value: fb } =>
-              let inner_analysis = analyze_rc_pattern(pattern: fb.binding, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
-              rc_pattern_preludes(pattern: fb.binding, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types)
+              let fb_pat = field_binding_pattern(n: fb)
+              let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
+              rc_pattern_preludes(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types)
             None => ""
           }
         } else { "" }
       } else {
         let preludes = fbs |> flat_map(fb =>
-          if field_needs_rc_ref(field_name: fb.field_name, rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: fb.binding, vtoe: vtoe, rc_types: rc_types, scrut_type: ""), " = ", emit_ident(name: fb.field_name, target: Rust), ".as_ref() else { unreachable!() };")]
+          if field_needs_rc_ref(field_name: field_binding_name(n: fb), rc_analysis: rc_analysis) {
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), vtoe: vtoe, rc_types: rc_types, scrut_type: ""), " = ", emit_ident(name: field_binding_name(n: fb), target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")

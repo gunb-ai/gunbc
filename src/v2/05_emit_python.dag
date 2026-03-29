@@ -16,7 +16,7 @@ import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_name, param_node_type_expr,
-  MatchPattern, FieldBinding, LiteralValue,
+  MatchPattern, LiteralValue, field_binding_name, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_name, resource_use_resource,
   BinOpKind, NullCoalesce,
@@ -543,13 +543,13 @@ fn emit_py_pattern(pattern: MatchPattern) -> String {
   }
 }
 
-fn emit_py_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> String {
+fn emit_py_variant_pattern(name: String, field_bindings: List<Node>) -> String {
   if field_bindings |> count == 0 {
     concat(name, "()")
   } else {
     let binding_strs = field_bindings |> map(fb =>
-      let pat_str = emit_py_pattern(pattern: fb.binding)
-      concat(emit_ident(name: fb.field_name, target: Python), "=", pat_str)
+      let pat_str = emit_py_pattern(pattern: field_binding_pattern(n: fb))
+      concat(emit_ident(name: field_binding_name(n: fb), target: Python), "=", pat_str)
     )
     let bindings_str = binding_strs |> join(separator: ", ")
     concat(name, "(", bindings_str, ")")

@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, FieldBinding, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -574,7 +574,7 @@ pub fn emit_go_pattern(pattern: Rc<MatchPattern>) -> String {
 }
 }
 
-pub fn emit_go_variant_pattern(name: String, field_bindings: Vec<Rc<FieldBinding>>) -> String {
+pub fn emit_go_variant_pattern(name: String, field_bindings: Vec<Rc<Node>>) -> String {
     name.clone()
 }
 
