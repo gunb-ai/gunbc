@@ -136,6 +136,55 @@ After normalization: `Call`/`MethodCall` bridging is complete, nodes
 carry declared structural properties, and parameterized types carry
 their declared arity of children.
 
+### Languages as Plugins
+
+The compiler core does not know about Rust, Go, or Python. It does not
+know about any specific target language. Languages are plugins that
+implement a universal rendering interface against the compiler's
+language-agnostic output.
+
+This is the RetroArch/libretro model:
+- **The compiler** produces `EmitNode` (a language-agnostic semantic
+  tree). It knows about types, functions, expressions, control flow —
+  not about `Rc<Vec<...>>` or `list[...]` or `[]type`.
+- **A language plugin** implements rendering: `EmitNode` + `LanguageSpec`
+  → target source text. Each plugin is a single `.dag` file in
+  `dsl/extdeps/languages/`.
+- **Adding a language** means writing a `LanguageSpec` data file and a
+  renderer. Zero compiler changes.
+
+**Current reality:** The compiler has 6,857 lines of language-specific
+code inside `src/v2/` (4,121 lines for Rust, 1,387 for Go, 1,349 for
+Python) and 632 mentions of specific language names across 12 compiler
+files. These should all be zero. The compiler core should contain only
+`05_emit.dag` (shared semantic emission) and the `EmitNode` type.
+Language-specific renderers belong in `dsl/extdeps/languages/*/`.
+
+**The interface contract:** a language plugin must be able to render
+every `EmitNode` variant. If it can express product types, coproduct
+types, functions, control flow, and literals, it can render any `.dag`
+program. The minimum viable plugin is: "can you model a high/low
+signal" — node existence (high) and absence (low).
+
+**Any causal language qualifies.** The `.dag` graph is nodes and
+directed edges — the same structure as circuit netlists, hardware
+description languages, and even natural language descriptions. Target
+languages are not limited to programming languages:
+
+| Target | How it renders the DAG |
+|---|---|
+| Rust, Go, Python | Source code files |
+| SPICE | Netlist: nodes as components, edges as wires |
+| Verilog/VHDL | Module hierarchy: nodes as signals, edges as connections |
+| English | Structured description of relationships and data flow |
+| YAML/JSON | Serialized graph representation |
+| Graphviz | Visual DAG diagram |
+
+If a target can express "this node connects to that node" and "this
+node has these children," it can render any `.dag` program. The
+compiler doesn't care what the output looks like — that's the
+renderer's job.
+
 ### Decidability
 
 Every `.dag` program is decidable. Recursion, loops, and cyclic-looking
@@ -191,9 +240,9 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
   cardinality, and truth are compositional modeling above the
   substrate, not compiler-known categories.
 - Names are opaque. Inference processes graph structure only.
-- Emit reads `LanguageSpec` + structural declarations, no hardcoded
-  target-language knowledge.
-- One shared emit walker drives all target languages.
+- Zero language-specific code in the compiler core. Languages are
+  plugins: `LanguageSpec` + renderer in `dsl/extdeps/languages/`.
+  The compiler produces `EmitNode`; it never produces target syntax.
 - All `.dag` programs are decidable by construction.
 - Ownership and complexity proofs wired into the pipeline.
 - At least one real program compiles and runs end to end.
@@ -723,22 +772,23 @@ structural property read or `source_text_at(span)` call.
 | Other 13 files | Various name reads → structural property reads | ~957 name reads |
 | **Total** | | **~1,175 sites across 20 files** |
 
-**Lane C: EmitTree (M5)**
+**Lane C: EmitTree + language plugin extraction (M5)**
 
-Replace string return types with `EmitNode`. The emitter produces
-semantic nodes; one renderer per target converts to text.
+The compiler stops producing strings entirely. Language-specific code
+moves out of `src/v2/` into `dsl/extdeps/languages/` as plugins.
 
 | File | Change | Sites closed |
 |---|---|---|
-| `00_core.dag` | Add `EmitNode` type (16 variants) | New type |
-| `05_emit.dag` | Shared emit functions return `EmitNode` not `String` | ~77 concat calls |
-| `05_emit_rust.dag` | Rust emit returns `EmitNode`; new `render_rust.dag` converts to text | ~308 concat calls |
-| `05_emit_python.dag` | Same; new `render_python.dag` | ~130 concat calls |
-| `05_emit_go.dag` | Same; new `render_go.dag` | ~165 concat calls |
-| `render_rust.dag` (new) | Reads `LanguageSpec`, converts `EmitNode` → Rust source text | Single renderer |
-| `render_python.dag` (new) | Same for Python | Single renderer |
-| `render_go.dag` (new) | Same for Go | Single renderer |
-| **Total** | | **~680 concat sites closed, 3 new renderer files** |
+| `src/v2/00_core.dag` | Add `EmitNode` type (16 variants) | New type |
+| `src/v2/05_emit.dag` | Shared emit returns `EmitNode` not `String` | ~77 concat calls |
+| `src/v2/05_emit_rust.dag` | **DELETE** — Rust-specific code leaves compiler core | 4,121 lines, 309 language mentions |
+| `src/v2/05_emit_python.dag` | **DELETE** — Python-specific code leaves compiler core | 1,349 lines, 96 language mentions |
+| `src/v2/05_emit_go.dag` | **DELETE** — Go-specific code leaves compiler core | 1,387 lines, 84 language mentions |
+| `src/v2/runtime_rust.dag` | **DELETE** — Rust runtime moves to extdep | 5 language mentions |
+| `dsl/extdeps/languages/rust/render.dag` | **NEW** — Rust renderer plugin: `EmitNode` + `LanguageSpec` → text | Single file |
+| `dsl/extdeps/languages/python/render.dag` | **NEW** — Python renderer plugin | Single file |
+| `dsl/extdeps/languages/go/render.dag` | **NEW** — Go renderer plugin | Single file |
+| **Total** | | **6,857 lines + 632 language mentions removed from compiler core** |
 
 **Lane D: Edge-only fact references (M5)**
 
@@ -757,13 +807,65 @@ Replace `List<String>` and `Map<String, X>` metadata with node edges.
 
 ```
 Lane A (method/transport dispatch)    independent
-Lane B (Node.name deletion)          depends on Lane A (methods must
-                                      use structural dispatch before
-                                      names are deleted)
-Lane C (EmitTree)                     depends on Lane B (emitter must
-                                      not read node.name)
-Lane D (edge-only facts)             independent, can run with A or B
+Lane B (Node.name deletion)          depends on A
+Lane C (EmitTree + plugin extraction) depends on B
+Lane D (edge-only facts)             independent, parallel with A/B
 ```
+
+#### End state (after all lanes complete)
+
+**`src/v2/` contains only language-agnostic compiler code:**
+
+```
+src/v2/
+  00_core.dag          Node, Edge, EmitNode types (no String on Node)
+  01_tokenize.dag      Source text → tokens
+  02_parse.dag         Tokens → Node tree
+  03_normalize.dag     Structural normalization
+  03_resolve.dag       Name resolution (scope dies here)
+  04_*.dag             Inference (reads structure, not names)
+  05_emit.dag          Node tree → EmitNode tree (no strings produced)
+  compile.dag          Pipeline orchestration
+  complexity.dag       Cost proofs (reads method cost from algebra nodes)
+  ownership.dag        Ownership proofs
+  trace.dag            Debug tracing
+  artifact.dag         Output artifact planning
+  languages.dag        LanguageSpec/EmitNode type definitions
+```
+
+**No `05_emit_rust.dag`, no `05_emit_python.dag`, no `05_emit_go.dag`.**
+Zero mentions of Rust/Python/Go in any compiler file. Zero `concat()`
+calls producing target syntax. Zero `if type_name == "..."` branches.
+
+**Language plugins live in `dsl/extdeps/languages/`:**
+
+```
+dsl/extdeps/languages/
+  rust/
+    emit.dag           Container templates, type maps
+    render.dag          EmitNode → Rust source text (reads LanguageSpec)
+    lint.dag            Import rules, naming conventions
+    runtime.dag         Runtime function signatures
+    naming.dag          Case conventions
+  python/
+    emit.dag, render.dag, lint.dag, runtime.dag, naming.dag
+  go/
+    emit.dag, render.dag, lint.dag, runtime.dag, naming.dag
+  dag/
+    syntax.dag          SyntaxSpec for .dag frontend
+```
+
+**Adding a new language** = add a directory under `dsl/extdeps/languages/`
+with `emit.dag` + `render.dag`. Zero compiler changes. The compiler
+discovers language plugins via `--target <name>` and loads the
+corresponding `LanguageSpec` + renderer.
+
+**Ratchets at zero:**
+- Language mentions in `src/v2/*.dag`: 0 (currently 632)
+- `node.name` reads: 0 (currently 1,175)
+- String-keyed metadata maps: 0 (currently 14)
+- Method name dispatch sites: 0 (currently 63)
+- Escape hatches total: 0 (currently ~290)
 
 ### Exploratory
 
