@@ -263,9 +263,9 @@ v2_rt::concat(v2_rt::concat("f\"".to_string(), segments.clone().join(&"".to_stri
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: Rc::new(TypeEnv {
-    bindings: <HashMap<_, _>>::new(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(<HashMap<_, _>>::new()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 }),
     func_env: Rc::new(ResolvedFuncEnv {
     signatures: <HashMap<_, _>>::new(),
@@ -280,9 +280,9 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: Rc::new(TypeEnv {
-    bindings: <HashMap<_, _>>::new(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(<HashMap<_, _>>::new()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 }),
     func_env: typed_module.func_env.clone(),
     locals: <HashMap<_, _>>::new(),

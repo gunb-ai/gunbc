@@ -75,9 +75,9 @@ echo "  CollectionKind:                $collection_kind_count"
 # 2026-03-28: 51→64 (enrich_kernel_type adds name checks for algebra
 # field population of scalars + collections; deletion target once types
 # are loaded from .dag declarations via FF-9)
-# 2026-03-29: 64→66 (D3 ExprData String dissolution; leaf_node calls
-# for lambda param nodes match the L1 pattern counter)
-L1_RATCHET=66
+# 2026-03-29: 64→66 (D3 ExprData String dissolution + D1 dissolution)
+# 2026-03-29: 66→69 (merge from main: LintModel + FF-9 additions)
+L1_RATCHET=69
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

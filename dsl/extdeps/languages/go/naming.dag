@@ -1,0 +1,45 @@
+// extdeps/languages/go/naming.dag -- "How does Go name and format things?"
+//
+// Naming conventions and source formatting model for Go,
+// as specified by Effective Go and gofmt.
+//
+// Ref: Effective Go (go.dev/doc/effective_go)
+//      gofmt (pkg.go.dev/cmd/gofmt)
+//      goimports (pkg.go.dev/golang.org/x/tools/cmd/goimports)
+//
+// Consumers:
+//   v2/05_emit.dag       -- identifier casing, source formatting
+
+module extdeps.languages.go.naming
+
+import std.languages {
+  NamingConvention, PascalCase, CamelCase,
+  FormatModel, TabIndent, StdExternalLocal
+}
+
+// -- Naming convention --------------------------------------------------
+// Ref: Effective Go "Names"
+//   types:          PascalCase (exported)
+//   functions:      camelCase (unexported) / PascalCase (exported)
+//   variables:      camelCase
+//   constants:      PascalCase (Go has no SCREAMING convention)
+//   modules:        camelCase (package names are lowercase by convention)
+
+data go_naming: NamingConvention = {
+  type_case: PascalCase,
+  function_case: CamelCase,
+  variable_case: CamelCase,
+  constant_case: PascalCase,
+  module_case: CamelCase
+}
+
+// -- Formatting model ---------------------------------------------------
+// Ref: gofmt uses tabs, no configurable line width (effectively unlimited).
+//      goimports groups: stdlib, external, local.
+
+data go_formatting: FormatModel = {
+  indent: TabIndent,
+  max_line_width: null,
+  import_grouping: StdExternalLocal,
+  trailing_newline: true
+}

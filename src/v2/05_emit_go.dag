@@ -312,8 +312,9 @@ fn go_package_name(module_name: String) -> String {
 
 fn emit_go_imports(items: List<Node>, imports: List<Node>) -> String {
   let has_services = items |> any(item => is_service_item(item: item))
-  let has_errors = items |> any(item => item.body != none && item.uses |> count > 0)
-  let std_imports = collect_go_std_imports(has_services: has_services, has_errors: has_errors)
+  let has_types = items |> any(item => classify_typed_item(item: item) == TypedItemTypeDef)
+  let has_functions = items |> any(item => classify_typed_item(item: item) == TypedItemFunction)
+  let std_imports = collect_go_std_imports(has_services: has_services, has_types: has_types, has_functions: has_functions)
   let pkg_imports = imports |> map(imp =>
     let mod_name = module_to_filename(name: imp.name)
     concat("\t\"generated/", mod_name, "\"")
@@ -327,14 +328,14 @@ fn emit_go_imports(items: List<Node>, imports: List<Node>) -> String {
   }
 }
 
-fn collect_go_std_imports(has_services: Bool, has_errors: Bool) -> List<String> {
-  let base = ["\t\"fmt\""]
+fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bool) -> List<String> {
+  let fmt_import = if has_types || has_functions || has_services { ["\t\"fmt\""] } else { [] }
   let net_imports = if has_services {
     ["\t\"net/http\"", "\t\"encoding/json\"", "\t\"bytes\"", "\t\"io\""]
   } else {
     []
   }
-  concat(base, net_imports)
+  concat(fmt_import, net_imports)
 }
 
 // =========================================================================

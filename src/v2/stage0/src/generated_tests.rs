@@ -26906,7 +26906,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::v2_compiler_compile::compile_sources(std::rc::Rc::new(vec![source]), crate::v2_compiler_artifact::RenderTarget::Rust);
+                let result = crate::v2_compiler_compile::compile_sources(vec![source], crate::v2_compiler_artifact::RenderTarget::Rust);
 
                 // Should produce at least one output file
                 assert!(
@@ -26916,7 +26916,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Should have zero error diagnostics
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 assert!(
                     errors.is_empty(),
@@ -27051,12 +27051,12 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 let source_count = sources.len();
                 let result = crate::v2_compiler_compile::compile_sources(
-                    std::rc::Rc::new(sources),
+                    sources,
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -27065,7 +27065,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     error_count, result.files.len(), source_count
                 );
                 for (i, e) in errors.iter().enumerate() {
-                    eprintln!("  error[{}]: {}", i, e.name);
+                    eprintln!("  error[{}]: {:?}", i, e.diagnostic);
                 }
 
                 // Bootstrap ratchet: track error count but don't assert zero.
@@ -27142,7 +27142,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 ];
 
                 let result = crate::v2_compiler_compile::compile_sources(
-                    std::rc::Rc::new(sources),
+                    sources,
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
@@ -27223,7 +27223,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
                 ];
                 let result = crate::v2_compiler_compile::resolve_sources(
-                    std::rc::Rc::new(sources),
+                    sources,
                 );
 
                 // Count error-severity diagnostics from tokenize + parse + resolve.
@@ -27231,7 +27231,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 // resources, patterns, func) that the v2 compiler's own source
                 // does not cover.
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -27273,12 +27273,12 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     std::rc::Rc::new(crate::v2_compiler_compile::SourceFile { path: "std/types.dag".to_string(), content: DSL_STD_TYPES_DAG_SOURCE.to_string() }),
                 ];
                 let result = crate::v2_compiler_compile::compile_sources(
-                    std::rc::Rc::new(sources),
+                    sources,
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
                 let errors: Vec<_> = result.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 let error_count = errors.len();
 
@@ -27383,10 +27383,10 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Stage 3: Resolve module graph
                 let t_stage = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let graph = crate::v2_compiler_resolve::resolve_modules(modules);
                 let resolve_total = t_stage.elapsed();
                 let errors: Vec<_> = graph.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 eprintln!("  RESOLVE TOTAL:  {:?}  ({} errors)\n", resolve_total, errors.len());
 
@@ -27546,10 +27546,10 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
                 // Phase 3: Resolve module graph
                 let t_stage = Instant::now();
-                let graph = crate::v2_compiler_resolve::resolve_modules(std::rc::Rc::new(modules));
+                let graph = crate::v2_compiler_resolve::resolve_modules(modules);
                 let resolve_total = t_stage.elapsed();
                 let phase3_diags: usize = graph.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
                 let rss_after_resolve = get_rss_bytes();
                 eprintln!("  RESOLVE TOTAL:  {:?}  | RSS: {}  | diags: {}\n",
@@ -27560,7 +27560,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let typed = crate::v2_compiler_infer::reconcile(graph);
                 let reconcile_total = t_stage.elapsed();
                 let phase4_diags: usize = typed.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
                 let rss_after_reconcile = get_rss_bytes();
                 eprintln!("  RECONCILE TOTAL: {:?}  | RSS: {}  | diags: {}\n",
@@ -27571,7 +27571,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed);
                 let emit_total = t_stage.elapsed();
                 let phase5_diags: usize = emit_result.diagnostics.iter()
-                    .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                    .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
                 let emitted_files = emit_result.files.len();
                 let emitted_bytes: usize = emit_result.files.iter()
@@ -27672,7 +27672,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     }
                 }
                 let graph = crate::v2_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules)
+                    modules
                 );
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
@@ -27690,7 +27690,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     // Print BEFORE typecheck so we know which module crashed on SIGKILL
                     eprint!("  {:>35} ({:>3} items) ... ", name, item_count);
 
-                    let module_index = std::rc::Rc::new(mi_raw.clone());
+                    let module_index = mi_raw.clone();
 
                     // Sub-step 0: build_type_env_unresolved (merge + cycle detection only)
                     let t_unres = Instant::now();
@@ -27719,7 +27719,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     let rss_after_env = get_rss_bytes();
                     let env_delta = rss_after_env.saturating_sub(rss_before);
                     let env_errs: usize = env_result.diagnostics.iter()
-                        .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                        .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                         .count();
 
                     eprint!("env={:>8.2?}(+{},e={}) ", env_elapsed, format_bytes(env_delta), env_errs);
@@ -27743,7 +27743,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     let rss_after = get_rss_bytes();
                     let delta = rss_after.saturating_sub(rss_before);
                     let diag_count: usize = tc_result.diagnostics.iter()
-                        .filter(|d| crate::v2_std_core::diagnostic_is_error((*d).clone()))
+                        .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                         .count();
 
                     eprintln!("full={:>8.2?}  | RSS: {} (+{})  | errs: {}",

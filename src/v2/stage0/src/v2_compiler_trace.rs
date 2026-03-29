@@ -100,16 +100,39 @@ pub struct TraceFrame {
     pub bindings: HashMap<String, String>,
 }
 
+// Stack<T> — persistent LIFO with O(1) push/pop (cons list).
+// Matches std/stack.dag definition. Will be emitted by compiler after regen.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TraceStack {
+    Empty,
+    Push {
+        top: Rc<TraceFrame>,
+        rest: Rc<TraceStack>,
+    },
+}
+
+impl TraceStack {
+    pub fn push(self: &Rc<Self>, frame: Rc<TraceFrame>) -> Rc<Self> {
+        Rc::new(TraceStack::Push { top: frame, rest: self.clone() })
+    }
+    pub fn pop(self: &Rc<Self>) -> Rc<Self> {
+        match &**self {
+            TraceStack::Empty => self.clone(),
+            TraceStack::Push { rest, .. } => rest.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trace {
     pub events: Vec<Rc<TraceEvent>>,
-    pub stack: Vec<Rc<TraceFrame>>,
+    pub stack: Rc<TraceStack>,
 }
 
 pub fn empty_trace() -> Rc<Trace> {
     Rc::new(Trace {
     events: vec![],
-    stack: vec![],
+    stack: Rc::new(TraceStack::Empty),
 })
 }
 
@@ -120,20 +143,19 @@ pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
 })
 }
 
+// O(1) — cons onto stack
 pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
     Rc::new(Trace {
     events: trace.events.clone(),
-    stack: v2_rt::list_push(trace.stack.clone(), frame.clone()),
+    stack: trace.stack.push(frame),
 })
 }
 
+// O(1) — return tail of stack
 pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
     Rc::new(Trace {
     events: trace.events.clone(),
-    stack: match (trace.stack.clone().len() as i64) {
-    0 => vec![],
-    _ => trace.stack.clone().iter().cloned().take(((trace.stack.clone().len() as i64) - 1) as usize).collect::<Vec<_>>(),
-},
+    stack: trace.stack.pop(),
 })
 }
 

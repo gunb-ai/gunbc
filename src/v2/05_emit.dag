@@ -65,7 +65,9 @@ import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
-  NullCoalesceStrategy, MethodBased, TernaryBased, IIFEBased,
+  ImportRule,
+  TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
+  ContainerUsageTrigger, AsyncUsageTrigger,
   language_spec_for_target,
   test_conventions_for_target,
   target_keyword, target_primitive_type, target_container_template
@@ -169,6 +171,36 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
           })
       )
   )
+}
+
+// =========================================================================
+// Import derivation -- pre-scan typed items to determine required imports.
+// =========================================================================
+
+fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, target: RenderTarget) -> List<String> {
+  let has_async = items |> any(item => item.uses |> count > 0)
+  let type_names = collect_type_names_from_items(items: items)
+
+  import_rules |> filter(rule =>
+    match rule.trigger {
+      TypeUsageTrigger { type_name: t } => type_names |> any(n => n == t)
+      TraitImplTrigger { trait_name: _ } => false
+      DeriveMacroTrigger { macro_name: _ } => false
+      ContainerUsageTrigger { container: c } => type_names |> any(n => n == c)
+      AsyncUsageTrigger => has_async
+    }
+  ) |> map(rule => rule.import_path)
+  |> filter(path => path != "")
+}
+
+fn collect_type_names_from_items(items: List<Node>) -> List<String> {
+  items |> flat_map(item => collect_type_names_from_node(n: item))
+}
+
+fn collect_type_names_from_node(n: Node) -> List<String> {
+  let self_name = if n.name != "" { [n.name] } else { [] }
+  let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child))
+  self_name |> concat(child_names)
 }
 
 // Intermediate type for string interpolation segments
@@ -1353,19 +1385,20 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
 
 fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
   match target {
+    Rust => concat("let ", emit_ident(name: name, target: Rust), " = ", value, ";")
+    Go => concat(emit_ident(name: name, target: Go), " := ", value)
+    Python => concat(emit_ident(name: name, target: Python), " = ", value)
     Dag => concat("let ", name, " = ", value)
-    _ =>
-      let spec = language_spec(target: target)
-      let ident = emit_ident(name: name, target: target)
-      spec.statements.let_binding_inferred
-        |> split(delimiter: "{name}") |> join(separator: ident)
-        |> split(delimiter: "{value}") |> join(separator: value)
   }
 }
 
 fn emit_return(value: String, target: RenderTarget) -> String {
-  // All targets use the same return syntax (terminators added by callers).
-  concat("return ", value)
+  match target {
+    Rust => concat("return ", value)
+    Go => concat("return ", value)
+    Python => concat("return ", value)
+    Dag => concat("return ", value)
+  }
 }
 
 // =========================================================================
@@ -1409,38 +1442,30 @@ fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String
 }
 
 fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> String {
-  match target {
-    Dag =>
-      if element_strs |> count == 0 { "[]" }
-      else { concat("[", element_strs |> join(separator: ", "), "]") }
-    _ =>
-      let spec = language_spec(target: target)
-      if element_strs |> count == 0 {
-        spec.collection_literals.empty_list
-      } else {
-        let els_str = element_strs |> join(separator: ", ")
-        spec.collection_literals.list_literal
-          |> split(delimiter: "{elements}") |> join(separator: els_str)
-      }
-  }
-}
-
-fn null_coalesce_template(strategy: NullCoalesceStrategy) -> String {
-  match strategy {
-    MethodBased { template: t } => t
-    TernaryBased { template: t } => t
-    IIFEBased { template: t } => t
+  if element_strs |> count == 0 {
+    match target {
+      Rust => "Rc::new(vec![])"
+      Python => "[]"
+      Go => "[]interface{}{}"
+      Dag => "[]"
+    }
+  } else {
+    let els_str = element_strs |> join(separator: ", ")
+    match target {
+      Rust => concat("Rc::new(vec![", els_str, "])")
+      Python => concat("[", els_str, "]")
+      Go => concat("[]interface{}{", els_str, "}")
+      Dag => concat("[", els_str, "]")
+    }
   }
 }
 
 fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> String {
   match target {
+    Rust => concat(l_str, ".unwrap_or_else(|| ", r_str, ")")
+    Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
+    Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
     Dag => concat(l_str, " ?? ", r_str)
-    _ =>
-      let spec = language_spec(target: target)
-      null_coalesce_template(strategy: spec.null_coalesce)
-        |> split(delimiter: "{lhs}") |> join(separator: l_str)
-        |> split(delimiter: "{rhs}") |> join(separator: r_str)
   }
 }
 

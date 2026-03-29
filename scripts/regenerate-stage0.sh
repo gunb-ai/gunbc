@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Regenerate stage0 using the v2 compiler (self-compile).
 #
-# This replaces the v1 assemble_stage0 binary. The v2 compiler compiles
-# its own .dag source to produce new stage0 Rust code.
+# FF-9: The compiler resolves imports transitively from source roots.
+# No manual file lists. The compiler follows imports and loads only
+# what's needed.
 #
 # Usage: ./scripts/regenerate-stage0.sh
 
@@ -15,43 +16,16 @@ STAGE0_DIR="$ROOT/src/v2/stage0"
 echo "=== Building stage0 (v2-compiler) ==="
 cargo build -p v2-compiler --release
 
-# Use `cargo run` to invoke the binary — this works regardless of whether
-# cargo is native or containerized (via Docker wrapper in ~/ctrl/scripts/cargo).
-# Direct binary path ($ROOT/target/release/v2-compiler) fails when cargo
-# runs in a Docker container with a volume-mounted target directory.
 STAGE0_CMD="cargo run -p v2-compiler --release --"
 
-# Prepare sources and output under the workspace root so the Docker
-# container (which mounts the workspace) can access them.
-SOURCES_DIR="$ROOT/.regen-sources"
 OUTPUT_DIR="$ROOT/.regen-output"
-rm -rf "$SOURCES_DIR" "$OUTPUT_DIR"
-mkdir -p "$SOURCES_DIR" "$OUTPUT_DIR"
-trap "rm -rf $SOURCES_DIR $OUTPUT_DIR" EXIT
+rm -rf "$OUTPUT_DIR"
 
-# Copy v2 compiler .dag files
-for f in "$ROOT"/src/v2/*.dag; do
-    cp "$f" "$SOURCES_DIR/"
-done
-
-# Copy language extdeps
-for lang in rust python go; do
-    mkdir -p "$SOURCES_DIR/dsl/extdeps/languages/$lang"
-    cp "$ROOT/dsl/extdeps/languages/$lang/emit.dag" "$SOURCES_DIR/dsl/extdeps/languages/$lang/"
-done
-
-# Copy std types and their transitive imports
-mkdir -p "$SOURCES_DIR/dsl/std"
-cp "$ROOT/dsl/std/types.dag" "$SOURCES_DIR/dsl/std/"
-cp "$ROOT/dsl/std/algebra.dag" "$SOURCES_DIR/dsl/std/"
-cp "$ROOT/dsl/std/syntax.dag" "$SOURCES_DIR/dsl/std/"
-
-# Copy dag language extdep (imported by tokenize and parse)
-mkdir -p "$SOURCES_DIR/dsl/extdeps/languages/dag"
-cp "$ROOT/dsl/extdeps/languages/dag/syntax.dag" "$SOURCES_DIR/dsl/extdeps/languages/dag/"
-
-echo "=== Compiling .dag source with v2 compiler ==="
-$STAGE0_CMD compile --source-dir "$SOURCES_DIR" --output-dir "$OUTPUT_DIR"
+echo "=== Compiling .dag source with v2 compiler (FF-9: import-driven resolution) ==="
+$STAGE0_CMD compile \
+    --source-root "$ROOT/src/v2" \
+    --source-root "$ROOT/dsl" \
+    --output-dir "$OUTPUT_DIR"
 
 # Generate lib.rs from emitted modules + hand-maintained extras
 {
@@ -59,14 +33,13 @@ $STAGE0_CMD compile --source-dir "$SOURCES_DIR" --output-dir "$OUTPUT_DIR"
     echo ''
     echo '#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, unreachable_patterns, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]'
     echo ''
-    # Declare all compiler-generated modules
     for f in "$OUTPUT_DIR"/src/*.rs; do
         mod=$(basename "$f" .rs)
         [ "$mod" = "lib" ] && continue
         [ "$mod" = "main" ] && continue
+        [ "$mod" = "v2_rt" ] && continue
         echo "pub mod $mod;"
     done
-    # Hand-maintained modules
     echo 'pub mod v2_rt;'
     echo ''
     echo '#[cfg(test)]'
@@ -92,3 +65,5 @@ else
     echo " errors remaining."
     exit 1
 fi
+
+rm -rf "$OUTPUT_DIR"
