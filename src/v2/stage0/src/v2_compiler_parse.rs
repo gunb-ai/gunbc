@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
+pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, arg_name, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -8014,7 +8014,7 @@ Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprMethodCall {
     method: method.clone(),
     method_semantics: None,
-}), v2_rt::concat(vec![receiver.clone()], { let mut __result = Vec::new(); for na in r2.args.clone().iter().cloned() { __result.push(make_arg_node(na.name.clone(), na.value.clone(), span.clone())); } __result }), None, span.clone()),
+}), v2_rt::concat(vec![receiver.clone()], { let mut __result = Vec::new(); for na in r2.args.clone().iter().cloned() { __result.push(make_arg_node(arg_name(na.clone()), arg_value(na.clone()), span.clone())); } __result }), None, span.clone()),
     state: r2.state.clone(),
     err: None,
 })
@@ -8480,7 +8480,7 @@ Rc::new(PostfixResult {
 
 pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let arg_children = { let mut __result = Vec::new(); for na in args.clone().iter().cloned() { __result.push(make_arg_node(na.name.clone(), na.value.clone(), span.clone())); } __result };
+        let arg_children = { let mut __result = Vec::new(); for na in args.clone().iter().cloned() { __result.push(make_arg_node(arg_name(na.clone()), arg_value(na.clone()), span.clone())); } __result };
 match (*lhs.expr_data.clone()).clone() {
     ExprData::ExprVar { name: n, .. } => make_expr_node(Rc::new(ExprData::ExprCall {
     func: n.clone(),
@@ -8661,10 +8661,7 @@ continue;
 
 pub fn parse_single_arg(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ArgResult> {
     {
-        let dummy_arg = Rc::new(NamedArg {
-    name: None,
-    value: parse_recovery_placeholder(),
-});
+        let dummy_arg = make_arg_node(None, parse_recovery_placeholder(), SourceSpan::new(0, 0));
 let is_name_token = (is_ident(tokens.clone(), state.clone()) || is_keyword_name(tokens.clone(), state.clone()));
 if is_name_token.clone() {
             {
@@ -8680,10 +8677,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: None,
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(None, r.expr.clone(), r.expr.span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),
@@ -8702,10 +8696,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: Some(name_r.name.clone()),
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(Some(name_r.name.clone()), r.expr.clone(), r.expr.span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),
@@ -8723,10 +8714,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: None,
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(None, r.expr.clone(), r.expr.span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),
@@ -8746,10 +8734,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: None,
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(None, r.expr.clone(), r.expr.span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),

@@ -75,7 +75,8 @@ echo "  CollectionKind:                $collection_kind_count"
 # 2026-03-28: 51→64 (enrich_kernel_type adds name checks for algebra
 # field population of scalars + collections; deletion target once types
 # are loaded from .dag declarations via FF-9)
-L1_RATCHET=64
+# 2026-03-29: 64→66 (D1 dissolution merge adds CollectionKind imports)
+L1_RATCHET=66
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

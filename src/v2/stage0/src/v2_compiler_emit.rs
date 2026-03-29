@@ -320,24 +320,24 @@ pub fn lookup_func_sig_in_scope(scope: Rc<InferScope>, name: String) -> Option<R
 }
 
 pub fn typed_named_arg_matches(arg: Rc<Node>, name: String) -> bool {
-    if (arg.name.clone() == None) {
+    if (arg.name.clone() == "".to_string()) {
         false
 } else {
-        (arg.name.clone().clone().unwrap() == name.clone())
+        (arg.name.clone() == name.clone())
 }
 }
 
 pub fn order_typed_call_args(args: Vec<Rc<Node>>, func: String, scope: Rc<InferScope>) -> Vec<Rc<Node>> {
     {
-        let has_unnamed = { let mut __found = false; for arg in args.clone().iter().cloned() { if (arg.name.clone() == None) { __found = true; break; } } __found };
+        let has_unnamed = { let mut __found = false; for arg in args.clone().iter().cloned() { if (arg.name.clone() == "".to_string()) { __found = true; break; } } __found };
 if has_unnamed.clone() {
             args.clone()
 } else {
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
     None => args.clone(),
     Some(sig) => {
-                let arg_map = args.clone().iter().cloned().fold(<HashMap<String, Rc<Node>>>::new(), |acc: _, arg: Rc<Node>| if (arg.name.clone() != None) {
-                    v2_rt::map_insert(acc.clone(), arg.name.clone().clone().unwrap(), arg.clone())
+                let arg_map = args.clone().iter().cloned().fold(<HashMap<String, Rc<Node>>>::new(), |acc: _, arg: Rc<Node>| if (arg.name.clone() != "".to_string()) {
+                    v2_rt::map_insert(acc.clone(), arg.name.clone(), arg.clone())
 } else {
                     acc.clone()
 });
@@ -346,10 +346,10 @@ let ordered = { let mut __result = Vec::new(); for param in sig.params.clone().i
     Some(arg) => vec![arg.clone()],
     None => vec![],
 }); } __result };
-let leftovers = { let mut __result = Vec::new(); for arg in args.clone().iter().cloned() { if if (arg.name.clone() == None) {
+let leftovers = { let mut __result = Vec::new(); for arg in args.clone().iter().cloned() { if if (arg.name.clone() == "".to_string()) {
                     true
 } else {
-                    (emit_map_has(param_name_set.clone(), arg.name.clone().clone().unwrap()) == false)
+                    (emit_map_has(param_name_set.clone(), arg.name.clone()) == false)
 } { __result.push(arg); } } __result };
 v2_rt::concat(ordered.clone(), leftovers.clone())
 },
@@ -1168,10 +1168,7 @@ pub enum TcoExprShape {
 pub fn classify_tco_expr(texpr: Rc<Node>) -> Rc<TcoExprShape> {
     match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { func: f, .. } => {
-        let a = { let mut __result = Vec::new(); for a in texpr.children.clone().iter().cloned() { __result.push(Rc::new(NamedArg {
-    name: arg_name(a.clone()),
-    value: arg_value(a.clone()),
-})); } __result };
+        let a = texpr.children.clone();
 Rc::new(TcoExprShape::TcoCall {
     func: f.clone(),
     args: a.clone(),
@@ -1247,10 +1244,7 @@ pub fn emit_shared_tco_expr(frame: Rc<TcoFrame>, fn_name: String, emit_self_call
     match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprCall { func: f, .. } => if (f.clone() == fn_name.clone()) {
         {
-            let a = { let mut __result = Vec::new(); for a in frame.expr.clone().children.clone().iter().cloned() { __result.push(Rc::new(NamedArg {
-    name: arg_name(a.clone()),
-    value: arg_value(a.clone()),
-})); } __result };
+            let a = frame.expr.clone().children.clone();
 emit_self_call_reassign(Rc::new(TcoReassignInput {
     args: a.clone(),
     scope: frame.scope.clone(),

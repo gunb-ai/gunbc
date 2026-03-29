@@ -118,6 +118,16 @@ fn is_kernel_type(name: String) -> Bool {
   kernel_types |> any(t => t == name)
 }
 
+// Container types: parameterized types that stay unexpanded at resolve time.
+// Used by parse and resolve to distinguish container generics from aliases.
+data container_types: List<String> = [
+  "List", "Set", "NonEmptyList", "NonEmptySet", "Map"
+]
+
+fn is_container_type(name: String) -> Bool {
+  container_types |> any(t => t == name)
+}
+
 // Arity bridge DELETED (P3.7). The compiler no longer hardcodes which
 // types are parameterized. Arity comes from .dag declarations (params
 // field on type definitions). See std/types.dag for List, Map, Set.

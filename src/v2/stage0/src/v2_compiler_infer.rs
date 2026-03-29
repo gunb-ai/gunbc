@@ -606,10 +606,10 @@ pub fn bridge_is(opt: Option<RuntimeBridgeMethod>, expected: RuntimeBridgeMethod
 }
 
 pub fn arg_has_name(arg: Rc<Node>, name: String) -> bool {
-    if (arg.name.clone() == None) {
+    if (arg.name.clone() == "".to_string()) {
         false
 } else {
-        (arg.name.clone().clone().unwrap() == name.clone())
+        (arg.name.clone() == name.clone())
 }
 }
 
@@ -642,7 +642,7 @@ pub fn infer_method_args_with_fold(intrinsic: Option<IntrinsicMethod>, method_ar
     { let mut __result = Vec::new(); for idx_pair in method_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { __result.push({
         let a = idx_pair.1.clone();
 let idx = idx_pair.0.clone();
-let is_init_arg = (arg_has_name(a.clone(), "init".to_string()) || ((a.name.clone() == None) && (idx.clone() == 0)));
+let is_init_arg = (arg_has_name(a.clone(), "init".to_string()) || ((a.name.clone() == "".to_string()) && (idx.clone() == 0)));
 if ((is_fold && (fold_info.clone() != None)) && is_init_arg.clone()) {
             match fold_info.clone() {
     Some(fi) => fi.clone(),
@@ -832,17 +832,17 @@ let bridge = if (semantics.clone() == None) {
 }
 };
 if intrinsic_is(intrinsic.clone(), MethodMap) {
-            match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(a.value.clone()) { __result.push(a); } } __result }.first().cloned() {
+            match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }.first().cloned() {
     Some(lambda_arg) => {
-                let lambda_ret = rt_type(lambda_arg.value.clone());
+                let lambda_ret = rt_type(arg_value(lambda_arg.clone()));
 container_node(receiver_type_name.clone(), lambda_ret.clone())
 },
     None => fallback.clone(),
 }
 } else {
             if intrinsic_is(intrinsic.clone(), MethodFlatMap) {
-                match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(a.value.clone()) { __result.push(a); } } __result }.first().cloned() {
-    Some(lambda_arg) => match (*rt_node(lambda_arg.value.clone())).clone() {
+                match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }.first().cloned() {
+    Some(lambda_arg) => match (*rt_node(arg_value(lambda_arg.clone()))).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => fallback.clone(),
     NodeType::Untyped => fallback.clone(),
@@ -851,8 +851,8 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
 }
 } else {
                 if intrinsic_is(intrinsic.clone(), MethodFold) {
-                    match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(a.value.clone()) { __result.push(a); } } __result }.first().cloned() {
-    Some(lambda_arg) => match (*rt_node(lambda_arg.value.clone())).clone() {
+                    match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }.first().cloned() {
+    Some(lambda_arg) => match (*rt_node(arg_value(lambda_arg.clone()))).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => fallback.clone(),
     NodeType::Untyped => fallback.clone(),
@@ -862,7 +862,7 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
 } else {
                     if ((bridge_is(bridge.clone(), BridgeListPush) && ((typed_args.clone().len() as i64) >= 1)) && ((receiver_type.children.clone().len() as i64) == 0)) {
                         match typed_args.clone().first().cloned() {
-    Some(item_arg) => match (*rt_node(item_arg.value.clone())).clone() {
+    Some(item_arg) => match (*rt_node(arg_value(item_arg.clone()))).clone() {
     NodeType::Typed { node: rt, .. } => container_node("List".to_string(), rt.clone()),
     NodeType::InferError { .. } => fallback.clone(),
     NodeType::Untyped => fallback.clone(),
@@ -873,7 +873,7 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
                         if (((bridge_is(bridge.clone(), BridgeMapInsert) && ((receiver_type.children.clone().len() as i64) == 0)) && receiver_is_map.clone()) && ((typed_args.clone().len() as i64) >= 2)) {
                             {
                                 let key_type = match typed_args.clone().first().cloned() {
-    Some(key_arg) => match (*rt_node(key_arg.value.clone())).clone() {
+    Some(key_arg) => match (*rt_node(arg_value(key_arg.clone()))).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => fallback.clone(),
     NodeType::Untyped => fallback.clone(),
@@ -881,7 +881,7 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
     None => fallback.clone(),
 };
 match typed_args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
-    Some(val_arg) => map_node(key_type.clone(), match (*rt_node(val_arg.value.clone())).clone() {
+    Some(val_arg) => map_node(key_type.clone(), match (*rt_node(arg_value(val_arg.clone()))).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => fallback.clone(),
     NodeType::Untyped => fallback.clone(),
@@ -893,7 +893,7 @@ match typed_args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().fi
                             if ((bridge_is(bridge.clone(), BridgeMapMerge) && receiver_is_map.clone()) && ((typed_args.clone().len() as i64) >= 1)) {
                                 {
                                     let overlay_type = match typed_args.clone().first().cloned() {
-    Some(overlay_arg) => match (*rt_node(overlay_arg.value.clone())).clone() {
+    Some(overlay_arg) => match (*rt_node(arg_value(overlay_arg.clone()))).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
     NodeType::InferError { .. } => receiver_type.clone(),
     NodeType::Untyped => receiver_type.clone(),
@@ -1170,7 +1170,7 @@ let base_result_type = match method_resolution.result_type.clone() {
     None => error_type_node(),
 };
 let bridge_result_type = refine_collection_result_type(method_resolution.semantics.clone(), remaining.clone(), first_arg_type.clone(), base_result_type.clone());
-let remaining_arg_nodes = { let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(ta.name.clone(), ta.value.clone(), span.clone())); } __result };
+let remaining_arg_nodes = { let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(arg_name(ta.clone()), arg_value(ta.clone()), span.clone())); } __result };
 Rc::new(InferResult {
     typed: make_expr_node(Rc::new(ExprData::ExprMethodCall {
     method: func_name.clone(),
@@ -1197,7 +1197,7 @@ Rc::new(InferResult {
                                 {
                                     let bt = if ((func_name.clone() == "lookup".to_string()) || (func_name.clone() == "map_get".to_string())) {
                                         match typed_args.clone().first().cloned() {
-    Some(receiver_arg) => match (*rt_node(receiver_arg.value.clone())).clone() {
+    Some(receiver_arg) => match (*rt_node(arg_value(receiver_arg.clone()))).clone() {
     NodeType::Typed { node: receiver_type, .. } => match map_value_type_in_env(receiver_type.clone(), scope.type_env.clone()) {
     Some(value_type) => with_optional_cardinality(value_type.clone()),
     None => resolve_builtin_call_type(func_name.clone()),

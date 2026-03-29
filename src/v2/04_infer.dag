@@ -74,7 +74,6 @@ import v2.std.core {
   make_transport_node, local_transport_node,
   Text, Interpolation,
   leaf_node, with_optional_cardinality, with_required_cardinality,
-  ListKind, SetKind, NonEmptyListKind, NonEmptySetKind,
   no_span, make_span,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type
