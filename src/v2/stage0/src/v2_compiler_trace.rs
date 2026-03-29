@@ -196,9 +196,9 @@ pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: 
 
 pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Vec<Rc<TraceEvent>> {
     match (*filter.clone()).clone() {
-    TraceFilter::FilterByFunc { func_name: name, .. } => { let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { if (event_node_id(e.clone()) == name.clone()) { __result.push(e); } } __result },
-    TraceFilter::FilterBySpan { start: s, end: e, .. } => { let mut __result = Vec::new(); for ev in trace.events.clone().iter().cloned() { if event_matches_span(ev.clone(), s.clone(), e.clone()) { __result.push(ev); } } __result },
-    TraceFilter::FilterErrors => { let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { if match (*e.clone()).clone() {
+    TraceFilter::FilterByFunc { func_name: name, .. } => { let mut __result = Vec::new(); for e in trace.events.iter().cloned() { if (event_node_id(e.clone()) == name.clone()) { __result.push(e); } } __result },
+    TraceFilter::FilterBySpan { start: s, end: e, .. } => { let mut __result = Vec::new(); for ev in trace.events.iter().cloned() { if event_matches_span(ev.clone(), s.clone(), e.clone()) { __result.push(ev); } } __result },
+    TraceFilter::FilterErrors => { let mut __result = Vec::new(); for e in trace.events.iter().cloned() { if match (*e.clone()).clone() {
     TraceEvent::TraceError { .. } => true,
     _ => false,
 } { __result.push(e); } } __result },
@@ -218,7 +218,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
 }
 
 pub fn format_trace(trace: Rc<Trace>) -> Vec<String> {
-    { let mut __result = Vec::new(); for e in trace.events.clone().iter().cloned() { __result.push(format_trace_event(e.clone())); } __result }
+    { let mut __result = Vec::new(); for e in trace.events.iter().cloned() { __result.push(format_trace_event(e.clone())); } __result }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -245,5 +245,5 @@ pub struct SourceMap {
 }
 
 pub fn remap_location(source_map: Rc<SourceMap>, generated_line: i64) -> Option<Rc<SourceSpan>> {
-    { let mut __result = Vec::new(); for m in source_map.mappings.clone().iter().cloned() { if (m.generated_line.clone() <= generated_line.clone()) { __result.push(m); } } __result }.last().cloned().map(|m| m.source_span.clone())
+    { let mut __result = Vec::new(); for m in source_map.mappings.iter().cloned() { if (m.generated_line.clone() <= generated_line.clone()) { __result.push(m); } } __result }.last().cloned().map(|m| m.source_span.clone())
 }

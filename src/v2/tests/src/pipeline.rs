@@ -658,7 +658,7 @@ fn pos_only(items: List<Int>) -> List<Int> {
         result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
     for func in &["sum_items", "doubled", "pos_only"] {
         let class = complexity_class_of(&result, func);
-        assert!(class.as_ref().map_or(false, |c| c.starts_with("O(")),
+        assert!(class.as_ref().is_some_and(|c| c.starts_with("O(")),
             "{} should be O(n), got {:?}", func, class);
     }
 }
@@ -683,7 +683,7 @@ fn all_pairs_sum(items: List<Int>) -> Int {
     // because it tracks collection identity. The key assertion is: no violations
     // and a concrete bound exists (not Unknown).
     assert!(class.is_some(), "all_pairs_sum should have a complexity class");
-    assert!(class.as_ref().map_or(false, |c| c.starts_with("O(")),
+    assert!(class.as_ref().is_some_and(|c| c.starts_with("O(")),
         "all_pairs_sum should have a concrete bound, got {:?}", class);
 }
 
@@ -706,7 +706,7 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
     // Bilinear: fold over rows with inner fold over cols.
     // Analyzer should produce O(|rows| * |cols|) or a simplified form.
     assert!(class.is_some(), "cross_count should have a complexity class");
-    assert!(class.as_ref().map_or(false, |c| c.starts_with("O(")),
+    assert!(class.as_ref().is_some_and(|c| c.starts_with("O(")),
         "cross_count should have a concrete bound, got {:?}", class);
 }
 
@@ -1401,7 +1401,7 @@ fn service_with_operation_compiles_cleanly() {
     // This is a compile-time check that a traditional compiler can't do
     // (services are usually runtime-only)
     assert!(
-        result.files.len() > 0 || !diagnostic_messages(&result).is_empty(),
+        !result.files.is_empty() || !diagnostic_messages(&result).is_empty(),
         "service pipeline should produce output or diagnostics"
     );
 }

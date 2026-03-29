@@ -1999,7 +1999,7 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
 
 pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Vec<Rc<Node>> {
     if is_conj_with_children(rt.clone()) {
-        { let mut __result = Vec::new(); for ch in rt.children.clone().iter().cloned() { __result.push(make_field_node(ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone())); } __result }
+        { let mut __result = Vec::new(); for ch in rt.children.iter().cloned() { __result.push(make_field_node(ch.name.clone(), child_inferred_or_empty(ch.clone()), Cardinality::Required, ch.body.clone(), None, ch.span.clone())); } __result }
 } else {
         vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, rt.span.clone())]
 }
@@ -2372,7 +2372,7 @@ Rc::new(Node {
 pub fn variant_to_child_node(variant: Rc<Node>) -> Rc<Node> {
     {
         let fields = variant_node_fields(variant.clone());
-let children = { let mut __result = Vec::new(); for f in fields.clone().iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result };
+let children = { let mut __result = Vec::new(); for f in fields.iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result };
 Rc::new(Node {
     name: variant_node_name(variant.clone()),
     span: variant.span.clone(),
@@ -2404,7 +2404,7 @@ pub fn outputs_to_inferred(outputs: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Opti
     node: Rc::new(Node {
     name: "".to_string(),
     span: span.clone(),
-    children: { let mut __result = Vec::new(); for f in outputs.clone().iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result },
+    children: { let mut __result = Vec::new(); for f in outputs.iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result },
     connective: Some(Connective::Conj),
     params: vec![],
     inferred: None,
@@ -2504,7 +2504,7 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
 }
-let type_children = { let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result };
+let type_children = { let mut __result = Vec::new(); for f in r.fields.iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result };
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -2623,7 +2623,7 @@ if has_err(rest.err.clone()) {
 })
 }
 let variants = rest.variants.clone();
-let type_children = { let mut __result = Vec::new(); for v in variants.clone().iter().cloned() { __result.push(variant_to_child_node(v.clone())); } __result };
+let type_children = { let mut __result = Vec::new(); for v in variants.iter().cloned() { __result.push(variant_to_child_node(v.clone())); } __result };
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -3305,7 +3305,7 @@ let span = current_span(tokens.clone(), s.clone());
 let te = Rc::new(Node {
     name: "".to_string(),
     span: span.clone(),
-    children: { let mut __result = Vec::new(); for f in r.fields.clone().iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result },
+    children: { let mut __result = Vec::new(); for f in r.fields.iter().cloned() { __result.push(field_to_child_node(f.clone())); } __result },
     connective: Some(Connective::Conj),
     params: vec![],
     inferred: None,
@@ -4349,13 +4349,13 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
 }
-let op_children = { let mut __result = Vec::new(); for op in r.operations.clone().iter().cloned() { __result.push({
+let op_children = { let mut __result = Vec::new(); for op in r.operations.iter().cloned() { __result.push({
             let all_props = v2_rt::concat(v2_rt::concat(v2_rt::concat(op.modifier_props.clone(), op.response_props.clone()), op.exit_props.clone()), op.mock_props.clone());
 Rc::new(Node {
     name: op.name.clone(),
     span: op.span.clone(),
     children: vec![],
-    params: { let mut __result = Vec::new(); for f in op.inputs.clone().iter().cloned() { __result.push(make_param_node(
+    params: { let mut __result = Vec::new(); for f in op.inputs.iter().cloned() { __result.push(make_param_node(
     field_node_name(f.clone()),
     field_node_type_expr(f.clone()),
     field_node_default_value(f.clone()),
@@ -5808,7 +5808,7 @@ pub fn modifier_to_prop(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
 }
 
 pub fn modifiers_to_props(modifiers: Vec<OperationModifier>, span: Rc<SourceSpan>) -> Vec<Rc<Node>> {
-    { let mut __result = Vec::new(); for m in modifiers.clone().iter().cloned() { __result.push(match m.clone() {
+    { let mut __result = Vec::new(); for m in modifiers.iter().cloned() { __result.push(match m.clone() {
     OperationModifier::Idempotent => modifier_to_prop("idempotent".to_string(), span.clone()),
     OperationModifier::Readonly => modifier_to_prop("readonly".to_string(), span.clone()),
     OperationModifier::Hermetic => modifier_to_prop("hermetic".to_string(), span.clone()),
@@ -5848,7 +5848,7 @@ pub fn int_to_string_acc(mut value: i64, mut acc: Vec<String>) -> Vec<String> {
             let digit = (value.clone() % 10);
 let rest = ((value.clone() - digit.clone()) / 10);
 let digit_chars = vec!["0".to_string(), "1".to_string(), "2".to_string(), "3".to_string(), "4".to_string(), "5".to_string(), "6".to_string(), "7".to_string(), "8".to_string(), "9".to_string()];
-let ch = match { let mut __result = Vec::new(); for p in digit_chars.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if (p.0.clone() == digit.clone()) { __result.push(p); } } __result }.first().cloned() {
+let ch = match { let mut __result = Vec::new(); for p in digit_chars.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if (p.0.clone() == digit.clone()) { __result.push(p); } } __result }.first().cloned() {
     Some(p) => p.1.clone(),
     None => "?".to_string(),
 };
@@ -6498,11 +6498,11 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
 }
-let cap_children = { let mut __result = Vec::new(); for cap in r.capabilities.clone().iter().cloned() { __result.push(Rc::new(Node {
+let cap_children = { let mut __result = Vec::new(); for cap in r.capabilities.iter().cloned() { __result.push(Rc::new(Node {
     name: cap.name.clone(),
     span: cap.span.clone(),
     children: vec![],
-    params: { let mut __result = Vec::new(); for f in cap.inputs.clone().iter().cloned() { __result.push(make_param_node(
+    params: { let mut __result = Vec::new(); for f in cap.inputs.iter().cloned() { __result.push(make_param_node(
     field_node_name(f.clone()),
     field_node_type_expr(f.clone()),
     field_node_default_value(f.clone()),
@@ -8014,7 +8014,7 @@ Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprMethodCall {
     method: method.clone(),
     method_semantics: None,
-}), v2_rt::concat(vec![receiver.clone()], { let mut __result = Vec::new(); for na in r2.args.clone().iter().cloned() { __result.push(make_arg_node(arg_name(na.clone()), arg_value(na.clone()), span.clone())); } __result }), None, span.clone()),
+}), v2_rt::concat(vec![receiver.clone()], { let mut __result = Vec::new(); for na in r2.args.iter().cloned() { __result.push(make_arg_node(arg_name(na.clone()), arg_value(na.clone()), span.clone())); } __result }), None, span.clone()),
     state: r2.state.clone(),
     err: None,
 })
@@ -8480,7 +8480,7 @@ Rc::new(PostfixResult {
 
 pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let arg_children = { let mut __result = Vec::new(); for na in args.clone().iter().cloned() { __result.push(make_arg_node(arg_name(na.clone()), arg_value(na.clone()), span.clone())); } __result };
+        let arg_children = { let mut __result = Vec::new(); for na in args.iter().cloned() { __result.push(make_arg_node(arg_name(na.clone()), arg_value(na.clone()), span.clone())); } __result };
 match (*lhs.expr_data.clone()).clone() {
     ExprData::ExprVar { name: n, .. } => make_expr_node(Rc::new(ExprData::ExprCall {
     func: n.clone(),
@@ -10344,7 +10344,7 @@ let final_parts = if (v2_rt::string_length(suffix.clone()) > 0) {
             new_parts.clone()
 };
 break Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprStringInterp), { let mut __result = Vec::new(); for p in final_parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+    expr: make_expr_node(Rc::new(ExprData::ExprStringInterp), { let mut __result = Vec::new(); for p in final_parts.iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => make_text_part_node(v.clone(), span.clone()),
     StringPart::Interpolation { expr: e, .. } => make_interp_part_node(e.clone(), span.clone()),
 }); } __result }, None, span.clone()),
@@ -10352,7 +10352,7 @@ break Rc::new(ExprResult {
     err: None,
 }); },
     _ => { break Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprStringInterp), { let mut __result = Vec::new(); for p in new_parts.clone().iter().cloned() { __result.push(match (*p.clone()).clone() {
+    expr: make_expr_node(Rc::new(ExprData::ExprStringInterp), { let mut __result = Vec::new(); for p in new_parts.iter().cloned() { __result.push(match (*p.clone()).clone() {
     StringPart::Text { value: v, .. } => make_text_part_node(v.clone(), span.clone()),
     StringPart::Interpolation { expr: e, .. } => make_interp_part_node(e.clone(), span.clone()),
 }); } __result }, None, span.clone()),

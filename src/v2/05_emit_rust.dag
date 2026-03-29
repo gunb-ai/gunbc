@@ -2441,7 +2441,10 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
       _ => "compile_error!(\"with method missing resolved record type\")"
     }
     if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
-    let update_arg = (args |> first).value.value
+    let update_arg = match args |> first {
+      Some { value: a } => arg_value(n: a)
+      None => internal_expr_error_node(message: "with missing arg", span: make_span(start: 0, end: 0))
+    }
     let field_strs = match update_arg.expr_data {
       ExprRecordLit { type_name: _, parent_enum: _ } =>
         update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
@@ -3352,7 +3355,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let headers = transport_headers(t: transport)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
-      emit_simple_expr(expr: h.value, target: Rust), ");")
+      emit_simple_expr(expr: field_init_node_value(n: h), target: Rust), ");")
   )
   let send_line = "let response = request.send().await?;"
   let parse_line = "let result = response.json().await?;"
@@ -3367,7 +3370,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
     emit_ident(name: op_name, target: Rust), "\")")
   let env_entries = transport_env(t: transport)
   let env_lines = env_entries |> map(e =>
-    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value, target: Rust), ")")
+    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   let output_line = "    .output()?;"

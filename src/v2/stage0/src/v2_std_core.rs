@@ -199,7 +199,7 @@ lazy_static::lazy_static! {
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    { let mut __found = false; for t in KERNEL_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
+    { let mut __found = false; for t in KERNEL_TYPES.iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
 }
 
 lazy_static::lazy_static! {
@@ -207,7 +207,7 @@ lazy_static::lazy_static! {
 }
 
 pub fn is_container_type(name: String) -> bool {
-    { let mut __found = false; for t in CONTAINER_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
+    { let mut __found = false; for t in CONTAINER_TYPES.iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
 }
 
 pub fn is_kernel_numeric(name: String) -> bool {
@@ -808,7 +808,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
-    match texpr.children.clone().iter().cloned().skip(index.clone() as usize).collect::<Vec<_>>().first().cloned() {
+    match texpr.children.iter().cloned().skip(index.clone() as usize).collect::<Vec<_>>().first().cloned() {
     Some(v) => v.clone(),
     None => make_expr_error_node(ExprErrorKind::InternalExprError, v2_rt::concat("malformed node: missing ".to_string(), role.clone()), texpr.span.clone()),
 }
@@ -937,7 +937,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if (n.children.clone().len() as i64) > 1 {
-        n.children.clone().iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
+        n.children.iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
     } else {
         None
     }
@@ -993,7 +993,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if (n.children.clone().len() as i64) > 1 {
-        n.children.clone().iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
+        n.children.iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
     } else {
         None
     }
@@ -1052,7 +1052,7 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.clone().iter().cloned().skip(2 as usize).collect::<Vec<_>>().first().cloned()
+    texpr.children.iter().cloned().skip(2 as usize).collect::<Vec<_>>().first().cloned()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -1060,7 +1060,7 @@ pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Vec<Rc<Node>> {
-    texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()
+    texpr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
@@ -1084,7 +1084,7 @@ pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Vec<Rc<Node>> {
-    texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()
+    texpr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()
 }
 
 pub fn call_arg_nodes(texpr: Rc<Node>) -> Vec<Rc<Node>> {
@@ -1100,7 +1100,7 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned()
+    texpr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned()
 }
 
 pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
@@ -1205,7 +1205,7 @@ make_transport_node(transport_kind_name(Rc::new(TransportKind::FileTransport)), 
 }
 
 pub fn find_property(props: Vec<Rc<Node>>, prop_name: String) -> Option<Rc<Node>> {
-    match { let mut __result = Vec::new(); for p in props.clone().iter().cloned() { if (field_init_node_name(p.clone()) == prop_name.clone()) { __result.push(p); } } __result }.first().cloned() {
+    match { let mut __result = Vec::new(); for p in props.iter().cloned() { if (field_init_node_name(p.clone()) == prop_name.clone()) { __result.push(p); } } __result }.first().cloned() {
     Some(fi) => Some(field_init_node_value(fi.clone())),
     None => None,
 }
@@ -1339,7 +1339,7 @@ pub fn transport_has_auth(t: Rc<Node>) -> bool {
 }
 
 pub fn transport_headers(t: Rc<Node>) -> Vec<Rc<Node>> {
-    { let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if {
+    { let mut __result = Vec::new(); for p in t.properties.iter().cloned() { if {
         let key = config_property_key(field_init_node_name(p.clone()));
 (((((key.clone() != Rc::new(ConfigPropertyKey::ConfigBaseUrl)) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigBasePath))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthScheme))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthHeader))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthToken)))
 } { __result.push(p); } } __result }
@@ -1353,7 +1353,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) ->
     Rc::new(Node {
     name: node.name.clone(),
     span: node.span.clone(),
-    children: { let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(transform(child.clone())); } __result },
+    children: { let mut __result = Vec::new(); for child in node.children.iter().cloned() { __result.push(transform(child.clone())); } __result },
     connective: node.connective.clone(),
     params: node.params.clone(),
     inferred: node.inferred.clone(),
@@ -1376,9 +1376,9 @@ pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
     ExprData::ExprCall { func: f, .. } => if (f.clone() == fn_name.clone()) {
             true
 } else {
-            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found }
+            { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found }
 },
-    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found },
+    _ => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found },
 }
     })
 }
@@ -1390,16 +1390,16 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bo
             if (in_tail.clone() == false) {
                 true
 } else {
-                { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
+                { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
 }
 } else {
-            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
+            { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
 },
     ExprData::ExprError { .. } => false,
     ExprData::ExprVar { .. } => false,
     ExprData::ExprLiteral { .. } => false,
-    ExprData::ExprFieldAccess { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
-    ExprData::ExprMethodCall { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
+    ExprData::ExprFieldAccess { .. } => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
+    ExprData::ExprMethodCall { .. } => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
     ExprData::ExprIf => {
             let cond_bad = expr_has_non_tail_self_call(if_condition(texpr.clone()), fn_name.clone(), false);
 let then_bad = expr_has_non_tail_self_call(if_then_branch(texpr.clone()), fn_name.clone(), in_tail.clone());
@@ -1429,7 +1429,7 @@ if (ss_count.clone() == 0) {
                 false
 } else {
                 {
-                    let init_bad = { let mut __found = false; for p in { let mut __result = Vec::new(); for p in ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }.iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false) { __found = true; break; } } __found };
+                    let init_bad = { let mut __found = false; for p in { let mut __result = Vec::new(); for p in ss.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }.iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false) { __found = true; break; } } __found };
 let last_bad = match ss.clone().last().cloned() {
     Some(last_expr) => expr_has_non_tail_self_call(last_expr.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
@@ -1438,8 +1438,8 @@ let last_bad = match ss.clone().last().cloned() {
 }
 }
 },
-    ExprData::NoExprData => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found },
-    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
+    ExprData::NoExprData => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found },
+    _ => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
 }
     })
 }
@@ -1568,7 +1568,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop.clone(), auth_prop.clone()), r
 }
 
 pub fn has_service_config(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (field_init_node_name(p.clone()) == "svc_endpoint".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.iter().cloned() { if (field_init_node_name(p.clone()) == "svc_endpoint".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn service_config_endpoint(n: Rc<Node>) -> Option<Rc<Node>> {
@@ -1655,31 +1655,31 @@ Rc::new(Node {
 }
 
 pub fn is_module_node(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__is_module".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__is_module".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn is_import_node(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__is_import".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__is_import".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn import_is_all(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__import_all".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__import_all".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn import_specific_names(n: Rc<Node>) -> Vec<String> {
-    { let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(c.name.clone()); } __result }
+    { let mut __result = Vec::new(); for c in n.children.iter().cloned() { __result.push(c.name.clone()); } __result }
 }
 
 pub fn module_imports(n: Rc<Node>) -> Vec<Rc<Node>> {
-    { let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if is_import_node(c.clone()) { __result.push(c); } } __result }
+    { let mut __result = Vec::new(); for c in n.children.iter().cloned() { if is_import_node(c.clone()) { __result.push(c); } } __result }
 }
 
 pub fn module_items(n: Rc<Node>) -> Vec<Rc<Node>> {
-    { let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (is_import_node(c.clone()) == false) { __result.push(c); } } __result }
+    { let mut __result = Vec::new(); for c in n.children.iter().cloned() { if (is_import_node(c.clone()) == false) { __result.push(c); } } __result }
 }
 
 pub fn is_token_node(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__is_token".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__is_token".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn leaf_node(name: String) -> Rc<Node> {

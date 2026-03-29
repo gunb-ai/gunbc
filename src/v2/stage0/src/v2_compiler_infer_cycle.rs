@@ -62,9 +62,9 @@ result.clone()
 
 pub fn compute_in_graph_deps(all_names: Vec<String>, deps_map: HashMap<String, Vec<String>>, name_set: HashMap<String, bool>) -> HashMap<String, Vec<String>> {
     {
-        let result = all_names.clone().iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc: _, name: String| match v2_rt::map_get(&deps_map, name.clone()) {
+        let result = all_names.iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc: _, name: String| match v2_rt::map_get(&deps_map, name.clone()) {
     Some(deps) => {
-            let local = { let mut __result = Vec::new(); for d in deps.clone().iter().cloned() { if ((d.clone() != name.clone()) && set_has(name_set.clone(), d.clone())) { __result.push(d); } } __result };
+            let local = { let mut __result = Vec::new(); for d in deps.iter().cloned() { if ((d.clone() != name.clone()) && set_has(name_set.clone(), d.clone())) { __result.push(d); } } __result };
 v2_rt::map_insert(acc.clone(), name.clone(), local.clone())
 },
     None => v2_rt::map_insert(acc.clone(), name.clone(), vec![]),
@@ -74,8 +74,8 @@ result.clone()
 }
 
 pub fn build_reverse_adj(all_names: Vec<String>, local_deps: HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {
-    all_names.clone().iter().cloned().fold(<HashMap<String, _>>::new(), |acc: _, name: String| match v2_rt::map_get(&local_deps, name.clone()) {
-    Some(deps) => deps.clone().iter().cloned().fold(acc.clone(), |inner_acc: _, dep: String| {
+    all_names.iter().cloned().fold(<HashMap<String, _>>::new(), |acc: _, name: String| match v2_rt::map_get(&local_deps, name.clone()) {
+    Some(deps) => deps.iter().cloned().fold(acc.clone(), |inner_acc: _, dep: String| {
         let existing = match v2_rt::map_get(&inner_acc, dep.clone()) {
     Some(v) => v.clone(),
     None => vec![],
@@ -87,7 +87,7 @@ v2_rt::map_insert(inner_acc.clone(), dep.clone(), v2_rt::list_push(existing.clon
 }
 
 pub fn build_in_degree(all_names: Vec<String>, local_deps: HashMap<String, Vec<String>>) -> HashMap<String, i64> {
-    all_names.clone().iter().cloned().fold(<HashMap<String, i64>>::new(), |acc: _, name: String| {
+    all_names.iter().cloned().fold(<HashMap<String, i64>>::new(), |acc: _, name: String| {
         let deg = match v2_rt::map_get(&local_deps, name.clone()) {
     Some(deps) => (deps.clone().len() as i64),
     None => 0,
@@ -100,7 +100,7 @@ pub fn kahn_remove_loop(remaining: Vec<String>, local_deps: HashMap<String, Vec<
     {
         let reverse_adj = build_reverse_adj(remaining.clone(), local_deps.clone());
 let in_degree = build_in_degree(remaining.clone(), local_deps.clone());
-let initial_queue = { let mut __result = Vec::new(); for n in remaining.clone().iter().cloned() { if match v2_rt::map_get(&in_degree, n.clone()) {
+let initial_queue = { let mut __result = Vec::new(); for n in remaining.iter().cloned() { if match v2_rt::map_get(&in_degree, n.clone()) {
     Some(d) => (d.clone() == 0),
     None => true,
 } { __result.push(n); } } __result };
@@ -108,7 +108,7 @@ let final_state = kahn_cycle_drain(initial_queue.clone(), in_degree.clone(), rev
 if (final_state.removed_count.clone() == (remaining.clone().len() as i64)) {
             vec![]
 } else {
-            { let mut __result = Vec::new(); for n in remaining.clone().iter().cloned() { if match v2_rt::map_get(&final_state.in_degree.clone(), n.clone()) {
+            { let mut __result = Vec::new(); for n in remaining.iter().cloned() { if match v2_rt::map_get(&final_state.in_degree.clone(), n.clone()) {
     Some(d) => (d.clone() > 0),
     None => false,
 } { __result.push(n); } } __result }
@@ -130,7 +130,7 @@ pub fn kahn_cycle_drain(mut queue: Vec<String>, mut in_degree: HashMap<String, i
     removed_count: removed_count.clone(),
 })
 }
-let result = queue.clone().iter().cloned().fold(Rc::new(KahnState {
+let result = queue.iter().cloned().fold(Rc::new(KahnState {
     in_degree: in_degree.clone(),
     removed_count: removed_count.clone(),
 }), |state: _, node: String| {
@@ -138,7 +138,7 @@ let result = queue.clone().iter().cloned().fold(Rc::new(KahnState {
     Some(v) => v.clone(),
     None => vec![],
 };
-let new_deg = dependents.clone().iter().cloned().fold(state.in_degree.clone(), |deg_acc: _, dep: String| {
+let new_deg = dependents.iter().cloned().fold(state.in_degree.clone(), |deg_acc: _, dep: String| {
                 let old = match v2_rt::map_get(&deg_acc, dep.clone()) {
     Some(d) => d.clone(),
     None => 0,
@@ -150,12 +150,12 @@ Rc::new(KahnState {
     removed_count: (state.removed_count.clone() + 1),
 })
 });
-let next_queue = queue.clone().iter().cloned().fold(vec![], |acc: _, node: String| {
+let next_queue = queue.iter().cloned().fold(vec![], |acc: _, node: String| {
             let dependents = match v2_rt::map_get(&reverse_adj, node.clone()) {
     Some(v) => v.clone(),
     None => vec![],
 };
-dependents.clone().iter().cloned().fold(acc.clone(), |inner_acc: _, dep: String| {
+dependents.iter().cloned().fold(acc.clone(), |inner_acc: _, dep: String| {
                 let deg = match v2_rt::map_get(&result.in_degree.clone(), dep.clone()) {
     Some(d) => d.clone(),
     None => 0,
@@ -184,16 +184,16 @@ continue;
 pub fn detect_type_cycles_kahn(deps_map: HashMap<String, Vec<String>>, bindings: HashMap<String, Rc<TypeBinding>>) -> Vec<String> {
     {
         let all_names = { let mut __result = Vec::new(); for b in v2_rt::map_values(&bindings).iter().cloned() { __result.push(b.name.clone()); } __result };
-let name_set = all_names.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, n: String| v2_rt::map_insert(acc.clone(), n.clone(), true));
+let name_set = all_names.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, n: String| v2_rt::map_insert(acc.clone(), n.clone(), true));
 let local_deps = compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set.clone());
-let self_refs = { let mut __result = Vec::new(); for name in all_names.clone().iter().cloned() { if match v2_rt::map_get(&deps_map, name.clone()) {
-    Some(deps) => { let mut __found = false; for d in deps.clone().iter().cloned() { if (d.clone() == name.clone()) { __found = true; break; } } __found },
+let self_refs = { let mut __result = Vec::new(); for name in all_names.iter().cloned() { if match v2_rt::map_get(&deps_map, name.clone()) {
+    Some(deps) => { let mut __found = false; for d in deps.iter().cloned() { if (d.clone() == name.clone()) { __found = true; break; } } __found },
     None => false,
 } { __result.push(name); } } __result };
 let cycle_members = kahn_remove_loop(all_names.clone(), local_deps.clone());
-let sr_set = self_refs.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, n: String| v2_rt::map_insert(acc.clone(), n.clone(), true));
-let cm_set = cycle_members.clone().iter().cloned().fold(sr_set.clone(), |acc: _, n: String| v2_rt::map_insert(acc.clone(), n.clone(), true));
-let result = { let mut __result = Vec::new(); for n in all_names.clone().iter().cloned() { if set_has(cm_set.clone(), n.clone()) { __result.push(n); } } __result };
+let sr_set = self_refs.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, n: String| v2_rt::map_insert(acc.clone(), n.clone(), true));
+let cm_set = cycle_members.iter().cloned().fold(sr_set.clone(), |acc: _, n: String| v2_rt::map_insert(acc.clone(), n.clone(), true));
+let result = { let mut __result = Vec::new(); for n in all_names.iter().cloned() { if set_has(cm_set.clone(), n.clone()) { __result.push(n); } } __result };
 result.clone()
 }
 }
