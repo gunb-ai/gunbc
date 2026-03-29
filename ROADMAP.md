@@ -16,6 +16,52 @@ position, value/expression position, pattern position, and binding-site
 descriptor are operational roles in the pipeline, not separate
 ontological categories of node.
 
+### Priority Zero: Eliminate the Stage0 Dual Representation
+
+**Problem:** The .dag source and the stage0 .rs files are two
+representations of the same compiler. Every manual edit to stage0 .rs
+is a divergence from .dag source — a dual representation that violates
+the single-source-of-truth invariant. This session proved the cost:
+changing the container template (one line in an extdep) silently broke
+34 emission sites and the entire runtime, producing 1000+ errors that
+required hours of manual debugging.
+
+**Root cause:** The container template, the emitter patterns, and the
+runtime function signatures are three independent declarations of the
+same fact: "how collections are represented in Rust." They can diverge
+because nothing structurally couples them.
+
+**The fix: derive everything from the container template.**
+
+The container template (`dsl/extdeps/languages/rust/emit.dag`) is the
+single source of truth for collection representation. Two things must
+be derived from it, not independently declared:
+
+1. **The runtime** (`runtime_rust.dag`): function signatures like
+   `list_push(???, T) -> ???` where `???` is the template's list type.
+   Currently hardcoded as both bare and Rc variants independently.
+
+2. **The emitter patterns** (`05_emit_rust.dag`): init, iteration,
+   mutation, data def rendering. Currently 34 sites with hardcoded
+   strings like `"Rc::new(Vec::new())"`.
+
+Both must read the template and derive their output. When the template
+changes, the runtime and emitter change automatically — not because
+someone remembered to update them, but because they are computed from
+the template. Forgetting to pass the template is a compile error in
+the .dag source.
+
+**After this fix:**
+- `regenerate-stage0.sh` is a single reliable command
+- Changing a container template requires zero manual stage0 edits
+- The .dag source is the only representation; stage0 .rs is a derived
+  artifact that is never manually edited
+
+**Scope:** ~80 lines of type definition + data declaration, ~34 site
+changes in the emitter (mechanical template application), one
+`runtime_rust.dag` rewrite to derive from the template. One bootstrap
+dual-patch, after which dual-patching is never needed again.
+
 ### Three Structural Principles
 
 These principles refine the thesis based on root-cause analysis of the
