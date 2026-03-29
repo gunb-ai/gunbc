@@ -308,8 +308,9 @@ match parts.clone().last().cloned() {
 pub fn emit_go_imports(items: Vec<Rc<Node>>, imports: Vec<Rc<Node>>) -> String {
     {
         let has_services = { let mut __found = false; for item in items.clone().iter().cloned() { if is_service_item(item.clone()) { __found = true; break; } } __found };
-let has_errors = { let mut __found = false; for item in items.clone().iter().cloned() { if ((item.body.clone() != None) && ((item.uses.clone().len() as i64) > 0)) { __found = true; break; } } __found };
-let std_imports = collect_go_std_imports(has_services.clone(), has_errors.clone());
+let has_types = { let mut __found = false; for item in items.clone().iter().cloned() { if (classify_typed_item(item.clone()) == TypedItemKind::TypedItemTypeDef) { __found = true; break; } } __found };
+let has_functions = { let mut __found = false; for item in items.clone().iter().cloned() { if (classify_typed_item(item.clone()) == TypedItemKind::TypedItemFunction) { __found = true; break; } } __found };
+let std_imports = collect_go_std_imports(has_services.clone(), has_types.clone(), has_functions.clone());
 let pkg_imports = { let mut __result = Vec::new(); for imp in imports.clone().iter().cloned() { __result.push({
             let mod_name = module_to_filename(imp.name.clone());
 v2_rt::concat(v2_rt::concat("	\"generated/".to_string(), mod_name.clone()), "\"".to_string())
@@ -329,15 +330,19 @@ v2_rt::concat(v2_rt::concat("import (
 }
 }
 
-pub fn collect_go_std_imports(has_services: bool, has_errors: bool) -> Vec<String> {
+pub fn collect_go_std_imports(has_services: bool, has_types: bool, has_functions: bool) -> Vec<String> {
     {
-        let base = vec!["	\"fmt\"".to_string()];
+        let fmt_import = if (has_types.clone() || has_functions.clone()) {
+            vec!["	\"fmt\"".to_string()]
+} else {
+            vec![]
+};
 let net_imports = if has_services.clone() {
             vec!["	\"net/http\"".to_string(), "	\"encoding/json\"".to_string(), "	\"bytes\"".to_string(), "	\"io\"".to_string()]
 } else {
             vec![]
 };
-v2_rt::concat(base.clone(), net_imports.clone())
+v2_rt::concat(fmt_import.clone(), net_imports.clone())
 }
 }
 
