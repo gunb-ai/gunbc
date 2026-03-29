@@ -10,11 +10,30 @@ including truth — is compositional modeling over them.
 | Primitive | What it is |
 |-----------|-----------|
 | **Node** | The universal carrier. A node that exists = something is there. A node that is absent = nothing is there. Existence IS truth. |
-| **Edge** | The relationship between nodes (the DAG). An edge that connects = the relationship holds. An edge that doesn't connect = it doesn't hold. Connectivity IS the binary distinction. |
+| **Edge** | A directed relationship from one node to another. Edges are outgoing only — a node knows what it points to (children), never what points at it (parents). An edge either connects to a target node, or it doesn't exist. There is no "edge to nothing." |
+
+Edges are directed: parent → child. A node sees its outgoing edges
+(children) but not its incoming edges (who references it). This is the
+D in DAG. Derived properties like fan-out (how many things reference a
+binding) are computed by graph traversal, not stored on nodes. The
+pipeline walks forward — parse, resolve, infer, emit all follow edges
+in the outgoing direction.
 
 Truth is not a third primitive. It is the presence of a node — the
 most fundamental fact a graph can express. `True` resolves to "a node
 is here." `False` resolves to "no node at this edge."
+
+### Truth Table
+
+All possible states of a slot on a node:
+
+| Edge exists? | Target node exists? | Valid? | What it is |
+|---|---|---|---|
+| Yes | Yes | Valid | Slot filled — relationship holds |
+| Yes | No | **Invalid** | An edge must connect to something. Edge-to-nothing = no edge. |
+| No | (N/A) | Valid | Slot empty — no relationship |
+
+No third state. The binary is clean.
 
 From Node and Edge, all structural properties emerge:
 
@@ -24,19 +43,14 @@ has a name AND an age" means both edges point to nodes.
 **Coproduct (OR)** — a node where exactly one child edge connects.
 "A Shape is Circle OR Square" means one edge points to a node.
 
-**Cardinality** — an edge that may or may not connect. Present (node)
-or absent (no node).
-
-**Logic gates** — structural patterns over edge connectivity. AND =
-"both edges connect." OR = "at least one edge connects." These are
-observations about the graph, not computed functions.
+**Cardinality** — an edge that exists or doesn't. Present = connects
+to a node. Absent = no edge.
 
 **Bit / Classical logic** — still modeled in the language as
 `type Classical = True | False`. Users write boolean values and the
 language has full classical logic. But at the compiler primitive level,
-`True` is a node that exists and `False` is a different node that
-exists — the truth value is carried by *which* edge is active, which
-is itself just edge connectivity.
+`True` and `False` are both nodes that exist — the truth value is
+carried by *which* edge is active, which is itself just edge existence.
 
 ### How This Looks in Practice
 
