@@ -465,6 +465,10 @@ gets total analysis. The bound exists even if no one ever reaches it.
 
 ## Design Direction: Unified Sequence with Representation Inference
 
+**Status: EXPLORATORY.** This direction is promising but not committed.
+The algebraic foundation is sound; the practical implications (naming,
+migration, mixed-access semantics) need more design work.
+
 **Problem:** Ordered collections (List, Stack, Queue, Deque) are modeled
 as separate types, but they share the same structural fact: a finite
 ordered sequence of elements (FreeMonoid). The difference is the access
@@ -473,9 +477,58 @@ to choose a representation up front, which is a rendering decision, not
 a modeling decision.
 
 **Principle:** The ordered sequence is a single type. The access pattern
-determines the representation. The compiler infers the representation
-from usage at compile time. The developer writes operations; the
+determines the representation. The developer writes operations; the
 compiler selects the backing structure.
+
+### Governing principle: algebra determines the structural boundary
+
+Types that share algebraic laws can be unified as access patterns over
+the same structure. Types with different laws are different structures.
+Conversion between algebras is explicit and may lose information.
+
+This gives exactly four structural collection types, one per algebra:
+
+```
+Seq<T>        FreeMonoid      ordered, duplicates       List/Stack/Queue/Deque
+Set<T>        BooleanAlgebra  unordered, no duplicates  Set
+Bag<T>        CommutativeMonoid  unordered, with dupes   Multiset
+Map<K,V>      PartialFunction keyed, keys unique        Map/Dict
+```
+
+**Within an algebra** (e.g., FreeMonoid): different access patterns
+are different views of the same structure. `push`/`pop` (LIFO) and
+`append`/`get` (indexed) are both FreeMonoid operations — they share
+the same laws (associative concat, identity). The representation
+differs (cons list vs array), but the structure is the same.
+
+**Across algebras** (e.g., FreeMonoid → BooleanAlgebra): conversion
+loses information. `list_to_set` drops order and deduplicates.
+`set_to_list` invents an arbitrary order. These are not access
+patterns — they're structural transformations. The developer writes
+them explicitly.
+
+| Boundary | Direction | What happens | Information lost |
+|---|---|---|---|
+| Seq → Set | `to_set(seq)` | Dedup + drop order | Position, multiplicity |
+| Set → Seq | `to_list(set)` | Pick arbitrary order | None added, order arbitrary |
+| Seq → Map | Not direct | Need key extraction | Position (keyed instead) |
+| Seq → Bag | `to_bag(seq)` | Drop order | Position |
+
+**Why this matters for .dag:** The language's collection types should
+follow from the algebra declarations in `std/algebra.dag`. Each
+algebra (FreeMonoid, BooleanAlgebra, CommutativeMonoid, PartialFunction)
+defines one collection type. Operations belong to exactly one algebra.
+The compiler reads the algebra, not the type name.
+
+**Open questions:**
+- Does `Bag<T>` earn its place as a first-class type, or is it a
+  niche structure that users can define themselves?
+- Should `Seq<T>` be the user-facing name, or keep `List<T>` as the
+  familiar name with `push`/`append` determining representation?
+- How do iteration primitives (`fold`, `map`, `filter`) work across
+  algebras? `fold` on Set has no defined order — is that acceptable?
+- What does the cost algebra need to express? O(1) amortized for
+  two-stack queue is harder to model than O(1) worst-case for cons.
 
 ```
 Seq<T>  —  the universal ordered sequence (finite, FreeMonoid)
