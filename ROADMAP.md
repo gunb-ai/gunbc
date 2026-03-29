@@ -463,6 +463,100 @@ gets total analysis. The bound exists even if no one ever reaches it.
 
 ---
 
+## Design Direction: Unified Sequence with Representation Inference
+
+**Problem:** Ordered collections (List, Stack, Queue, Deque) are modeled
+as separate types, but they share the same structural fact: a finite
+ordered sequence of elements (FreeMonoid). The difference is the access
+pattern — where you add and remove. Separate types force the developer
+to choose a representation up front, which is a rendering decision, not
+a modeling decision.
+
+**Principle:** The ordered sequence is a single type. The access pattern
+determines the representation. The compiler infers the representation
+from usage at compile time. The developer writes operations; the
+compiler selects the backing structure.
+
+```
+Seq<T>  —  the universal ordered sequence (finite, FreeMonoid)
+
+// Access disciplines (all operate on Seq<T>):
+push(s, x)      // Stack: add at head     → compiler selects cons-list
+pop(s)          // Stack: remove head     → compiler selects cons-list
+enqueue(s, x)   // Queue: add at tail     → compiler selects ring buffer
+dequeue(s)      // Queue: remove head     → compiler selects ring buffer
+get(s, i)       // List:  indexed access  → compiler selects array
+append(s, x)    // List:  add at tail     → compiler selects array
+```
+
+### How representation inference works
+
+The compiler analyzes which operations are used on each `Seq<T>` binding
+(the same way fan-out analysis counts uses per binding). The access
+pattern determines the representation:
+
+| Operations used | Inferred representation | Cost guarantee |
+|---|---|---|
+| push, pop, peek only | Cons list | O(1) push/pop |
+| append, get only | Array (Vec) | O(1) append/index |
+| enqueue, dequeue only | Ring buffer or two-stack queue | O(1) amortized both |
+| push + get (mixed) | Array with O(n) push, or conversion at boundary | Compiler warns on mixed-cost |
+| All operations | Finger tree (or explicit conversion points) | O(log n) amortized |
+
+This is the same principle as fan-out → clone/move: the compiler reads
+a syntactic property of the binding (which operations appear in its
+scope) and makes a rendering decision. No developer annotation needed.
+
+### Mixed access and conversion boundaries
+
+When a binding uses operations from different cost classes (e.g., stack
+push + indexed get), the compiler has two options:
+
+1. **Select a hybrid structure** (finger tree) that handles both
+   acceptably (O(log n) amortized).
+2. **Insert a conversion** at the boundary where the access pattern
+   changes — analogous to `.clone()` at fan-out boundaries. The
+   conversion is O(n) but happens once, not per-operation.
+
+The cost algebra models both: option (1) introduces `CostLog` terms;
+option (2) introduces a one-time O(n) conversion cost.
+
+### Relationship to existing work
+
+- **`std/algebra.dag`:** List is FreeMonoid. Stack is FreeMonoid.
+  Queue is FreeMonoid. They're the same algebra — different access
+  disciplines over the same structure.
+- **Fan-out analysis:** Same pattern — read syntactic usage, infer
+  rendering decision. Fan-out = clone/move. Access pattern = array/
+  cons-list/ring-buffer.
+- **Cost algebra:** Representation inference is the mechanism that
+  makes the cost algebra's promises real. O(1) push is guaranteed
+  because the compiler selected cons-list for LIFO access.
+- **Decidability:** All representations are finite (inductive). All
+  iteration primitives (`fold`, `fold_stack`) are bounded. The
+  representation is a rendering concern, not a decidability concern.
+
+### Current state
+
+`List<T>` (array-backed) and `Stack<T>` (cons-list) exist as separate
+types in `std/`. This is the stepping stone. When representation
+inference lands, they merge into `Seq<T>` and the compiler selects
+the representation. Until then, developers choose explicitly.
+
+### Implementation path
+
+1. Define `Seq<T>` as the unified ordered sequence type in `std/`.
+2. Define access operations (push, pop, enqueue, dequeue, get, append)
+   as functions on `Seq<T>` with declared cost classes.
+3. Add access-pattern analysis to the compiler (same pass as fan-out).
+4. Map access patterns to representations in `LanguageSpec` (per target
+   language — Rust: Vec/cons/VecDeque; Python: list/deque; Go: slice).
+5. Emit the correct representation per binding per target.
+6. `List<T>` and `Stack<T>` become type aliases for `Seq<T>` with
+   fixed access discipline.
+
+---
+
 ## Design Direction: Guarantee Map
 
 **Problem:** We have invariants, we have tests, but no clear picture of
