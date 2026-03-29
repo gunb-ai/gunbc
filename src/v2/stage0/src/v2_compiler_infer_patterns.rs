@@ -209,7 +209,7 @@ if (((node_has_structure(scrut_node.clone()) == false) && ((scrut_node.children.
             node_lookup_failed(vec![])
 } else {
             {
-                let direct_match = { let mut __result = Vec::new(); for c in scrut_node.children.clone().iter().cloned() { if (c.name.clone() == variant_name.clone()) { __result.push(c); } } __result }.first().cloned();
+                let direct_match = { let mut __result = Vec::new(); for c in scrut_node.children.iter().cloned() { if (c.name.clone() == variant_name.clone()) { __result.push(c); } } __result }.first().cloned();
 let fallback = if (scrut_opt.clone() && (variant_name.clone() == "Some".to_string())) {
                     node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
 } else {
@@ -233,7 +233,7 @@ pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, 
     match (*variant.clone()).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(vec![]),
     PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound { field: field_name.clone(), type_name: "unresolved".to_string(), span: dynamic_span.clone() }), module_name.clone())]),
-    PatternSubject::PatternResolved { node: variant_node, .. } => match { let mut __result = Vec::new(); for c in variant_node.children.clone().iter().cloned() { if (c.name.clone() == field_name.clone()) { __result.push(c); } } __result }.first().cloned() {
+    PatternSubject::PatternResolved { node: variant_node, .. } => match { let mut __result = Vec::new(); for c in variant_node.children.iter().cloned() { if (c.name.clone() == field_name.clone()) { __result.push(c); } } __result }.first().cloned() {
     Some(field_child) => {
         let resolved = child_inferred_or_name(field_child.clone());
 node_lookup_resolved(resolved.clone())
@@ -264,9 +264,9 @@ if (node_is_coproduct(resolved.clone()) || node_is_optional(resolved.clone())) {
                 let variant_names = if node_is_optional(resolved.clone()) {
                     vec!["Some".to_string(), "None".to_string()]
 } else {
-                    { let mut __result = Vec::new(); for c in resolved.children.clone().iter().cloned() { __result.push(c.name.clone()); } __result }
+                    { let mut __result = Vec::new(); for c in resolved.children.iter().cloned() { __result.push(c.name.clone()); } __result }
 };
-let has_catch_all = { let mut __found = false; for arm in arms.clone().iter().cloned() { if match (*arm_pattern(arm.clone())).clone() {
+let has_catch_all = { let mut __found = false; for arm in arms.iter().cloned() { if match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::Wildcard => true,
     MatchPattern::Bind { .. } => true,
     _ => false,
@@ -275,11 +275,11 @@ if has_catch_all.clone() {
                     vec![]
 } else {
                     {
-                        let covered_set = arms.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
+                        let covered_set = arms.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::VariantPattern { name: n, .. } => v2_rt::map_insert(acc.clone(), n.clone(), true),
     _ => acc.clone(),
 });
-let uncovered = { let mut __result = Vec::new(); for v in variant_names.clone().iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result };
+let uncovered = { let mut __result = Vec::new(); for v in variant_names.iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result };
 if ((uncovered.clone().len() as i64) > 0) {
                             vec![make_error_node(Rc::new(CompilerDiagnostic::NonExhaustiveMatch { missing: uncovered.clone(), span: span.clone() }), module_name.clone())]
 } else {

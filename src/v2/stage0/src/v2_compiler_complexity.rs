@@ -295,7 +295,7 @@ pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
             if f.clone() == func_name.clone() { 1 } else { 0 },
         _ => 0,
     };
-    let from_children = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+    let from_children = body.clone().children.iter().cloned().fold(0i64, |acc, child| {
         acc.clone() + count_self_calls(child.clone(), func_name.clone())
     });
     own.clone() + from_children.clone()
@@ -309,7 +309,7 @@ pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { func: f, call_semantics: _ } => {
             let own = if f.clone() == func_name.clone() { 1i64 } else { 0i64 };
-            let arg_calls = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+            let arg_calls = body.clone().children.iter().cloned().fold(0i64, |acc, child| {
                 acc + max_path_self_calls(arg_value(child), func_name.clone())
             });
             own + arg_calls
@@ -346,7 +346,7 @@ pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
             val_calls + body_calls
         }
         ExprData::ExprBlock => {
-            body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+            body.clone().children.iter().cloned().fold(0i64, |acc, child| {
                 acc + max_path_self_calls(child, func_name.clone())
             })
         }
@@ -364,7 +364,7 @@ pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
             recv_calls + arg_calls
         }
         _ => {
-            body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+            body.clone().children.iter().cloned().fold(0i64, |acc, child| {
                 acc + max_path_self_calls(child, func_name.clone())
             })
         }
@@ -479,7 +479,7 @@ pub fn cost_loop(binder: String, iterations: Rc<SizeExpr>, body: Rc<CostExpr>) -
 
 pub fn cost_conditional(condition: Rc<CostExpr>, branches: Vec<Rc<CostExpr>>) -> Rc<CostExpr> {
     {
-        let max_branch = branches.clone().iter().cloned().fold(Rc::new(CostExpr::CostConst {
+        let max_branch = branches.iter().cloned().fold(Rc::new(CostExpr::CostConst {
     value: 0,
 }), |acc: _, b: Rc<CostExpr>| Rc::new(CostExpr::CostMax {
     left: acc.clone(),
@@ -565,10 +565,10 @@ pub fn size_binder_name(size: Rc<SizeExpr>) -> String {
 
 pub fn resolve_lambda_arg(mc_arg_nodes: Vec<Rc<Node>>) -> Option<Rc<Node>> {
     {
-        let f_arg = { let mut __result = Vec::new(); for a in mc_arg_nodes.clone().iter().cloned() { if (a.name.clone() == "f".to_string()) { __result.push(a); } } __result }.first().cloned();
+        let f_arg = { let mut __result = Vec::new(); for a in mc_arg_nodes.iter().cloned() { if (a.name.clone() == "f".to_string()) { __result.push(a); } } __result }.first().cloned();
 match f_arg.clone() {
     Some(fa) => Some(arg_value(fa.clone())),
-    None => { let mut __result = Vec::new(); for a in mc_arg_nodes.clone().iter().cloned() { __result.push(arg_value(a.clone())); } __result }.first().cloned(),
+    None => { let mut __result = Vec::new(); for a in mc_arg_nodes.iter().cloned() { __result.push(arg_value(a.clone())); } __result }.first().cloned(),
 }
 }
 }
@@ -989,7 +989,7 @@ pub struct DeduplicateAcc {
 
 pub fn deduplicate(items: Vec<String>) -> Vec<String> {
     {
-        let result = items.clone().iter().cloned().fold(Rc::new(DeduplicateAcc {
+        let result = items.iter().cloned().fold(Rc::new(DeduplicateAcc {
     seen: <HashMap<_, _>>::new(),
     out: vec![],
 }), |acc: _, item: String| match v2_rt::map_get(&acc.seen.clone(), item.clone()) {
@@ -1032,7 +1032,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(name.clone(), ": ".to_st
 
 pub fn format_complexity_report(entries: Vec<Rc<FuncEntry>>, summaries: HashMap<String, Rc<ComplexitySummary>>) -> String {
     {
-        let lines = { let mut __result = Vec::new(); for entry in entries.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&summaries, entry.name.clone()) {
+        let lines = { let mut __result = Vec::new(); for entry in entries.iter().cloned() { __result.extend(match v2_rt::map_get(&summaries, entry.name.clone()) {
     Some(summary) => vec![format_func_complexity(entry.name.clone(), summary.clone())],
     None => vec![],
 }); } __result };
@@ -1138,7 +1138,7 @@ Rc::new(SummaryResult {
     table: table.clone(),
 }),
 };
-let args_result = texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
+let args_result = texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1205,7 +1205,7 @@ Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), siz
 match method_cost_result.clone() {
     Some(result) => result.clone(),
     _ => {
-                let args_result = mc_args.clone().iter().cloned().fold(Rc::new(SummaryResult {
+                let args_result = mc_args.iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1249,7 +1249,7 @@ Rc::new(SummaryResult {
             let scrut = match_scrutinee(texpr.clone());
 let arm_nodes = match_arm_nodes(texpr.clone());
 let s_r = cost_of_expr(scrut.clone(), func_index.clone(), table.clone());
-let arms_accum = arm_nodes.clone().iter().cloned().fold(Rc::new(MatchCostAccum {
+let arms_accum = arm_nodes.iter().cloned().fold(Rc::new(MatchCostAccum {
     result: Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
@@ -1345,7 +1345,7 @@ Rc::new(SummaryResult {
     None => v_r.clone(),
 }
 },
-    ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
+    ExprData::ExprBlock => texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1387,7 +1387,7 @@ Rc::new(SummaryResult {
     table: bd_r.table.clone(),
 })
 },
-    ExprData::NoExprData => texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
+    ExprData::NoExprData => texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1411,7 +1411,7 @@ Rc::new(SummaryResult {
     table: cr.table.clone(),
 })
 }),
-    _ => texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
+    _ => texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 1,
@@ -1444,7 +1444,7 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
         if (budget.clone() <= 0) {
             0
 } else {
-            texpr.children.clone().iter().cloned().fold((budget.clone() - 1), |acc: _, child: Rc<Node>| estimate_expr_size(child.clone(), acc.clone()))
+            texpr.children.iter().cloned().fold((budget.clone() - 1), |acc: _, child: Rc<Node>| estimate_expr_size(child.clone(), acc.clone()))
 }
     })
 }
@@ -1526,8 +1526,9 @@ pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<Complexit
     // BOOTSTRAP PERF: Short-circuit complexity analysis during self-compile.
     // The fold below clones func_index (HashMap) and intern_table on every
     // iteration — O(n²) for n functions, ~7GB for the compiler's ~500 funcs.
-    // Complexity reports don't affect code emission; re-enable after FF-8.
-    if std::env::var("GUNBC_SKIP_COMPLEXITY").is_ok() {
+    // Complexity reports don't affect code emission; re-enable after stage0
+    // is regenerated with the redundant-clone removal.
+    if std::env::var("GUNBC_SKIP_COMPLEXITY").is_ok() || func_entries.len() > 100 {
         return Rc::new(ComplexityReport {
             function_summaries: <HashMap<_, _>>::new(),
             violations: vec![],
@@ -1536,8 +1537,8 @@ pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<Complexit
         });
     }
     {
-        let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
-let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
+        let func_index = func_entries.iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
+let result = func_entries.iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1557,7 +1558,7 @@ Rc::new(SummaryResult {
 })
 });
 let summaries_map = result.table.clone().summaries.clone();
-let violations = { let mut __result = Vec::new(); for entry in { let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
+let violations = { let mut __result = Vec::new(); for entry in { let mut __result = Vec::new(); for entry in func_entries.iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
     Some(summary) => is_unknown_cost(summary.work.clone()),
     None => true,
 } { __result.push(entry); } } __result }.iter().cloned() { __result.push(match v2_rt::map_get(&summaries_map, entry.name.clone()) {

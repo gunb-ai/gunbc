@@ -107,7 +107,7 @@ access_result(leaf_node("String".to_string()), diags.clone(), span.clone(), "inv
     Some(k) => k.clone(),
     None => leaf_node("".to_string()),
 };
-let val_node = match normed.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
+let val_node = match normed.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
     Some(v) => v.clone(),
     None => leaf_node("".to_string()),
 };

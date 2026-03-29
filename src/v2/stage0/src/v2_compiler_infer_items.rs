@@ -112,7 +112,7 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSp
     InferredNode::Resolved { node: rt, .. } => if node_has_structure(rt.clone()) {
             if node_is_product(rt.clone()) {
                 if (rt.name.clone() == "".to_string()) {
-                    { let mut __result = Vec::new(); for child in rt.children.clone().iter().cloned() { __result.push({
+                    { let mut __result = Vec::new(); for child in rt.children.iter().cloned() { __result.push({
                         let child_type = if (child.inferred.clone() == None) {
                             leaf_node(child.name.clone())
 } else {
@@ -169,8 +169,8 @@ kind.clone()
 }
 
 pub fn variant_locals_from_items(items: Vec<Rc<Node>>, init: HashMap<String, Rc<TypeBinding>>) -> HashMap<String, Rc<TypeBinding>> {
-    items.clone().iter().cloned().fold(init.clone(), |acc: _, item: Rc<Node>| if node_is_coproduct(item.clone()) {
-        item.children.clone().iter().cloned().fold(acc.clone(), |vacc: _, child: Rc<Node>| v2_rt::map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
+    items.iter().cloned().fold(init.clone(), |acc: _, item: Rc<Node>| if node_is_coproduct(item.clone()) {
+        item.children.iter().cloned().fold(acc.clone(), |vacc: _, child: Rc<Node>| v2_rt::map_insert(vacc.clone(), child.name.clone(), Rc::new(TypeBinding {
     name: child.name.clone(),
     resolved: item.clone(),
 })))
