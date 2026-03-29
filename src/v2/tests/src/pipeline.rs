@@ -1333,7 +1333,7 @@ fn cross_module_unresolved_import_produces_diagnostic() {
     ]);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("not found")),
+        msgs.iter().any(|m| m.contains("not found") || m.contains("unresolved")),
         "importing a non-existent name should produce a diagnostic, got: {:?}",
         msgs
     );

@@ -128,6 +128,7 @@ pub type Path = String;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceSpan {
+    pub file: String,
     pub start: i64,
     pub end: i64,
 }

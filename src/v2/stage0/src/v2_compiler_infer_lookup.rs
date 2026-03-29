@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, Param, InferredNode, NodeType, Cardinality, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldAccessStyle, FieldValueShape, FieldSummary, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure};
+pub use crate::v2_std_core::{Node, InferredNode, NodeType, Cardinality, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldAccessStyle, FieldValueShape, FieldSummary, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure};
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Cardinality::{Required};

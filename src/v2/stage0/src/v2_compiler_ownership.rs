@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, Param, ExprData, arg_value, arm_body, field_access_base, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, field_access_base, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes};
 use crate::v2_std_core::ExprData::{NoExprData, ExprError, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn};
 use EdgeKind::*;
 use OwnershipDecision::*;
@@ -314,9 +314,9 @@ Rc::new(OwnershipDecision::SharedError {
 }
 }
 
-pub fn analyze_ownership(func_name: String, params: Vec<Rc<Param>>, body: Rc<Node>) -> Rc<OwnershipProof> {
+pub fn analyze_ownership(func_name: String, params: Vec<Rc<Node>>, body: Rc<Node>) -> Rc<OwnershipProof> {
     {
-        let initial = params.clone().iter().cloned().fold(empty_usage_accum(), |acc: _, p: Rc<Param>| Rc::new(UsageAccum {
+        let initial = params.clone().iter().cloned().fold(empty_usage_accum(), |acc: _, p: Rc<Node>| Rc::new(UsageAccum {
     bindings: v2_rt::map_insert(acc.bindings.clone(), p.name.clone(), Rc::new(BindingUsage {
     name: p.name.clone(),
     consumers: vec![],

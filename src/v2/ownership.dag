@@ -13,7 +13,7 @@
 module v2.compiler.ownership
 
 import v2.std.core {
-  Node, Param,
+  Node,
   ExprData, NoExprData, ExprError,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn,
@@ -304,7 +304,7 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
 
 // Analyze a function body and produce ownership proof for all bindings.
 // One pass over the function body AST.
-fn analyze_ownership(func_name: String, params: List<Param>, body: Node) -> OwnershipProof {
+fn analyze_ownership(func_name: String, params: List<Node>, body: Node) -> OwnershipProof {
   // Seed the accumulator with parameter names so they appear in bindings.
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
     UsageAccum {

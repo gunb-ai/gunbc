@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Param, Field, Connective, ExprData, Cardinality, InferredNode, leaf_node, no_span, node_has_structure, field_access_base, method_receiver};
+pub use crate::v2_std_core::{Node, Connective, ExprData, Cardinality, InferredNode, leaf_node, no_span, node_has_structure, field_access_base, method_receiver, field_node_type_expr};
 use crate::v2_std_core::Connective::{Conj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar};
 use crate::v2_std_core::Cardinality::{Required};
@@ -67,14 +67,14 @@ pub struct UniqueAccum {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpEntry {
     pub name: String,
-    pub outputs: Vec<Rc<Field>>,
-    pub params: Vec<Rc<Param>>,
+    pub outputs: Vec<Rc<Node>>,
+    pub params: Vec<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServiceMethodResult {
     pub result_type: Rc<Node>,
-    pub op_params: Vec<Rc<Param>>,
+    pub op_params: Vec<Rc<Node>>,
 }
 
 pub fn is_typed_service_call_receiver(receiver: Rc<Node>) -> bool {
@@ -290,7 +290,7 @@ match matching.clone().first().cloned() {
 
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
-    node: f.type_expr.clone(),
+    node: field_node_type_expr(f.clone()),
 })),
     return_cardinality: Cardinality::Required,
     uses: vec![],

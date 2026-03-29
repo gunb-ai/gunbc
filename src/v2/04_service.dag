@@ -10,7 +10,7 @@ module v2.compiler.infer_service
 
 import std.types { SourceSpan }
 import v2.std.core {
-  Node, Param, Field,
+  Node,
   Connective, Conj, NoConnective,
   ExprData, NoExprData,
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
@@ -40,13 +40,13 @@ type UniqueAccum {
 // Lightweight operation entry for the service registry.
 type OpEntry {
   name: String
-  outputs: List<Field>
-  params: List<Param>
+  outputs: List<Node>
+  params: List<Node>
 }
 
 type ServiceMethodResult {
   result_type: Node
-  op_params: List<Param>
+  op_params: List<Node>
 }
 
 // =========================================================================
