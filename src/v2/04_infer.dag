@@ -309,7 +309,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
           // func_sigs from parent -- convert ResolvedFuncSig to DeclaredFuncSig
           // (wrap inferred in Some) so all sigs share the same map type.
           // Parent sigs always have concrete return types (inferred: Some).
-          let next_func_sigs = fold(map_values(typed_parent.func_env.signatures), init: func_sigs, f: (acc, rsig) =>
+          let next_func_sigs = fold(typed_parent.func_env.signatures |> map_values, init: func_sigs, f: (acc, rsig) =>
             let sig_key = rsig.name
             let sig_params = rsig.params
             let sig_rt = rsig.inferred
@@ -2116,7 +2116,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     } else { acc }
   )
   // Compute local name set BEFORE merging param bindings (local_bindings consumed by map_merge).
-  let local_name_set = fold(map_values(local_bindings), init: empty_map(), f: (acc, b) => map_insert(acc, b.name, true))
+  let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let all_local_bindings = map_merge(local_bindings, param_bindings)
   let local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map() }
 
@@ -2124,7 +2124,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let merged = merge_envs(envs: [kernel, import_env, local_env])
   // Precompute deps once per binding -- avoids repeated tree walks in cycle
   // detection and topological resolution (was O(N^2*D), now O(B)).
-  let all_deps_map = fold(map_values(merged.bindings), init: empty_map(), f: (acc, b) =>
+  let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, node_type_deps(n: b.resolved))
   )
   // Precompute which types participate in cycles. Used by resolve_node
@@ -2182,7 +2182,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   )
   let local_env = TypeEnv { bindings: local_bindings, recursive_types: [], recursive_type_set: empty_map() }
   let merged = merge_envs(envs: [kernel, import_env, local_env])
-  let all_deps_map = fold(map_values(merged.bindings), init: empty_map(), f: (acc, b) =>
+  let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, node_type_deps(n: b.resolved))
   )
   let cycle_set = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: merged.bindings)
@@ -2337,7 +2337,7 @@ fn build_module_context(contributions: List<ItemContribution>,
   // structurally authoritative — emit can read it directly without re-resolving
   // through TypeEnv. binding.resolved.name still returns the enum's name for
   // lookup_variant_parent_enum and record lit inference.
-  let imported_variant_locals = fold(map_values(env.bindings), init: empty_map(), f: (acc, binding) =>
+  let imported_variant_locals = fold(env.bindings |> map_values, init: empty_map(), f: (acc, binding) =>
     let is_coproduct = binding.resolved.connective == Disj
     if is_coproduct {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
@@ -2367,7 +2367,7 @@ fn build_module_context(contributions: List<ItemContribution>,
   // mechanism (C2.1). kernel_optional is a Disj node in env.bindings, so
   // imported_variant_locals already registers Some and None with the structural
   // parent node. No need for explicit leaf_node(name: "Optional") override.
-  let all_locals = fold(map_values(merged_scope.svc_locals), init: env_variant_locals, f: (acc, binding) =>
+  let all_locals = fold(merged_scope.svc_locals |> map_values, init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
   )
   ModuleContext {
@@ -2494,7 +2494,7 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Stri
   // the environment. This is O(N * avg_fields) instead of O(B^D).
   // Extract local binding names as a list.
   let remaining = map(
-    filter(map_values(env.bindings), b => emit_map_has(m: local_names, key: b.name)),
+    filter(env.bindings |> map_values, b => emit_map_has(m: local_names, key: b.name)),
     b => b.name
   )
   topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map)

@@ -211,7 +211,7 @@ fn collect_type_names_from_items(items: List<Node>) -> List<String> {
 fn collect_type_names_from_node(n: Node) -> List<String> {
   let self_name = if n.name != "" { [n.name] } else { [] }
   let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child))
-  list_concat(self_name, child_names)
+  self_name |> concat(child_names)
 }
 
 // Intermediate type for string interpolation segments
