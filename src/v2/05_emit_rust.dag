@@ -58,6 +58,12 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_value,
+  if_condition, if_then_branch, if_else_branch,
+  match_scrutinee, match_arm_nodes,
+  let_value, let_body,
+  field_access_base, method_receiver,
+  lambda_body, cast_expr, return_value,
+  slice_start, slice_end,
   leaf_node, make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional
