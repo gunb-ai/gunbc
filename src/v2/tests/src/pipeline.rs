@@ -740,7 +740,7 @@ fn sum_doubled(items: List<Int>) -> Int {
     let result = compile_multi(&files);
     assert!(result.complexity.violations.is_empty());
     // Chained operations are sequential (O(n) + O(n) = O(n)), not nested.
-    let class = complexity_class_of(&result, "sum_doubled");
+    let _class = complexity_class_of(&result, "sum_doubled");
 }
 
 /// flat_map produces O(n × body) — verify it's bounded.

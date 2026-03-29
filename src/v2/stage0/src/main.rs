@@ -186,19 +186,13 @@ fn main() {
                 let first_root = std::path::Path::new(&source_roots[0]);
                 let mut entry_files = Vec::new();
                 if first_root.is_dir() {
-                    // Only top-level .dag files in the first root are entries
-                    let mut entries: Vec<_> = std::fs::read_dir(first_root)
-                        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", first_root, e))
-                        .filter_map(|e| e.ok())
-                        .collect();
-                    entries.sort_by_key(|e| e.file_name());
-                    for entry in entries {
-                        let path = entry.path();
-                        if path.extension().map(|e| e == "dag").unwrap_or(false) {
-                            let content = std::fs::read_to_string(&path)
-                                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-                            entry_files.push((path.to_string_lossy().to_string(), content));
-                        }
+                    // Recursively find all .dag files in the first source root
+                    let mut dag_paths = Vec::new();
+                    collect_dag_files(first_root, &mut dag_paths);
+                    for path in dag_paths {
+                        let content = std::fs::read_to_string(&path)
+                            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                        entry_files.push((path.to_string_lossy().to_string(), content));
                     }
                 }
 

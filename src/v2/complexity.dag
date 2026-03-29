@@ -330,11 +330,19 @@ fn max_path_self_calls(body: Node, func_name: String) -> Int {
       )
 
     ExprMethodCall { method: _, method_semantics: _ } =>
-      // Method calls: check receiver. For fold/map/filter with callback,
-      // self-calls in the callback body are iteration-bounded (like forEach).
-      // Conservative: only count receiver calls, not callback body calls.
+      // Receiver + non-lambda args contribute to path calls.
+      // Lambda args (callbacks to fold/map/filter) are iteration-bounded
+      // and excluded, same as forEach body exclusion.
       let recv_calls = max_path_self_calls(body: method_receiver(texpr: body), func_name: func_name)
-      recv_calls
+      let arg_calls = method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
+        let val = arg_value(n: arg_node)
+        match val.expr_data {
+          // Lambda bodies are iteration-bounded (callback to fold/map/filter)
+          ExprLambda => acc
+          _ => acc + max_path_self_calls(body: val, func_name: func_name)
+        }
+      )
+      recv_calls + arg_calls
 
     _ =>
       // Default: sum across children (conservative).

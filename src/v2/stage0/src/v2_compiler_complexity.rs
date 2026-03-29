@@ -351,9 +351,17 @@ pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
             })
         }
         ExprData::ExprMethodCall { method: _, method_semantics: _ } => {
-            // Self-calls in fold/map callback bodies are iteration-bounded.
-            // Conservative: only count receiver calls.
-            max_path_self_calls(method_receiver(body.clone()), func_name.clone())
+            // Receiver + non-lambda args contribute to path calls.
+            // Lambda args (callbacks to fold/map/filter) are iteration-bounded.
+            let recv_calls = max_path_self_calls(method_receiver(body.clone()), func_name.clone());
+            let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arg_node| {
+                let val = arg_value(arg_node);
+                match (*(*val).clone().expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => acc,
+                    _ => acc + max_path_self_calls(val, func_name.clone()),
+                }
+            });
+            recv_calls + arg_calls
         }
         _ => {
             body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
