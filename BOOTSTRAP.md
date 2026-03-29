@@ -23,7 +23,7 @@ declarations, no manual file lists.
 
 **Hand-maintained files** (not regenerated):
 - `v2_rt.rs` — runtime primitives
-- `generated_tests.rs` — test suite (to be replaced with `include_str!`)
+- `compiler_tests.rs` — test suite (reads .dag files from disk, no embedded source)
 - `main.rs` — CLI entry point
 - `Cargo.toml` — dependencies
 
@@ -125,7 +125,7 @@ of change it is:
 
 Today, multiple places maintain independent lists of "what bootstrap
 sees" — `prepare_sources()` in bootstrap tests, embedded source
-constants in `generated_tests.rs`, the regen script. These will
+constants in `compiler_tests.rs`, the regen script. These will
 converge to a single manifest consumed everywhere. Until then, the
 regen script's `--source-root` resolution is the authority.
 

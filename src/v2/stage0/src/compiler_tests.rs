@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod generated_tests {
+mod compiler_tests {
     use crate::v2_compiler_tokenize::tokenize;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dsl/
