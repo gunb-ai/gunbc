@@ -1887,7 +1887,11 @@ fn emit_typed_call_expr(func: String, args: List<NamedArg>, inferred: InferredNo
         let resolved_ret = ret_type
         let type_str = emit_node_type_rc(n: resolved_ret, target: Rust, rc_types: rc_types)
         if type_str != "" {
-          concat("<", type_str, ">::new()")
+          if type_str |> starts_with("Rc<") {
+            concat("Rc::new(<", type_str |> substring(start: 3, end: (type_str |> length) - 1), ">::new())")
+          } else {
+            concat("<", type_str, ">::new()")
+          }
         } else {
           "compile_error!(\"empty_map requires a concrete result type\")"
         }
@@ -2370,10 +2374,14 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           match init_arg.value.expr_data {
             ExprCall { func: init_func, call_semantics: _ } =>
               if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
-                concat("<", acc_type_str, ">::new()")
+                if acc_type_str |> starts_with("Rc<") {
+                  concat("Rc::new(<", acc_type_str |> substring(start: 3, end: (acc_type_str |> length) - 1), ">::new())")
+                } else {
+                  concat("<", acc_type_str, ">::new()")
+                }
               } else if init_func == "empty_map" {
                 // Partial turbofish: tell Rust the key type, infer value type from context
-                "<HashMap<String, _>>::new()"
+                "Rc::new(<HashMap<String, _>>::new())"
               } else {
                 emit_typed_expr(texpr: init_arg.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               }
