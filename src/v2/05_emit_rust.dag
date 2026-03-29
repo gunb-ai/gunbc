@@ -51,7 +51,7 @@ import v2.std.core {
 
 import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
-  rt_functions, rt_ref_map_functions
+  rt_functions, rt_ref_map_functions, rust_container_templates
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
@@ -102,7 +102,7 @@ import v2.compiler.emit {
   has_nested_records_node, emit_data_value_json, escape_json_string,
   module_to_filename,
   make_indent, to_string, to_string_helper,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
+  to_snake, to_screaming_snake, to_pascal, is_upper, to_lower_char, to_upper_char,
   capitalize_first, sanitize_service_name, service_var_name, test_function_name,
   apply_type_template1, apply_type_template2,
   is_null_coalesce, is_type_alias_return_node,
@@ -324,9 +324,16 @@ fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
       acc
     }
   )
-  // Built-in collection types: always Rc-wrapped (clone is O(n) for bare Vec/HashMap).
-  ["List", "Map", "Set", "NonEmptyList", "NonEmptySet", "FreeMonoid", "PartialFunction"]
-    |> fold(init: user_rc, f: (acc, name) => map_insert(acc, name, true))
+  // Collection types derived from container templates: any template key whose
+  // bare type has O(n) clone cost needs Rc. "optional" and "boolean_algebra"
+  // are excluded (Option wraps an already-typed inner; bool is Copy).
+  let collection_keys = map_keys(rust_container_templates)
+    |> filter(k => k != "optional" && k != "boolean_algebra")
+  // Template keys are snake_case; type names are PascalCase.
+  collection_keys |> fold(init: user_rc, f: (acc, key) =>
+    let pascal = to_pascal(name: key)
+    map_insert(acc, pascal, true)
+  )
 }
 
 // =========================================================================

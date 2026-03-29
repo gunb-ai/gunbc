@@ -2145,7 +2145,8 @@ fn make_outer() -> Outer {
 }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_struct.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_struct.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_struct.rs");
     // Struct field should be Rc-wrapped
     assert!(
@@ -2167,7 +2168,8 @@ type Color = Red | Green | Blue
 fn pick() -> Color { Red }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_unit_enum.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_unit_enum.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_unit_enum.rs");
     // Unit-only enum should NOT be Rc-wrapped (gets Copy derive)
     assert!(
@@ -2190,7 +2192,8 @@ type Shape
 type Drawing { shape: Shape }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_data_enum.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_data_enum.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_data_enum.rs");
     // Enum with data variants should be Rc-wrapped in field position
     assert!(
@@ -2206,7 +2209,8 @@ module test_rc_list
 type Bag { items: List<String> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_list.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_list.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_list.rs");
     // List field should be Rc-wrapped (either via template or predicate)
     assert!(
@@ -2222,7 +2226,8 @@ module test_rc_map
 type Config { entries: Map<String, String> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_map.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_map.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_map.rs");
     // Map field should be Rc-wrapped
     assert!(
@@ -2238,7 +2243,8 @@ module test_rc_primitives
 type Stats { count: Int, active: Bool, ratio: Float }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_primitives.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_primitives.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_primitives.rs");
     // Primitive fields should NOT be Rc-wrapped
     assert!(
@@ -2271,7 +2277,8 @@ fn unwrap(c: Container) -> Item {
 }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_param_match.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_param_match.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_param_match.rs");
     // Both field declaration and parameter should agree on Rc wrapping
     let has_rc_field = content.contains("item: Rc<Item>");
@@ -2307,7 +2314,8 @@ fn empty_batch() -> Batch {
 }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    if !has_file(&result, "src/test_rc_list_construct.rs") { return; }
+    assert!(has_file(&result, "src/test_rc_list_construct.rs"),
+        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
     let content = find_file(&result, "src/test_rc_list_construct.rs");
     // Field should be Rc-wrapped
     assert!(
