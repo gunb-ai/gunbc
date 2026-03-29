@@ -1011,35 +1011,31 @@ InferredNode (3), NodeType (4). Inference result discriminators. (2 types)
 |-------|------|--------|
 | D1 | **Satellite type dissolution.** FieldInit, ResourceUse, Param, Field, Variant → Node. | **DONE** (5 types deleted) |
 | D2 | **Remaining satellites.** NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef → Node. | **DONE** (5 types deleted) |
-| D3 | **ExprData String dissolution.** 9 String fields → children/Node.name. ExprData variants become unit. MatchPattern.Bind.name, VariantPattern.name → Node.name. | ~210 consumer sites |
-| D5 | **Edge model + .dag method modeling.** Three sub-parts: | |
-| D5a | *Binding edges.* `inferred` on reference Nodes points at the binding site, not a copy of the type. One-pass — scope map is temporary, edges persist. | ~120 scope lookups become edge-producing |
-| D5b | *Method/transport dissolution.* Methods and transports are Nodes in .dag type definitions. IntrinsicMethod, RuntimeBridgeMethod, MethodSemantics, TransportKind, ConfigPropertyKey dissolve — method identity IS the edge to the .dag definition Node. | 5 enums deleted, ~56 string comparisons eliminated |
-| D5c | *DeclaredFuncSig/Env → structural.* Function registry keyed by Node identity, not string name. | 2 types refactored |
-| D6 | **Delete Node.name.** Identity is the node itself. Text derived from span. Scrambled-name tests deleted. | Node.name field removed |
+| D3 | **ExprData String dissolution.** 9 String fields → child Nodes with spans. ExprData variants become unit. | **DONE** (~210 consumer sites) |
+| D5a | *Binding edges.* | **NO CHANGE NEEDED.** Current architecture is correct: scope map is temporary, `inferred` carries Rc-shared type (no duplication), names die after inference. |
+| D5b | *Method/transport .dag modeling.* Methods and transports become Nodes in .dag type definitions. IntrinsicMethod, RuntimeBridgeMethod, MethodSemantics, TransportKind, ConfigPropertyKey dissolve — method identity IS the edge to the .dag definition Node. | 5 enums, ~56 string comparisons |
+| D5c | *DeclaredFuncSig/Env cleanup.* TypeBinding.name redundancy cleans up with D6. DeclaredFuncSig.name same. | Deferred to D6 |
+| D6 | **Delete Node.name.** Identity is the node itself. Text derived from span. Also dissolve MatchPattern Bind/VariantPattern string fields. Delete scrambled-name tests. | Node.name field removed |
 
-**Design principle for D5:** The compiler's job is NOT to classify
+**Design principle for D5b:** The compiler's job is NOT to classify
 identifiers into enum variants. The compiler walks a graph of Nodes.
 Every method, transport, config key, and function is a Node defined
-in .dag source. Resolution creates edges from use-sites to definition
-Nodes. The compiler never classifies — it follows edges.
+in .dag source. The call site has an edge (via `inferred`) to the
+method/function's definition Node. The compiler never classifies by
+name — it follows edges.
 
-- `list.map(f)` → the call site has an edge to `List.map` (a Node
+- `list.map(f)` → method_semantics points at `List.map` (a Node
   defined in `std/types.dag` via `FreeMonoid` algebra)
-- `shell.exec(cmd)` → the call site has an edge to
-  `Shell.exec` (a Node defined in the transport .dag)
-- `let x = 5; x + 1` → `x` reference has an edge to the `let x`
-  binding site. The type IS `binding_site.inferred`, not a copy.
+- `shell.exec(cmd)` → transport edge points at `Shell.exec`
+  (a Node defined in the transport .dag)
 
-**`inferred` IS the edge.** `reference.inferred = Resolved { node:
-binding_site }`. To get the type: `binding_site.inferred.node`.
-No new fields on Node. No duplication. One source of truth.
-
-**One pass, not two.** The scope map is a temporary data structure
-during the inference walk. String lookups happen during the walk
-(unavoidable — the parser produces text). The RESULT of each lookup
-is stored as a structural edge on the Node. After the walk completes,
-the scope map is discarded. Names are dead. Only edges remain.
+**On D5a (assessed, no change):** The current inference model is
+already correct. `inferred` stores `Resolved { node: type }` where
+the type is Rc-shared (not copied). The scope map is a temporary
+`Map<String, TypeBinding>` that lives only during the one-pass walk
+and dies after. This IS the resolution boundary — names are consumed
+during the walk, structural edges persist on the graph. No
+architectural change needed.
 
 **On scrambled-name tests.** Validation, not construction. Node has
 no name field in the target model — nothing to scramble. Delete when
