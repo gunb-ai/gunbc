@@ -2380,4 +2380,9 @@ fn empty_batch() -> Batch {
          field has Rc: {}, construction has Rc: {}\n{}",
         has_rc_field, has_rc_construction, content
     );
+    // Construction must match field type — no bare vec![] for Rc<Vec> fields
+    assert!(
+        content.contains("Rc::new(vec!["),
+        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}", content
+    );
 }
