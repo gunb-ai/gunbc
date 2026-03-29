@@ -307,67 +307,128 @@ on regenerated stage0 and on a non-trivial user project.
 
 ---
 
-### M3: Discovery-Driven Test Generation
+### M3: Discovery-Driven Test Generation and Guarantee Receipt
 
-**What:** The compiler generates tests from `.dag` definitions. Every
-`.dag` file is discovered automatically. Generated tests compile, run,
-and are committed as derived artifacts (regenerate → diff → empty).
+**What:** The compiler generates tests from `.dag` definitions and emits
+a machine-readable guarantee receipt every run. Every `.dag` file is
+discovered automatically. Generated tests compile, run, and are
+committed as derived artifacts (regenerate → diff → empty). The receipt
+is the single authority for what is proven, tested, and uncertain.
 
-**Gate:** Generated Rust tests compile and pass. Test freshness gate
-in CI. Every service operation with mock data has a generated test.
+**Gate:** Guarantee receipt emitted on every compilation. Generated Rust
+tests compile and pass. Test freshness in CI. Every service operation
+with mock data has a generated test.
 
 **Depends on:** M2 (working codegen baseline)
 
-#### What the compiler generates (test taxonomy)
+#### Guarantee receipt
+
+The compiler emits a JSON receipt on every run — the single authority
+for what the compilation proved, tested, and left uncertain. Markdown
+dashboards are generated FROM the receipt; they are never the source
+of truth. If a guarantee is not in the receipt, it does not exist.
+
+```json
+{
+  "source_digest": "...",
+  "compiler_digest": "...",
+  "target": "rust",
+  "discovered": {
+    "dag_files": 87, "services": 42,
+    "workflows": 9, "pure_functions": 149
+  },
+  "structural": {
+    "decidability": "proven",
+    "name_opacity": "ratcheting:70",
+    "parse_item_keyword_arms": 0
+  },
+  "gated": {
+    "all_dsl_files_parse": "pass",
+    "full_dsl_compiles": "fail:1",
+    "generated_rust_tests": "pass",
+    "edge_contract_coverage": { "covered": 812, "uncovered": 4 }
+  },
+  "report_only": {
+    "ownership_coverage": "61/149",
+    "emitted_rust_errors": 880
+  }
+}
+```
+
+#### Test generation tracks
+
+**Track 1 — Discovery gates:**
+- `all_dsl_files_parse`, `full_dsl_compiles`
+- Emitted Rust/Go/Python syntax or compile checks
+- Test freshness: regenerate → diff → empty
+
+**Track 2 — Behavioral tests by construct:**
 
 | .dag construct | Generated test | How it works | Status |
 |---|---|---|---|
-| **Service + `mock_response`** | Mock invocation test | Create service with `DryRunMode(true)`, call operation, assert `result.is_ok()` | Working — `emit_operation_test` generates async fn, 6 syntax tests pass |
-| **Type (product/coproduct)** | Roundtrip test | Construct → serialize → deserialize → assert equal | Not yet implemented |
-| **Pure function (`fn`)** | Property test | Type-driven input generation, assert no panics, assert return type | Not yet implemented |
-| **Workflow (`func`)** | Dry-run test | All services use `mock_response`, assert workflow completes | Partially — DryRunMode wired, no full workflow tests |
+| **Service + `mock_response`** | Mock invocation test | DryRunMode, call operation, assert ok | Working — 6 syntax tests pass |
+| **Type (product/coproduct)** | Roundtrip test | Construct → serialize → deserialize → assert equal | Not yet |
+| **Pure function (`fn`)** | Property test | Type-driven input gen, assert no panics | Not yet |
+| **Workflow (`func`)** | Dry-run test | All services mocked, assert completes | Partial |
+
+**Track 3 — Edge-contract coverage:**
+For every edge in every compiled DAG, generate a producer→consumer
+harness that executes with synthesized witness values and asserts port
+cardinality, coercion, shape compatibility, and error behavior. For
+joins/splits/guards, generate cross-products across adjacent ports and
+branch outcomes. This is a natural extension of DryRun — wiring,
+cardinality, coercion, guards, branching, topological ordering.
+
+**Track 4 — Execution tiers:**
+- Tier 1 DryRun: graph wiring, cardinality, coercion, ordering
+- Tier 2 Selective Real: hermetic value correctness
+- Tier 3 Full Real: controlled integration only
+
+**Track 5 — Differential/parity:**
+Same `.dag`, same mocks, same assertion shape across Rust/Go/Python.
+
+#### Obligation-driven test selection
+
+The generator collects proof obligations per construct, discharges
+obligations the compiler already proves structurally (type
+compatibility, cardinality, acyclicity), and generates tests only for
+undischarged obligations. This avoids tautological testing — don't
+re-test what the compiler already guarantees by construction.
 
 #### What exists today
 
-- `extract_test_projections` (`05_emit.dag`): finds all service
-  operations with `mock_response` blocks, produces `TestProjection`
-  with module, service, operation, params, and mock field inits
-- `emit_operation_test` (`05_emit_rust.dag`): generates async test
-  function per projection — creates service with DryRunMode, calls
-  operation with default params, asserts ok
-- `DryRunMode` infrastructure: parser reads `mock_response` blocks,
-  emitter generates `if self.dry_run.is_dry_run() { return mock }`
-  branches, service constructors accept dry-run flag
-- Mock response data lives in `.dag` source alongside the service
-  definition — the test and the spec are co-located
-- 6 tests validate generated test syntax across Rust/Python/Go
-- `full_dsl_compiles` discovers all `.dag` files by scanning `dsl/`
-
-**The gap:** `compiler_tests.rs` is 27K lines of static test fixtures
-checked into source — not actually generated by the compiler. The test
-projection pipeline works but its output isn't committed or exercised.
+- `extract_test_projections` + `emit_operation_test` + `DryRunMode`:
+  working pipeline for service mock tests, 6 syntax tests pass
+- `compiler_tests.rs`: reads .dag from disk (no embedded source),
+  16 test functions covering tokenize/parse/compile/profile
+- `full_dsl_compiles`: discovers all .dag files by scanning `dsl/`
 
 #### Work items
 
-*Infrastructure:*
-- [ ] `full_dsl_compiles` promoted from `--ignored` to CI on every PR
-- [ ] Replace static `compiler_tests.rs` with actual generated output
-  from the test projection pipeline
+*Guarantee receipt:*
+- [ ] Define receipt schema as `.dag` type
+- [ ] Compiler emits receipt on every `compile_sources` call
+- [ ] CI validates receipt fields against ratchet values
+
+*Discovery gates:*
+- [ ] `full_dsl_compiles` promoted from `--ignored` to CI
 - [ ] Test freshness gate: regenerate → diff → empty
 
-*Test categories:*
-- [ ] Service mock tests compile and pass (`cargo test` on generated
-  module, not just syntax validation)
-- [ ] Type roundtrip tests: generate construct/serialize/deserialize
-  assertions for every type with `serde` support
-- [ ] Workflow dry-run tests: end-to-end with all services mocked
-- [ ] Coverage gate: every discovered service operation with
-  `mock_response` has a generated test
+*Behavioral tests:*
+- [ ] Service mock tests compile and pass (not just syntax)
+- [ ] Type roundtrip tests
+- [ ] Workflow dry-run tests
+- [ ] Edge-contract coverage harnesses
+
+*Ratchet promotion (Tier 3 → Tier 2):*
+- [ ] Complexity violations in CI (currently 2, target 0)
+- [ ] Emitted Rust errors in CI (currently 880, target 0)
+- [ ] Ownership coverage in CI (currently not tracked)
 
 *Cross-language:*
-- [ ] Python generated tests pass `python3 -m py_compile`
-- [ ] Go generated tests pass `go vet`
-- [ ] Same test taxonomy across all three targets
+- [ ] Python tests pass `python3 -m py_compile`
+- [ ] Go tests pass `go vet`
+- [ ] Same taxonomy across all three targets
 
 ---
 
