@@ -2328,9 +2328,9 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
               concat("{ let mut __result = Rc::new(Vec::new()); for ", p, " in ", recv_str, ".iter().cloned() { Rc::make_mut(&mut __result).extend(", body_str, ".iter().cloned()); } __result }")
-            _ => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
+            _ => concat("{ let mut __result = Rc::new(Vec::new()); for __x in ", recv_str, ".iter().cloned() { Rc::make_mut(&mut __result).extend(", first_arg_str, "(__x).iter().cloned()); } __result }")
           }
-        None => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
+        None => concat("{ let mut __result = Rc::new(Vec::new()); for __x in ", recv_str, ".iter().cloned() { Rc::make_mut(&mut __result).extend(", first_arg_str, "(__x).iter().cloned()); } __result }")
       }
     MethodSkip => concat("Rc::new(", recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>())")
     MethodTake => concat("Rc::new(", recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>())")

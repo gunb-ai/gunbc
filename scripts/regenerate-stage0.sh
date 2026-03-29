@@ -37,6 +37,7 @@ $STAGE0_CMD compile \
         mod=$(basename "$f" .rs)
         [ "$mod" = "lib" ] && continue
         [ "$mod" = "main" ] && continue
+        [ "$mod" = "v2_rt" ] && continue
         echo "pub mod $mod;"
     done
     echo 'pub mod v2_rt;'

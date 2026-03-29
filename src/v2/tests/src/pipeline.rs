@@ -1604,3 +1604,25 @@ fn rust_func_with_uses_emits_async_fn() {
         );
     }
 }
+
+// ── Enumerate inference test ─────────────────────────────────────────────
+// Verifies that enumerate returns List<Tuple<Int, Elem>> (not bare List<Elem>),
+// and that .first/.second field access on enumerate results compiles cleanly.
+
+#[test]
+fn enumerate_returns_tuple_type() {
+    let source = r#"
+module enumerate_test
+
+fn indexed_names(names: List<String>) -> List<String> {
+  names |> enumerate |> map(pair => concat(pair.first |> to_string, ": ", pair.second))
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "enumerate .first/.second should compile without diagnostics, got {}: {:?}",
+        msgs.len(), msgs
+    );
+}

@@ -264,9 +264,9 @@ v2_rt::concat(v2_rt::concat("f\"".to_string(), segments.clone().join(&"".to_stri
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: Rc::new(TypeEnv {
-    bindings: <HashMap<_, _>>::new(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(<HashMap<_, _>>::new()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 }),
     func_env: Rc::new(ResolvedFuncEnv {
     signatures: <HashMap<_, _>>::new(),
@@ -281,9 +281,9 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
     type_env: Rc::new(TypeEnv {
-    bindings: <HashMap<_, _>>::new(),
-    recursive_types: vec![],
-    recursive_type_set: <HashMap<_, _>>::new(),
+    bindings: Rc::new(<HashMap<_, _>>::new()),
+    recursive_types: Rc::new(vec![]),
+    recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
 }),
     func_env: typed_module.func_env.clone(),
     locals: <HashMap<_, _>>::new(),
@@ -311,7 +311,7 @@ extend_scope(scope.clone(), name.clone(), rt_type(value.clone()))
 }
 }
 
-pub fn lookup_item(registry: HashMap<String, Rc<ItemInfo>>, name: String) -> Option<Rc<ItemInfo>> {
+pub fn lookup_item(registry: Rc<HashMap<String, Rc<ItemInfo>>>, name: String) -> Option<Rc<ItemInfo>> {
     v2_rt::map_get(&registry, name.clone())
 }
 
@@ -734,10 +734,10 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
 }
 
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
-    emit_node_type_rc(n.clone(), target.clone(), <HashMap<_, _>>::new())
+    emit_node_type_rc(n.clone(), target.clone(), Rc::new(<HashMap<_, _>>::new()))
 }
 
-pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: HashMap<String, bool>) -> String {
+pub fn emit_node_type_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let is_rust = match target.clone() {
@@ -797,7 +797,7 @@ if ((is_conj.clone() == false) && (is_disj.clone() == false)) {
     })
 }
 
-pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: HashMap<String, bool>) -> String {
+pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     if ((n.children.clone().len() as i64) == 0) {
         {
             let base = if (n.name.clone() == "Map".to_string()) {
@@ -809,7 +809,7 @@ pub fn emit_node_type_leaf_rc(n: Rc<Node>, target: RenderTarget, rc_types: HashM
                     emit_primitive_type(n.name.clone(), target.clone())
 }
 };
-if emit_map_has(rc_types.clone(), n.name.clone()) {
+if emit_map_has((*rc_types).clone(), n.name.clone()) {
                 v2_rt::concat(v2_rt::concat("Rc<".to_string(), base.clone()), ">".to_string())
 } else {
                 base.clone()
@@ -843,7 +843,7 @@ if is_container {
     // Non-container generic type (e.g., FreeMonoid<T>): emit as Name<Inner>
     let base = emit_primitive_type(n.name.clone(), target.clone());
     let wrapped = v2_rt::concat(v2_rt::concat(v2_rt::concat(base, "<".to_string()), inner.clone()), ">".to_string());
-    if emit_map_has(rc_types.clone(), n.name.clone()) {
+    if emit_map_has((*rc_types).clone(), n.name.clone()) {
         v2_rt::concat(v2_rt::concat("Rc<".to_string(), wrapped), ">".to_string())
     } else {
         wrapped
@@ -857,7 +857,7 @@ if is_container {
 }
 }
 
-pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: HashMap<String, bool>) -> String {
+pub fn emit_node_type_conj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     if (n.name.clone() == "Refined".to_string()) {
         match n.children.clone().first().cloned() {
     Some(base) => emit_node_type_rc(base.clone(), target.clone(), rc_types.clone()),
@@ -891,7 +891,7 @@ match target.clone() {
 } else {
             if (n.name.clone() != "".to_string()) {
                 let mapped = emit_primitive_type(n.name.clone(), target.clone());
-                if emit_map_has(rc_types.clone(), n.name.clone()) {
+                if emit_map_has((*rc_types).clone(), n.name.clone()) {
                     v2_rt::concat(v2_rt::concat("Rc<".to_string(), mapped.clone()), ">".to_string())
 } else {
                     mapped.clone()
@@ -932,10 +932,10 @@ result.clone()
 }
 }
 
-pub fn emit_node_type_disj_rc(n: Rc<Node>, target: RenderTarget, rc_types: HashMap<String, bool>) -> String {
+pub fn emit_node_type_disj_rc(n: Rc<Node>, target: RenderTarget, rc_types: Rc<HashMap<String, bool>>) -> String {
     if (n.name.clone() != "".to_string()) {
         let mapped = emit_primitive_type(n.name.clone(), target.clone());
-        if emit_map_has(rc_types.clone(), n.name.clone()) {
+        if emit_map_has((*rc_types).clone(), n.name.clone()) {
             v2_rt::concat(v2_rt::concat("Rc<".to_string(), mapped.clone()), ">".to_string())
 } else {
             mapped.clone()
@@ -1225,14 +1225,14 @@ pub fn block_stmts_init(stmts: Vec<Rc<Node>>) -> Vec<Rc<Node>> {
 }
 }
 
-pub fn is_tco_eligible(name: String, body: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>) -> bool {
+pub fn is_tco_eligible(name: String, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> bool {
     match lookup_item(registry.clone(), name.clone()) {
     Some(info) => (info.is_self_recursive.clone() && (info.has_non_tail_self_call.clone() == false)),
     None => (expr_has_self_call(body.clone(), name.clone()) && (expr_has_non_tail_self_call(body.clone(), name.clone(), true) == false)),
 }
 }
 
-pub fn is_self_recursive(name: String, body: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>) -> bool {
+pub fn is_self_recursive(name: String, body: Rc<Node>, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> bool {
     match lookup_item(registry.clone(), name.clone()) {
     Some(info) => info.is_self_recursive.clone(),
     None => expr_has_self_call(body.clone(), name.clone()),
@@ -1397,7 +1397,7 @@ param_strs.clone().join(&", ".to_string())
 pub fn emit_list_lit_expr(element_strs: Vec<String>, target: RenderTarget) -> String {
     if ((element_strs.clone().len() as i64) == 0) {
         match target.clone() {
-    RenderTarget::Rust => "vec![]".to_string(),
+    RenderTarget::Rust => "Rc::new(vec![])".to_string(),
     RenderTarget::Python => "[]".to_string(),
     RenderTarget::Go => "[]interface{}{}".to_string(),
     RenderTarget::Dag => "[]".to_string(),
@@ -1406,7 +1406,7 @@ pub fn emit_list_lit_expr(element_strs: Vec<String>, target: RenderTarget) -> St
         {
             let els_str = element_strs.clone().join(&", ".to_string());
 match target.clone() {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("vec![".to_string(), els_str.clone()), "]".to_string()),
+    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("Rc::new(vec![".to_string(), els_str.clone()), "])".to_string()),
     RenderTarget::Python => v2_rt::concat(v2_rt::concat("[".to_string(), els_str.clone()), "]".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat("[]interface{}{".to_string(), els_str.clone()), "}".to_string()),
     RenderTarget::Dag => v2_rt::concat(v2_rt::concat("[".to_string(), els_str.clone()), "]".to_string()),

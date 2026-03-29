@@ -1451,7 +1451,7 @@ fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String
 fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> String {
   if element_strs |> count == 0 {
     match target {
-      Rust => "vec![]"
+      Rust => "Rc::new(vec![])"
       Python => "[]"
       Go => "[]interface{}{}"
       Dag => "[]"
@@ -1459,7 +1459,7 @@ fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> Strin
   } else {
     let els_str = element_strs |> join(separator: ", ")
     match target {
-      Rust => concat("vec![", els_str, "]")
+      Rust => concat("Rc::new(vec![", els_str, "])")
       Python => concat("[", els_str, "]")
       Go => concat("[]interface{}{", els_str, "}")
       Dag => concat("[", els_str, "]")

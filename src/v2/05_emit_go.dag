@@ -342,7 +342,7 @@ fn emit_go_imports(items: List<Node>, imports: List<Node>) -> String {
 }
 
 fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bool) -> List<String> {
-  let fmt_import = if has_types || has_functions { ["\t\"fmt\""] } else { [] }
+  let fmt_import = if has_types || has_functions || has_services { ["\t\"fmt\""] } else { [] }
   let net_imports = if has_services {
     ["\t\"net/http\"", "\t\"encoding/json\"", "\t\"bytes\"", "\t\"io\""]
   } else {
