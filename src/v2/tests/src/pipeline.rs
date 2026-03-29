@@ -2322,6 +2322,11 @@ fn empty_batch() -> Batch {
         content.contains("Rc<Vec<"),
         "list field should be Rc<Vec<...>>, got:\n{}", content
     );
+    // Construction must match field type — no bare vec![] for Rc<Vec> fields
+    assert!(
+        content.contains("Rc::new(vec!["),
+        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}", content
+    );
     // TODO: construction should also be Rc-wrapped but currently isn't
     // for empty lists in record field position. Uncomment when fixed:
     // assert!(content.contains("Rc::new(vec!["),
