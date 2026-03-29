@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
 use crate::v2_std_core::MethodSemantics::{IntrinsicMethodSemantics, RuntimeBridgeSemantics, PlainMethodSemantics, ServiceMethodSemantics};
@@ -288,6 +288,7 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { call_semantics: _ } =>
+    let f = expr_call_func(texpr.clone());
             if (f.clone() == func_name.clone()) { 1 } else { 0 },
         _ => 0,
     };

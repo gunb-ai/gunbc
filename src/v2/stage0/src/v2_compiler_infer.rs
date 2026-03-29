@@ -532,6 +532,7 @@ Rc::new(InferScope {
 pub fn scope_after_stmt_node(stmt: Rc<Node>, stmt_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
     match (*stmt.expr_data.clone()).clone() {
     ExprData::ExprLet => if ((stmt.children.clone().len() as i64) <= 1) {
+    let name = let_binding_name(stmt.clone());
         extend_scope(scope.clone(), name.clone(), stmt_type.clone())
 } else {
         scope.clone()
@@ -723,6 +724,7 @@ Rc::new(ArgInferResult {
 pub fn infer_lambda_with_element_type(lambda_expr: Rc<Node>, element_type: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
     match (*lambda_expr.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => {
+    let lam_body = lambda_param_names(lambda_expr.clone());
         let lam_params = lambda_param_names(lambda_expr.clone());
         let span = lambda_expr.span.clone();
 let param_types = if ((lam_params.clone().len() as i64) == 1) {
@@ -771,6 +773,7 @@ pub fn is_lambda_expr(e: Rc<Node>) -> bool {
 pub fn infer_lambda_with_callable_type(lambda_expr: Rc<Node>, callable_type: Rc<Node>, arg_name: Option<String>, scope: Rc<InferScope>) -> Rc<ArgInferResult> {
     match (*lambda_expr.expr_data.clone()).clone() {
     ExprData::ExprLambda { .. } => {
+    let lam_body = lambda_param_names(lambda_expr.clone());
         let lam_params = lambda_param_names(lambda_expr.clone());
         let span = lambda_expr.span.clone();
 let callable_params = callable_type.params.clone();
@@ -988,6 +991,7 @@ Rc::new(InferResult {
 }
 },
     ExprData::ExprFieldAccess { .. } => {
+    let field_name = field_access_field(texpr.clone());
             let span = texpr.span.clone();
 let base_expr = field_access_base(texpr.clone());
 let base_result = infer_expr(base_expr.clone(), scope.clone());

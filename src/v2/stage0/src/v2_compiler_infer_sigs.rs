@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, CompilerDiagnostic, ErrorNode, make_error_node, no_span, DeclaredFuncSig};
+pub use crate::v2_std_core::{Node, ExprData, CompilerDiagnostic, ErrorNode, make_error_node, no_span, DeclaredFuncSig, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::ExprData::{ExprCall};
 pub use crate::v2_compiler_infer_types::{emit_map_has};
 
@@ -96,6 +96,7 @@ pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Ha
         {
             let this_edges = match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => if emit_map_has(local_func_set.clone(), f.clone()) {
+    let f = expr_call_func(texpr.clone());
                 vec![Rc::new(CallEdge {
     caller: caller.clone(),
     callee: f.clone(),

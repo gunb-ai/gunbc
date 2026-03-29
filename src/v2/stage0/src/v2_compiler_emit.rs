@@ -1271,6 +1271,7 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => (f.clone() == func_name.clone()),
+    let f = expr_call_func(texpr.clone());
     ExprData::ExprIf => {
             let then_cand = is_tco_candidate(if_then_branch(texpr.clone()), func_name.clone());
 let else_cand = match if_else_branch(texpr.clone()) {

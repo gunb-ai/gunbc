@@ -5800,6 +5800,7 @@ pub fn status_expr_to_str(expr: Rc<Node>) -> String {
         }
     },
     ExprData::ExprVar { .. } => n.clone(),
+    let n = expr_var_name(expr.clone());
     _ => "_".to_string(),
 }
 }
@@ -8353,6 +8354,7 @@ Rc::new(PostfixResult {
 },
     Some(TokenShape::ShLBrace) => match (*lhs.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => if (is_uppercase_start(n.clone()) && (14 <= min_bp.clone())) {
+    let n = expr_var_name(lhs.clone());
             Rc::new(PostfixResult {
     expr: lhs.clone(),
     changed: false,

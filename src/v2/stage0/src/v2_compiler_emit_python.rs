@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -582,6 +582,7 @@ match summary.clone() {
 pub fn emit_py_expr_var(expr: Rc<Node>) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => emit_ident(n.clone(), RenderTarget::Python),
+    let n = expr_var_name(expr.clone());
     _ => emit_error_expr("emit_py_expr_var expected ExprVar".to_string(), RenderTarget::Python),
 }
 }
@@ -589,6 +590,7 @@ pub fn emit_py_expr_var(expr: Rc<Node>) -> String {
 pub fn emit_py_expr_field_access(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { summary: summary, .. } => {
+    let f = field_access_field(expr.clone());
         let b = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -609,6 +611,7 @@ if is_typed_service_call_receiver(expr.clone()) {
 pub fn emit_py_expr_call(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
+    let f = expr_call_func(expr.clone());
         let a = expr.children.clone();
 emit_py_typed_call(f.clone(), a.clone(), registry.clone(), scope.clone(), depth.clone())
 },
@@ -619,6 +622,7 @@ emit_py_typed_call(f.clone(), a.clone(), registry.clone(), scope.clone(), depth.
 pub fn emit_py_expr_method_call(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
+    let m = expr_method_name(expr.clone());
         let r = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -665,6 +669,7 @@ emit_py_typed_if(c.clone(), t.clone(), e.clone(), registry.clone(), scope.clone(
 pub fn emit_py_expr_let(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprLet => {
+    let n = let_binding_name(expr.clone());
         let v = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -679,6 +684,7 @@ emit_py_typed_let(n.clone(), v.clone(), bd.clone(), registry.clone(), scope.clon
 pub fn emit_py_expr_record_lit(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => {
+    let tn = record_lit_type_name(expr.clone());
         let fs = expr.children.clone();
 emit_py_typed_record_lit(tn.clone(), fs.clone(), registry.clone(), scope.clone(), depth.clone())
 },
@@ -733,6 +739,7 @@ emit_py_typed_cast(e.clone(), t.clone(), registry.clone(), scope.clone(), depth.
 pub fn emit_py_expr_for_each(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprForEach => {
+    let v = foreach_variable(expr.clone());
         let c = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -1074,6 +1081,7 @@ pub fn emit_py_typed_func_body(body: Rc<Node>, registry: HashMap<String, Rc<Item
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
     ExprData::ExprLet => {
+    let n = let_binding_name(body.clone());
             let ch = body.children.clone();
 let v = match ch.clone().first().cloned() {
     Some(val) => val.clone(),
@@ -1127,6 +1135,7 @@ v2_rt::concat(v2_rt::concat("while True:
 pub fn emit_py_tco_non_self_call(frame: Rc<TcoFrame>, registry: HashMap<String, Rc<ItemInfo>>) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
+    let f = expr_call_func(frame.clone());
         let a = frame.expr.clone().children.clone();
 let call_str = emit_py_typed_call(f.clone(), a.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone());
 v2_rt::concat("return ".to_string(), call_str.clone())
@@ -1187,6 +1196,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone(
 pub fn emit_py_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprLet => {
+    let n = let_binding_name(frame.clone());
         let v = match frame.expr.clone().children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => frame.expr.clone(),
