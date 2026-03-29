@@ -136,54 +136,69 @@ After normalization: `Call`/`MethodCall` bridging is complete, nodes
 carry declared structural properties, and parameterized types carry
 their declared arity of children.
 
-### Languages as Plugins
+### Languages as Coercion Targets
 
-The compiler core does not know about Rust, Go, or Python. It does not
-know about any specific target language. Languages are plugins that
-implement a universal rendering interface against the compiler's
-language-agnostic output.
+The compiler core does not know about Rust, Go, Python, SPICE, or
+Verilog. It does not know about any specific target. Rendering is
+**coercion** — finding the minimal complete representation of each
+graph segment in the target's native capabilities.
 
-This is the RetroArch/libretro model:
-- **The compiler** produces `EmitNode` (a language-agnostic semantic
-  tree). It knows about types, functions, expressions, control flow —
-  not about `Rc<Vec<...>>` or `list[...]` or `[]type`.
-- **A language plugin** implements rendering: `EmitNode` + `LanguageSpec`
-  → target source text. Each plugin is a single `.dag` file in
-  `dsl/extdeps/languages/`.
-- **Adding a language** means writing a `LanguageSpec` data file and a
-  renderer. Zero compiler changes.
+This is the same problem as compiling floating point on a target
+with no FPU:
+- Target has native FPU → use it (efficient, zero overhead)
+- Target has no FPU → synthesize from integer ops (correct, expensive)
+- The compiler picks the minimal representation automatically
 
-**Current reality:** The compiler has 6,857 lines of language-specific
-code inside `src/v2/` (4,121 lines for Rust, 1,387 for Go, 1,349 for
-Python) and 632 mentions of specific language names across 12 compiler
-files. These should all be zero. The compiler core should contain only
-`05_emit.dag` (shared semantic emission) and the `EmitNode` type.
-Language-specific renderers belong in `dsl/extdeps/languages/*/`.
+For graph patterns:
+- Target has native branching (Rust `match`, Verilog `case`) → use it
+- Target has no branching (pure analog SPICE) → synthesize from mux/
+  comparator circuits (correct, more components)
+- The cost algebra reports the difference
 
-**The interface contract:** a language plugin must be able to render
-every `EmitNode` variant. If it can express product types, coproduct
-types, functions, control flow, and literals, it can render any `.dag`
-program. The minimum viable plugin is: "can you model a high/low
-signal" — node existence (high) and absence (low).
+**The rendering model:**
 
-**Any causal language qualifies.** The `.dag` graph is nodes and
-directed edges — the same structure as circuit netlists, hardware
-description languages, and even natural language descriptions. Target
-languages are not limited to programming languages:
+A language plugin declares two things:
+1. **Native capabilities** — what the target does efficiently
+2. **Rendering table** — how each structural pattern maps to target
+   constructs
 
-| Target | How it renders the DAG |
-|---|---|
-| Rust, Go, Python | Source code files |
-| SPICE | Netlist: nodes as components, edges as wires |
-| Verilog/VHDL | Module hierarchy: nodes as signals, edges as connections |
-| English | Structured description of relationships and data flow |
-| YAML/JSON | Serialized graph representation |
-| Graphviz | Visual DAG diagram |
+The compiler walks the typed graph. For each node, it matches the
+structural pattern (edge count + which edges connect) and looks up
+the target's rendering. If the target has a native mapping → use it.
+If not → synthesize from more primitive capabilities (and the cost
+algebra reflects the overhead). If not even synthesizable → compile
+error.
 
-If a target can express "this node connects to that node" and "this
-node has these children," it can render any `.dag` program. The
-compiler doesn't care what the output looks like — that's the
-renderer's job.
+| Pattern (Node + Edge) | Rust (native) | SPICE analog | Verilog | English |
+|---|---|---|---|---|
+| Product (all edges) | struct | subcircuit ports | module ports | "X has Y and Z" |
+| Coproduct (one edge) | enum/match | **mux** (synthesized) | case/mux | "X is Y or Z" |
+| Cardinality | Option | **tri-state** | tri-state | "optionally" |
+| Sequence | let bindings | wire chain | assign chain | "first X, then Y" |
+| Function | fn | subcircuit | module | "given X, produce Y" |
+
+**Any causal system qualifies.** The `.dag` graph is directed
+relationships between entities — the same structure as circuits,
+HDL, natural language, and serialization formats. The minimum: can
+you model a directed connection between two things? If yes, you can
+render a `.dag` program. The quality varies by how many patterns the
+target handles natively vs synthesizes.
+
+**Current reality:** 6,857 lines of language-specific code inside
+`src/v2/` and 632 mentions of specific language names across 12
+compiler files. These should all be zero.
+
+**Challenge targets** (design validation — if the rendering model
+works for these, it works for anything):
+- **Verilog** — hardware: products are module ports, coproducts are
+  muxes, sequences are assign chains
+- **SPICE** — analog: products are subcircuit parameters, coproducts
+  are synthesized from comparators + switches, cardinality is tri-state
+- **English (Markdown)** — natural language: products are bullet lists,
+  coproducts are "either/or", functions are paragraphs
+
+Adding a language = writing a `LanguageSpec` + rendering table in
+`dsl/extdeps/languages/`. Zero compiler changes.
 
 ### Decidability
 
@@ -855,13 +870,13 @@ src/v2/
   03_normalize.dag     Structural normalization
   03_resolve.dag       Name resolution (scope dies here)
   04_*.dag             Inference (reads structure, not names)
-  05_emit.dag          Node tree → EmitNode tree (no strings produced)
+  05_emit.dag          Graph walker → invokes language renderer (no strings)
   compile.dag          Pipeline orchestration
   complexity.dag       Cost proofs (reads method cost from algebra nodes)
   ownership.dag        Ownership proofs
   trace.dag            Debug tracing
   artifact.dag         Output artifact planning
-  languages.dag        LanguageSpec/EmitNode type definitions
+  languages.dag        LanguageSpec type definitions
 ```
 
 **No `05_emit_rust.dag`, no `05_emit_python.dag`, no `05_emit_go.dag`.**
@@ -874,7 +889,7 @@ calls producing target syntax. Zero `if type_name == "..."` branches.
 dsl/extdeps/languages/
   rust/
     emit.dag           Container templates, type maps
-    render.dag          EmitNode → Rust source text (reads LanguageSpec)
+    render.dag          Graph patterns → Rust source text (reads LanguageSpec)
     lint.dag            Import rules, naming conventions
     runtime.dag         Runtime function signatures
     naming.dag          Case conventions
@@ -887,9 +902,22 @@ dsl/extdeps/languages/
 ```
 
 **Adding a new language** = add a directory under `dsl/extdeps/languages/`
-with `emit.dag` + `render.dag`. Zero compiler changes. The compiler
-discovers language plugins via `--target <name>` and loads the
-corresponding `LanguageSpec` + renderer.
+with `emit.dag` + `render.dag`. Zero compiler changes.
+
+**Challenge targets (design validation):**
+```
+dsl/extdeps/languages/
+  verilog/   render.dag    — products as module ports, coproducts as mux
+  spice/     render.dag    — products as subcircuit params, coproducts
+                             synthesized from comparators + switches
+  english/   render.dag    — products as bullet lists, coproducts as
+                             "either/or", functions as paragraphs
+```
+
+If the rendering model works for Verilog, SPICE, and English, it
+works for anything. These are the hardest coercion targets — they
+force the compiler to find minimal representations for patterns that
+don't map natively.
 
 **Ratchets at zero:**
 - Language mentions in `src/v2/*.dag`: 0 (currently 632)
@@ -899,6 +927,29 @@ corresponding `LanguageSpec` + renderer.
 - Escape hatches total: 0 (currently ~290)
 
 ### Exploratory
+
+**Everything is coercion.** The unifying concept across the compiler:
+finding the minimal complete representation of a graph segment in a
+target domain. This applies at every level:
+
+- **Stage boundaries**: parse → resolve isn't an API call, it's
+  coercing the unresolved graph into a resolved one (adding edges).
+  Resolve → infer coerces the resolved graph into a typed one.
+- **Type compatibility**: `Url` → `String` isn't a conversion
+  function, it's coercion along the refinement chain. The graph
+  already models the chain; the compiler walks it.
+- **Language rendering**: graph → Rust/SPICE/English is coercion from
+  structural patterns to the target's native capabilities. The
+  compiler finds the minimal representation.
+- **Efficiency**: like floating-point emulation on a target with no
+  FPU — branching in pure analog SPICE is *possible* (synthesize from
+  comparators + switches) but expensive. The cost algebra reflects the
+  overhead. Native capabilities are free; synthesized ones have cost.
+
+The `.dag` types.dag header already says this: "coercion insertion is
+DAG transformation." The design exists (refinement chains, subtyping
+as set inclusion). Implementation: zero. This is the next unifying
+abstraction after the substrate primitives.
 
 **Unified Sequence (Seq\<T>).** Ordered collections (List, Stack, Queue,
 Deque) share the same algebra (FreeMonoid). The access pattern
