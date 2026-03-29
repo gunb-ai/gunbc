@@ -241,8 +241,8 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
   substrate, not compiler-known categories.
 - Names are opaque. Inference processes graph structure only.
 - Zero language-specific code in the compiler core. Languages are
-  plugins: `LanguageSpec` + renderer in `dsl/extdeps/languages/`.
-  The compiler produces `EmitNode`; it never produces target syntax.
+  plugins: `LanguageSpec` + rendering table in `dsl/extdeps/languages/`.
+  The compiler outputs the typed graph; renderers produce target text.
 - All `.dag` programs are decidable by construction.
 - Ownership and complexity proofs wired into the pipeline.
 - At least one real program compiles and runs end to end.
@@ -708,10 +708,10 @@ is not enough if infer/complexity/ownership re-read text from spans.
 After resolve, source text must be a privileged capability available
 only to renderers and diagnostics — not to semantic stages.
 
-**2. `EmitRawText` backdoor.** One raw-text variant on `EmitNode`
-reopens the entire problem. The type works only if the emitter cannot
-produce target syntax at all. No raw-text variant. No string return
-type on any shared emit function.
+**2. String return types on emit functions.** The emitter must not
+return `String`. It returns the typed graph; the renderer produces
+text. No intermediate string-producing IR is needed because the
+compiler's output IS the graph.
 
 **3. "Temporary" stringly side tables.** `Map<String, X>` looks
 harmless, but once it crosses a stage boundary it becomes a second
@@ -719,32 +719,51 @@ authority. The invariants say: speculative or lossy boundary fact
 tables should be deleted rather than carried forward. "Temporary"
 without a ratchet means "permanent later."
 
-#### EmitNode type
+#### Rendering model: the graph IS the interface
 
-```dag
-type EmitNode
-  = EmitTypeRef { node: Node }
-  | EmitSharedWrap { inner: EmitNode }
-  | EmitContainerInit { kind: CollectionKind, elements: List<EmitNode> }
-  | EmitMethodCall { receiver: EmitNode, method: Node, args: List<EmitNode> }
-  | EmitVarRef { binding: Node }
-  | EmitFieldAccess { receiver: EmitNode, field: Node }
-  | EmitLiteral { value: LiteralValue }
-  | EmitBinOp { op: BinOpKind, left: EmitNode, right: EmitNode }
-  | EmitBlock { stmts: List<EmitNode> }
-  | EmitLet { binding: Node, value: EmitNode }
-  | EmitIf { condition: EmitNode, then_branch: EmitNode, else_branch: EmitNode }
-  | EmitMatch { scrutinee: EmitNode, arms: List<EmitNode> }
-  | EmitReturn { value: EmitNode }
-  | EmitCall { func: Node, args: List<EmitNode> }
-  | EmitLambda { params: List<Node>, body: EmitNode }
-  | EmitComment { text: String }
-```
+There is no special emit IR (no "EmitNode" with 16 programming-language
+variants like `EmitIf`, `EmitMatch`, `EmitLet`). That would just be
+re-inventing a language AST — the same problem one layer removed.
 
-Only `EmitLiteral` and `EmitComment` carry strings (source content).
-No variant carries target-language syntax. The renderer is the single
-chokepoint. `EmitNode` is a closed type in one file — adding a variant
-is a visible decision, not an invisible string concatenation.
+The compiler's output is the typed Node + Edge graph. That IS the
+universal representation. Languages declare how they render each
+**structural pattern** of nodes and edges:
+
+| Pattern (Node + Edge) | What it is | Rust | SPICE | English |
+|---|---|---|---|---|
+| Node, N edges, all connect | Product | struct | subcircuit ports | "X has Y and Z" |
+| Node, N edges, one connects | Coproduct | enum/match | mux/select | "X is Y or Z" |
+| Edge connects or doesn't | Cardinality | Option | tri-state | "optionally" |
+| Node with ordered edges | Sequence | let bindings | wire chain | "first X, then Y" |
+| Node with param + return edges | Function | fn | subcircuit | "given X, produce Y" |
+| Node with zero edges | Literal/leaf | value | parameter | "the value X" |
+
+These are not separate primitives — they are emergent configurations
+of Node + Edge (the two substrate primitives). A language plugin
+provides a **rendering table**: for each structural pattern, here's
+how to express it in this domain.
+
+The minimum a language must declare: "given a node and its outgoing
+edges, how do I render it?" Any causal system that can model directed
+relationships between entities can fill this in — programming
+languages, circuit netlists, hardware description languages, natural
+language, serialization formats.
+
+**The compiler's job at emit time:**
+1. Walk the typed graph
+2. For each node, match its structural pattern (edge count + which
+   edges connect)
+3. Look up the pattern in the target language's rendering table
+4. If found → the renderer handles it
+5. If not found → compile error: "target X cannot represent pattern Y"
+
+**Why no intermediate IR is needed:**
+The graph already carries all structural information. Adding an
+`EmitNode` IR with variants like `EmitIf` / `EmitMatch` / `EmitLet`
+would embed programming-language concepts into the compiler — exactly
+what we're trying to avoid. A SPICE netlist has no "if statement" but
+it CAN render a conditional (as a mux). The renderer decides how, not
+the compiler.
 
 #### Execution lanes (expected diffs)
 
@@ -784,22 +803,22 @@ structural property read or `source_text_at(span)` call.
 | Other 13 files | Various name reads → structural property reads | ~957 name reads |
 | **Total** | | **~1,175 sites across 20 files** |
 
-**Lane C: EmitTree + language plugin extraction (M5)**
+**Lane C: Graph rendering + language plugin extraction (M5)**
 
-The compiler stops producing strings entirely. Language-specific code
-moves out of `src/v2/` into `dsl/extdeps/languages/` as plugins.
+The compiler stops producing strings. `05_emit.dag` walks the typed
+graph and hands each node to the language renderer. Language-specific
+code moves out of `src/v2/` into `dsl/extdeps/languages/` as plugins.
 
 | File | Change | Sites closed |
 |---|---|---|
-| `src/v2/00_core.dag` | Add `EmitNode` type (16 variants) | New type |
-| `src/v2/05_emit.dag` | Shared emit returns `EmitNode` not `String` | ~77 concat calls |
-| `src/v2/05_emit_rust.dag` | **DELETE** — Rust-specific code leaves compiler core | 4,121 lines, 309 language mentions |
-| `src/v2/05_emit_python.dag` | **DELETE** — Python-specific code leaves compiler core | 1,349 lines, 96 language mentions |
-| `src/v2/05_emit_go.dag` | **DELETE** — Go-specific code leaves compiler core | 1,387 lines, 84 language mentions |
+| `src/v2/05_emit.dag` | Walk graph, match structural patterns, invoke renderer | ~77 concat → pattern match |
+| `src/v2/05_emit_rust.dag` | **DELETE** — Rust rendering moves to plugin | 4,121 lines, 309 language mentions |
+| `src/v2/05_emit_python.dag` | **DELETE** — Python rendering moves to plugin | 1,349 lines, 96 language mentions |
+| `src/v2/05_emit_go.dag` | **DELETE** — Go rendering moves to plugin | 1,387 lines, 84 language mentions |
 | `src/v2/runtime_rust.dag` | **DELETE** — Rust runtime moves to extdep | 5 language mentions |
-| `dsl/extdeps/languages/rust/render.dag` | **NEW** — Rust renderer plugin: `EmitNode` + `LanguageSpec` → text | Single file |
-| `dsl/extdeps/languages/python/render.dag` | **NEW** — Python renderer plugin | Single file |
-| `dsl/extdeps/languages/go/render.dag` | **NEW** — Go renderer plugin | Single file |
+| `dsl/extdeps/languages/rust/render.dag` | **NEW** — Rust renderer: graph patterns → Rust text via LanguageSpec | Single file |
+| `dsl/extdeps/languages/python/render.dag` | **NEW** — Python renderer | Single file |
+| `dsl/extdeps/languages/go/render.dag` | **NEW** — Go renderer | Single file |
 | **Total** | | **6,857 lines + 632 language mentions removed from compiler core** |
 
 **Lane D: Edge-only fact references (M5)**
@@ -830,7 +849,7 @@ Lane D (edge-only facts)             independent, parallel with A/B
 
 ```
 src/v2/
-  00_core.dag          Node, Edge, EmitNode types (no String on Node)
+  00_core.dag          Node, Edge types (no String on Node, no emit IR)
   01_tokenize.dag      Source text → tokens
   02_parse.dag         Tokens → Node tree
   03_normalize.dag     Structural normalization
