@@ -194,8 +194,10 @@ works for these, it works for anything):
 - **English (Markdown)** — natural language: products are bullet lists,
   coproducts are "either/or", functions are paragraphs
 
-Adding a language = writing a `LanguageSpec` + rendering table in
-`dsl/extdeps/languages/`. Zero compiler changes.
+Adding a language = writing `coerce.dag` (coercion rules declaring
+the target's basis) + `render.dag` (trivial text output from
+target-basis graph) in `dsl/extdeps/languages/`. Zero compiler
+changes.
 
 ### Decidability
 
@@ -290,9 +292,10 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
   above the substrate — edge connectivity patterns, not compiler enums.
 - Names are opaque. Inference processes graph structure only.
 - Zero language-specific code in the compiler core. Languages are
-  coercion targets: `LanguageSpec` + rendering table in
-  `dsl/extdeps/languages/`. The compiler outputs the typed graph;
-  renderers produce target text.
+  coercion targets: `coerce.dag` (rules) + `render.dag` (trivial text)
+  in `dsl/extdeps/languages/`. The compiler coerces the typed graph
+  into the target's basis; the renderer produces text from the
+  already-coerced graph.
 - All `.dag` programs are decidable by construction.
 - Ownership and complexity proofs wired into the pipeline.
 - At least one real program compiles and runs end to end.
@@ -793,51 +796,62 @@ authority. The invariants say: speculative or lossy boundary fact
 tables should be deleted rather than carried forward. "Temporary"
 without a ratchet means "permanent later."
 
-#### Rendering model: the graph IS the interface
+#### Backend model: capability-checked graph coercion
 
-There is no special emit IR (no "EmitNode" with 16 programming-language
-variants like `EmitIf`, `EmitMatch`, `EmitLet`). That would just be
-re-inventing a language AST — the same problem one layer removed.
+The backend is not a renderer or a universal emit IR. It is a
+**coercion engine** — a graph→graph transformation that finds the
+minimal semantics-preserving representation of each graph segment in
+the target's declared basis.
 
-The compiler's output is the typed Node + Edge graph. That IS the
-universal representation. Languages declare how they render each
-**structural pattern** of nodes and edges:
+```
+typed graph → capability check → graph coercion → target-basis graph → renderer
+```
 
-| Pattern (Node + Edge) | What it is | Rust | SPICE | English |
+**Targets declare bases and coercion rules, not string templates.**
+
+```dag
+type CapabilityLevel = Native | Lowered | Synthesized | Unsupported
+
+type CoercionRule {
+  source_pattern: GraphPattern     // what the source graph looks like
+  target_pattern: GraphPattern     // what the target basis looks like
+  level: CapabilityLevel           // how native this is
+  cost: CostExpr                   // what it costs
+  preserves: List<GuaranteeTag>    // what invariants survive
+}
+```
+
+Capability is derived from the rules, not declared separately:
+- Pattern in target basis → `Native` (free)
+- Pattern has a preserving rewrite → `Lowered` (cheap)
+- Only expensive simulation path → `Synthesized` (FPU emulation)
+- No preserving path exists → `Unsupported` (compile error)
+
+**Coercion is search, not heuristic.** The compiler finds the cheapest
+plan that preserves all required guarantees. If two plans tie, fail or
+require annotation. If no plan exists, the target doesn't support that
+graph segment. No free-form backend guessing.
+
+| Pattern | Rust (Native) | SPICE analog | Verilog | English |
 |---|---|---|---|---|
-| Node, N edges, all connect | Product | struct | subcircuit ports | "X has Y and Z" |
-| Node, N edges, one connects | Coproduct | enum/match | mux/select | "X is Y or Z" |
-| Edge connects or doesn't | Cardinality | Option | tri-state | "optionally" |
-| Node with ordered edges | Sequence | let bindings | wire chain | "first X, then Y" |
-| Node with param + return edges | Function | fn | subcircuit | "given X, produce Y" |
-| Node with zero edges | Literal/leaf | value | parameter | "the value X" |
+| Product | struct | subcircuit ports | module ports | bullet list |
+| Coproduct | enum/match | **Lowered**: mux from comparators | case/mux | "either/or" |
+| Cardinality | Option | **Lowered**: tri-state | tri-state | "optionally" |
+| Sequence | let bindings | wire chain | assign chain | "then" |
+| Function | fn | subcircuit | module | paragraph |
 
-These are not separate primitives — they are emergent configurations
-of Node + Edge (the two substrate primitives). A language plugin
-provides a **rendering table**: for each structural pattern, here's
-how to express it in this domain.
+**Rendering happens AFTER coercion, never instead of it.** The
+renderer is trivial — it walks the target-basis graph (which is
+already in the target's native patterns) and produces text. All the
+intelligence is in the coercion rules. Target-local lowered IRs are
+fine (Rust coercion produces Rust-flavored structure, Verilog
+coercion produces hardware-flavored structure), but the compiler-wide
+universal interface stays the graph + coercion plan.
 
-The minimum a language must declare: "given a node and its outgoing
-edges, how do I render it?" Any causal system that can model directed
-relationships between entities can fill this in — programming
-languages, circuit netlists, hardware description languages, natural
-language, serialization formats.
-
-**The compiler's job at emit time:**
-1. Walk the typed graph
-2. For each node, match its structural pattern (edge count + which
-   edges connect)
-3. Look up the pattern in the target language's rendering table
-4. If found → the renderer handles it
-5. If not found → compile error: "target X cannot represent pattern Y"
-
-**Why no intermediate IR is needed:**
-The graph already carries all structural information. Adding an
-`EmitNode` IR with variants like `EmitIf` / `EmitMatch` / `EmitLet`
-would embed programming-language concepts into the compiler — exactly
-what we're trying to avoid. A SPICE netlist has no "if statement" but
-it CAN render a conditional (as a mux). The renderer decides how, not
-the compiler.
+**The guarantee receipt records the chosen coercion plan.** For each
+graph segment: which rules fired, what level (Native/Lowered/
+Synthesized), what cost, what guarantees preserved. This makes the
+backend deterministic and auditable — not a black box.
 
 #### Execution lanes (expected diffs)
 
@@ -877,22 +891,23 @@ structural property read or `source_text_at(span)` call.
 | Other 13 files | Various name reads → structural property reads | ~957 name reads |
 | **Total** | | **~1,175 sites across 20 files** |
 
-**Lane C: Graph rendering + language plugin extraction (M5)**
+**Lane C: Coercion engine + language plugin extraction (M5)**
 
-The compiler stops producing strings. `05_emit.dag` walks the typed
-graph and hands each node to the language renderer. Language-specific
-code moves out of `src/v2/` into `dsl/extdeps/languages/` as plugins.
+The compiler stops producing strings. `05_emit.dag` becomes the
+coercion engine — graph→graph transformation using target-declared
+rules. Language-specific code moves out of `src/v2/` into
+`dsl/extdeps/languages/` as coercion rule sets + renderers.
 
 | File | Change | Sites closed |
 |---|---|---|
-| `src/v2/05_emit.dag` | Walk graph, match structural patterns, invoke renderer | ~77 concat → pattern match |
-| `src/v2/05_emit_rust.dag` | **DELETE** — Rust rendering moves to plugin | 4,121 lines, 309 language mentions |
-| `src/v2/05_emit_python.dag` | **DELETE** — Python rendering moves to plugin | 1,349 lines, 96 language mentions |
-| `src/v2/05_emit_go.dag` | **DELETE** — Go rendering moves to plugin | 1,387 lines, 84 language mentions |
+| `src/v2/05_emit.dag` | Coercion engine: match patterns, apply rules, produce target-basis graph | ~77 concat → coercion search |
+| `src/v2/05_emit_rust.dag` | **DELETE** — Rust coercion rules + renderer move to plugin | 4,121 lines, 309 language mentions |
+| `src/v2/05_emit_python.dag` | **DELETE** — Python coercion rules + renderer move to plugin | 1,349 lines, 96 language mentions |
+| `src/v2/05_emit_go.dag` | **DELETE** — Go coercion rules + renderer move to plugin | 1,387 lines, 84 language mentions |
 | `src/v2/runtime_rust.dag` | **DELETE** — Rust runtime moves to extdep | 5 language mentions |
-| `dsl/extdeps/languages/rust/render.dag` | **NEW** — Rust renderer: graph patterns → Rust text via LanguageSpec | Single file |
-| `dsl/extdeps/languages/python/render.dag` | **NEW** — Python renderer | Single file |
-| `dsl/extdeps/languages/go/render.dag` | **NEW** — Go renderer | Single file |
+| `dsl/extdeps/languages/rust/coerce.dag` | **NEW** — Rust coercion rules (graph patterns → Rust-basis patterns) | Single file |
+| `dsl/extdeps/languages/rust/render.dag` | **NEW** — Rust renderer (target-basis graph → text, trivial) | Single file |
+| Same for python/, go/, verilog/, spice/, english/ | Coercion rules + renderer per target | |
 | **Total** | | **6,857 lines + 632 language mentions removed from compiler core** |
 
 **Lane D: Edge-only fact references (M5)**
@@ -929,7 +944,7 @@ src/v2/
   03_normalize.dag     Structural normalization
   03_resolve.dag       Name resolution (scope dies here)
   04_*.dag             Inference (reads structure, not names)
-  05_emit.dag          Graph walker → invokes language renderer (no strings)
+  05_emit.dag          Coercion engine (graph → target-basis graph, no strings)
   compile.dag          Pipeline orchestration
   complexity.dag       Cost proofs (reads method cost from algebra nodes)
   ownership.dag        Ownership proofs
@@ -947,36 +962,42 @@ calls producing target syntax. Zero `if type_name == "..."` branches.
 ```
 dsl/extdeps/languages/
   rust/
-    emit.dag           Container templates, type maps
-    render.dag          Graph patterns → Rust source text (reads LanguageSpec)
-    lint.dag            Import rules, naming conventions
-    runtime.dag         Runtime function signatures
-    naming.dag          Case conventions
+    coerce.dag         Coercion rules (graph patterns → Rust basis)
+    render.dag         Renderer (Rust-basis graph → text, trivial)
+    emit.dag           Container templates, type maps, sharing policy
+    lint.dag           Import rules, naming conventions
+    runtime.dag        Runtime function signatures
+    naming.dag         Case conventions
   python/
-    emit.dag, render.dag, lint.dag, runtime.dag, naming.dag
+    coerce.dag, render.dag, emit.dag, lint.dag, runtime.dag, naming.dag
   go/
-    emit.dag, render.dag, lint.dag, runtime.dag, naming.dag
+    coerce.dag, render.dag, emit.dag, lint.dag, runtime.dag, naming.dag
   dag/
-    syntax.dag          SyntaxSpec for .dag frontend
+    syntax.dag         SyntaxSpec for .dag frontend
+
+  # Challenge targets (design validation):
+  verilog/
+    coerce.dag         Products → module ports, coproducts → mux (Lowered)
+    render.dag         Verilog-basis graph → Verilog text
+  spice/
+    coerce.dag         Products → subcircuit params, coproducts →
+                       comparators + switches (Synthesized, expensive)
+    render.dag         SPICE-basis graph → SPICE netlist
+  english/
+    coerce.dag         Products → bullet lists, coproducts → "either/or"
+    render.dag         English-basis graph → Markdown
 ```
 
-**Adding a new language** = add a directory under `dsl/extdeps/languages/`
-with `emit.dag` + `render.dag`. Zero compiler changes.
+**Adding a new language** = add `coerce.dag` + `render.dag` under
+`dsl/extdeps/languages/`. Zero compiler changes. The coercion rules
+declare the target's basis; the renderer is trivial.
 
-**Challenge targets (design validation):**
-```
-dsl/extdeps/languages/
-  verilog/   render.dag    — products as module ports, coproducts as mux
-  spice/     render.dag    — products as subcircuit params, coproducts
-                             synthesized from comparators + switches
-  english/   render.dag    — products as bullet lists, coproducts as
-                             "either/or", functions as paragraphs
-```
-
-If the rendering model works for Verilog, SPICE, and English, it
-works for anything. These are the hardest coercion targets — they
-force the compiler to find minimal representations for patterns that
-don't map natively.
+**Challenge targets** validate the architecture: if the coercion
+engine works for Verilog, SPICE, and English, it works for anything.
+These are the hardest targets — they force the compiler to find
+minimal representations for patterns that don't map natively (e.g.,
+coproducts in pure analog SPICE require synthesizing from
+comparators, which the cost algebra reports as Synthesized/expensive).
 
 **Ratchets at zero:**
 - Language mentions in `src/v2/*.dag`: 0 (currently 632)
