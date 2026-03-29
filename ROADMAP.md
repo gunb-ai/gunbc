@@ -542,12 +542,33 @@ semantics, use `append`.
   iteration primitives (`fold`, `fold_stack`) are bounded. The
   representation is a rendering concern, not a decidability concern.
 
+### Naming consistency
+
+The current naming is incoherent under this model:
+
+| Current | Problem | Target name |
+|---|---|---|
+| `list_push(list, x)` | "push" implies head-add (LIFO), but semantics are tail-add (array append) | `append(seq, x)` |
+| `stack_push(s, x)` | Prefixed with `stack_` — the operation name should determine representation, not a prefix | `push(seq, x)` |
+| `stack_pop(s)` | Same prefix issue | `pop(seq)` |
+| `append` (method) | Already correct — duplicates `list_push` | `append(seq, x)` (keep) |
+
+**The rule:** operation names are unprefixed and unambiguous. `push`
+means head-add (cons). `append` means tail-add (array). `enqueue`
+means tail-add (queue). No `list_` or `stack_` prefixes — the
+operation IS the type declaration.
+
+Current: 91 uses of `list_push` across 18 .dag files. Rename is
+mechanical but should be atomic with stage0 regeneration to avoid
+merge conflicts with other branches.
+
 ### Current state
 
 `List<T>` (array-backed) and `Stack<T>` (cons-list) exist as separate
-types in `std/`. This is the stepping stone. When representation
-inference lands, they merge into `Seq<T>` and the compiler selects
-the representation. Until then, developers choose explicitly.
+types in `std/`. This is the stepping stone toward `Seq<T>`. The
+naming inconsistency (`list_push` vs `append`, `stack_push` vs `push`)
+should be resolved before `Seq<T>` lands — the operation names must be
+canonical before they become representation selectors.
 
 ### Implementation path
 
