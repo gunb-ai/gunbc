@@ -2,14 +2,15 @@
 
 ## Thesis
 
-### Two Primitives
+### Compiler Substrate: Node and Edge
 
-The compiler has two fundamental primitives. Everything else —
-including truth — is compositional modeling over them.
+The compiler has two substrate primitives. Everything above them —
+including truth values, type structure, and cardinality — is
+compositional modeling in `.dag`.
 
 | Primitive | What it is |
 |-----------|-----------|
-| **Node** | The universal carrier. A node that exists = something is there. A node that is absent = nothing is there. Existence IS truth. |
+| **Node** | The universal carrier. Identity, structure, composition. |
 | **Edge** | A directed relationship from one node to another. Edges are outgoing only — a node knows what it points to (children), never what points at it (parents). An edge either connects to a target node, or it doesn't exist. There is no "edge to nothing." |
 
 Edges are directed: parent → child. A node sees its outgoing edges
@@ -19,11 +20,7 @@ binding) are computed by graph traversal, not stored on nodes. The
 pipeline walks forward — parse, resolve, infer, emit all follow edges
 in the outgoing direction.
 
-Truth is not a third primitive. It is the presence of a node — the
-most fundamental fact a graph can express. `True` resolves to "a node
-is here." `False` resolves to "no node at this edge."
-
-### Truth Table
+### Why Two Substrate Primitives Are Sufficient
 
 All possible states of a slot on a node:
 
@@ -33,7 +30,12 @@ All possible states of a slot on a node:
 | Yes | No | **Invalid** | An edge must connect to something. Edge-to-nothing = no edge. |
 | No | (N/A) | Valid | Slot empty — no relationship |
 
-No third state. The binary is clean.
+No third state. The binary distinction (exists / doesn't exist) is
+inherent in both Node and Edge — no separate truth primitive needed.
+This is why Bit and Classical logic are modeled as `.dag` types at
+Layer 0, not as compiler primitives: node existence already carries
+the binary, and `True | False` is a two-variant coproduct expressed
+as edge connectivity patterns.
 
 From Node and Edge, all structural properties emerge:
 
@@ -46,11 +48,11 @@ has a name AND an age" means both edges point to nodes.
 **Cardinality** — an edge that exists or doesn't. Present = connects
 to a node. Absent = no edge.
 
-**Bit / Classical logic** — still modeled in the language as
-`type Classical = True | False`. Users write boolean values and the
-language has full classical logic. But at the compiler primitive level,
-`True` and `False` are both nodes that exist — the truth value is
-carried by *which* edge is active, which is itself just edge existence.
+**Bit / Classical logic** — modeled in `.dag` as
+`type Classical = True | False` (Layer 0 of the composition stack).
+Users write boolean values and the language has full classical logic.
+The compiler processes these structurally: a two-variant coproduct
+where the truth value is carried by which edge is active.
 
 ### How This Looks in Practice
 
@@ -93,24 +95,24 @@ product/coproduct categories. `SourceSpan` and `AccessToken` are both
 difference (all-connected vs one-connected) is an edge connectivity
 pattern, not a compiler-known enum.
 
-### Current Reality: Five Structural Primitives
+### Current Reality: Substrate + Bridges
 
-Today the compiler operates on five primitives, not two:
+Today the compiler has two substrate primitives and three bridges that
+should dissolve into the modeled layers:
 
-| Primitive | Status | Target |
-|-----------|--------|--------|
-| Node | Fundamental | Keep |
-| Edge (DAG) | Fundamental | Keep |
-| Bit | Compiler-known type | Dissolve — truth is node existence |
-| Conj / Disj | Compiler-known enum (`connective` field) | Dissolve — emergent edge activation patterns |
-| Cardinality | Compiler-known enum | Dissolve — edge connectivity |
+| What | Role | Status |
+|------|------|--------|
+| Node | Substrate | Keep |
+| Edge (DAG) | Substrate | Keep |
+| Conj / Disj | Bridge — `connective` enum on Node | Dissolve: 81 dispatch sites, 114 construction sites. Product/coproduct are edge connectivity patterns, not a compiler enum. |
+| Cardinality | Bridge — `return_cardinality` enum on Node | Dissolve: 38 dispatch sites, 142 construction sites. An edge connects or it doesn't. |
+| Bit / Bool | Modeled type (Layer 0) | Already correct — not a compiler primitive. Detected structurally as 2-variant coproduct (1 site). |
 
-The five exist because the compiler was built incrementally. The
-direction is to collapse: Bit dissolves because node existence already
-carries truth. Conj/Disj dissolve because edge connectivity patterns
-already carry product/coproduct. Cardinality dissolves because an edge
-either connects or it doesn't. The compiler reads the graph — it
-doesn't need named categories for what the graph already expresses.
+The bridges exist because the compiler was built incrementally. The
+direction is to dissolve them: product/coproduct become edge
+connectivity patterns the compiler reads from the graph.
+Cardinality becomes edge existence. Bit is already modeled, not
+compiler-known.
 
 ### Structural Principles
 
@@ -153,7 +155,7 @@ unrepresentable, not detected and rejected.
 
 | Layer | What | Built from | Location |
 |-------|------|-----------|----------|
-| 0 | Classical logic, Bit | Node existence (True = node, False = no node) | `std/logic.dag`, `std/bit.dag` |
+| 0 | Classical logic, Bit | First modeled layer above substrate | `std/logic.dag`, `std/bit.dag` |
 | 1 | Machine words (`Word32`, `Word64`) | Bit compositions | `std/bit.dag` |
 | 2 | Named types (`Int`, `String`, `Char`) | Algebraic structures over machine words | `std/integer.dag`, `std/types.dag` |
 | 3 | Collections (`List<A>`, `Set<A>`, `Map<K,V>`) | Algebraic structures with laws | `std/types.dag` |
@@ -162,8 +164,9 @@ unrepresentable, not detected and rejected.
 
 Every layer is built from Node + Edge. Product/coproduct are not a
 layer — they are the composition mechanism itself: how nodes at any
-layer combine through edges. Truth values (Layer 0) are the first
-modeled composition: node existence expressed as a `.dag` type.
+layer combine through edges. Layer 0 (Bit, Classical logic) is the
+first modeled composition above the substrate — the point where the
+binary distinction inherent in node/edge existence gets a name.
 
 See `docs/algebraic-type-spec.md` for the collection algebra and
 denotational model.
@@ -184,9 +187,9 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 
 ### End Goal
 
-- Two compiler primitives: Node and Edge. Everything else —
-  including truth, product/coproduct, and cardinality — is
-  compositional modeling.
+- Two substrate primitives: Node and Edge. Product/coproduct,
+  cardinality, and truth are compositional modeling above the
+  substrate, not compiler-known categories.
 - Names are opaque. Inference processes graph structure only.
 - Emit reads `LanguageSpec` + structural declarations, no hardcoded
   target-language knowledge.
@@ -250,10 +253,16 @@ passes.
 
 **Status:** 1 diagnostic remaining.
 
+**Acceptance condition:** CLI, bootstrap, regeneration script, and all
+tests use the same `--source-root` / transitive-import resolution path.
+No parallel file list implementations.
+
 **Work items:**
 - [ ] Parser: support `fn foo<T>(...)` generic function syntax
   (`stack.dag` uses this; parser expects `(` but gets `<`)
 - [ ] Verify no other .dag files break once stack.dag parses
+- [ ] All test harnesses use `--source-root` discovery (no hardcoded
+  file lists in test code)
 
 ---
 
@@ -298,7 +307,30 @@ on regenerated stage0 and on a non-trivial user project.
 
 ---
 
-### M3: Compiler Knows Zero Type Names (L1 = 0)
+### M3: Discovery-Driven Test Generation
+
+**What:** Every `.dag` file in the repo is discovered and tested
+automatically. Generated tests compile and run. No hardcoded test
+lists — the test system scans the filesystem.
+
+**Gate:** Generated Rust tests compile and pass. Test freshness gate:
+regenerate tests → diff → must be empty. Every service operation with
+mock data has a generated test.
+
+**Depends on:** M2 (working codegen baseline)
+
+**Work items:**
+- [ ] `full_dsl_compiles` runs in CI on every PR (not just `--ignored`)
+- [ ] Generated Rust tests compile (`cargo test` on generated test files)
+- [ ] Test freshness gate: regenerate → diff → empty
+- [ ] Python generated tests parse (`python3 -m py_compile`)
+- [ ] Go generated tests compile (`go vet`)
+- [ ] Coverage: every discovered `.dag` file with service operations and
+  mock data has at least one generated test artifact
+
+---
+
+### M4: Compiler Knows Zero Type Names (L1 = 0)
 
 **What:** The compiler processes graph structure only. Names are opaque.
 Inference cannot read them. Adding a type means editing `.dag` files,
@@ -338,7 +370,7 @@ internals)
 
 ---
 
-### M4: Emitted Code Correct by Construction
+### M5: Emitted Code Correct by Construction
 
 **What:** `LintModel` enforces emission correctness. `LanguageSpec`
 carries all target-language facts. The emitter has zero hardcoded target
@@ -347,7 +379,8 @@ syntax.
 **Gate:** No `match render_target` branches in emitter source. LintModel
 validates every emitted file.
 
-**Depends on:** M2 (working codegen baseline)
+**Depends on:** M2 (working codegen baseline), M3 (generated tests
+verify correctness)
 
 **Work items:**
 
@@ -380,7 +413,7 @@ validates every emitted file.
 
 ---
 
-### M5: Parse-Emit Symmetry
+### M6: Parse-Emit Symmetry
 
 **What:** The parser and emitter are symmetric views of the same
 `LanguageSpec`. Adding a language means adding a spec file, not code.
@@ -388,7 +421,7 @@ validates every emitted file.
 **Gate:** `parse(spec, emit(spec, graph))` produces structurally
 identical graph for all `.dag` files.
 
-**Depends on:** M3 (name-opaque compiler), M4 (spec-driven emit)
+**Depends on:** M4 (name-opaque compiler), M5 (spec-driven emit)
 
 **Work items:**
 - [ ] Round-trip smoke test on `.dag` subset
@@ -398,24 +431,25 @@ identical graph for all `.dag` files.
 
 ---
 
-### M6: Two Primitives (Node, Edge)
+### M7: Dissolve Structural Bridges
 
-**What:** The compiler collapses from 5 structural primitives to 2.
-Bit dissolves — truth is node existence. Conj/Disj dissolve into edge
-connectivity patterns. Cardinality dissolves — an edge connects or it
-doesn't. `Int = Interpret<Signed, Word64>` — named types are
-compositions, not compiler-known concepts.
+**What:** The compiler's remaining bridges (Conj/Disj, Cardinality)
+dissolve into the substrate. The compiler reads edge connectivity
+patterns from the graph instead of dispatching on enums.
+`Int = Interpret<Signed, Word64>` — named types are compositions
+over the substrate, not compiler-known concepts.
 
-**Gate:** `connective` field removed from Node. `Cardinality` enum
-removed. `is_kernel_type` dissolved. The compiler reads edge
-connectivity patterns — no structural enums remain.
+**Gate:** `connective` field removed from Node (81 dispatch + 114
+construction sites). `Cardinality` enum removed (38 dispatch + 142
+construction sites). `is_kernel_type` dissolved. No structural enums
+remain — the compiler reads the graph.
 
-**Depends on:** M5
+**Depends on:** M6
 
 **Work items:**
 - [ ] Replace `connective: Conj/Disj` with edge connectivity model
-- [ ] Dissolve `Cardinality` enum — edge connects or doesn't
-- [ ] Dissolve Bit as compiler primitive — truth = node existence
+  (product = all edges connect, coproduct = one edge connects)
+- [ ] Dissolve `Cardinality` enum (edge connects or doesn't)
 - [ ] Bit-graph representation for fixed-width types
 - [ ] Full structural type algebra with denotational laws
 
@@ -437,7 +471,7 @@ in `syntax.dag`.
 
 **Node.name deletion (NEXT — D6).** Identity is the node itself. Text
 derived from `source_text_at(span)`. Eliminates ~553 `.name` read
-sites, the name registry concept, and scrambled-name tests. See M3.
+sites, the name registry concept, and scrambled-name tests. See M4.
 
 **ContainerOps (DESIGNED).** Container rendering patterns derived from
 templates, not hardcoded. `ContainerOps` type with fields for every
@@ -466,11 +500,11 @@ Currently produces `DivideAndConquer` classification (soft). The
 structural prevention (bounded primitives only) is the real guarantee;
 fail-closed is the safety net during transition.
 
-**Two-primitive collapse.** Bit dissolves — truth is node existence.
-Conj/Disj dissolve into edge connectivity patterns. Product = all edges
-connect. Coproduct = one edge connects. Cardinality = edge connects or
-doesn't. The graph already carries all structural information; the
-named enums are redundant. See M6.
+**Bridge dissolution.** Conj/Disj (81 dispatch sites) dissolve into
+edge connectivity patterns. Product = all edges connect. Coproduct =
+one edge connects. Cardinality (38 dispatch sites) dissolves — an edge
+connects or it doesn't. The substrate already carries all structural
+information; the bridge enums are redundant. See M7.
 
 ---
 
@@ -495,9 +529,21 @@ named enums are redundant. See M6.
 | V2 compiler tests | `cargo test -p v2-compiler-tests` | Every change |
 | Scrambled-name | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | Inference changes |
 
+### Required Before Merge
+
+Tier 3 ratchets that must pass before merging, until promoted to CI:
+
+```
+scripts/l1-ratchet.sh --check                                              # L1 ≤ ratchet value
+cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored              # 0 diagnostics
+cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored # 0 diagnostics
+cargo test -p v2-compiler-tests v2_bootstrap_fixed_point -- --ignored       # stage0=stage1
+```
+
 ### Non-Consensual Testing
 
 If a `.dag` file exists in this repo, it is tested. No opt-in, no
 hardcoded file lists, no exceptions. The test system discovers files by
 scanning the filesystem, not by reading a manifest. `full_dsl_compiles`
-is the gate: no PR merges if any `.dag` file fails to compile.
+is the gate: no PR merges if any `.dag` file fails to compile. See M3
+for the full test generation milestone.
