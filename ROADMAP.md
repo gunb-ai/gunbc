@@ -411,8 +411,6 @@ on regenerated stage0 and on a non-trivial user project.
 **Work items:**
 
 *Container sharing (FF-8):*
-- [ ] Change Rust container templates to shared representations in
-  `LanguageSpec` (`Rc<Vec<{0}>>`, `Rc<HashMap<{0}, {1}>>`)
 - [ ] Change Rust container templates to shared representations
   (`Rc<Vec<{0}>>`, `Rc<HashMap<{0}, {1}>>`)
 - [ ] Update `05_emit_rust.dag` and `runtime_rust.dag` for coherence
@@ -885,6 +883,128 @@ and the sidecast processes (authored in `.dag`).
 segment, what direction (upcast/downcast/sidecast), what cost, what
 the sidecast process was (if any). Deterministic and auditable.
 
+#### End-to-end example: aspiration target
+
+A non-trivial `.dag` program compiled to three targets, showing how
+every piece of the roadmap connects. This is what the system looks
+like when it works.
+
+```dag
+// Source: a temperature converter service
+module weather.convert
+
+import std.types { Float, String }
+
+type Celsius = Float where label("°C")
+type Fahrenheit = Float where label("°F")
+
+// Sidecast: Celsius and Fahrenheit are both Float refinements
+// but not in a subtype relationship — needs explicit process
+fn to_fahrenheit(c: Celsius) -> Fahrenheit { c * 9.0 / 5.0 + 32.0 }
+fn to_celsius(f: Fahrenheit) -> Celsius { (f - 32.0) * 5.0 / 9.0 }
+
+type TemperatureReading {
+  value: Celsius
+  location: String
+  timestamp: Int
+}
+
+type TemperatureReport
+  = SingleReading { reading: TemperatureReading }
+  | DailyAverage { readings: List<TemperatureReading>, avg: Celsius }
+  | Error { message: String }
+```
+
+**What the compiler proves (guarantee receipt):**
+
+```json
+{
+  "discovered": { "types": 4, "functions": 2 },
+  "structural": {
+    "decidability": "proven (all functions terminate)",
+    "complexity": {
+      "to_fahrenheit": "O(1) Proven",
+      "to_celsius": "O(1) Proven"
+    },
+    "ownership": {
+      "to_fahrenheit": "SoleOwner (all bindings consumed once)",
+      "to_celsius": "SoleOwner"
+    }
+  },
+  "coercion_plan": {
+    "Celsius → Float": "upcast, free (Celsius is Float refinement)",
+    "Float → Celsius": "downcast, needs validation (where label check)",
+    "Celsius → Fahrenheit": "sidecast, via to_fahrenheit (user-authored)"
+  }
+}
+```
+
+**Compiled to Rust (identity coercion — all patterns native):**
+
+```rust
+// Every structural pattern maps directly:
+//   Product → struct, Coproduct → enum, Function → fn
+//   Cardinality → Option, Sequence → let bindings
+struct TemperatureReading { value: f64, location: String, timestamp: i64 }
+enum TemperatureReport {
+    SingleReading { reading: TemperatureReading },
+    DailyAverage { readings: Rc<Vec<TemperatureReading>>, avg: f64 },
+    Error { message: String },
+}
+fn to_fahrenheit(c: f64) -> f64 { c * 9.0 / 5.0 + 32.0 }
+```
+
+**Compiled to SPICE (sidecast for coproduct — mux from switches):**
+
+```spice
+* TemperatureReading: subcircuit with 3 ports (product)
+.subckt TemperatureReading value location timestamp
+.ends
+
+* TemperatureReport: 3-way mux (coproduct → synthesized from switch)
+* Selector signal chooses which variant is active
+.subckt TemperatureReport sel_0 sel_1 reading_port avg_port err_port
+V_mux_ctrl sel_0 sel_1 DC 0
+.ends
+
+* to_fahrenheit: subcircuit (function → subcircuit)
+.subckt to_fahrenheit c_in f_out
+E_scale f_out 0 VALUE={V(c_in)*9.0/5.0+32.0}
+.ends
+```
+
+**Compiled to English (identity — all patterns have natural mappings):**
+
+```markdown
+## Temperature Reading
+A temperature reading has:
+- a **value** in Celsius
+- a **location** (text)
+- a **timestamp** (integer)
+
+## Temperature Report
+A temperature report is one of:
+- a **single reading** containing one temperature reading
+- a **daily average** containing a list of readings and an average
+- an **error** with a message
+
+## Conversions
+- To convert Celsius to Fahrenheit: multiply by 9/5 and add 32.
+- To convert Fahrenheit to Celsius: subtract 32 and multiply by 5/9.
+```
+
+**What the tests verify (per M3 test tracks):**
+
+| Track | What it checks for this example |
+|---|---|
+| Discovery | All 3 targets discovered and compiled with 0 diagnostics |
+| Behavioral (type roundtrip) | `TemperatureReading` construct → serialize → deserialize → equal |
+| Behavioral (function) | `to_fahrenheit(100.0) == 212.0`, `to_celsius(32.0) == 0.0` |
+| Edge contracts | `Celsius → to_fahrenheit → Fahrenheit`: sidecast process exists, types match |
+| Coercion correctness | Upcast `Celsius → Float` is free. Downcast `Float → Celsius` requires validation. Sidecast `Celsius → Fahrenheit` uses `to_fahrenheit`. |
+| Differential/parity | All 3 targets produce structurally equivalent output |
+| Guarantee receipt | Receipt matches expectations, no `report_only` gaps |
+
 #### Execution lanes (expected diffs)
 
 **Lane A: Data-driven method/transport dispatch (M2)**
@@ -1020,9 +1140,9 @@ dsl/extdeps/languages/
     render.dag         English-basis graph → Markdown
 ```
 
-**Adding a new language** = add `coerce.dag` + `render.dag` under
-`dsl/extdeps/languages/`. Zero compiler changes. The coercion rules
-declare the target's basis; the renderer is trivial.
+**Adding a new language** = add `coerce.dag` (sidecast processes for
+non-native patterns) + `render.dag` (trivial text from target-basis
+graph) under `dsl/extdeps/languages/`. Zero compiler changes.
 
 **Challenge targets** validate the architecture: if the coercion
 engine works for Verilog, SPICE, and English, it works for anything.
