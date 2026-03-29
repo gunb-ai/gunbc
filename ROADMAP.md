@@ -960,38 +960,93 @@ Go and Python emitters: 0 violations. They model correct emit.
 (~120), structural copying (~125), emit rendering (~175),
 diagnostics (~45).
 
+#### Type Disposition (35 types remaining after D1+D2)
+
+**Keep as-is (structural properties — closed algebraic sets):**
+Connective (3), Cardinality (2), BinOpKind (13), UnaryOpKind (2),
+LiteralValue (5), ExprErrorKind (3), OperationModifier (3),
+Token, TokenShape (28). These represent graph shape, operators, and
+values. Adding a language construct doesn't add variants. (11 types)
+
+**Keep as-is (infrastructure):**
+CompilerDiagnostic (14), ErrorNode, ErrorDAG, CompileResult, TextFile,
+LineCol, NewlineIndex. Diagnostic and pipeline output types. (7 types)
+
+**Keep as-is (semantic metadata — populated by inference, consumed by
+emit, no strings):**
+FieldAccessStyle (5), FieldValueShape (2), FieldSummary,
+VarBindingKind (3), CallSemantics (2), LambdaSemantics. Clean
+structural metadata. (6 types)
+
+**Keep structure, remove String fields (D3):**
+ExprData (9 String fields → children), MatchPattern (Bind.name,
+VariantPattern.name/parent_enum → Node). (2 types)
+
+**Dissolve entirely via .dag modeling (D5):**
+IntrinsicMethod (20), RuntimeBridgeMethod (25+), MethodSemantics (4),
+TransportKind (5), ConfigPropertyKey (6). These exist because the
+compiler doesn't model methods/transports as .dag Nodes — it
+classifies them by string comparison into enum variants. In the
+target model, methods ARE Nodes defined in .dag type algebras.
+The enum is unnecessary. (5 types)
+
+**String-keyed → structural edges (D5):**
+DeclaredFuncSig (carries name: String), DeclaredFuncEnv (Map<String,
+...>). Function scope is string-keyed. With edges, the scope is
+structural. (2 types)
+
+**Wrappers (keep):**
+InferredNode (3), NodeType (4). Inference result discriminators. (2 types)
+
+**Total:** 11 keep + 7 infra + 6 metadata + 2 wrappers = **26 keep.**
+2 D3 + 5 D5-dissolve + 2 D5-structural = **9 to change.**
+
 #### Execution
 
-| Phase | What | Dissolves | Ratchet |
-|-------|------|-----------|---------|
-| D1 | **Satellite type dissolution.** Param, ResourceUse, FieldInit → `List<Node>`. Delete types. | 3 types, ~85 consumer sites | Satellite types: 10 → 7 |
-| D2 | **Parser produces Nodes directly.** `expect_name()` returns leaf Node. Field/Variant/OperationDef/CapabilityDef created as Nodes in parser, never as intermediates. | 4 types, ~80 parser sites | Satellite types: 7 → 3 |
-| D3 | **ExprData String dissolution.** String fields → children. ExprData variants become unit. Parser stores identifiers as child Nodes. | 9 String fields, ~210 consumer sites | ExprData Strings: 9 → 0 |
-| D4 | **Remaining dissolution.** ~~NamedArg~~, ~~MatchArm~~, ~~FieldBinding~~ → Node (DONE). MatchPattern names → Node.name. | 3 types, ~70 consumer sites | Satellite types: 3 → 0 |
-| D5 | **Edge model.** Resolution produces structural edges (use → definition). Method dispatch via data tables. Inference walks edges. | ~120 scope lookups + ~165 name comparisons | Name reads in inference: current → 0 |
-| D6 | **Delete Node.name.** Emit extracts identifier text via `source_text_at(binding_site.span)`. No stored name field. Delete scrambled-name tests (nothing to scramble). | ~175 emit name reads + `Node.name` field | Node has no name field |
+| Phase | What | Status |
+|-------|------|--------|
+| D1 | **Satellite type dissolution.** FieldInit, ResourceUse, Param, Field, Variant → Node. | **DONE** (5 types deleted) |
+| D2 | **Remaining satellites.** NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef → Node. | **DONE** (5 types deleted) |
+| D3 | **ExprData String dissolution.** 9 String fields → children/Node.name. ExprData variants become unit. MatchPattern.Bind.name, VariantPattern.name → Node.name. | ~210 consumer sites |
+| D5 | **Edge model + .dag method modeling.** Three sub-parts: | |
+| D5a | *Binding edges.* `inferred` on reference Nodes points at the binding site, not a copy of the type. One-pass — scope map is temporary, edges persist. | ~120 scope lookups become edge-producing |
+| D5b | *Method/transport dissolution.* Methods and transports are Nodes in .dag type definitions. IntrinsicMethod, RuntimeBridgeMethod, MethodSemantics, TransportKind, ConfigPropertyKey dissolve — method identity IS the edge to the .dag definition Node. | 5 enums deleted, ~56 string comparisons eliminated |
+| D5c | *DeclaredFuncSig/Env → structural.* Function registry keyed by Node identity, not string name. | 2 types refactored |
+| D6 | **Delete Node.name.** Identity is the node itself. Text derived from span. Scrambled-name tests deleted. | Node.name field removed |
 
-D1-D4 are the type dissolution (existing pattern applied
-universally). D5 is the architectural change (resolution boundary
-kills names). D6 is the final step: Node.name ceases to exist.
+**Design principle for D5:** The compiler's job is NOT to classify
+identifiers into enum variants. The compiler walks a graph of Nodes.
+Every method, transport, config key, and function is a Node defined
+in .dag source. Resolution creates edges from use-sites to definition
+Nodes. The compiler never classifies — it follows edges.
 
-The L1 ratchet (currently 52) tracks name-read sites in the compiler.
-This model drives L1 to 0.
+- `list.map(f)` → the call site has an edge to `List.map` (a Node
+  defined in `std/types.dag` via `FreeMonoid` algebra)
+- `shell.exec(cmd)` → the call site has an edge to
+  `Shell.exec` (a Node defined in the transport .dag)
+- `let x = 5; x + 1` → `x` reference has an edge to the `let x`
+  binding site. The type IS `binding_site.inferred`, not a copy.
 
-**On scrambled-name tests.** The current scrambled-name tests are
-validation — they test that inference doesn't branch on names. The
-target model makes this **structural**: Node has no name field.
-Inference can't read the name because there is no name. The
-scrambled-name tests become unnecessary by construction — delete
-them when `Node.name` is removed. Until then, they remain as the
-ratchet.
+**`inferred` IS the edge.** `reference.inferred = Resolved { node:
+binding_site }`. To get the type: `binding_site.inferred.node`.
+No new fields on Node. No duplication. One source of truth.
+
+**One pass, not two.** The scope map is a temporary data structure
+during the inference walk. String lookups happen during the walk
+(unavoidable — the parser produces text). The RESULT of each lookup
+is stored as a structural edge on the Node. After the walk completes,
+the scope map is discarded. Names are dead. Only edges remain.
+
+**On scrambled-name tests.** Validation, not construction. Node has
+no name field in the target model — nothing to scramble. Delete when
+`Node.name` is removed. Until then, they remain as the ratchet.
 
 **Exit criteria:** 0 satellite types. ExprData has 0 String fields.
-Node has no `name` field — identity is the node itself, text is
-derived from span. Inference has no access to name text. Emit
-extracts text via `source_text_at(span)`. Scrambled-name tests
-deleted (invariant holds by construction). Diagnostic span precision
-is automatic (every Node has a span).
+Node has no `name` field. IntrinsicMethod, RuntimeBridgeMethod,
+MethodSemantics, TransportKind, ConfigPropertyKey dissolved —
+methods/transports are .dag Nodes, not compiler enums. Inference
+reads 0 name strings. Emit extracts text via `source_text_at(span)`.
+Scrambled-name tests deleted.
 
 ### Stream 0: Compositional Parser — Status
 
