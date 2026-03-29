@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Field, Param, NodeType, rt_node, InferredNode, diagnostic_node, Cardinality, ResourceUse, MatchArm, FieldInit, NamedArg, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span};
+pub use crate::v2_std_core::{Node, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span, field_init_node_name, field_init_node_value, make_param_node, make_field_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -63,67 +63,67 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type, is_recursive_type};
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeResolveResult {
     pub resolved: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemResult {
     pub item: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldResult {
-    pub field: Rc<Field>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub field: Rc<Node>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprResolveResult {
     pub expr: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamedArgResolveResult {
-    pub arg: Rc<NamedArg>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub arg: Rc<Node>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchArmResolveResult {
-    pub arm: Rc<MatchArm>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub arm: Rc<Node>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInitResolveResult {
-    pub field_init: Rc<FieldInit>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub field_init: Rc<Node>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringPartResolveResult {
     pub part: Rc<StringPart>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransportResolveResult {
     pub transport: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamResult {
-    pub param: Rc<Param>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub param: Rc<Node>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResourceUseResult {
-    pub resource_use: Rc<ResourceUse>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub resource_use: Rc<Node>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
@@ -216,7 +216,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String, 
             if (depth.clone() > 100) {
                 return Rc::new(NodeResolveResult {
     resolved: n.clone(),
-    diagnostics: vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat("internal: type resolution exceeded depth 100 for '".to_string(), n.name.clone()), "'".to_string()), n.span.clone(), Some(module_name.clone()), Some("invalid_operation".to_string()))],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: v2_rt::concat(v2_rt::concat("internal: type resolution exceeded depth 100 for '".to_string(), n.name.clone()), "'".to_string()), span: n.span.clone() }), module_name.clone())],
 })
 }
 if node_has_structure(n.clone()) {
@@ -442,14 +442,14 @@ Rc::new(NodeResolveResult {
 let expected_arity = (decl.params.clone().len() as i64);
 let actual_arity = (n.children.clone().len() as i64);
 let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
-                            vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("type ".to_string(), n.name.clone()), " expects ".to_string()), v2_rt::to_string(expected_arity.clone())), " type arguments, got ".to_string()), v2_rt::to_string(actual_arity.clone())), n.span.clone(), Some(module_name.clone()), Some("type_mismatch".to_string()))]
+                            vec![make_error_node(Rc::new(CompilerDiagnostic::ArityMismatch { name: n.name.clone(), expected: expected_arity.clone(), got: actual_arity.clone(), span: n.span.clone() }), module_name.clone())]
 } else {
                             vec![]
 };
 let arg_results = { let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.push(resolve_node_bounded(child.clone(), env.clone(), module_name.clone(), (depth.clone() + 1))); } __result };
 let resolved_args = { let mut __result = Vec::new(); for ar in arg_results.clone().iter().cloned() { __result.push(ar.resolved.clone()); } __result };
 let arg_diags = { let mut __result = Vec::new(); for ar in arg_results.clone().iter().cloned() { __result.extend(ar.diagnostics.clone()); } __result };
-let slot_bindings = decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned().fold(<HashMap<String, Rc<Node>>>::new(), |acc: _, pair: (i64, Rc<Param>)| {
+let slot_bindings = decl.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned().fold(<HashMap<String, Rc<Node>>>::new(), |acc: _, pair: (i64, Rc<Node>)| {
                             let idx = pair.0.clone();
 let slot_name = pair.1.clone().name.clone();
 match { let mut __result = Vec::new(); for p in { let mut __result = Vec::new(); for p in resolved_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if (p.0.clone() == idx.clone()) { __result.push(p); } } __result }.iter().cloned() { __result.push(p.1.clone()); } __result }.first().cloned() {
@@ -595,7 +595,7 @@ Rc::new(NodeResolveResult {
 } else {
                                         Rc::new(NodeResolveResult {
     resolved: n.clone(),
-    diagnostics: vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat("unresolved type '".to_string(), n.name.clone()), "'".to_string()), n.span.clone(), Some(module_name.clone()), Some("unresolved_name".to_string()))],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType { name: n.name.clone(), span: n.span.clone() }), module_name.clone())],
 })
 },
 }
@@ -625,18 +625,18 @@ pub fn resolve_optional_node(n: Option<Rc<InferredNode>>, env: Rc<TypeEnv>, modu
     InferredNode::Resolved { node: inner, .. } => resolve_node(inner.clone(), env.clone(), module_name.clone()),
     InferredNode::CompilerError { message: msg, span: sp, .. } => Rc::new(NodeResolveResult {
     resolved: leaf_node("Error".to_string()),
-    diagnostics: vec![diagnostic_node("error".to_string(), msg.clone(), sp.clone(), Some(module_name.clone()), None)],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: msg.clone(), span: sp.clone() }), module_name.clone())],
 }),
 }
 }
 }
 
-pub fn resolve_field(field: Rc<Field>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldResult> {
+pub fn resolve_field(field: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldResult> {
     {
-        let type_result = resolve_node(field.type_expr.clone(), env.clone(), module_name.clone());
+        let type_result = resolve_node(field_node_type_expr(field.clone()), env.clone(), module_name.clone());
 let type_resolved = type_result.resolved.clone();
 let type_diags = type_result.diagnostics.clone();
-let default_resolved = match field.default_value.clone() {
+let default_resolved = match field_node_default_value(field.clone()) {
     Some(default_value) => Some(resolve_expr_types(default_value.clone(), env.clone(), module_name.clone())),
     None => None,
 };
@@ -645,28 +645,28 @@ let default_diags = match default_resolved.clone() {
     None => vec![],
 };
 Rc::new(FieldResult {
-    field: Rc::new(Field {
-    name: field.name.clone(),
-    type_expr: type_resolved.clone(),
-    cardinality: field.cardinality.clone(),
-    default_value: match default_resolved.clone() {
+    field: make_field_node(
+    field_node_name(field.clone()),
+    type_resolved.clone(),
+    field_node_cardinality(field.clone()),
+    match default_resolved.clone() {
     Some(result) => Some(result.expr.clone()),
     None => None,
 },
-    from_key: field.from_key.clone(),
-    span: field.span.clone(),
-}),
+    field_node_from_key(field.clone()),
+    field.span.clone(),
+),
     diagnostics: v2_rt::concat(type_diags.clone(), default_diags.clone()),
 })
 }
 }
 
-pub fn resolve_param(param: Rc<Param>, env: Rc<TypeEnv>, module_name: String) -> Rc<ParamResult> {
+pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ParamResult> {
     {
-        let type_result = resolve_node(param.type_expr.clone(), env.clone(), module_name.clone());
+        let type_result = resolve_node(param_node_type_expr(param.clone()), env.clone(), module_name.clone());
 let type_resolved = type_result.resolved.clone();
 let type_diags = type_result.diagnostics.clone();
-let default_resolved = match param.default_value.clone() {
+let default_resolved = match param_node_default_value(param.clone()) {
     Some(default_value) => Some(resolve_expr_types(default_value.clone(), env.clone(), module_name.clone())),
     None => None,
 };
@@ -675,69 +675,60 @@ let default_diags = match default_resolved.clone() {
     None => vec![],
 };
 Rc::new(ParamResult {
-    param: Rc::new(Param {
-    name: param.name.clone(),
-    type_expr: type_resolved.clone(),
-    default_value: match default_resolved.clone() {
+    param: make_param_node(
+    param_node_name(param.clone()),
+    type_resolved.clone(),
+    match default_resolved.clone() {
     Some(result) => Some(result.expr.clone()),
     None => None,
 },
-    span: param.span.clone(),
-}),
+    param.span.clone(),
+),
     diagnostics: v2_rt::concat(type_diags.clone(), default_diags.clone()),
 })
 }
 }
 
-pub fn resolve_resource_use(ru: Rc<ResourceUse>, env: Rc<TypeEnv>, module_name: String) -> Rc<ResourceUseResult> {
+pub fn resolve_resource_use(ru: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ResourceUseResult> {
     {
-        let type_result = resolve_node(ru.resource.clone(), env.clone(), module_name.clone());
+        let type_result = resolve_node(resource_use_resource(ru.clone()), env.clone(), module_name.clone());
 let type_resolved = type_result.resolved.clone();
 let type_diags = type_result.diagnostics.clone();
 Rc::new(ResourceUseResult {
-    resource_use: Rc::new(ResourceUse {
-    name: ru.name.clone(),
-    resource: type_resolved.clone(),
-    span: ru.span.clone(),
-}),
+    resource_use: make_resource_use_node(resource_use_name(ru.clone()), type_resolved.clone(), ru.span.clone()),
     diagnostics: type_diags.clone(),
 })
 }
 }
 
-pub fn resolve_named_arg(arg: Rc<NamedArg>, env: Rc<TypeEnv>, module_name: String) -> Rc<NamedArgResolveResult> {
+pub fn resolve_named_arg(arg: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NamedArgResolveResult> {
     {
-        let value_result = resolve_expr_types(arg.value.clone(), env.clone(), module_name.clone());
+        let value_result = resolve_expr_types(arg_value(arg.clone()), env.clone(), module_name.clone());
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(NamedArgResolveResult {
-    arg: Rc::new(NamedArg {
-    name: arg.name.clone(),
-    value: value_expr.clone(),
-}),
+    arg: make_arg_node(arg_name(arg.clone()), value_expr.clone(), arg.span.clone()),
     diagnostics: value_diags.clone(),
 })
 }
 }
 
-pub fn resolve_field_init(field_init: Rc<FieldInit>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldInitResolveResult> {
+pub fn resolve_field_init(field_init: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<FieldInitResolveResult> {
     {
-        let value_result = resolve_expr_types(field_init.value.clone(), env.clone(), module_name.clone());
+        let value_result = resolve_expr_types(field_init_node_value(field_init.clone()), env.clone(), module_name.clone());
 let value_expr = value_result.expr.clone();
 let value_diags = value_result.diagnostics.clone();
 Rc::new(FieldInitResolveResult {
-    field_init: Rc::new(FieldInit {
-    name: field_init.name.clone(),
-    value: value_expr.clone(),
-}),
+    field_init: make_field_init_node(field_init_node_name(field_init.clone()), value_expr.clone(), field_init.span.clone()),
     diagnostics: value_diags.clone(),
 })
 }
 }
 
-pub fn resolve_match_arm(arm: Rc<MatchArm>, env: Rc<TypeEnv>, module_name: String) -> Rc<MatchArmResolveResult> {
+pub fn resolve_match_arm(arm: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<MatchArmResolveResult> {
     {
-        let guard_result = match arm.guard.clone() {
+        let arm_g = arm_guard(arm.clone());
+let guard_result = match arm_g.clone() {
     Some(guard) => Some(resolve_expr_types(guard.clone(), env.clone(), module_name.clone())),
     None => None,
 };
@@ -745,18 +736,19 @@ let guard_diags = match guard_result.clone() {
     Some(result) => result.diagnostics.clone(),
     None => vec![],
 };
-let body_result = resolve_expr_types(arm.body.clone(), env.clone(), module_name.clone());
+let body_result = resolve_expr_types(arm_body(arm.clone()), env.clone(), module_name.clone());
 let body_expr = body_result.expr.clone();
 let body_diags = body_result.diagnostics.clone();
 Rc::new(MatchArmResolveResult {
-    arm: Rc::new(MatchArm {
-    pattern: arm.pattern.clone(),
-    guard: match guard_result.clone() {
+    arm: make_arm_node(
+        arm_pattern(arm.clone()),
+        match guard_result.clone() {
     Some(result) => Some(result.expr.clone()),
     None => None,
 },
-    body: body_expr.clone(),
-}),
+        body_expr.clone(),
+        arm.span.clone(),
+    ),
     diagnostics: v2_rt::concat(guard_diags.clone(), body_diags.clone()),
 })
 }
@@ -793,12 +785,9 @@ pub fn resolve_transport_binding(transport: Rc<Node>, env: Rc<TypeEnv>, module_n
 } else {
         {
             let prop_results = { let mut __result = Vec::new(); for p in transport.properties.clone().iter().cloned() { __result.push({
-                let val_result = resolve_expr_types(p.value.clone(), env.clone(), module_name.clone());
+                let val_result = resolve_expr_types(field_init_node_value(p.clone()), env.clone(), module_name.clone());
 Rc::new(FieldInitResolveResult {
-    field_init: Rc::new(FieldInit {
-    name: p.name.clone(),
-    value: val_result.expr.clone(),
-}),
+    field_init: make_field_init_node(field_init_node_name(p.clone()), val_result.expr.clone(), p.span.clone()),
     diagnostics: val_result.diagnostics.clone(),
 })
 }); } __result };
@@ -824,7 +813,7 @@ pub fn resolve_expr_types(texpr: Rc<Node>, env: Rc<TypeEnv>, module_name: String
 }),
     ExprData::ExprError { kind: kind, message: message, .. } => Rc::new(ExprResolveResult {
     expr: make_expr_error_node(kind.clone(), message.clone(), texpr.span.clone()),
-    diagnostics: vec![diagnostic_node("error".to_string(), message.clone(), texpr.span.clone(), Some(module_name.clone()), Some("cascade_error".to_string()))],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: message.clone(), span: texpr.span.clone() }), module_name.clone())],
 }),
     ExprData::ExprVar { .. } => Rc::new(ExprResolveResult {
     expr: texpr.clone(),

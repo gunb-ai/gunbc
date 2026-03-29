@@ -2982,6 +2982,29 @@ fn no_span() -> SourceSpan {
   SourceSpan { start: 0, end: 0 }
 }
 
+type LineCol {
+  line: Int
+  col: Int
+}
+
+type NewlineIndex {
+  file: String
+  offsets: List<Int>
+  source: String
+}
+
+fn build_newline_index(file: String, source: String) -> NewlineIndex {
+  NewlineIndex { file: file, offsets: [], source: source }
+}
+
+fn byte_to_line_col(index: NewlineIndex, offset: Int) -> LineCol {
+  LineCol { line: 1, col: 1 }
+}
+
+fn source_line_at(index: NewlineIndex, line: Int) -> String {
+  ""
+}
+
 fn with_optional_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
@@ -3632,7 +3655,7 @@ type ExpectedToken
 // List results
 type ImportsResult { imports: List<Node>, state: ParserState, err: Node? }
 type ItemsResult { items: List<Node>, state: ParserState, err: Node? }
-type NamesResult { names: List<String>, state: ParserState, err: Node? }
+type NamesResult { names: List<Node>, state: ParserState, err: Node? }
 type FieldsResult { fields: List<Field>, state: ParserState, err: Node? }
 type FieldInitsResult { fields: List<FieldInit>, state: ParserState, err: Node? }
 type VariantsResult { variants: List<Variant>, state: ParserState, err: Node? }
@@ -4409,18 +4432,19 @@ fn parse_import_names(tokens: List<Token>, state: ParserState) -> NamesResult {
   parse_import_names_acc(tokens: tokens, state: state, acc: [])
 }
 
-fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<String>) -> NamesResult {
+fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> NamesResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if peek_is_rbrace(tokens: tokens, state: s) {
     NamesResult { names: acc, state: s, err: none }
   } else {
+    let name_span = current_span(tokens: tokens, state: s)
     let r = parse_dotted_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return NamesResult { names: [], state: r.state, err: r.err } }
-    let name = r.name
+    let name_node = leaf_node(name: r.name, span: name_span)
     let s = skip_newlines(tokens: tokens, state: r.state)
     let e = eat(tokens: tokens, state: s, expected: ExpectComma)
     let s = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { s })
-    parse_import_names_acc(tokens: tokens, state: s, acc: list_push(acc, name))
+    parse_import_names_acc(tokens: tokens, state: s, acc: list_push(acc, name_node))
   }
 }
 
@@ -23599,7 +23623,8 @@ import v2.std.core {
   VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
-  LiteralValue, BinOpKind, UnaryOpKind, StringPart, ServiceConfig, Node, ErrorCategory
+  LiteralValue, BinOpKind, UnaryOpKind, StringPart, ServiceConfig, Node, ErrorCategory,
+  NewlineIndex, build_newline_index
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -23633,6 +23658,7 @@ type PipelineResult {
   complexity: ComplexityReport
   ownership: List<OwnershipProof>
   artifact_plan: ArtifactPlan
+  newline_indices: List<NewlineIndex>
 }
 
 type FrontendResult {
@@ -24307,6 +24333,8 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
 // The target parameter selects the output language (Rust, Python, Go).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
+  let newline_indices = sources |> map(s => build_newline_index(file: s.path, source: s.content))
+
   let frontend = front_end_sources(sources: sources)
   match frontend.graph {
     None =>
@@ -24315,7 +24343,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         diagnostics: frontend.diagnostics,
         complexity: empty_complexity_report(),
         ownership: [],
-        artifact_plan: empty_artifact_plan()
+        artifact_plan: empty_artifact_plan(),
+        newline_indices: newline_indices
       }
     Some { value: graph } => {
       // Stage 1-3: frontend graph build complete.
@@ -24329,7 +24358,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
           diagnostics: frontend.diagnostics,
           complexity: empty_complexity_report(),
           ownership: [],
-          artifact_plan: empty_artifact_plan()
+          artifact_plan: empty_artifact_plan(),
+          newline_indices: newline_indices
         }
       }
 
@@ -24347,7 +24377,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
           diagnostics: concat(frontend.diagnostics, norm_diags),
           complexity: empty_complexity_report(),
           ownership: [],
-          artifact_plan: empty_artifact_plan()
+          artifact_plan: empty_artifact_plan(),
+          newline_indices: newline_indices
         }
       }
 
@@ -24371,7 +24402,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
           diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags),
           complexity: complexity,
           ownership: [],
-          artifact_plan: empty_artifact_plan()
+          artifact_plan: empty_artifact_plan(),
+          newline_indices: newline_indices
         }
       }
 
@@ -24399,7 +24431,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
         diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, ownership_diags, emit_diags),
         complexity: complexity,
         ownership: ownership,
-        artifact_plan: artifact_plan
+        artifact_plan: artifact_plan,
+        newline_indices: newline_indices
       }
     }
   }
@@ -26722,13 +26755,13 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
     #[test]
     fn tokenize_produces_tokens() {
-        let tokens = tokenize("fn foo() -> Int { 42 }");
+        let tokens = tokenize("fn foo() -> Int { 42 }".to_string(), "test.dag".to_string());
         assert!(!tokens.is_empty(), "tokenize should produce at least one token");
     }
 
     #[test]
     fn tokenize_ends_with_eof() {
-        let tokens = tokenize("type Foo { x: Int }");
+        let tokens = tokenize("type Foo { x: Int }".to_string(), "test.dag".to_string());
         let last = tokens.last().expect("should have tokens");
         assert!(
             matches!(last.shape, crate::v2_std_core::TokenShape::ShEof),
@@ -26739,7 +26772,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
     #[test]
     fn tokenize_fn_keyword() {
-        let tokens = tokenize("fn");
+        let tokens = tokenize("fn".to_string(), "test.dag".to_string());
         // Should have at least KwFn and Eof
         assert!(tokens.len() >= 2, "expected at least 2 tokens, got {}", tokens.len());
         assert!(
@@ -26751,14 +26784,14 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
 
     #[test]
     fn tokenize_count_stable() {
-        let tokens = tokenize("module test\ntype Foo { x: Int }");
+        let tokens = tokenize("module test\ntype Foo { x: Int }".to_string(), "test.dag".to_string());
         // Non-trivial input should produce multiple tokens
         assert!(tokens.len() > 5, "non-trivial input should produce multiple tokens, got {}", tokens.len());
     }
 
     #[test]
     fn parse_trivial_module() {
-        let tokens = tokenize("module test\ntype Foo { x: Int }\n");
+        let tokens = tokenize("module test\ntype Foo { x: Int }\n".to_string(), "test.dag".to_string());
         let result = crate::v2_compiler_parse::parse(tokens);
         // ParseResult should have a module
         assert!(result.module.is_some(), "valid module should parse successfully");
@@ -26775,7 +26808,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
                 // Tokenize the v2 compiler's own tokenizer source
-                let tokens = tokenize(SRC_V2_01_TOKENIZE_DAG_SOURCE);
+                let tokens = tokenize(SRC_V2_01_TOKENIZE_DAG_SOURCE.to_string(), "src/v2/01_tokenize.dag".to_string());
 
                 // Token list should be non-empty
                 assert!(!tokens.is_empty(), "tokenizing 01_tokenize.dag should produce tokens");
@@ -26897,7 +26930,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                     ("src/v2/trace.dag", SRC_V2_TRACE_DAG_SOURCE, "v2.compiler.trace"),
                 ];
                 for (file, source, expected_name) in &modules {
-                    let tokens = tokenize(source);
+                    let tokens = tokenize(source.to_string(), file.to_string());
                     assert!(
                         !tokens.is_empty(),
                         "{} should produce tokens", file
@@ -27275,7 +27308,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let mut token_lists = Vec::new();
                 for source in &sources {
                     let t = Instant::now();
-                    let tokens = crate::v2_compiler_tokenize::tokenize(&source.content);
+                    let tokens = crate::v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                     let elapsed = t.elapsed();
                     eprintln!("  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>5} chars)",
                         source.path, elapsed, tokens.len(), source.content.len());
@@ -27429,7 +27462,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let mut phase1_diags = 0usize;
                 for source in &sources {
                     let t = Instant::now();
-                    let tokens = crate::v2_compiler_tokenize::tokenize(&source.content);
+                    let tokens = crate::v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                     let elapsed = t.elapsed();
                     eprintln!("  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>6} chars)",
                         source.path, elapsed, tokens.len(), source.content.len());
@@ -27582,7 +27615,7 @@ fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
                 let t0 = Instant::now();
                 let mut modules = Vec::new();
                 for source in &sources {
-                    let tokens = crate::v2_compiler_tokenize::tokenize(&source.content);
+                    let tokens = crate::v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
                     let result = crate::v2_compiler_parse::parse(tokens);
                     if let Some(m) = result.module.clone() {
                         modules.push(m);

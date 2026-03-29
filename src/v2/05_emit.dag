@@ -18,20 +18,18 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  Field, Param,
+  param_node_name, param_node_type_expr, param_node_default_value,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
   ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
   ExprError, ExprReturn,
-  NamedArg, MatchArm, FieldInit,
   StringPart, Text, Interpolation,
   LiteralValue,
   TextFile, SourceSpan,
-  ResourceUse,
   BinOpKind, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
   IntrinsicMethod,
@@ -76,7 +74,9 @@ import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
-  NullCoalesceStrategy, MethodBased, TernaryBased, IIFEBased,
+  ImportRule,
+  TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
+  ContainerUsageTrigger, AsyncUsageTrigger,
   language_spec_for_target,
   test_conventions_for_target,
   target_keyword, target_primitive_type, target_container_template
@@ -95,7 +95,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type EmitResult {
   files: List<TextFile>
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type BlockEmitState {
@@ -110,7 +110,7 @@ type TcoFrame {
 }
 
 type TcoReassignInput {
-  args: List<NamedArg>
+  args: List<Node>
   scope: InferScope
   depth: Int
 }
@@ -154,8 +154,8 @@ type TestProjection {
   service_name: String
   operation_name: String
   inferred: Node
-  params: List<Param>
-  mock_field_inits: List<FieldInit>
+  params: List<Node>
+  mock_field_inits: List<Node>
 }
 
 fn has_mock_prefix(name: String) -> Bool {
@@ -180,6 +180,36 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
           })
       )
   )
+}
+
+// =========================================================================
+// Import derivation -- pre-scan typed items to determine required imports.
+// =========================================================================
+
+fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, target: RenderTarget) -> List<String> {
+  let has_async = items |> any(item => item.uses |> count > 0)
+  let type_names = collect_type_names_from_items(items: items)
+
+  import_rules |> filter(rule =>
+    match rule.trigger {
+      TypeUsageTrigger { type_name: t } => type_names |> any(n => n == t)
+      TraitImplTrigger { trait_name: _ } => false
+      DeriveMacroTrigger { macro_name: _ } => false
+      ContainerUsageTrigger { container: c } => type_names |> any(n => n == c)
+      AsyncUsageTrigger => has_async
+    }
+  ) |> map(rule => rule.import_path)
+  |> filter(path => path != "")
+}
+
+fn collect_type_names_from_items(items: List<Node>) -> List<String> {
+  items |> flat_map(item => collect_type_names_from_node(n: item))
+}
+
+fn collect_type_names_from_node(n: Node) -> List<String> {
+  let self_name = if n.name != "" { [n.name] } else { [] }
+  let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child))
+  list_concat(self_name, child_names)
 }
 
 // Intermediate type for string interpolation segments
@@ -318,16 +348,17 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
   map_get(scope.func_env.signatures, name)
 }
 
-fn typed_named_arg_matches(arg: NamedArg, name: String) -> Bool {
-  if arg.name == none {
+fn typed_named_arg_matches(arg: Node, name: String) -> Bool {
+  let n = arg_name(n: arg)
+  if n == none {
     false
   } else {
-    arg.name.value == name
+    n.value == name
   }
 }
 
-fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
-  let has_unnamed = args |> any(arg => arg.name == none)
+fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> List<Node> {
+  let has_unnamed = args |> any(arg => arg_name(n: arg) == none)
   if has_unnamed {
     args
   } else {
@@ -335,22 +366,24 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
       None => args
       Some { value: sig } => {
         let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
-          if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
+          let n = arg_name(n: arg)
+          if n != none { map_insert(acc, n.value, arg) } else { acc }
         )
         let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-          map_insert(acc, param.name, true)
+          map_insert(acc, param_node_name(n: param), true)
         )
         let ordered = sig.params |> flat_map(param =>
-          match map_get(arg_map, param.name) {
+          match map_get(arg_map, param_node_name(n: param)) {
             Some { value: arg } => [arg]
             None => []
           }
         )
         let leftovers = args |> filter(arg =>
-          if arg.name == none {
+          let n = arg_name(n: arg)
+          if n == none {
             true
           } else {
-            emit_map_has(m: param_name_set, key: arg.name.value) == false
+            emit_map_has(m: param_name_set, key: n.value) == false
           }
         )
         concat(ordered, leftovers)
@@ -791,7 +824,7 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
   }
   // Callable: function type rendering (structural — has params)
   if n.params |> count > 0 {
-    let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
+    let param_types = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
       Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: target, rc_types: rc_types)
@@ -1047,7 +1080,7 @@ fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> B
 }
 
 // Extract operation modifier names from a list of property field inits.
-fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
+fn extract_modifier_names(properties: List<Node>) -> List<String> {
   properties |> flat_map(p =>
     match field_init_operation_modifier(field_init: p) {
       Some { value: modifier } => [operation_modifier_name(modifier: modifier)]
@@ -1171,9 +1204,9 @@ fn classify_func_body(body: Node) -> FuncBodyShape {
 }
 
 type TcoExprShape
-  = TcoCall { func: String, args: List<NamedArg> }
+  = TcoCall { func: String, args: List<Node> }
   | TcoIf { condition: Node, then_branch: Node, else_branch: Node? }
-  | TcoMatch { scrutinee: Node, arms: List<MatchArm> }
+  | TcoMatch { scrutinee: Node, arms: List<Node> }
   | TcoLet { name: String, value: Node, body: Node? }
   | TcoBlock { stmts: List<Node> }
   | TcoOther { expr: Node }
@@ -1181,8 +1214,7 @@ type TcoExprShape
 fn classify_tco_expr(texpr: Node) -> TcoExprShape {
   match texpr.expr_data {
     ExprCall { func: f, call_semantics: _ } =>
-      let a = texpr.children |> map(a => NamedArg { name: arg_name(n: a), value: arg_value(n: a) })
-      TcoCall { func: f, args: a }
+      TcoCall { func: f, args: texpr.children }
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
@@ -1190,7 +1222,7 @@ fn classify_tco_expr(texpr: Node) -> TcoExprShape {
       TcoIf { condition: c, then_branch: t, else_branch: e }
     ExprMatch =>
       let scrut = match_scrutinee(texpr: texpr)
-      let arm_list = match_arm_nodes(texpr: texpr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let arm_list = match_arm_nodes(texpr: texpr)
       TcoMatch { scrutinee: scrut, arms: arm_list }
     ExprLet { name: n } =>
       let v = let_value(texpr: texpr)
@@ -1282,8 +1314,7 @@ fn emit_shared_tco_expr(
   match frame.expr.expr_data {
     ExprCall { func: f, call_semantics: _ } =>
       if f == fn_name {
-        let a = frame.expr.children |> map(a => NamedArg { name: arg_name(n: a), value: arg_value(n: a) })
-        emit_self_call_reassign(TcoReassignInput { args: a, scope: frame.scope, depth: frame.depth })
+        emit_self_call_reassign(TcoReassignInput { args: frame.expr.children, scope: frame.scope, depth: frame.depth })
       } else {
         emit_non_self_call(frame)
       }
@@ -1360,19 +1391,20 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
 
 fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
   match target {
+    Rust => concat("let ", emit_ident(name: name, target: Rust), " = ", value, ";")
+    Go => concat(emit_ident(name: name, target: Go), " := ", value)
+    Python => concat(emit_ident(name: name, target: Python), " = ", value)
     Dag => concat("let ", name, " = ", value)
-    _ =>
-      let spec = language_spec(target: target)
-      let ident = emit_ident(name: name, target: target)
-      spec.statements.let_binding_inferred
-        |> split(delimiter: "{name}") |> join(separator: ident)
-        |> split(delimiter: "{value}") |> join(separator: value)
   }
 }
 
 fn emit_return(value: String, target: RenderTarget) -> String {
-  // All targets use the same return syntax (terminators added by callers).
-  concat("return ", value)
+  match target {
+    Rust => concat("return ", value)
+    Go => concat("return ", value)
+    Python => concat("return ", value)
+    Dag => concat("return ", value)
+  }
 }
 
 // =========================================================================
@@ -1416,38 +1448,30 @@ fn emit_lambda_params(param_names: List<String>, target: RenderTarget) -> String
 }
 
 fn emit_list_lit_expr(element_strs: List<String>, target: RenderTarget) -> String {
-  match target {
-    Dag =>
-      if element_strs |> count == 0 { "[]" }
-      else { concat("[", element_strs |> join(separator: ", "), "]") }
-    _ =>
-      let spec = language_spec(target: target)
-      if element_strs |> count == 0 {
-        spec.collection_literals.empty_list
-      } else {
-        let els_str = element_strs |> join(separator: ", ")
-        spec.collection_literals.list_literal
-          |> split(delimiter: "{elements}") |> join(separator: els_str)
-      }
-  }
-}
-
-fn null_coalesce_template(strategy: NullCoalesceStrategy) -> String {
-  match strategy {
-    MethodBased { template: t } => t
-    TernaryBased { template: t } => t
-    IIFEBased { template: t } => t
+  if element_strs |> count == 0 {
+    match target {
+      Rust => "vec![]"
+      Python => "[]"
+      Go => "[]interface{}{}"
+      Dag => "[]"
+    }
+  } else {
+    let els_str = element_strs |> join(separator: ", ")
+    match target {
+      Rust => concat("vec![", els_str, "]")
+      Python => concat("[", els_str, "]")
+      Go => concat("[]interface{}{", els_str, "}")
+      Dag => concat("[", els_str, "]")
+    }
   }
 }
 
 fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> String {
   match target {
+    Rust => concat(l_str, ".unwrap_or_else(|| ", r_str, ")")
+    Python => concat("(", l_str, " if ", l_str, " is not None else ", r_str, ")")
+    Go => concat("func() interface{} { if ", l_str, " != nil { return ", l_str, " }; return ", r_str, " }()")
     Dag => concat(l_str, " ?? ", r_str)
-    _ =>
-      let spec = language_spec(target: target)
-      null_coalesce_template(strategy: spec.null_coalesce)
-        |> split(delimiter: "{lhs}") |> join(separator: l_str)
-        |> split(delimiter: "{rhs}") |> join(separator: r_str)
   }
 }
 

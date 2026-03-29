@@ -69,9 +69,9 @@ semantic operation — no divergent code paths for the same concept.
 
 | Layer | What dissolves | Compiler stops knowing | Status |
 |-------|----------------|------------------------|--------|
-| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean | **Active** — CollectionKind dissolved (2026-03-28); kernel type dissolution remaining |
+| **L1: Types** | Name-checking, `node_is_*`, type constructors, `.connective` reads | What `List`, `Map`, `Int`, etc. mean | **Active** — 420 ratchet sites remaining |
 | **L2: Expressions** | `ExprData` semantic knowledge, full ExprData walks | What `if`, `for`, `match`, `let`, etc. mean | **Bridge landed and dissolved** (P5.11 complete) |
-| **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax | **Active** — compositional parser (R3/Stream 0) |
+| **L3: Syntax** | `kind_tag` string dispatch, hardcoded parser branches | How to parse surface syntax | **Active** — compositional parser (R3/Stream 0); item dispatch, operators, literals now spec-driven (PR #226) |
 
 L1 is the urgent layer. Its endgame is: the compiler processes graph
 structure and reads structurally declared properties from `.dag` type
@@ -108,42 +108,6 @@ Phase timeline:
 | Phase 5 | L1=0. Scrambled-name tests pass. | None |
 | Beyond | Bit-graph model. Primitives as compositions. Full structural type algebra. | None |
 
-### CollectionKind dissolution (2026-03-28) — COMPLETE
-
-**What was dissolved:** The `CollectionKind` enum (6 variants: `ListKind`,
-`SetKind`, `NonEmptyListKind`, `NonEmptySetKind`, `MapKind`, `NoCollection`)
-and the `collection_kind` field on `Node`. 184 sites across 17 .dag files
-and 8 stage0 .rs files. Net: -501 lines, +306 lines.
-
-**Design:** No new field on Node (a label/string would violate the
-"compiler is a DAG processor" invariant). Instead:
-
-1. **Resolve time** (names allowed): `container_types` data list in
-   `00_core.dag` controls which parameterized types stay unexpanded.
-2. **After resolution** (structural): containers are uniquely identifiable
-   as nodes with `children > 0 && connective == NoConnective`. Products
-   have Conj, coproducts have Disj, callables use the params field,
-   tuples have Conj.
-3. **Emit time** (names allowed): `to_snake(n.name)` as LanguageSpec
-   template key. Each language template map has explicit entries for
-   all container variants.
-
-**Structural predicates** (pass scrambled-name test):
-- `node_is_collection(n)` — children > 0, no connective
-- `node_is_keyed_collection(n)` — above AND 2 children (Map)
-- `node_is_element_collection(n)` — above AND 1 child (List/Set/NonEmpty*)
-
-**Stepping stone:** `container_types` data list is name-based at resolve
-time. Dissolves further when algebraic inhabitation (FreeMonoid,
-BooleanAlgebra, PartialFunction from `std/algebra.dag`) replaces it.
-
-**Remaining L1 cleanup:**
-- `generated_tests.rs` still embeds old .dag source with `CollectionKind` —
-  regenerated on next self-compile pass
-- Kernel type dissolution (`is_kernel_type`, `is_int_type_node`, etc.) —
-  requires algebraic ontology from `std/algebra.dag`
-- `container_types` data list → derives from algebraic inhabitation (future)
-
 ### Compositional Basis
 
 **1. Compiler-model primitives (what the compiler operates on):**
@@ -153,7 +117,7 @@ BooleanAlgebra, PartialFunction from `std/algebra.dag`) replaces it.
 - Cardinality on bindings (Required, CardOptional)
 - Generic slot composition (`<T>`)
 - Recursion / self-reference (SCC-detected cycle metadata)
-- Collection identity — structural (no enum, no field on Node; `container_types` data list + shape after resolution)
+- Collection constructors (List, Set, Map — type-level, not name-level)
 
 **2. Value/type-algebra primitives (what the kernel knows):**
 
@@ -172,7 +136,7 @@ declarations; Phase 5+: `is_kernel_type` dissolves).
 | Cardinality | Presence/absence on bindings | `return_cardinality: CardOptional` |
 | Parameterization | Generic types (`List<T>`) | Slot substitution before inference |
 | Recursion | Self-referential types | SCC cycle metadata on Node |
-| Collection | Indexed structures | Structural shape after resolution (children + no connective); `container_types` data list |
+| Collection | Indexed structures | `List<A>`, `Set<A>`, `Map<K,V>` type constructors |
 
 **4. What is derived (named namespaces over the above):**
 
@@ -219,8 +183,9 @@ Layer 2: Named compositions
 Layer 3: Collection algebras
   List<A>, Set<A>, Map<K,V>                      (std/types.dag)
 
-Layer 4: Structural compositions                 *** MISSING FROM STD ***
-  Span<I>, Tree<A>, DAG<Id,A>, Annotated<A,F>, LabeledTree<A>
+Layer 4: Structural compositions + bounded iteration
+  descend, repeat, repeat_until                  (std/iteration.dag)
+  Span<I>, Tree<A>, DAG<Id,A>, Annotated<A,F>   (structural types TBD)
 
 Layer 5: Parser/source domain
   Token<Shape>
@@ -395,26 +360,89 @@ compiler — not in the user's program.
   decidable. Spec-driven structural recognition over finite token
   streams, not unbounded backtracking.
 
-### Concrete next steps
+### Implementation: bounded primitives approach
 
-1. Audit language iteration primitives — ensure no primitive permits
-   unbounded computation. If one exists, redesign it with an explicit
-   bound parameter.
-2. Wire `RecursionPattern` into `cost_of_expr` — classify every
-   recursive call as `LinearRecursion` or `DivideAndConquer`. Any
-   `UnresolvableRecursion` is a compiler gap to fix.
-3. Ensure `cost_of_expr` (tree walk, bound = |nodes|) and
-   `tokenize_loop` (scanner, bound = |source|) express their descent
-   measures so the analyzer resolves them.
-4. Fix `trace_pop_frame` O(|stack|^2) — `take(count - 1)` copies the
-   list; needs O(1) pop.
+The decidability guarantee emerges from the language's modeling
+primitives, not from a per-function checker. Three primitives in
+`std/iteration.dag`:
+
+| Primitive | Bound | Declared in |
+|---|---|---|
+| `fold` | \|collection\| | Methods on List, Set, Map (Layer 3) |
+| `descend` | \|tree\| | `std/iteration.dag` (Layer 4) |
+| `repeat(N)` | N (explicit) | `std/iteration.dag` (Layer 4) |
+
+These are the ONLY iteration primitives. No `while`, no `loop`, no
+general recursion. Recursive syntax desugars to these or is rejected.
+
+**Step 1: Structural descent detection. ✓ DONE (2026-03-29, PR #236)**
+
+`is_structural_descent()` recognizes catamorphism pattern: match/if
+over input where all self-calls are inside arms. `max_path_self_calls()`
+counts per-execution-path (max across branches, not sum). Tree-walk
+functions correctly classified as LinearRecursion O(n). Self-compile:
+149 functions, 0 violations.
+
+**Step 2: Fail-closed compilation. DESIGNED, not yet implemented.**
+
+When the descent analysis cannot lower a recursive function to a
+bounded primitive, compilation should fail with a hard error. Currently
+produces `DivideAndConquer` classification (soft). The hard error
+needs to be wired into the inference/normalize stage as a diagnostic.
+
+**Step 3: Complexity analyzer uses descent proofs. ✓ DONE (2026-03-29)**
+
+`classify_recursion_pattern` uses `is_structural_descent` + `max_path_
+self_calls` to produce LinearRecursion for tree walkers. The analyzer
+derives O(n × per\_node) cost from the classification. All 9 former
+DivideAndConquer violations resolved.
+
+**Step 4: Cost algebra upstream of language primitives. ✓ DONE (2026-03-29)**
+
+`CostLog { base: Int, argument: SizeExpr }` added to `CostExpr`.
+`sort_by` now produces O(n × log(n) × key\_cost) with Proven certainty.
+The algebra-upstream-of-primitives principle is documented in
+INVARIANTS.md: a primitive cannot exist until its cost class is
+expressible.
+
+| Primitive | Cost class | Algebra | Status |
+|---|---|---|---|
+| `fold` | O(n × body) | `CostSum` | ✓ |
+| `descend` | O(\|tree\| × body) | `CostSum` | ✓ |
+| `repeat(N)` | O(N × body) | `CostSum` | ✓ |
+| `sort_by` | O(n log n × key) | `CostLog` | ✓ |
+| Future: binary search | O(log n) | `CostLog` | Ready |
+
+**Step 5: `trace_pop_frame` O(n) → O(1). ✓ DONE (2026-03-29)**
+
+`std/stack.dag` defines `Stack<T>` — a recursive coproduct (cons list)
+with O(1) push/pop. `trace.dag` updated to use `Stack<TraceFrame>`
+instead of `List<TraceFrame>`. Stage0 Rust has `TraceStack` enum with
+`push`/`pop` methods. The old `take(count - 1)` O(n) copy is gone.
+
+Stack is a Layer 4 structural composition — complements List (Layer 3)
+for LIFO access patterns. Finite by construction (inductive), bounded
+iteration via `fold_stack`. Cost model: push O(1), pop O(1), peek O(1),
+size O(n), to\_list O(n).
+
+`trace_pop_frame` uses `take(count - 1)` which copies the list — O(n)
+per pop. Replace with a proper `Stack` type in `std/` (cons list) that
+has O(1) push/pop. The Stack is itself a bounded structure — it grows
+by `push` (adds 1) and shrinks by `pop` (removes 1). Its maximum depth
+is bounded by the program's call depth, which is bounded by `descend`'s
+tree depth.
 
 ### Enforcement (see Guarantee Map)
 
 This is a **Tier 1 (structural)** guarantee, not Tier 2 (tested).
-The language makes undecidability unrepresentable. The complexity
-ratchet test exists to verify the analyzer sees the bounds correctly
-— it's a test of the *analyzer*, not a gate on *programs*.
+The language makes undecidability unrepresentable because its iteration
+primitives are bounded by construction. The complexity analyzer
+*confirms* what the language already guarantees — it does not enforce
+it. If the analyzer produces `?O(?)`, the bug is in the analyzer.
+
+The fail-closed compilation step is a Tier 2 safety net during the
+transition. Once the structural prevention is complete, the hard error
+is unreachable and the fail-closed check becomes dead code.
 
 ### Non-goal
 
@@ -423,6 +451,189 @@ it. Recursive types, recursive functions, and long-running processes
 are all supported. The language requires the bound to be explicit or
 structurally derivable. "Run for 30 trillion years" is fine.
 "Run forever" is not expressible.
+
+### What "infinite" means in .dag
+
+Most developers don't care about the difference between "infinite" and
+"runs until the heat death of the universe." `.dag` hides this
+complexity: `repeat(bound: max_int, ...)` runs for 2^63 - 1 iterations.
+At 1 iteration per nanosecond, that's 292 years. At 1 per millisecond,
+292 million years. The developer writes practical code. The compiler
+gets total analysis. The bound exists even if no one ever reaches it.
+
+---
+
+## Design Direction: Unified Sequence with Representation Inference
+
+**Status: EXPLORATORY.** This direction is promising but not committed.
+The algebraic foundation is sound; the practical implications (naming,
+migration, mixed-access semantics) need more design work.
+
+**Problem:** Ordered collections (List, Stack, Queue, Deque) are modeled
+as separate types, but they share the same structural fact: a finite
+ordered sequence of elements (FreeMonoid). The difference is the access
+pattern — where you add and remove. Separate types force the developer
+to choose a representation up front, which is a rendering decision, not
+a modeling decision.
+
+**Principle:** The ordered sequence is a single type. The access pattern
+determines the representation. The developer writes operations; the
+compiler selects the backing structure.
+
+### Governing principle: algebra determines the structural boundary
+
+Types that share algebraic laws can be unified as access patterns over
+the same structure. Types with different laws are different structures.
+Conversion between algebras is explicit and may lose information.
+
+This gives exactly four structural collection types, one per algebra:
+
+```
+Seq<T>        FreeMonoid      ordered, duplicates       List/Stack/Queue/Deque
+Set<T>        BooleanAlgebra  unordered, no duplicates  Set
+Bag<T>        CommutativeMonoid  unordered, with dupes   Multiset
+Map<K,V>      PartialFunction keyed, keys unique        Map/Dict
+```
+
+**Within an algebra** (e.g., FreeMonoid): different access patterns
+are different views of the same structure. `push`/`pop` (LIFO) and
+`append`/`get` (indexed) are both FreeMonoid operations — they share
+the same laws (associative concat, identity). The representation
+differs (cons list vs array), but the structure is the same.
+
+**Across algebras** (e.g., FreeMonoid → BooleanAlgebra): conversion
+loses information. `list_to_set` drops order and deduplicates.
+`set_to_list` invents an arbitrary order. These are not access
+patterns — they're structural transformations. The developer writes
+them explicitly.
+
+| Boundary | Direction | What happens | Information lost |
+|---|---|---|---|
+| Seq → Set | `to_set(seq)` | Dedup + drop order | Position, multiplicity |
+| Set → Seq | `to_list(set)` | Pick arbitrary order | None added, order arbitrary |
+| Seq → Map | Not direct | Need key extraction | Position (keyed instead) |
+| Seq → Bag | `to_bag(seq)` | Drop order | Position |
+
+**Why this matters for .dag:** The language's collection types should
+follow from the algebra declarations in `std/algebra.dag`. Each
+algebra (FreeMonoid, BooleanAlgebra, CommutativeMonoid, PartialFunction)
+defines one collection type. Operations belong to exactly one algebra.
+The compiler reads the algebra, not the type name.
+
+**Open questions:**
+- Does `Bag<T>` earn its place as a first-class type, or is it a
+  niche structure that users can define themselves?
+- Should `Seq<T>` be the user-facing name, or keep `List<T>` as the
+  familiar name with `push`/`append` determining representation?
+- How do iteration primitives (`fold`, `map`, `filter`) work across
+  algebras? `fold` on Set has no defined order — is that acceptable?
+- What does the cost algebra need to express? O(1) amortized for
+  two-stack queue is harder to model than O(1) worst-case for cons.
+
+```
+Seq<T>  —  the universal ordered sequence (finite, FreeMonoid)
+
+// Access disciplines (all operate on Seq<T>):
+push(s, x)      // Stack: add at head     → compiler selects cons-list
+pop(s)          // Stack: remove head     → compiler selects cons-list
+enqueue(s, x)   // Queue: add at tail     → compiler selects ring buffer
+dequeue(s)      // Queue: remove head     → compiler selects ring buffer
+get(s, i)       // List:  indexed access  → compiler selects array
+append(s, x)    // List:  add at tail     → compiler selects array
+```
+
+### How representation falls out of the operations
+
+There is no inference pass, no solver, no heuristic. The operations
+themselves ARE the representation. Each operation belongs to exactly
+one access discipline, and each discipline has exactly one
+representation. The mapping is a static table, not a computation:
+
+| Operation | Discipline | Representation | Cost |
+|---|---|---|---|
+| `push`, `pop`, `peek` | LIFO | Cons list | O(1) |
+| `append`, `get` | Indexed | Array (Vec) | O(1) |
+| `enqueue`, `dequeue` | FIFO | Two-stack queue | O(1) amortized |
+
+The compiler does not "analyze" or "choose." It reads the operation
+and looks up the representation. This is the same as how `Conj` means
+product and `Disj` means coproduct — no analysis, just a definition.
+
+**Mixed access is a type error, not an optimization problem.** If a
+binding uses `push` (LIFO) and `get(i)` (indexed) on the same value,
+that's two incompatible disciplines. The fix is not a hybrid structure
+— it's an explicit conversion at the boundary:
+
+```dag
+let stack = push(push(Empty, 1), 2)  // cons list
+let list = to_list(stack)             // O(n) conversion, once
+let x = get(list, 0)                 // array access
+```
+
+The conversion is explicit in the source, visible to the cost algebra,
+and O(n) exactly once. No hidden costs. No compiler magic. The
+developer writes the conversion; the compiler renders it.
+
+This is the same principle as the decidability design: correctness
+falls out of the structure, not from validation. A `push` on an
+array-backed value is not "detected and warned about" — it doesn't
+exist as a concept. `push` means cons list. If you want array
+semantics, use `append`.
+
+### Relationship to existing work
+
+- **`std/algebra.dag`:** List is FreeMonoid. Stack is FreeMonoid.
+  Queue is FreeMonoid. They're the same algebra — different access
+  disciplines over the same structure.
+- **Fan-out analysis:** Same pattern — read syntactic usage, infer
+  rendering decision. Fan-out = clone/move. Access pattern = array/
+  cons-list/ring-buffer.
+- **Cost algebra:** Representation inference is the mechanism that
+  makes the cost algebra's promises real. O(1) push is guaranteed
+  because the compiler selected cons-list for LIFO access.
+- **Decidability:** All representations are finite (inductive). All
+  iteration primitives (`fold`, `fold_stack`) are bounded. The
+  representation is a rendering concern, not a decidability concern.
+
+### Naming consistency
+
+The current naming is incoherent under this model:
+
+| Current | Problem | Target name |
+|---|---|---|
+| `list_push(list, x)` | "push" implies head-add (LIFO), but semantics are tail-add (array append) | `append(seq, x)` |
+| `stack_push(s, x)` | Prefixed with `stack_` — the operation name should determine representation, not a prefix | `push(seq, x)` |
+| `stack_pop(s)` | Same prefix issue | `pop(seq)` |
+| `append` (method) | Already correct — duplicates `list_push` | `append(seq, x)` (keep) |
+
+**The rule:** operation names are unprefixed and unambiguous. `push`
+means head-add (cons). `append` means tail-add (array). `enqueue`
+means tail-add (queue). No `list_` or `stack_` prefixes — the
+operation IS the type declaration.
+
+Current: 91 uses of `list_push` across 18 .dag files. Rename is
+mechanical but should be atomic with stage0 regeneration to avoid
+merge conflicts with other branches.
+
+### Current state
+
+`List<T>` (array-backed) and `Stack<T>` (cons-list) exist as separate
+types in `std/`. This is the stepping stone toward `Seq<T>`. The
+naming inconsistency (`list_push` vs `append`, `stack_push` vs `push`)
+should be resolved before `Seq<T>` lands — the operation names must be
+canonical before they become representation selectors.
+
+### Implementation path
+
+1. Define `Seq<T>` as the unified ordered sequence type in `std/`.
+2. Define access operations (push, pop, enqueue, dequeue, get, append)
+   as functions on `Seq<T>` with declared cost classes.
+3. Add access-pattern analysis to the compiler (same pass as fan-out).
+4. Map access patterns to representations in `LanguageSpec` (per target
+   language — Rust: Vec/cons/VecDeque; Python: list/deque; Go: slice).
+5. Emit the correct representation per binding per target.
+6. `List<T>` and `Stack<T>` become type aliases for `Seq<T>` with
+   fixed access discipline.
 
 ---
 
@@ -484,7 +695,7 @@ coverage without enforcement.
 | All functions have proven space bounds | `output_size` field exists in `ComplexitySummary` but only populated for collection-producing ops; most branches return `empty_map()` | Replace `output_size` map with `space: CostExpr` peer to `work`/`span`; populate at every branch using space composition algebra (same walk, different combinators) |
 | L1 type knowledge = 0 | `scripts/l1-ratchet.sh` counts violations | Script not in CI; no test wraps it |
 | Ownership proof coverage | `ownership.dag` runs, produces ownership annotations | No ratchet on uncovered functions |
-| Emitted Rust compiles | Stage0 → `cargo check` | 589 errors; ratchet exists (Lane A) but count still high |
+| Emitted Rust compiles | Stage0 → `cargo check` | ~280 errors; no ratchet tracking reduction |
 
 **These are the immediate action items.** Each one has working
 machinery — the gap is wiring it into a test that fails on regression.
@@ -545,647 +756,98 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ---
 
-## Design Direction: Boundary Sufficiency
+## Current State (2026-03-29)
 
-**Problem:** The compiler has ~362 sites where stages branch on
-type/method names instead of reading structural facts from data. These
-cluster around 4 missing wiring points — places where data exists but the
-stage bypasses it. When a boundary doesn't carry a fact the downstream
-stage needs, the stage uses the name as a proxy.
+### What landed this session (PR #236)
 
-**Principle:** A stage boundary is *sufficient* when the data it carries
-contains all the structural facts the downstream stage needs, making
-name-based proxy reads unnecessary. Sufficiency is additive (enrich
-boundaries), not subtractive (restrict access). No policy, no opacity —
-just completeness.
+**Structural decidability (design + implementation):**
+- `std/iteration.dag`: bounded primitives (`descend`, `repeat`, `repeat_until`)
+- INVARIANTS.md: structural proof from primitives, cost algebra upstream of language
+- Complexity analyzer: `max_path_self_calls` (path-aware), `is_structural_descent`
+  (catamorphism detection), `CostLog` variant. **Self-compile: 149 functions, 0
+  violations.** sort_by: Proven (was Conservative).
+- Builtin function dissolution: `infer_builtin_call_type` 26-branch if/else →
+  `builtin_function_registry()` cached HashMap. All 3 method/builtin indexes
+  cached via `thread_local`.
+- 13 new hermetic complexity tests covering O(1) through O(n²) + self-analysis.
 
-**The test:** scramble all user-defined names flowing across a boundary.
-If every downstream decision remains identical, the boundary is
-sufficient. The existing 6 scrambled-name inference tests already prove
-this for resolve→infer. Extending these to emit proves it end-to-end.
+**D1 dissolution (merged from warm-lynx-757):**
+- FieldInit, ResourceUse, Param, Field, Variant dissolved into Node.
+- 119 stage0 compile errors fixed manually (D1 type changes in 9 .rs files).
+- Typed diagnostics: `CompilerDiagnostic` enum, `ErrorDAG`, file:line:col.
 
-**Why not ratchets:** A ratchet counts proxy sites. Fix one missing fact,
-and hundreds of sites disappear — but the ratchet tracks them one by one.
-Sufficiency testing proves the property directly. It's self-maintaining:
-new features get covered when they appear in test programs.
+**Stage0 regeneration: BLOCKED on FF-8 (container sharing).** Self-compile
+runs but takes 20+ min / 3.8GB+ due to O(n) bare container clones. FF-8
+fix (Rc-wrap container templates) unblocks regen. Being worked on a
+separate branch.
 
-**Critical discovery:** The data already exists on both sides.
-`LanguageSpec` in `dsl/std/languages.dag` is fully populated (20+
-sub-types, all populated for Rust/Go/Python). `enrich_kernel_type`
-already produces correct Conj products. `std/algebra.dag` documents the
-hierarchy. The emitter and inference stages *bypass* this data.
+### Remaining gaps (what we didn't finish)
 
-### Gap Inventory
+| Item | Status | Blocker |
+|------|--------|---------|
+| **Fail-closed compilation** for non-descending recursion | DESIGNED, not implemented | Needs compile-time descent checker in normalize/infer stage |
+| **Stage0 regeneration** | BLOCKED | FF-8 container sharing must land first |
+| **`trace_pop_frame` O(n) → O(1)** | ✓ DONE | `std/stack.dag` Stack type, O(1) push/pop |
+| **`Conservative` certainty elimination** | PARTIAL | LinearRecursion still uses synthetic iteration vars (`n_func`), not concrete collection sizes |
+| **`.dag`-side caching** of builtin/method registries | DOCUMENTED | Stage0 has `thread_local`; .dag source rebuilds per call until regen |
 
-| # | Gap | Sites | Data exists at | Stage bypasses with |
-|---|-----|-------|----------------|---------------------|
-| 1 | Emitter bypasses LanguageSpec | ~57 | `dsl/std/languages.dag` (StatementSyntax, CollectionOps, etc.) | `match target { Rust => "let " ... }` |
-| 2 | enrich_kernel_type branches on names | ~120 | `std/algebra.dag` + already-correct Conj products | `if name == "Int" { ... }` |
-| 3 | Builtin call sigs are code | ~30 | Should be `.dag` extern fn declarations | `if name == "string_length" { ... }` |
-| 4 | Method-name dispatch in inference | ~56 | `intrinsic_method_index()` already maps to enum | `if method_name == "fold" { ... }` |
+### Priorities
 
-### Execution Phases
+**TOP PRIORITY: Structural decidability.** Design landed. Bounded
+primitives (`fold`, `descend`, `repeat`) declared in `std/iteration.dag`.
+Cost algebra is upstream of language primitives. Complexity analyzer has
+0 violations. **Remaining:** fail-closed compilation (reject non-descending
+recursion at compile time, not just classify it in the analyzer).
 
-**BS-1 (emit wiring):** Replace ~57 `match target` branches with
-LanguageSpec field lookups. The spec is already threaded through emit.
-Each `Rust => "let "` becomes `spec.statements.let_binding`. Mechanical.
+**PRIORITY 2: Compiler thesis inversion (~362 hardcoded name-based
+branches).** `infer_builtin_call_type` dissolved (26 branches → data table).
+Remaining: ~336 sites across type dispatch, method dispatch, emit hardcoding.
+Fix direction: Boundary Sufficiency (BS-1 through BS-4).
 
-**BS-2 (algebra data table):** Replace 7-branch `if name ==` chain in
-`enrich_kernel_type` with a data map lookup. Define `data kernel_algebra`
-mapping type names to field lists. One lookup replaces 7 branches.
+**PRIORITY 3: Test generation (Theme C).** `generated_tests.rs` is a
+static snapshot, not generated tests. Go/Python emit stub assertions.
+Fix direction: golden-output tests, cross-language parity.
 
-**BS-3 (emit sufficiency proofs):** Extend scrambled-name tests to emit.
-Compile with normal names and scrambled names, normalize emitted code,
-assert structural identity. Proves emit decisions are name-independent.
+### What's already done (not changed this session)
 
-**BS-4 (method enum dispatch):** Convert `if method_name == "fold"`
-string dispatch to `match intrinsic { Fold => ... }` enum dispatch.
-Same pattern complexity.dag already uses. Closed-set exhaustive matching
-replaces open-set string matching.
+- **Phases 1-4 complete.** Phase 5 active.
+- **Stream 0 (compositional parser):** LANDED (PR #226). `parse_item`
+  has 0 keyword match arms.
+- **Diagnostic quality:** LANDED. Typed `CompilerDiagnostic`, ErrorDAG,
+  file:line:col rendering.
+- **L2 bridge dissolved** (P5.11). ExprData children in `node.children`.
+- **D1 dissolution:** LANDED (this session). FieldInit/ResourceUse/Param/
+  Field/Variant → Node.
+- **Bootstrap:** v1 retired (PR #200). v2 self-hosts. 0 diagnostics.
 
-```
-BS-1 (emit wiring)  ───→ BS-3 (emit sufficiency tests)
-                              ↑
-BS-2 (algebra data) ───→ BS-4 (method enum dispatch)
-```
+### Verification ratchets
 
-BS-1 and BS-2 are independent. BS-3 depends on BS-1. BS-4 depends on
-BS-2's pattern.
+| Ratchet | Value | Notes |
+|---------|-------|-------|
+| Diagnostic | 0 | Passes |
+| L1 type knowledge | 66 | Up from 51 (D1 merge added CollectionKind imports) |
+| Keyword arm count | 9 | Exact match |
+| Complexity violations | 0 | Was 2; structural descent + CostLog resolved all |
+| Emitted Rust errors | 872 | Blocked on stage0 regen (FF-8) |
 
-### Progress (2026-03-28)
+### Known invariant violations
 
-BS-1 through BS-4 landed. 38 proxy-read sites converted to structural
-dispatch. 3 scrambled-name emit tests added (all pass). 156 tests, 0
-failures.
-
-### Remaining proxy-read sites (exhaustive inventory)
-
-Every remaining site where the compiler branches on a name. Organized
-by the structural fact being proxied.
-
-**Category A: Kernel type identity (12 sites, data-driven)**
-
-These use `is_kernel_type()` and `is_container_type()` which read from
-data constants (`kernel_types`, `container_types`). Already data-driven
-— the list is declared, not coded as branches. Dissolves when kernel
-types are loaded from `.dag` declarations via import resolution (FF-9).
-
-| File | Site | What it checks |
-|------|------|----------------|
-| `04_types.dag:363,599` | `rt.name != "None" && !is_kernel_type(rt.name)` | User-defined vs kernel in type shape |
-| `04_types.dag:623-626` | `is_kernel_type(n.name)` | Wrapping decision in node_type_shape |
-| `04_infer.dag:2526` | `is_kernel_type(dep) \|\| dep == "None"` | Cycle detection filtering |
-| `04_resolve.dag:150` | `is_container_type(n.name)` | Prevent container expansion |
-| `04_resolve.dag:450` | `is_kernel_type(n.name)` | Alias transparency |
-| `02_parse.dag:2536` | `is_container_type(n.name) && n.name == "Map"` | Map vs other containers |
-| `02_parse.dag:2542` | `n.name == "Refined"` | Refinement type detection |
-| `02_parse.dag:2548` | `n.name == ""` | Tuple (anonymous) detection |
-| `04_types.dag:341` | `n.name == "Refined"` | Unwrap refined types |
-
-**Category B: Builtin function dispatch (26 branches, 1 function)**
-
-`infer_builtin_call_type` in `04_method.dag:71-93` maps free-standing
-builtin function names to return types. These are runtime bridge
-functions (`string_length`, `code_point`, `char_at`, `scan_while`,
-`lookup`, `map_get`, etc.) whose signatures are not declared in `.dag`.
-
-Fix direction: **compositional .dag modeling**, not a new enum. These
-are functions — they should have `.dag` declarations with typed
-parameters and return types, loaded into the function environment during
-`build_type_env`. Once declared, they resolve through the same
-structural lookup path as user-defined functions.
-`infer_builtin_call_type` dissolves entirely.
-
-**Category C: Method index maps (2 maps, ~47 entries)**
-
-`intrinsic_method_index()` (19 entries) and
-`runtime_bridge_method_index()` (28 entries) in `04_method.dag` map
-method name strings to `IntrinsicMethod`/`RuntimeBridgeMethod` enums.
-
-These are inherently name→enum bridges — the compiler needs to
-recognize "fold" to know it has special typing. The maps are the right
-intermediate step. Long-term: method behavior declared in `.dag` type
-algebra definitions, making the enums unnecessary. Short-term: the maps
-centralize the knowledge and the enum gives exhaustiveness checking.
-
-**Category D: Optional/sum variant names (14 sites)**
-
-`"Some"`, `"None"`, `"value"` appear in inference, lookup, patterns,
-and emit. These are the absence/presence variants of the optional type.
-
-| File | Sites | What it checks |
-|------|-------|----------------|
-| `04_infer.dag:508` | `variant_name == "Some" \|\| "None"` | Optional cardinality |
-| `04_patterns.dag:146` | `variant_name == "None"` | Exhaustiveness for None |
-| `04_lookup.dag:93,203` | `field_name == "value"` | Optional inner value access |
-| `04_infer.dag:1832` | `fir.typed_field.name == "value"` | Record literal value field |
-| `05_emit_rust.dag:1176,1190,1271,1344,1394,2612,2629,2806` | `name == "Some" \|\| "None"` | Rust Option variant rendering |
-| `04_types.dag:363,599` | `rt.name != "None"` | Filter None from type shape |
-
-Fix direction: Optional is a structural concept (cardinality on
-bindings), not a named type. The remaining `Some`/`None` references are
-in emit (rendering Rust's `Option` type). These dissolve when Optional
-rendering moves to a LanguageSpec declaration (`absence_variant`,
-`presence_variant` fields) — already identified in INVARIANTS.md.
-
-**Category E: Tuple field names (2 sites)**
-
-`"first"`, `"second"` in `04_emit_info.dag:116,125` detect 2-tuples.
-These are named product fields — structural (Conj + 2 children + named
-"first"/"second"). Dissolves when tuples are positional rather than
-named, or when emit reads tuple structure from the node shape rather
-than checking field names.
-
-**Category F: Transport kind dispatch (7 sites)**
-
-`transport_kind()` in `00_core.dag:788-791` converts transport node
-names to `TransportKind` enum via `if t.name == "local"` etc. Used in
-resolve and all 3 emitters.
-
-Already partially structural (the enum exists). Remaining name
-comparison is the parse→enum bridge. Dissolves when transport kind is
-set structurally at parse time rather than inferred from the node name.
-
-**Category G: Configuration property keys (2 sites)**
-
-`config_property_key()` and `config_property_name()` in `00_core.dag`
-convert between string property names and `ConfigPropertyKey` enum.
-Small, stable, closed set. Low priority.
-
-**Category H: Diagnostic/AST marker properties (8 sites)**
-
-`p.name == "severity"`, `p.name == "__is_module"`, etc. in
-`00_core.dag`. These are structural markers on AST nodes — properties
-that classify node purpose. They're the `.dag` equivalent of AST node
-kinds. Dissolves when node classification uses ExprData or a structural
-field rather than property name strings.
-
-**Category I: Target language dispatch (12 sites)**
-
-`match target { Rust => ... Go => ... Python => ... }` in
-`languages.dag` and emit files. These dispatch on the `RenderTarget`
-enum (closed set, exhaustive). This is structural — the enum is the
-right representation. The issue is when the branch body hardcodes
-syntax strings instead of reading from spec. BS-1 addressed the shared
-emit cases; per-backend files still have rendering logic that's
-inherently target-specific.
-
-**Category J: Builtin value names in emit (3 sites)**
-
-`func == "empty_map"`, `func == "lookup"` in `05_emit_rust.dag`.
-Runtime bridge function names used for Rust-specific rendering. Same
-fix direction as Category B — declare as `.dag` functions, resolve
-structurally.
-
-### Scrambled-name test expansion ideas
-
-The current emit tests use simple struct programs. More complex programs
-would stress-test further and catch subtler name dependencies:
-
-1. **Enums with data variants.** `type Color = Red { r: Int } | Green`
-   scrambled to `type Shade = Alpha { r: Int } | Beta`. Tests enum
-   rendering, variant qualification, match arm construction.
-
-2. **Generic types.** `type Box<T> { value: T }` with `Box<Foo>` usage.
-   Tests generic parameter rendering, type substitution in emit.
-
-3. **Container types with user types.** `List<Foo>`, `Map<String, Bar>`.
-   Tests container template application with user type arguments.
-
-4. **Method calls on user types.** Functions that call methods on
-   struct fields. Tests method dispatch rendering is name-independent.
-
-5. **Nested types.** `type Outer { inner: Inner }` with field access
-   `o.inner.x`. Tests chained field access rendering.
-
-6. **Optional fields.** `type Config { name: String? }` with match on
-   presence/absence. Tests Optional rendering path.
-
-7. **Services (if supported in test harness).** Service definitions
-   with operations. Tests service rendering path.
-
-Each test follows the same pattern: compile A and B with scrambled
-user-defined names, normalize, assert structural identity. Adding
-these incrementally as emit correctness improves.
-
-### Relationship to existing streams
-
-- **Theme A** (~177 sites): BS-2 + BS-4 (done)
-- **Theme B** (~57 sites): BS-1 (done)
-- **Stream 1 (L1 dissolution)**: BS-2 directly reduces L1 ratchet
-- **Guarantee Map**: BS-3 promotes emit sufficiency from Tier 3 → Tier 2
-- **Category B** (builtins): compositional .dag modeling, not new enums
+- **FF-8: Container sharing.** Bare `Vec`/`HashMap` clones are O(n).
+  Fix: Rc-wrap container templates. Root-caused 2026-03-27. Blocks regen.
+- **Option rendering.** Absence-variant rendering is emitter heuristic,
+  not LanguageSpec declaration.
+- **General recursion accepted.** `fn spin(n: n)` compiles. Fail-closed
+  compilation not yet implemented.
 
 ---
 
-## Design Direction: Emission Correctness by Construction (LintModel)
-
-**Problem:** The emission pipeline produces code by string concatenation.
-Whether the output is valid (compiles, passes linting) is discovered
-only by running external tools after the fact. 589 Rust errors and
-parallel Python issues result from the emitter "forgetting" imports,
-type params, async annotations, and primitive lowerings. Fixing these
-one-by-one is patching; the structural fix is making incorrect emission
-unrepresentable.
-
-**Principle:** Model what `cargo check`, `clippy`, `pylint`, `go vet`
-etc. enforce as **data per language**. The emitter reads the model.
-Correct output is structural, not verified.
-
-```
-Current:  emit (string concat) → hope → cargo check (external oracle)
-Target:   emit (reads LintModel) → correct by construction → cargo check (redundant)
-```
-
-### The three-spec model
-
-```
-LanguageSpec — how to RENDER target syntax (keywords, templates, conventions)
-SyntaxSpec   — how to PARSE source syntax (item forms, operators, literals)
-LintModel    — what makes rendered code VALID (imports, types, expressions, naming)
-```
-
-`LanguageSpec` and `SyntaxSpec` already exist. `LintModel` completes the
-triangle. Together they model the full language as data, enabling
-parse-emit symmetry with correctness guarantees.
-
-### What the LintModel carries
-
-| Rule category | What it models | External tool equivalent |
-|---|---|---|
-| Import derivation | "using type X in module M → import Y" | `cargo check` E0433, `pylint` import-error |
-| Type well-formedness | "generic type must declare params; primitives must lower" | `cargo check` E0412/E0425 |
-| Expression well-formedness | "await requires async fn; statements need terminators" | `cargo check` E0728, `pylint` syntax-error |
-| Naming conventions | "types PascalCase, functions snake_case" | `clippy` naming warnings, `pylint` naming |
-| Formatting | "indentation width, brace style, import grouping" | `rustfmt`, `black`, `gofmt` |
-
-### How it clears 589 errors by construction
-
-| Error category | LintModel rule | Construction guarantee |
-|---|---|---|
-| Deserialize import (316) | `TraitImpl("Deserialize")` → `use serde::Deserialize;` | Can't render trait impl without import |
-| Generic params (122) | Generic type declaration must carry param list from DAG | Can't render `T` without declaring `<T>` |
-| `Bool`→`bool` (40) | `Primitive("Bool")` → `"bool"` (read from `rust_primitives`) | All primitives lowered via type map |
-| `async fn` (17) | `AwaitInBody` → async function declaration | Can't render await without async |
-| `FreeMonoid`→`Vec` (12) | `AlgebraicType("FreeMonoid")` → `"Vec"` | Algebraic types lowered via type map |
-| `Callable` (9) | `CallableType` → `Rc<dyn Fn(T) -> U>` | Callable rendering is a type rule |
-| Service vars (20) | Service dep → in-scope binding construction | Can't render service call without binding |
-| String escapes (6) | Brace escaping rule per interpolation syntax | Format string rendered per language spec |
-
-### Swappable models
-
-LintModel instances are data, not code. Different instances for different
-strictness levels:
-
-```
-rust_standard_lint    — cargo check + default clippy
-rust_strict_lint      — clippy::pedantic, no unwrap, no expect
-python_standard_lint  — py_compile + pylint defaults
-python_strict_lint    — ruff strict, mypy
-```
-
-The emitter is generic over the model. `--lint strict` vs `--lint standard`
-selects the instance. The language extdep carries multiple model instances;
-the CLI flag picks one.
-
-### Import derivation — highest leverage rule
-
-Import derivation clears 316 of 589 errors (54%) by construction. The
-mechanism:
-
-1. Emitter renders a type reference → records a `TypeUsage` fact
-2. Emitter renders a trait impl → records a `TraitUsage` fact
-3. At module close, the renderer reads the LintModel's import rules
-4. Each `TypeUsage`/`TraitUsage` → matching `ImportRule` → `use` statement
-5. Import statements emitted in module preamble, grouped and sorted
-
-Missing imports are **structurally unrepresentable**. If you rendered
-the type, the import exists. This is the same principle as
-`ExpectedToken` making invalid parser dispatch unrepresentable.
-
-### Internal unit testing (not external tool invocation)
-
-Each LintModel rule is testable in isolation:
-
-| Test kind | What it verifies | Speed |
-|---|---|---|
-| **Model test** | "Rust import model: Deserialize impl → `use serde::Deserialize;`" | Fast, no I/O |
-| **Pipeline test** | "Emitter records TypeUsage when rendering type reference" | Fast, no I/O |
-| **Renderer test** | "Module renderer: collected usages → correct `use` statements" | Fast, no I/O |
-
-These test the MODEL's rules, not the output's text. They're ordinary
-unit tests that run in `cargo test`, not `--ignored`.
-
-### Hermetic integration tests (confirmation, not gate)
-
-As redundant confirmation, hermetic `#[test]` functions invoke external
-tools on a known `.dag` → emit → tool → assert pipeline:
-
-| Test | External tool | Pattern |
-|---|---|---|
-| `rust_emit_compiles` | `cargo check` on emitted Rust | Same as existing `python_test_file_syntax_valid` |
-| `rust_emit_lints_clean` | `cargo clippy` on emitted Rust | subprocess, assert exit 0 |
-| `python_emit_compiles` | `python -m py_compile` on emitted Python | Already exists in `pipeline.rs` |
-| `go_emit_compiles` | `go build` on emitted Go | subprocess, assert exit 0 |
-
-These are `--ignored` tests (slow, need toolchains installed). They are
-**self-contained unit tests**, not a maintained CI process. They confirm
-the LintModel is complete — the model guarantees correctness; the
-integration test confirms the guarantee.
-
-### Relationship to existing infrastructure
-
-The data already partially exists:
-
-| Existing file | What it has | What's missing |
-|---|---|---|
-| `rust/imports.dag` | `use` templates, crate structure, `base_deps` | Derivation rules (WHEN to import) |
-| `rust/types.dag` | `rust_primitives` with `Bool→bool` mapping | Emitter reading this map for ALL rendering |
-| `rust/async.dag` | `async fn` templates, `await_suffix` | Propagation rule (body with await → async fn) |
-| `LanguageSpec` | Syntax rendering, serialization, scaffold | `lint: LintModel` field |
-
-The LintModel connects existing data to the emission pipeline via rules.
-The data is modeled; the rules are not.
-
-### Enforcement (see Guarantee Map)
-
-| Tier | What | When |
-|---|---|---|
-| **Tier 1** (structural) | Import derivation: can't render type without import | E1 lands |
-| **Tier 1** (structural) | Type well-formedness: can't render generic without params | E2 lands |
-| **Tier 2** (tested) | Internal model tests: verify rules produce correct output | E4 lands |
-| **Tier 2** (tested) | Hermetic integration: `cargo check` = 0 errors | E5 lands |
-| **Tier 2** (tested) | Hermetic linting: `cargo clippy` = 0 warnings | E5 lands |
-
----
-
-## Current State (2026-03-28)
-
-**TOP PRIORITY: Compiler thesis inversion (~362 hardcoded name-based
-branches).** The compiler encodes knowledge as code branches instead of
-reading data. Three themes: (A) type/method dispatch by string
-comparison, (B) emission hardcodes target syntax instead of reading
-LanguageSpec, (C) testgen doesn't test compiler. See "Compiler
-structural audit" section below. **Fix direction: Boundary Sufficiency
-(BS-1 through BS-4).** The data already exists (LanguageSpec is fully
-populated, algebra products are correct); stages bypass it. See
-"Design Direction: Boundary Sufficiency" for the 4-gap analysis and
-execution phases.
-
-**PRIORITY 2: Diagnostic quality.** The DSL is unusable until
-diagnostics include file name, line:column, source context, and
-actionable suggestions. See "Diagnostic quality" section below.
-
-**Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
-landed (PR #226).**
-
-**Stream 0 complete (2026-03-28, PR #226).** `SyntaxSpec` type landed
-in `languages.dag`. Item dispatch, operator precedence, and literal
-keywords are all spec-driven. `parse_item` has 0 keyword match arms.
-30+ `ShKw*` variants consolidated to single `ShKeyword`. 70+ keyword
-predicates deleted. Net -170 lines.
-
-
-**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Stage0
-binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
-151 fast tests pass, clippy clean. Self-compile time: ~260s (FF-8).
-
-**Verification ratchets (Lane A complete, PR #227):**
-- Diagnostic ratchet: 0 (passes)
-- Emitted Rust error ratchet: 589 errors (down from 872)
-- L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
-- Keyword arm count: 9 (exact match)
-- Complexity ratchet: 2 violations (pre-existing)
-
-**Codegen audit (2026-03-28): 589 Rust errors, 9 categories.**
-Prior fixes (PR #229) were partial — serde removed from NonEmpty
-wrappers but `impl Deserialize` still emitted without `use` imports;
-generics fixed for some types but `FreeMonoid<T>` etc. still emit `T`
-undeclared. Full breakdown:
-
-| Category | Count | Root cause |
-|----------|------:|------------|
-| Deserialize trait not found | 316 | Emitter generates `impl Deserialize` but doesn't add `use serde::Deserialize;` at module top |
-| Type param `T` not found | 122 | Generic types like `FreeMonoid<T>` emit `T` without declaring it as a type parameter |
-| `Bool` type not found | 40 | `.dag` `Bool` → Rust should be `bool` (primitive lowering) |
-| Service vars not in scope | ~20 | `github_pulls`, `shell_exec`, `cron_tab` etc. — service instances not instantiated |
-| `await` outside async | 17 | `func` should emit `async fn` but emits sync `fn` |
-| `free_monoid` type not found | 12 | `FreeMonoid<T>` not lowered to `Vec<T>` |
-| `Callable` type not found | 9 | `fn(T) -> U` type syntax not mapped to Rust `Fn` trait |
-| String escape `\{ \}` | 6 | Literal brace escapes in strings not handled |
-| Missing mock data | 6 | Dry-run mode references missing mock responses |
-| Other | ~41 | Missing values/imports, trait resolution |
-
-Top 5 by impact (fixing these clears ~95%):
-1. **Deserialize `use` statement** (316) — add `use serde::Deserialize;` to every module that has `impl Deserialize`
-2. **Generic type params** (122) — `FreeMonoid<T>`, `PartialFunction<K,V>` need actual generic `struct` declarations with `<T>`, `<K,V>`
-3. **`Bool`→`bool`** (40) — primitive type lowering
-4. **`async fn`** (17) — `func` should emit `async fn`; service instances should be passed as params or constructed
-5. **`FreeMonoid`→`Vec`** (12) — algebraic types should lower to Rust stdlib types
-
-**Python codegen has the same structural issues** (match syntax,
-statement/expression confusion, async). Both backends need the same
-set of fixes in the emit pipeline — the root cause is shared emit
-not reading enough from `LanguageSpec`.
-
-**DSL compilation:** 78 files, 0 diagnostics, 94 files emitted (PR #228).
-Compiler correctly fails closed (0 files emitted when any diagnostic exists).
-
-**Known compiler invariant violations (worked around in DSL, must fix):**
-
-Three structural bugs in the compiler forced DSL workarounds to reach 0
-diagnostics. Each violates a core invariant. All workarounds are marked
-in the DSL source with comments explaining what they work around.
-
-| Bug | Invariant violated | Workaround | Files affected |
-|-----|--------------------|------------|----------------|
-| **`uses` variables not bound in scope.** Compiler parses `uses fs: Filesystem` and collects resource names for metadata, but never adds them to `scope.locals` during inference. Any pattern/func body that references `fs.read()`, `fs.probe()`, `fs.write()` fails with "undefined variable 'fs'". | Resources declared in `uses` clauses must be available as typed variables in the body scope. | Commented out 4 pattern bodies in `std.patterns` and 1 func body in `tools.codegen`. | `v2_compiler_infer.rs` — scope construction for func/pattern items |
-| **Optional exhaustiveness hardcodes `Some`/`None`.** When matching on `T?`, the checker uses `vec!["Some", "None"]` as the variant names. Inner type variants (`TargetDir`, `Broken`, etc.) don't satisfy it. `null` keyword also doesn't satisfy it. Only a wildcard `_` or bind pattern bypasses the check. | Exhaustiveness checking must recognize the scrutinee's inner type variants when matching through an optional wrapper. | Added `_` wildcard arms in `std.filesystem` `skip_reason`. | `v2_compiler_infer_patterns.rs:264-265` |
-| **Single-variant enums parsed as type aliases.** `type X = Y` where Y is a new variant name is treated as a type alias (lookup of existing type Y), not a one-variant enum definition. Fails with "unresolved type 'Y'". | `type X = Y` must define a one-variant coproduct, not alias an existing type. Parser/resolver must distinguish variant introduction from type reference. | Changed `StsGrantType = TokenExchange` to `String`. `CacheControl = Ephemeral` fixed on main (PR #229) similarly. | Parser or `v2_compiler_infer_env.rs` — type definition processing |
-
-Additional workarounds applied (not compiler bugs, parser limitations):
-- `local_auth()` commented out: parser doesn't support `if/else` as inline expression (`expected LBrace, found KwElse`).
-- `scheme: AuthScheme = Bearer` changed to `String = "Bearer"`: compiler expects CLI parameter defaults to be string literals, not enum constructors.
-- `char_display_width` restructured: ownership checker flags enum constructors used in multiple return paths as "2 consumers" (false positive on constructors vs bindings).
-
-**Compiler structural audit (2026-03-28): ~362 hardcoded name-based branches.**
-
-The compiler encodes knowledge as code branches rather than as data it
-reads. This inverts the project thesis ("smart facts, dumb compiler").
-Three themes, all rooted in the same cause: the compiler "knows" names.
-
-**Theme A: Type/method dispatch is name-based (~177 sites).**
-
-`infer_types.rs` has an `if/else` chain checking `"Int"`, `"Float"`,
-`"Bool"`, `"String"`, `"List"`, `"Map"`, `"Callable"` — each branch
-injects algebra methods. `infer_method.rs` has a 56-branch `if/else`
-chain dispatching on method name strings (`"fold"`, `"map"`, `"count"`,
-`"join"`, etc.). This is why `sum` and `repeat` were missing — adding a
-method means editing compiler source. 107 hardcoded type-name
-comparisons, 70 method-name comparisons.
-
-| File | Type-name checks | Method-name checks | Total |
-|------|------------------|--------------------|-------|
-| `v2_compiler_infer_method.rs` | 0 | 56 | 56 |
-| `v2_compiler_infer_types.rs` | 27 | 0 | 27 |
-| `v2_compiler_infer.rs` | 7 | 10 | 17 |
-| Other (5 files) | 5 | 4 | 9 |
-
-**Invariant violated:** Types and methods should be defined in `.dag`
-data declarations and resolved structurally. The compiler should read
-the algebra registry, not contain it.
-
-**Fix direction:** The algebra registry (`std.algebra`) already exists
-in the DSL. The compiler should load it at startup and use it for method
-resolution, replacing the `if/else` chains. This is a data-loading
-change, not an architecture change.
-
-**Theme B: Emission hardcodes target-language syntax (~57 sites).**
-
-`v2_compiler_emit.rs` contains `"let "`, `"vec![]"`,
-`.unwrap_or_else(|| ...)`, `"compile_error!()"`, `"|x| "` (lambda
-syntax) — all hardcoded per `RenderTarget`. The `LanguageSpec` type
-exists and the language extdep data files already provide type maps and
-container templates, but the emitter bypasses them for ~57 constructs.
-
-Missing from `LanguageSpec` (11 fields needed):
-
-| Missing field | Currently hardcoded as |
-|---------------|----------------------|
-| `statement_terminator` | `";"` (Rust), `""` (Python/Go) |
-| `variable_declaration_keyword` | `"let "` (Rust), `""` (Python/Go) |
-| `assignment_operator` | `" = "` (Rust/Python), `" := "` (Go) |
-| `lambda_syntax` | `"\|x\| "` (Rust), `"lambda x: "` (Python), `"func(x) { }"` (Go) |
-| `callable_type_template` | `"Rc<dyn Fn(...)>"` (Rust), `"Callable[...]"` (Python) |
-| `error_expression` | `"compile_error!()"` (Rust), `"raise RuntimeError()"` (Python) |
-| `null_coalesce` | `.unwrap_or_else(...)` (Rust), `"or"` (Python) |
-| `string_interpolation` | `format!(...)` (Rust), `f"..."` (Python), `fmt.Sprintf(...)` (Go) |
-| `container_bracket` | `"<>"` (Rust/Go), `"[]"` (Python) |
-| `tuple_type_template` | `"(A, B)"` (Rust), `"Tuple[A, B]"` (Python) |
-| `indentation_width` | `4` (all targets) |
-
-**Invariant violated:** Languages are extdeps modeled from specs.
-Emission must read language data, not contain it.
-
-**Fix direction:** Extend `LanguageSpec` with the 11 missing fields,
-populate them in the language extdep `.dag` files, and replace the
-`match render_target` branches in the emitter with spec lookups.
-
-**Theme C: Testgen doesn't test the compiler; Go/Python are stubs.**
-
-- `generated_tests.rs` (26,692 lines) is a static snapshot of `.dag`
-  source embedded as const strings for tokenizer tests — not generated
-  tests of compiler behavior.
-- Rust test emission (`emit_test_file()`) works but Go/Python emit
-  `assert True` placeholder stubs.
-- Bootstrap tests verify the compiler produces 0 diagnostics and that
-  stage0→stage1 is a fixed point, but the emitted Rust has ~872
-  `cargo check` errors — so the compiler cannot verify its output
-  actually compiles.
-- No test that inference/emission produces *correct* code, only that
-  it produces *some* code with 0 diagnostics.
-
-**Fix direction:** (1) Fix the 872 codegen errors so emitted Rust
-compiles. (2) Add a "golden output" test: compile a small `.dag` file,
-`cargo check` the output, run the generated tests. (3) Fill Go/Python
-test stubs so cross-language parity is testable.
-
-**Diagnostic quality: INSUFFICIENT.** Diagnostics report byte offsets
-with no file name, no line:column, no source context. Implementation
-path: file name in SourceSpan, byte→line:column, source-context
-rendering, parse-context threading, suggestions.
-
-**Known invariant violation: Option rendering splits absence variants.**
-Absence-variant rendering should be a LanguageSpec declaration, not
-an emitter heuristic. See details below.
-
-**L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
-in `node.children`. Bridge functions deleted.
-
-**Container sharing (FF-8):** Root-caused 2026-03-27. Rendering change
-in `LanguageSpec` container templates. Hand-patch proof: 37s → 0.4s.
-Fix pending (Stream 3).
-
-**Root-cause audit (2026-03-23):** Three root causes behind all ~66
-invariant violations — I (incomplete types ~32), II (error-as-name ~18),
-III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
-
-**Foundational directions for Phase 5 exit:**
-- **Compiler thesis inversion — TOP PRIORITY (~362 name-based branches)**
-- **Diagnostic quality — PRIORITY 2 (blocks DSL usability)**
-- **Stream 0 (compositional parser) — LANDED (PR #226)**
-- **Decidability (DAG-reducibility) — active**
-- **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
-
----
-
-## PLACEHOLDER_DELETE_BELOW
-
----
-
-## Critical Path: review.dag → Binary
-
-The motivating use case: compile `review.dag` (a cyclical PR review
-agent) into a native binary, replacing the current shell script runtime.
-This requires clearing 4 stages. Stages 1-2 are compiler work; stages
-3-4 are domain wiring.
-
-### Stage 1: Parser (9 → 3 remaining)
-
-Parser fixes for `uses Resource(mode:)`, `[after/when]`, `hermetic`,
-`where` predicates, `is_text_readable`, paren variant patterns, node
-declarations, and constrained assignments are written in both `.dag`
-source and stage0 Rust. 6 of 9 errors fixed. Remaining 3 are DSL-side
-workarounds (`and` → `&&`, block/record disambiguation, generics on
-patterns).
-
-**Blocker:** `regenerate-stage0.sh` has bugs (module renaming mismatch
-with lib.rs, serde imports, duplicate types). Manual stage0 porting
-works but the script needs fixing for sustainable regeneration.
-
-### Stage 2: Rust Codegen (589 errors)
-
-| Gap | Errors | Root cause | Fix location |
-|-----|-------:|------------|--------------|
-| Deserialize `use` import | 316 | `impl Deserialize` emitted without `use serde::Deserialize;` | `05_emit_rust.dag` module preamble |
-| Generic type params undeclared | 122 | `FreeMonoid<T>` emits `T` without `<T>` on struct/enum | `05_emit.dag` generic emission |
-| `Bool` → `bool` | 40 | Primitive type lowering missing | `05_emit_rust.dag` type map |
-| Service vars not in scope | ~20 | Service instances (`github_pulls`, etc.) not instantiated | `05_emit.dag` service rendering |
-| `await` outside `async` | 17 | `func` emits sync `fn`, should be `async fn` | `05_emit_rust.dag` func rendering |
-| `FreeMonoid` → `Vec` | 12 | Algebraic types not lowered to stdlib equivalents | `05_emit_rust.dag` type map |
-| `Callable` type | 9 | `fn(T) -> U` not mapped to `Fn` trait | `05_emit_rust.dag` type map |
-| String brace escapes | 6 | `\{` `\}` not handled in string emission | `05_emit.dag` string rendering |
-| Missing mock data | 6 | Dry-run mode references undefined mock responses | `05_emit.dag` mock rendering |
-| Other | ~41 | Missing values/imports, trait resolution | Various |
-
-Priority: Deserialize `use` (316) + generic params (122) + `Bool`→`bool` (40)
-clears ~80%. Adding `async fn` (17) + `FreeMonoid`→`Vec` (12) clears ~95%.
-Python has the same structural issues — both backends need the same emit fixes.
-
-### Stage 3: Domain Workflow Compilation
-
-| Gap | What's needed |
-|-----|---------------|
-| Cross-repo imports | `review.dag` imports from `gunbc/dsl/extdeps/`. Compiler needs multi-root `--source-dir` or review.dag moves into gunbc. |
-| `for` comprehension codegen | `for pr in open_prs.pulls { ... }` with service calls inside loop body. Works for gist but untested with REST services. |
-| REST transport codegen | `github.Pulls.List/Diff/CreateComment` → reqwest HTTP calls. Shell transport works; REST uses the gists.dag pattern. |
-| CLI entrypoint generation | `main.rs` with clap subcommands for `review-cycle` and `review-pr`. Currently hand-maintained. |
-| Auth injection | `github_token()` through GCP Secret Manager credential chain or env var fallback. |
-
-### Stage 4: Feature Parity with Shell Runtime
-
-| Gap | Shell has | .dag needs |
-|-----|-----------|------------|
-| Stateless dedup | Queries reviews API at commit SHA | `github.Pulls.ListReviews` service op |
-| Line-level comments | Posts via `gh api` reviews endpoint | `github.Pulls.CreateReview` service op |
-| Fix verification | Fetches prior violations, asks LLM if fixed | `verify_fixes` composing ListReviews + LLM |
-| Cron upsert | Tag-based idempotent crontab | Modeled in `extdeps/cron.dag`, blocked on Stage 1 |
-| Reference docs | Fetches algebra.dag, extdeps.md as review context | Pure function, easy to model once compilation works |
-
-**Critical path: Stage 1 → Stage 2 → Stage 3.** Stage 1 is one
-successful stage0 regeneration script fix. Stage 2 is codegen fixes
-in `05_emit_rust.dag`. Stage 3 is domain wiring. Stage 4 is
-incremental after the binary works.
+## Backlog: review.dag → Binary
+
+Deferred pipeline. Not the current architectural priority (Stream 0
+parse-emit symmetry takes precedence). When revisited: Stage 1 parser
+(3 remaining diagnostics) → Stage 2 Rust codegen (~280 errors) →
+Stage 3 domain wiring → Stage 4 feature parity with shell runtime.
+See git history for full stage breakdown.
 
 ---
 
@@ -1193,51 +855,443 @@ incremental after the binary works.
 
 | Stream | Branch | Focus | Exit criteria |
 |--------|--------|-------|---------------|
-| **Stream 0: Compositional Parser (R3)** | `sharp-lynx-892` | Replace keyword-driven `parse_item`/`parse_stmt` with structure-driven model | `parse_item` has 0 keyword match arms; adding item type = 0 parser edits |
+| **Stream 0: Compositional Parser (R3)** | `cool-ant-90` | **LANDED (PR #226).** Spec-driven item dispatch, operators, literals. Next: parse-emit round-trip, second frontend. | ~~`parse_item` has 0 keyword match arms~~ **DONE**; adding item type = 0 parser edits **DONE**; round-trip test; second SyntaxSpec |
 | **Stream 1: L1 Type Dissolution** | `l1-type-dissolution` | P5.7 predicates, P5.13 kernel decls, type constructors, type-name comparisons, CollectionKind bridge | L1 ratchet 420 → 0 |
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` | Rust container templates → `Rc<Vec<{0}>>` etc. + emitter + runtime + stage0 regen | Eliminate O(n) clone class (FF-8) |
 | **Stream 4: Guarantee Enforcement** | *(unassigned)* | Wire Tier 3 machinery into gates; add Tier 4 ratchets as design directions land | Complexity ratchet, L1 ratchet in CI, keyword arm ratchet, round-trip smoke test |
-| **Stream 5: Compiler Correctness** | *(unassigned)* | Space complexity tracking; regeneration script | Space bounds in complexity report; regen script works |
-| **Stream 6: Emission Correctness (LintModel)** | *(unassigned)* | LintModel type, import derivation, type/expr well-formedness, hermetic integration tests | Emitted Rust/Python/Go compiles, lints clean; 0 errors by construction not verification |
+| **Stream 5: Compiler Correctness** | *(unassigned)* | Fix emitted Rust errors (~280→0); space complexity tracking; regeneration script | Generated stage0 passes `cargo check`; space bounds in complexity report |
+| **Stream 6: Diagnostic Quality** | `warm-lynx-757` | **LANDED.** Typed CompilerDiagnostic (14 variants), ErrorNode/ErrorDAG, SourceSpan carries file, NewlineIndex, topo-sort renderer with source context | ~~Every error has file:line:col~~ **DONE**; ~~cascades trace to root~~ **DONE** |
+| **Stream 7: Name Elimination** | *(unassigned)* | Resolution produces structural edges, not string-keyed scopes. Names consumed at resolution boundary, dead after. Inference/emit never read name strings. | L1 name-read ratchet = 0; scope maps keyed by Node ref, not String |
 
-### Stream 0: Compositional Parser — Implementation Plan
+### Diagnostic Quality Design
+
+**Problem.** The DSL is unusable until diagnostics are actionable.
+Today: byte offsets, no file name, no line:column, no source context,
+printed via `Debug`. The C++ problem: one root cause produces N
+unrelated-looking errors because cascade suppression doesn't exist.
+
+**Design principle: root cause by construction.**
+
+Errors are a DAG. Each error is a node in that DAG. Root-cause errors
+have no parents. Cascade errors carry explicit parent pointers — they
+are structurally linked, not heuristically suppressed. The output is
+the **minimal actionable set**: every error the user must independently
+fix. Errors that would be eliminated by fixing a root cause are
+cascades, not independent errors. Errors that share a category but
+have different root causes are independent — all shown.
+
+**Invariant review checklist (verified against INVARIANTS.md):**
+
+| Invariant | How this design satisfies it |
+|-----------|----------------------------|
+| **Performance** | Newline index: O(n) build, O(log n) lookup. Error DAG topo-sort: O(V+E). Errors in Vec, id = index → O(1) causality lookup. No rescans. |
+| **No duplicate representations** | Line:col computed at render time from `SourceSpan` + newline index — not stored. File path originates in tokenizer, flows forward in `SourceSpan`. One source of truth per fact. |
+| **No case enumeration for open sets** | `CompilerDiagnostic` is a closed enum (compiler error categories are closed). Adding a variant is a compile error at all match sites. |
+| **No fallbacks that fabricate** | If a stage can't determine causality, it emits an independent error — never guesses a parent. |
+| **Explicit boundary contracts** | `ErrorDAG` is the boundary type between pipeline and renderer. Typed variants, not string-keyed properties. |
+| **Facts flow forward** | File path enters at tokenization (where the file is known), carried in `SourceSpan` through every stage. Never reconstructed. |
+| **Heuristics indicate lost structure** | Replaces string-keyed property extraction (`diagnostic_severity()` matching on `p.name == "severity"`) with typed variant fields. |
+
+**Compositional error model.**
+
+The current `diagnostic_node()` stuffs severity, module_name, and
+category into string-keyed Node properties — the same anti-pattern
+the reviewer flagged (string-keyed global maps). The fix: model
+compiler errors the same way `std/errors.dag` models domain errors —
+as typed compositions with required fields.
+
+```
+// SourceSpan gains a file field. File originates at tokenization
+// (the only place that knows which file is being read) and flows
+// forward through every pipeline stage. Line:col are NOT stored —
+// they are derived at render time from the newline index.
+type SourceSpan {
+  file: FilePath
+  start: Int
+  end: Int
+}
+
+// Newline index — built once per source file, O(n). Byte offset →
+// line:col is O(log n) binary search on the offset table.
+// This is render-time infrastructure, not stored in the error.
+type NewlineIndex {
+  file: FilePath
+  offsets: List<Int>        // byte offset of each newline
+  source: String            // original source text (for context)
+}
+
+// Error variant — each variant carries its own required fields.
+// You cannot construct an error without a span (which carries file).
+// The set of variants is closed — adding one is a compile error
+// at every match site.
+type CompilerDiagnostic
+  = UnresolvedName     { name: String, span: SourceSpan }
+  | TypeMismatch       { expected: String, got: String, span: SourceSpan }
+  | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
+  | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
+  | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
+  | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
+  | CircularDependency { modules: List<String>, span: SourceSpan }
+  | DuplicateModule    { name: String, span: SourceSpan }
+  | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
+  | ParseError         { message: String, span: SourceSpan }
+
+// Error DAG node — wraps a diagnostic with its causal parents.
+// Errors stored in Vec<ErrorNode>; id = Vec index → O(1) lookup.
+// caused_by is empty for root causes, non-empty for cascades.
+type ErrorNode {
+  diagnostic: CompilerDiagnostic
+  caused_by: List<Int>         // indices into ErrorDAG.errors
+  module_name: String
+}
+
+// Pipeline result carries the error DAG, not a flat list.
+type ErrorDAG {
+  errors: List<ErrorNode>      // id = position in list
+}
+```
+
+**Propagation rule.** When a pipeline stage encounters an input that
+is already a `CompilerError`, it emits a new `ErrorNode` with
+`caused_by` pointing to the input error's index — not an independent
+error. If causality is unknown, the error is emitted as a root cause
+(empty `caused_by`) — never a guessed parent. The `cascade_error`
+category is deleted; causality is structural.
+
+**Display contract: minimal actionable set.**
+
+The renderer computes which errors are independently actionable:
+- **Root causes** (empty `caused_by`): always shown.
+- **Cascade errors**: shown only if they require independent user
+  action (e.g., a cascade that reveals a *second* problem beyond the
+  root cause). Suppressed if fixing the root cause would eliminate
+  them — determined structurally from the `caused_by` edges, not by
+  heuristic.
+- **Independent errors** that share a category but have different root
+  causes: all shown. 50 independent `unresolved_name` errors from 50
+  missing imports = 50 actionable items.
+
+Display order is topological: roots first, then dependents grouped
+under their root.
+
+```
+error[unresolved_name] src/v2/04_infer.dag:127:5
+ │ unknown type `Foo`
+ │
+127 │   let x: Foo = bar()
+ │          ^^^
+ │
+ ├─ error[type_mismatch] src/v2/05_emit.dag:84:12
+ │   expected `Foo`, got compiler error
+ │
+ │  84 │   let result: Foo = process(x)
+ │   │               ^^^
+ │
+ ╰─ error[field_not_found] src/v2/05_emit.dag:91:8
+    no field `name` on compiler error
+
+   91 │   x.name
+    │     ^^^^
+
+error[unresolved_name] src/v2/03_resolve.dag:42:3
+ │ unknown module `std.missing`
+ │
+42 │   import std.missing { Thing }
+ │          ^^^^^^^^^^^
+
+2 root errors, 5 total (3 cascades from root #1)
+```
+
+**Performance contract.**
+
+| Operation | Bound | Notes |
+|-----------|-------|-------|
+| Newline index construction | O(n) per file | Single scan of source bytes |
+| Byte offset → line:col | O(log n) | Binary search on newline offsets |
+| Error DAG construction | O(1) per error | Vec push + parent index |
+| Causality lookup | O(1) | Vec index, not search |
+| Topo-sort for display | O(V+E) | V = error count, E = causality edges |
+| Source context extraction | O(1) per error | Newline index → line start/end offsets |
+
+No operation is worse than linear in input size. No operation rescans
+the full source or full error list.
+
+**What this eliminates:**
+- String-keyed property extraction (severity, module_name, category
+  are typed fields, not string lookups).
+- Cascade storms — one missing import no longer produces N independent
+  errors. Cascades exist but are structurally linked to their root.
+- Disconnected errors — every non-root error says exactly *which*
+  root error caused it.
+- Byte-offset-only output — `SourceSpan` carries file, renderer
+  computes line:col from newline index.
+- Stored derived data — line:col never stored, always computed.
+
+**Implementation path (ordered by dependency):**
+
+| Step | What | Status |
+|------|------|--------|
+| D1 | Add `file: FilePath` to `SourceSpan`, thread through tokenizer | **DONE** |
+| D2 | `NewlineIndex`: per-file offset table, O(n) build, O(log n) lookup | **DONE** |
+| D3 | `CompilerDiagnostic` (14 variants), `ErrorNode`, `ErrorDAG` | **DONE** |
+| D4 | Replace 26 `diagnostic_node()` calls with typed constructors | **DONE** |
+| D5 | Migrate pipeline from `List<Node>` to `List<ErrorNode>` (46 type decls) | **DONE** |
+| D6 | Delete old `diagnostic_node()` + 9 accessor functions | **DONE** |
+| D7 | Error DAG renderer: topo-sort, file:line:col, source context, carets | **DONE** |
+
+All steps landed on branch `warm-lynx-757`.
+
+### Stream 7: Target Compositional Model
+
+**Problem.** The compiler has 45 types in `00_core.dag`. The thesis
+says "everything is a Node." In practice, 10 satellite types
+duplicate Node's name+span fields, ExprData carries 9 String
+identifier payloads outside the graph, and names survive past
+resolution because scope maps are string-keyed. The fragmentation
+produces ~730 name/string operations across the codebase, of which
+~260 are structural violations (the compiler branches on name
+content).
+
+**Root cause.** The compiler was built incrementally. Module, Import,
+and ServiceConfig dissolved into Node. Field, Variant, Param,
+ResourceUse, FieldInit, NamedArg, MatchArm, FieldBinding,
+OperationDef, and CapabilityDef did not. The dissolution PATTERN
+exists and works — it was not applied universally.
+
+#### Target Model
+
+The compiler needs exactly these types:
+
+```
+Token { text, span, shape }       -- tokenizer → parser boundary
+
+Node {                             -- THE universal structural type
+  span: SourceSpan                 -- identity + source text
+  children: List<Node>             -- ALL structural composition
+  connective: Connective           -- Conj / Disj / None
+  collection_kind: CollectionKind  -- container shape
+  params: List<Node>               -- parameters (NOT List<Param>)
+  inferred: InferredNode?          -- resolved type (set by infer)
+  return_cardinality: Cardinality  -- output multiplicity
+  uses: List<Node>                 -- resource deps (NOT List<ResourceUse>)
+  body: Node?                      -- computation body
+  transport: Node?                 -- transport binding
+  properties: List<Node>           -- metadata (NOT List<FieldInit>)
+  type_annotation: Node?           -- explicit type
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+  match_pattern: MatchPattern?     -- pattern discriminator
+  expr_data: ExprData              -- expression operator (NO String fields)
+}
+```
+
+**No `name` field. No `id` field. No name registry.**
+
+A node IS its own identity (reference equality / structural
+position). The source text at a node's span IS its "name" — derived
+at render time via `source_text_at(span)`, never stored. The
+`NewlineIndex` (already built per file) provides the source text.
+
+- **Identity**: the node itself. Two nodes are the same iff they
+  are the same node. No labels needed.
+- **Rendering text**: `source[span.start..span.end]`. Derived from
+  span, not stored. Emit extracts text when it needs to produce
+  an identifier in the output.
+- **Binding resolution**: edges from reference-site node to
+  binding-site node. The binding site's span gives you the text
+  when emit needs it.
+- **Synthetic nodes** (compiler-generated, no source text): empty
+  span. Emit handles them structurally (e.g., generated type
+  names come from the type definition's structural position, not
+  from a stored string).
+
+This eliminates:
+- `Node.name: String` (current — 730 read sites)
+- `Node.id: NameId` (proposed intermediate — unnecessary)
+- `NameRegistry` (unnecessary — span IS the registry)
+- Scrambled-name tests (nothing to scramble)
+
+```
+
+ExprData                           -- pure operator tag
+  = NoExprData
+  | ExprLiteral { value: LiteralValue }
+  | ExprError { kind: ExprErrorKind, message: String }
+  | ExprVar { binding_kind: VarBindingKind? }
+  | ExprFieldAccess { summary: FieldSummary? }
+  | ExprCall { call_semantics: CallSemantics? }
+  | ExprMethodCall { method_semantics: MethodSemantics? }
+  | ExprMatch | ExprIf | ExprLet | ExprRecordLit
+  | ExprListLit | ExprBinOp { op: BinOpKind }
+  | ExprUnaryOp { op: UnaryOpKind }
+  | ExprLambda { semantics: LambdaSemantics? }
+  | ExprStringInterp | ExprBlock | ExprCast
+  | ExprForEach | ExprIndex | ExprSlice | ExprReturn
+```
+
+**What changed from current:**
+
+| Current | Target | Why |
+|---------|--------|-----|
+| `params: List<Param>` | `params: List<Node>` | Param dissolved — name+span are Node's |
+| `uses: List<ResourceUse>` | `uses: List<Node>` | ResourceUse dissolved |
+| `properties: List<FieldInit>` | `properties: List<Node>` | FieldInit dissolved |
+| `ExprVar { name: String }` | `ExprVar` (unit) | Identifier is Node.name |
+| `ExprFieldAccess { field: String }` | `ExprFieldAccess` | Field ref is children[1] |
+| `ExprCall { func: String }` | `ExprCall` | Func ref is children[0] or Node.name |
+| `ExprMethodCall { method: String }` | `ExprMethodCall` | Method ref is a child |
+| `ExprLet { name: String }` | `ExprLet` | Binding name is Node.name |
+| `ExprForEach { variable: String }` | `ExprForEach` | Loop var is Node.name |
+| `ExprLambda { params: List<String> }` | `ExprLambda` | Param names are child Nodes |
+| `ExprRecordLit { type_name: String? }` | `ExprRecordLit` | Type ref is a child |
+
+**Deleted types (10):** Field, Variant, Param, ResourceUse, FieldInit,
+NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef. All
+dissolve into Node following the existing Module/Import pattern.
+
+**Retained structural enums:** Connective, Cardinality,
+CollectionKind, ExprData (unit variants), MatchPattern, LiteralValue,
+TokenShape, BinOpKind, UnaryOpKind, InferredNode, NodeType. These
+are closed structural properties — not satellite types.
+
+**Retained semantic enums:** IntrinsicMethod, RuntimeBridgeMethod,
+MethodSemantics, CallSemantics, VarBindingKind, FieldSummary,
+LambdaSemantics. These are populated by resolution/inference and
+consumed by emit — they carry structural facts, not names.
+
+#### What Each Stage Models
+
+**Tokenize** (bytes → tokens):
+- Input: raw source + filename
+- Output: `List<Token>` — (text, span, shape) tuples
+- Names: produces them from source text. Legitimate.
+
+**Parse** (tokens → Node tree):
+- Input: token sequence
+- Output: Module Node with children (imports, items, expressions)
+- Each identifier token becomes a child Node with a span. The
+  span IS the name — `source_text_at(span)` recovers the text.
+- Intermediates: **NONE in target model.** Parser produces Nodes
+  directly. No Field/Variant/Param/OperationDef.
+
+**Resolve** (Node tree → edges + ordering):
+- Input: Nodes with spans, children, connective
+- Reads: `source_text_at(node.span)` to match imports to modules,
+  names to exports. This is the ONLY stage that reads text.
+- Output: same Nodes + structural edges (reference → definition) +
+  dep_order
+- **Names die here.** Resolve reads source text, produces edges.
+  Everything downstream follows edges.
+
+**Infer** (edges → types):
+- Input: resolved Node tree with structural edges
+- Reads: Node.children, connective, edges (NEVER source text)
+- Output: same Nodes + `Node.inferred` set on every expression +
+  semantic enums populated (MethodSemantics, CallSemantics, etc.)
+- Method dispatch via data tables loaded at resolution, not
+  string comparison in inference.
+
+**Emit** (typed graph → target code):
+- Input: fully typed Nodes with semantics
+- Reads: Node.inferred, expr_data semantics, children
+- Output: TextFile (target-language source)
+- Identifier text: `source_text_at(binding_site.span)` — follows
+  edge to binding site, extracts text from source at that span.
+  Never makes a rendering DECISION based on name content.
+
+#### Audit Summary (2026-03-28)
+
+~730 name/string operations. ~260 are violations.
+
+**Sources (parser, ~80 embeddings):** `expect_name()` → String →
+8 ExprData fields (29 sites) + 8 AST struct types (50+ sites).
+
+**Violations by file:**
+
+| File | Violations | Root cause |
+|------|-----------|------------|
+| `04_method.dag` | 56 (100%) | Method dispatch by string comparison |
+| `05_emit_rust.dag` | 51 (37%) | Function dispatch, Rc wrapping, variant special-casing |
+| `04_types.dag` | 22 (39%) | Type identity checks by name |
+| `05_emit.dag` | 18 (53%) | Refined/Tuple handling |
+| `04_infer.dag` | 17 (13%) | Special-case name comparisons |
+| `00_core.dag` | 14 (100%) | `is_kernel_type`, transport/config dispatch |
+| `04_access.dag` | 10 (100%) | Redundant with structural properties |
+| `ownership.dag` | 6 | fold/init detection by name |
+
+Go and Python emitters: 0 violations. They model correct emit.
+
+**Legitimate name reads (~470):** scope lookup during resolution
+(~120), structural copying (~125), emit rendering (~175),
+diagnostics (~45).
+
+#### Execution
+
+| Phase | What | Dissolves | Ratchet |
+|-------|------|-----------|---------|
+| D1 | **Satellite type dissolution.** Param, ResourceUse, FieldInit → `List<Node>`. Delete types. | 3 types, ~85 consumer sites | Satellite types: 10 → 7 |
+| D2 | **Parser produces Nodes directly.** `expect_name()` returns leaf Node. Field/Variant/OperationDef/CapabilityDef created as Nodes in parser, never as intermediates. | 4 types, ~80 parser sites | Satellite types: 7 → 3 |
+| D3 | **ExprData String dissolution.** String fields → children. ExprData variants become unit. Parser stores identifiers as child Nodes. | 9 String fields, ~210 consumer sites | ExprData Strings: 9 → 0 |
+| D4 | **Remaining dissolution.** NamedArg, MatchArm, FieldBinding → Node. MatchPattern names → Node.name. | 3 types, ~70 consumer sites | Satellite types: 3 → 0 |
+| D5 | **Edge model.** Resolution produces structural edges (use → definition). Method dispatch via data tables. Inference walks edges. | ~120 scope lookups + ~165 name comparisons | Name reads in inference: current → 0 |
+| D6 | **Delete Node.name.** Emit extracts identifier text via `source_text_at(binding_site.span)`. No stored name field. Delete scrambled-name tests (nothing to scramble). | ~175 emit name reads + `Node.name` field | Node has no name field |
+
+D1-D4 are the type dissolution (existing pattern applied
+universally). D5 is the architectural change (resolution boundary
+kills names). D6 is the final step: Node.name ceases to exist.
+
+The L1 ratchet (currently 52) tracks name-read sites in the compiler.
+This model drives L1 to 0.
+
+**On scrambled-name tests.** The current scrambled-name tests are
+validation — they test that inference doesn't branch on names. The
+target model makes this **structural**: Node has no name field.
+Inference can't read the name because there is no name. The
+scrambled-name tests become unnecessary by construction — delete
+them when `Node.name` is removed. Until then, they remain as the
+ratchet.
+
+**Exit criteria:** 0 satellite types. ExprData has 0 String fields.
+Node has no `name` field — identity is the node itself, text is
+derived from span. Inference has no access to name text. Emit
+extracts text via `source_text_at(span)`. Scrambled-name tests
+deleted (invariant holds by construction). Diagnostic span precision
+is automatic (every Node has a span).
+
+### Stream 0: Compositional Parser — Status
 
 **Goal:** The parser and emitter are symmetric. Both read from
-`LanguageSpec`. Adding a language = adding a spec file, not code.
+spec data. Adding a language = adding a spec file, not code.
 
-**Step 1: Extract .dag SyntaxSpec from hardcoded parser.**
-Define a `SyntaxSpec` type in `dsl/extdeps/languages/dag/syntax.dag`
-that captures the implicit grammar currently buried in `02_parse.dag`:
-- Keyword → item-tag table (replaces tokenizer keyword map + `parse_item` match)
-- Operator precedence table (replaces `infix_bp` / `prefix_bp` functions)
-- Structural form declarations: which optional modifiers each tag accepts
-  (type params, params, return, uses, provides, body style)
-- Block/record disambiguation rule (`: ` after identifier = record field)
-- Binding forms (let, bare assignment, node declaration, constrained assignment)
+**Step 1: Extract .dag SyntaxSpec from hardcoded parser. — DONE (PR #226)**
+`SyntaxSpec`, `ItemForm`, `BodyKind`, `OperatorSpec` types in
+`languages.dag`. Instance data in `dsl/extdeps/languages/dag/syntax.dag`:
+- `dag_item_forms`: 9 item forms (type, fn, func, service, resource, data, extern, pattern, interface)
+- `dag_operators`: 16 operators with Pratt binding powers
+- `dag_keyword_literals`: true/false/none/null → LiteralValue
 
-**Step 2: Make parser generic over SyntaxSpec.**
-Refactor `02_parse.dag` so `parse_item` reads the tag table instead of
-matching on `ShKw*` tokens. `parse_stmt` reads binding forms from spec.
-Operator precedence comes from the spec table, not hardcoded functions.
-The .dag `SyntaxSpec` is the first (and initially only) instance.
+**Step 2: Make parser generic over SyntaxSpec. — DONE (PR #226)**
+`parse_item` reads from `dag_item_forms` via `find_item_form` lookup.
+`parse_item_by_form` eats keyword generically, dispatches on `BodyKind`.
+`infix_bp` reads from `dag_operators`. `parse_primary` reads from
+`dag_keyword_literals`. 30+ `ShKw*` variants → single `ShKeyword`.
+70+ keyword predicates deleted. 7 `*_after_kw` body parsers extracted.
 
-**Step 3: Validate symmetry with emission.**
+**Step 3: Validate symmetry with emission. — NEXT**
 Ensure `LanguageSpec` and `SyntaxSpec` share the same fact tables where
 applicable (item tags, operator symbols, type templates). Define the
 round-trip invariant test: `parse(spec, emit(spec, graph)) ≅ graph`.
 
 **Step 4: DSL-side workarounds for current parser limitations.**
-While the compositional parser is in progress, fix the remaining 3
-parse diagnostics in the DSL files (not in the parser):
+Fix the remaining 3 parse diagnostics in the DSL files (not in the parser):
 - `filesystem.dag`: `and` → `&&`
 - `auth/patterns.dag`: rewrite `{ token: value }` match arms
 - `std/patterns.dag`: defer generics on patterns until spec-driven parser
 
 **Step 5: Second language frontend.**
-With the spec-driven parser working for .dag, define a second
-`SyntaxSpec` (e.g., a subset of Python or a simplified frontend) to
-validate that the architecture actually supports multiple frontends.
+Define a second `SyntaxSpec` (e.g., a subset of Python or a simplified
+frontend) to validate that the architecture supports multiple frontends.
 
 **Enforcement (see Guarantee Map):**
 - **Immediate (Tier 3→2):** Keyword arm ratchet — count `ShKw*` match
@@ -1370,190 +1424,6 @@ connects Stream 3 (container sharing) to Stream 5 Track B (space) —
 the fix makes clone cost O(1), and the space analyzer proves it stays
 that way.
 
-### Stream 6: Emission Correctness (LintModel) — Implementation Plan
-
-**Goal:** Emitted code compiles and lints clean by construction, not by
-running external tools. The LintModel carries target-language validity
-rules as `.dag` data. The emitter reads the model. Incorrect emission
-is structurally unrepresentable.
-
-**E1: LintModel type + import derivation (clears ~316 errors)**
-
-1. Define `LintModel`, `ImportRule`, `ImportTrigger` types in `languages.dag`:
-
-   ```
-   type ImportTrigger
-     = TypeUsage { type_name: String }
-     | TraitImpl { trait_name: String }
-     | DeriveMacro { macro_name: String }
-     | ContainerUsage { container: String }
-     | AsyncUsage
-
-   type ImportRule {
-     trigger: ImportTrigger
-     import_path: String
-   }
-
-   type LintModel {
-     name: String
-     import_rules: List<ImportRule>
-     type_rules: TypeWellFormedness
-     expr_rules: ExprWellFormedness
-     naming: NamingConvention
-     formatting: FormatModel
-   }
-   ```
-
-2. Add `lint: LintModel` field to `LanguageSpec`.
-3. Define `rust_standard_lint`, `python_standard_lint`, `go_standard_lint`
-   in language extdeps — import derivation rules for each language.
-4. Wire import collection into emitter: rendering a type/trait records a
-   `TypeUsage` fact; module close derives `use` statements from LintModel
-   import rules.
-5. Internal model tests: for each `ImportRule`, verify the correct `use`
-   statement is derived.
-
-**Gate:** 316 Deserialize errors → 0 (by construction).
-
-**E2: Type well-formedness rules (clears ~174 errors)**
-
-1. Define `TypeWellFormedness` rules:
-
-   ```
-   type TypeWellFormedness {
-     primitive_map: List<PrimitiveLowering>      // Bool → bool
-     algebraic_map: List<AlgebraicLowering>      // FreeMonoid<T> → Vec<T>
-     callable_template: String                   // fn(T)->U → Rc<dyn Fn(T)->U>
-     generic_params_from_dag: Bool               // struct Foo<T> from DAG slots
-   }
-   ```
-
-2. Wire primitive lowering to read from `rust_primitives` (already in
-   `types.dag` — `Bool→bool` is modeled, emitter just doesn't read it
-   everywhere).
-3. Add algebraic lowering rules: `FreeMonoid→Vec`, `PartialFunction→HashMap`,
-   `BooleanAlgebra→bool` with explicit map in language extdep.
-4. Generic param enforcement: struct/enum declarations MUST carry params
-   from the DAG type definition's generic slots. Not optional.
-5. Callable rendering: `Callable` types → language-specific function type
-   (`Rc<dyn Fn(T) -> U>` in Rust, `Callable[[T], U]` in Python).
-6. Internal tests: each lowering rule produces correct declaration.
-
-**Gate:** 122 generic + 40 Bool + 12 FreeMonoid + 9 Callable = 183 errors → 0.
-
-**E3: Expression well-formedness rules (clears ~43 errors)**
-
-1. Define `ExprWellFormedness` rules:
-
-   ```
-   type ExprWellFormedness {
-     async_propagation: Bool           // await in body → async fn
-     statement_terminator: String      // ";" (Rust), "" (Python)
-     brace_escape_in_format: Bool      // \{ → {{ in format!()
-     service_binding_strategy: ServiceBindingStrategy
-   }
-
-   type ServiceBindingStrategy
-     = ParamInjection                  // service as fn param
-     | ConstructInBody                 // let client = Client::new()
-     | GlobalSingleton                 // lazy_static / once_cell
-   ```
-
-2. Async propagation: walk function body for `await` usage, set function
-   declaration to `async` if any await found. Data-driven per language
-   (Rust: `async fn`, Python: `async def`, Go: goroutine spawn).
-3. Service instance construction: LintModel declares the strategy;
-   emitter reads it to produce the correct binding pattern.
-4. String brace escaping: `format!()` requires `{{`/`}}` for literal
-   braces; f-strings require `{{`/`}}`. Rule per language.
-5. Internal tests: each rule produces valid expressions.
-
-**Gate:** 17 async + 20 service + 6 string = 43 errors → 0.
-
-**E4: Naming + formatting (quality, not correctness)**
-
-1. Define naming convention rules (already partially in LanguageSpec):
-
-   ```
-   type NamingConvention {
-     types: CaseStyle          // PascalCase (Rust/Go), PascalCase (Python)
-     functions: CaseStyle      // snake_case (Rust/Python), camelCase (Go)
-     modules: CaseStyle        // snake_case (Rust/Python), lowercase (Go)
-     constants: CaseStyle      // SCREAMING_SNAKE (Rust/Python), PascalCase (Go)
-     enum_variants: CaseStyle  // PascalCase (Rust), SCREAMING_SNAKE (Proto)
-   }
-   ```
-
-2. Define formatting model (partially in LanguageSpec `indentation_width`):
-
-   ```
-   type FormatModel {
-     indent_width: Int                  // 4 (Rust/Python), tab (Go)
-     indent_char: String                // " " or "\t"
-     max_line_width: Int?               // 100 (rustfmt default)
-     import_grouping: ImportGroupStyle  // std/external/crate (Rust)
-     trailing_newline: Bool
-   }
-   ```
-
-3. Internal tests: rendered names/formatting match convention rules.
-
-**E5: Hermetic integration tests (confirmation, not gate)**
-
-1. `rust_emit_compiles`: compile known `.dag` file → emit Rust → write
-   to temp dir with `Cargo.toml` → `cargo check` → assert exit 0.
-   Same pattern as existing `python_test_file_syntax_valid` in `pipeline.rs`.
-2. `rust_emit_lints_clean`: same pipeline → `cargo clippy -- -D warnings`
-   → assert exit 0.
-3. `python_emit_compiles`: extend existing `ast.parse` test to full
-   corpus. Add `mypy --strict` for type-checked Python.
-4. `go_emit_compiles`: emit Go → write temp dir → `go build` → assert
-   exit 0.
-5. All marked `#[ignore]` — slow, need toolchains. Run manually or in
-   CI with toolchain matrix. Self-contained unit tests, not maintained
-   processes.
-
-**Gate:** All integration tests pass (redundant — should already pass
-if LintModel rules are correct).
-
-**E6: Swappable models + cross-language parity**
-
-1. Define `rust_strict_lint` (clippy pedantic), `python_strict_lint`
-   (ruff strict + mypy). Add to language extdeps alongside standard models.
-2. CLI flag: `--lint standard | --lint strict` selects model instance.
-3. Python codegen: apply same LintModel rules to fix match syntax,
-   statement/expression confusion, async patterns.
-4. Go codegen: apply LintModel rules for Go-specific patterns
-   (implicit interfaces, goroutines, error returns).
-5. Cross-language parity test: compile same `.dag` file to all targets,
-   all pass their respective integration tests.
-
-**Gate:** Rust + Python + Go all produce valid, linted code from the
-same `.dag` source.
-
-### Stream 6 execution order
-
-```
-E1 (import derivation)     E2 (type rules)     E3 (expr rules)
-     │                          │                    │
-     │ 316 errors               │ 183 errors         │ 43 errors
-     │                          │                    │
-     ├──────────────────────────┼────────────────────┤
-     │                          │                    │
-     ▼                          ▼                    ▼
-E4 (naming/formatting)    ← quality layer, depends on E1-E3 pipeline
-     │
-     ▼
-E5 (hermetic integration) ← confirmation layer, validates E1-E4
-     │
-     ▼
-E6 (swappable + parity)   ← multi-language, depends on E5 passing
-```
-
-E1-E3 can run in parallel (independent rule categories). E4 depends on
-the emission pipeline changes from E1-E3. E5 depends on E1-E3 clearing
-errors. E6 extends to multiple languages and strictness levels.
-
 ---
 
 ## Workboard: Parallel Lanes
@@ -1563,12 +1433,9 @@ diagnostic (0), emitted Rust errors (1184/1200), L1 (51), keyword
 arms (9), complexity (2). Space complexity (Lane A Phase 2) deferred
 until Lane B drives error count down.
 
-**Current priority: Lane B (Compiler Output).** 589 Rust codegen
-errors block bootstrap regeneration and the committed-binary approach.
-Python codegen has parallel structural issues. Both backends need the
-same emit pipeline fixes. **Approach: Stream 6 (LintModel)** — model
-target-language validity rules as data; emit correct code by
-construction, not verification.
+**Current priority: Lane B (Compiler Output).** The 1184 cargo check
+errors in regenerated stage0 are the single deficit blocking
+bootstrap regeneration and the committed-binary approach.
 
 **Lanes B and C run in parallel.** They touch different files and have
 independent exit criteria.
@@ -1577,27 +1444,27 @@ independent exit criteria.
 Lane A: Verification ✓           Lane B: Compiler Output       Lane C: Language Design
 (DONE — PR #227)                 (make output correct)         (make the language right)
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-✓ Emitted Rust error ratchet     Stream 6: LintModel            Stream 0: Compositional
-✓ Complexity ratchet (2)         (correctness by construction)    Parser (R3)
-✓ L1 ratchet (51, via script)   ┌─────────────────────┐       · SyntaxSpec extraction
-✓ Keyword arm count (9)         │ E1: Import rules(316)│       · parse_item reads spec
-                                │ E2: Type rules (183) │       · round-trip smoke test
-Deferred:                       │ E3: Expr rules  (43) │
-· Space as peer dimension       │ E4: Naming/format    │     Decidability invariant
-                                │ E5: Hermetic tests   │       · Audit iteration prims
-                                │ E6: Swap + parity    │       · Wire RecursionPattern
-                                └─────────────────────┘
-                                 Stream 5C: Regen script      Stream 1: L1 Dissolution
-                                   · ✓ cargo run (Docker)       · Type constructors → 0
-                                   · Regenerate + commit         · Type-name comparisons
-                                 Stream 3: Container FF-8        · CollectionKind ✓ dissolved
+✓ Emitted Rust error ratchet     Stream 5A: Codegen fixes      Stream 0: Compositional
+✓ Complexity ratchet (2)           (1184 → 0 errors)             Parser (R3)
+✓ L1 ratchet (51, via script)    ┌─────────────────────┐       · SyntaxSpec extraction
+✓ Keyword arm count (9)          │ E0425 (541): generic │       · parse_item reads spec
+                                 │   type params <T>    │       · round-trip smoke test
+Deferred:                        │ E0433 (404): serde   │
+· Space as peer dimension        │   NonEmpty wrappers  │     Decidability invariant
+                                 │ E0220 (140): derived │       · Audit iteration prims
+                                 └─────────────────────┘       · Wire RecursionPattern
+                                 Stream 5C: Regen script
+                                   · ✓ cargo run (Docker)     Stream 1: L1 Dissolution
+                                   · Regenerate + commit        · Type constructors → 0
+                                                                · Type-name comparisons
+                                 Stream 3: Container FF-8       · CollectionKind dissolves
                                    · Rc<Vec<{0}>> templates
                                    · Atomic with regen
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-Exit: ✓ Done                     Exit: emitted Rust/Python/Go   Exit: parse_item 0 keyword
-                                   compiles + lints clean by       arms; decidability is
-                                   construction; hermetic tests    structural (Tier 1);
-                                   confirm; FF-8 eliminated        L1 ratchet = 0
+Exit: ✓ Done                     Exit: cargo check 0 errors    Exit: parse_item 0 keyword
+                                   on generated stage0;           arms; decidability is
+                                   committed binary (not          structural (Tier 1);
+                                   source); FF-8 eliminated       L1 ratchet = 0
 ```
 
 ### Lane A status (2026-03-28): DONE
@@ -1619,9 +1486,8 @@ Lane A ──→ Lane C:  Complexity ratchet verifies decidability — the
                      a blocking dependency (Tier 1 guarantee holds
                      by construction) but provides observability.
 
-Lane B ──→ Lane B:  Stream 6 (LintModel) is the approach for Lane B.
-                     E1-E3 clear errors structurally; E5 confirms.
-                     Regen script (5C) unblocks stage0 regeneration.
+Lane B ──→ Lane B:  Regen script (5C) unblocks emitted Rust fixes
+                     (5A). 5C first, then 5A is automated.
 
 Lane B ──→ Lane A:  Container sharing (FF-8) feeds space complexity
                      clone cost model. Space analyzer can land first;
@@ -1636,30 +1502,20 @@ Lane C ──→ Lane A:  Compositional parser enables round-trip smoke
 
 **Lane A: ✓ DONE** (PR #227)
 
-**Lane B (current priority — 589 errors → 0 via Stream 6 LintModel):**
-
-Prior fixes (PR #229):
-- ✓ Fix regen script for Docker (cargo run instead of binary path)
-- ✓ Remove serde from NonEmpty wrappers (partial — 316 Deserialize errors remain)
-- ✓ Fix generics emission for some types (partial — 122 generic param errors remain)
-- ✓ Fix container/generic casing — FreeMonoid not free_monoid
-- ✓ Fix callable error recovery — empty name, not "Callable" (Part 1)
-
-Remaining — **approached via LintModel (Stream 6), not one-by-one patches:**
-
-| Phase | Errors cleared | Approach |
-|-------|---------------:|----------|
-| **E1: Import derivation** | 316 | `LintModel.import_rules` + emitter TypeUsage tracking |
-| **E2: Type well-formedness** | 183 | Primitive/algebraic/generic/callable rules from `types.dag` |
-| **E3: Expr well-formedness** | 43 | Async propagation, service binding, brace escaping |
-| **E4: Naming + formatting** | quality | Convention rules, rustfmt/black/gofmt compliance |
-| **E5: Hermetic integration** | confirm | `cargo check` / `clippy` / `py_compile` as `#[test]` |
-| **E6: Swappable + parity** | all targets | Rust + Python + Go via same LintModel mechanism |
-
-After E1-E3 (589 → ~0):
-7. Regenerate stage0, verify cargo check passes
-8. Committed binary approach (never hand-edit generated code again)
-9. Container sharing (FF-8, atomic with regen)
+**Lane B (current priority — 996 errors → 0):**
+1. ✓ Fix regen script for Docker (cargo run instead of binary path)
+2. ✓ Remove serde from NonEmpty wrappers (138 → 0 serde errors)
+3. ✓ Fix generics emission — `<T>` on struct/enum defs (~130 errors)
+4. ✓ Fix container/generic casing — FreeMonoid not free_monoid
+5. ✓ Fix callable error recovery — empty name, not "Callable" (Part 1)
+6. Callable rendering (Part 2) — zero-param fn() → Rc<dyn Fn() -> T>.
+   Structural identification works (inferred != none predicate) but
+   rendering change causes ~186 cascading type mismatches. Needs full
+   emit pipeline to agree: struct fields, function sigs, call sites.
+7. Remaining E0425 (388): `Tuple`, `Bool` type names unresolved
+8. Regenerate stage0, verify cargo check passes
+9. Committed binary approach (never hand-edit generated code again)
+10. Container sharing (FF-8, atomic with regen)
 
 **Lane C (runs in parallel, no blocking deps):**
 1. Decidability audit (review iteration primitives)
@@ -1814,12 +1670,16 @@ All C-series items complete. Key outcomes:
 | FO-4 | v2 emitter fan-out fact | Open |
 | FO-5 | Fan-out preservation ratchet | Blocked on FO-3 |
 
-### Phase 5 Milestones (2026-03-27)
+### Phase 5 Milestones (2026-03-28)
 
 - **Diagnostic ratchet: 0.** Zero type errors or warnings on self-compile.
+  (Note: stage0 regeneration currently blocked by pre-existing
+  04_resolve.dag parse diagnostic unrelated to Stream 0.)
 - **Fixed-point: PASSES.** Stage0 → stage1 → stage2 converges.
 - **Self-compile: 6.47s** (release). Tokenize 4.87s, Parse 78ms,
   Resolve 1ms, Reconcile 244ms, Emit 1.27s.
+- **Stream 0 landed (2026-03-28, PR #226).** `SyntaxSpec` types,
+  data-driven item/operator/literal dispatch. 148/148 tests pass.
 
 ### Phase 5 Exit Criteria
 
@@ -1847,7 +1707,7 @@ All C-series items complete. Key outcomes:
 |----|--------|-------------------|--------|
 | R1 | `00_core.dag` | C → A | Phase 1/3 |
 | R2 | `01_tokenize.dag` | A → A | Done |
-| R3 | `02_parse.dag` | D → B+ | **ACTIVE (priority)** — compositional parser model |
+| R3 | `02_parse.dag` | D → B+ | **B+ (PR #226)** — spec-driven dispatch landed; statement/expression dispatch still hardcoded |
 | R4 | `03_resolve.dag` | A → A | Done |
 | R5 | `04_infer.dag` | D → B+ | Phase 1 |
 | R6 | `05_emit*.dag` | D → B+ | Phase 4 (done) |
@@ -1857,29 +1717,28 @@ All C-series items complete. Key outcomes:
 
 ### R3 Detail: Compositional Parser Model
 
-**Problem (2026-03-28).** The parser has accumulated structural debt.
-`parse_item` has 9 keyword match arms. Each new DSL syntax form adds
-dedicated parse functions and match arms. The keyword enum has 9 item
-types across 3 files.
+**Landed (2026-03-28, PR #226).** The parser reads `SyntaxSpec` data.
 
-**Target model:**
+**What shipped:**
+- `SyntaxSpec` type with `ItemForm`, `BodyKind`, `OperatorSpec` in `languages.dag`
+- `.dag` syntax spec instance: `dsl/extdeps/languages/dag/syntax.dag`
+- `parse_item` → `find_item_form` lookup → `parse_item_by_form` dispatch on `BodyKind`
+- `infix_bp` → `find_operator_bp` lookup from `dag_operators` table
+- `parse_primary` literal dispatch → `dag_keyword_literals` map lookup
+- `TokenShape`: 30+ `ShKw*` → single `ShKeyword`; 70+ predicates deleted
+- 7 `*_after_kw` body parsers extracted from existing parse functions
 
-```
-Item     = Tag Name [TypeParams] [Params] [Return] [Uses] [Provides] Body
-Body     = BlockBody | FieldBody | AssignBody | DeclOnly
-Statement = LetBinding | NodeBinding | Return | Expr
-Binding  = Name [Constraints] (: | =) Expr [Return]
-```
+**Exit criteria (met):**
+- `parse_item` has 0 keyword-specific match arms
+- Adding a new item type with standard body = 1 file edit (`syntax.dag`)
+- `infix_bp` has 0 hardcoded match arms
 
-Item identity is the tag string, not an enum variant. Adding a new item
-type requires zero parser changes. Block vs record resolved structurally:
-`{ ident : expr }` is always record; `{ stmt; stmt }` is always block.
-
-**Exit criteria:**
-- `parse_item` has no keyword-specific match arms
-- Adding a new item type requires editing 0 parser files
-- Block/record disambiguation is structural, not heuristic
-- Type params, constraints, return annotations available to any form
+**Remaining (deferred):**
+- Statement dispatch (`parse_stmt`) — 3 keyword arms, stable, small
+- Expression keyword dispatch (match/if/for/let/return/fn) — structural forms, not data-drivable
+- Block/record disambiguation — still heuristic
+- Parse-emit round-trip test
+- Second language frontend
 
 ---
 
@@ -1893,7 +1752,7 @@ type requires zero parser changes. Block vs record resolved structurally:
 | `[when]` string comparison | Only boolean fields supported; blocks conditional service dispatch |
 | `[when]`/`[after]` inside `for` | Bracket clauses only on top-level step bindings |
 | Multiple `uses` clauses | Only one per `func`; workaround: use `shell.Exec.Run` |
-| `fixture`/`test` blocks | Blocked on compositional parser — would grow keyword enum |
+| `fixture`/`test` blocks | **Unblocked by PR #226** — add `ItemForm` entry in `syntax.dag` with `BlockBody` |
 
 ### Desired Parser Features (2026-03-28)
 
@@ -1903,7 +1762,7 @@ type requires zero parser changes. Block vs record resolved structurally:
 | `[after X, when X.field]` multi-clause brackets | Implicit data-flow ordering | Bracket clause accepts comma-separated constraints |
 | `[when]` string comparison `x == "foo"` | `match` + `shell.Exec.Run` | Bracket clause accepts arbitrary boolean expressions |
 | Multiple `uses` clauses per func | `shell.Exec.Run` for secondary resources | `uses net: Network, fs: Filesystem` |
-| `fixture`/`test` blocks | Comment out; tests via cargo test | Structural item tags |
+| `fixture`/`test` blocks | Comment out; tests via cargo test | **Unblocked:** add `ItemForm` to `syntax.dag` |
 | `and`/`or` as operators | `&&`/`||` | Parser recognizes as boolean operators |
 | `{ ident: value }` in match arms | Named types or `let` bindings | Structural block/record disambiguation |
 | `pattern<T>` generics on patterns | Monomorphize manually | Type params on any structural form |

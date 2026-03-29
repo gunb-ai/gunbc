@@ -20,4 +20,6 @@ mod pipeline;
 #[cfg(test)]
 mod infer_semantics;
 #[cfg(test)]
+mod diagnostics;
+#[cfg(test)]
 mod bootstrap;

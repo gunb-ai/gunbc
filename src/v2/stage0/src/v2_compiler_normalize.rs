@@ -48,14 +48,14 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, InferredNode};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NormalizeResult {
     pub graph: Rc<ModuleGraph>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn normalize_graph(graph: Rc<ModuleGraph>) -> Rc<NormalizeResult> {

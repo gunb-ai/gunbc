@@ -15,12 +15,12 @@ module v2.compiler.emit_python
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
-  Param, MatchArm,
+  param_node_name, param_node_type_expr,
   MatchPattern, FieldBinding, LiteralValue,
   TextFile, SourceSpan,
-  ResourceUse,
+  resource_use_name, resource_use_resource,
   BinOpKind, NullCoalesce,
-  UnaryOpKind, StringPart, NamedArg, FieldInit,
+  UnaryOpKind, StringPart,
   DeclaredFuncSig,
   TransportKind, RestTransport, ShellTransport, FileTransport,
   is_transport_kind,
@@ -228,7 +228,7 @@ fn emit_init_py(modules: List<TypedModule>) -> TextFile {
 
 fn python_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(p.name, ": ", emit_node_type(n: p.type_expr, target: Python)))
+    |> map(p => concat(param_node_name(n: p), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python)))
     |> join(separator: ", ")
   concat(
     "# Signature: ",
@@ -269,11 +269,11 @@ fn emit_py_operation_test(projection: TestProjection, depth: Int) -> String {
     indent, "assert True  # mock data setup verified\n")
 }
 
-fn emit_py_mock_prop_setup(mock_prop: FieldInit, depth: Int) -> String {
+fn emit_py_mock_prop_setup(mock_prop: Node, depth: Int) -> String {
   concat(
-    emit_ident(name: mock_prop.name, target: Python),
+    emit_ident(name: field_init_node_name(n: mock_prop), target: Python),
     " = ",
-    emit_simple_expr(expr: mock_prop.value, target: Python))
+    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Python))
 }
 
 // =========================================================================
@@ -328,19 +328,18 @@ fn emit_py_imports(imports: List<Node>) -> String {
 // =========================================================================
 
 fn emit_py_prelude(typed_module: TypedModule) -> String {
-  let base_imports = concat(
-    "from __future__ import annotations\n",
-    "from dataclasses import dataclass, field\n",
-    "from enum import Enum, auto\n",
-    "from typing import Optional, Union\n"
-  )
-  let has_services = typed_module.items |> any(item => is_service_item(item: item))
-  let async_imports = if has_services {
-    "import aiohttp\n"
-  } else {
-    ""
-  }
-  concat(base_imports, async_imports)
+  let items = typed_module.items
+  let has_structs = items |> any(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Conj)
+  let has_enums = items |> any(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Disj)
+  let has_services = items |> any(item => is_service_item(item: item))
+
+  let future_import = "from __future__ import annotations\n"
+  let dc_import = if has_structs { "from dataclasses import dataclass, field\n" } else { "" }
+  let enum_import = if has_enums { "from enum import Enum, auto\n" } else { "" }
+  let typing_import = if has_structs || has_enums { "from typing import Optional, Union\n" } else { "" }
+  let async_import = if has_services { "import aiohttp\n" } else { "" }
+
+  concat(future_import, dc_import, enum_import, typing_import, async_import)
 }
 
 // =========================================================================
@@ -461,7 +460,7 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node) -> String 
 // Pure function (fn) emission
 // =========================================================================
 
-fn emit_py_fn_def(name: String, params: List<Param>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_py_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let depth = 0
   let params_str = emit_py_params(params: params)
   let ret_str = emit_py_inferred(inferred: inferred)
@@ -484,9 +483,9 @@ fn emit_py_fn_def(name: String, params: List<Param>, inferred: Node, body: Node,
 
 fn emit_py_func_def(
   name: String,
-  params: List<Param>,
+  params: List<Node>,
   inferred: Node,
-  uses: List<ResourceUse>,
+  uses: List<Node>,
   body: Node,
   registry: Map<String, ItemInfo>,
   scope: InferScope
@@ -504,10 +503,10 @@ fn emit_py_func_def(
     make_indent(level: depth + 1), body_str)
 }
 
-fn emit_py_func_params(params: List<Param>, uses: List<ResourceUse>, service_names: List<String>) -> String {
+fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>) -> String {
   let param_strs = params |> map(p => emit_py_param(param: p))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: u.name, target: Python), ": ", emit_node_type(n: u.resource, target: Python))
+    concat(emit_ident(name: resource_use_name(n: u), target: Python), ": ", emit_node_type(n: resource_use_resource(n: u), target: Python))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": ", sanitize_service_name(name: sn))
@@ -520,14 +519,14 @@ fn emit_py_func_params(params: List<Param>, uses: List<ResourceUse>, service_nam
 // Parameter emission
 // =========================================================================
 
-fn emit_py_params(params: List<Param>) -> String {
+fn emit_py_params(params: List<Node>) -> String {
   let strs = params |> map(p => emit_py_param(param: p))
   strs |> join(separator: ", ")
 }
 
-fn emit_py_param(param: Param) -> String {
-  let ty = emit_node_type(n: param.type_expr, target: Python)
-  concat(emit_ident(name: param.name, target: Python), ": ", ty)
+fn emit_py_param(param: Node) -> String {
+  let ty = emit_node_type(n: param_node_type_expr(n: param), target: Python)
+  concat(emit_ident(name: param_node_name(n: param), target: Python), ": ", ty)
 }
 
 fn emit_py_inferred(inferred: Node) -> String {
@@ -594,8 +593,7 @@ fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope:
 fn emit_py_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprCall { func: f, call_semantics: _ } =>
-      let a = expr.children |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
-      emit_py_typed_call(func: f, args: a, registry: registry, scope: scope, depth: depth)
+      emit_py_typed_call(func: f, args: expr.children, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_call expected ExprCall", target: Python)
   }
 }
@@ -604,7 +602,7 @@ fn emit_py_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: 
   match expr.expr_data {
     ExprMethodCall { method: m, method_semantics: method_semantics } =>
       let r = method_receiver(texpr: expr)
-      let a = method_arg_nodes(texpr: expr) |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
+      let a = method_arg_nodes(texpr: expr)
       emit_py_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_method_call expected ExprMethodCall", target: Python)
   }
@@ -614,7 +612,7 @@ fn emit_py_expr_match(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
   match expr.expr_data {
     ExprMatch =>
       let s = match_scrutinee(texpr: expr)
-      let arm_list = match_arm_nodes(texpr: expr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let arm_list = match_arm_nodes(texpr: expr)
       emit_py_typed_match(scrutinee: s, arms: arm_list, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_match expected ExprMatch", target: Python)
   }
@@ -644,7 +642,7 @@ fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 fn emit_py_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprRecordLit { type_name: tn, parent_enum: _ } =>
-      let fs = expr.children |> map(c => FieldInit { name: field_init_node_name(n: c), value: field_init_node_value(n: c) })
+      let fs = expr.children
       emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_record_lit expected ExprRecordLit", target: Python)
   }
@@ -733,9 +731,9 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     emit_slice: expr => emit_py_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth))
 }
 
-fn emit_py_typed_call(func: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
-  let arg_strs = ordered_args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+  let arg_strs = ordered_args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
   let callee = lookup_item(registry: registry, name: func)
   let extra_args = match callee {
     Some { value: info } =>
@@ -778,7 +776,7 @@ fn emit_py_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
-fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
   let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
   match intrinsic {
@@ -809,26 +807,26 @@ fn py_bridge_method_name(method: RuntimeBridgeMethod) -> String {
   if (method == BridgeWith) { "with_update" } else { bridge_method_base_name(method: method) }
 }
 
-fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let function_name = py_bridge_method_name(method: method)
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
   let all_args = concat([recv_str], arg_strs)
   concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
 }
 
-fn emit_py_plain_method_call(receiver: Node, method: String, args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_plain_method_call(receiver: Node, method: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
   let args_str = arg_strs |> join(separator: ", ")
   concat(recv_str, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
 }
 
-fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   if method_semantics != none { match method_semantics.value {
     ServiceMethodSemantics { service_name: svc_name } => {
       let var_name = service_var_name(service_name: svc_name)
-      let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+      let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
@@ -844,7 +842,7 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg
         match extract_typed_service_name(receiver: receiver) {
           Some { value: svc_name } =>
             let var_name = service_var_name(service_name: svc_name)
-            let arg_strs = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
+            let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
             let args_str = arg_strs |> join(separator: ", ")
             concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
           None => "raise NotImplementedError(\"unsupported service receiver\")"
@@ -855,27 +853,27 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg
   }
 }
 
-fn emit_py_typed_first_arg(args: List<NamedArg>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match args |> first {
-    Some { value: a } => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth)
+    Some { value: a } => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth)
     None => "raise NotImplementedError(\"missing method argument\")"
   }
 }
 
-fn emit_py_typed_match(scrutinee: Node, arms: List<MatchArm>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let scrut_str = emit_py_typed_expr(texpr: scrutinee, registry: registry, scope: scope, depth: depth)
   let arm_strs = arms |> map(arm => emit_py_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth))
   let arms_str = arm_strs |> join(separator: "\n")
   concat("match ", scrut_str, ":\n", arms_str)
 }
 
-fn emit_py_typed_match_arm(arm: MatchArm, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let pat_str = emit_py_pattern(pattern: arm.pattern)
-  let guard_str = match arm.guard {
+fn emit_py_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm))
+  let guard_str = match arm_guard(n: arm) {
     Some { value: g } => concat(" if ", emit_py_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth))
     None => ""
   }
-  let body_str = emit_py_typed_expr(texpr: arm.body, registry: registry, scope: scope, depth: depth + 2)
+  let body_str = emit_py_typed_expr(texpr: arm_body(n: arm), registry: registry, scope: scope, depth: depth + 2)
   concat(make_indent(level: depth + 1), "case ", pat_str, guard_str, ":\n",
     make_indent(level: depth + 2), body_str)
 }
@@ -905,14 +903,14 @@ fn emit_py_typed_let(name: String, value: Node, body: Node?, registry: Map<Strin
   }
 }
 
-fn emit_py_typed_record_lit(type_name: String?, fields: List<FieldInit>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_record_lit(type_name: String?, fields: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match type_name {
     None => {
       if fields |> count == 0 {
         "{}"
       } else {
         let field_strs = fields |> map(f =>
-          concat("    \"", f.name, "\": ", emit_py_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth), ",")
+          concat("    \"", field_init_node_name(n: f), "\": ", emit_py_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth), ",")
         )
         let fields_str = field_strs |> join(separator: "\n")
         concat("{\n", fields_str, "\n}")
@@ -923,7 +921,7 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<FieldInit>, registr
         concat(tn, "()")
       } else {
         let field_strs = fields |> map(f =>
-          concat(emit_ident(name: f.name, target: Python), "=", emit_py_typed_expr(texpr: f.value, registry: registry, scope: scope, depth: depth))
+          concat(emit_ident(name: field_init_node_name(n: f), target: Python), "=", emit_py_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth))
         )
         let fields_str = field_strs |> join(separator: ", ")
         concat(tn, "(", fields_str, ")")
@@ -1017,7 +1015,7 @@ fn emit_py_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: I
 // reading inferred from sub-expressions instead of cache lookups.
 // =========================================================================
 
-fn emit_py_typed_tco_body(texpr: Node, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let inner = emit_py_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1)
   concat("while True:\n", make_indent(level: depth + 1), inner)
 }
@@ -1025,14 +1023,13 @@ fn emit_py_typed_tco_body(texpr: Node, fn_name: String, params: List<Param>, reg
 fn emit_py_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
     ExprCall { func: f, call_semantics: _ } =>
-      let a = frame.expr.children |> map(c => NamedArg { name: arg_name(n: c), value: arg_value(n: c) })
-      let call_str = emit_py_typed_call(func: f, args: a, registry: registry, scope: frame.scope, depth: frame.depth)
+      let call_str = emit_py_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth)
       concat("return ", call_str)
     _ => emit_error_expr(message: "emit_py_tco_non_self_call expected ExprCall", target: Python)
   }
 }
 
-fn emit_py_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
+fn emit_py_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
     ExprIf =>
       let c = if_condition(texpr: frame.expr)
@@ -1054,11 +1051,11 @@ fn emit_py_tco_if(frame: TcoFrame, fn_name: String, params: List<Param>, registr
   }
 }
 
-fn emit_py_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
+fn emit_py_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
     ExprMatch =>
       let s = match_scrutinee(texpr: frame.expr)
-      let arm_list = match_arm_nodes(texpr: frame.expr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let arm_list = match_arm_nodes(texpr: frame.expr)
       let scrut_str = emit_py_typed_expr(texpr: s, registry: registry, scope: frame.scope, depth: frame.depth)
       let arm_strs = arm_list |> map(arm =>
         emit_py_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth))
@@ -1068,7 +1065,7 @@ fn emit_py_tco_match(frame: TcoFrame, fn_name: String, params: List<Param>, regi
   }
 }
 
-fn emit_py_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
+fn emit_py_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
     ExprLet { name: n } =>
       let v = let_value(texpr: frame.expr)
@@ -1085,7 +1082,7 @@ fn emit_py_tco_let(frame: TcoFrame, fn_name: String, params: List<Param>, regist
   }
 }
 
-fn emit_py_tco_block(frame: TcoFrame, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>) -> String {
+fn emit_py_tco_block(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
     ExprBlock =>
       let ss = frame.expr.children
@@ -1110,7 +1107,7 @@ fn emit_py_tco_default_return(frame: TcoFrame, registry: Map<String, ItemInfo>) 
   concat("return ", val_str)
 }
 
-fn emit_py_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   emit_shared_tco_expr(
     frame: TcoFrame { expr: texpr, scope: scope, depth: depth },
     fn_name: fn_name,
@@ -1123,20 +1120,20 @@ fn emit_py_typed_tco_expr(texpr: Node, fn_name: String, params: List<Param>, reg
     emit_default_return: frame => emit_py_tco_default_return(frame: frame, registry: registry))
 }
 
-fn emit_py_typed_tco_match_arm(arm: MatchArm, fn_name: String, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let pat_str = emit_py_pattern(pattern: arm.pattern)
-  let guard_str = match arm.guard {
+fn emit_py_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm))
+  let guard_str = match arm_guard(n: arm) {
     Some { value: g } => concat(" if ", emit_py_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth))
     None => ""
   }
-  let body_str = emit_py_typed_tco_expr(texpr: arm.body, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 2)
+  let body_str = emit_py_typed_tco_expr(texpr: arm_body(n: arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 2)
   concat(make_indent(level: depth + 1), "case ", pat_str, guard_str, ":\n",
     make_indent(level: depth + 2), body_str)
 }
 
-fn emit_py_typed_tco_reassign(args: List<NamedArg>, params: List<Param>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let ordered_args = args |> map(a => emit_py_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth))
-  let param_names = params |> map(p => emit_ident(name: p.name, target: Python))
+fn emit_py_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+  let ordered_args = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
+  let param_names = params |> map(p => emit_ident(name: param_node_name(n: p), target: Python))
   let all_lines = tco_reassign_core(
     ordered_args: ordered_args, param_names: param_names,
     temp_var_prefix: "__tco_", temp_decl_prefix: "",
@@ -1191,7 +1188,7 @@ fn emit_py_service_init(transport: Node) -> String {
 
 fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Python), ": ", emit_node_type(n: p.type_expr, target: Python))
+    concat(emit_ident(name: param_node_name(n: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1301,7 +1298,7 @@ fn emit_py_resource_def(item: Node) -> String {
 
 fn emit_py_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: p.name, target: Python), ": ", emit_node_type(n: p.type_expr, target: Python))
+    concat(emit_ident(name: param_node_name(n: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {

@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, FieldInit, Param, Connective, Cardinality, make_expr_node, LiteralValue, is_kernel_type, is_kernel_numeric, is_kernel_textual, BinOpKind, InferredNode, rt_node, has_inferred, NodeType, leaf_node, no_span, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, ExprData};
+pub use crate::v2_std_core::{Node, Connective, Cardinality, make_expr_node, make_param_node, param_node_type_expr, LiteralValue, is_kernel_type, is_kernel_numeric, is_kernel_textual, BinOpKind, InferredNode, rt_node, has_inferred, NodeType, leaf_node, no_span, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, ExprData};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral};
@@ -79,10 +79,7 @@ pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: kind_name.clone(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![element.clone()],
     connective: None,
 
@@ -104,16 +101,10 @@ pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
 pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Tuple".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![Rc::new(Node {
     name: "first".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
 
@@ -133,10 +124,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     expr_data: Rc::new(ExprData::NoExprData),
 }), Rc::new(Node {
     name: "second".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
 
@@ -175,10 +163,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Map".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![key.clone(), value.clone()],
     connective: None,
 
@@ -200,10 +185,7 @@ pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
 pub fn bare_map_node() -> Rc<Node> {
     Rc::new(Node {
     name: "Map".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
 
@@ -222,13 +204,10 @@ pub fn bare_map_node() -> Rc<Node> {
 })
 }
 
-pub fn callable_node(func_params: Vec<Rc<Param>>, ret: Rc<Node>) -> Rc<Node> {
+pub fn callable_node(func_params: Vec<Rc<Node>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Callable".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
 
@@ -299,13 +278,8 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn algebra_method_field(name: String, param_types: Vec<Rc<Node>>, return_type: Rc<Node>) -> Rc<Node> {
-    let params: Vec<Rc<Param>> = param_types.iter().cloned().map(|t| {
-        Rc::new(Param {
-            name: "_".to_string(),
-            type_expr: t.clone(),
-            default_value: None,
-            span: no_span(),
-        })
+    let params: Vec<Rc<Node>> = param_types.iter().cloned().map(|t| {
+        make_param_node("_".to_string(), t.clone(), None, no_span())
     }).collect();
     Rc::new(Node {
         name: name.clone(),
@@ -810,7 +784,7 @@ let right_second = match right.children.clone().iter().cloned().skip(1 as usize)
 } else {
                                                                     {
                                                                         let params_eq = { let mut __all = true; for pair in left.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if !(match right.params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
-    Some(right_param) => node_type_equals(pair.1.clone().type_expr.clone(), right_param.type_expr.clone()),
+    Some(right_param) => node_type_equals(param_node_type_expr(pair.1.clone()), param_node_type_expr(right_param.clone())),
     None => false,
 }) { __all = false; break; } } __all };
 if (params_eq.clone() == false) {
