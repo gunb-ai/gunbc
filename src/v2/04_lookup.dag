@@ -286,7 +286,10 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
 fn substitute_algebra_result(result_type: Node, receiver_type: Node, fold_accumulator_type: Node?) -> Node {
   // fold is special: return type comes from the accumulator, not the algebra field
   let is_fold = method_name_is_fold(result_type: result_type, fold_accumulator_type: fold_accumulator_type)
-  let is_same_collection = result_type.name == receiver_type.name
+  // Same collection AND same element structure (not just same collection name).
+  // enumerate returns List<Tuple<Int, T>> — same name "List" but different element.
+  let has_same_elements = result_type.children |> count == receiver_type.children |> count && (result_type.children |> count == 0 || (match result_type.children |> first { Some { value: rc } => match receiver_type.children |> first { Some { value: rvc } => rc.name == rvc.name  None => true }  None => true }))
+  let is_same_collection = result_type.name == receiver_type.name && has_same_elements
   let is_optional = result_type.return_cardinality == CardOptional
   // Algebra return type is a collection (FreeMonoid<...>) — substitute element type
   // and re-wrap as the receiver's collection type.

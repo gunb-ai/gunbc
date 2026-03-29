@@ -253,7 +253,7 @@ fn free_monoid_collection_fields(self_type: Node, elem: Node) -> List<Node> {
     algebra_method_field(name: "sort_by", param_types: [self_type], return_type: self_type),
     algebra_method_field(name: "append", param_types: [self_type, elem], return_type: self_type),
     algebra_method_field(name: "contains", param_types: [self_type, elem], return_type: bool_type),
-    algebra_method_field(name: "enumerate", param_types: [self_type], return_type: self_type),
+    algebra_method_field(name: "enumerate", param_types: [self_type], return_type: container_node(kind_name: self_type.name, element: tuple_node(first: int_type, second: elem))),
     algebra_method_field(name: "reverse", param_types: [self_type], return_type: self_type),
     algebra_method_field(name: "join", param_types: [self_type, string_type], return_type: string_type),
     algebra_method_field(name: "concat", param_types: [self_type, self_type], return_type: self_type),

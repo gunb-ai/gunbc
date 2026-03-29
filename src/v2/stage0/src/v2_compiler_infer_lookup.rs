@@ -292,9 +292,18 @@ pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>,
             Some(fat) => fat.clone(),
             None => result_type.clone(),
         }
-    } else if (result_type.name.clone() == receiver_type.name.clone()) {
+    } else if result_type.name == receiver_type.name && {
+        // Same collection AND same element structure. enumerate returns
+        // List<Tuple<Int, T>> — same name "List" but different element.
+        let same_child_count = result_type.children.len() == receiver_type.children.len();
+        let same_first_child = match (result_type.children.first(), receiver_type.children.first()) {
+            (Some(rc), Some(rvc)) => rc.name == rvc.name,
+            _ => true,
+        };
+        same_child_count && (result_type.children.is_empty() || same_first_child)
+    } {
         receiver_type.clone()
-    } else if is_algebra_collection {
+    } else if is_algebra_collection || (result_type.name == receiver_type.name && !result_type.children.is_empty()) {
         let elem = method_receiver_element_node(receiver_type.clone());
         let substituted_children: Vec<Rc<Node>> = result_type.children.iter().map(|child| {
             if child.name == elem.name || child.name.is_empty() {
