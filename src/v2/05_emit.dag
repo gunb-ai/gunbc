@@ -76,6 +76,9 @@ import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
+  ImportRule,
+  TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
+  ContainerUsageTrigger, AsyncUsageTrigger,
   language_spec_for_target,
   test_conventions_for_target,
   target_keyword, target_primitive_type, target_container_template
@@ -179,6 +182,36 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
           })
       )
   )
+}
+
+// =========================================================================
+// Import derivation -- pre-scan typed items to determine required imports.
+// =========================================================================
+
+fn derive_module_imports(items: List<Node>, import_rules: List<ImportRule>, target: RenderTarget) -> List<String> {
+  let has_async = items |> any(item => item.uses |> count > 0)
+  let type_names = collect_type_names_from_items(items: items)
+
+  import_rules |> filter(rule =>
+    match rule.trigger {
+      TypeUsageTrigger { type_name: t } => type_names |> any(n => n == t)
+      TraitImplTrigger { trait_name: _ } => false
+      DeriveMacroTrigger { macro_name: _ } => false
+      ContainerUsageTrigger { container: c } => type_names |> any(n => n == c)
+      AsyncUsageTrigger => has_async
+    }
+  ) |> map(rule => rule.import_path)
+  |> filter(path => path != "")
+}
+
+fn collect_type_names_from_items(items: List<Node>) -> List<String> {
+  items |> flat_map(item => collect_type_names_from_node(n: item))
+}
+
+fn collect_type_names_from_node(n: Node) -> List<String> {
+  let self_name = if n.name != "" { [n.name] } else { [] }
+  let child_names = n.children |> flat_map(child => collect_type_names_from_node(n: child))
+  list_concat(self_name, child_names)
 }
 
 // Intermediate type for string interpolation segments
