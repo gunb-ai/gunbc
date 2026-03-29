@@ -612,12 +612,169 @@ BS-2 (algebra data) ───→ BS-4 (method enum dispatch)
 BS-1 and BS-2 are independent. BS-3 depends on BS-1. BS-4 depends on
 BS-2's pattern.
 
+### Progress (2026-03-28)
+
+BS-1 through BS-4 landed. 38 proxy-read sites converted to structural
+dispatch. 3 scrambled-name emit tests added (all pass). 156 tests, 0
+failures.
+
+### Remaining proxy-read sites (exhaustive inventory)
+
+Every remaining site where the compiler branches on a name. Organized
+by the structural fact being proxied.
+
+**Category A: Kernel type identity (12 sites, data-driven)**
+
+These use `is_kernel_type()` and `is_container_type()` which read from
+data constants (`kernel_types`, `container_types`). Already data-driven
+— the list is declared, not coded as branches. Dissolves when kernel
+types are loaded from `.dag` declarations via import resolution (FF-9).
+
+| File | Site | What it checks |
+|------|------|----------------|
+| `04_types.dag:363,599` | `rt.name != "None" && !is_kernel_type(rt.name)` | User-defined vs kernel in type shape |
+| `04_types.dag:623-626` | `is_kernel_type(n.name)` | Wrapping decision in node_type_shape |
+| `04_infer.dag:2526` | `is_kernel_type(dep) \|\| dep == "None"` | Cycle detection filtering |
+| `04_resolve.dag:150` | `is_container_type(n.name)` | Prevent container expansion |
+| `04_resolve.dag:450` | `is_kernel_type(n.name)` | Alias transparency |
+| `02_parse.dag:2536` | `is_container_type(n.name) && n.name == "Map"` | Map vs other containers |
+| `02_parse.dag:2542` | `n.name == "Refined"` | Refinement type detection |
+| `02_parse.dag:2548` | `n.name == ""` | Tuple (anonymous) detection |
+| `04_types.dag:341` | `n.name == "Refined"` | Unwrap refined types |
+
+**Category B: Builtin function dispatch (26 branches, 1 function)**
+
+`infer_builtin_call_type` in `04_method.dag:71-93` maps free-standing
+builtin function names to return types. These are runtime bridge
+functions (`string_length`, `code_point`, `char_at`, `scan_while`,
+`lookup`, `map_get`, etc.) whose signatures are not declared in `.dag`.
+
+Fix direction: **compositional .dag modeling**, not a new enum. These
+are functions — they should have `.dag` declarations with typed
+parameters and return types, loaded into the function environment during
+`build_type_env`. Once declared, they resolve through the same
+structural lookup path as user-defined functions.
+`infer_builtin_call_type` dissolves entirely.
+
+**Category C: Method index maps (2 maps, ~47 entries)**
+
+`intrinsic_method_index()` (19 entries) and
+`runtime_bridge_method_index()` (28 entries) in `04_method.dag` map
+method name strings to `IntrinsicMethod`/`RuntimeBridgeMethod` enums.
+
+These are inherently name→enum bridges — the compiler needs to
+recognize "fold" to know it has special typing. The maps are the right
+intermediate step. Long-term: method behavior declared in `.dag` type
+algebra definitions, making the enums unnecessary. Short-term: the maps
+centralize the knowledge and the enum gives exhaustiveness checking.
+
+**Category D: Optional/sum variant names (14 sites)**
+
+`"Some"`, `"None"`, `"value"` appear in inference, lookup, patterns,
+and emit. These are the absence/presence variants of the optional type.
+
+| File | Sites | What it checks |
+|------|-------|----------------|
+| `04_infer.dag:508` | `variant_name == "Some" \|\| "None"` | Optional cardinality |
+| `04_patterns.dag:146` | `variant_name == "None"` | Exhaustiveness for None |
+| `04_lookup.dag:93,203` | `field_name == "value"` | Optional inner value access |
+| `04_infer.dag:1832` | `fir.typed_field.name == "value"` | Record literal value field |
+| `05_emit_rust.dag:1176,1190,1271,1344,1394,2612,2629,2806` | `name == "Some" \|\| "None"` | Rust Option variant rendering |
+| `04_types.dag:363,599` | `rt.name != "None"` | Filter None from type shape |
+
+Fix direction: Optional is a structural concept (cardinality on
+bindings), not a named type. The remaining `Some`/`None` references are
+in emit (rendering Rust's `Option` type). These dissolve when Optional
+rendering moves to a LanguageSpec declaration (`absence_variant`,
+`presence_variant` fields) — already identified in INVARIANTS.md.
+
+**Category E: Tuple field names (2 sites)**
+
+`"first"`, `"second"` in `04_emit_info.dag:116,125` detect 2-tuples.
+These are named product fields — structural (Conj + 2 children + named
+"first"/"second"). Dissolves when tuples are positional rather than
+named, or when emit reads tuple structure from the node shape rather
+than checking field names.
+
+**Category F: Transport kind dispatch (7 sites)**
+
+`transport_kind()` in `00_core.dag:788-791` converts transport node
+names to `TransportKind` enum via `if t.name == "local"` etc. Used in
+resolve and all 3 emitters.
+
+Already partially structural (the enum exists). Remaining name
+comparison is the parse→enum bridge. Dissolves when transport kind is
+set structurally at parse time rather than inferred from the node name.
+
+**Category G: Configuration property keys (2 sites)**
+
+`config_property_key()` and `config_property_name()` in `00_core.dag`
+convert between string property names and `ConfigPropertyKey` enum.
+Small, stable, closed set. Low priority.
+
+**Category H: Diagnostic/AST marker properties (8 sites)**
+
+`p.name == "severity"`, `p.name == "__is_module"`, etc. in
+`00_core.dag`. These are structural markers on AST nodes — properties
+that classify node purpose. They're the `.dag` equivalent of AST node
+kinds. Dissolves when node classification uses ExprData or a structural
+field rather than property name strings.
+
+**Category I: Target language dispatch (12 sites)**
+
+`match target { Rust => ... Go => ... Python => ... }` in
+`languages.dag` and emit files. These dispatch on the `RenderTarget`
+enum (closed set, exhaustive). This is structural — the enum is the
+right representation. The issue is when the branch body hardcodes
+syntax strings instead of reading from spec. BS-1 addressed the shared
+emit cases; per-backend files still have rendering logic that's
+inherently target-specific.
+
+**Category J: Builtin value names in emit (3 sites)**
+
+`func == "empty_map"`, `func == "lookup"` in `05_emit_rust.dag`.
+Runtime bridge function names used for Rust-specific rendering. Same
+fix direction as Category B — declare as `.dag` functions, resolve
+structurally.
+
+### Scrambled-name test expansion ideas
+
+The current emit tests use simple struct programs. More complex programs
+would stress-test further and catch subtler name dependencies:
+
+1. **Enums with data variants.** `type Color = Red { r: Int } | Green`
+   scrambled to `type Shade = Alpha { r: Int } | Beta`. Tests enum
+   rendering, variant qualification, match arm construction.
+
+2. **Generic types.** `type Box<T> { value: T }` with `Box<Foo>` usage.
+   Tests generic parameter rendering, type substitution in emit.
+
+3. **Container types with user types.** `List<Foo>`, `Map<String, Bar>`.
+   Tests container template application with user type arguments.
+
+4. **Method calls on user types.** Functions that call methods on
+   struct fields. Tests method dispatch rendering is name-independent.
+
+5. **Nested types.** `type Outer { inner: Inner }` with field access
+   `o.inner.x`. Tests chained field access rendering.
+
+6. **Optional fields.** `type Config { name: String? }` with match on
+   presence/absence. Tests Optional rendering path.
+
+7. **Services (if supported in test harness).** Service definitions
+   with operations. Tests service rendering path.
+
+Each test follows the same pattern: compile A and B with scrambled
+user-defined names, normalize, assert structural identity. Adding
+these incrementally as emit correctness improves.
+
 ### Relationship to existing streams
 
-- **Theme A** (~177 sites): BS-2 + BS-4
-- **Theme B** (~57 sites): BS-1
+- **Theme A** (~177 sites): BS-2 + BS-4 (done)
+- **Theme B** (~57 sites): BS-1 (done)
 - **Stream 1 (L1 dissolution)**: BS-2 directly reduces L1 ratchet
 - **Guarantee Map**: BS-3 promotes emit sufficiency from Tier 3 → Tier 2
+- **Category B** (builtins): compositional .dag modeling, not new enums
 
 ---
 
