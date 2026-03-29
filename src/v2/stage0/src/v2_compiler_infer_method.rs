@@ -368,7 +368,20 @@ pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
 }
 }
 
+thread_local! {
+    static INTRINSIC_INDEX: HashMap<String, IntrinsicMethod> = intrinsic_method_index_build();
+    static BRIDGE_INDEX: HashMap<String, RuntimeBridgeMethod> = runtime_bridge_method_index_build();
+}
+
 pub fn intrinsic_method_index() -> HashMap<String, IntrinsicMethod> {
+    INTRINSIC_INDEX.with(|idx| idx.clone())
+}
+
+pub fn runtime_bridge_method_index() -> HashMap<String, RuntimeBridgeMethod> {
+    BRIDGE_INDEX.with(|idx| idx.clone())
+}
+
+fn intrinsic_method_index_build() -> HashMap<String, IntrinsicMethod> {
     {
         let m = <HashMap<_, _>>::new();
 let m = v2_rt::map_insert(m.clone(), "count".to_string(), IntrinsicMethod::MethodCount);
@@ -394,7 +407,7 @@ m.clone()
 }
 }
 
-pub fn runtime_bridge_method_index() -> HashMap<String, RuntimeBridgeMethod> {
+fn runtime_bridge_method_index_build() -> HashMap<String, RuntimeBridgeMethod> {
     let m = <HashMap<_, _>>::new();
     let m = v2_rt::map_insert(m.clone(), "get".to_string(), RuntimeBridgeMethod::BridgeGet);
     let m = v2_rt::map_insert(m.clone(), "with".to_string(), RuntimeBridgeMethod::BridgeWith);

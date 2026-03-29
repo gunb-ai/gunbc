@@ -128,11 +128,6 @@ module std.iteration
 // For any inductively-defined type with children:
 //   descend(tree, children_of, f) = f(tree, children_of(tree) |> map(c => descend(c, children_of, f)))
 
-type DescentResult<B> {
-  value: B
-  node_count: Int
-}
-
 // =========================================================================
 // repeat: bounded counted iteration
 //
@@ -149,11 +144,6 @@ type DescentResult<B> {
 
 // repeat is sugar for fold over an implicit range [0, N).
 // repeat(bound: N, init: x, f: step) ≡ fold(range(0, N), init: x, f: (acc, _) => step(acc))
-
-type RepeatResult<B> {
-  value: B
-  iterations_used: Int
-}
 
 // =========================================================================
 // repeat_until: bounded iteration with early exit
