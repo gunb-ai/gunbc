@@ -320,19 +320,37 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("from ".to_string(), mod_name.clone())
 
 pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
     {
-        let base_imports = v2_rt::concat(v2_rt::concat(v2_rt::concat("from __future__ import annotations
-".to_string(), "from dataclasses import dataclass, field
-".to_string()), "from enum import Enum, auto
-".to_string()), "from typing import Optional, Union
-".to_string());
-let has_services = { let mut __found = false; for item in typed_module.items.clone().iter().cloned() { if is_service_item(item.clone()) { __found = true; break; } } __found };
-let async_imports = if has_services.clone() {
+        let items = typed_module.items.clone();
+let has_structs = { let mut __found = false; for item in items.clone().iter().cloned() { if (classify_typed_item(item.clone()) == TypedItemKind::TypedItemTypeDef && item.connective.clone() == Some(Connective::Conj)) { __found = true; break; } } __found };
+let has_enums = { let mut __found = false; for item in items.clone().iter().cloned() { if (classify_typed_item(item.clone()) == TypedItemKind::TypedItemTypeDef && item.connective.clone() == Some(Connective::Disj)) { __found = true; break; } } __found };
+let has_services = { let mut __found = false; for item in items.clone().iter().cloned() { if is_service_item(item.clone()) { __found = true; break; } } __found };
+let future_import = "from __future__ import annotations
+".to_string();
+let dc_import = if has_structs.clone() {
+            "from dataclasses import dataclass, field
+".to_string()
+} else {
+            "".to_string()
+};
+let enum_import = if has_enums.clone() {
+            "from enum import Enum, auto
+".to_string()
+} else {
+            "".to_string()
+};
+let typing_import = if (has_structs.clone() || has_enums.clone()) {
+            "from typing import Optional, Union
+".to_string()
+} else {
+            "".to_string()
+};
+let async_import = if has_services.clone() {
             "import aiohttp
 ".to_string()
 } else {
             "".to_string()
 };
-v2_rt::concat(base_imports.clone(), async_imports.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(future_import.clone(), dc_import.clone()), enum_import.clone()), typing_import.clone()), async_import.clone())
 }
 }
 

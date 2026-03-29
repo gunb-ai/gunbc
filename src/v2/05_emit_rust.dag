@@ -614,6 +614,10 @@ fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<St
 fn emit_prelude() -> String {
   // Serde import removed — derives don't include Serialize/Deserialize (emit.dag:70-72).
   // serde_json stays as a runtime dep for JSON operations only.
+  // TODO: derive import set from ImportRules (language extdep) instead of hardcoding.
+  // Rc is always needed (all containers are Rc-wrapped per FF-8).
+  // HashMap is common enough to always include.
+  // v2_rt provides runtime intrinsic functions used across all modules.
   let imports = "use std::collections::HashMap;\nuse std::rc::Rc;\nuse crate::v2_rt;"
   concat(imports, "\n\n", emit_non_empty_wrappers())
 }
@@ -623,9 +627,9 @@ fn emit_prelude() -> String {
 fn emit_non_empty_wrappers() -> String {
   let vec_wrapper = concat(
     "#[derive(Debug, Clone, PartialEq)]\n",
-    "pub struct NonEmptyVec<T>(Vec<T>);\n\n",
+    "pub struct NonEmptyVec<T>(Rc<Vec<T>>);\n\n",
     "impl<T> NonEmptyVec<T> {\n",
-    "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n",
+    "    pub fn new(items: Rc<Vec<T>>) -> Result<Self, &'static str> {\n",
     "        if items.is_empty() {\n",
     "            Err(\"NonEmptyVec requires at least one element\")\n",
     "        } else {\n",
@@ -635,16 +639,16 @@ fn emit_non_empty_wrappers() -> String {
     "    pub fn as_slice(&self) -> &[T] {\n",
     "        &self.0\n",
     "    }\n\n",
-    "    pub fn into_vec(self) -> Vec<T> {\n",
+    "    pub fn into_vec(self) -> Rc<Vec<T>> {\n",
     "        self.0\n",
     "    }\n",
     "}"
   )
   let set_wrapper = concat(
     "#[derive(Debug, Clone, PartialEq)]\n",
-    "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n",
+    "pub struct NonEmptyBTreeSet<T: Ord>(Rc<std::collections::BTreeSet<T>>);\n\n",
     "impl<T: Ord> NonEmptyBTreeSet<T> {\n",
-    "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n",
+    "    pub fn new(items: Rc<std::collections::BTreeSet<T>>) -> Result<Self, &'static str> {\n",
     "        if items.is_empty() {\n",
     "            Err(\"NonEmptyBTreeSet requires at least one element\")\n",
     "        } else {\n",
@@ -654,7 +658,7 @@ fn emit_non_empty_wrappers() -> String {
     "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n",
     "        &self.0\n",
     "    }\n\n",
-    "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n",
+    "    pub fn into_set(self) -> Rc<std::collections::BTreeSet<T>> {\n",
     "        self.0\n",
     "    }\n",
     "}"
@@ -2080,9 +2084,9 @@ fn emit_typed_for_each(variable: String, collection: Node, body: Node, registry:
   let ind2 = make_indent(level: depth + 2)
   let ind0 = make_indent(level: depth)
   concat("{\n",
-    ind1, "let mut __collect = Vec::new();\n",
+    ind1, "let mut __collect = Rc::new(Vec::new());\n",
     ind1, "for ", emit_ident(name: variable, target: Rust), " in ", coll_str, ".iter().cloned() {\n",
-    ind2, "__collect.push(", body_str, ");\n",
+    ind2, "Rc::make_mut(&mut __collect).push(", body_str, ");\n",
     ind1, "}\n",
     ind1, "__collect\n",
     ind0, "}")
@@ -2218,12 +2222,12 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
   match intrinsic {
     MethodCount => concat("(", recv_str, ".len() as i64)")
     MethodJoin => concat(recv_str, ".join(&", first_arg_str, ")")
-    MethodSplit => concat(recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
+    MethodSplit => concat("Rc::new(", recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>())")
     MethodLast => concat(recv_str, ".last().cloned()")
     MethodFirst => concat(recv_str, ".first().cloned()")
     MethodEnumerate =>
-      concat(recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
-    MethodChars => concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
+      concat("Rc::new(", recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>())")
+    MethodChars => concat("Rc::new(", recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>())")
     MethodStringContains => concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
     MethodConcat => {
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
@@ -2262,10 +2266,10 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
                 let p = emit_ident(name: dag_name, target: Rust)
                 let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
                 let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-                concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result }")
-              _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+                concat("{ let mut __result = Rc::new(Vec::new()); for ", p, " in ", recv_str, ".iter().cloned() { Rc::make_mut(&mut __result).push(", body_str, "); } __result }")
+              _ => concat("Rc::new(", recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>())")
             }
-          None => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+          None => concat("Rc::new(", recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>())")
         }
       }
     MethodFilter =>
@@ -2278,10 +2282,10 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
               let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __result.push(", p, "); } } __result }")
-            _ => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+              concat("{ let mut __result = Rc::new(Vec::new()); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { Rc::make_mut(&mut __result).push(", p, "); } } __result }")
+            _ => concat("Rc::new(", recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>())")
           }
-        None => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+        None => concat("Rc::new(", recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>())")
       }
     MethodAny =>
       match args |> first {
@@ -2323,13 +2327,13 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
               let p = emit_ident(name: dag_name, target: Rust)
               let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
               let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend(", body_str, "); } __result }")
-            _ => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+              concat("{ let mut __result = Rc::new(Vec::new()); for ", p, " in ", recv_str, ".iter().cloned() { Rc::make_mut(&mut __result).extend(", body_str, ".iter().cloned()); } __result }")
+            _ => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
           }
-        None => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+        None => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
       }
-    MethodSkip => concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
-    MethodTake => concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
+    MethodSkip => concat("Rc::new(", recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>())")
+    MethodTake => concat("Rc::new(", recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>())")
     MethodFold => {
       let contextual_acc_type = match result_type {
         Some { value: Resolved { node: method_result_type } } => Some { value: method_result_type }
@@ -2401,7 +2405,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
           emit_typed_collection_lambda(lambda_expr: a.value, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         None => "compile_error!(\"missing sort_by key function argument\")"
       }
-      concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
+      concat("{ let mut __sorted = ", recv_str, ".clone(); Rc::make_mut(&mut __sorted).sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
     MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
   }
 }
