@@ -644,6 +644,67 @@ the type definition (one place), not copied into mock_response blocks
 `Url` is used. The mock_response blocks in existing .dag files can
 shrink to only the cross-field scenarios.
 
+#### Output verification: the type IS the oracle
+
+Generating inputs is solved (compositional mocks from type samples).
+The question is: how do we know what output to expect? The answer:
+**the output type's constraints are the oracle.** Five levels of
+verification, all but the last derive from structure:
+
+| Level | What it checks | Oracle | Hand-written? |
+|---|---|---|---|
+| **Type correctness** | Output has the right shape | Compiler (static) | No |
+| **Constraint satisfaction** | Output satisfies `where` predicates | Run output through type's predicates | No |
+| **Algebraic laws** | Operations satisfy declared laws | Laws on algebra types | No |
+| **Cross-target agreement** | Same input → same output across targets | Differential comparison | No |
+| **Known values** | Specific input → specific output | Isomorphism derivation or hand-authored | Sometimes |
+
+**The algebra declares the laws. The compiler checks them.**
+
+```dag
+type FreeMonoid<T> {
+  // Laws become generated property tests:
+  law associative: concat(concat(a, b), c) == concat(a, concat(b, c))
+  law identity: concat(a, empty) == a
+  law filter_preserves: filter(xs, p) |> all(p) == true
+  law map_length: map(xs, f) |> count == xs |> count
+}
+```
+
+The compiler reads these laws and generates property tests. Input:
+compositional mock. Expected output: satisfies the laws. No
+hand-written expected values needed.
+
+**Worked example: `filter(xs, x > 3)` with input `[1, 2, 3, 4, 5]`:**
+
+- Type correctness: output is `List<Int>` ✓ (static)
+- Constraint: every element satisfies `x > 3` ✓ (run the predicate
+  on each output element — the predicate IS the oracle)
+- Algebraic: `output.count <= input.count` ✓ (filter never grows)
+- Cross-target: Rust, Python, Go produce `[4, 5]` ✓ (differential)
+- Known value: `[4, 5]` — but levels 1-3 already prove correctness
+  without knowing this specific value
+
+**Worked example: `to_fahrenheit(Celsius(0.0))`:**
+
+- Type correctness: output is `Fahrenheit` ✓ (static)
+- Constraint: output satisfies `Float where range(...)` ✓ (predicate)
+- Algebraic: `to_celsius(to_fahrenheit(0.0)) == 0.0` ✓ (round-trip
+  law — both are isomorphisms through Kelvin)
+- Cross-target: all targets produce `32.0` ✓ (differential)
+- Known value: `32.0` — derivable from the isomorphism chain:
+  `0 + 273.15 = 273.15K`, `273.15 * 9/5 - 459.67 = 32.0`
+
+**When do you need hand-written expected values?**
+
+Only when the function has behavior that isn't captured by type
+constraints or algebraic laws. For most well-modeled functions, the
+type structure provides enough oracle information that specific
+expected values are redundant — the laws prove correctness
+generically. Hand-written golden values are useful as documentation
+and regression anchors, but they're not the primary correctness
+mechanism.
+
 #### Test generation tracks
 
 **Track 1 — Discovery gates:**
