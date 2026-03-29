@@ -413,7 +413,17 @@ expressible.
 | `sort_by` | O(n log n × key) | `CostLog` | ✓ |
 | Future: binary search | O(log n) | `CostLog` | Ready |
 
-**Step 5: `trace_pop_frame` O(n) → O(1). DESIGNED, not yet implemented.**
+**Step 5: `trace_pop_frame` O(n) → O(1). ✓ DONE (2026-03-29)**
+
+`std/stack.dag` defines `Stack<T>` — a recursive coproduct (cons list)
+with O(1) push/pop. `trace.dag` updated to use `Stack<TraceFrame>`
+instead of `List<TraceFrame>`. Stage0 Rust has `TraceStack` enum with
+`push`/`pop` methods. The old `take(count - 1)` O(n) copy is gone.
+
+Stack is a Layer 4 structural composition — complements List (Layer 3)
+for LIFO access patterns. Finite by construction (inductive), bounded
+iteration via `fold_stack`. Cost model: push O(1), pop O(1), peek O(1),
+size O(n), to\_list O(n).
 
 `trace_pop_frame` uses `take(count - 1)` which copies the list — O(n)
 per pop. Replace with a proper `Stack` type in `std/` (cons list) that
@@ -603,7 +613,7 @@ separate branch.
 |------|--------|---------|
 | **Fail-closed compilation** for non-descending recursion | DESIGNED, not implemented | Needs compile-time descent checker in normalize/infer stage |
 | **Stage0 regeneration** | BLOCKED | FF-8 container sharing must land first |
-| **`trace_pop_frame` O(n) → O(1)** | DESIGNED (Stack type) | Low priority; no functional impact |
+| **`trace_pop_frame` O(n) → O(1)** | ✓ DONE | `std/stack.dag` Stack type, O(1) push/pop |
 | **`Conservative` certainty elimination** | PARTIAL | LinearRecursion still uses synthetic iteration vars (`n_func`), not concrete collection sizes |
 | **`.dag`-side caching** of builtin/method registries | DOCUMENTED | Stage0 has `thread_local`; .dag source rebuilds per call until regen |
 
