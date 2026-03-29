@@ -8014,7 +8014,7 @@ Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprMethodCall {
     method: method.clone(),
     method_semantics: None,
-}), v2_rt::concat(vec![receiver.clone()], { let mut __result = Vec::new(); for na in r2.args.clone().iter().cloned() { __result.push(make_arg_node(na.name.clone(), na.value.clone(), span.clone())); } __result }), None, span.clone()),
+}), v2_rt::concat(vec![receiver.clone()], r2.args.clone()), None, span.clone()),
     state: r2.state.clone(),
     err: None,
 })
@@ -8480,20 +8480,19 @@ Rc::new(PostfixResult {
 
 pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let arg_children = { let mut __result = Vec::new(); for na in args.clone().iter().cloned() { __result.push(make_arg_node(na.name.clone(), na.value.clone(), span.clone())); } __result };
-match (*lhs.expr_data.clone()).clone() {
+        match (*lhs.expr_data.clone()).clone() {
     ExprData::ExprVar { name: n, .. } => make_expr_node(Rc::new(ExprData::ExprCall {
     func: n.clone(),
     call_semantics: None,
-}), arg_children.clone(), None, span.clone()),
+}), args.clone(), None, span.clone()),
     ExprData::ExprFieldAccess { field: f, .. } => make_expr_node(Rc::new(ExprData::ExprMethodCall {
     method: f.clone(),
     method_semantics: None,
-}), v2_rt::concat(vec![lhs.children.clone().first().cloned().clone().unwrap()], arg_children.clone()), None, span.clone()),
+}), v2_rt::concat(vec![lhs.children.clone().first().cloned().clone().unwrap()], args.clone()), None, span.clone()),
     _ => make_expr_node(Rc::new(ExprData::ExprCall {
     func: "<expr>".to_string(),
     call_semantics: None,
-}), arg_children.clone(), None, span.clone()),
+}), args.clone(), None, span.clone()),
 }
 }
 }
@@ -8661,10 +8660,8 @@ continue;
 
 pub fn parse_single_arg(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ArgResult> {
     {
-        let dummy_arg = Rc::new(NamedArg {
-    name: None,
-    value: parse_recovery_placeholder(),
-});
+        let span = current_span(tokens.clone(), state.clone());
+let dummy_arg = make_arg_node(None, parse_recovery_placeholder(), span.clone());
 let is_name_token = (is_ident(tokens.clone(), state.clone()) || is_keyword_name(tokens.clone(), state.clone()));
 if is_name_token.clone() {
             {
@@ -8680,10 +8677,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: None,
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(None, r.expr.clone(), span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),
@@ -8702,10 +8696,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: Some(name_r.name.clone()),
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(Some(name_r.name.clone()), r.expr.clone(), span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),
@@ -8723,10 +8714,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: None,
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(None, r.expr.clone(), span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),
@@ -8746,10 +8734,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arg = Rc::new(NamedArg {
-    name: None,
-    value: r.expr.clone(),
-});
+let arg = make_arg_node(None, r.expr.clone(), span.clone());
 Rc::new(ArgResult {
     arg: arg.clone(),
     state: r.state.clone(),
