@@ -49,21 +49,21 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, InferredNode, diagnostic_node, diagnostic_message, leaf_node, with_optional_cardinality, node_has_structure};
+pub use crate::v2_std_core::{Node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, diagnostic_to_message, leaf_node, with_optional_cardinality, node_has_structure};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 pub use crate::v2_compiler_infer_types::{node_is_map, normalize_access_type_node, node_type_equals, is_int_type_node, is_string_type_node};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessCheckResultNode {
     pub inferred: Option<Rc<InferredNode>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
-pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<Node> {
-    diagnostic_node("error".to_string(), message.clone(), span.clone(), Some(module_name.clone()), None)
+pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
+    make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: message.clone(), span: span.clone() }), module_name.clone())
 }
 
-pub fn access_result(inferred: Rc<Node>, diagnostics: Vec<Rc<Node>>, span: Rc<SourceSpan>, fallback_message: String) -> Rc<AccessCheckResultNode> {
+pub fn access_result(inferred: Rc<Node>, diagnostics: Vec<Rc<ErrorNode>>, span: Rc<SourceSpan>, fallback_message: String) -> Rc<AccessCheckResultNode> {
     if ((diagnostics.clone().len() as i64) == 0) {
         Rc::new(AccessCheckResultNode {
     inferred: Some(Rc::new(InferredNode::Resolved {
@@ -74,7 +74,7 @@ pub fn access_result(inferred: Rc<Node>, diagnostics: Vec<Rc<Node>>, span: Rc<So
 } else {
         {
             let message = match diagnostics.clone().first().cloned() {
-    Some(diag) => diagnostic_message(diag.clone()),
+    Some(diag) => diagnostic_to_message(diag.diagnostic.clone()),
     None => fallback_message.clone(),
 };
 Rc::new(AccessCheckResultNode {

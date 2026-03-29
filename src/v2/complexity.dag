@@ -19,7 +19,6 @@ import v2.std.core {
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach,
-  Param,
   arg_value, arm_body,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
@@ -34,8 +33,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes,
-  NamedArg, diagnostic_is_error
+  method_receiver, method_arg_nodes
 }
 
 // =========================================================================
@@ -71,6 +69,7 @@ type CostExpr
   | CostMul { left: CostExpr, right: CostExpr }
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: String, upper: SizeExpr, body: CostExpr }
+  | CostLog { base: Int, argument: SizeExpr }
   | CostUnknown { reason: String }
 
 // =========================================================================
@@ -259,6 +258,7 @@ fn replace_computing_ref(expr: CostExpr, func_name: String, replacement: CostExp
 }
 
 // Count direct self-calls in a function body expression tree.
+// Used by classify_recursion_pattern for total call count.
 fn count_self_calls(body: Node, func_name: String) -> Int {
   let own = match body.expr_data {
     ExprCall { func: f, call_semantics: _ } =>
@@ -271,16 +271,173 @@ fn count_self_calls(body: Node, func_name: String) -> Int {
   own + from_children
 }
 
+// Count maximum self-calls on any single execution path through an
+// expression. Match/if arms are mutually exclusive (max, not sum).
+// Self-calls inside fold/forEach bodies are already bounded by the
+// iteration and do not contribute to the recursion branching factor.
+//
+// This distinguishes tree traversal (O(n)) from branching recursion
+// (O(2^n)). A function with 15 self-call sites across 10 match arms
+// has max_path_calls = max(arm calls), not sum(arm calls).
+fn max_path_self_calls(body: Node, func_name: String) -> Int {
+  match body.expr_data {
+    ExprCall { func: f, call_semantics: _ } =>
+      let own = if f == func_name { 1 } else { 0 }
+      // Args may contain self-calls too
+      let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
+        acc + max_path_self_calls(body: arg_value(n: child), func_name: func_name)
+      )
+      own + arg_calls
+
+    ExprMatch =>
+      // Match arms are mutually exclusive: take MAX across arms.
+      let scrut_calls = max_path_self_calls(body: match_scrutinee(texpr: body), func_name: func_name)
+      let max_arm = match_arm_nodes(texpr: body) |> fold(init: 0, f: (acc, arm_node) =>
+        let arm_calls = max_path_self_calls(body: arm_body(n: arm_node), func_name: func_name)
+        if arm_calls > acc { arm_calls } else { acc }
+      )
+      scrut_calls + max_arm
+
+    ExprIf =>
+      // If/else branches are mutually exclusive: take MAX.
+      let cond_calls = max_path_self_calls(body: if_condition(texpr: body), func_name: func_name)
+      let then_calls = max_path_self_calls(body: if_then_branch(texpr: body), func_name: func_name)
+      let else_calls = match if_else_branch(texpr: body) {
+        Some { value: eb } => max_path_self_calls(body: eb, func_name: func_name)
+        None => 0
+      }
+      let branch_max = if then_calls > else_calls { then_calls } else { else_calls }
+      cond_calls + branch_max
+
+    ExprForEach { variable: _ } =>
+      // Self-calls inside a forEach body are bounded by the iteration.
+      // They do NOT contribute to the recursion branching factor.
+      // Only count calls in the collection expression (not the body).
+      max_path_self_calls(body: foreach_collection(texpr: body), func_name: func_name)
+
+    ExprLet { name: _ } =>
+      let val_calls = max_path_self_calls(body: let_value(texpr: body), func_name: func_name)
+      let body_calls = match let_body(texpr: body) {
+        Some { value: b } => max_path_self_calls(body: b, func_name: func_name)
+        None => 0
+      }
+      val_calls + body_calls
+
+    ExprBlock =>
+      // Sequential: sum across statements (all execute).
+      body.children |> fold(init: 0, f: (acc, child) =>
+        acc + max_path_self_calls(body: child, func_name: func_name)
+      )
+
+    ExprMethodCall { method: _, method_semantics: _ } =>
+      // Receiver + non-lambda args contribute to path calls.
+      // Lambda args (callbacks to fold/map/filter) are iteration-bounded
+      // and excluded, same as forEach body exclusion.
+      let recv_calls = max_path_self_calls(body: method_receiver(texpr: body), func_name: func_name)
+      let arg_calls = method_arg_nodes(texpr: body) |> fold(init: 0, f: (acc, arg_node) =>
+        let val = arg_value(n: arg_node)
+        match val.expr_data {
+          // Lambda bodies are iteration-bounded (callback to fold/map/filter)
+          ExprLambda => acc
+          _ => acc + max_path_self_calls(body: val, func_name: func_name)
+        }
+      )
+      recv_calls + arg_calls
+
+    _ =>
+      // Default: sum across children (conservative).
+      body.children |> fold(init: 0, f: (acc, child) =>
+        acc + max_path_self_calls(body: child, func_name: func_name)
+      )
+  }
+}
+
 // Classify the recursion pattern of a self-recursive function.
-// 1 self-call = LinearRecursion (tail recursion, accumulator pattern).
-// >1 self-calls = DivideAndConquer (tree walk, divide-and-conquer).
-// 0 self-calls = should not reach here, but treat as linear.
+//
+// Uses max_path_self_calls to count the maximum self-calls on any
+// single execution path. This correctly classifies tree traversal
+// functions (which have many self-call SITES across match arms but
+// only 1-2 per execution path) as LinearRecursion, not
+// DivideAndConquer.
+//
+// The classification determines the cost formula:
+//   LinearRecursion (0-1 path calls) → O(n × per_iteration)
+//   DivideAndConquer (2+ path calls) → CostUnknown (hard error target)
+//   UnresolvableRecursion            → hard compilation error
+// Check if the function body is a structural descent: a match/if over
+// the recursive parameter where all self-calls are inside arms (not at
+// the top level). In a structural descent, each node is visited once —
+// the total work is O(|tree|) regardless of how many self-calls per arm,
+// because each arm processes disjoint subtrees.
+//
+// This recognizes the catamorphism pattern:
+//   fn walk(expr: T) -> R {
+//     match expr {
+//       Leaf { ... } => ...                          // 0 self-calls
+//       Binary { left: l, right: r } => ... walk(l) ... walk(r) ...  // 2 self-calls on children
+//       Unary { inner: i } => ... walk(i) ...        // 1 self-call on child
+//     }
+//   }
+//
+// Total work = |tree| × max(per-arm cost). Not 2^depth.
+fn is_structural_descent(body: Node, func_name: String) -> Bool {
+  // The body must be a match or if (branching on the input).
+  // All self-calls must be inside the branch arms, not at the top level.
+  match body.expr_data {
+    ExprMatch =>
+      // Self-calls in scrutinee would mean we recurse before branching —
+      // that's not structural descent.
+      let scrut_calls = count_self_calls(body: match_scrutinee(texpr: body), func_name: func_name)
+      scrut_calls == 0
+
+    ExprIf =>
+      // Same: no self-calls in the condition.
+      let cond_calls = count_self_calls(body: if_condition(texpr: body), func_name: func_name)
+      cond_calls == 0
+
+    ExprLet { name: _ } =>
+      // let x = ... in <body>: descent if the body is a descent
+      // and the let-value has no self-calls
+      let val_calls = count_self_calls(body: let_value(texpr: body), func_name: func_name)
+      if val_calls > 0 { false }
+      else {
+        match let_body(texpr: body) {
+          Some { value: b } => is_structural_descent(body: b, func_name: func_name)
+          None => false
+        }
+      }
+
+    ExprBlock =>
+      // Block: last statement is the descent, earlier ones must not self-call
+      let stmts = body.children
+      let len = stmts |> count
+      if len == 0 { false }
+      else {
+        // All statements except the last must have 0 self-calls
+        let prefix_calls = stmts |> take(len - 1) |> fold(init: 0, f: (acc, s) =>
+          acc + count_self_calls(body: s, func_name: func_name)
+        )
+        if prefix_calls > 0 { false }
+        else {
+          is_structural_descent(body: stmts |> last, func_name: func_name)
+        }
+      }
+
+    _ => false
+  }
+}
+
 fn classify_recursion_pattern(func_name: String, body: Node) -> RecursionPattern {
-  let calls = count_self_calls(body: body, func_name: func_name)
-  if calls <= 1 {
+  let path_calls = max_path_self_calls(body: body, func_name: func_name)
+  if path_calls <= 1 {
+    LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else if is_structural_descent(body: body, func_name: func_name) {
+    // Structural descent: body is match/if over input, self-calls are
+    // in arms on destructured children. Total work = |tree| × per-node,
+    // not k^depth. Classify as LinearRecursion (catamorphism).
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else {
-    DivideAndConquer { split_factor: calls }
+    DivideAndConquer { split_factor: path_calls }
   }
 }
 
@@ -405,7 +562,7 @@ fn size_binder_name(size: SizeExpr) -> String {
 //
 // Each CostShape maps to a specific cost pattern:
 //   ShapeIterateBody  -- O(|receiver| * body_cost), loop over collection
-//   ShapeSortBody     -- O(|receiver| * key_cost), Conservative (lacks log)
+//   ShapeSortBody     -- O(|receiver| * log(|receiver|) * key_cost), Proven
 //   ShapeLinearScan   -- O(|receiver|) with O(1) per element
 //   ShapeConstant     -- O(1) regardless of input size
 // =========================================================================
@@ -470,8 +627,8 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
         table: body_result.table
       }
     ShapeSortBody =>
-      // Comparison sort is O(n log n), not O(n). Model as O(n) with
-      // Conservative certainty since the cost algebra lacks a log type.
+      // Comparison sort is O(n log n × key_cost). CostLog makes this
+      // expressible as a tight Proven bound.
       let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
       let key_result = match lambda_arg {
         Some { value: la } =>
@@ -482,19 +639,25 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
               work: CostConst { value: 1 },
               span: CostConst { value: 1 },
               output_size: empty_map(),
-              certainty: Conservative
+              certainty: Proven
             },
             table: recv_r.table
           }
       }
-      let sort_work = cost_loop(binder: binder, iterations: size, body: key_result.summary.work)
+      // O(n × log(n) × key_cost)
+      let log_factor = CostLog { base: 2, argument: size }
+      let per_comparison = key_result.summary.work
+      let sort_work = CostMul {
+        left: cost_loop(binder: binder, iterations: size, body: per_comparison),
+        right: log_factor
+      }
       let sort_os = map_insert(empty_map(), "result", cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
       SummaryResult {
         summary: ComplexitySummary {
           work: cost_seq(a: recv_r.summary.work, b: sort_work),
           span: cost_seq(a: recv_r.summary.span, b: sort_work),
           output_size: sort_os,
-          certainty: Conservative
+          certainty: key_result.summary.certainty
         },
         table: key_result.table
       }
@@ -713,6 +876,8 @@ fn classify_complexity(expr: CostExpr) -> String {
         else if has_cost_sum(expr: r) { rc }
         else { lc }
       dominant
+    CostLog { base: _, argument: a } =>
+      concat("O(log ", format_size(size: a), ")")
   }
 }
 
@@ -739,6 +904,8 @@ fn collect_size_vars(expr: CostExpr) -> List<String> {
       concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
     CostMax { left: l, right: r } =>
       concat(collect_size_vars(expr: l), collect_size_vars(expr: r))
+    CostLog { base: _, argument: a } =>
+      collect_size_vars_from_size(size: a)
     _ => []
   }
 }
@@ -810,7 +977,7 @@ fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, Com
 type FuncEntry {
   name: String
   body: Node
-  params: List<Param>
+  params: List<Node>
 }
 
 // Result of get_or_compute_summary: updated table + the summary.

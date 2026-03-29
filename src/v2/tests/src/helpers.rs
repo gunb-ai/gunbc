@@ -28,7 +28,7 @@ pub fn read_v2_file(relative_path: &str) -> String {
 // ── Tokenize + Parse ─────────────────────────────────────────────────────
 
 pub fn tokenize(source: &str) -> Vec<Rc<Token>> {
-    v2_compiler::v2_compiler_tokenize::tokenize(source.to_string())
+    v2_compiler::v2_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
 pub fn parse_source(source: &str) -> Rc<ParseResult> {
@@ -39,7 +39,7 @@ pub fn parse_source(source: &str) -> Rc<ParseResult> {
 pub fn assert_parses(source: &str, label: &str) {
     let result = parse_source(source);
     if let Some(ref err) = result.error {
-        panic!("{} had parse error: {}", label, err.name);
+        panic!("{} had parse error: {}", label, v2_compiler::v2_std_core::diagnostic_to_message(err.diagnostic.clone()));
     }
     assert!(result.module.is_some(), "{} produced no module", label);
 }
@@ -49,7 +49,7 @@ pub fn assert_parses_strict(relative_path: &str) {
     let result = parse_source(&source);
     if let Some(ref err) = result.error {
         let span = {
-            let s = &err.span;
+            let s = v2_compiler::v2_std_core::diagnostic_to_span(err.diagnostic.clone());
             let line = source[..s.start.max(0) as usize]
                 .chars()
                 .filter(|c| *c == '\n')
@@ -60,7 +60,7 @@ pub fn assert_parses_strict(relative_path: &str) {
         panic!(
             "{} had parse error: {}{}",
             relative_path,
-            err.name,
+            v2_compiler::v2_std_core::diagnostic_to_message(err.diagnostic.clone()),
             span
         );
     }
@@ -240,7 +240,7 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
 // ── Result inspection ────────────────────────────────────────────────────
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
-    result.diagnostics.iter().map(|d| d.name.clone()).collect()
+    result.diagnostics.iter().map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone())).collect()
 }
 
 pub fn assert_no_diagnostics(result: &PipelineResult) {

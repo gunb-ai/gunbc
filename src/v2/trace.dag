@@ -16,6 +16,7 @@
 module v2.compiler.trace
 
 import v2.std.core { SourceSpan }
+import std.stack { Stack, Empty, Push, stack_push, stack_pop, stack_peek, stack_is_empty }
 
 // =========================================================================
 // F1: Span mapping -- generated code line → source .dag span
@@ -54,11 +55,11 @@ type TraceFrame {
 
 type Trace {
   events: List<TraceEvent>
-  stack: List<TraceFrame>
+  stack: Stack<TraceFrame>
 }
 
 fn empty_trace() -> Trace {
-  Trace { events: [], stack: [] }
+  Trace { events: [], stack: Empty }
 }
 
 // Append an event to a trace (returns new trace).
@@ -66,20 +67,14 @@ fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
   Trace { events: list_push(trace.events, event), stack: trace.stack }
 }
 
-// Push a frame onto the trace stack (function entry).
+// Push a frame onto the trace stack (function entry). O(1).
 fn trace_push_frame(trace: Trace, frame: TraceFrame) -> Trace {
-  Trace { events: trace.events, stack: list_push(trace.stack, frame) }
+  Trace { events: trace.events, stack: stack_push(stack: trace.stack, value: frame) }
 }
 
-// Pop the top frame from the trace stack (function exit).
+// Pop the top frame from the trace stack (function exit). O(1).
 fn trace_pop_frame(trace: Trace) -> Trace {
-  Trace {
-    events: trace.events,
-    stack: match trace.stack |> count {
-      0 => []
-      _ => trace.stack |> take(trace.stack |> count - 1)
-    }
-  }
+  Trace { events: trace.events, stack: stack_pop(stack: trace.stack) }
 }
 
 // =========================================================================

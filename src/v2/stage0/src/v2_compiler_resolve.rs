@@ -48,13 +48,13 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, Connective, SourceSpan, diagnostic_node, no_span, KERNEL_TYPES, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node};
+pub use crate::v2_std_core::{Node, Connective, SourceSpan, no_span, KERNEL_TYPES, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node, CompilerDiagnostic, ErrorNode, make_error_node};
 use crate::v2_std_core::Connective::{Conj, Disj};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModuleGraph {
     pub modules: Vec<Rc<ResolvedModule>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -78,7 +78,7 @@ pub struct DepEdge {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolveAccum {
     pub imports_by_name: HashMap<String, Vec<Rc<ResolvedImport>>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn map_has(m: HashMap<String, bool>, key: String) -> bool {
@@ -139,7 +139,7 @@ pub fn find_module(module_index: HashMap<String, Rc<Node>>, path: String) -> Opt
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModuleResolveResult {
     pub resolved_imports: Vec<Rc<ResolvedImport>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn resolve_module_imports(module: Rc<Node>, module_index: HashMap<String, Rc<Node>>, export_sets: HashMap<String, HashMap<String, bool>>) -> Rc<ModuleResolveResult> {
@@ -157,7 +157,7 @@ Rc::new(ModuleResolveResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportResolveResult {
     pub resolved: Rc<ResolvedImport>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn resolve_import(import: Rc<Node>, module_index: HashMap<String, Rc<Node>>, importing_module: String, export_sets: HashMap<String, HashMap<String, bool>>) -> Rc<ImportResolveResult> {
@@ -165,7 +165,7 @@ pub fn resolve_import(import: Rc<Node>, module_index: HashMap<String, Rc<Node>>,
         let target = find_module(module_index.clone(), import.name.clone());
 match target.clone() {
     None => {
-            let diag = diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("unresolved import: module '".to_string(), import.name.clone()), "' not found (imported by '".to_string()), importing_module.clone()), "')".to_string()), import.span.clone(), Some(importing_module.clone()), Some("unresolved_name".to_string()));
+            let diag = make_error_node(Rc::new(CompilerDiagnostic::UnresolvedImport { module_path: import.name.clone(), importing_module: importing_module.clone(), span: import.span.clone() }), importing_module.clone());
 Rc::new(ImportResolveResult {
     resolved: Rc::new(ResolvedImport {
     module_path: import.name.clone(),
@@ -182,7 +182,7 @@ Rc::new(ImportResolveResult {
 let name_diags = if import_is_all(import.clone()) {
                 vec![]
 } else {
-                { let mut __result = Vec::new(); for missing_name in { let mut __result = Vec::new(); for name in import_specific_names(import.clone()).iter().cloned() { if (v2_rt::map_has(&exported_set, name.clone()) == false) { __result.push(name); } } __result }.iter().cloned() { __result.push(diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("name '".to_string(), missing_name.clone()), "' not found in module '".to_string()), import.name.clone()), "' (imported by '".to_string()), importing_module.clone()), "')".to_string()), import.span.clone(), Some(importing_module.clone()), Some("unresolved_name".to_string()))); } __result }
+                { let mut __result = Vec::new(); for child in { let mut __result = Vec::new(); for child in import.children.clone().iter().cloned() { if (v2_rt::map_has(&exported_set, child.name.clone()) == false) { __result.push(child); } } __result }.iter().cloned() { __result.push(make_error_node(Rc::new(CompilerDiagnostic::MissingExport { name: child.name.clone(), module_path: import.name.clone(), importing_module: importing_module.clone(), span: child.span.clone() }), importing_module.clone())); } __result }
 };
 Rc::new(ImportResolveResult {
     resolved: Rc::new(ResolvedImport {
@@ -227,10 +227,10 @@ if is_coproduct.clone() {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DuplicateCheckState {
     pub seen_names: HashMap<String, bool>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
-pub fn check_duplicate_modules(modules: Vec<Rc<Node>>) -> Vec<Rc<Node>> {
+pub fn check_duplicate_modules(modules: Vec<Rc<Node>>) -> Vec<Rc<ErrorNode>> {
     {
         let result = modules.clone().iter().cloned().fold(Rc::new(DuplicateCheckState {
     seen_names: <HashMap<_, _>>::new(),
@@ -240,7 +240,7 @@ pub fn check_duplicate_modules(modules: Vec<Rc<Node>>) -> Vec<Rc<Node>> {
 if is_dup.clone() {
                 Rc::new(DuplicateCheckState {
     seen_names: state.seen_names.clone(),
-    diagnostics: v2_rt::concat(state.diagnostics.clone(), vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat("duplicate module declaration: '".to_string(), m.name.clone()), "'".to_string()), m.span.clone(), Some(m.name.clone()), Some("invalid_operation".to_string()))]),
+    diagnostics: v2_rt::concat(state.diagnostics.clone(), vec![make_error_node(Rc::new(CompilerDiagnostic::DuplicateModule { name: m.name.clone(), span: m.span.clone() }), m.name.clone())]),
 })
 } else {
                 Rc::new(DuplicateCheckState {
@@ -256,7 +256,7 @@ result.diagnostics.clone()
 #[derive(Debug, Clone, PartialEq)]
 pub struct TopoResult {
     pub sorted: Vec<String>,
-    pub cycle_error: Option<Rc<Node>>,
+    pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
 pub fn adjacency_add_edge(adjacency: HashMap<String, Vec<String>>, from_module: String, to_module: String) -> HashMap<String, Vec<String>> {
@@ -295,7 +295,7 @@ let cycle_members = { let mut __result = Vec::new(); for name in module_names.cl
 let cycle_desc = cycle_members.clone().join(&" -> ".to_string());
 Rc::new(TopoResult {
     sorted: result.sorted.clone(),
-    cycle_error: Some(diagnostic_node("error".to_string(), v2_rt::concat("circular dependency detected: ".to_string(), cycle_desc.clone()), no_span(), None, Some("invalid_operation".to_string()))),
+    cycle_error: Some(make_error_node(Rc::new(CompilerDiagnostic::CircularDependency { modules: cycle_members.clone(), span: no_span() }), "".to_string())),
 })
 }
 }

@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, diagnostic_node, diagnostic_is_error, diagnostic_severity, diagnostic_message, diagnostic_module_name, diagnostic_category, diagnostic_span, no_span, Connective, Cardinality, Field, Param, ResourceUse, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, CompilerDiagnostic, ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, no_span, Connective, Cardinality, resource_use_name, resource_use_resource, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, FieldBinding, arm_pattern, arm_guard, arm_body, arg_name, arg_value, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node, NewlineIndex, build_newline_index, field_init_node_name, field_init_node_value, param_node_name, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::Connective::*;
@@ -90,16 +90,17 @@ pub struct SourceFile {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PipelineResult {
     pub files: Vec<Rc<TextFile>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
     pub complexity: Rc<ComplexityReport>,
     pub ownership: Vec<Rc<OwnershipProof>>,
     pub artifact_plan: Rc<ArtifactPlan>,
+    pub newline_indices: Vec<Rc<NewlineIndex>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrontendResult {
     pub graph: Option<Rc<ModuleGraph>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
@@ -114,9 +115,9 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Vec<Rc<OwnershipPro
     { let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() { __result.extend({ let mut __result = Vec::new(); for item in { let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }.iter().cloned() { __result.push(analyze_ownership(item.name.clone(), item.params.clone(), item.body.clone().clone().unwrap())); } __result }); } __result }
 }
 
-pub fn ownership_diagnostics(proofs: Vec<Rc<OwnershipProof>>) -> Vec<Rc<Node>> {
+pub fn ownership_diagnostics(proofs: Vec<Rc<OwnershipProof>>) -> Vec<Rc<ErrorNode>> {
     { let mut __result = Vec::new(); for proof in proofs.clone().iter().cloned() { __result.extend({ let mut __result = Vec::new(); for decision in proof.decisions.clone().iter().cloned() { __result.extend(match (*decision.clone()).clone() {
-    OwnershipDecision::SharedError { binding: binding, consumer_count: count, sites: sites, .. } => vec![diagnostic_node("warning".to_string(), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("ownership: binding '".to_string(), binding.clone()), "' in ".to_string()), proof.func_name.clone()), " has ".to_string()), (count.clone()).to_string()), " consumers -- cannot guarantee O(1) mutation (".to_string()), sites.clone().join(&", ".to_string())), ")".to_string()), no_span(), Some(proof.func_name.clone()), None)],
+    OwnershipDecision::SharedError { binding: binding, consumer_count: count, sites: sites, .. } => vec![make_error_node(Rc::new(CompilerDiagnostic::OwnershipWarning { binding: binding.clone(), fn_name: proof.func_name.clone(), consumers: count.clone(), span: no_span() }), proof.func_name.clone())],
     _ => vec![],
 }); } __result }); } __result }
 }
@@ -128,8 +129,8 @@ pub fn empty_artifact_plan() -> Rc<ArtifactPlan> {
 })
 }
 
-pub fn compile_bundle_error(message: String) -> Rc<Node> {
-    diagnostic_node("error".to_string(), message.clone(), no_span(), None, None)
+pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
+    make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: message.clone(), span: no_span() }), "".to_string())
 }
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
@@ -307,16 +308,16 @@ pub fn serialize_match_pattern(pattern: Rc<MatchPattern>) -> String {
 }
 }
 
-pub fn serialize_named_arg(arg: Rc<NamedArg>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_optional_string(arg.name.clone())), ", \"value\": ".to_string()), serialize_node(arg.value.clone())), "}".to_string())
+pub fn serialize_named_arg(arg: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_optional_string(arg_name(arg.clone()))), ", \"value\": ".to_string()), serialize_node(arg_value(arg.clone()))), "}".to_string())
 }
 
-pub fn serialize_match_arm(arm: Rc<MatchArm>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"pattern\": ".to_string(), serialize_match_pattern(arm.pattern.clone())), ", \"guard\": ".to_string()), json_optional_node(arm.guard.clone())), ", \"body\": ".to_string()), serialize_node(arm.body.clone())), "}".to_string())
+pub fn serialize_match_arm(arm: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"pattern\": ".to_string(), serialize_match_pattern(arm_pattern(arm.clone()))), ", \"guard\": ".to_string()), json_optional_node(arm_guard(arm.clone()))), ", \"body\": ".to_string()), serialize_node(arm_body(arm.clone()))), "}".to_string())
 }
 
-pub fn serialize_field_init(field_init: Rc<FieldInit>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init.name.clone())), ", \"value\": ".to_string()), serialize_node(field_init.value.clone())), "}".to_string())
+pub fn serialize_field_init(field_init: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init_node_name(field_init.clone()))), ", \"value\": ".to_string()), serialize_node(field_init_node_value(field_init.clone()))), "}".to_string())
 }
 
 pub fn serialize_string_part(part: Rc<StringPart>) -> String {
@@ -396,16 +397,16 @@ pub fn serialize_inferred_node(inferred: Rc<InferredNode>) -> String {
 }
 }
 
-pub fn serialize_resource_use(resource_use: Rc<ResourceUse>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use.name.clone())), ", \"resource\": ".to_string()), serialize_node(resource_use.resource.clone())), ", \"span\": ".to_string()), serialize_span(resource_use.span.clone())), "}".to_string())
+pub fn serialize_resource_use(resource_use: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use_name(resource_use.clone()))), ", \"resource\": ".to_string()), serialize_node(resource_use_resource(resource_use.clone()))), ", \"span\": ".to_string()), serialize_span(resource_use.span.clone())), "}".to_string())
 }
 
-pub fn serialize_field(field: Rc<Field>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field.name.clone())), ", \"type_expr\": ".to_string()), serialize_node(field.type_expr.clone())), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field.cardinality.clone()))), ", \"default_value\": ".to_string()), json_optional_node(field.default_value.clone())), ", \"from_key\": ".to_string()), json_optional_string(field.from_key.clone())), ", \"span\": ".to_string()), serialize_span(field.span.clone())), "}".to_string())
+pub fn serialize_field(field: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name(field.clone()))), ", \"type_expr\": ".to_string()), serialize_node(field_node_type_expr(field.clone()))), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(field.clone()))), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(field_node_span(field.clone()))), "}".to_string())
 }
 
-pub fn serialize_param(param: Rc<Param>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param.name.clone())), ", \"type_expr\": ".to_string()), serialize_node(param.type_expr.clone())), ", \"default_value\": ".to_string()), json_optional_node(param.default_value.clone())), ", \"span\": ".to_string()), serialize_span(param.span.clone())), "}".to_string())
+pub fn serialize_param(param: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param_node_name(param.clone()))), ", \"type_expr\": ".to_string()), serialize_node(param_node_type_expr(param.clone()))), ", \"default_value\": ".to_string()), json_optional_node(param_node_default_value(param.clone()))), ", \"span\": ".to_string()), serialize_span(param_node_span(param.clone()))), "}".to_string())
 }
 
 pub fn serialize_node(node: Rc<Node>) -> String {
@@ -425,14 +426,10 @@ pub fn serialize_typed_module(module: Rc<TypedModule>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"module\": ".to_string(), serialize_module(module.module.clone())), ", \"items\": ".to_string()), json_list({ let mut __result = Vec::new(); for item in module.items.clone().iter().cloned() { __result.push(serialize_node(item.clone())); } __result })), ", \"item_registry_keys\": ".to_string()), json_list({ let mut __result = Vec::new(); for k in v2_rt::map_keys(&module.item_registry.clone()).iter().cloned() { __result.push(json_quote(k.clone())); } __result })), "}".to_string())
 }
 
-pub fn serialize_diagnostic(diagnostic: Rc<Node>) -> String {
+pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
     {
-        let cat = diagnostic_category(diagnostic.clone());
-let cat_json = match cat.clone() {
-    Some(inner) => json_quote(inner.clone()),
-    None => "null".to_string(),
-};
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"severity\": ".to_string(), json_quote(diagnostic_severity(diagnostic.clone()))), ", \"message\": ".to_string()), json_quote(diagnostic_message(diagnostic.clone()))), ", \"span\": ".to_string()), serialize_span(diagnostic_span(diagnostic.clone()))), ", \"module_name\": ".to_string()), json_optional_string(diagnostic_module_name(diagnostic.clone()))), ", \"category\": ".to_string()), cat_json.clone()), "}".to_string())
+        let severity = if is_error_diagnostic(diagnostic.diagnostic.clone()) { "error".to_string() } else { "warning".to_string() };
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"severity\": ".to_string(), json_quote(severity.clone())), ", \"message\": ".to_string()), json_quote(diagnostic_to_message(diagnostic.diagnostic.clone()))), ", \"span\": ".to_string()), serialize_span(diagnostic_to_span(diagnostic.diagnostic.clone()))), ", \"module_name\": ".to_string()), json_optional_string(Some(diagnostic.module_name.clone()))), ", \"category\": ".to_string()), "null".to_string()), "}".to_string())
 }
 }
 
@@ -458,7 +455,7 @@ Rc::new(EmitResult {
 }
 }
 
-pub fn boundary_ref_error(names: Vec<String>, ref_name: String) -> Vec<Rc<Node>> {
+pub fn boundary_ref_error(names: Vec<String>, ref_name: String) -> Vec<Rc<ErrorNode>> {
     if { let mut __found = false; for n in names.clone().iter().cloned() { if (n.clone() == ref_name.clone()) { __found = true; break; } } __found } {
         vec![]
 } else {
@@ -466,7 +463,7 @@ pub fn boundary_ref_error(names: Vec<String>, ref_name: String) -> Vec<Rc<Node>>
 }
 }
 
-pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Vec<Rc<Node>> {
+pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Vec<Rc<ErrorNode>> {
     {
         let names = { let mut __result = Vec::new(); for a in plan.artifacts.clone().iter().cloned() { __result.push(a.name.clone()); } __result };
 { let mut __result = Vec::new(); for b in plan.boundaries.clone().iter().cloned() { __result.extend(v2_rt::concat(boundary_ref_error(names.clone(), b.from_artifact.clone()), boundary_ref_error(names.clone(), b.to_artifact.clone()))); } __result }
@@ -498,7 +495,7 @@ Rc::new(EmitResult {
 }
 }
 
-pub fn collect_diagnostics(parse_results: Vec<Rc<ParseResult>>) -> Vec<Rc<Node>> {
+pub fn collect_diagnostics(parse_results: Vec<Rc<ParseResult>>) -> Vec<Rc<ErrorNode>> {
     parse_results.clone().iter().cloned().fold(vec![], |acc: _, pr: Rc<ParseResult>| match pr.error.clone() {
     Some(diag) => v2_rt::list_push(acc.clone(), diag.clone()),
     None => acc.clone(),
@@ -507,7 +504,7 @@ pub fn collect_diagnostics(parse_results: Vec<Rc<ParseResult>>) -> Vec<Rc<Node>>
 
 pub fn front_end_sources(sources: Vec<Rc<SourceFile>>) -> Rc<FrontendResult> {
     {
-        let tokenized = { let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(tokenize(s.content.clone())); } __result };
+        let tokenized = { let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(tokenize(s.content.clone(), s.path.clone())); } __result };
 let parse_results = { let mut __result = Vec::new(); for t in tokenized.clone().iter().cloned() { __result.push(parse(t.clone())); } __result };
 let parse_diagnostics = collect_diagnostics(parse_results.clone());
 let has_parse_errors = { let mut __found = false; for p in parse_results.clone().iter().cloned() { if (p.error.clone() != None) { __found = true; break; } } __found };
@@ -549,6 +546,10 @@ pub fn rss_mb() -> usize {
 pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc<PipelineResult> {
     {
         eprintln!("[mem] start: {}MB", rss_mb());
+        // Build newline indices from input sources. O(n) per file, done once.
+        let newline_indices: Vec<Rc<NewlineIndex>> = { let mut __result = Vec::new(); for s in sources.clone().iter().cloned() { __result.push(build_newline_index(s.path.clone(), s.content.clone())); } __result };
+
+
         let frontend = front_end_sources(sources.clone());
         eprintln!("[mem] after frontend (parse+resolve): {}MB", rss_mb());
 match frontend.graph.clone() {
@@ -558,10 +559,11 @@ match frontend.graph.clone() {
     complexity: empty_complexity_report(),
     ownership: vec![],
     artifact_plan: empty_artifact_plan(),
+    newline_indices: newline_indices.clone(),
 }),
     Some(graph) => {
             let graph_diags = graph.diagnostics.clone();
-let resolve_errors = { let mut __result = Vec::new(); for d in graph_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };
+let resolve_errors = { let mut __result = Vec::new(); for d in graph_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result };
 if ((resolve_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: vec![],
@@ -569,12 +571,13 @@ if ((resolve_errors.clone().len() as i64) > 0) {
     complexity: empty_complexity_report(),
     ownership: vec![],
     artifact_plan: empty_artifact_plan(),
+    newline_indices: newline_indices.clone(),
 })
 }
 eprintln!("[mem] before normalize: {}MB", rss_mb());
 let norm = normalize_graph(graph.clone());
 let norm_diags = norm.diagnostics.clone();
-let norm_errors = { let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };
+let norm_errors = { let mut __result = Vec::new(); for d in norm_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result };
 if ((norm_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
     files: vec![],
@@ -582,6 +585,7 @@ if ((norm_errors.clone().len() as i64) > 0) {
     complexity: empty_complexity_report(),
     ownership: vec![],
     artifact_plan: empty_artifact_plan(),
+    newline_indices: newline_indices.clone(),
 })
 }
 eprintln!("[mem] before reconcile (infer): {}MB", rss_mb());
@@ -593,7 +597,7 @@ let func_entries = extract_func_entries(typed.clone());
 eprintln!("[mem] after extract_func_entries: {}MB", rss_mb());
 let complexity = build_complexity_report(func_entries.clone());
 eprintln!("[mem] after complexity: {}MB", rss_mb());
-let typecheck_errors = { let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };
+let typecheck_errors = { let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result };
 eprintln!("[mem] typecheck_errors count: {}, mem: {}MB", typecheck_errors.len(), rss_mb());
 if ((typecheck_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {
@@ -602,6 +606,7 @@ if ((typecheck_errors.clone().len() as i64) > 0) {
     complexity: complexity.clone(),
     ownership: vec![],
     artifact_plan: empty_artifact_plan(),
+    newline_indices: newline_indices.clone(),
 })
 }
 eprintln!("[mem] after reconcile: {}MB", rss_mb());
@@ -613,7 +618,7 @@ let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
 eprintln!("[mem] after emit: {}MB", rss_mb());
 let emit_files = emit_result.files.clone();
 let emit_diags = emit_result.diagnostics.clone();
-let emit_errors = { let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };
+let emit_errors = { let mut __result = Vec::new(); for d in emit_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result };
 let final_files = if ((emit_errors.clone().len() as i64) > 0) {
                 vec![]
 } else {
@@ -625,6 +630,7 @@ Rc::new(PipelineResult {
     complexity: complexity.clone(),
     ownership: ownership.clone(),
     artifact_plan: artifact_plan.clone(),
+    newline_indices: newline_indices.clone(),
 })
 },
 }

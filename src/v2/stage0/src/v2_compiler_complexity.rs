@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, Param, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, NamedArg, diagnostic_is_error};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
 use crate::v2_std_core::MethodSemantics::{IntrinsicMethodSemantics, RuntimeBridgeSemantics, PlainMethodSemantics, ServiceMethodSemantics};
@@ -101,6 +101,10 @@ pub enum CostExpr {
         binder: String,
         upper: Rc<SizeExpr>,
         body: Rc<CostExpr>,
+    },
+    CostLog {
+        base: i64,
+        argument: Rc<SizeExpr>,
     },
     CostUnknown {
         reason: String,
@@ -288,7 +292,7 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { func: f, call_semantics: _ } =>
-            if (f.clone() == func_name.clone()) { 1 } else { 0 },
+            if f.clone() == func_name.clone() { 1 } else { 0 },
         _ => 0,
     };
     let from_children = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
@@ -297,15 +301,132 @@ pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     own.clone() + from_children.clone()
 }
 
+/// Count maximum self-calls on any single execution path through an expression.
+/// Match/if arms are mutually exclusive (max, not sum).
+/// Self-calls inside fold/forEach bodies are already bounded by iteration.
+pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
+    use crate::v2_std_core::*;
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprCall { func: f, call_semantics: _ } => {
+            let own = if f.clone() == func_name.clone() { 1i64 } else { 0i64 };
+            let arg_calls = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+                acc + max_path_self_calls(arg_value(child), func_name.clone())
+            });
+            own + arg_calls
+        }
+        ExprData::ExprMatch => {
+            let scrut_calls = max_path_self_calls(match_scrutinee(body.clone()), func_name.clone());
+            let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arm_node| {
+                let arm_calls = max_path_self_calls(arm_body(arm_node), func_name.clone());
+                if arm_calls > acc { arm_calls } else { acc }
+            });
+            scrut_calls + max_arm
+        }
+        ExprData::ExprIf => {
+            let cond_calls = max_path_self_calls(if_condition(body.clone()), func_name.clone());
+            let then_calls = max_path_self_calls(if_then_branch(body.clone()), func_name.clone());
+            let else_calls = match if_else_branch(body.clone()) {
+                Some(eb) => max_path_self_calls(eb, func_name.clone()),
+                None => 0i64,
+            };
+            let branch_max = if then_calls > else_calls { then_calls } else { else_calls };
+            cond_calls + branch_max
+        }
+        ExprData::ExprForEach { variable: _ } => {
+            // Self-calls inside forEach body are bounded by iteration.
+            // Only count calls in the collection expression.
+            max_path_self_calls(foreach_collection(body.clone()), func_name.clone())
+        }
+        ExprData::ExprLet { name: _ } => {
+            let val_calls = max_path_self_calls(let_value(body.clone()), func_name.clone());
+            let body_calls = match let_body(body.clone()) {
+                Some(b) => max_path_self_calls(b, func_name.clone()),
+                None => 0i64,
+            };
+            val_calls + body_calls
+        }
+        ExprData::ExprBlock => {
+            body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+                acc + max_path_self_calls(child, func_name.clone())
+            })
+        }
+        ExprData::ExprMethodCall { method: _, method_semantics: _ } => {
+            // Receiver + non-lambda args contribute to path calls.
+            // Lambda args (callbacks to fold/map/filter) are iteration-bounded.
+            let recv_calls = max_path_self_calls(method_receiver(body.clone()), func_name.clone());
+            let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arg_node| {
+                let val = arg_value(arg_node);
+                match (*(*val).clone().expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => acc,
+                    _ => acc + max_path_self_calls(val, func_name.clone()),
+                }
+            });
+            recv_calls + arg_calls
+        }
+        _ => {
+            body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+                acc + max_path_self_calls(child, func_name.clone())
+            })
+        }
+    }
+}
+
+/// Check if the function body is a structural descent (catamorphism):
+/// a match/if over the recursive parameter where all self-calls are
+/// inside arms, not at the top level. Total work = O(|tree|).
+pub fn is_structural_descent(body: Rc<Node>, func_name: String) -> bool {
+    use crate::v2_std_core::*;
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprMatch => {
+            let scrut_calls = count_self_calls(match_scrutinee(body.clone()), func_name.clone());
+            scrut_calls == 0
+        }
+        ExprData::ExprIf => {
+            let cond_calls = count_self_calls(if_condition(body.clone()), func_name.clone());
+            cond_calls == 0
+        }
+        ExprData::ExprLet { name: _ } => {
+            let val_calls = count_self_calls(let_value(body.clone()), func_name.clone());
+            if val_calls > 0 { false }
+            else {
+                match let_body(body.clone()) {
+                    Some(b) => is_structural_descent(b, func_name.clone()),
+                    None => false,
+                }
+            }
+        }
+        ExprData::ExprBlock => {
+            let stmts = body.clone().children.clone();
+            let len = stmts.len();
+            if len == 0 { false }
+            else {
+                let prefix_calls: i64 = stmts[..len-1].iter().cloned().fold(0i64, |acc, s| {
+                    acc + count_self_calls(s, func_name.clone())
+                });
+                if prefix_calls > 0 { false }
+                else {
+                    is_structural_descent(stmts[len-1].clone(), func_name.clone())
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<RecursionPattern> {
-    let calls = count_self_calls(body.clone(), func_name.clone());
-    if (calls.clone() <= 1) {
+    let path_calls = max_path_self_calls(body.clone(), func_name.clone());
+    if path_calls <= 1 {
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if is_structural_descent(body.clone(), func_name.clone()) {
+        // Structural descent: catamorphism, O(|tree|) not O(k^depth)
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     } else {
         Rc::new(RecursionPattern::DivideAndConquer {
-            split_factor: calls.clone(),
+            split_factor: path_calls,
         })
     }
 }
@@ -504,24 +625,26 @@ Rc::new(SummaryResult {
 })
 },
     CostShape::ShapeSortBody => {
+        // O(n × log(n) × key_cost) — tight bound via CostLog
         let lambda_arg = resolve_lambda_arg(mc_args.clone());
 let key_result = match lambda_arg.clone() {
     Some(la) => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
-    work: Rc::new(CostExpr::CostConst {
-    value: 1,
-}),
-    span: Rc::new(CostExpr::CostConst {
-    value: 1,
-}),
+    work: Rc::new(CostExpr::CostConst { value: 1 }),
+    span: Rc::new(CostExpr::CostConst { value: 1 }),
     output_size: <HashMap<_, _>>::new(),
-    certainty: Certainty::Conservative,
+    certainty: Certainty::Proven,
 }),
     table: recv_r.table.clone(),
 }),
 };
-let sort_work = cost_loop(binder.clone(), size.clone(), key_result.summary.clone().work.clone());
+let log_factor = Rc::new(CostExpr::CostLog { base: 2, argument: size.clone() });
+let per_comparison = key_result.summary.clone().work.clone();
+let sort_work = Rc::new(CostExpr::CostMul {
+    left: cost_loop(binder.clone(), size.clone(), per_comparison),
+    right: log_factor,
+});
 let sort_os = v2_rt::map_insert(<HashMap<_, _>>::new(), "result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
 })));
@@ -530,7 +653,7 @@ Rc::new(SummaryResult {
     work: cost_seq(recv_r.summary.clone().work.clone(), sort_work.clone()),
     span: cost_seq(recv_r.summary.clone().span.clone(), sort_work.clone()),
     output_size: sort_os.clone(),
-    certainty: Certainty::Conservative,
+    certainty: key_result.summary.clone().certainty,
 }),
     table: key_result.table.clone(),
 })
@@ -681,6 +804,10 @@ match (*sbd.clone()).clone() {
 }),
 }
 },
+    CostExpr::CostLog { base: b, argument: a, .. } => Rc::new(CostExpr::CostLog {
+    base: b.clone(),
+    argument: a.clone(),
+}),
 }
     })
 }
@@ -819,6 +946,9 @@ let dominant = if has_cost_sum(l.clone()) {
 };
 dominant.clone()
 },
+    CostExpr::CostLog { argument: a, .. } => {
+                v2_rt::concat(v2_rt::concat("O(log ".to_string(), format_size(a.clone())), ")".to_string())
+},
 }
 }
     })
@@ -915,7 +1045,7 @@ lines.clone().join(&"
 pub struct FuncEntry {
     pub name: String,
     pub body: Rc<Node>,
-    pub params: Vec<Rc<Param>>,
+    pub params: Vec<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
