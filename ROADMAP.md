@@ -878,8 +878,20 @@ Fix direction: golden-output tests, cross-language parity.
 
 ### Known invariant violations
 
-- **FF-8: Container sharing.** Bare `Vec`/`HashMap` clones are O(n).
-  Fix: Rc-wrap container templates. Root-caused 2026-03-27. Blocks regen.
+- **FF-8: Container sharing.** PARTIALLY FIXED (2026-03-29). Rc-wrapping
+  unified to single `rc_types` authority via `build_rc_types()`. Container
+  templates are bare; 3 duplicate predicates deleted. Regen pipeline works
+  (40 files, 0 diagnostics). Emitted Rust still has ~1375 errors from
+  other emitter issues (cross-module imports, Rc<Vec> iteration, etc.).
+- **Sharing model not in LanguageSpec.** Rc-wrapping (Rust), pointer
+  wrapping (Go `*T`), and reference semantics (Python) are three
+  implementations of the same cross-language concern: how non-trivial
+  types are shared. Currently `rc_types` is Rust-only and Go structs
+  are emitted as bare value types (O(fields) copy cost). The sharing
+  strategy (wrap template, construct template, which types need it)
+  should be modeled in LanguageSpec and applied by the shared emitter,
+  not per-language hardcoded. Low urgency (only Rust self-hosts) but
+  a dual representation that will diverge over time.
 - **Option rendering.** Absence-variant rendering is emitter heuristic,
   not LanguageSpec declaration.
 - **General recursion accepted.** `fn spin(n: n)` compiles. Fail-closed
