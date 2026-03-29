@@ -19,7 +19,6 @@ import v2.std.core {
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach,
-  Param,
   arg_value, arm_body,
   IntrinsicMethod,
   MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
@@ -810,7 +809,7 @@ fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, Com
 type FuncEntry {
   name: String
   body: Node
-  params: List<Param>
+  params: List<Node>
 }
 
 // Result of get_or_compute_summary: updated table + the summary.

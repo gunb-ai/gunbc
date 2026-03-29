@@ -13,7 +13,7 @@
 module v2.compiler.infer_sigs
 
 import v2.std.core {
-  Node, Param,
+  Node,
   ExprData, ExprCall,
   ErrorNode, make_error_node,
   MissingAnnotation, no_span,
@@ -29,7 +29,7 @@ import v2.compiler.infer_types { emit_map_has }
 // Produced by resolve_func_sigs after SCC-aware return type resolution.
 type ResolvedFuncSig {
   name: String
-  params: List<Param>
+  params: List<Node>
   inferred: Node
   is_async: Bool
 }

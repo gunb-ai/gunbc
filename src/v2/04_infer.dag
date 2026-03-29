@@ -24,7 +24,7 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node,
   module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names,
-  Field, Variant, Param,
+  param_node_name, param_node_type_expr,
   Connective, Conj, Disj, NoConnective,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -39,7 +39,7 @@ import v2.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError,
-  ResourceUse,
+  resource_use_name,
   kernel_types, is_kernel_type,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
@@ -70,7 +70,7 @@ import v2.std.core {
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe,
   BinAnd, BinOr, NullCoalesce,
   UnaryOpKind, Not, Neg,
-  MatchArm, MatchPattern, Wildcard, FieldBinding, FieldInit, NamedArg, StringPart,
+  MatchArm, MatchPattern, Wildcard, FieldBinding, NamedArg, StringPart,
   make_transport_node, local_transport_node,
   Text, Interpolation,
   leaf_node, with_optional_cardinality, with_required_cardinality,
@@ -247,7 +247,7 @@ type ArgInferResult {
 }
 
 type FieldInferResult {
-  typed_field: FieldInit
+  typed_field: Node
   infer_result: InferResult
   diagnostics: List<ErrorNode>
 }
@@ -264,7 +264,7 @@ type ParentModulesResult {
 
 // Internal result type for variant-level resolution.
 type VariantResult {
-  variant: Variant
+  variant: Node
   diagnostics: List<ErrorNode>
 }
 
@@ -374,12 +374,12 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
 // =========================================================================
 
 // Read the namespace root from a service item's properties.
-// The parser stores it as FieldInit { name: "namespace_root", value: LitStr(root) }.
+// The parser stores it as a field-init node with name "namespace_root" and value LitStr(root).
 // Falls back to the full name if the property is absent.
 // Takes properties and name separately so it works for any Node.
-fn namespace_root_from_properties(properties: List<FieldInit>, name: String) -> String {
-  match properties |> filter(p => p.name == "namespace_root") |> first {
-    Some { value: ns_prop } => match ns_prop.value.expr_data {
+fn namespace_root_from_properties(properties: List<Node>, name: String) -> String {
+  match properties |> filter(p => field_init_node_name(n: p) == "namespace_root") |> first {
+    Some { value: ns_prop } => match field_init_node_value(n: ns_prop).expr_data {
       ExprLiteral { value: LitStr { value: root } } => root
       _ => name
     }
@@ -541,9 +541,9 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
 // build_params_scope: add function params to locals in an InferScope
 // -------------------------------------------------------------------------
 
-fn build_params_scope(scope: InferScope, params: List<Param>) -> InferScope {
+fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
-    map_insert(acc, p.name, TypeBinding { name: p.name, resolved: p.type_expr })
+    map_insert(acc, param_node_name(n: p), TypeBinding { name: param_node_name(n: p), resolved: param_node_type_expr(n: p) })
   )
   InferScope {
     type_env: scope.type_env,
@@ -1451,7 +1451,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
     ExprRecordLit { type_name: tn, parent_enum: _ } =>
       let span = texpr.span
       // children: field init nodes
-      let field_inits = texpr.children |> map(fi_node => FieldInit { name: field_init_node_name(n: fi_node), value: field_init_node_value(n: fi_node) })
+      let field_inits = texpr.children
       infer_record_lit(type_name: tn, field_inits: field_inits, span: span, scope: scope)
 
     ExprListLit =>
@@ -1769,13 +1769,13 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
 // If type_name given, look up in type_env; else construct anonymous Product.
 // -------------------------------------------------------------------------
 
-fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: SourceSpan, scope: InferScope) -> InferResult {
+fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, scope: InferScope) -> InferResult {
   let fi_infer_results = map(field_inits, fi =>
-    let ar = infer_expr(texpr: fi.value, scope: scope)
+    let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope)
     let ar_typed = ar.typed
     let ar_diags = ar.diagnostics
     FieldInferResult {
-      typed_field: FieldInit { name: fi.name, value: ar_typed },
+      typed_field: make_field_init_node(name: field_init_node_name(n: fi), value: ar_typed, span: fi.span),
       infer_result: ar,
       diagnostics: ar_diags
     }
@@ -1786,7 +1786,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     // Anonymous record -- construct Conj node from field inits
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
-        name: fir.typed_field.name, span: no_span(),
+        name: field_init_node_name(n: fir.typed_field), span: no_span(),
         children: [], connective: NoConnective,
                params: [], inferred: Some { value: Resolved { node: rt_type(n: fir.infer_result.typed) } }, return_cardinality: Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
@@ -1798,7 +1798,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
            params: [], inferred: none, return_cardinality: Required, uses: [],
       body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
-    let typed_field_nodes = typed_fields |> map(tf => make_field_init_node(name: tf.name, value: tf.value, span: span))
+    let typed_field_nodes = typed_fields
     let texpr = make_expr_node(expr_data: ExprRecordLit { type_name: none, parent_enum: none }, children: typed_field_nodes, inferred: Some { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
@@ -1830,7 +1830,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
     let expected_optional_parent = Some { value: "Optional" }
     let is_some_ctor = type_name.value == "Some" && local_variant_parent == expected_optional_parent
     let resolved_node = if is_some_ctor {
-      let val_field = fi_infer_results |> filter(fir => fir.typed_field.name == "value") |> first
+      let val_field = fi_infer_results |> filter(fir => field_init_node_name(n: fir.typed_field) == "value") |> first
       match val_field {
         Some { value: val_fir } => with_optional_cardinality(n: rt_type(n: val_fir.infer_result.typed))
         None => raw_resolved
@@ -1844,7 +1844,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<FieldInit>, span: Sour
         module_name: scope.module_name
       )]
     }
-    let typed_field_nodes2 = typed_fields |> map(tf => make_field_init_node(name: tf.name, value: tf.value, span: span))
+    let typed_field_nodes2 = typed_fields
     let texpr = make_expr_node(
       expr_data: ExprRecordLit { type_name: type_name, parent_enum: local_variant_parent },
       children: typed_field_nodes2,
@@ -2199,7 +2199,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
 
 fn build_item_info(item: Node) -> ItemInfo {
   let kind = item_kind(item: item)
-  let res_names = item.uses |> map(u => u.name)
+  let res_names = item.uses |> map(u => resource_use_name(n: u))
   match kind {
     FuncItem =>
       ItemInfo {

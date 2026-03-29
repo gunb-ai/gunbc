@@ -10,7 +10,7 @@
 module v2.compiler.infer_lookup
 
 import v2.std.core {
-  Node, Param,
+  Node, param_node_type_expr,
   InferredNode, Resolved, TypeVariable,
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,

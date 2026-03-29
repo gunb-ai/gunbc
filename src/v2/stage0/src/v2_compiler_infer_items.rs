@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ErrorNode, Param, Field, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, leaf_node, node_has_structure, node_is_product, node_is_coproduct};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, leaf_node, make_field_node, node_has_structure, node_is_product, node_is_coproduct};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required};
 pub use crate::v2_compiler_infer_types::{rt_type};
@@ -74,7 +74,7 @@ pub struct ItemInfo {
     pub kind: ItemKind,
     pub service_names: Vec<String>,
     pub resource_names: Vec<String>,
-    pub params: Vec<Rc<Param>>,
+    pub params: Vec<Rc<Node>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
 }
@@ -103,7 +103,7 @@ pub struct ResolvedGraph {
     pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 
-pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Vec<Rc<Field>> {
+pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Vec<Rc<Node>> {
     if (inferred.clone() == None) {
         vec![]
 } else {
@@ -118,47 +118,19 @@ pub fn inferred_to_outputs(inferred: Option<Rc<InferredNode>>, span: Rc<SourceSp
 } else {
                             rt_type(child.clone())
 };
-Rc::new(Field {
-    name: child.name.clone(),
-    type_expr: child_type.clone(),
-    cardinality: Cardinality::Required,
-    default_value: None,
-    from_key: None,
-    span: span.clone(),
-})
+make_field_node(child.name.clone(), child_type.clone(), Cardinality::Required, None, None, span.clone())
 }); } __result }
 } else {
-                    vec![Rc::new(Field {
-    name: "value".to_string(),
-    type_expr: rt.clone(),
-    cardinality: Cardinality::Required,
-    default_value: None,
-    from_key: None,
-    span: span.clone(),
-})]
+                    vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())]
 }
 } else {
-                vec![Rc::new(Field {
-    name: "value".to_string(),
-    type_expr: rt.clone(),
-    cardinality: Cardinality::Required,
-    default_value: None,
-    from_key: None,
-    span: span.clone(),
-})]
+                vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())]
 }
 } else {
             if ((rt.name.clone() == "Unit".to_string()) && ((rt.children.clone().len() as i64) == 0)) {
                 vec![]
 } else {
-                vec![Rc::new(Field {
-    name: "value".to_string(),
-    type_expr: rt.clone(),
-    cardinality: Cardinality::Required,
-    default_value: None,
-    from_key: None,
-    span: span.clone(),
-})]
+                vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, span.clone())]
 }
 },
 }

@@ -20,18 +20,17 @@ module v2.compiler.emit
 import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  Field, Param,
+  param_node_name, param_node_type_expr, param_node_default_value,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
   ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
   ExprError, ExprReturn,
-  NamedArg, MatchArm, FieldInit,
+  NamedArg, MatchArm,
   StringPart, Text, Interpolation,
   LiteralValue,
   TextFile, SourceSpan,
-  ResourceUse,
   BinOpKind, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
   IntrinsicMethod,
@@ -154,8 +153,8 @@ type TestProjection {
   service_name: String
   operation_name: String
   inferred: Node
-  params: List<Param>
-  mock_field_inits: List<FieldInit>
+  params: List<Node>
+  mock_field_inits: List<Node>
 }
 
 fn has_mock_prefix(name: String) -> Bool {
@@ -338,10 +337,10 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
           if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
         )
         let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-          map_insert(acc, param.name, true)
+          map_insert(acc, param_node_name(n: param), true)
         )
         let ordered = sig.params |> flat_map(param =>
-          match map_get(arg_map, param.name) {
+          match map_get(arg_map, param_node_name(n: param)) {
             Some { value: arg } => [arg]
             None => []
           }
@@ -791,7 +790,7 @@ fn emit_node_type_rc(n: Node, target: RenderTarget, rc_types: Map<String, Bool>)
   }
   // Callable: function type rendering (structural — has params)
   if n.params |> count > 0 {
-    let param_types = n.params |> map(p => emit_node_type_rc(n: p.type_expr, target: target, rc_types: rc_types))
+    let param_types = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
     let param_str = param_types |> join(separator: ", ")
     let ret_str = match n.inferred {
       Some { value: Resolved { node: rt } } => emit_node_type_rc(n: rt, target: target, rc_types: rc_types)
@@ -1047,7 +1046,7 @@ fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> B
 }
 
 // Extract operation modifier names from a list of property field inits.
-fn extract_modifier_names(properties: List<FieldInit>) -> List<String> {
+fn extract_modifier_names(properties: List<Node>) -> List<String> {
   properties |> flat_map(p =>
     match field_init_operation_modifier(field_init: p) {
       Some { value: modifier } => [operation_modifier_name(modifier: modifier)]

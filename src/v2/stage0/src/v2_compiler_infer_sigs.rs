@@ -48,14 +48,14 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, Param, ExprData, CompilerDiagnostic, ErrorNode, make_error_node, no_span, DeclaredFuncSig};
+pub use crate::v2_std_core::{Node, ExprData, CompilerDiagnostic, ErrorNode, make_error_node, no_span, DeclaredFuncSig};
 use crate::v2_std_core::ExprData::{ExprCall};
 pub use crate::v2_compiler_infer_types::{emit_map_has};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedFuncSig {
     pub name: String,
-    pub params: Vec<Rc<Param>>,
+    pub params: Vec<Rc<Node>>,
     pub inferred: Rc<Node>,
     pub is_async: bool,
 }

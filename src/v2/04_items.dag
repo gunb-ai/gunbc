@@ -9,7 +9,9 @@ module v2.compiler.infer_items
 
 import std.types { SourceSpan }
 import v2.std.core {
-  Node, ErrorNode, Param, Field,
+  Node, ErrorNode,
+  make_param_node, param_node_name, param_node_type_expr,
+  make_field_node,
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -40,7 +42,7 @@ type ItemInfo {
   kind: ItemKind
   service_names: List<String>
   resource_names: List<String>
-  params: List<Param>
+  params: List<Node>
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
 }
@@ -79,7 +81,7 @@ type ResolvedGraph {
 //   - Single output: inferred is the Node directly
 //   - Multiple outputs: inferred is Conj Node with field children
 //   - No outputs: inferred is none
-fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field> {
+fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> {
   if inferred == none { [] }
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []
@@ -93,18 +95,18 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Field>
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
                 let child_type = if child.inferred == none { leaf_node(name: child.name) } else { rt_type(n: child) }
-                Field { name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span }
+                make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span)
               )
             } else {
-              [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
+              [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
             }
           } else {
-            [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
+            [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
           }
         } else if rt.connective == Conj && rt.children |> count == 0 {
           []
         } else {
-          [Field { name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span }]
+          [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: span)]
         }
     }
   }

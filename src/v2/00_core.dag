@@ -94,33 +94,8 @@ type Connective = Conj | Disj | NoConnective
 type Cardinality = Required | CardOptional
 
 
-type Field {
-  name: String
-  type_expr: Node
-  cardinality: Cardinality
-  default_value: Node?
-  from_key: String?
-  span: SourceSpan
-}
-
-type Variant {
-  name: String
-  fields: List<Field>
-  span: SourceSpan
-}
-
-type Param {
-  name: String
-  type_expr: Node
-  default_value: Node?
-  span: SourceSpan
-}
-
-type ResourceUse {
-  name: String
-  resource: Node
-  span: SourceSpan
-}
+// Field, Variant, Param dissolved into Node (D1c).
+// See make_param_node, make_field_node constructors and param_node_*/field_node_* accessors.
 
 type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst | TupleSecond
 
@@ -278,7 +253,7 @@ type MethodSemantics
   = PlainMethodSemantics
   | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
   | RuntimeBridgeSemantics { method: RuntimeBridgeMethod }
-  | ServiceMethodSemantics { service_name: String, op_params: List<Param> }
+  | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 
@@ -334,7 +309,6 @@ type ExprData
 
 type NamedArg { name: String?, value: Node }
 type MatchArm { pattern: MatchPattern, guard: Node?, body: Node }
-type FieldInit { name: String, value: Node }
 
 type MatchPattern
   = Bind { name: String }
@@ -369,12 +343,12 @@ type StringPart
 // shape, then dissolves fields into Node properties and inferred.
 type OperationDef {
   name: String
-  inputs: List<Field>
-  outputs: List<Field>
-  response_props: List<FieldInit>
-  mock_props: List<FieldInit>
-  exit_props: List<FieldInit>
-  modifier_props: List<FieldInit>
+  inputs: List<Node>
+  outputs: List<Node>
+  response_props: List<Node>
+  mock_props: List<Node>
+  exit_props: List<Node>
+  modifier_props: List<Node>
   transport: Node?
   span: SourceSpan
 }
@@ -383,8 +357,8 @@ type OperationModifier = Idempotent | Readonly | Hermetic
 
 type CapabilityDef {
   name: String
-  inputs: List<Field>
-  outputs: List<Field>
+  inputs: List<Node>
+  outputs: List<Node>
   span: SourceSpan
 }
 
@@ -498,7 +472,7 @@ fn make_cascade_error_node(diagnostic: CompilerDiagnostic, module_name: String, 
 
 type DeclaredFuncSig {
   name: String
-  params: List<Param>
+  params: List<Node>
   inferred: Node?
   is_async: Bool
 }
@@ -528,17 +502,17 @@ type Node {
   // Logical connective -- And (record/all-hold), Or (sum/one-holds), NoConnective (leaf)
   connective: Connective
   // Collection classification -- structural, not name-based (P5.7b)
-  // Ports -- what flows in and out
-  params: List<Param>
+  // Ports -- what flows in and out (dissolved from Param, D1c)
+  params: List<Node>
   inferred: InferredNode?
   return_cardinality: Cardinality
-  uses: List<ResourceUse>
+  uses: List<Node>
   // Computation -- how it executes (none = externally provided)
   body: Node?
   // Binding -- external execution strategy
   transport: Node?
   // Metadata
-  properties: List<FieldInit>
+  properties: List<Node>
   type_annotation: Node?
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
@@ -610,6 +584,27 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
   }
 }
 
+// Resource use node: name carries the resource binding name, child is the resource type node.
+fn make_resource_use_node(name: String, resource: Node, span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, children: [resource], connective: NoConnective,
+
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn resource_use_name(n: Node) -> String { n.name }
+
+fn resource_use_resource(n: Node) -> Node {
+  match n.children |> first {
+    Some { value: v } => v
+    None => make_expr_error_node(kind: InternalExprError, message: "malformed resource-use: missing resource", span: n.span)
+  }
+}
+
 // Field init node: name carries the field name, child is the value expression.
 fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
   Node {
@@ -646,6 +641,114 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
+
+// =========================================================================
+// Param / Field / Variant dissolution (D1c)
+//
+// Param, Field, and Variant are dissolved into Node. This follows the same
+// pattern as FieldInit and ResourceUse dissolutions (D1a/D1b).
+//
+// Param node layout:
+//   name = param name
+//   children = [type_expr] or [type_expr, default_value]
+//   span = source span
+//
+// Field node layout (extends Param):
+//   name = field name
+//   children = [type_expr] or [type_expr, default_value]
+//   return_cardinality = field cardinality
+//   properties = [from_key_node] if from_key is present
+//   span = source span
+//
+// Variant node: a Node with name + span + children (the dissolved Field nodes).
+// Already close to how variants work in the AST.
+// =========================================================================
+
+// Param constructor: name carries param name, child[0] is type_expr, child[1] is default_value if present.
+fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan) -> Node {
+  let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
+  Node {
+    name: name, span: span, children: children, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn param_node_name(n: Node) -> String { n.name }
+
+fn param_node_type_expr(n: Node) -> Node {
+  match n.children |> first {
+    Some { value: v } => v
+    None => make_expr_error_node(kind: InternalExprError, message: "malformed param: missing type_expr", span: n.span)
+  }
+}
+
+fn param_node_default_value(n: Node) -> Node? {
+  if n.children |> count > 1 {
+    n.children |> skip(1) |> first
+  } else { none }
+}
+
+fn param_node_span(n: Node) -> SourceSpan { n.span }
+
+// Field constructor: extends Param with cardinality and from_key.
+fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan) -> Node {
+  let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
+  let props = match from_key {
+    Some { value: fk } => [leaf_node(name: fk)]
+    None => []
+  }
+  Node {
+    name: name, span: span, children: children, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: cardinality,
+    uses: [], body: none, transport: none, properties: props,
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn field_node_name(n: Node) -> String { n.name }
+
+fn field_node_type_expr(n: Node) -> Node {
+  match n.children |> first {
+    Some { value: v } => v
+    None => make_expr_error_node(kind: InternalExprError, message: "malformed field: missing type_expr", span: n.span)
+  }
+}
+
+fn field_node_cardinality(n: Node) -> Cardinality { n.return_cardinality }
+
+fn field_node_default_value(n: Node) -> Node? {
+  if n.children |> count > 1 {
+    n.children |> skip(1) |> first
+  } else { none }
+}
+
+fn field_node_from_key(n: Node) -> String? {
+  match n.properties |> first {
+    Some { value: p } => Some { value: p.name }
+    None => none
+  }
+}
+
+fn field_node_span(n: Node) -> SourceSpan { n.span }
+
+// Variant constructor: a Node with name + span + children (dissolved Field nodes).
+fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan) -> Node {
+  Node {
+    name: name, span: span, children: fields, connective: NoConnective,
+    params: [], inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
+fn variant_node_name(n: Node) -> String { n.name }
+fn variant_node_fields(n: Node) -> List<Node> { n.children }
+fn variant_node_span(n: Node) -> SourceSpan { n.span }
 
 // =========================================================================
 // Compositional child Node accessors (P5.11)
@@ -786,7 +889,7 @@ fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 // children = ordered argv (shell only).
 // =========================================================================
 
-fn make_transport_node(name: String, properties: List<FieldInit>, children: List<Node>, span: SourceSpan) -> Node {
+fn make_transport_node(name: String, properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
     name: name, span: span, children: children, connective: NoConnective,
    
@@ -801,18 +904,18 @@ fn local_transport_node(span: SourceSpan) -> Node {
   make_transport_node(name: transport_kind_name(kind: LocalTransport), properties: [], children: [], span: span)
 }
 
-fn rest_transport_node(base_url: Node, auth_props: List<FieldInit>, headers: List<FieldInit>, span: SourceSpan) -> Node {
-  let url_field = FieldInit { name: config_property_name(key: ConfigBaseUrl), value: base_url }
+fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, span: SourceSpan) -> Node {
+  let url_field = make_field_init_node(name: config_property_name(key: ConfigBaseUrl), value: base_url, span: make_span(start: 0, end: 0))
   let props = concat([url_field], auth_props, headers)
   make_transport_node(name: transport_kind_name(kind: RestTransport), properties: props, children: [], span: span)
 }
 
-fn shell_transport_node(argv: List<Node>, env: List<FieldInit>, span: SourceSpan) -> Node {
+fn shell_transport_node(argv: List<Node>, env: List<Node>, span: SourceSpan) -> Node {
   make_transport_node(name: transport_kind_name(kind: ShellTransport), properties: env, children: argv, span: span)
 }
 
 fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
-  let path_field = FieldInit { name: config_property_name(key: ConfigBasePath), value: base_path }
+  let path_field = make_field_init_node(name: config_property_name(key: ConfigBasePath), value: base_path, span: make_span(start: 0, end: 0))
   make_transport_node(name: transport_kind_name(kind: FileTransport), properties: [path_field], children: [], span: span)
 }
 
@@ -820,14 +923,14 @@ fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
 // Transport Node accessors
 // =========================================================================
 
-fn find_property(props: List<FieldInit>, prop_name: String) -> Node? {
-  match props |> filter(p => p.name == prop_name) |> first() {
-    Some { value: fi } => Some { value: fi.value }
+fn find_property(props: List<Node>, prop_name: String) -> Node? {
+  match props |> filter(p => field_init_node_name(n: p) == prop_name) |> first() {
+    Some { value: fi } => Some { value: field_init_node_value(n: fi) }
     None => none
   }
 }
 
-fn find_property_string(props: List<FieldInit>, prop_name: String) -> String? {
+fn find_property_string(props: List<Node>, prop_name: String) -> String? {
   match find_property(props: props, prop_name: prop_name) {
     Some { value: n } => match n.expr_data {
       ExprLiteral { value: LitStr { value: s } } => Some { value: s }
@@ -879,10 +982,11 @@ fn is_transport_kind(t: Node, kind: TransportKind) -> Bool {
   transport_kind_name(kind: transport_kind(t)) == transport_kind_name(kind: kind)
 }
 
-fn field_init_operation_modifier(field_init: FieldInit) -> OperationModifier? {
-  if field_init.name == "idempotent" { Some { value: Idempotent } }
-  else if field_init.name == "readonly" { Some { value: Readonly } }
-  else if field_init.name == "hermetic" { Some { value: Hermetic } }
+fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
+  let fi_name = field_init_node_name(n: field_init)
+  if fi_name == "idempotent" { Some { value: Idempotent } }
+  else if fi_name == "readonly" { Some { value: Readonly } }
+  else if fi_name == "hermetic" { Some { value: Hermetic } }
   else { none }
 }
 
@@ -913,9 +1017,9 @@ fn transport_has_auth(t: Node) -> Bool {
   }
 }
 
-fn transport_headers(t: Node) -> List<FieldInit> {
+fn transport_headers(t: Node) -> List<Node> {
   t.properties |> filter(p =>
-    let key = config_property_key(name: p.name)
+    let key = config_property_key(name: field_init_node_name(n: p))
     key != ConfigBaseUrl
       && key != ConfigBasePath
       && key != ConfigAuthScheme
@@ -924,7 +1028,7 @@ fn transport_headers(t: Node) -> List<FieldInit> {
   )
 }
 
-fn transport_env(t: Node) -> List<FieldInit> {
+fn transport_env(t: Node) -> List<Node> {
   t.properties
 }
 
@@ -1041,25 +1145,26 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool) -> B
 //   "svc_rate_limit" = rate_limit Node, "svc_retry" = retry Node.
 // Only non-none fields are included.
 
-fn service_config_properties(endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node?) -> List<FieldInit> {
-  let ep_prop = [FieldInit { name: "svc_endpoint", value: endpoint }]
+fn service_config_properties(endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+  let zero_span = make_span(start: 0, end: 0)
+  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span)]
   let auth_prop = match auth {
-    Some { value: a } => [FieldInit { name: "svc_auth", value: a }]
+    Some { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span)]
     None => []
   }
   let rate_prop = match rate_limit {
-    Some { value: r } => [FieldInit { name: "svc_rate_limit", value: r }]
+    Some { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span)]
     None => []
   }
   let retry_prop = match retry {
-    Some { value: r } => [FieldInit { name: "svc_retry", value: r }]
+    Some { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span)]
     None => []
   }
   concat(ep_prop, auth_prop, rate_prop, retry_prop)
 }
 
 fn has_service_config(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "svc_endpoint")
+  n.properties |> any(p => field_init_node_name(n: p) == "svc_endpoint")
 }
 
 fn service_config_endpoint(n: Node) -> Node? {
@@ -1086,7 +1191,7 @@ fn service_config_retry(n: Node) -> Node? {
 // ImportAll: property "__import_all" = true. ImportSpecific: children named per import.
 
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
-  let marker = FieldInit { name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)) }
+  let marker = make_field_init_node(name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
   Node {
     name: name, span: span, children: concat(imports, items), connective: NoConnective,
    
@@ -1098,9 +1203,9 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
 }
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan) -> Node {
-  let import_prop = FieldInit { name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)) }
+  let import_prop = make_field_init_node(name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
   let all_prop = if is_all {
-    [FieldInit { name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)) }]
+    [make_field_init_node(name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))]
   } else { [] }
   Node {
     name: module_path, span: span, children: specific_names, connective: NoConnective,

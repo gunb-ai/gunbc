@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, module_imports, module_items, Connective, Field, Param, ExprData, NamedArg, MatchArm, FieldInit, StringPart, LiteralValue, TextFile, SourceSpan, ResourceUse, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, ErrorNode, InferredNode, module_imports, module_items, Connective, ExprData, NamedArg, MatchArm, StringPart, LiteralValue, TextFile, SourceSpan, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
@@ -138,8 +138,8 @@ pub struct TestProjection {
     pub service_name: String,
     pub operation_name: String,
     pub inferred: Rc<Node>,
-    pub params: Vec<Rc<Param>>,
-    pub mock_field_inits: Vec<Rc<FieldInit>>,
+    pub params: Vec<Rc<Node>>,
+    pub mock_field_inits: Vec<Rc<Node>>,
 }
 
 pub fn has_mock_prefix(name: String) -> bool {
@@ -341,8 +341,8 @@ if has_unnamed.clone() {
 } else {
                     acc.clone()
 });
-let param_name_set = sig.params.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, param: Rc<Param>| v2_rt::map_insert(acc.clone(), param.name.clone(), true));
-let ordered = { let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&arg_map, param.name.clone()) {
+let param_name_set = sig.params.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, param: Rc<Node>| v2_rt::map_insert(acc.clone(), param_node_name(param.clone()), true));
+let ordered = { let mut __result = Vec::new(); for param in sig.params.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&arg_map, param_node_name(param.clone())) {
     Some(arg) => vec![arg.clone()],
     None => vec![],
 }); } __result };
@@ -753,7 +753,7 @@ if (((n.name.clone() == "Dynamic".to_string()) || (n.name.clone() == "Error".to_
 }
 if ((n.name.clone() == "Callable".to_string()) && ((n.params.clone().len() as i64) > 0)) {
                 {
-                    let param_types = { let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(p.type_expr.clone(), target.clone(), rc_types.clone())); } __result };
+                    let param_types = { let mut __result = Vec::new(); for p in n.params.clone().iter().cloned() { __result.push(emit_node_type_rc(param_node_type_expr(p.clone()), target.clone(), rc_types.clone())); } __result };
 let param_str = param_types.clone().join(&", ".to_string());
 let ret_str = match n.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => emit_node_type_rc(rt.clone(), target.clone(), rc_types.clone()),
@@ -1017,7 +1017,7 @@ if is_transport_kind(t.clone(), Rc::new(TransportKind::RestTransport)) {
 }
 }
 
-pub fn extract_modifier_names(properties: Vec<Rc<FieldInit>>) -> Vec<String> {
+pub fn extract_modifier_names(properties: Vec<Rc<Node>>) -> Vec<String> {
     { let mut __result = Vec::new(); for p in properties.clone().iter().cloned() { __result.extend(match field_init_operation_modifier(p.clone()) {
     Some(modifier) => vec![operation_modifier_name(modifier.clone())],
     None => vec![],

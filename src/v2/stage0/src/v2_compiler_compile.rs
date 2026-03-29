@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, CompilerDiagnostic, ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, no_span, Connective, Cardinality, Field, Param, ResourceUse, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node, NewlineIndex, build_newline_index};
+pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, CompilerDiagnostic, ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, no_span, Connective, Cardinality, resource_use_name, resource_use_resource, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, NamedArg, MatchArm, MatchPattern, FieldBinding, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node, NewlineIndex, build_newline_index, field_init_node_name, field_init_node_value, param_node_name, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::Connective::*;
@@ -316,8 +316,8 @@ pub fn serialize_match_arm(arm: Rc<MatchArm>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"pattern\": ".to_string(), serialize_match_pattern(arm.pattern.clone())), ", \"guard\": ".to_string()), json_optional_node(arm.guard.clone())), ", \"body\": ".to_string()), serialize_node(arm.body.clone())), "}".to_string())
 }
 
-pub fn serialize_field_init(field_init: Rc<FieldInit>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init.name.clone())), ", \"value\": ".to_string()), serialize_node(field_init.value.clone())), "}".to_string())
+pub fn serialize_field_init(field_init: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_init_node_name(field_init.clone()))), ", \"value\": ".to_string()), serialize_node(field_init_node_value(field_init.clone()))), "}".to_string())
 }
 
 pub fn serialize_string_part(part: Rc<StringPart>) -> String {
@@ -397,16 +397,16 @@ pub fn serialize_inferred_node(inferred: Rc<InferredNode>) -> String {
 }
 }
 
-pub fn serialize_resource_use(resource_use: Rc<ResourceUse>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use.name.clone())), ", \"resource\": ".to_string()), serialize_node(resource_use.resource.clone())), ", \"span\": ".to_string()), serialize_span(resource_use.span.clone())), "}".to_string())
+pub fn serialize_resource_use(resource_use: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(resource_use_name(resource_use.clone()))), ", \"resource\": ".to_string()), serialize_node(resource_use_resource(resource_use.clone()))), ", \"span\": ".to_string()), serialize_span(resource_use.span.clone())), "}".to_string())
 }
 
-pub fn serialize_field(field: Rc<Field>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field.name.clone())), ", \"type_expr\": ".to_string()), serialize_node(field.type_expr.clone())), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field.cardinality.clone()))), ", \"default_value\": ".to_string()), json_optional_node(field.default_value.clone())), ", \"from_key\": ".to_string()), json_optional_string(field.from_key.clone())), ", \"span\": ".to_string()), serialize_span(field.span.clone())), "}".to_string())
+pub fn serialize_field(field: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(field_node_name(field.clone()))), ", \"type_expr\": ".to_string()), serialize_node(field_node_type_expr(field.clone()))), ", \"cardinality\": ".to_string()), json_quote(cardinality_name(field_node_cardinality(field.clone())))), ", \"default_value\": ".to_string()), json_optional_node(field_node_default_value(field.clone()))), ", \"from_key\": ".to_string()), json_optional_string(field_node_from_key(field.clone()))), ", \"span\": ".to_string()), serialize_span(field_node_span(field.clone()))), "}".to_string())
 }
 
-pub fn serialize_param(param: Rc<Param>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param.name.clone())), ", \"type_expr\": ".to_string()), serialize_node(param.type_expr.clone())), ", \"default_value\": ".to_string()), json_optional_node(param.default_value.clone())), ", \"span\": ".to_string()), serialize_span(param.span.clone())), "}".to_string())
+pub fn serialize_param(param: Rc<Node>) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(param_node_name(param.clone()))), ", \"type_expr\": ".to_string()), serialize_node(param_node_type_expr(param.clone()))), ", \"default_value\": ".to_string()), json_optional_node(param_node_default_value(param.clone()))), ", \"span\": ".to_string()), serialize_span(param_node_span(param.clone()))), "}".to_string())
 }
 
 pub fn serialize_node(node: Rc<Node>) -> String {

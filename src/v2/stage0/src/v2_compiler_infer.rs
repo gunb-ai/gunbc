@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Field, Variant, Param, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, is_error_diagnostic, rt_node, has_inferred, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, ResourceUse, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, resource_use_name, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, is_error_diagnostic, rt_node, has_inferred, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchArm, MatchPattern, FieldBinding, NamedArg, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
@@ -195,7 +195,7 @@ pub struct ArgInferResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInferResult {
-    pub typed_field: Rc<FieldInit>,
+    pub typed_field: Rc<Node>,
     pub infer_result: Rc<InferResult>,
     pub diagnostics: Vec<Rc<ErrorNode>>,
 }
@@ -214,7 +214,7 @@ pub struct ParentModulesResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantResult {
-    pub variant: Rc<Variant>,
+    pub variant: Rc<Node>,
     pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
@@ -332,9 +332,9 @@ continue;
 }
 }
 
-pub fn namespace_root_from_properties(properties: Vec<Rc<FieldInit>>, name: String) -> String {
-    match { let mut __result = Vec::new(); for p in properties.clone().iter().cloned() { if (p.name.clone() == "namespace_root".to_string()) { __result.push(p); } } __result }.first().cloned() {
-    Some(ns_prop) => match (*ns_prop.value.clone().expr_data.clone()).clone() {
+pub fn namespace_root_from_properties(properties: Vec<Rc<Node>>, name: String) -> String {
+    match { let mut __result = Vec::new(); for p in properties.clone().iter().cloned() { if (field_init_node_name(p.clone()) == "namespace_root".to_string()) { __result.push(p); } } __result }.first().cloned() {
+    Some(ns_prop) => match (*field_init_node_value(ns_prop.clone()).expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: root, .. } = value.as_ref() else { unreachable!() }; root.clone() },
     _ => name.clone(),
 },
@@ -484,11 +484,11 @@ match inferred_parent.clone() {
     })
 }
 
-pub fn build_params_scope(scope: Rc<InferScope>, params: Vec<Rc<Param>>) -> Rc<InferScope> {
+pub fn build_params_scope(scope: Rc<InferScope>, params: Vec<Rc<Node>>) -> Rc<InferScope> {
     {
-        let new_locals = params.clone().iter().cloned().fold(scope.locals.clone(), |acc: _, p: Rc<Param>| v2_rt::map_insert(acc.clone(), p.name.clone(), Rc::new(TypeBinding {
+        let new_locals = params.clone().iter().cloned().fold(scope.locals.clone(), |acc: _, p: Rc<Node>| v2_rt::map_insert(acc.clone(), p.name.clone(), Rc::new(TypeBinding {
     name: p.name.clone(),
-    resolved: p.type_expr.clone(),
+    resolved: param_node_type_expr(p.clone()),
 })));
 Rc::new(InferScope {
     type_env: scope.type_env.clone(),
@@ -786,12 +786,12 @@ pub fn infer_lambda_with_callable_type(lambda_expr: Rc<Node>, callable_type: Rc<
 let lam_body = lambda_body(lambda_expr.clone());
 let callable_params = callable_type.params.clone();
 let param_types = { let mut __result = Vec::new(); for pair in lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { __result.push(match callable_params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
-    Some(cp) => cp.type_expr.clone(),
+    Some(cp) => param_node_type_expr(cp.clone()),
     None => leaf_node("Dynamic".to_string()),
 }); } __result };
 let typed_scope = lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned().fold(scope.clone(), |acc: _, pair: (i64, String)| {
             let pt = match callable_params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
-    Some(cp) => cp.type_expr.clone(),
+    Some(cp) => param_node_type_expr(cp.clone()),
     None => leaf_node("Dynamic".to_string()),
 };
 extend_scope(acc.clone(), pair.1.clone(), pt.clone())
@@ -1135,7 +1135,7 @@ v2_rt::concat(vec![Rc::new(ArgInferResult {
                 { let mut __result = Vec::new(); for pair in call_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { __result.push({
                     let a = pair.1.clone();
 let formal_param_type = match sig_params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
-    Some(p) => p.type_expr.clone(),
+    Some(p) => param_node_type_expr(p.clone()),
     None => leaf_node("Dynamic".to_string()),
 };
 let is_callable_formal = (formal_param_type.name.clone() == "Callable".to_string());
@@ -1524,10 +1524,7 @@ Rc::new(InferResult {
 },
     ExprData::ExprRecordLit { type_name: tn, .. } => {
             let span = texpr.span.clone();
-let field_inits = { let mut __result = Vec::new(); for fi_node in texpr.children.clone().iter().cloned() { __result.push(Rc::new(FieldInit {
-    name: field_init_node_name(fi_node.clone()),
-    value: field_init_node_value(fi_node.clone()),
-})); } __result };
+let field_inits = texpr.children.clone();
 infer_record_lit(tn.clone(), field_inits.clone(), span.clone(), scope.clone())
 },
     ExprData::ExprListLit => {
@@ -1814,17 +1811,14 @@ Rc::new(InferResult {
     })
 }
 
-pub fn infer_record_lit(type_name: Option<String>, field_inits: Vec<Rc<FieldInit>>, span: Rc<SourceSpan>, scope: Rc<InferScope>) -> Rc<InferResult> {
+pub fn infer_record_lit(type_name: Option<String>, field_inits: Vec<Rc<Node>>, span: Rc<SourceSpan>, scope: Rc<InferScope>) -> Rc<InferResult> {
     {
         let fi_infer_results = { let mut __result = Vec::new(); for fi in field_inits.clone().iter().cloned() { __result.push({
-            let ar = infer_expr(fi.value.clone(), scope.clone());
+            let ar = infer_expr(field_init_node_value(fi.clone()), scope.clone());
 let ar_typed = ar.typed.clone();
 let ar_diags = ar.diagnostics.clone();
 Rc::new(FieldInferResult {
-    typed_field: Rc::new(FieldInit {
-    name: fi.name.clone(),
-    value: ar_typed.clone(),
-}),
+    typed_field: make_field_init_node(field_init_node_name(fi.clone()), ar_typed.clone(), fi.span.clone()),
     infer_result: ar.clone(),
     diagnostics: ar_diags.clone(),
 })
@@ -1871,7 +1865,7 @@ let anon_node = Rc::new(Node {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-let typed_field_nodes = { let mut __result = Vec::new(); for tf in typed_fields.clone().iter().cloned() { __result.push(make_field_init_node(tf.name.clone(), tf.value.clone(), span.clone())); } __result };
+let typed_field_nodes = typed_fields.clone();
 let texpr = make_expr_node(Rc::new(ExprData::ExprRecordLit {
     type_name: None,
     parent_enum: None,
@@ -1918,7 +1912,7 @@ let type_diags = match effective_lookup.clone() {
     Some(_) => vec![],
     None => vec![inference_error(v2_rt::concat(v2_rt::concat("type '".to_string(), type_name.clone().unwrap()), "' not found in scope".to_string()), span.clone(), scope.module_name.clone())],
 };
-let typed_field_nodes2 = { let mut __result = Vec::new(); for tf in typed_fields.clone().iter().cloned() { __result.push(make_field_init_node(tf.name.clone(), tf.value.clone(), span.clone())); } __result };
+let typed_field_nodes2 = typed_fields.clone();
 let texpr = make_expr_node(Rc::new(ExprData::ExprRecordLit {
     type_name: type_name.clone(),
     parent_enum: local_variant_parent.clone(),
@@ -2371,7 +2365,7 @@ let param_bindings = module_items(module.module.clone()).iter().cloned().fold(<H
 };
 if (((item.params.clone().len() as i64) > 0) && is_type_decl.clone()) {
                 {
-                    let result = item.params.clone().iter().cloned().fold(acc.clone(), |pacc: _, p: Rc<Param>| v2_rt::map_insert(pacc.clone(), p.name.clone(), Rc::new(TypeBinding {
+                    let result = item.params.clone().iter().cloned().fold(acc.clone(), |pacc: _, p: Rc<Node>| v2_rt::map_insert(pacc.clone(), p.name.clone(), Rc::new(TypeBinding {
     name: p.name.clone(),
     resolved: leaf_node(p.name.clone()),
 })));
@@ -2623,7 +2617,7 @@ Rc::new(BuildTypeEnvResult {
 pub fn build_item_info(item: Rc<Node>) -> Rc<ItemInfo> {
     {
         let kind = item_kind(item.clone());
-let res_names = { let mut __result = Vec::new(); for u in item.uses.clone().iter().cloned() { __result.push(u.name.clone()); } __result };
+let res_names = { let mut __result = Vec::new(); for u in item.uses.clone().iter().cloned() { __result.push(resource_use_name(u.clone())); } __result };
 match kind.clone() {
     ItemKind::FuncItem => Rc::new(ItemInfo {
     name: item.name.clone(),
