@@ -632,54 +632,72 @@ Each emission site calls `container_empty_list(cops)` instead of
 
 ### Structural Prevention of Invariant Violations
 
-The recurring problem: violations keep appearing because the codebase
-makes it **easy to hardcode and hard to read from data.** Every PR that
-touches emission re-invents container syntax, Rc wrapping, or type
-mapping as string literals because that's the path of least resistance.
-Ratchets catch violations after the fact; structural prevention makes
-them unrepresentable.
+#### The pipeline law
 
-This is the same pattern that `SyntaxSpec` solved for the parser:
-`parse_item` had keyword match arms that kept growing. Moving keywords
-to spec data didn't just reduce the arms — it made adding an arm
-impossible. There are no arms. The fix for emission, dual
-representations, and enum duplication is the same: remove the surface
-where violations are expressed.
+A `String` is legitimate when it carries text. A `String` is wrong
+when it chooses behavior. The rule, stage by stage:
 
-#### Where violations live (pipeline audit)
+| Stage | String rule |
+|---|---|
+| **Before resolve** | Strings are allowed as source payload (token text, identifiers, keywords) |
+| **At resolve** | Strings are consumed to produce edges. Scope maps are resolver-local and die here. |
+| **After resolve** | **No semantic decision may depend on free text.** Anything that changes behavior must be an edge/reference, a closed enum, or a typed boundary fact. |
+| **In emit** | Only the renderer may produce strings. Shared emit returns `EmitNode`, not `String`. |
 
-| Stage | Legit strings | Escape hatches | What's escaping |
+This is the existing invariants restated as an API law: names are
+opaque, boundaries must be sufficient, heuristics mean a fact was lost.
+
+#### What's legitimate as String
+
+- Token.text, file paths, module paths (source payload)
+- Identifiers during parse, before resolution (frontier artifact)
+- Diagnostic messages (human-facing payload)
+- TextFile.content and LanguageSpec templates (final rendered text)
+- Resolver-local scope maps that die at the resolution boundary
+
+These are text. They don't choose behavior.
+
+#### What must stop being String
+
+| What | Current | Target | Sites |
 |---|---|---|---|
-| Tokenize | ~50 (source text) | 0 | — |
-| Parse | ~190 (identifiers) | ~10 | Expr node names, transport strings |
-| Resolve | ~10 (module paths) | ~15 | String-keyed graph, transport dispatch |
-| Inference | ~80 (scope locals) | **~170** | Builtin registry, method dispatch, Optional hardcoding, type metadata maps |
-| Emit | ~680 (output concat) | **~73** | Transport dispatch (13), method re-dispatch (60) |
-| Complexity | ~4 (diagnostics) | **~22** | Method cost shape dispatch |
-| Ownership | ~5 (binding names) | 0 | — |
-| **Total** | **~1,019** | **~290** | |
+| `Node.name` | String field, read everywhere | Deleted. Identity = the node. Text from `source_text_at(span)`. | 1,175 reads |
+| `MethodSemantics.method_name` | String, re-dispatched in infer/complexity/emit | Edge to algebra method node in `std/algebra.dag` | 63 dispatch sites |
+| `VarBindingKind.parent_enum` | String | Edge to parent type node | Scattered |
+| `MatchPattern.Bind.name` | String | Child node with span | Scattered |
+| `kernel_types` / `container_types` | `List<String>` | `List<Node>` — edges to definitions | 2 lists |
+| `variant_to_enum`, `field_type_names` | `Map<String, String>` | Edges on type definition nodes | 4 maps |
+| `builtin_function_registry` | `Map<String, Node>` | Loaded from algebra `.dag` declarations | 30 entries |
+| Shared emit return type | `String` (680 concat calls) | `EmitNode` (semantic tree) | 680 sites |
+| Transport dispatch | `transport.name == "rest"` | Closed enum on transport node | 13 sites |
+| Optional hardcoding | `variant_name == "Some"` | Structural Optional with known layout | 6 sites |
 
-**~290 escape hatches, concentrated in inference (~170) and emit (~73).**
-Tokenize, parse, normalize, and ownership are essentially clean.
+Not every bad String becomes a Node. Some become edges to nodes, some
+become closed enums, some become renderer-local spec text. The question
+is never "string or DAG?" — it's "does this string carry text, or does
+it choose behavior?"
 
-#### The five escape hatches
+#### Three bypasses to defend against
 
-| Escape hatch | Sites | What it enables |
-|---|---|---|
-| `node.name: String` | 1,175 reads | Name-based dispatch everywhere — `if name == "Int"`, `if method == "fold"` |
-| `Map<String, X>` metadata | 14 maps | Structural facts keyed by strings — `variant_to_enum`, `builtin_registry`, etc. |
-| `concat()` in emitter → `String` | 680 calls | Hardcoded target syntax — `"Rc::new(vec![...])"` |
-| Method name dispatch | 63 sites | Same method re-dispatched in inference, complexity, and 3 emitters |
-| Transport name dispatch | 13 sites | `transport.name == "rest"` in resolve + all emitters |
+Even after cleanup, these can reopen the escape hatches:
 
-#### Structural fixes
+**1. `source_text_at(span)` as a semantic API.** Deleting `Node.name`
+is not enough if infer/complexity/ownership re-read text from spans.
+After resolve, source text must be a privileged capability available
+only to renderers and diagnostics — not to semantic stages.
 
-**1. EmitTree (eliminate string production in emitters).**
+**2. `EmitRawText` backdoor.** One raw-text variant on `EmitNode`
+reopens the entire problem. The type works only if the emitter cannot
+produce target syntax at all. No raw-text variant. No string return
+type on any shared emit function.
 
-The emitter returns `EmitNode`, not `String`. A separate renderer
-(one file, small, auditable) converts to text using `LanguageSpec`.
-680 `concat()` calls become illegal. The emitter can't produce target
-syntax because it doesn't produce strings.
+**3. "Temporary" stringly side tables.** `Map<String, X>` looks
+harmless, but once it crosses a stage boundary it becomes a second
+authority. The invariants say: speculative or lossy boundary fact
+tables should be deleted rather than carried forward. "Temporary"
+without a ratchet means "permanent later."
+
+#### EmitNode type
 
 ```dag
 type EmitNode
@@ -701,38 +719,10 @@ type EmitNode
   | EmitComment { text: String }
 ```
 
-Only `EmitLiteral` and `EmitComment` carry source content strings.
-No variant carries target-language syntax. No `EmitRawText` escape
-hatch. The renderer is the single chokepoint for all target syntax.
-
-**Can you bypass this?** Only if someone adds an `EmitRawText` variant.
-`EmitNode` is a closed type in one file — adding a variant is a visible
-code review decision, not an invisible string concatenation buried in
-a helper function.
-
-**2. Edge-only fact references (eliminate string-keyed metadata).**
-
-`kernel_types: List<String> = ["Int", "Bool", ...]` becomes
-`kernel_types: List<Node>` — edges to type definition nodes. You
-can't have a stale name because you don't have a name. The 14
-`Map<String, X>` metadata maps become `Map<Node, X>` or structural
-edges on the type definition nodes themselves.
-
-**3. Data-driven dispatch (eliminate method/transport name matching).**
-
-Method dispatch (63 sites across 5 files) reads from algebra type
-definitions in `std/algebra.dag` instead of `if method == "fold"`.
-Transport dispatch (13 sites) uses an enum on the transport node
-instead of `transport.name == "rest"`. Same pattern as `SyntaxSpec` —
-data tables loaded at startup, not match arms in code.
-
-**4. `Node.name` deletion (M4/D6 — eliminate the universal escape).**
-
-1,175 `.name` reads are the universal bypass. Delete the field.
-Identity is the node itself. Text derived from `source_text_at(span)`.
-After deletion, the only way to get information about a node is
-through structural properties and edges — not by reading a name string
-and guessing what it means.
+Only `EmitLiteral` and `EmitComment` carry strings (source content).
+No variant carries target-language syntax. The renderer is the single
+chokepoint. `EmitNode` is a closed type in one file — adding a variant
+is a visible decision, not an invisible string concatenation.
 
 #### Execution lanes (expected diffs)
 
