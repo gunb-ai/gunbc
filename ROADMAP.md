@@ -705,6 +705,97 @@ generically. Hand-written golden values are useful as documentation
 and regression anchors, but they're not the primary correctness
 mechanism.
 
+#### Testing is compilation
+
+Structural and algebraic tests run DURING compilation. If they fail,
+the code doesn't emit. This is the same philosophy as decidability:
+if the compiler can't prove termination, it doesn't compile. If the
+compiler can't verify correctness, it doesn't compile.
+
+| What runs at compile time | What happens on failure |
+|---|---|
+| Type correctness (static) | Compile error (already the case) |
+| Structural witnesses (construct/roundtrip) | Compile error |
+| Constraint satisfaction (output through predicates) | Compile error |
+| Algebraic law checks (with samples) | Compile error |
+| Sample coverage (enough samples declared?) | Compile error if below threshold |
+
+The compiler runs all unit/property tests before emitting output.
+The developer gets immediate feedback: "your type has no samples"
+or "your function violates its algebra's round-trip law" — as compile
+errors, not as a test report they might not read.
+
+#### Integration testing: generated, not blocking
+
+Integration tests (real HTTP, real databases, real file I/O) CANNOT
+block compilation — they need real credentials, external services,
+and network access. But the compiler can still own them:
+
+```
+                    compile time                    post-compile
+                    ────────────                    ────────────
+Tier 1 (DryRun)    ✓ runs during compilation        —
+                    All transports mocked.
+                    Proves: wiring, types, coercion,
+                    structural properties.
+                    Failure = compile error.
+
+Tier 2 (Selective) ✓ runs during compilation        —
+                    Hermetic effects only (temp
+                    dirs, env vars, timestamps).
+                    Failure = compile error.
+
+Tier 3 (Full Real) ✗ NOT run during compilation     ✓ generated as output
+                    Requires real credentials,       artifact. Runs in CI,
+                    live services, network.           staging, or manually.
+                    Compiler GENERATES the test.      Receipt marks: "generated
+                    Compiler VERIFIES the mock         -not-run"
+                    contract matches the service
+                    type signature.
+```
+
+**What the compiler proves about integration at compile time:**
+- The DryRun mock matches the service's type signature (structural)
+- The mock_response values satisfy the response type constraints
+- The wiring between service operations is type-correct
+- The workflow completes structurally with mocked transports
+
+**What the compiler generates for post-compile verification:**
+- Integration test artifacts per service operation
+- Each test: create real client, call real endpoint, assert response
+  satisfies the same type constraints the DryRun checked structurally
+- The test is a `.dag`-generated artifact, not hand-written
+
+**The guarantee receipt records both categories:**
+
+```json
+{
+  "compile_time_proven": {
+    "weather.convert.to_fahrenheit": "all levels pass",
+    "github.pulls.List": "DryRun pass, types match, mock contract valid"
+  },
+  "generated_not_run": {
+    "github.pulls.List.integration": "test artifact at tests/integration/github_pulls.rs",
+    "github.pulls.Create.integration": "test artifact at tests/integration/github_pulls.rs"
+  }
+}
+```
+
+The developer sees: structural correctness is proven (compile error
+if broken). Integration correctness has a generated test (run it in
+CI with real credentials). The receipt tells you exactly what's
+proven vs what still needs external verification.
+
+**For transports specifically:**
+- The transport TYPE is modeled in `.dag` (endpoint, auth, rate
+  limits, retry policy, response types)
+- The `mock_response` block provides DryRun behavior
+- At compile time: DryRun proves the wiring (right types flow through
+  right operations with right auth)
+- The compiler generates the real integration test as an output
+  artifact — same assertions, real HTTP instead of mock
+- CI runs the generated integration test with scoped credentials
+
 #### Test generation tracks
 
 **Track 1 — Discovery gates:**
