@@ -323,6 +323,84 @@ constructor — would need substrate discussion). `type Signal =
 Continuous<Float>` (new collection kind — would need substrate
 discussion). The substrate should rarely grow; most concepts compose.
 
+### Invariant Ownership Matrix
+
+Every sustainability invariant has an owning milestone, a current
+escape hatch, and a gate. If an invariant is not in this table, it
+is not owned.
+
+| Invariant | Current escape hatch | Owning milestone | Gate |
+|---|---|---|---|
+| No duplicate representations | `node.name`, `List<String>` fact lists, stage0 hand-edits | M4 (name deletion), M5 (edge-only facts) | L1 ratchet = 0, language mentions = 0 |
+| No case enumeration for open sets | `if method == "fold"`, `if type_name == "Int"` | M2 (data-driven dispatch), M4 (name deletion) | Method dispatch sites = 0 |
+| No fallbacks that fabricate | `Dynamic` compat, `LitNull` sentinels, warning-permissive gate, `try_unwrap` clone fallback | **M2 (new sub-track)** | Zero error sentinels reaching emit, zero warning-gated semantic gaps |
+| Heuristics indicate lost structure | `concat()` in emitter, string-based type identity | M5 (coercion engine) | Zero `concat()` in emitter, zero string return types |
+| No parallel implementations | 4 source-discovery paths, stage0 hand-editable | M1 (single discovery), M2 (regen CI) | ONE discovery implementation |
+| Boundary sufficiency | `node.name` as proxy for structural facts | M4 (name deletion) | Scrambled-name tests pass, then deleted |
+| Single-authority metadata | Ratchet values in roadmap AND code | M3 (guarantee receipt) | Receipt is single authority; dashboard derived |
+
+### No-Fabrication Sub-Track (owned by M2)
+
+The "no fallbacks that fabricate" invariant has the most scattered
+debt. These are concentrated work items, not spread across other
+milestones:
+
+- [ ] Remove `Dynamic` as universal compatibility in `node_type_equals`
+- [ ] Remove `LitNull` sentinel nodes from inference (23 parser sites
+  are OK — error recovery. 14 inference/emit sites are not.)
+- [ ] Promote `access_error` / `inference_error` from Warning to Error
+  so `compile_sources` gates correctly (currently emit runs on known
+  inference gaps)
+- [ ] Remove callable-to-value fabrication in `lookup_in_scope`
+- [ ] Delete `try_unwrap` clone fallback — ownership proof or fail
+
+### Stage Boundary Contract Table
+
+Each stage boundary carries exactly the facts the next stage needs.
+If a fact is missing, the downstream stage compensates with a
+heuristic — which is an invariant violation.
+
+| Boundary | Producer → Consumer | Guarantee | Forbidden escape | Test |
+|---|---|---|---|---|
+| **Tokenize → Parse** | `List<Token>` | Every token has text + span + shape | Reading raw source in parser | Token coverage tests |
+| **Parse → Resolve** | `Node` tree with spans | Structure faithful to source, identifiers as child nodes | — | Parse smoke tests |
+| **Resolve → Infer** | `Node` tree + structural edges | Names consumed, edges produced. Scope dies here. | Reading `node.name` after resolve | Scrambled-name tests |
+| **Infer → Emit** | Typed graph (`.inferred` on every node) | No error sentinels in typed graph. Types are structural. | `Dynamic` compat, `<error:*>` strings, `LitNull` in emit input | Zero error sentinels test |
+| **Emit → Renderer** | Target-basis graph (coerced) | All patterns in target basis. No source-language concepts. | `concat()` producing target syntax, `if target == ...` | Zero language mentions in `05_emit.dag` |
+| **Renderer → Output** | `TextFile` | Valid target-language text | — | `cargo check` / `python3 -m py_compile` / `go vet` |
+
+### Forbidden Moves
+
+These are never acceptable, regardless of milestone pressure:
+
+- **No new `Map<String, X>` after resolve.** Resolver-local scope maps
+  die at the boundary. New string-keyed metadata crossing a boundary
+  is a new duplicate representation.
+- **No new fact table without a same-change consumer.** A boundary
+  fact table that no downstream stage reads in the same PR is
+  speculative metadata — delete it until the consumer exists.
+- **No new validation pass where a type change can enforce the
+  contract.** If you're writing `assert(x.is_valid())`, refactor the
+  upstream type so invalid states are unrepresentable.
+- **No new stringly metadata after resolve.** Anything that changes
+  behavior must be an edge, a closed enum, or a typed boundary fact.
+
+### Temporary Bridge Rules
+
+Every compatibility bridge names its owner, delete trigger, and latest
+milestone. "Temporary without a ratchet means permanent later."
+
+| Bridge | Owner | Delete trigger | Latest milestone |
+|---|---|---|---|
+| `connective: Conj/Disj` enum | M7 | Edge connectivity model replaces enum | M7 |
+| `return_cardinality` enum | M7 | Edge existence replaces enum | M7 |
+| `node.name: String` | M4 | `source_text_at(span)` + edges replace all reads | M4 |
+| `kernel_types: List<String>` | M4 | `List<Node>` edges to type definitions | M4 |
+| `container_types: List<String>` | M4 | `List<Node>` edges to type definitions | M4 |
+| `05_emit_rust/python/go.dag` in `src/v2/` | M5 | Moved to `dsl/extdeps/languages/` plugins | M5 |
+| `COMPLEXITY_RATCHET = 2` | M2 | Fail-closed compilation → 0 violations | M2 |
+| `DIAG_RATCHET = 3` | M2 | `dag/syntax.dag` OOM fix → 0 diagnostics | M2 |
+
 ---
 
 ## Current State (2026-03-29)
