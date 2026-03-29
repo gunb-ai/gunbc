@@ -257,12 +257,12 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 |--------|-------|--------|-------|
 | .dag files | 87 | — | `dsl/` |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 0 | 0 | Green |
+| Self-compile diagnostics | 0 | 0 | Green (pipeline reports 0; bootstrap ratchet allows 3) |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | FAILS (1 diag) | 0 | `stack.dag` generic fn syntax |
-| Bootstrap ratchet | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
+| Bootstrap ratchet (`DIAG_RATCHET`) | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
 | L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
-| Complexity violations | 0 | 0 | Green |
+| Complexity violations (`COMPLEXITY_RATCHET`) | 2 | 0 | 2 DivideAndConquer functions |
 
 ### Known Invariant Violations
 
@@ -304,7 +304,8 @@ passes.
 
 **Acceptance condition:** CLI, bootstrap, regeneration script, and all
 tests use the same `--source-root` / transitive-import resolution path.
-No parallel file list implementations.
+No parallel file list implementations. Known gap: bootstrap
+`prepare_sources` in test harness still uses hardcoded file assembly.
 
 **Work items:**
 - [ ] Parser: support `fn foo<T>(...)` generic function syntax
@@ -344,8 +345,9 @@ on regenerated stage0 and on a non-trivial user project.
 
 *Bootstrap:*
 - [ ] Regenerate stage0 with `regenerate-stage0.sh`
-- [ ] Committed binary approach: stage0 source committed, CI verifies
-  regenerate + diff = empty
+- [ ] Stage0 regeneration is automated and CI-verified (regenerate +
+  diff = empty). Stage0 .rs files are derived artifacts, never
+  hand-edited — the `.dag` source is the single authority.
 - [ ] `dag/syntax.dag` inclusion without OOM
 
 *User experience:*
@@ -587,7 +589,7 @@ identical graph for all `.dag` files.
 **What:** The compiler's remaining bridges (Conj/Disj, Cardinality)
 dissolve into the substrate. The compiler reads edge connectivity
 patterns from the graph instead of dispatching on enums.
-`Int = Interpret<Signed, Word64>` — named types are compositions
+`Int = OrderedRing<Word64>` — named types are compositions
 over the substrate, not compiler-known concepts.
 
 **Gate:** `connective` field removed from Node (81 dispatch + 114
@@ -610,10 +612,12 @@ remain — the compiler reads the graph.
 
 ### Committed
 
-**Decidability (LANDED).** Bounded primitives (`fold`, `descend`,
-`repeat`) in `std/iteration.dag`. Complexity analyzer: 149 functions,
-0 violations. `CostLog` for O(n log n). Structural descent detection
-for catamorphisms.
+**Decidability (primitives LANDED, fail-closed NOT YET WIRED).**
+Bounded primitives (`fold`, `descend`, `repeat`) in `std/iteration.dag`.
+Complexity analyzer: structural descent detection, `CostLog` for
+O(n log n). Known gap: `fn spin(n: n)` still compiles — fail-closed
+compilation (reject non-descending recursion) is designed but not
+wired into the pipeline as a hard error.
 
 **Compositional parser (LANDED).** `SyntaxSpec` in `languages.dag`.
 `parse_item` has 0 keyword match arms. Operator precedence, item forms,
@@ -933,7 +937,7 @@ run on every compilation — they are not separate analysis passes.
 | Name invariance | 9 scrambled-name tests | Tested (CI) | None |
 | Complexity bounds | CostExpr per function | Ratcheted (2 violations of 1169) | Want 0; need exponential cost algebra |
 | Decidability | Bounded primitives | Structural (language design) | Fail-closed not wired (general recursion still accepted) |
-| Ownership | Full analysis exists | **Not wired** | Integrate into pipeline, add tests |
+| Ownership | Full analysis in pipeline (`compile.dag` runs `analyze_ownership`) | Wired, not ratcheted | Add coverage ratchet, promote to CI |
 | Bootstrap stability | Fixed-point test | Tested (manual) | Promote to CI |
 | Emitted Rust quality | cargo check + ratchet | Ratcheted (880 errors) | Want 0 (M2 work) |
 | Performance | Wall-clock ratchet | Tested (manual, 30s) | Promote to CI |
@@ -960,7 +964,7 @@ and the machinery needs to change.
 | L1 type knowledge | 70 | 0 | `scripts/l1-ratchet.sh --check` |
 | Complexity violations | 2 | 0 | `strict_complexity_violation_count -- --ignored` |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
-| Bootstrap fixed point | PASSES | PASSES | `v2_bootstrap_fixed_point -- --ignored` |
+| Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
 
 ### CI Gates
@@ -970,7 +974,7 @@ and the machinery needs to change.
 | Unit tests | `cargo test --workspace --exclude v2-compiler-tests` | Every change |
 | Clippy | `cargo clippy --all-targets -- -D warnings` | Every change |
 | V2 compiler tests | `cargo test -p v2-compiler-tests` | Every change |
-| Scrambled-name | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | Inference changes |
+| Scrambled-name | `cargo test -p v2-compiler-tests scrambled_name` | Inference changes |
 
 ### Required Before Merge
 
@@ -979,8 +983,8 @@ Tier 3 ratchets that must pass before merging, until promoted to CI:
 ```
 scripts/l1-ratchet.sh --check                                              # L1 ≤ ratchet value
 cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored              # 0 diagnostics
-cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored # 0 diagnostics
-cargo test -p v2-compiler-tests v2_bootstrap_fixed_point -- --ignored       # stage0=stage1
+cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored # ≤ DIAG_RATCHET
+cargo test -p v2-compiler-tests bootstrap_fixed_point -- --ignored          # stage0=stage1
 ```
 
 ### Non-Consensual Testing
