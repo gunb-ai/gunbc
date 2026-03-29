@@ -32,11 +32,15 @@ data rust_keywords: Map<String, String> = {
 // -- Container type templates --------------------------------------------
 // {0} = element type, {1} = second type (maps).
 // Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::HashMap
+// NOTE: Templates are BARE types. Rc-wrapping is applied by the rendering
+// layer (emit_node_type_rc) via rc_types, not baked into templates.
+// This prevents Rc decisions from being duplicated between templates
+// and the rc_types predicate.
 data rust_container_templates: Map<String, String> = {
-  "list": "Rc<Vec<\{0\}>>", "set": "Rc<std::collections::BTreeSet<\{0\}>>",
-  "non_empty_list": "Rc<NonEmptyVec<\{0\}>>", "non_empty_set": "Rc<NonEmptyBTreeSet<\{0\}>>",
-  "optional": "Option<\{0\}>", "map": "Rc<HashMap<\{0\}, \{1\}>>",
-  "free_monoid": "Rc<Vec<\{0\}>>", "partial_function": "Rc<HashMap<\{0\}, \{1\}>>",
+  "list": "Vec<\{0\}>", "set": "std::collections::BTreeSet<\{0\}>",
+  "non_empty_list": "NonEmptyVec<\{0\}>", "non_empty_set": "NonEmptyBTreeSet<\{0\}>",
+  "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
+  "free_monoid": "Vec<\{0\}>", "partial_function": "HashMap<\{0\}, \{1\}>",
   "boolean_algebra": "bool"
 }
 

@@ -892,7 +892,11 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
         Some { value: vn } => emit_node_type_rc(n: vn, target: target, rc_types: rc_types)
         None => "__EMIT_BUG_MISSING_MAP_VALUE__"
       }
-      emit_map_type(key_type: k, val_type: v, target: target)
+      let map_str = emit_map_type(key_type: k, val_type: v, target: target)
+      // Rc wrapping via rc_types — same authority as all other types.
+      // Container templates are bare; Rc is applied here.
+      if emit_map_has(m: rc_types, key: n.name) { concat("Rc<", map_str, ">") }
+      else { map_str }
     } else if n.children |> count == 1 {
       let inner = match n.children |> first {
         Some { value: child } => emit_node_type_rc(n: child, target: target, rc_types: rc_types)
@@ -905,7 +909,10 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       if is_container {
         // Template key is snake_case of the type name — LanguageSpec maps
         // each key to the target-language template (e.g., "list" → "Vec<{0}>").
-        emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
+        let container_str = emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
+        // Rc wrapping via rc_types — same authority as all other types.
+        if emit_map_has(m: rc_types, key: n.name) { concat("Rc<", container_str, ">") }
+        else { container_str }
       } else {
         // Non-container generic type: use target-specific syntax.
         let base = emit_primitive_type(name: n.name, target: target)

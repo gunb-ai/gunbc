@@ -332,6 +332,22 @@ fn is_simple_disj(item: Node) -> Bool {
   complex |> count == 0
 }
 
+// Build the rc_types map: the SINGLE authority for Rc-wrapping decisions.
+// Includes user-defined types (structs, data enums) and built-in collection
+// types. Container templates are BARE — Rc is applied here, not in templates.
+fn build_rc_types(emit_info: EmitGraphInfo) -> Map<String, Bool> {
+  let user_rc = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
+    if type_summary_needs_rc(summary: summary) {
+      map_insert(acc, summary.name, true)
+    } else {
+      acc
+    }
+  )
+  // Built-in collection types: always Rc-wrapped (clone is O(n) for bare Vec/HashMap).
+  ["List", "Map", "Set", "NonEmptyList", "NonEmptySet", "FreeMonoid", "PartialFunction"]
+    |> fold(init: user_rc, f: (acc, name) => map_insert(acc, name, true))
+}
+
 // =========================================================================
 // Entry point -- Rust target
 // =========================================================================
@@ -339,13 +355,7 @@ fn is_simple_disj(item: Node) -> Bool {
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let emit_info = build_emit_graph_info(modules: typed.modules)
   let vtoe = emit_info.variant_to_enum
-  let rc_types = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    if type_summary_needs_rc(summary: summary) {
-      map_insert(acc, summary.name, true)
-    } else {
-      acc
-    }
-  )
+  let rc_types = build_rc_types(emit_info: emit_info)
   let registry = typed.item_registry
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
@@ -424,13 +434,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>) -> TextFile {
 // Backwards-compatible wrapper for tests that call emit_module directly.
 fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let emit_info = build_emit_graph_info(modules: [typed_module])
-  let rc_types = map_values(emit_info.type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
-    if type_summary_needs_rc(summary: summary) {
-      map_insert(acc, summary.name, true)
-    } else {
-      acc
-    }
-  )
+  let rc_types = build_rc_types(emit_info: emit_info)
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, vtoe: emit_info.variant_to_enum, rc_types: rc_types, svc_module_map: empty_map())
 }
 
@@ -693,9 +697,9 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   } else if (kind == TypedItemDataDef) {
     emit_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   } else if (kind == TypedItemServiceDef) {
-    emit_service_def(item: item, registry: registry)
+    emit_service_def(item: item, registry: registry, rc_types: rc_types)
   } else if (kind == TypedItemResourceDef) {
-    emit_resource_def(item: item)
+    emit_resource_def(item: item, rc_types: rc_types)
   } else if (kind == TypedItemExternFunc) {
     let params_str = emit_params(params: item.params, rc_types: rc_types)
     let ret_str = emit_inferred(inferred: rt_type(n: item), rc_types: rc_types)
@@ -1609,80 +1613,17 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
   }
 }
 
-fn type_needs_rc(type_node: Node) -> Bool {
-  type_needs_rc_seen(type_node: type_node, seen: empty_map())
-}
-
-fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
-  let normed = normalize_access_type_node(n: type_node)
-  let is_product = normed.connective == Conj
-  let is_coproduct = normed.connective == Disj
-  if is_product {
-    true
-  } else if is_coproduct {
-    normed.children |> any(child => child.children |> count > 0)
-  } else {
-    let canonical = normed.name
-    if normed.inferred != none {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      type_needs_rc_seen(type_node: rt_type(n: normed), seen: next_seen)
-    } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
-      false
-    } else {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      let resolved = normed
-      if resolved.connective == NoConnective && resolved.inferred == none && resolved.name == normed.name && resolved.children |> count == 0 {
-        false
-      } else {
-        type_needs_rc_seen(type_node: resolved, seen: next_seen)
-      }
-    }
-  }
-}
-
-fn rust_map_value_type(receiver_type: Node, scope: InferScope) -> Node? {
-  let resolved = normalize_access_type_node(n: receiver_type)
-  let map_type = normalize_access_type_node(n: resolved)
-  let is_map = node_is_keyed_collection(n: map_type)
-  if is_map {
-    match map_type.children |> skip(1) |> first {
-      Some { value: value_type } => Some { value: value_type }
-      None => none
-    }
-  } else {
-    none
-  }
-}
-
-fn rust_lookup_receiver_needs_rc_wrap(receiver: Node, scope: InferScope) -> Bool {
-  let is_data_binding = match receiver.expr_data {
-    ExprVar { name: binding_name, binding_kind: _ } =>
-      match map_get(scope.item_registry, binding_name) {
-        Some { value: info } => info.kind == DataItem
-        None => false
-      }
-    _ => false
-  }
-  if is_data_binding == false {
-    return false
-  }
-  match receiver.inferred {
-    Some { value: Resolved { node: receiver_type } } =>
-      match rust_map_value_type(receiver_type: receiver_type, scope: scope) {
-        Some { value: value_type } => type_needs_rc(type_node: value_type)
-        None => false
-      }
-    _ => false
-  }
-}
+// type_needs_rc, rust_lookup_receiver_needs_rc_wrap: DELETED.
+// Rc-wrapping is now a single authority via rc_types map (build_rc_types).
+// Container templates are bare; Rc is applied at the rendering layer.
 
 fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions, function_name)
 }
 
-fn rust_runtime_bridge_wraps_result_in_rc(function_name: String, receiver: Node, scope: InferScope) -> Bool {
-  (function_name == "map_get" || function_name == "lookup") && rust_lookup_receiver_needs_rc_wrap(receiver: receiver, scope: scope)
-}
+// rust_runtime_bridge_wraps_result_in_rc: DELETED.
+// With rc_types as single authority, map values are already Rc-wrapped
+// for non-Copy types. lookup/map_get return the correct type directly.
 
 fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
@@ -1905,27 +1846,10 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   }
-  let fallback_lookup_wrap = if func == "lookup" {
-    let base_check = match args |> first {
-      Some { value: receiver_arg } => rust_lookup_receiver_needs_rc_wrap(receiver: arg_value(n: receiver_arg), scope: scope)
-      None => false
-    }
-    if base_check { true }
-    else {
-      match inferred {
-        Some { value: Resolved { node: ret_type } } =>
-          let resolved_ret = ret_type
-          let is_optional = resolved_ret.return_cardinality == CardOptional
-          if is_optional {
-            type_needs_rc(type_node: with_required_cardinality(n: resolved_ret))
-          } else { false }
-        _ => false
-      }
-    }
-  } else {
-    false
-  }
-  if fallback_lookup_wrap { concat(call_str, ".map(Rc::new)") } else { call_str }
+  // No lookup Rc-wrapping needed: rc_types is the single authority for
+  // Rc decisions. Map values are already Rc-wrapped if they're non-Copy
+  // types, so lookup/map_get return the correct type directly.
+  call_str
 }
 
 fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2471,11 +2395,9 @@ fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, 
     let all_strs = concat([recv_str], arg_strs)
     concat("v2_rt::", emit_ident(name: function_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
   }
-  if rust_runtime_bridge_wraps_result_in_rc(function_name: function_name, receiver: receiver, scope: scope) {
-    concat(lowered, ".map(Rc::new)")
-  } else {
-    lowered
-  }
+  // No bridge Rc-wrapping needed: rc_types is the single authority.
+  // Map values are already Rc-wrapped for non-Copy types.
+  lowered
 }
 
 fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2846,7 +2768,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Some { value: en } => en
           None => ""
         }
-        let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: record_parent_enum)
+        // Single Rc authority: check the effective type name against rc_types.
+        // For variants, check the parent enum; for plain structs, check the struct name.
+        let effective_rc_name = if record_parent_enum != "" { record_parent_enum } else { tn }
+        let needs_rc = emit_map_has(m: rc_types, key: effective_rc_name)
         if needs_rc { concat("Rc::new(", empty_raw, ")") } else { empty_raw }
       } else {
         let field_strs = fields |> map(f =>
@@ -2867,7 +2792,10 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           Some { value: en } => en
           None => ""
         }
-        let needs_rc = emit_map_has(m: rc_types, key: tn) || emit_map_has(m: rc_types, key: resolved_type.name) || emit_map_has(m: rc_types, key: record_parent_enum)
+        // Single Rc authority: check the effective type name against rc_types.
+        // For variants, check the parent enum; for plain structs, check the struct name.
+        let effective_rc_name = if record_parent_enum != "" { record_parent_enum } else { tn }
+        let needs_rc = emit_map_has(m: rc_types, key: effective_rc_name)
         if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
       }
   }
@@ -3195,13 +3123,14 @@ fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<S
 
 fn emit_service_def(
   item: Node,
-  registry: Map<String, ItemInfo>
+  registry: Map<String, ItemInfo>,
+  rc_types: Map<String, Bool>
 ) -> String {
   let safe_name = sanitize_service_name(name: item.name)
   let fallback_transport = service_fallback_transport(item: item)
   let op_children = item.children
   let struct_def = emit_service_struct(name: safe_name, fallback_transport: fallback_transport, op_children: op_children)
-  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry)
+  let impl_block = emit_service_impl(name: safe_name, transport: fallback_transport, op_children: op_children, registry: registry, rc_types: rc_types)
   concat(struct_def, "\n\n", impl_block)
 }
 
@@ -3225,11 +3154,11 @@ fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>)
   if fields == "" { "    // No configuration needed for local binding.\n" } else { fields }
 }
 
-fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>) -> String {
+fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, registry: Map<String, ItemInfo>, rc_types: Map<String, Bool>) -> String {
   let depth = 0
   let new_method = emit_service_new_method(name: name, fallback_transport: transport, op_children: op_children)
   let method_strs = op_children |> map(op_node =>
-    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1)
+    emit_operation_method(service_name: name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, rc_types: rc_types)
   )
   let all_methods = concat([new_method], method_strs)
   let methods_str = all_methods |> join(separator: "\n\n")
@@ -3279,9 +3208,9 @@ fn emit_modifier_doc_from_props(properties: List<Node>) -> String {
   }
 }
 
-fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
+fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, rc_types: Map<String, Bool>) -> String {
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name(n: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: empty_map()))
+    concat(emit_ident(name: param_node_name(n: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: rc_types))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3289,7 +3218,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: empty_map())
+  let ret_type = emit_node_type_rc(n: rt_type(n: op_node), target: Rust, rc_types: rc_types)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = rt_type(n: op_node)
   let real_body = emit_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry, depth: depth + 2, inferred: op_inferred)
@@ -3440,7 +3369,7 @@ fn emit_local_call(op_name: String) -> String {
 // Resources become a trait with capability methods.
 // =========================================================================
 
-fn emit_resource_def(item: Node) -> String {
+fn emit_resource_def(item: Node, rc_types: Map<String, Bool>) -> String {
   let cap_children = item.children
   if cap_children |> count == 0 {
     // Resources without capabilities are emitted as unit structs.
@@ -3448,16 +3377,16 @@ fn emit_resource_def(item: Node) -> String {
     concat("#[derive(Debug, Clone)]\npub struct ", item.name, ";")
   } else {
     let depth = 0
-    let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c))
+    let cap_methods = cap_children |> map(c => emit_capability_method(cap_node: c, rc_types: rc_types))
     let methods_str = cap_methods |> join(separator: "\n\n")
     concat("#[async_trait::async_trait]\npub trait ", item.name, " {\n",
       make_indent(level: depth + 1),methods_str, "\n}")
   }
 }
 
-fn emit_capability_method(cap_node: Node) -> String {
+fn emit_capability_method(cap_node: Node, rc_types: Map<String, Bool>) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name(n: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: empty_map()))
+    concat(emit_ident(name: param_node_name(n: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: rc_types))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3465,7 +3394,7 @@ fn emit_capability_method(cap_node: Node) -> String {
   } else {
     concat("&self, ", params_str)
   }
-  let ret = emit_node_type_rc(n: rt_type(n: cap_node), target: Rust, rc_types: empty_map())
+  let ret = emit_node_type_rc(n: rt_type(n: cap_node), target: Rust, rc_types: rc_types)
   concat("async fn ", emit_ident(name: cap_node.name, target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 

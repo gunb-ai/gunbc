@@ -2045,3 +2045,192 @@ fn indexed_names(names: List<String>) -> List<String> {
         msgs.len(), msgs
     );
 }
+
+// ── Golden tests: Rc-wrapping in emitted Rust ───────────────────────────
+//
+// These tests verify the Rc-wrapping decisions in emitted Rust code.
+// Given .dag source, we compile to Rust and assert on patterns in the
+// emitted output. This catches inconsistencies where type declarations,
+// function signatures, and construction sites disagree on Rc wrapping.
+
+#[test]
+fn rc_wrap_struct_field_and_construction() {
+    let source = "\
+module test_rc_struct
+type Inner { x: Int, y: String }
+type Outer { data: Inner }
+fn make_outer() -> Outer {
+  Outer { data: Inner { x: 1, y: \"hello\" } }
+}
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_struct.rs") { return; }
+    let content = find_file(&result, "src/test_rc_struct.rs");
+    // Struct field should be Rc-wrapped
+    assert!(
+        content.contains("Rc<Inner>"),
+        "struct field should be Rc<Inner>, got:\n{}", content
+    );
+    // Construction should wrap in Rc::new
+    assert!(
+        content.contains("Rc::new(Inner"),
+        "struct construction should use Rc::new(Inner{{...}}), got:\n{}", content
+    );
+}
+
+#[test]
+fn rc_wrap_unit_enum_is_bare() {
+    let source = "\
+module test_rc_unit_enum
+type Color = Red | Green | Blue
+fn pick() -> Color { Red }
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_unit_enum.rs") { return; }
+    let content = find_file(&result, "src/test_rc_unit_enum.rs");
+    // Unit-only enum should NOT be Rc-wrapped (gets Copy derive)
+    assert!(
+        !content.contains("Rc<Color>"),
+        "unit enum should not be Rc<Color>, got:\n{}", content
+    );
+    assert!(
+        content.contains("Copy"),
+        "unit enum should have Copy derive, got:\n{}", content
+    );
+}
+
+#[test]
+fn rc_wrap_data_enum() {
+    let source = "\
+module test_rc_data_enum
+type Shape
+  = Circle { radius: Float }
+  | Rect { width: Float, height: Float }
+type Drawing { shape: Shape }
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_data_enum.rs") { return; }
+    let content = find_file(&result, "src/test_rc_data_enum.rs");
+    // Enum with data variants should be Rc-wrapped in field position
+    assert!(
+        content.contains("Rc<Shape>"),
+        "data enum field should be Rc<Shape>, got:\n{}", content
+    );
+}
+
+#[test]
+fn rc_wrap_list_field() {
+    let source = "\
+module test_rc_list
+type Bag { items: List<String> }
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_list.rs") { return; }
+    let content = find_file(&result, "src/test_rc_list.rs");
+    // List field should be Rc-wrapped (either via template or predicate)
+    assert!(
+        content.contains("Rc<Vec<") || content.contains("Rc<Vec<String>"),
+        "list field should be Rc<Vec<...>>, got:\n{}", content
+    );
+}
+
+#[test]
+fn rc_wrap_map_field() {
+    let source = "\
+module test_rc_map
+type Config { entries: Map<String, String> }
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_map.rs") { return; }
+    let content = find_file(&result, "src/test_rc_map.rs");
+    // Map field should be Rc-wrapped
+    assert!(
+        content.contains("Rc<HashMap<"),
+        "map field should be Rc<HashMap<...>>, got:\n{}", content
+    );
+}
+
+#[test]
+fn rc_wrap_primitive_fields_are_bare() {
+    let source = "\
+module test_rc_primitives
+type Stats { count: Int, active: Bool, ratio: Float }
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_primitives.rs") { return; }
+    let content = find_file(&result, "src/test_rc_primitives.rs");
+    // Primitive fields should NOT be Rc-wrapped
+    assert!(
+        !content.contains("Rc<i64>"),
+        "Int field should be bare i64, not Rc<i64>, got:\n{}", content
+    );
+    assert!(
+        !content.contains("Rc<bool>"),
+        "Bool field should be bare bool, not Rc<bool>, got:\n{}", content
+    );
+    assert!(
+        !content.contains("Rc<f64>"),
+        "Float field should be bare f64, not Rc<f64>, got:\n{}", content
+    );
+}
+
+#[test]
+fn rc_wrap_func_param_matches_field_type() {
+    // Key test: function parameter type must agree with how the type
+    // appears in struct fields. This is where inconsistency causes E0308.
+    let source = "\
+module test_rc_param_match
+type Item { name: String, value: Int }
+type Container { item: Item }
+fn wrap(i: Item) -> Container {
+  Container { item: i }
+}
+fn unwrap(c: Container) -> Item {
+  c.item
+}
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_param_match.rs") { return; }
+    let content = find_file(&result, "src/test_rc_param_match.rs");
+    // Both field declaration and parameter should agree on Rc wrapping
+    let has_rc_field = content.contains("item: Rc<Item>");
+    let has_rc_param = content.contains("i: Rc<Item>");
+    assert_eq!(
+        has_rc_field, has_rc_param,
+        "field type and param type must agree on Rc wrapping.\n\
+         field has Rc: {}, param has Rc: {}\n{}",
+        has_rc_field, has_rc_param, content
+    );
+    // Return type should also agree
+    let has_rc_return = content.contains("-> Rc<Item>");
+    assert_eq!(
+        has_rc_field, has_rc_return,
+        "field type and return type must agree on Rc wrapping.\n\
+         field has Rc: {}, return has Rc: {}\n{}",
+        has_rc_field, has_rc_return, content
+    );
+}
+
+#[test]
+fn rc_wrap_list_construction_matches_field() {
+    // Construction of a list value must match the declared type.
+    let source = "\
+module test_rc_list_construct
+type Batch { items: List<Int> }
+fn empty_batch() -> Batch {
+  Batch { items: [] }
+}
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    if !has_file(&result, "src/test_rc_list_construct.rs") { return; }
+    let content = find_file(&result, "src/test_rc_list_construct.rs");
+    // If field is Rc<Vec<...>>, construction must use Rc::new(vec![...])
+    let has_rc_field = content.contains("Rc<Vec<");
+    let has_rc_construction = content.contains("Rc::new(vec![");
+    assert_eq!(
+        has_rc_field, has_rc_construction,
+        "list field Rc wrapping must match construction.\n\
+         field has Rc: {}, construction has Rc: {}\n{}",
+        has_rc_field, has_rc_construction, content
+    );
+}
