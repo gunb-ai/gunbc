@@ -288,7 +288,7 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { func: f, call_semantics: _ } =>
-            if (f.clone() == func_name.clone()) { 1 } else { 0 },
+            if f.clone() == func_name.clone() { 1 } else { 0 },
         _ => 0,
     };
     let from_children = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
@@ -297,15 +297,77 @@ pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     own.clone() + from_children.clone()
 }
 
+/// Count maximum self-calls on any single execution path through an expression.
+/// Match/if arms are mutually exclusive (max, not sum).
+/// Self-calls inside fold/forEach bodies are already bounded by iteration.
+pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
+    use crate::v2_std_core::*;
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprCall { func: f, call_semantics: _ } => {
+            let own = if f.clone() == func_name.clone() { 1i64 } else { 0i64 };
+            let arg_calls = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+                acc + max_path_self_calls(arg_value(child), func_name.clone())
+            });
+            own + arg_calls
+        }
+        ExprData::ExprMatch => {
+            let scrut_calls = max_path_self_calls(match_scrutinee(body.clone()), func_name.clone());
+            let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arm_node| {
+                let arm_calls = max_path_self_calls(arm_body(arm_node), func_name.clone());
+                if arm_calls > acc { arm_calls } else { acc }
+            });
+            scrut_calls + max_arm
+        }
+        ExprData::ExprIf => {
+            let cond_calls = max_path_self_calls(if_condition(body.clone()), func_name.clone());
+            let then_calls = max_path_self_calls(if_then_branch(body.clone()), func_name.clone());
+            let else_calls = match if_else_branch(body.clone()) {
+                Some(eb) => max_path_self_calls(eb, func_name.clone()),
+                None => 0i64,
+            };
+            let branch_max = if then_calls > else_calls { then_calls } else { else_calls };
+            cond_calls + branch_max
+        }
+        ExprData::ExprForEach { variable: _ } => {
+            // Self-calls inside forEach body are bounded by iteration.
+            // Only count calls in the collection expression.
+            max_path_self_calls(foreach_collection(body.clone()), func_name.clone())
+        }
+        ExprData::ExprLet { name: _ } => {
+            let val_calls = max_path_self_calls(let_value(body.clone()), func_name.clone());
+            let body_calls = match let_body(body.clone()) {
+                Some(b) => max_path_self_calls(b, func_name.clone()),
+                None => 0i64,
+            };
+            val_calls + body_calls
+        }
+        ExprData::ExprBlock => {
+            body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+                acc + max_path_self_calls(child, func_name.clone())
+            })
+        }
+        ExprData::ExprMethodCall { method: _, method_semantics: _ } => {
+            // Self-calls in fold/map callback bodies are iteration-bounded.
+            // Conservative: only count receiver calls.
+            max_path_self_calls(method_receiver(body.clone()), func_name.clone())
+        }
+        _ => {
+            body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
+                acc + max_path_self_calls(child, func_name.clone())
+            })
+        }
+    }
+}
+
 pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<RecursionPattern> {
-    let calls = count_self_calls(body.clone(), func_name.clone());
-    if (calls.clone() <= 1) {
+    let path_calls = max_path_self_calls(body.clone(), func_name.clone());
+    if path_calls <= 1 {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     } else {
         Rc::new(RecursionPattern::DivideAndConquer {
-            split_factor: calls.clone(),
+            split_factor: path_calls,
         })
     }
 }

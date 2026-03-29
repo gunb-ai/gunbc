@@ -219,8 +219,9 @@ Layer 2: Named compositions
 Layer 3: Collection algebras
   List<A>, Set<A>, Map<K,V>                      (std/types.dag)
 
-Layer 4: Structural compositions                 *** MISSING FROM STD ***
-  Span<I>, Tree<A>, DAG<Id,A>, Annotated<A,F>, LabeledTree<A>
+Layer 4: Structural compositions + bounded iteration
+  descend, repeat, repeat_until                  (std/iteration.dag)
+  Span<I>, Tree<A>, DAG<Id,A>, Annotated<A,F>   (structural types TBD)
 
 Layer 5: Parser/source domain
   Token<Shape>
@@ -395,26 +396,114 @@ compiler — not in the user's program.
   decidable. Spec-driven structural recognition over finite token
   streams, not unbounded backtracking.
 
-### Concrete next steps
+### Implementation: bounded primitives approach
 
-1. Audit language iteration primitives — ensure no primitive permits
-   unbounded computation. If one exists, redesign it with an explicit
-   bound parameter.
-2. Wire `RecursionPattern` into `cost_of_expr` — classify every
-   recursive call as `LinearRecursion` or `DivideAndConquer`. Any
-   `UnresolvableRecursion` is a compiler gap to fix.
-3. Ensure `cost_of_expr` (tree walk, bound = |nodes|) and
-   `tokenize_loop` (scanner, bound = |source|) express their descent
-   measures so the analyzer resolves them.
-4. Fix `trace_pop_frame` O(|stack|^2) — `take(count - 1)` copies the
-   list; needs O(1) pop.
+The decidability guarantee emerges from the language's modeling
+primitives, not from a per-function checker. Three primitives in
+`std/iteration.dag`:
+
+| Primitive | Bound | Declared in |
+|---|---|---|
+| `fold` | \|collection\| | Methods on List, Set, Map (Layer 3) |
+| `descend` | \|tree\| | `std/iteration.dag` (Layer 4) |
+| `repeat(N)` | N (explicit) | `std/iteration.dag` (Layer 4) |
+
+These are the ONLY iteration primitives. No `while`, no `loop`, no
+general recursion. Recursive syntax desugars to these or is rejected.
+
+**Step 1: Structural descent detection (compile-time).**
+
+When the compiler encounters a recursive function, it analyzes the call
+pattern and attempts to lower it to a bounded primitive:
+
+```
+Self-call on child of input       → descend (tree fold, O(|tree|))
+Self-call inside fold body        → already bounded (fold-of-fold)
+Self-call with n - 1              → repeat(n, ...) (O(n))
+Mutual recursion on SCC children  → descend over SCC (O(|SCC|))
+Self-call with unchanged argument → HARD ERROR (no bounded lowering)
+```
+
+This runs after inference (when self-calls are resolved), before
+complexity analysis. It produces a `DescentProof` for each recursive
+function — the proof that the function terminates.
+
+**Step 2: Fail-closed compilation.**
+
+If the descent analysis cannot lower a recursive function to a bounded
+primitive, compilation fails with a hard error. This is the fail-closed
+guarantee: programs that escape the structural analysis do not compile.
+
+In a complete implementation, the hard error is unreachable — the
+language has no primitive for unbounded recursion, so no program can
+trigger it. The error exists as a safety net during the transition.
+
+**Step 3: Complexity analyzer reads descent proofs.**
+
+The complexity analyzer no longer needs to detect or classify recursion.
+It reads the `DescentProof` and derives cost directly:
+
+- `descend` proof → O(\|tree\| × per\_node\_cost)
+- `repeat(N)` proof → O(N × per\_step\_cost)
+- Fold-bounded → already handled by fold CostSum
+
+The 2 current complexity violations (branching recursion in tree-walk
+functions) resolve because the descent analysis recognizes that each
+self-call processes a child of the input — tree traversal, O(n), not
+branching recursion O(2^n).
+
+**Step 4: Cost algebra upstream of language primitives.**
+
+The cost algebra (`CostExpr`) is the upstream authority. A language
+primitive cannot exist until its cost class is expressible in the
+algebra. This inverts the current relationship (primitives exist →
+algebra tries to catch up → Conservative gaps).
+
+Current modeling deficit: `sort_by` exists without `CostLog`. The
+algebra cannot express O(n log n), so `sort_by` gets Conservative
+O(n). This is backwards — `CostLog` should have been added first.
+
+Fix order (algebra leads, primitive follows):
+1. Add `CostLog { base: Int, argument: SizeExpr }` to `CostExpr`
+2. `sort_by` declares its cost as `CostMul { n, CostLog { 2, n } }`
+3. Analyzer reads the declaration → O(n log n), Proven
+4. `Conservative` certainty becomes a dead variant
+
+The principle extends to all future primitives. Before adding any
+primitive, answer: "what is its cost class?" If `CostExpr` can't
+express it, grow the algebra first. The primitive follows.
+
+| Primitive | Cost class | Algebra needed |
+|---|---|---|
+| `fold` | O(n × body) | `CostSum` (exists) |
+| `descend` | O(\|tree\| × body) | `CostSum` (exists) |
+| `repeat(N)` | O(N × body) | `CostSum` (exists) |
+| `sort_by` | O(n log n × key) | `CostLog` (**missing**) |
+| Future: binary search | O(log n) | `CostLog` (same) |
+
+After `CostLog` lands, every current primitive has a tight bound.
+`Conservative` certainty = 0 functions. `Unknown` = hard error.
+
+**Step 5: `trace_pop_frame` O(n) → O(1).**
+
+`trace_pop_frame` uses `take(count - 1)` which copies the list — O(n)
+per pop. Replace with a proper `Stack` type in `std/` (cons list) that
+has O(1) push/pop. The Stack is itself a bounded structure — it grows
+by `push` (adds 1) and shrinks by `pop` (removes 1). Its maximum depth
+is bounded by the program's call depth, which is bounded by `descend`'s
+tree depth.
 
 ### Enforcement (see Guarantee Map)
 
 This is a **Tier 1 (structural)** guarantee, not Tier 2 (tested).
-The language makes undecidability unrepresentable. The complexity
-ratchet test exists to verify the analyzer sees the bounds correctly
-— it's a test of the *analyzer*, not a gate on *programs*.
+The language makes undecidability unrepresentable because its iteration
+primitives are bounded by construction. The complexity analyzer
+*confirms* what the language already guarantees — it does not enforce
+it. If the analyzer produces `?O(?)`, the bug is in the analyzer.
+
+The fail-closed compilation step is a Tier 2 safety net during the
+transition. Once the structural prevention is complete, the hard error
+is unreachable and the fail-closed check becomes dead code.
 
 ### Non-goal
 
@@ -423,6 +512,15 @@ it. Recursive types, recursive functions, and long-running processes
 are all supported. The language requires the bound to be explicit or
 structurally derivable. "Run for 30 trillion years" is fine.
 "Run forever" is not expressible.
+
+### What "infinite" means in .dag
+
+Most developers don't care about the difference between "infinite" and
+"runs until the heat death of the universe." `.dag` hides this
+complexity: `repeat(bound: max_int, ...)` runs for 2^63 - 1 iterations.
+At 1 iteration per nanosecond, that's 292 years. At 1 per millisecond,
+292 million years. The developer writes practical code. The compiler
+gets total analysis. The bound exists even if no one ever reaches it.
 
 ---
 
@@ -921,7 +1019,21 @@ The data is modeled; the rules are not.
 
 ## Current State (2026-03-28)
 
-**TOP PRIORITY: Compiler thesis inversion (~362 hardcoded name-based
+**TOP PRIORITY: Structural decidability.** Decidability must be a
+consequence of the language's modeling primitives, not a per-function
+check. The language provides exactly three bounded iteration primitives
+(`fold`, `descend`, `repeat`) — no unbounded loop, no general recursion.
+Recursive syntax is sugar that the compiler lowers to bounded primitives
+or rejects. See "Design Direction: Decidability" and `std/iteration.dag`.
+
+**Current gap:** The compiler accepts general recursion without verifying
+structural descent. `fn spin(n: Int) -> Int { spin(n: n) }` compiles.
+The complexity analyzer has 2 violations because it cannot prove bounds
+for tree-traversal functions with multiple self-calls (conflates tree
+traversal with branching recursion). Fix: structural descent detection
+at compile time, fail-closed on non-descending recursion.
+
+**PRIORITY 2: Compiler thesis inversion (~362 hardcoded name-based
 branches).** The compiler encodes knowledge as code branches instead of
 reading data. Three themes: (A) type/method dispatch by string
 comparison, (B) emission hardcodes target syntax instead of reading
@@ -932,7 +1044,14 @@ populated, algebra products are correct); stages bypass it. See
 "Design Direction: Boundary Sufficiency" for the 4-gap analysis and
 execution phases.
 
-**PRIORITY 2: Diagnostic quality.** The DSL is unusable until
+**PRIORITY 3: Test generation (Theme C).** `generated_tests.rs` is a
+static snapshot, not generated tests. Rust test emission works but
+Go/Python emit stub assertions. No test verifies emitted code is
+*correct*, only that it exists. Fix direction: golden-output tests
+(compile `.dag` → `cargo check` → run generated tests), cross-language
+test parity, and test generation as a compiler pipeline output.
+
+**PRIORITY 4: Diagnostic quality.** The DSL is unusable until
 diagnostics include file name, line:column, source context, and
 actionable suggestions. See "Diagnostic quality" section below.
 
@@ -955,7 +1074,7 @@ binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
 - Emitted Rust error ratchet: 589 errors (down from 872)
 - L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
 - Keyword arm count: 9 (exact match)
-- Complexity ratchet: 2 violations (pre-existing)
+- Complexity ratchet: 2 violations (tree traversal misclassified as branching recursion — resolves when structural descent detection lands)
 
 **Codegen audit (2026-03-28): 589 Rust errors, 9 categories.**
 Prior fixes (PR #229) were partial — serde removed from NonEmpty
@@ -1111,10 +1230,11 @@ invariant violations — I (incomplete types ~32), II (error-as-name ~18),
 III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
 
 **Foundational directions for Phase 5 exit:**
-- **Compiler thesis inversion — TOP PRIORITY (~362 name-based branches)**
-- **Diagnostic quality — PRIORITY 2 (blocks DSL usability)**
+- **Structural decidability — TOP PRIORITY (bounded primitives + fail-closed)**
+- **Compiler thesis inversion — PRIORITY 2 (~362 name-based branches)**
+- **Test generation — PRIORITY 3 (golden output, cross-language parity)**
+- **Diagnostic quality — PRIORITY 4 (blocks DSL usability)**
 - **Stream 0 (compositional parser) — LANDED (PR #226)**
-- **Decidability (DAG-reducibility) — active**
 - **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
 
 ---
