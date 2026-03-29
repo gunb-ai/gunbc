@@ -95,24 +95,21 @@ product/coproduct categories. `SourceSpan` and `AccessToken` are both
 difference (all-connected vs one-connected) is an edge connectivity
 pattern, not a compiler-known enum.
 
-### Current Reality: Substrate + Bridges
+### Where We Are (current compiler primitives)
 
-Today the compiler has two substrate primitives and three bridges that
-should dissolve into the modeled layers:
+| What | How the compiler knows it | Sites | Status |
+|------|--------------------------|-------|--------|
+| **Node** | Substrate type | — | Keep |
+| **Edge (DAG)** | Substrate (outgoing children) | — | Keep |
+| **Conj / Disj** | `connective` enum on Node | 81 dispatch, 114 construction | Bridge — dissolve into edge patterns |
+| **Cardinality** | `return_cardinality` enum on Node | 38 dispatch, 142 construction | Bridge — dissolve into edge existence |
+| **Bool** | `kernel_types` string list, fabricated `bool_type` node, `"Bool"` → `BooleanAlgebraProfile` map, `type_name == "Bool"` in emit | 5 name-based sites, 1 structural | **Not dissolved** — compiler knows Bool by name |
+| **Int, String, Float** | Same as Bool: `kernel_types` list, type algebra profile map, emit default values | ~20 name-based sites each | **Not dissolved** — compiler knows these by name |
+| **List, Map, Set** | `container_types` string list, `is_container_type()` | ~10 name-based sites | **Not dissolved** — compiler knows containers by name |
 
-| What | Role | Status |
-|------|------|--------|
-| Node | Substrate | Keep |
-| Edge (DAG) | Substrate | Keep |
-| Conj / Disj | Bridge — `connective` enum on Node | Dissolve: 81 dispatch sites, 114 construction sites. Product/coproduct are edge connectivity patterns, not a compiler enum. |
-| Cardinality | Bridge — `return_cardinality` enum on Node | Dissolve: 38 dispatch sites, 142 construction sites. An edge connects or it doesn't. |
-| Bit / Bool | Modeled type (Layer 0) | Already correct — not a compiler primitive. Detected structurally as 2-variant coproduct (1 site). |
-
-The bridges exist because the compiler was built incrementally. The
-direction is to dissolve them: product/coproduct become edge
-connectivity patterns the compiler reads from the graph.
-Cardinality becomes edge existence. Bit is already modeled, not
-compiler-known.
+The compiler currently has **2 substrate primitives + 2 bridge enums +
+~8 name-known types**. The direction is to dissolve everything except
+Node and Edge.
 
 ### Structural Principles
 
@@ -249,18 +246,47 @@ All invariants should aspire to Tier 1 (unrepresentable violations).
 Tier 3 items are the most dangerous — they give the illusion of coverage
 without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 
-### End Goal
+### Where We Will Be (target state)
 
-- Two substrate primitives: Node and Edge. Product/coproduct,
-  cardinality, and truth are compositional modeling above the
-  substrate, not compiler-known categories.
+| What | How the compiler knows it | Sites |
+|------|--------------------------|-------|
+| **Node** | Substrate type | — |
+| **Edge (DAG)** | Substrate (outgoing children) | — |
+| **Everything else** | `.dag` declarations the compiler reads structurally | 0 name-based sites |
+
+- Product/coproduct, cardinality, and truth are compositional modeling
+  above the substrate — edge connectivity patterns, not compiler enums.
 - Names are opaque. Inference processes graph structure only.
 - Zero language-specific code in the compiler core. Languages are
-  plugins: `LanguageSpec` + rendering table in `dsl/extdeps/languages/`.
-  The compiler outputs the typed graph; renderers produce target text.
+  coercion targets: `LanguageSpec` + rendering table in
+  `dsl/extdeps/languages/`. The compiler outputs the typed graph;
+  renderers produce target text.
 - All `.dag` programs are decidable by construction.
 - Ownership and complexity proofs wired into the pipeline.
 - At least one real program compiles and runs end to end.
+
+### Adding a new base concept
+
+If the architecture is right, adding a new fundamental modeled concept
+(a new Layer 0/1 type, beyond Bit/Bool) requires:
+
+- **Add a `.dag` file to `std/`.** Define the type as a composition
+  of the substrate primitives (Node + Edge).
+- **Zero compiler changes.** The compiler reads structural properties
+  from the `.dag` declaration. It doesn't know the concept by name.
+
+If adding the concept requires compiler changes, the architecture has
+failed — a structural fact is missing from the substrate.
+
+**Test:** try to model the new concept as a `.dag` type. If you can
+→ add the file, done. If you can't → the substrate needs to grow,
+which is a thesis-level event requiring deep design review.
+
+Examples: `type Probability = Float where range(0.0, 1.0)` (refinement,
+zero compiler changes). `type Qubit = Superposition<Bit>` (new
+constructor — would need substrate discussion). `type Signal =
+Continuous<Float>` (new collection kind — would need substrate
+discussion). The substrate should rarely grow; most concepts compose.
 
 ---
 
