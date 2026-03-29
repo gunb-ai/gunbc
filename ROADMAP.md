@@ -375,80 +375,45 @@ primitives, not from a per-function checker. Three primitives in
 These are the ONLY iteration primitives. No `while`, no `loop`, no
 general recursion. Recursive syntax desugars to these or is rejected.
 
-**Step 1: Structural descent detection (compile-time).**
+**Step 1: Structural descent detection. ✓ DONE (2026-03-29, PR #236)**
 
-When the compiler encounters a recursive function, it analyzes the call
-pattern and attempts to lower it to a bounded primitive:
+`is_structural_descent()` recognizes catamorphism pattern: match/if
+over input where all self-calls are inside arms. `max_path_self_calls()`
+counts per-execution-path (max across branches, not sum). Tree-walk
+functions correctly classified as LinearRecursion O(n). Self-compile:
+149 functions, 0 violations.
 
-```
-Self-call on child of input       → descend (tree fold, O(|tree|))
-Self-call inside fold body        → already bounded (fold-of-fold)
-Self-call with n - 1              → repeat(n, ...) (O(n))
-Mutual recursion on SCC children  → descend over SCC (O(|SCC|))
-Self-call with unchanged argument → HARD ERROR (no bounded lowering)
-```
+**Step 2: Fail-closed compilation. DESIGNED, not yet implemented.**
 
-This runs after inference (when self-calls are resolved), before
-complexity analysis. It produces a `DescentProof` for each recursive
-function — the proof that the function terminates.
+When the descent analysis cannot lower a recursive function to a
+bounded primitive, compilation should fail with a hard error. Currently
+produces `DivideAndConquer` classification (soft). The hard error
+needs to be wired into the inference/normalize stage as a diagnostic.
 
-**Step 2: Fail-closed compilation.**
+**Step 3: Complexity analyzer uses descent proofs. ✓ DONE (2026-03-29)**
 
-If the descent analysis cannot lower a recursive function to a bounded
-primitive, compilation fails with a hard error. This is the fail-closed
-guarantee: programs that escape the structural analysis do not compile.
+`classify_recursion_pattern` uses `is_structural_descent` + `max_path_
+self_calls` to produce LinearRecursion for tree walkers. The analyzer
+derives O(n × per\_node) cost from the classification. All 9 former
+DivideAndConquer violations resolved.
 
-In a complete implementation, the hard error is unreachable — the
-language has no primitive for unbounded recursion, so no program can
-trigger it. The error exists as a safety net during the transition.
+**Step 4: Cost algebra upstream of language primitives. ✓ DONE (2026-03-29)**
 
-**Step 3: Complexity analyzer reads descent proofs.**
+`CostLog { base: Int, argument: SizeExpr }` added to `CostExpr`.
+`sort_by` now produces O(n × log(n) × key\_cost) with Proven certainty.
+The algebra-upstream-of-primitives principle is documented in
+INVARIANTS.md: a primitive cannot exist until its cost class is
+expressible.
 
-The complexity analyzer no longer needs to detect or classify recursion.
-It reads the `DescentProof` and derives cost directly:
+| Primitive | Cost class | Algebra | Status |
+|---|---|---|---|
+| `fold` | O(n × body) | `CostSum` | ✓ |
+| `descend` | O(\|tree\| × body) | `CostSum` | ✓ |
+| `repeat(N)` | O(N × body) | `CostSum` | ✓ |
+| `sort_by` | O(n log n × key) | `CostLog` | ✓ |
+| Future: binary search | O(log n) | `CostLog` | Ready |
 
-- `descend` proof → O(\|tree\| × per\_node\_cost)
-- `repeat(N)` proof → O(N × per\_step\_cost)
-- Fold-bounded → already handled by fold CostSum
-
-The 2 current complexity violations (branching recursion in tree-walk
-functions) resolve because the descent analysis recognizes that each
-self-call processes a child of the input — tree traversal, O(n), not
-branching recursion O(2^n).
-
-**Step 4: Cost algebra upstream of language primitives.**
-
-The cost algebra (`CostExpr`) is the upstream authority. A language
-primitive cannot exist until its cost class is expressible in the
-algebra. This inverts the current relationship (primitives exist →
-algebra tries to catch up → Conservative gaps).
-
-Current modeling deficit: `sort_by` exists without `CostLog`. The
-algebra cannot express O(n log n), so `sort_by` gets Conservative
-O(n). This is backwards — `CostLog` should have been added first.
-
-Fix order (algebra leads, primitive follows):
-1. Add `CostLog { base: Int, argument: SizeExpr }` to `CostExpr`
-2. `sort_by` declares its cost as `CostMul { n, CostLog { 2, n } }`
-3. Analyzer reads the declaration → O(n log n), Proven
-4. `Conservative` certainty becomes a dead variant
-
-The principle extends to all future primitives. Before adding any
-primitive, answer: "what is its cost class?" If `CostExpr` can't
-express it, grow the algebra first. The primitive follows.
-
-| Primitive | Cost class | Algebra needed |
-|---|---|---|
-| `fold` | O(n × body) | `CostSum` (exists) |
-| `descend` | O(\|tree\| × body) | `CostSum` (exists) |
-| `repeat(N)` | O(N × body) | `CostSum` (exists) |
-| `sort_by` | O(n log n × key) | `CostLog` (**missing**) |
-| Future: binary search | O(log n) | `CostLog` (same) |
-
-After `CostLog` lands, every current primitive has a tight bound.
-`Conservative` certainty = 0 functions. `Unknown` = hard error.
-
-**Step 5: `trace_pop_frame` O(n) → O(1).**
+**Step 5: `trace_pop_frame` O(n) → O(1). DESIGNED, not yet implemented.**
 
 `trace_pop_frame` uses `take(count - 1)` which copies the list — O(n)
 per pop. Replace with a proper `Stack` type in `std/` (cons list) that
@@ -607,101 +572,88 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ---
 
-## Current State (2026-03-28)
+## Current State (2026-03-29)
 
-**TOP PRIORITY: Structural decidability.** Decidability must be a
-consequence of the language's modeling primitives, not a per-function
-check. The language provides exactly three bounded iteration primitives
-(`fold`, `descend`, `repeat`) — no unbounded loop, no general recursion.
-Recursive syntax is sugar that the compiler lowers to bounded primitives
-or rejects. See "Design Direction: Decidability" and `std/iteration.dag`.
+### What landed this session (PR #236)
 
-**Current gap:** The compiler accepts general recursion without verifying
-structural descent. `fn spin(n: Int) -> Int { spin(n: n) }` compiles.
-Fix: fail-closed on non-descending recursion at compile time.
-Complexity analyzer now has 0 violations on self-compile (structural
-descent detection + CostLog landed).
+**Structural decidability (design + implementation):**
+- `std/iteration.dag`: bounded primitives (`descend`, `repeat`, `repeat_until`)
+- INVARIANTS.md: structural proof from primitives, cost algebra upstream of language
+- Complexity analyzer: `max_path_self_calls` (path-aware), `is_structural_descent`
+  (catamorphism detection), `CostLog` variant. **Self-compile: 149 functions, 0
+  violations.** sort_by: Proven (was Conservative).
+- Builtin function dissolution: `infer_builtin_call_type` 26-branch if/else →
+  `builtin_function_registry()` cached HashMap. All 3 method/builtin indexes
+  cached via `thread_local`.
+- 13 new hermetic complexity tests covering O(1) through O(n²) + self-analysis.
+
+**D1 dissolution (merged from warm-lynx-757):**
+- FieldInit, ResourceUse, Param, Field, Variant dissolved into Node.
+- 119 stage0 compile errors fixed manually (D1 type changes in 9 .rs files).
+- Typed diagnostics: `CompilerDiagnostic` enum, `ErrorDAG`, file:line:col.
+
+**Stage0 regeneration: BLOCKED on FF-8 (container sharing).** Self-compile
+runs but takes 20+ min / 3.8GB+ due to O(n) bare container clones. FF-8
+fix (Rc-wrap container templates) unblocks regen. Being worked on a
+separate branch.
+
+### Remaining gaps (what we didn't finish)
+
+| Item | Status | Blocker |
+|------|--------|---------|
+| **Fail-closed compilation** for non-descending recursion | DESIGNED, not implemented | Needs compile-time descent checker in normalize/infer stage |
+| **Stage0 regeneration** | BLOCKED | FF-8 container sharing must land first |
+| **`trace_pop_frame` O(n) → O(1)** | DESIGNED (Stack type) | Low priority; no functional impact |
+| **`Conservative` certainty elimination** | PARTIAL | LinearRecursion still uses synthetic iteration vars (`n_func`), not concrete collection sizes |
+| **`.dag`-side caching** of builtin/method registries | DOCUMENTED | Stage0 has `thread_local`; .dag source rebuilds per call until regen |
+
+### Priorities
+
+**TOP PRIORITY: Structural decidability.** Design landed. Bounded
+primitives (`fold`, `descend`, `repeat`) declared in `std/iteration.dag`.
+Cost algebra is upstream of language primitives. Complexity analyzer has
+0 violations. **Remaining:** fail-closed compilation (reject non-descending
+recursion at compile time, not just classify it in the analyzer).
 
 **PRIORITY 2: Compiler thesis inversion (~362 hardcoded name-based
-branches).** The compiler encodes knowledge as code branches instead of
-reading data. Three themes: (A) type/method dispatch by string
-comparison, (B) emission hardcodes target syntax instead of reading
-LanguageSpec, (C) testgen doesn't test compiler. See "Compiler
-structural audit" section below. **Fix direction: Boundary Sufficiency
-(BS-1 through BS-4).** The data already exists (LanguageSpec is fully
-populated, algebra products are correct); stages bypass it. See
-"Design Direction: Boundary Sufficiency" for the 4-gap analysis and
-execution phases.
+branches).** `infer_builtin_call_type` dissolved (26 branches → data table).
+Remaining: ~336 sites across type dispatch, method dispatch, emit hardcoding.
+Fix direction: Boundary Sufficiency (BS-1 through BS-4).
 
 **PRIORITY 3: Test generation (Theme C).** `generated_tests.rs` is a
-static snapshot, not generated tests. Rust test emission works but
-Go/Python emit stub assertions. No test verifies emitted code is
-*correct*, only that it exists. Fix direction: golden-output tests
-(compile `.dag` → `cargo check` → run generated tests), cross-language
-test parity, and test generation as a compiler pipeline output.
+static snapshot, not generated tests. Go/Python emit stub assertions.
+Fix direction: golden-output tests, cross-language parity.
 
-**Diagnostic quality: LANDED.** Typed `CompilerDiagnostic` enum (14
-variants), `ErrorNode` with causal DAG edges, `SourceSpan` carries
-file path from tokenizer, `NewlineIndex` for O(log n) byte→line:col.
-Renderer shows file:line:col, source context with caret spans,
-topo-sorted output (roots first, cascades grouped). Old string-keyed
-`diagnostic_node()` infrastructure fully deleted.
+### What's already done (not changed this session)
 
-**Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
-landed (PR #226).**
+- **Phases 1-4 complete.** Phase 5 active.
+- **Stream 0 (compositional parser):** LANDED (PR #226). `parse_item`
+  has 0 keyword match arms.
+- **Diagnostic quality:** LANDED. Typed `CompilerDiagnostic`, ErrorDAG,
+  file:line:col rendering.
+- **L2 bridge dissolved** (P5.11). ExprData children in `node.children`.
+- **D1 dissolution:** LANDED (this session). FieldInit/ResourceUse/Param/
+  Field/Variant → Node.
+- **Bootstrap:** v1 retired (PR #200). v2 self-hosts. 0 diagnostics.
 
-**Stream 0 complete (2026-03-28, PR #226).** `SyntaxSpec` type landed
-in `languages.dag`. Item dispatch, operator precedence, and literal
-keywords are all spec-driven. `parse_item` has 0 keyword match arms.
-30+ `ShKw*` variants consolidated to single `ShKeyword`. 70+ keyword
-predicates deleted. Net -170 lines.
+### Verification ratchets
 
-**Bootstrap status:** v1 retired (PR #200). v2 self-hosts. Stage0
-binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
-151 fast tests pass, clippy clean. Self-compile time: ~260s (FF-8).
+| Ratchet | Value | Notes |
+|---------|-------|-------|
+| Diagnostic | 0 | Passes |
+| L1 type knowledge | 66 | Up from 51 (D1 merge added CollectionKind imports) |
+| Keyword arm count | 9 | Exact match |
+| Complexity violations | 0 | Was 2; structural descent + CostLog resolved all |
+| Emitted Rust errors | 872 | Blocked on stage0 regen (FF-8) |
 
-**Verification ratchets (Lane A complete, PR #227):**
-- Diagnostic ratchet: 0 (passes)
-- Emitted Rust error ratchet: 872 errors (down from 1242)
-- L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
-- Keyword arm count: 9 (exact match)
-- Complexity ratchet: 2 violations (tree traversal misclassified as branching recursion — resolves when structural descent detection lands)
+### Known invariant violations
 
-**Stage0 regeneration: BLOCKED on 872 codegen errors.** Fixes applied
-(PR #229): serde removal, generic type params, container casing, type
-map routing, callable error recovery. Remaining: callable rendering,
-cross-module imports, cascading type mismatches.
-
-**DSL compilation:** Added `\{` `\}` escape sequences. 775 brace
-templates escaped across 18 DSL files. Remaining ~1 parse diagnostic
-(block/record disambiguation). Compiler correctly fails closed.
-
-**Diagnostic quality: LANDED.** `CompilerDiagnostic` typed enum,
-`ErrorNode` with causal edges, file:line:col rendering, source
-context with caret spans. Old `diagnostic_node()` deleted.
-
-**Known invariant violation: Option rendering splits absence variants.**
-Absence-variant rendering should be a LanguageSpec declaration, not
-an emitter heuristic. See details below.
-
-**L2 bridge dissolved** (P5.11 complete, 2026-03-26). ExprData children
-in `node.children`. Bridge functions deleted.
-
-**Container sharing (FF-8):** Root-caused 2026-03-27. Rendering change
-in `LanguageSpec` container templates. Hand-patch proof: 37s → 0.4s.
-Fix pending (Stream 3).
-
-**Root-cause audit (2026-03-23):** Three root causes behind all ~66
-invariant violations — I (incomplete types ~32), II (error-as-name ~18),
-III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
-
-**Foundational directions for Phase 5 exit:**
-- **Structural decidability — TOP PRIORITY (bounded primitives + fail-closed)**
-- **Compiler thesis inversion — PRIORITY 2 (~362 name-based branches)**
-- **Test generation — PRIORITY 3 (golden output, cross-language parity)**
-- **Stream 0 (compositional parser) — LANDED (PR #226)**
-- **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
-- **Diagnostic quality — LANDED (typed CompilerDiagnostic, ErrorDAG, file:line:col renderer)**
+- **FF-8: Container sharing.** Bare `Vec`/`HashMap` clones are O(n).
+  Fix: Rc-wrap container templates. Root-caused 2026-03-27. Blocks regen.
+- **Option rendering.** Absence-variant rendering is emitter heuristic,
+  not LanguageSpec declaration.
+- **General recursion accepted.** `fn spin(n: n)` compiles. Fail-closed
+  compilation not yet implemented.
 
 ---
 
