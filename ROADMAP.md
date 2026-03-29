@@ -597,68 +597,102 @@ impossible. There are no arms. The fix for emission, dual
 representations, and enum duplication is the same: remove the surface
 where violations are expressed.
 
-**Three violation classes and their structural fixes:**
+#### Where violations live (pipeline audit)
 
-**1. Hardcoded target syntax in emitters.**
+| Stage | String sites | Legitimate | Escape hatch | What's escaping |
+|---|---|---|---|---|
+| Tokenize | ~50 | ~50 | 0 | — |
+| Parse | ~200 | ~190 | ~10 | Expr node names, transport strings |
+| Resolve | ~25 | ~10 | ~15 | String-keyed graph, transport dispatch |
+| Inference | ~250 | ~80 | **~170** | Builtin registry, method dispatch, Optional hardcoding, type metadata maps |
+| Emit | ~693 | ~680 | **~76** | Transport dispatch (13), method re-dispatch (63) |
+| Complexity | ~26 | ~4 | **~22** | Method cost shape dispatch |
+| Ownership | ~5 | ~5 | 0 | — |
 
-Every function that produces target-language text can hardcode. The
-fix: the emitter doesn't produce strings. It produces a structured
-`EmitTree` — semantic nodes like `SharedWrap(ContainerInit("list",
-[elem]))`. A separate renderer converts the tree to text using
-`LanguageSpec`. The emitter literally cannot produce `"Rc<Vec<...>>"`
-because it doesn't produce strings. This is the emit-side equivalent
-of `ExpectedToken`.
+**95% of escape hatches are in inference and emit.** Tokenize, parse,
+normalize, and ownership are essentially clean.
 
+#### The five escape hatches
+
+| Escape hatch | Sites | What it enables |
+|---|---|---|
+| `node.name: String` | 1,175 reads | Name-based dispatch everywhere — `if name == "Int"`, `if method == "fold"` |
+| `Map<String, X>` metadata | 14 maps | Structural facts keyed by strings — `variant_to_enum`, `builtin_registry`, etc. |
+| `concat()` in emitter → `String` | 680 calls | Hardcoded target syntax — `"Rc::new(vec![...])"` |
+| Method name dispatch | 63 sites | Same method re-dispatched in inference, complexity, and 3 emitters |
+| Transport name dispatch | 13 sites | `transport.name == "rest"` in resolve + all emitters |
+
+#### Structural fixes
+
+**1. EmitTree (eliminate string production in emitters).**
+
+The emitter returns `EmitNode`, not `String`. A separate renderer
+(one file, small, auditable) converts to text using `LanguageSpec`.
+680 `concat()` calls become illegal. The emitter can't produce target
+syntax because it doesn't produce strings.
+
+```dag
+type EmitNode
+  = EmitTypeRef { node: Node }
+  | EmitSharedWrap { inner: EmitNode }
+  | EmitContainerInit { kind: CollectionKind, elements: List<EmitNode> }
+  | EmitMethodCall { receiver: EmitNode, method: Node, args: List<EmitNode> }
+  | EmitVarRef { binding: Node }
+  | EmitFieldAccess { receiver: EmitNode, field: Node }
+  | EmitLiteral { value: LiteralValue }
+  | EmitBinOp { op: BinOpKind, left: EmitNode, right: EmitNode }
+  | EmitBlock { stmts: List<EmitNode> }
+  | EmitLet { binding: Node, value: EmitNode }
+  | EmitIf { condition: EmitNode, then_branch: EmitNode, else_branch: EmitNode }
+  | EmitMatch { scrutinee: EmitNode, arms: List<EmitNode> }
+  | EmitReturn { value: EmitNode }
+  | EmitCall { func: Node, args: List<EmitNode> }
+  | EmitLambda { params: List<Node>, body: EmitNode }
+  | EmitComment { text: String }
 ```
-// Today (violation possible):
-fn emit_list_init(items) -> String {
-    concat("Rc::new(vec![", items, "])")   // hardcoded Rust
-}
 
-// Target (violation unrepresentable):
-fn emit_list_init(items) -> EmitNode {
-    SharedWrap(ContainerInit(Collection::List, items))
-    // renderer reads LanguageSpec to produce "Rc::new(vec![...])"
-}
-```
+Only `EmitLiteral` and `EmitComment` carry source content strings.
+No variant carries target-language syntax. No `EmitRawText` escape
+hatch. The renderer is the single chokepoint for all target syntax.
 
-**2. Dual representations (same fact in two places).**
+**Can you bypass this?** Only if someone adds an `EmitRawText` variant.
+`EmitNode` is a closed type in one file — adding a variant is a visible
+code review decision, not an invisible string concatenation buried in
+a helper function.
 
-When the same information exists as both a `.dag` declaration AND a
-hardcoded string/list in the compiler, they diverge. The fix: every
-fact has exactly one structural address. Other sites hold an edge
-(reference) to that address, not a copy. If you can write the fact
-in two places, the structure is wrong.
+**2. Edge-only fact references (eliminate string-keyed metadata).**
 
-The test: take any fact in the compiler. Can you find it by following
-edges from one root? If you have to scan strings to find it, it's a
-dual representation. Container types, method signatures, kernel type
-lists — each should be reachable via one path from the `.dag` source
-graph, not duplicated into compiler-internal lists.
+`kernel_types: List<String> = ["Int", "Bool", ...]` becomes
+`kernel_types: List<Node>` — edges to type definition nodes. You
+can't have a stale name because you don't have a name. The 14
+`Map<String, X>` metadata maps become `Map<Node, X>` or structural
+edges on the type definition nodes themselves.
 
-**3. Enum duplication / nicknaming (same structure, different labels).**
+**3. Data-driven dispatch (eliminate method/transport name matching).**
 
-Two enums with the same shape but different names. Two fields carrying
-the same information under different keys. The fix is structural
-identity: two compositions with the same children in the same
-connective pattern are the SAME composition, regardless of what names
-they carry. The compiler should be able to detect when two type
-definitions are structurally identical and flag the duplication.
+Method dispatch (63 sites across 5 files) reads from algebra type
+definitions in `std/algebra.dag` instead of `if method == "fold"`.
+Transport dispatch (13 sites) uses an enum on the transport node
+instead of `transport.name == "rest"`. Same pattern as `SyntaxSpec` —
+data tables loaded at startup, not match arms in code.
 
-This connects to the thesis: names are opaque namespaces. If two names
-map to the same structural composition, one of them is redundant. The
-compiler doesn't need to enforce uniqueness — but the guarantee receipt
-can report structural duplicates, and a ratchet can track them toward
-zero.
+**4. `Node.name` deletion (M4/D6 — eliminate the universal escape).**
 
-**Enforcement ladder:**
+1,175 `.name` reads are the universal bypass. Delete the field.
+Identity is the node itself. Text derived from `source_text_at(span)`.
+After deletion, the only way to get information about a node is
+through structural properties and edges — not by reading a name string
+and guessing what it means.
 
-| Stage | Mechanism | Violations possible? |
-|-------|-----------|---------------------|
-| Today | Ratchets (grep counts) | Yes — caught after PR |
-| Near-term | EmitTree (no strings in emitter) | No — emitter can't produce target syntax |
-| Near-term | Edge-only references (no copied facts) | No — second declaration is a compile error |
-| Long-term | Structural identity (hash-based dedup) | No — duplicate compositions detected automatically |
+#### Enforcement ladder
+
+| Phase | What closes | Violations prevented |
+|-------|------------|---------------------|
+| **M2** | Data-driven dispatch (SyntaxSpec pattern for methods/transport) | 76 name-dispatch sites |
+| **M4** | `Node.name` deletion | 1,175 name-read sites (the universal escape) |
+| **M5** | EmitTree (emitter returns EmitNode, not String) | 680 concat calls + all future emit violations |
+| **M5** | Edge-only fact references | 14 string-keyed metadata maps |
+| **M7** | Structural identity (duplicate composition detection) | Enum duplication / nicknaming |
 
 ### Exploratory
 
