@@ -295,17 +295,21 @@ pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>,
             None => result_type.clone(),
         }
     } else if (result_type.name.clone() == receiver_type.name.clone()) {
-        // Same collection type: check if result contains a Tuple child
-        // (enumerate wraps elements in Tuple<Int, Elem>). If so, keep the
-        // result. Otherwise use the concrete receiver.
-        let has_tuple_child = result_type.children.first()
-            .map(|c| c.name == "Tuple")
-            .unwrap_or(false);
-        if has_tuple_child {
-            result_type.clone()
-        } else {
-            receiver_type.clone()
-        }
+        // BOOTSTRAP GAP: This branch replaces the result with the receiver
+        // when both have the same collection name (e.g., both "List").
+        // This is correct for filter/map/skip/take (where result IS the
+        // receiver already) but WRONG for enumerate (which wraps elements
+        // in Tuple<Int, Elem>, changing the inner structure).
+        //
+        // The fix needs to detect when the result's inner structure differs
+        // from the receiver's (enumerate: first child is "Tuple" vs element
+        // type). See ROADMAP "Design Direction: Bootstrap Sustainability"
+        // for the detailed fix plan with all method cases enumerated.
+        //
+        // Until fixed, .dag code using `pair.first`/`pair.second` on
+        // enumerate results will produce "no field 'first' on type X"
+        // diagnostics, blocking regeneration (20 diagnostics).
+        receiver_type.clone()
     } else if (matches!(result_type.return_cardinality.clone(), Cardinality::CardOptional)) {
         let inner = with_required_cardinality(result_type.clone());
         let elem = method_receiver_element_node(receiver_type.clone());
