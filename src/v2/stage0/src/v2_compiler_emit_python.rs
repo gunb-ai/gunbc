@@ -581,8 +581,7 @@ match summary.clone() {
 
 pub fn emit_py_expr_var(expr: Rc<Node>) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => emit_ident(n.clone(), RenderTarget::Python),
-    let n = expr_var_name(expr.clone());
+    ExprData::ExprVar { .. } => { let n = expr_var_name(expr.clone()); emit_ident(n.clone(), RenderTarget::Python) },
     _ => emit_error_expr("emit_py_expr_var expected ExprVar".to_string(), RenderTarget::Python),
 }
 }
@@ -1135,7 +1134,7 @@ v2_rt::concat(v2_rt::concat("while True:
 pub fn emit_py_tco_non_self_call(frame: Rc<TcoFrame>, registry: HashMap<String, Rc<ItemInfo>>) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-    let f = expr_call_func(frame.clone());
+    let f = expr_call_func(frame.expr.clone());
         let a = frame.expr.clone().children.clone();
 let call_str = emit_py_typed_call(f.clone(), a.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone());
 v2_rt::concat("return ".to_string(), call_str.clone())
@@ -1196,7 +1195,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone(
 pub fn emit_py_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprLet => {
-    let n = let_binding_name(frame.clone());
+    let n = let_binding_name(frame.expr.clone());
         let v = match frame.expr.clone().children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => frame.expr.clone(),

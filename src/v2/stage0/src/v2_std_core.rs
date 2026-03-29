@@ -1409,12 +1409,11 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) ->
 pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => if (f.clone() == fn_name.clone()) {
-    let f = expr_call_func(texpr.clone());
+    ExprData::ExprCall { .. } => { let f = expr_call_func(texpr.clone()); if (f.clone() == fn_name.clone()) {
             true
 } else {
             { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found }
-},
+} },
     _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found },
 }
     })
@@ -1423,8 +1422,7 @@ pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
 pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bool) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => if (f.clone() == fn_name.clone()) {
-    let f = expr_call_func(texpr.clone());
+    ExprData::ExprCall { .. } => { let f = expr_call_func(texpr.clone()); if (f.clone() == fn_name.clone()) {
             if (in_tail.clone() == false) {
                 true
 } else {
@@ -1432,7 +1430,7 @@ pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bo
 }
 } else {
             { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
-},
+} },
     ExprData::ExprError { .. } => false,
     ExprData::ExprVar { .. } => false,
     ExprData::ExprLiteral { .. } => false,

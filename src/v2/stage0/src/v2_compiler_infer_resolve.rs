@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span, field_init_node_name, field_init_node_value, make_param_node, make_field_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key};
+pub use crate::v2_std_core::{Node, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span, field_init_node_name, field_init_node_value, make_param_node, make_field_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_named_expr_node, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name, lambda_param_names, foreach_variable};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -854,7 +854,7 @@ let vr = resolve_expr_types(val.clone(), env.clone(), module_name.clone());
 vr.diagnostics.clone()
 }); } __result };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprCall {
+    expr: make_named_expr_node(expr_call_func(texpr.clone()), Rc::new(ExprData::ExprCall {
 call_semantics: cs.clone(),
 }), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags.clone(),
@@ -904,7 +904,7 @@ vr.diagnostics.clone()
 }
 }); } __result };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprMethodCall {
+    expr: make_named_expr_node(expr_method_name(texpr.clone()), Rc::new(ExprData::ExprMethodCall {
 method_semantics: ms.clone(),
 }), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags.clone(),
@@ -1062,7 +1062,7 @@ let resolved_children = match br.clone() {
     None => vec![vr.expr.clone()],
 };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprLet), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
+    expr: make_named_expr_node(let_binding_name(texpr.clone()), Rc::new(ExprData::ExprLet), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: v2_rt::concat(vr.diagnostics.clone(), match br.clone() {
     Some(r) => r.diagnostics.clone(),
     None => vec![],
@@ -1087,7 +1087,7 @@ let vr = resolve_expr_types(val.clone(), env.clone(), module_name.clone());
 vr.diagnostics.clone()
 }); } __result };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprRecordLit {
+    expr: make_named_expr_node(texpr.name.clone(), Rc::new(ExprData::ExprRecordLit {
 parent_enum: pe.clone(),
 }), resolved_children.clone(), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: all_diags.clone(),
@@ -1151,7 +1151,7 @@ Rc::new(ExprResolveResult {
 Rc::new(ExprResolveResult {
     expr: make_expr_node(Rc::new(ExprData::ExprLambda {
 semantics: s.clone(),
-}), vec![r.expr.clone()], texpr.inferred.clone(), texpr.span.clone()),
+}), v2_rt::concat(vec![r.expr.clone()], { let mut __result = Vec::new(); for p in lambda_param_names(texpr.clone()).iter().cloned() { __result.push(leaf_node(p.clone())); } __result }), texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: r.diagnostics.clone(),
 })
 },
@@ -1228,7 +1228,7 @@ let br = match ch.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().f
 }),
 };
 Rc::new(ExprResolveResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprForEach), vec![cr.expr.clone(), br.expr.clone()], texpr.inferred.clone(), texpr.span.clone()),
+    expr: make_named_expr_node(foreach_variable(texpr.clone()), Rc::new(ExprData::ExprForEach), vec![cr.expr.clone(), br.expr.clone()], texpr.inferred.clone(), texpr.span.clone()),
     diagnostics: v2_rt::concat(cr.diagnostics.clone(), br.diagnostics.clone()),
 })
 },

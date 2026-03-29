@@ -95,15 +95,14 @@ pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Ha
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_edges = match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => if emit_map_has(local_func_set.clone(), f.clone()) {
-    let f = expr_call_func(texpr.clone());
+    ExprData::ExprCall { .. } => { let f = expr_call_func(texpr.clone()); if emit_map_has(local_func_set.clone(), f.clone()) {
                 vec![Rc::new(CallEdge {
     caller: caller.clone(),
     callee: f.clone(),
 })]
 } else {
                 vec![]
-},
+} },
     _ => vec![],
 };
 let child_edges = { let mut __result = Vec::new(); for child in texpr.children.clone().iter().cloned() { __result.extend(collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone())); } __result };

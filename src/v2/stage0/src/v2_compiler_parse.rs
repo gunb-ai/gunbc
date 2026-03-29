@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
+pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span, expr_var_name, make_named_expr_node, leaf_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -5799,8 +5799,7 @@ pub fn status_expr_to_str(expr: Rc<Node>) -> String {
             _ => "_".to_string(),
         }
     },
-    ExprData::ExprVar { .. } => n.clone(),
-    let n = expr_var_name(expr.clone());
+    ExprData::ExprVar { .. } => { let n = expr_var_name(expr.clone()); n.clone() },
     _ => "_".to_string(),
 }
 }
@@ -5964,7 +5963,7 @@ Rc::new(DescResult {
 let code_str = status_expr_to_str(code.clone());
 let type_name = node_to_name_str(r3.type_expr.clone());
 let prop_name = v2_rt::concat("exit_".to_string(), code_str.clone());
-let entry = make_field_init_node(prop_name.clone(), make_expr_node(Rc::new(ExprData::ExprVar {
+let entry = make_field_init_node(prop_name.clone(), make_named_expr_node(type_name.clone(), Rc::new(ExprData::ExprVar {
 binding_kind: None,
 }), vec![], None, r3.type_expr.clone().span.clone()), no_span());
 let e = eat(tokens.clone(), desc_r.state.clone(), ExpectedToken::ExpectComma);
@@ -6239,7 +6238,7 @@ if has_err(r3.err.clone()) {
 let status_str = status_expr_to_str(status.clone());
 let type_name = node_to_name_str(r3.type_expr.clone());
 let prop_name = v2_rt::concat("response_".to_string(), status_str.clone());
-let entry = make_field_init_node(prop_name.clone(), make_expr_node(Rc::new(ExprData::ExprVar {
+let entry = make_field_init_node(prop_name.clone(), make_named_expr_node(type_name.clone(), Rc::new(ExprData::ExprVar {
 binding_kind: None,
 }), vec![], None, r3.type_expr.clone().span.clone()), no_span());
 let e = eat(tokens.clone(), r3.state.clone(), ExpectedToken::ExpectComma);
@@ -7572,7 +7571,7 @@ pub fn parse_constrained_assignment(tokens: Rc<Vec<Rc<Token>>>, state: Rc<Parser
     if has_err(r2.err.clone()) { return Rc::new(ExprResult { expr: dummy_expr.clone(), state: r2.state.clone(), err: r2.err.clone() }) }
     let r3 = parse_expr(tokens.clone(), r2.state.clone());
     if has_err(r3.err.clone()) { return r3.clone() }
-    let node = make_expr_node(Rc::new(ExprData::ExprLet), vec![r3.expr.clone()], None, span.clone());
+    let node = make_named_expr_node(name.clone(), Rc::new(ExprData::ExprLet), vec![r3.expr.clone()], None, span.clone());
     let node = Rc::new(Node {
         name: node.name.clone(), span: node.span.clone(), children: node.children.clone(),
         params: node.params.clone(), inferred: node.inferred.clone(),
@@ -7659,7 +7658,7 @@ if has_err(r3.err.clone()) {
 }
 let cr = try_constraint_annotations(tokens.clone(), r3.state.clone());
 if has_err(cr.err.clone()) { return Rc::new(ExprResult { expr: dummy_expr.clone(), state: cr.state.clone(), err: cr.err.clone() }) }
-let node = make_expr_node(Rc::new(ExprData::ExprLet), vec![r3.expr.clone()], None, span.clone());
+let node = make_named_expr_node(name.clone(), Rc::new(ExprData::ExprLet), vec![r3.expr.clone()], None, span.clone());
 if (cr.constraints.clone().len() as i64) > 0 {
     let node = Rc::new(Node {
         name: node.name.clone(), span: node.span.clone(), children: node.children.clone(),
@@ -7747,7 +7746,7 @@ if has_err(r.err.clone()) {
 })
 }
 let span = current_span(tokens.clone(), state.clone());
-let new_lhs = make_expr_node(Rc::new(ExprData::ExprFieldAccess {
+let new_lhs = make_named_expr_node(r.name.clone(), Rc::new(ExprData::ExprFieldAccess {
 summary: None,
 }), vec![lhs.clone()], None, span.clone());
 {
@@ -7942,7 +7941,7 @@ if has_err(r2.err.clone()) {
 })
 }
 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprMethodCall {
+    expr: make_named_expr_node(method.clone(), Rc::new(ExprData::ExprMethodCall {
 method_semantics: None,
 }), v2_rt::concat(vec![receiver.clone()], r2.args.clone()), None, span.clone()),
     state: r2.state.clone(),
@@ -7951,7 +7950,7 @@ method_semantics: None,
 }
 } else {
             Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprMethodCall {
+    expr: make_named_expr_node(method.clone(), Rc::new(ExprData::ExprMethodCall {
 method_semantics: None,
 }), vec![receiver.clone()], None, span.clone()),
     state: s.clone(),
@@ -8219,7 +8218,7 @@ if has_err(r.err.clone()) {
 Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprLambda {
 semantics: None,
-}), vec![r.expr.clone()], None, span.clone()),
+}), v2_rt::concat(vec![r.expr.clone()], vec![leaf_node(name.clone())]), None, span.clone()),
     state: r.state.clone(),
     err: None,
 })
@@ -8229,7 +8228,7 @@ semantics: None,
                 parse_record_literal(tokens.clone(), s.clone(), name.clone(), span.clone())
 } else {
                 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprVar {
+    expr: make_named_expr_node(name.clone(), Rc::new(ExprData::ExprVar {
 binding_kind: None,
 }), vec![], None, span.clone()),
     state: s.clone(),
@@ -8353,8 +8352,7 @@ Rc::new(PostfixResult {
 }
 },
     Some(TokenShape::ShLBrace) => match (*lhs.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => if (is_uppercase_start(n.clone()) && (14 <= min_bp.clone())) {
-    let n = expr_var_name(lhs.clone());
+    ExprData::ExprVar { .. } => { let n = expr_var_name(lhs.clone()); if (is_uppercase_start(n.clone()) && (14 <= min_bp.clone())) {
             Rc::new(PostfixResult {
     expr: lhs.clone(),
     changed: false,
@@ -8388,7 +8386,7 @@ Rc::new(PostfixResult {
     err: None,
 })
 }
-},
+}},
     _ => Rc::new(PostfixResult {
     expr: lhs.clone(),
     changed: false,
@@ -8409,13 +8407,13 @@ Rc::new(PostfixResult {
 pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         match (*lhs.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => make_expr_node(Rc::new(ExprData::ExprCall {
+    ExprData::ExprVar { .. } => make_named_expr_node(lhs.name.clone(), Rc::new(ExprData::ExprCall {
 call_semantics: None,
 }), args.clone(), None, span.clone()),
-    ExprData::ExprFieldAccess { .. } => make_expr_node(Rc::new(ExprData::ExprMethodCall {
+    ExprData::ExprFieldAccess { .. } => make_named_expr_node(lhs.name.clone(), Rc::new(ExprData::ExprMethodCall {
 method_semantics: None,
 }), v2_rt::concat(vec![lhs.children.clone().first().cloned().clone().unwrap()], args.clone()), None, span.clone()),
-    _ => make_expr_node(Rc::new(ExprData::ExprCall {
+    _ => make_named_expr_node(lhs.name.clone(), Rc::new(ExprData::ExprCall {
 call_semantics: None,
 }), args.clone(), None, span.clone()),
 }
@@ -8811,7 +8809,7 @@ if has_err(r.err.clone()) {
 })
 }
 let span = current_span(tokens.clone(), s.clone());
-let new_lhs = make_expr_node(Rc::new(ExprData::ExprFieldAccess {
+let new_lhs = make_named_expr_node(r.name.clone(), Rc::new(ExprData::ExprFieldAccess {
 summary: None,
 }), vec![lhs.clone()], None, span.clone());
 {
@@ -9578,7 +9576,7 @@ if has_err(r.err.clone()) {
             return r.clone()
 }
 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprLet), vec![r.expr.clone()], None, span.clone()),
+    expr: make_named_expr_node(name.clone(), Rc::new(ExprData::ExprLet), vec![r.expr.clone()], None, span.clone()),
     state: r.state.clone(),
     err: None,
 })
@@ -9656,7 +9654,7 @@ if has_err(r.err.clone()) {
 })
 }
 let body = r.expr.clone();
-let for_expr = make_expr_node(Rc::new(ExprData::ExprForEach), vec![collection.clone(), body.clone()], None, span.clone());
+let for_expr = make_named_expr_node(var_name.clone(), Rc::new(ExprData::ExprForEach), vec![collection.clone(), body.clone()], None, span.clone());
 Rc::new(ExprResult {
     expr: for_expr.clone(),
     state: r.state.clone(),
@@ -9695,7 +9693,7 @@ if has_err(r2.err.clone()) {
 })
 }
 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprRecordLit {
+    expr: make_named_expr_node(name.clone(), Rc::new(ExprData::ExprRecordLit {
 parent_enum: None,
 }), r.fields.clone(), None, span.clone()),
     state: r2.state.clone(),
@@ -9779,7 +9777,7 @@ Rc::new(FieldInitResult {
 }
 } else {
                     {
-                        let fi = make_field_init_node(n.clone(), make_expr_node(Rc::new(ExprData::ExprVar {
+                        let fi = make_field_init_node(n.clone(), make_named_expr_node(n.clone(), Rc::new(ExprData::ExprVar {
 binding_kind: None,
 }), vec![], None, current_span(tokens.clone(), state.clone())), no_span());
 Rc::new(FieldInitResult {
@@ -9960,7 +9958,7 @@ if has_err(r.err.clone()) {
 Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprLambda {
 semantics: None,
-}), vec![r.expr.clone()], None, span.clone()),
+}), v2_rt::concat(vec![r.expr.clone()], { let mut __result = Vec::new(); for p in lambda_r.params.clone().iter().cloned() { __result.push(leaf_node(p.clone())); } __result }), None, span.clone()),
     state: r.state.clone(),
     err: None,
 })
@@ -10033,7 +10031,7 @@ if has_err(body_r.err.clone()) {
 Rc::new(ExprResult {
     expr: make_expr_node(Rc::new(ExprData::ExprLambda {
 semantics: None,
-}), vec![body_r.expr.clone()], None, span.clone()),
+}), v2_rt::concat(vec![body_r.expr.clone()], { let mut __result = Vec::new(); for p in params_r.params.clone().iter().cloned() { __result.push(leaf_node(p.clone())); } __result }), None, span.clone()),
     state: body_r.state.clone(),
     err: None,
 })

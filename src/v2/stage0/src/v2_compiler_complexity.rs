@@ -287,9 +287,10 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
 
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { call_semantics: _ } =>
-    let f = expr_call_func(texpr.clone());
-            if (f.clone() == func_name.clone()) { 1 } else { 0 },
+        ExprData::ExprCall { call_semantics: _ } => {
+    let f = expr_call_func(body.clone());
+            if (f.clone() == func_name.clone()) { 1 } else { 0 }
+},
         _ => 0,
     };
     let from_children = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
@@ -994,6 +995,7 @@ Rc::new(SummaryResult {
 },
     ExprData::ExprCall { .. } => { let fname = expr_call_func(texpr.clone());
             let callee_result = match v2_rt::map_get(&func_index, fname.clone()) {
+    Some(entry) => get_or_compute_summary(fname.clone(), func_index.clone(), table.clone()),
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {

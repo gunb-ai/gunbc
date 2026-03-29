@@ -596,8 +596,7 @@ pub fn emit_go_expr_var(expr: Rc<Node>, depth: i64) -> String {
     {
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => v2_rt::concat(prefix.clone(), emit_ident(n.clone(), RenderTarget::Go)),
-    let n = expr_var_name(expr.clone());
+    ExprData::ExprVar { .. } => { let n = expr_var_name(expr.clone()); v2_rt::concat(prefix.clone(), emit_ident(n.clone(), RenderTarget::Go)) },
     _ => v2_rt::concat(prefix.clone(), emit_error_expr("emit_go_expr_var expected ExprVar".to_string(), RenderTarget::Go)),
 }
 }
@@ -1205,7 +1204,7 @@ pub fn emit_go_tco_non_self_call(frame: Rc<TcoFrame>, registry: HashMap<String, 
         let prefix = make_indent(frame.depth.clone());
 match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-    let f = expr_call_func(frame.clone());
+    let f = expr_call_func(frame.expr.clone());
             let a = frame.expr.clone().children.clone();
 let call_str = emit_go_typed_call(f.clone(), a.clone(), registry.clone(), frame.scope.clone());
 v2_rt::concat(v2_rt::concat(prefix.clone(), "return ".to_string()), call_str.clone())
@@ -1278,7 +1277,7 @@ pub fn emit_go_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Vec<Rc<Node
         let prefix = make_indent(frame.depth.clone());
 match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprLet => {
-    let n = let_binding_name(frame.clone());
+    let n = let_binding_name(frame.expr.clone());
             let v = match frame.expr.clone().children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => frame.expr.clone(),

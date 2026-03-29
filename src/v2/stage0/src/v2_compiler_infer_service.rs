@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Connective, ExprData, Cardinality, InferredNode, leaf_node, no_span, node_has_structure, field_access_base, method_receiver, field_node_type_expr};
+pub use crate::v2_std_core::{Node, Connective, ExprData, Cardinality, InferredNode, leaf_node, no_span, node_has_structure, field_access_base, method_receiver, field_node_type_expr, expr_var_name, field_access_field, expr_call_func};
 use crate::v2_std_core::Connective::{Conj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar};
 use crate::v2_std_core::Cardinality::{Required};
