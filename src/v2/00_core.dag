@@ -334,7 +334,6 @@ type CompilerDiagnostic
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
-  caused_by: List<Int>
   module_name: String
 }
 
@@ -388,11 +387,7 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 }
 
 fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
-  ErrorNode { diagnostic: diagnostic, caused_by: [], module_name: module_name }
-}
-
-fn make_cascade_error_node(diagnostic: CompilerDiagnostic, module_name: String, caused_by: List<Int>) -> ErrorNode {
-  ErrorNode { diagnostic: diagnostic, caused_by: caused_by, module_name: module_name }
+  ErrorNode { diagnostic: diagnostic, module_name: module_name }
 }
 
 

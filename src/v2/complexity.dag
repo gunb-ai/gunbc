@@ -27,7 +27,8 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes
+  method_receiver, method_arg_nodes,
+  expr_call_func
 }
 
 // =========================================================================
@@ -274,7 +275,8 @@ fn count_self_calls(body: Node, func_name: String) -> Int {
 // has max_path_calls = max(arm calls), not sum(arm calls).
 fn max_path_self_calls(body: Node, func_name: String) -> Int {
   match body.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
+      let f = expr_call_func(texpr: body)
       let own = if f == func_name { 1 } else { 0 }
       // Args may contain self-calls too
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>

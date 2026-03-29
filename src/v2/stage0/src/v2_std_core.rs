@@ -1335,7 +1335,6 @@ pub enum CompilerDiagnostic {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ErrorNode {
     pub diagnostic: Rc<CompilerDiagnostic>,
-    pub caused_by: Vec<i64>,
     pub module_name: String,
 }
 
@@ -1401,15 +1400,6 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
     Rc::new(ErrorNode {
         diagnostic,
-        caused_by: vec![],
-        module_name,
-    })
-}
-
-pub fn make_cascade_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String, caused_by: Vec<i64>) -> Rc<ErrorNode> {
-    Rc::new(ErrorNode {
-        diagnostic,
-        caused_by,
         module_name,
     })
 }

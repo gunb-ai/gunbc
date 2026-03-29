@@ -22,7 +22,8 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes
+  method_receiver, method_arg_nodes,
+  expr_var_name
 }
 
 // =========================================================================
@@ -140,6 +141,7 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
   match texpr.expr_data {
     ExprVar =>
+      let n = expr_var_name(texpr: texpr)
       if in_tail {
         record_use(accum: accum, name: n, kind: Consumed, site: "return")
       } else {
