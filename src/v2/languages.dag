@@ -77,99 +77,35 @@ type TestConventions {
   async_decorator: String?
 }
 
-// "How does a language write statements?"
-// Subset of std.languages.StatementSyntax consumed by shared emit.
-// Templates use {name}, {value} as positional placeholders.
+// -- Syntax types for BS-1 (emit reads spec, not hardcoded) ---------------
+
 type StatementSyntax {
-  let_binding_inferred: String     // e.g. "let {name} = {value};" or "{name} := {value}"
-  statement_terminator: String     // e.g. ";" or ""
+  let_binding: String
+  let_binding_inferred: String
+  statement_terminator: String
+  return_keyword: String
 }
 
-// "How does a language write collection literals?"
-// Subset of std.languages.CollectionOps consumed by shared emit.
-// Templates use {elements} as positional placeholder.
-type CollectionLiteralSyntax {
-  empty_list: String               // e.g. "vec![]" or "[]"
-  list_literal: String             // e.g. "vec![{elements}]" or "[{elements}]"
+type ErrorHandlingSyntax
+  = ResultType { ok_template: String, err_template: String, try_operator: String }
+  | ExceptionBased { raise_keyword: String }
+  | MultiReturn { error_type: String }
+
+type FunctionSyntax {
+  fn_keyword: String
+  async_fn_keyword: String
+  return_arrow: String
+  lambda_keyword: String
 }
 
-// "How does a language handle null/optional coalescing?"
-// Mirrors std.languages.NullCoalesceStrategy.
-// Templates use {lhs}, {rhs} as positional placeholders.
-type NullCoalesceStrategy
-  = MethodBased { template: String }
-  | TernaryBased { template: String }
-  | IIFEBased { template: String }
-
-type LanguageSpec {
-  target_name: String
-  reserved_words: ReservedWords
-  scaffold: ProjectScaffold
-  serialization: SerializationSpec
-  test_conventions: TestConventions
-  top_level_visibility: String
-
-  // -- Syntax (BS-1: wired from spec, not hardcoded) --
-  statements: StatementSyntax
-  collection_literals: CollectionLiteralSyntax
-  null_coalesce: NullCoalesceStrategy
+type TypeDefSyntax {
+  struct_keyword: String
+  enum_keyword: String
+  impl_keyword: String
+  type_alias_keyword: String
 }
 
-// =========================================================================
-// SyntaxSpec — the parsing dual of LanguageSpec
-//
-// LanguageSpec carries facts the emitter needs to render target code.
-// SyntaxSpec carries facts the parser needs to recognize surface syntax.
-// Parse-emit symmetry: both read from spec data, not hardcoded code.
-// =========================================================================
-
-type BodyKind
-  = ExprBody
-  | BlockBody
-  | TypeBody
-  | ValueBody
-  | NoBody
-  | ServiceBody
-  | ResourceBody
-
-type ItemForm {
-  keyword: String
-  has_type_params: Bool
-  has_params: Bool
-  has_return_type: Bool
-  return_required: Bool
-  has_uses: Bool
-  body_kind: BodyKind
-}
-
-type OperatorSpec {
-  symbol: String
-  left_bp: Int
-  right_bp: Int
-  binop: BinOpKind?
-}
-
-type SyntaxSpec {
-  item_forms: List<ItemForm>
-  operators: List<OperatorSpec>
-  keyword_literals: Map<String, LiteralValue>
-  keyword_set: Map<String, Bool>
-}
-
-// =========================================================================
-// LintModel — what makes rendered code valid
-//
-// LanguageSpec carries facts the emitter needs to render target syntax.
-// SyntaxSpec carries facts the parser needs to recognize source syntax.
-// LintModel carries facts about what makes rendered code valid:
-// import derivation, type well-formedness, expression well-formedness,
-// naming conventions, and formatting rules.
-//
-// The emitter reads the LintModel. Correct output is structural, not
-// verified. cargo check / clippy / pylint are redundant confirmations.
-// =========================================================================
-
-// -- Import derivation: what triggers a use/import statement ---------------
+// -- Import derivation types -----------------------------------------------
 
 type ImportTrigger
   = TypeUsageTrigger { type_name: String }
@@ -260,6 +196,60 @@ type LintModel {
   formatting: FormatModel
 }
 
+type LanguageSpec {
+  target_name: String
+  reserved_words: ReservedWords
+  scaffold: ProjectScaffold
+  serialization: SerializationSpec
+  test_conventions: TestConventions
+  top_level_visibility: String
+  statements: StatementSyntax
+  errors: ErrorHandlingSyntax
+  functions: FunctionSyntax
+  type_defs: TypeDefSyntax
+}
+
+// =========================================================================
+// SyntaxSpec — the parsing dual of LanguageSpec
+//
+// LanguageSpec carries facts the emitter needs to render target code.
+// SyntaxSpec carries facts the parser needs to recognize surface syntax.
+// Parse-emit symmetry: both read from spec data, not hardcoded code.
+// =========================================================================
+
+type BodyKind
+  = ExprBody
+  | BlockBody
+  | TypeBody
+  | ValueBody
+  | NoBody
+  | ServiceBody
+  | ResourceBody
+
+type ItemForm {
+  keyword: String
+  has_type_params: Bool
+  has_params: Bool
+  has_return_type: Bool
+  return_required: Bool
+  has_uses: Bool
+  body_kind: BodyKind
+}
+
+type OperatorSpec {
+  symbol: String
+  left_bp: Int
+  right_bp: Int
+  binop: BinOpKind?
+}
+
+type SyntaxSpec {
+  item_forms: List<ItemForm>
+  operators: List<OperatorSpec>
+  keyword_literals: Map<String, LiteralValue>
+  keyword_set: Map<String, Bool>
+}
+
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "rust",
@@ -293,14 +283,28 @@ fn rust_spec() -> LanguageSpec {
     },
     top_level_visibility: rust_visibility,
     statements: StatementSyntax {
-      let_binding_inferred: "let {name} = {value};",
-      statement_terminator: ";"
+      let_binding: "let ",
+      let_binding_inferred: "let ",
+      statement_terminator: ";",
+      return_keyword: "return "
     },
-    collection_literals: CollectionLiteralSyntax {
-      empty_list: "vec![]",
-      list_literal: "vec![{elements}]"
+    errors: ResultType {
+      ok_template: "Ok({0})",
+      err_template: "Err({0})",
+      try_operator: "?"
     },
-    null_coalesce: MethodBased { template: "{lhs}.unwrap_or_else(|| {rhs})" }
+    functions: FunctionSyntax {
+      fn_keyword: "fn ",
+      async_fn_keyword: "async fn ",
+      return_arrow: " -> ",
+      lambda_keyword: ""
+    },
+    type_defs: TypeDefSyntax {
+      struct_keyword: "struct ",
+      enum_keyword: "enum ",
+      impl_keyword: "impl",
+      type_alias_keyword: "type "
+    }
   }
 }
 
@@ -337,14 +341,26 @@ fn python_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     statements: StatementSyntax {
-      let_binding_inferred: "{name} = {value}",
-      statement_terminator: ""
+      let_binding: "",
+      let_binding_inferred: "",
+      statement_terminator: "",
+      return_keyword: "return "
     },
-    collection_literals: CollectionLiteralSyntax {
-      empty_list: "[]",
-      list_literal: "[{elements}]"
+    errors: ExceptionBased {
+      raise_keyword: "raise "
     },
-    null_coalesce: TernaryBased { template: "({lhs} if {lhs} is not None else {rhs})" }
+    functions: FunctionSyntax {
+      fn_keyword: "def ",
+      async_fn_keyword: "async def ",
+      return_arrow: " -> ",
+      lambda_keyword: "lambda "
+    },
+    type_defs: TypeDefSyntax {
+      struct_keyword: "class ",
+      enum_keyword: "class ",
+      impl_keyword: "",
+      type_alias_keyword: ""
+    }
   }
 }
 
@@ -381,14 +397,26 @@ fn go_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     statements: StatementSyntax {
-      let_binding_inferred: "{name} := {value}",
-      statement_terminator: ""
+      let_binding: "var ",
+      let_binding_inferred: "",
+      statement_terminator: "",
+      return_keyword: "return "
     },
-    collection_literals: CollectionLiteralSyntax {
-      empty_list: "[]interface{}{}",
-      list_literal: "[]interface{}{{elements}}"
+    errors: MultiReturn {
+      error_type: "error"
     },
-    null_coalesce: IIFEBased { template: "func() interface{} { if {lhs} != nil { return {lhs} }; return {rhs} }()" }
+    functions: FunctionSyntax {
+      fn_keyword: "func ",
+      async_fn_keyword: "func ",
+      return_arrow: " ",
+      lambda_keyword: "func"
+    },
+    type_defs: TypeDefSyntax {
+      struct_keyword: "type ",
+      enum_keyword: "type ",
+      impl_keyword: "",
+      type_alias_keyword: "type "
+    }
   }
 }
 
