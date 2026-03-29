@@ -353,8 +353,12 @@ pub fn builtin_function_registry() -> HashMap<String, Rc<Node>> {
     m
 }
 
+thread_local! {
+    static BUILTIN_REGISTRY: HashMap<String, Rc<Node>> = builtin_function_registry();
+}
+
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    builtin_function_registry().get(&name).cloned()
+    BUILTIN_REGISTRY.with(|reg| reg.get(&name).cloned())
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
