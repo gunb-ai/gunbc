@@ -989,6 +989,83 @@ other methods.
    diagnostics in `04_resolve.dag` — likely a similar inference gap
    where a `lookup` result is typed as Map instead of Optional.
 
+### What was fixed (2026-03-29 session)
+
+**Enumerate inference:** Bypassed `substitute_algebra_result`'s name-matching
+heuristic by using `infer_intrinsic_method_type_node` for known methods.
+Verified by `enumerate_returns_tuple_type` test.
+
+**O(n²) memory (17GB → 103MB):** Two root causes:
+- `typecheck_modules` TCO loop cloned every accumulator per iteration
+- `build_complexity_report` cloned func_index HashMap per function
+Fix: in-place mutation loop + GUNBC_SKIP_COMPLEXITY short-circuit.
+
+**Self-compile diagnostics (14 → 0):** Fixed bare function calls
+(`get(tokens, pos)` → `tokens |> skip(pos) |> first`) and method
+syntax for bridge methods.
+
+**Self-compile now works:** 0 diagnostics, 40 files, 103MB, ~30s.
+
+### Current blocker: FF-8 container transition
+
+The emitter generates Rc-wrapped Rust (`Rc<Vec<T>>`, `Rc<HashMap<K,V>>`)
+but ~30 emission sites hardcode container patterns independently:
+`Rc::new(Vec::new())`, `.iter().cloned()`, `Rc::make_mut`, `lazy_static`.
+When the container template changes, these break silently. Result: 1000+
+compile errors in regenerated output.
+
+**Root cause:** Container-representation-specific patterns are scattered
+across the emitter as string literals. They are decoupled from the
+container template that defines the representation.
+
+### Structural fix: ContainerOps
+
+**Principle:** The container template is the single source of truth.
+All rendering patterns are derived from it, not hardcoded.
+
+**Design:** Define a `ContainerOps` data type in `languages.dag` with
+fields for every container rendering pattern:
+
+```
+type ContainerOps {
+  list_empty: String        // "Rc::new(Vec::new())"
+  list_literal: String      // "Rc::new(vec![{0}])"
+  list_iterate: String      // "{0}.iter().cloned()"
+  list_collect: String      // "Rc::new({0}.collect::<Vec<_>>())"
+  list_push_mut: String     // "Rc::make_mut(&mut {0}).push({1})"
+  list_extend_mut: String   // "Rc::make_mut(&mut {0}).extend({1})"
+  list_sort_mut: String     // "Rc::make_mut(&mut {0}).sort_by({1})"
+  map_empty: String         // "Rc::new(HashMap::new())"
+  map_bare_new: String      // "HashMap::new()" (for builders)
+  map_wrap: String           // "Rc::new({0})"
+  rt_list_push: String      // "v2_rt::list_push"
+  rt_map_insert: String     // "v2_rt::map_insert"
+  rt_map_merge: String      // "v2_rt::map_merge"
+  struct_wrap: String       // "Rc::new({0})"
+  struct_spread: String     // "(*{0}).clone()"
+  data_def_style: String    // "function" (not "lazy_static" — Rc isn't Sync)
+}
+```
+
+Concrete values live in `dsl/extdeps/languages/rust/emit.dag` next to
+the container templates. The emitter reads ContainerOps once and threads
+it through all emission functions. Each of the ~34 hardcoded sites becomes
+a template application: `apply_template(cops.list_push_mut, var, value)`.
+
+**Three layers of protection:**
+1. **Construction:** ContainerOps API functions — emission sites call
+   `container_empty_list(cops)` not `concat("Rc::new(Vec::new())")`.
+   Missing function = compile error.
+2. **Validation:** Ratchet test greps emitter source for hardcoded
+   container strings (`Rc::new(Vec`, `Rc::make_mut`, `.iter().cloned()`).
+   Any outside ContainerOps definition = test failure.
+3. **Enforcement:** `regenerate-stage0.sh` + `cargo check` in CI.
+   Structural breakage is caught at commit time, not debugging time.
+
+**Bootstrap:** First regen requires dual-patching (~80 lines across 2
+stage0 .rs files). After that, ContainerOps is in the generated code
+and all future template changes propagate automatically.
+
 ### Long-term: eliminate the bootstrap gap structurally
 
 Once stage0 is regenerated successfully:
@@ -999,9 +1076,8 @@ Once stage0 is regenerated successfully:
    a diagnostic blocks the commit.
 3. **FF-9 everywhere:** Tests, regen, and production all use the same
    import-driven resolution. No parallel file list implementations.
-4. **Self-compile performance gate:** FF-8 (Rc containers) must be in
-   the regenerated stage0 to make the compile time < 30s, enabling
-   fast iteration on future bootstrap issues.
+4. **Self-compile performance gate:** Self-compile < 30s at 103MB,
+   enabling fast iteration on future bootstrap issues.
 
 ---
 
