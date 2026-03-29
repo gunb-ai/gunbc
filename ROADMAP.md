@@ -796,6 +796,50 @@ proven vs what still needs external verification.
   artifact — same assertions, real HTTP instead of mock
 - CI runs the generated integration test with scoped credentials
 
+#### No tautological tests
+
+Every node in the graph carries a **proof status**: what's already
+been proven about it by the compiler or by a higher-level test.
+The test generator only produces tests for undischarged obligations —
+never for things already proven.
+
+```
+Node: to_fahrenheit(c: Celsius) -> Fahrenheit
+
+Already proven (skip these):
+  ✓ Type correctness      — compiler proved statically
+  ✓ Decidability (O(1))   — complexity analyzer proved
+  ✓ Ownership (SoleOwner) — ownership analyzer proved
+  ✓ Return type shape     — inference proved
+
+Undischarged (generate tests for these):
+  ? Constraint satisfaction — need to run output through Fahrenheit predicates
+  ? Round-trip law          — need to check to_celsius(to_fahrenheit(x)) == x
+  ? Cross-target agreement  — need to run on multiple targets
+
+NOT generated (tautological):
+  ✗ "to_fahrenheit returns Fahrenheit" — already proven by type checker
+  ✗ "to_fahrenheit terminates"         — already proven by decidability
+  ✗ "c is consumed once"               — already proven by ownership
+```
+
+The rule: **a test is justified only at a boundary the compiler
+doesn't control.** Inside the compiler's proof envelope, tests are
+tautological. At integration boundaries (real HTTP, real filesystem,
+real external service), tests are essential because the compiler
+proved the mock contract but not the real service's behavior.
+
+This means:
+- Structural properties → never tested (compiler proves them)
+- Algebraic laws → tested only with sample VALUES (the law itself
+  is structural; the test checks that the implementation satisfies
+  it with concrete inputs)
+- Integration boundaries → always tested (compiler can't prove
+  external behavior)
+- The receipt marks each obligation: `proven` (no test needed),
+  `tested` (test ran and passed), `generated` (test exists, not yet
+  run)
+
 #### Test generation tracks
 
 **Track 1 — Discovery gates:**
