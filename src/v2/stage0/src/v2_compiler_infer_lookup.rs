@@ -294,14 +294,18 @@ pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>,
             Some(fat) => fat.clone(),
             None => result_type.clone(),
         }
-    } else if (result_type.name.clone() == receiver_type.name.clone()) && result_type.children.is_empty() {
-        // Same collection type with no specific children: use concrete receiver
-        // (e.g., algebra says "returns List", receiver is List<Node> → use List<Node>)
-        receiver_type.clone()
     } else if (result_type.name.clone() == receiver_type.name.clone()) {
-        // Same collection name but result already has specific children
-        // (e.g., enumerate returns List<Tuple<Int, Elem>> — keep the Tuple wrapping)
-        result_type.clone()
+        // Same collection type: check if result contains a Tuple child
+        // (enumerate wraps elements in Tuple<Int, Elem>). If so, keep the
+        // result. Otherwise use the concrete receiver.
+        let has_tuple_child = result_type.children.first()
+            .map(|c| c.name == "Tuple")
+            .unwrap_or(false);
+        if has_tuple_child {
+            result_type.clone()
+        } else {
+            receiver_type.clone()
+        }
     } else if (matches!(result_type.return_cardinality.clone(), Cardinality::CardOptional)) {
         let inner = with_required_cardinality(result_type.clone());
         let elem = method_receiver_element_node(receiver_type.clone());
