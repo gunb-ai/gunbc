@@ -373,15 +373,18 @@ discussion). The substrate should rarely grow; most concepts compose.
 **What:** Every `.dag` file in the repo compiles as a unit with zero
 diagnostics. No hardcoded file lists, no exceptions.
 
-**Gate:** `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored`
-passes.
+**Gate:** `full_dsl_compiles` scans ALL `.dag` files in the repo
+(`dsl/` AND `src/v2/`) and compiles them as a unit with 0 diagnostics.
+Currently only scans `dsl/`.
 
-**Status:** 1 diagnostic remaining.
+**Status:** 1 diagnostic remaining (`stack.dag` generic fn syntax).
 
-**Acceptance condition:** CLI, bootstrap, regeneration script, and all
-tests use the same `--source-root` / transitive-import resolution path.
-No parallel file list implementations. Known gap: bootstrap
-`prepare_sources` in test harness still uses hardcoded file assembly.
+**Acceptance condition:** ONE source-discovery implementation used
+everywhere. CLI (`--source-root`), `full_dsl_compiles`, bootstrap,
+and complexity tests all use the same transitive-import resolution.
+Remove legacy `--source-dir` flag. Delete `prepare_sources` curated
+assembly. Delete manifest-based approaches (BOOTSTRAP.md still
+mentions converging on a manifest — contradicts "scan, not manifest").
 
 **Work items:**
 - [ ] Parser: support `fn foo<T>(...)` generic function syntax
@@ -403,12 +406,22 @@ No parallel file list implementations. Known gap: bootstrap
 **What:** A user can write `.dag` files and get `cargo check`-clean Rust
 output. The compiler produces correct, buildable code — not stubs.
 
-**Gate:** `gunbc compile project/ --target rust && cargo check` passes
-on regenerated stage0 and on a non-trivial user project.
+**Gate:** `gunbc compile dsl/examples/weather/ --target rust && cargo check`
+passes on the committed example project (not a subjective "non-trivial"
+claim — one specific fixture).
 
 **Depends on:** M1
 
 **Work items:**
+
+*Fail-closed decidability:*
+- [ ] Reject non-descending recursion as hard compile error (currently
+  produces `DivideAndConquer` classification, soft). `fn spin(n: n)`
+  must not compile.
+- [ ] Diagnostic: "recursive function X has no structural descent —
+  use `fold`, `descend`, or `repeat` instead"
+- [ ] CI gate: `complexity_violation_count == 0` (currently 2)
+
 
 *Container sharing (FF-8):*
 - [ ] Change Rust container templates to shared representations
@@ -431,8 +444,10 @@ on regenerated stage0 and on a non-trivial user project.
 - [ ] `dag/syntax.dag` inclusion without OOM
 
 *User experience:*
-- [ ] CLI: `gunbc compile --source-root ... --target rust` works for
-  arbitrary user projects (CLI exists but untested on external input)
+- [ ] Committed example project: `dsl/examples/weather/` (the
+  aspiration target from this roadmap). Gate is one exact command:
+  `gunbc compile --source-root dsl/examples/weather --target rust &&
+  cargo check`
 - [ ] Error messages: file:line:col with source context (infrastructure
   landed, needs polish for non-compiler-developer audience)
 
@@ -563,10 +578,12 @@ reality.
 - [ ] Workflow dry-run tests
 - [ ] Edge-contract coverage harnesses
 
-*Ratchet promotion (Tier 3 → Tier 2):*
+*Ratchet promotion (Tier 3 → Tier 2 — ALL live ratchets):*
 - [ ] Complexity violations in CI (currently 2, target 0)
 - [ ] Emitted Rust errors in CI (currently 880, target 0)
 - [ ] Ownership coverage in CI (currently not tracked)
+- [ ] Bootstrap fixed-point in CI (currently manual)
+- [ ] Performance ratchet in CI (currently manual, 30s)
 
 *Cross-language:*
 - [ ] Python tests pass `python3 -m py_compile`
@@ -615,19 +632,33 @@ internals)
 
 ---
 
-### M5: Emitted Code Correct by Construction
+### M5: Coercion Engine + Language Plugin Extraction
 
-**What:** `LintModel` enforces emission correctness. `LanguageSpec`
-carries all target-language facts. The emitter has zero hardcoded target
-syntax.
+**What:** The compiler stops producing target syntax. `05_emit.dag`
+becomes the coercion engine. Language-specific code moves out of
+`src/v2/` into `dsl/extdeps/languages/` as coercion rule sets +
+renderers. LintModel enforces emission correctness. Zero language
+mentions in compiler core.
 
-**Gate:** No `match render_target` branches in emitter source. LintModel
-validates every emitted file.
+**Gate:** Zero `match render_target` branches. Zero language mentions
+in `src/v2/*.dag`. `05_emit_rust/python/go.dag` deleted from compiler
+core. LintModel validates every emitted file.
 
 **Depends on:** M2 (working codegen baseline), M3 (generated tests
-verify correctness)
+verify correctness), M4 (name-opaque compiler)
 
 **Work items:**
+
+*Coercion engine (Lane C):*
+- [ ] `05_emit.dag` walks typed graph, matches structural patterns,
+  invokes language-declared coercion + renderer
+- [ ] Delete `05_emit_rust.dag` (4,121 lines) → `rust/coerce.dag` +
+  `rust/render.dag` in `dsl/extdeps/languages/`
+- [ ] Delete `05_emit_python.dag` (1,349 lines) → `python/coerce.dag`
+- [ ] Delete `05_emit_go.dag` (1,387 lines) → `go/coerce.dag`
+- [ ] Delete `runtime_rust.dag` → `rust/runtime.dag` extdep
+- [ ] Reconcile→emit boundary cleanup (INVARIANTS.md Root Cause A
+  debt: field access style, Rc wrapping, variant→enum mapping)
 
 *LanguageSpec completion (~11 missing fields):*
 - [ ] `statement_terminator`, `variable_declaration_keyword`
@@ -638,23 +669,19 @@ verify correctness)
 - [ ] `indentation_width`
 
 *LintModel wiring:*
-- [ ] Wire import rules into emission (rules exist in
-  `dsl/extdeps/languages/rust/lint.dag`)
-- [ ] Wire naming conventions into emission (rules exist in
-  `dsl/extdeps/languages/rust/naming.dag`)
-- [ ] Wire formatting model into emission
+- [ ] Wire import rules, naming conventions, formatting model
 
-*Backend parity:*
-- [ ] Python backend: match syntax, statement/expression, async
-- [ ] Go backend: implicit interfaces, error handling patterns
-- [ ] Cross-language test generation (Go/Python emit stub assertions
-  today)
+*Edge-only fact references (Lane D):*
+- [ ] 14 `Map<String, X>` metadata maps → structural edges
 
 *Compiler bug fixes:*
-- [ ] Optional exhaustiveness: recognize inner type variants, not just
-  `Some`/`None`
-- [ ] Single-variant enum parsing: `type X = Y` defines a coproduct,
-  not an alias
+- [ ] Optional exhaustiveness: structural, not `Some`/`None` hardcoded
+- [ ] Single-variant enum parsing
+
+*Challenge targets (design validation):*
+- [ ] Verilog `coerce.dag` + `render.dag`
+- [ ] SPICE `coerce.dag` + `render.dag`
+- [ ] English/Markdown `coerce.dag` + `render.dag`
 
 ---
 
@@ -1233,11 +1260,12 @@ expression walk with different composition operators (sequential:
 is an unpopulated map. Promote to `space: CostExpr` peer to `work`
 and `span`.
 
-**Fail-closed compilation.** When descent analysis cannot lower a
-recursive function to a bounded primitive, compilation should hard-fail.
-Currently produces `DivideAndConquer` classification (soft). The
+**Fail-closed compilation (owned by M2).** When descent analysis
+cannot lower a recursive function to a bounded primitive, compilation
+fails with a hard error. Currently produces `DivideAndConquer`
+classification (soft) and `fn spin(n: n)` still compiles. The
 structural prevention (bounded primitives only) is the real guarantee;
-fail-closed is the safety net during transition.
+fail-closed is the safety net. Owned by M2, not deferred.
 
 **Bridge dissolution.** Conj/Disj (81 dispatch sites) dissolve into
 edge connectivity patterns. Product = all edges connect. Coproduct =
