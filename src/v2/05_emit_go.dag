@@ -47,6 +47,12 @@ import v2.std.core {
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_value,
+  if_condition, if_then_branch, if_else_branch,
+  match_scrutinee, match_arm_nodes,
+  let_value, let_body,
+  field_access_base, method_receiver,
+  lambda_body, cast_expr, return_value,
+  slice_start, slice_end,
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
 
@@ -1247,7 +1253,7 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {
   } else { "" }
   let hdrs = transport_headers(t: transport)
   let header_lines = hdrs |> map(h =>
-    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: h.value, target: Go), ")")
+    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go), ")")
   )
   let send_lines = concat(
     prefix, "resp, err := http.DefaultClient.Do(req)\n",
@@ -1272,7 +1278,7 @@ fn emit_go_shell_call(op_name: String, transport: Node, depth: Int) -> String {
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
   let envs = transport_env(t: transport)
   let env_lines = envs |> map(e =>
-    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: e.value, target: Go), ")")
+    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go), ")")
   )
   let run_lines = concat(
     prefix, "output, err := cmd.Output()\n",

@@ -16,7 +16,8 @@
 module v2.compiler.trace
 
 import v2.std.core { SourceSpan }
-import std.stack { Stack, Empty, Push, stack_push, stack_pop, stack_peek, stack_is_empty }
+// Stack<T> uses generic functions which the stage0 parser doesn't yet support.
+// Use List<TraceFrame> as the trace stack until generic fn parsing lands.
 
 // =========================================================================
 // F1: Span mapping -- generated code line → source .dag span
@@ -55,11 +56,11 @@ type TraceFrame {
 
 type Trace {
   events: List<TraceEvent>
-  stack: Stack<TraceFrame>
+  stack: List<TraceFrame>
 }
 
 fn empty_trace() -> Trace {
-  Trace { events: [], stack: Empty }
+  Trace { events: [], stack: [] }
 }
 
 // Append an event to a trace (returns new trace).
@@ -67,14 +68,20 @@ fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
   Trace { events: list_push(trace.events, event), stack: trace.stack }
 }
 
-// Push a frame onto the trace stack (function entry). O(1).
+// Push a frame onto the trace stack (function entry). O(1) with Rc<Vec>.
 fn trace_push_frame(trace: Trace, frame: TraceFrame) -> Trace {
-  Trace { events: trace.events, stack: stack_push(stack: trace.stack, value: frame) }
+  Trace { events: trace.events, stack: list_push(trace.stack, frame) }
 }
 
-// Pop the top frame from the trace stack (function exit). O(1).
+// Pop the top frame from the trace stack (function exit). O(n) with List.
+// Acceptable: trace stack is a data contract, not a hot path.
 fn trace_pop_frame(trace: Trace) -> Trace {
-  Trace { events: trace.events, stack: stack_pop(stack: trace.stack) }
+  let n = trace.stack |> count
+  if n <= 1 {
+    Trace { events: trace.events, stack: [] }
+  } else {
+    Trace { events: trace.events, stack: trace.stack |> take(n - 1) }
+  }
 }
 
 // =========================================================================

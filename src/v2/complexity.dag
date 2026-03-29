@@ -766,6 +766,7 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
         CostConst { value: 0 } => CostConst { value: 0 }
         _ => CostSum { binder: b, upper: u, body: sbd }
       }
+    CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
   }
 }
 

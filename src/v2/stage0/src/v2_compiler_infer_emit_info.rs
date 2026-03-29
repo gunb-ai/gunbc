@@ -125,7 +125,7 @@ pub fn is_pair_children(children: Vec<Rc<Node>>) -> bool {
         false
 } else {
         match children.clone().first().cloned() {
-    Some(c0) => match children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
+    Some(c0) => match children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
     Some(c1) => ((c0.name.clone() == "first".to_string()) && (c1.name.clone() == "second".to_string())),
     None => false,
 },
@@ -145,7 +145,7 @@ pub fn pair_access_style(field_name: String) -> FieldAccessStyle {
 pub fn build_struct_field_summaries(children: Vec<Rc<Node>>) -> HashMap<String, Rc<FieldSummary>> {
     {
         let is_pair = is_pair_children(children.clone());
-children.clone().iter().cloned().fold(<HashMap<_, _>>::new(), |acc: _, child: Rc<Node>| if (child.inferred.clone() == None) {
+children.iter().cloned().fold(<HashMap<_, _>>::new(), |acc: _, child: Rc<Node>| if (child.inferred.clone() == None) {
             acc.clone()
 } else {
             {
@@ -165,7 +165,7 @@ v2_rt::map_insert(acc.clone(), child.name.clone(), Rc::new(FieldSummary {
 
 pub fn find_first_enum_field_node(variants: Vec<Rc<Node>>, field_name: String) -> Option<Rc<Node>> {
     match variants.clone().first().cloned() {
-    Some(variant) => match { let mut __result = Vec::new(); for f in variant.children.clone().iter().cloned() { if (f.name.clone() == field_name.clone()) { __result.push(f); } } __result }.first().cloned() {
+    Some(variant) => match { let mut __result = Vec::new(); for f in variant.children.iter().cloned() { if (f.name.clone() == field_name.clone()) { __result.push(f); } } __result }.first().cloned() {
     Some(field_child) => Some(field_child.clone()),
     None => None,
 },
@@ -174,11 +174,11 @@ pub fn find_first_enum_field_node(variants: Vec<Rc<Node>>, field_name: String) -
 }
 
 pub fn enum_field_present_in_all_variants(variants: Vec<Rc<Node>>, field_name: String) -> bool {
-    { let mut __all = true; for variant in variants.clone().iter().cloned() { if !({ let mut __found = false; for field_child in variant.children.clone().iter().cloned() { if (field_child.name.clone() == field_name.clone()) { __found = true; break; } } __found }) { __all = false; break; } } __all }
+    { let mut __all = true; for variant in variants.iter().cloned() { if !({ let mut __found = false; for field_child in variant.children.iter().cloned() { if (field_child.name.clone() == field_name.clone()) { __found = true; break; } } __found }) { __all = false; break; } } __all }
 }
 
 pub fn enum_field_type_consistent(variants: Vec<Rc<Node>>, field_name: String, expected: Rc<Node>) -> bool {
-    { let mut __all = true; for variant in variants.clone().iter().cloned() { if !(match { let mut __result = Vec::new(); for f in variant.children.clone().iter().cloned() { if (f.name.clone() == field_name.clone()) { __result.push(f); } } __result }.first().cloned() {
+    { let mut __all = true; for variant in variants.iter().cloned() { if !(match { let mut __result = Vec::new(); for f in variant.children.iter().cloned() { if (f.name.clone() == field_name.clone()) { __result.push(f); } } __result }.first().cloned() {
     Some(field_child) => node_type_equals(child_inferred_or_name(field_child.clone()), expected.clone()),
     None => false,
 }) { __all = false; break; } } __all }
@@ -187,15 +187,15 @@ pub fn enum_field_type_consistent(variants: Vec<Rc<Node>>, field_name: String, e
 pub fn build_enum_field_summaries(variants: Vec<Rc<Node>>) -> HashMap<String, Rc<FieldSummary>> {
     {
         let first_field_names = match variants.clone().first().cloned() {
-    Some(first_variant) => { let mut __result = Vec::new(); for f in first_variant.children.clone().iter().cloned() { __result.push(f.name.clone()); } __result },
+    Some(first_variant) => { let mut __result = Vec::new(); for f in first_variant.children.iter().cloned() { __result.push(f.name.clone()); } __result },
     None => vec![],
 };
-let shared = { let mut __result = Vec::new(); for field_name in first_field_names.clone().iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result };
-let consistent = { let mut __result = Vec::new(); for field_name in shared.clone().iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+let shared = { let mut __result = Vec::new(); for field_name in first_field_names.iter().cloned() { if enum_field_present_in_all_variants(variants.clone(), field_name.clone()) { __result.push(field_name); } } __result };
+let consistent = { let mut __result = Vec::new(); for field_name in shared.iter().cloned() { if match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => enum_field_type_consistent(variants.clone(), field_name.clone(), child_inferred_or_name(first_field.clone())),
     None => false,
 } { __result.push(field_name); } } __result };
-consistent.clone().iter().cloned().fold(<HashMap<String, Rc<FieldSummary>>>::new(), |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
+consistent.iter().cloned().fold(<HashMap<String, Rc<FieldSummary>>>::new(), |acc: _, field_name: String| match find_first_enum_field_node(variants.clone(), field_name.clone()) {
     Some(first_field) => v2_rt::map_insert(acc.clone(), field_name.clone(), Rc::new(FieldSummary {
     access_style: FieldAccessStyle::EnumAccessor,
     value_shape: field_value_shape_from_type_node(child_inferred_or_name(first_field.clone())),
@@ -218,7 +218,7 @@ if node_is_product(item.clone()) {
 }))
 } else {
             {
-                let unit_only = { let mut __all = true; for child in item.children.clone().iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
+                let unit_only = { let mut __all = true; for child in item.children.iter().cloned() { if !(((child.children.clone().len() as i64) == 0)) { __all = false; break; } } __all };
 Some(Rc::new(TypeSummary {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::EnumRepr {
@@ -235,7 +235,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     match build_type_summary(item.clone()) {
     Some(summary) => {
         let with_variants = match (*summary.repr.clone()).clone() {
-    TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.type_summaries.clone(), |acc: _, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
+    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.type_summaries.clone(), |acc: _, variant: Rc<Node>| if ((variant.children.clone().len() as i64) > 0) {
             v2_rt::map_insert(acc.clone(), variant.name.clone(), Rc::new(TypeSummary {
     name: variant.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
@@ -248,7 +248,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
 };
 let next_summaries = v2_rt::map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
 let next_variants = match (*summary.repr.clone()).clone() {
-    TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.variant_to_enum.clone(), |acc: _, child: Rc<Node>| match v2_rt::map_get(&acc, child.name.clone()) {
+    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.variant_to_enum.clone(), |acc: _, child: Rc<Node>| match v2_rt::map_get(&acc, child.name.clone()) {
     Some(existing) => if (existing.clone() == summary.name.clone()) {
             acc.clone()
 } else {
@@ -259,11 +259,11 @@ let next_variants = match (*summary.repr.clone()).clone() {
     _ => state.variant_to_enum.clone(),
 };
 let next_evm = match (*summary.repr.clone()).clone() {
-    TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.enum_variant_membership.clone(), |acc: _, child: Rc<Node>| v2_rt::map_insert(acc.clone(), v2_rt::concat(v2_rt::concat(summary.name.clone(), "|".to_string()), child.name.clone()), true)),
+    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.enum_variant_membership.clone(), |acc: _, child: Rc<Node>| v2_rt::map_insert(acc.clone(), v2_rt::concat(v2_rt::concat(summary.name.clone(), "|".to_string()), child.name.clone()), true)),
     _ => state.enum_variant_membership.clone(),
 };
 let next_ftn = match (*summary.repr.clone()).clone() {
-    TypeRepr::StructRepr => item.children.clone().iter().cloned().fold(state.field_type_names.clone(), |acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
+    TypeRepr::StructRepr => item.children.iter().cloned().fold(state.field_type_names.clone(), |acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: ft, .. }) => {
             let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
 if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dynamic".to_string())) {
@@ -274,7 +274,7 @@ if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dyna
 },
     _ => acc.clone(),
 }),
-    TypeRepr::EnumRepr { .. } => item.children.clone().iter().cloned().fold(state.field_type_names.clone(), |acc: _, variant: Rc<Node>| variant.children.clone().iter().cloned().fold(acc.clone(), |inner_acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
+    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.field_type_names.clone(), |acc: _, variant: Rc<Node>| variant.children.iter().cloned().fold(acc.clone(), |inner_acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: ft, .. }) => {
             let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
 if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dynamic".to_string())) {

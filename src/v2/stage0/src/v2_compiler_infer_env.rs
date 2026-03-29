@@ -85,9 +85,9 @@ match v2_rt::map_get(&env.bindings, canonical.clone()) {
 
 pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {
     {
-        let merged_bindings = envs.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.bindings).clone()));
-let merged_recursive = envs.clone().iter().cloned().fold(vec![], |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), (*env.recursive_types).clone()));
-let merged_recursive_set = envs.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.recursive_type_set).clone()));
+        let merged_bindings = envs.iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.bindings).clone()));
+let merged_recursive = envs.iter().cloned().fold(vec![], |acc: _, env: Rc<TypeEnv>| v2_rt::concat(acc.clone(), (*env.recursive_types).clone()));
+let merged_recursive_set = envs.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.recursive_type_set).clone()));
 Rc::new(TypeEnv {
     bindings: Rc::new(merged_bindings.clone()),
     recursive_types: Rc::new(merged_recursive.clone()),

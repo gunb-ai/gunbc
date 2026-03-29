@@ -790,13 +790,13 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
       let callable_params = callable_type.params
       let param_types = lam_params |> enumerate |> map(pair =>
         match callable_params |> skip(pair.first) |> first {
-          Some { value: cp } => cp.type_expr
+          Some { value: cp } => param_node_type_expr(n: cp)
           None => type_variable_node(id: "callable_param")
         }
       )
       let typed_scope = fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
         let pt = match callable_params |> skip(pair.first) |> first {
-          Some { value: cp } => cp.type_expr
+          Some { value: cp } => param_node_type_expr(n: cp)
           None => type_variable_node(id: "callable_param")
         }
         extend_scope(scope: acc, name: pair.second, resolved: pt)
@@ -1074,10 +1074,10 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         call_args |> enumerate |> map(pair =>
           let a = pair.second
           let formal_param_type = match sig_params |> skip(pair.first) |> first {
-            Some { value: p } => p.type_expr
+            Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let is_callable_formal = formal_param_type.params |> count > 0
+          let is_callable_formal = formal_param_type.children |> count > 0
           if is_lambda_expr(e: arg_value(n: a)) && is_callable_formal {
             infer_lambda_with_callable_type(lambda_expr: arg_value(n: a), callable_type: formal_param_type, arg_name: arg_name(n: a), scope: scope)
           } else {
@@ -1108,11 +1108,11 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       } else {
         // Tier 2: try bridging to method call on first argument
         let first_arg_type = match typed_args |> first {
-          Some { value: ta } => rt_type(n: ta.value)
+          Some { value: ta } => rt_type(n: arg_value(n: ta))
           None => unit_type
         }
         let method_receiver = match typed_args |> first {
-          Some { value: ta } => ta.value
+          Some { value: ta } => arg_value(n: ta)
           None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
         let method_resolution = resolve_known_method_node(
@@ -1132,7 +1132,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             None => error_type
           }
           let bridge_result_type = refine_collection_result_type(semantics: method_resolution.semantics, typed_args: remaining, receiver_type: first_arg_type, fallback: base_result_type)
-          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: ta.name, value: ta.value, span: span))
+          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name(n: ta), value: arg_value(n: ta), span: span))
           InferResult {
             typed: make_named_expr_node(
               name: func_name, expr_data: ExprMethodCall { method_semantics: method_resolution.semantics },
@@ -1158,7 +1158,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
           let bt = if func_name == "lookup" || func_name == "map_get" {
             match typed_args |> first {
               Some { value: receiver_arg } =>
-                match rt_node(n: receiver_arg.value) {
+                match rt_node(n: arg_value(n: receiver_arg)) {
                   Typed { node: receiver_type } =>
                     match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
                       Some { value: value_type } => with_optional_cardinality(n: value_type)

@@ -142,7 +142,7 @@ if is_typed_service_call_receiver(r.clone()) {
 },
     _ => acc.clone(),
 };
-let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: _, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone()));
+let result = texpr.children.iter().cloned().fold(this_acc.clone(), |a: _, child: Rc<Node>| collect_typed_service_calls_into(child.clone(), a.clone()));
 result.clone()
 }
     })
@@ -163,7 +163,7 @@ pub fn collect_called_func_names_into(texpr: Rc<Node>, acc: Rc<UniqueAccum>) -> 
 },
     _ => acc.clone(),
 };
-let result = texpr.children.clone().iter().cloned().fold(this_acc.clone(), |a: _, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone()));
+let result = texpr.children.iter().cloned().fold(this_acc.clone(), |a: _, child: Rc<Node>| collect_called_func_names_into(child.clone(), a.clone()));
 result.clone()
 }
     })
@@ -181,8 +181,8 @@ result.result.clone()
 
 pub fn expand_transitive_services_once(modules: Vec<Rc<TypedModule>>, registry: HashMap<String, Rc<ItemInfo>>) -> HashMap<String, Rc<ItemInfo>> {
     {
-        let all_items = { let mut __result = Vec::new(); for m in modules.clone().iter().cloned() { __result.extend(m.items.clone()); } __result };
-all_items.clone().iter().cloned().fold(registry.clone(), |reg: _, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
+        let all_items = { let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.extend(m.items.clone()); } __result };
+all_items.iter().cloned().fold(registry.clone(), |reg: _, item: Rc<Node>| match v2_rt::map_get(&reg, item.name.clone()) {
     Some(info) => {
             let is_not_func = (info.kind.clone() != ItemKind::FuncItem);
 let has_no_body = (item.body.clone() == None);
@@ -194,11 +194,11 @@ if is_not_func.clone() {
 } else {
                     {
                         let called = collect_called_func_names(item.body.clone().clone().unwrap());
-let extra = { let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&reg, callee_name.clone()) {
+let extra = { let mut __result = Vec::new(); for callee_name in called.iter().cloned() { __result.extend(match v2_rt::map_get(&reg, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => vec![],
 }); } __result };
-let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: _, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
+let merged = extra.iter().cloned().fold(info.service_names.clone(), |svc_list: _, svc: String| if { let mut __found = false; for s in svc_list.iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                             svc_list.clone()
 } else {
                             v2_rt::list_push(svc_list.clone(), svc.clone())
@@ -273,7 +273,7 @@ pub fn check_service_method_call_node(receiver_type: Rc<Node>, method: String, s
     if ((node_has_structure(receiver_type.clone()) == false) && ((receiver_type.children.clone().len() as i64) == 0)) {
         match v2_rt::map_get(&service_registry, receiver_type.name.clone()) {
     Some(ops) => {
-            let matching = { let mut __result = Vec::new(); for op in ops.clone().iter().cloned() { if (op.name.clone() == method.clone()) { __result.push(op); } } __result };
+            let matching = { let mut __result = Vec::new(); for op in ops.iter().cloned() { if (op.name.clone() == method.clone()) { __result.push(op); } } __result };
 match matching.clone().first().cloned() {
     Some(op) => if ((op.outputs.clone().len() as i64) == 0) {
                 Some(Rc::new(ServiceMethodResult {
@@ -285,7 +285,7 @@ match matching.clone().first().cloned() {
     result_type: Rc::new(Node {
     name: "".to_string(),
     span: no_span(),
-    children: { let mut __result = Vec::new(); for f in op.outputs.clone().iter().cloned() { __result.push(Rc::new(Node {
+    children: { let mut __result = Vec::new(); for f in op.outputs.iter().cloned() { __result.push(Rc::new(Node {
     name: f.name.clone(),
     span: f.span.clone(),
     children: vec![],

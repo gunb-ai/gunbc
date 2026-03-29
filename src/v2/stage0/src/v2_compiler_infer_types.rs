@@ -437,7 +437,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
                 },
                 AlgebraProfile::PartialFunctionProfile => {
                     let key_node = base.children.clone().first().cloned().unwrap_or_else(|| leaf_node("K".to_string()));
-                    let val_node = base.children.clone().iter().cloned().skip(1).next().unwrap_or_else(|| leaf_node("V".to_string()));
+                    let val_node = base.children.iter().cloned().skip(1).next().unwrap_or_else(|| leaf_node("V".to_string()));
                     partial_function_fields(self_type.clone(), key_node, val_node)
                 },
             };
@@ -723,7 +723,7 @@ if (node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.c
                                                 if ((left.children.clone().len() as i64) != (right.children.clone().len() as i64)) {
                                                     false
 } else {
-                                                    { let mut __all = true; for pair in left.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if !(match right.children.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
+                                                    { let mut __all = true; for pair in left.children.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if !(match right.children.iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
     Some(right_child) => node_type_equals(pair.1.clone(), right_child.clone()),
     None => false,
 }) { __all = false; break; } } __all }
@@ -764,11 +764,11 @@ let right_first = match right.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => right.clone(),
 };
-let left_second = match left.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
+let left_second = match left.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
     Some(v) => v.clone(),
     None => left.clone(),
 };
-let right_second = match right.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
+let right_second = match right.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
     Some(v) => v.clone(),
     None => right.clone(),
 };
@@ -783,7 +783,7 @@ let right_second = match right.children.clone().iter().cloned().skip(1 as usize)
                                                                     false
 } else {
                                                                     {
-                                                                        let params_eq = { let mut __all = true; for pair in left.params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if !(match right.params.clone().iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
+                                                                        let params_eq = { let mut __all = true; for pair in left.params.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if !(match right.params.iter().cloned().skip(pair.0.clone() as usize).collect::<Vec<_>>().first().cloned() {
     Some(right_param) => node_type_equals(param_node_type_expr(pair.1.clone()), param_node_type_expr(right_param.clone())),
     None => false,
 }) { __all = false; break; } } __all };
@@ -831,7 +831,7 @@ pub fn node_type_deps(n: Rc<Node>) -> Vec<String> {
 }
 } else {
             if node_has_structure(n.clone()) {
-                { let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend(if (child.inferred.clone() != None) {
+                { let mut __result = Vec::new(); for child in n.children.iter().cloned() { __result.extend(if (child.inferred.clone() != None) {
                     match (*rt_node(child.clone())).clone() {
     NodeType::Typed { node: rt, .. } => node_type_deps(rt.clone()),
     NodeType::InferError { .. } => vec![],
@@ -850,7 +850,7 @@ pub fn node_type_deps(n: Rc<Node>) -> Vec<String> {
 } else {
                     if ((n.children.clone().len() as i64) > 0) {
                         {
-                            let child_deps = { let mut __result = Vec::new(); for child in n.children.clone().iter().cloned() { __result.extend(node_type_deps(child.clone())); } __result };
+                            let child_deps = { let mut __result = Vec::new(); for child in n.children.iter().cloned() { __result.extend(node_type_deps(child.clone())); } __result };
 if ((n.name.clone() != "".to_string()) && (is_kernel_type(n.name.clone()) == false)) {
                                 v2_rt::concat(vec![n.name.clone()], child_deps.clone())
 } else {
@@ -918,7 +918,7 @@ if ((node_has_structure(normed.clone()) == false) && ((normed.children.clone().l
 }
 } else {
             if node_is_map(normed.clone()) {
-                match normed.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
+                match normed.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
     Some(val_type) => val_type.clone(),
     None => receiver_type.clone(),
 }

@@ -96,7 +96,7 @@ if (field_name.clone() == "value".to_string()) {
 } else {
             if node_has_structure(n.clone()) {
                 if node_is_product(n.clone()) {
-                    match { let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (c.name.clone() == field_name.clone()) { __result.push(c); } } __result }.first().cloned() {
+                    match { let mut __result = Vec::new(); for c in n.children.iter().cloned() { if (c.name.clone() == field_name.clone()) { __result.push(c); } } __result }.first().cloned() {
     Some(field_child) => Some(child_inferred_or_name(field_child.clone())),
     None => None,
 }
@@ -112,10 +112,10 @@ if (field_name.clone() == "value".to_string()) {
 
 pub fn lookup_coproduct_common_field_node(variants: Vec<Rc<Node>>, field_name: String) -> Option<Rc<Node>> {
     {
-        let found_in_all = { let mut __all = true; for v in variants.clone().iter().cloned() { if !({ let mut __found = false; for c in v.children.clone().iter().cloned() { if (c.name.clone() == field_name.clone()) { __found = true; break; } } __found }) { __all = false; break; } } __all };
+        let found_in_all = { let mut __all = true; for v in variants.iter().cloned() { if !({ let mut __found = false; for c in v.children.iter().cloned() { if (c.name.clone() == field_name.clone()) { __found = true; break; } } __found }) { __all = false; break; } } __all };
 let first_field = if found_in_all.clone() {
             match variants.clone().first().cloned() {
-    Some(first_variant) => { let mut __result = Vec::new(); for c in first_variant.children.clone().iter().cloned() { if (c.name.clone() == field_name.clone()) { __result.push(c); } } __result }.first().cloned(),
+    Some(first_variant) => { let mut __result = Vec::new(); for c in first_variant.children.iter().cloned() { if (c.name.clone() == field_name.clone()) { __result.push(c); } } __result }.first().cloned(),
     None => None,
 }
 } else {
@@ -198,7 +198,7 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
 let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
 let map_type = normalize_access_type_node(resolved.clone());
 if (node_is_map(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
-            match map_type.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
+            match map_type.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned() {
     Some(value_type) => Some(value_type.clone()),
     None => None,
 }
@@ -248,7 +248,7 @@ match field_summary_for_type(inner.clone(), env.clone(), field.clone()) {
 }
 
 pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option<Rc<Node>> {
-    let matching: Vec<Rc<Node>> = product.children.clone().iter().cloned().filter(|c| c.name.clone() == method_name.clone()).collect();
+    let matching: Vec<Rc<Node>> = product.children.iter().cloned().filter(|c| c.name.clone() == method_name.clone()).collect();
     match matching.first().cloned() {
         Some(field) => match field.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt }) => {
