@@ -581,6 +581,85 @@ rendering pattern (`list_empty`, `list_iterate`, `map_wrap`, etc.).
 Each emission site calls `container_empty_list(cops)` instead of
 `concat("Rc::new(Vec::new())")`. See M2.
 
+### Structural Prevention of Invariant Violations
+
+The recurring problem: violations keep appearing because the codebase
+makes it **easy to hardcode and hard to read from data.** Every PR that
+touches emission re-invents container syntax, Rc wrapping, or type
+mapping as string literals because that's the path of least resistance.
+Ratchets catch violations after the fact; structural prevention makes
+them unrepresentable.
+
+This is the same pattern that `SyntaxSpec` solved for the parser:
+`parse_item` had keyword match arms that kept growing. Moving keywords
+to spec data didn't just reduce the arms — it made adding an arm
+impossible. There are no arms. The fix for emission, dual
+representations, and enum duplication is the same: remove the surface
+where violations are expressed.
+
+**Three violation classes and their structural fixes:**
+
+**1. Hardcoded target syntax in emitters.**
+
+Every function that produces target-language text can hardcode. The
+fix: the emitter doesn't produce strings. It produces a structured
+`EmitTree` — semantic nodes like `SharedWrap(ContainerInit("list",
+[elem]))`. A separate renderer converts the tree to text using
+`LanguageSpec`. The emitter literally cannot produce `"Rc<Vec<...>>"`
+because it doesn't produce strings. This is the emit-side equivalent
+of `ExpectedToken`.
+
+```
+// Today (violation possible):
+fn emit_list_init(items) -> String {
+    concat("Rc::new(vec![", items, "])")   // hardcoded Rust
+}
+
+// Target (violation unrepresentable):
+fn emit_list_init(items) -> EmitNode {
+    SharedWrap(ContainerInit(Collection::List, items))
+    // renderer reads LanguageSpec to produce "Rc::new(vec![...])"
+}
+```
+
+**2. Dual representations (same fact in two places).**
+
+When the same information exists as both a `.dag` declaration AND a
+hardcoded string/list in the compiler, they diverge. The fix: every
+fact has exactly one structural address. Other sites hold an edge
+(reference) to that address, not a copy. If you can write the fact
+in two places, the structure is wrong.
+
+The test: take any fact in the compiler. Can you find it by following
+edges from one root? If you have to scan strings to find it, it's a
+dual representation. Container types, method signatures, kernel type
+lists — each should be reachable via one path from the `.dag` source
+graph, not duplicated into compiler-internal lists.
+
+**3. Enum duplication / nicknaming (same structure, different labels).**
+
+Two enums with the same shape but different names. Two fields carrying
+the same information under different keys. The fix is structural
+identity: two compositions with the same children in the same
+connective pattern are the SAME composition, regardless of what names
+they carry. The compiler should be able to detect when two type
+definitions are structurally identical and flag the duplication.
+
+This connects to the thesis: names are opaque namespaces. If two names
+map to the same structural composition, one of them is redundant. The
+compiler doesn't need to enforce uniqueness — but the guarantee receipt
+can report structural duplicates, and a ratchet can track them toward
+zero.
+
+**Enforcement ladder:**
+
+| Stage | Mechanism | Violations possible? |
+|-------|-----------|---------------------|
+| Today | Ratchets (grep counts) | Yes — caught after PR |
+| Near-term | EmitTree (no strings in emitter) | No — emitter can't produce target syntax |
+| Near-term | Edge-only references (no copied facts) | No — second declaration is a compile error |
+| Long-term | Structural identity (hash-based dedup) | No — duplicate compositions detected automatically |
+
 ### Exploratory
 
 **Unified Sequence (Seq\<T>).** Ordered collections (List, Stack, Queue,
