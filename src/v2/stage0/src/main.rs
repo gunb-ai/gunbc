@@ -279,54 +279,13 @@ fn render_diagnostics(result: &PipelineResult) {
         .map(|idx| (idx.file.clone(), idx.clone()))
         .collect();
 
-    // Partition into roots (caused_by empty) and cascades.
-    let mut roots: Vec<usize> = Vec::new();
-    let mut cascades_by_parent: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (i, d) in result.diagnostics.iter().enumerate() {
-        if d.caused_by.is_empty() {
-            roots.push(i);
-        } else {
-            for parent_id in &d.caused_by {
-                cascades_by_parent
-                    .entry(*parent_id as usize)
-                    .or_default()
-                    .push(i);
-            }
-        }
+    // Render all diagnostics. No cascade tree — when a stage produces
+    // causal edges, re-add caused_by with both producer and consumer.
+    for d in &result.diagnostics {
+        render_one_diagnostic(d, &index_map, "");
     }
 
-    let root_count = roots.len();
-    let total = result.diagnostics.len();
-    let cascade_count = total - root_count;
-
-    // Render roots first, then their full cascade trees.
-    for &root_idx in &roots {
-        render_one_diagnostic(&result.diagnostics[root_idx], &index_map, "");
-        render_cascade_tree(root_idx, &result.diagnostics, &cascades_by_parent, &index_map, 1);
-    }
-
-    // Summary line.
-    if cascade_count > 0 {
-        eprintln!("\n{} root errors, {} total ({} cascades)", root_count, total, cascade_count);
-    } else {
-        eprintln!("\n{} error(s)", total);
-    }
-}
-
-fn render_cascade_tree(
-    parent_idx: usize,
-    diagnostics: &[Rc<v2_compiler::v2_std_core::ErrorNode>],
-    cascades_by_parent: &HashMap<usize, Vec<usize>>,
-    index_map: &HashMap<String, Rc<NewlineIndex>>,
-    depth: usize,
-) {
-    if let Some(children) = cascades_by_parent.get(&parent_idx) {
-        let indent = "  ".repeat(depth);
-        for &child_idx in children {
-            render_one_diagnostic(&diagnostics[child_idx], index_map, &indent);
-            render_cascade_tree(child_idx, diagnostics, cascades_by_parent, index_map, depth + 1);
-        }
-    }
+    eprintln!("\n{} error(s)", result.diagnostics.len());
 }
 
 fn render_one_diagnostic(
