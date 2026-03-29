@@ -77,34 +77,6 @@ type TestConventions {
   async_decorator: String?
 }
 
-// -- Syntax types for BS-1 (emit reads spec, not hardcoded) ---------------
-
-type StatementSyntax {
-  let_binding: String
-  let_binding_inferred: String
-  statement_terminator: String
-  return_keyword: String
-}
-
-type ErrorHandlingSyntax
-  = ResultType { ok_template: String, err_template: String, try_operator: String }
-  | ExceptionBased { raise_keyword: String }
-  | MultiReturn { error_type: String }
-
-type FunctionSyntax {
-  fn_keyword: String
-  async_fn_keyword: String
-  return_arrow: String
-  lambda_keyword: String
-}
-
-type TypeDefSyntax {
-  struct_keyword: String
-  enum_keyword: String
-  impl_keyword: String
-  type_alias_keyword: String
-}
-
 // -- Import derivation types -----------------------------------------------
 
 type ImportTrigger
@@ -203,10 +175,6 @@ type LanguageSpec {
   serialization: SerializationSpec
   test_conventions: TestConventions
   top_level_visibility: String
-  statements: StatementSyntax
-  errors: ErrorHandlingSyntax
-  functions: FunctionSyntax
-  type_defs: TypeDefSyntax
 }
 
 // =========================================================================
@@ -281,30 +249,7 @@ fn rust_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: "#[tokio::test]"
     },
-    top_level_visibility: rust_visibility,
-    statements: StatementSyntax {
-      let_binding: "let ",
-      let_binding_inferred: "let ",
-      statement_terminator: ";",
-      return_keyword: "return "
-    },
-    errors: ResultType {
-      ok_template: "Ok({0})",
-      err_template: "Err({0})",
-      try_operator: "?"
-    },
-    functions: FunctionSyntax {
-      fn_keyword: "fn ",
-      async_fn_keyword: "async fn ",
-      return_arrow: " -> ",
-      lambda_keyword: ""
-    },
-    type_defs: TypeDefSyntax {
-      struct_keyword: "struct ",
-      enum_keyword: "enum ",
-      impl_keyword: "impl",
-      type_alias_keyword: "type "
-    }
+    top_level_visibility: rust_visibility
   }
 }
 
@@ -339,28 +284,7 @@ fn python_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: "",
-    statements: StatementSyntax {
-      let_binding: "",
-      let_binding_inferred: "",
-      statement_terminator: "",
-      return_keyword: "return "
-    },
-    errors: ExceptionBased {
-      raise_keyword: "raise "
-    },
-    functions: FunctionSyntax {
-      fn_keyword: "def ",
-      async_fn_keyword: "async def ",
-      return_arrow: " -> ",
-      lambda_keyword: "lambda "
-    },
-    type_defs: TypeDefSyntax {
-      struct_keyword: "class ",
-      enum_keyword: "class ",
-      impl_keyword: "",
-      type_alias_keyword: ""
-    }
+    top_level_visibility: ""
   }
 }
 
@@ -395,28 +319,7 @@ fn go_spec() -> LanguageSpec {
       name_style: PascalCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: "",
-    statements: StatementSyntax {
-      let_binding: "var ",
-      let_binding_inferred: "",
-      statement_terminator: "",
-      return_keyword: "return "
-    },
-    errors: MultiReturn {
-      error_type: "error"
-    },
-    functions: FunctionSyntax {
-      fn_keyword: "func ",
-      async_fn_keyword: "func ",
-      return_arrow: " ",
-      lambda_keyword: "func"
-    },
-    type_defs: TypeDefSyntax {
-      struct_keyword: "type ",
-      enum_keyword: "type ",
-      impl_keyword: "",
-      type_alias_keyword: "type "
-    }
+    top_level_visibility: ""
   }
 }
 
