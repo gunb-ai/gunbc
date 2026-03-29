@@ -38,4 +38,4 @@ pub mod v2_compiler_compile;
 pub mod v2_rt;
 
 #[cfg(test)]
-mod generated_tests;
+mod compiler_tests;

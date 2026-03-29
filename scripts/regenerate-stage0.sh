@@ -43,12 +43,12 @@ $STAGE0_CMD compile \
     echo 'pub mod v2_rt;'
     echo ''
     echo '#[cfg(test)]'
-    echo 'mod generated_tests;'
+    echo 'mod compiler_tests;'
 } > "$OUTPUT_DIR/src/lib.rs"
 
 # Copy hand-maintained files from committed stage0
 cp "$STAGE0_DIR/src/v2_rt.rs" "$OUTPUT_DIR/src/v2_rt.rs" 2>/dev/null || true
-cp "$STAGE0_DIR/src/generated_tests.rs" "$OUTPUT_DIR/src/generated_tests.rs" 2>/dev/null || true
+cp "$STAGE0_DIR/src/compiler_tests.rs" "$OUTPUT_DIR/src/compiler_tests.rs" 2>/dev/null || true
 
 echo "=== Copying to stage0 ==="
 for f in "$OUTPUT_DIR"/src/*.rs; do
