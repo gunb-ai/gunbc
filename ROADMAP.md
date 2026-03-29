@@ -599,18 +599,19 @@ where violations are expressed.
 
 #### Where violations live (pipeline audit)
 
-| Stage | String sites | Legitimate | Escape hatch | What's escaping |
-|---|---|---|---|---|
-| Tokenize | ~50 | ~50 | 0 | — |
-| Parse | ~200 | ~190 | ~10 | Expr node names, transport strings |
-| Resolve | ~25 | ~10 | ~15 | String-keyed graph, transport dispatch |
-| Inference | ~250 | ~80 | **~170** | Builtin registry, method dispatch, Optional hardcoding, type metadata maps |
-| Emit | ~693 | ~680 | **~76** | Transport dispatch (13), method re-dispatch (63) |
-| Complexity | ~26 | ~4 | **~22** | Method cost shape dispatch |
-| Ownership | ~5 | ~5 | 0 | — |
+| Stage | Legit strings | Escape hatches | What's escaping |
+|---|---|---|---|
+| Tokenize | ~50 (source text) | 0 | — |
+| Parse | ~190 (identifiers) | ~10 | Expr node names, transport strings |
+| Resolve | ~10 (module paths) | ~15 | String-keyed graph, transport dispatch |
+| Inference | ~80 (scope locals) | **~170** | Builtin registry, method dispatch, Optional hardcoding, type metadata maps |
+| Emit | ~680 (output concat) | **~73** | Transport dispatch (13), method re-dispatch (60) |
+| Complexity | ~4 (diagnostics) | **~22** | Method cost shape dispatch |
+| Ownership | ~5 (binding names) | 0 | — |
+| **Total** | **~1,019** | **~290** | |
 
-**95% of escape hatches are in inference and emit.** Tokenize, parse,
-normalize, and ownership are essentially clean.
+**~290 escape hatches, concentrated in inference (~170) and emit (~73).**
+Tokenize, parse, normalize, and ownership are essentially clean.
 
 #### The five escape hatches
 
@@ -684,15 +685,85 @@ After deletion, the only way to get information about a node is
 through structural properties and edges — not by reading a name string
 and guessing what it means.
 
-#### Enforcement ladder
+#### Execution lanes (expected diffs)
 
-| Phase | What closes | Violations prevented |
-|-------|------------|---------------------|
-| **M2** | Data-driven dispatch (SyntaxSpec pattern for methods/transport) | 76 name-dispatch sites |
-| **M4** | `Node.name` deletion | 1,175 name-read sites (the universal escape) |
-| **M5** | EmitTree (emitter returns EmitNode, not String) | 680 concat calls + all future emit violations |
-| **M5** | Edge-only fact references | 14 string-keyed metadata maps |
-| **M7** | Structural identity (duplicate composition detection) | Enum duplication / nicknaming |
+**Lane A: Data-driven method/transport dispatch (M2)**
+
+Close 73 escape hatches in emit + 22 in complexity + transport in
+resolve. Same pattern as SyntaxSpec — data tables, not match arms.
+
+| File | Change | Sites closed |
+|---|---|---|
+| `04_method.dag` | `builtin_function_registry()` reads from `std/algebra.dag` nodes instead of string map | ~30 string registrations |
+| `complexity.dag` | `method_cost_shape()` reads cost from algebra type field, not `if method == "..."` | 22 if/else branches |
+| `05_emit_rust.dag` | Method rendering reads from `runtime.dag` templates | 21 method name comparisons |
+| `05_emit_python.dag` | Same | 20 method name comparisons |
+| `05_emit_go.dag` | Same | 19 method name comparisons |
+| `03_resolve.dag` | Transport node gets enum field, not string name | 1 comparison |
+| `05_emit_rust.dag` | Transport dispatch on enum | 3 comparisons |
+| `05_emit_python.dag` | Same | 3 comparisons |
+| `05_emit_go.dag` | Same | 3 comparisons |
+| `05_emit.dag` | Same | 3 comparisons |
+| **Total** | | **~145 sites** |
+
+**Lane B: Node.name deletion (M4/D6)**
+
+Close the universal escape hatch. Every `.name` read becomes a
+structural property read or `source_text_at(span)` call.
+
+| File | Change | Sites closed |
+|---|---|---|
+| `00_core.dag` | Delete `name: String` from Node type | Field definition |
+| `02_parse.dag` | ~54 Node constructions: remove `name:` field | 54 construction sites |
+| `04_infer.dag` | Scope lookups use structural edges, not name strings | ~17 name reads |
+| `04_method.dag` | Method identity is algebra node, not name string | ~56 name reads |
+| `04_types.dag` | Type identity is structural, not `name ==` | ~22 name reads |
+| `05_emit_rust.dag` | Identifiers from `source_text_at(span)` | ~51 name reads |
+| `05_emit.dag` | Same | ~18 name reads |
+| Other 13 files | Various name reads → structural property reads | ~957 name reads |
+| **Total** | | **~1,175 sites across 20 files** |
+
+**Lane C: EmitTree (M5)**
+
+Replace string return types with `EmitNode`. The emitter produces
+semantic nodes; one renderer per target converts to text.
+
+| File | Change | Sites closed |
+|---|---|---|
+| `00_core.dag` | Add `EmitNode` type (16 variants) | New type |
+| `05_emit.dag` | Shared emit functions return `EmitNode` not `String` | ~77 concat calls |
+| `05_emit_rust.dag` | Rust emit returns `EmitNode`; new `render_rust.dag` converts to text | ~308 concat calls |
+| `05_emit_python.dag` | Same; new `render_python.dag` | ~130 concat calls |
+| `05_emit_go.dag` | Same; new `render_go.dag` | ~165 concat calls |
+| `render_rust.dag` (new) | Reads `LanguageSpec`, converts `EmitNode` → Rust source text | Single renderer |
+| `render_python.dag` (new) | Same for Python | Single renderer |
+| `render_go.dag` (new) | Same for Go | Single renderer |
+| **Total** | | **~680 concat sites closed, 3 new renderer files** |
+
+**Lane D: Edge-only fact references (M5)**
+
+Replace `List<String>` and `Map<String, X>` metadata with node edges.
+
+| File | Change | Sites closed |
+|---|---|---|
+| `00_core.dag` | `kernel_types: List<Node>`, `container_types: List<Node>` | 2 string lists |
+| `04_emit_info.dag` | `variant_to_enum`, `field_type_names` become node-keyed | 4 string-keyed maps |
+| `04_method.dag` | `builtin_function_registry` keyed by node, not string | 1 map |
+| `complexity.dag` | Function summary cache keyed by node | 1 map |
+| Other files | Remaining `Map<String, X>` → `Map<Node, X>` | 6 maps |
+| **Total** | | **14 string-keyed maps** |
+
+#### Lane dependencies
+
+```
+Lane A (method/transport dispatch)    independent
+Lane B (Node.name deletion)          depends on Lane A (methods must
+                                      use structural dispatch before
+                                      names are deleted)
+Lane C (EmitTree)                     depends on Lane B (emitter must
+                                      not read node.name)
+Lane D (edge-only facts)             independent, can run with A or B
+```
 
 ### Exploratory
 
