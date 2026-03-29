@@ -48,12 +48,9 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
-use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
-pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index};
-use crate::v2_std_core::RuntimeBridgeMethod::{BridgeReverse};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
@@ -137,62 +134,27 @@ impl CostShape {
     }
 }
 
-pub fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> Rc<CostShape> {
-    match method.clone() {
-    IntrinsicMethod::MethodMap => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodFlatMap => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodFilter => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodEnumerate => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodSkip => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodTake => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodFold => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodAny => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodAll => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodSortBy => Rc::new(CostShape::ShapeSortBody),
-    IntrinsicMethod::MethodCount => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodFirst => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodLast => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodJoin => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodStringContains => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodConcat => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodChars => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodSplit => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodAppend => Rc::new(CostShape::ShapeConstant),
-}
+pub fn method_cost_shape(method_name: String) -> Option<Rc<CostShape>> {
+    if method_name == "map" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "flat_map" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "filter" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "enumerate" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "skip" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "take" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "fold" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: false })) }
+    else if method_name == "any" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: false })) }
+    else if method_name == "all" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: false })) }
+    else if method_name == "sort_by" { Some(Rc::new(CostShape::ShapeSortBody)) }
+    else if method_name == "count" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "first" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "last" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "join" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "string_contains" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "concat" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "chars" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: true })) }
+    else if method_name == "split" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: true })) }
+    else if method_name == "append" { Some(Rc::new(CostShape::ShapeConstant)) }
+    else { None }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -390,8 +352,10 @@ result.clone()
 }
 }
 
-pub fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> bool {
-    (((((((method.clone() == IntrinsicMethod::MethodMap) || (method.clone() == IntrinsicMethod::MethodFilter)) || (method.clone() == IntrinsicMethod::MethodFlatMap)) || (method.clone() == IntrinsicMethod::MethodSkip)) || (method.clone() == IntrinsicMethod::MethodEnumerate)) || (method.clone() == IntrinsicMethod::MethodSortBy)) || (method.clone() == IntrinsicMethod::MethodConcat))
+pub fn is_size_preserving_method(method_name: String) -> bool {
+    method_name == "map" || method_name == "filter" || method_name == "flat_map"
+    || method_name == "skip" || method_name == "enumerate" || method_name == "sort_by"
+    || method_name == "concat" || method_name == "reverse"
 }
 
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
@@ -399,13 +363,8 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } => {
-        let intrinsic_match = v2_rt::map_get(&intrinsic_method_index(), method_name.clone());
-match intrinsic_match.clone() {
-    Some(method) => is_size_preserving_intrinsic_method(method.clone()),
-    None => (method_name.clone() == "reverse".to_string()),
-}
-},
+    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } =>
+        is_size_preserving_method(method_name.clone()),
     _ => false,
 }
 }
@@ -1061,12 +1020,9 @@ let method_cost_result = if (ms.clone() == None) {
 } else {
                 match (*ms.clone().unwrap()).clone() {
     MethodSemantics::AlgebraMethodSemantics { method_name: mn, .. } => {
-                    let intrinsic_match = v2_rt::map_get(&intrinsic_method_index(), mn.clone());
-match intrinsic_match.clone() {
-    Some(im) => {
-        let shape = intrinsic_method_cost_shape(im.clone());
-Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone()))
-    },
+                    let shape_match = method_cost_shape(mn.clone());
+match shape_match.clone() {
+    Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone())),
     None => Some(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(recv_r.summary.clone().work.clone(), Rc::new(CostExpr::CostConst {

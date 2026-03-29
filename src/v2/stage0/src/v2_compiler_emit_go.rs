@@ -67,7 +67,6 @@ use crate::v2_compiler_artifact::RenderTarget::{Go};
 pub use crate::extdeps_languages_go_emit::{GO_RESERVED, GO_RESERVED_ESCAPE_SUFFIX};
 pub use crate::v2_compiler_languages::{scaffold_for_target, test_conventions_for_target};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
-pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index};
 pub use crate::v2_compiler_infer_types::{for_each_element_type_node, node_is_optional, node_is_map, rt_type};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
@@ -896,52 +895,41 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str.c
 }
 }
 
-pub fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
-    {
-        let recv_str = emit_go_typed_expr(receiver.clone(), registry.clone(), scope.clone(), 0);
-let first_arg_str = emit_go_typed_first_arg(args.clone(), registry.clone(), scope.clone());
-match intrinsic.clone() {
-    IntrinsicMethod::MethodCount => v2_rt::concat(v2_rt::concat("len(".to_string(), recv_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodJoin => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("strings.Join(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodSplit => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("strings.Split(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodLast => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[len(".to_string()), recv_str.clone()), ")-1]".to_string()),
-    IntrinsicMethod::MethodFirst => v2_rt::concat(recv_str.clone(), "[0]".to_string()),
-    IntrinsicMethod::MethodEnumerate => recv_str.clone(),
-    IntrinsicMethod::MethodChars => v2_rt::concat(v2_rt::concat("strings.Split(".to_string(), recv_str.clone()), ", \"\")".to_string()),
-    IntrinsicMethod::MethodStringContains => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("strings.Contains(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodConcat => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("append(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), "...)".to_string()),
-    IntrinsicMethod::MethodMap => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Map(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodFilter => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Filter(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodAny => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Any(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodAll => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.All(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodFlatMap => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.FlatMap(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodSkip => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[".to_string()), first_arg_str.clone()), ":]".to_string()),
-    IntrinsicMethod::MethodTake => v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[:".to_string()), first_arg_str.clone()), "]".to_string()),
-    IntrinsicMethod::MethodFold => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Fold(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodSortBy => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.SortBy(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-    IntrinsicMethod::MethodAppend => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("append(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()),
-}
-}
+pub fn go_bridge_method_name(method_name: String) -> String {
+    let parts = method_name.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>();
+    let pascal_parts = { let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(capitalize_first(p.clone())); } __result };
+    pascal_parts.clone().join(&"".to_string())
 }
 
-pub fn go_bridge_method_name(method: RuntimeBridgeMethod) -> String {
-    {
-        let base = bridge_method_base_name(method.clone());
-let parts = base.clone().split(&"_".to_string()).map(|s| s.to_string()).collect::<Vec<_>>();
-let pascal_parts = { let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(capitalize_first(p.clone())); } __result };
-pascal_parts.clone().join(&"".to_string())
-}
-}
-
-pub fn emit_go_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
-    {
-        let method_name = go_bridge_method_name(method.clone());
-let recv_expr = emit_go_typed_expr(receiver.clone(), registry.clone(), scope.clone(), 0);
-let recv_str = recv_expr.clone();
-let arg_strs = { let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_go_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), 0)); } __result };
-let args_str = arg_strs.clone().join(&", ".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), ".".to_string()), method_name.clone()), "(".to_string()), args_str.clone()), ")".to_string())
-}
+pub fn emit_go_algebra_method_call(method_name: String, receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
+    let recv_str = emit_go_typed_expr(receiver.clone(), registry.clone(), scope.clone(), 0);
+    let first_arg_str = emit_go_typed_first_arg(args.clone(), registry.clone(), scope.clone());
+    if method_name == "count" { v2_rt::concat(v2_rt::concat("len(".to_string(), recv_str.clone()), ")".to_string()) }
+    else if method_name == "join" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("strings.Join(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "split" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("strings.Split(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "last" { v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[len(".to_string()), recv_str.clone()), ")-1]".to_string()) }
+    else if method_name == "first" { v2_rt::concat(recv_str.clone(), "[0]".to_string()) }
+    else if method_name == "enumerate" { recv_str.clone() }
+    else if method_name == "chars" { v2_rt::concat(v2_rt::concat("strings.Split(".to_string(), recv_str.clone()), ", \"\")".to_string()) }
+    else if method_name == "string_contains" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("strings.Contains(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "concat" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("append(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), "...)".to_string()) }
+    else if method_name == "map" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Map(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "filter" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Filter(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "any" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Any(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "all" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.All(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "flat_map" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.FlatMap(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "skip" { v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[".to_string()), first_arg_str.clone()), ":]".to_string()) }
+    else if method_name == "take" { v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), "[:".to_string()), first_arg_str.clone()), "]".to_string()) }
+    else if method_name == "fold" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.Fold(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "sort_by" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.SortBy(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else if method_name == "append" { v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("append(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string()) }
+    else {
+        let go_name = go_bridge_method_name(method_name.clone());
+        let arg_strs = { let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_go_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), 0)); } __result };
+        let all_args = v2_rt::concat(vec![recv_str.clone()], arg_strs.clone());
+        let args_str = all_args.clone().join(&", ".to_string());
+        v2_rt::concat(v2_rt::concat(v2_rt::concat("v2rt.".to_string(), go_name.clone()), "(".to_string().to_owned() + &args_str.clone() + ")"), "".to_string())
+    }
 }
 
 pub fn emit_go_plain_method_call(receiver: Rc<Node>, method: String, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
@@ -962,19 +950,8 @@ let arg_strs = { let mut __result = Vec::new(); for a in args.clone().iter().clo
 let args_str = arg_strs.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(var_name.clone(), ".".to_string()), go_export_ident(method.clone())), "(".to_string()), args_str.clone()), ")".to_string())
 },
-    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } => {
-        let intrinsic_match = v2_rt::map_get(&intrinsic_method_index(), method_name.clone());
-match intrinsic_match.clone() {
-    Some(intrinsic) => emit_go_intrinsic_method_call(intrinsic.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone()),
-    None => {
-        let bridge_match = v2_rt::map_get(&runtime_bridge_method_index(), method_name.clone());
-match bridge_match.clone() {
-    Some(bridge_method) => emit_go_runtime_bridge_method_call(bridge_method.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone()),
-    None => emit_go_plain_method_call(receiver.clone(), method_name.clone(), args.clone(), registry.clone(), scope.clone()),
-}
-    },
-}
-},
+    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } =>
+        emit_go_algebra_method_call(method_name.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone()),
     MethodSemantics::PlainMethodSemantics => emit_go_plain_method_call(receiver.clone(), method.clone(), args.clone(), registry.clone(), scope.clone()),
 }
 } else {

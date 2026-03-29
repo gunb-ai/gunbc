@@ -33,18 +33,6 @@ import v2.std.core {
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
-  RuntimeBridgeMethod, BridgeGet, BridgeWith, BridgeMapGet, BridgeLookup,
-  BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapHas,
-  BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey,
-  BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength,
-  BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
-  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring,
-  BridgeToInt, BridgeEmptyMap, BridgeContains, BridgeReverse,
-  IntrinsicMethod,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MatchPattern, field_binding_name, field_binding_pattern,
   TextFile, ErrorNode, make_error_node, InternalError, SourceSpan,
   resource_use_name, resource_use_resource,
@@ -81,7 +69,6 @@ import v2.compiler.infer_types {
   node_is_keyed_collection, node_is_element_collection
 }
 import v2.compiler.infer_method {
-  intrinsic_method_index, runtime_bridge_method_index
 }
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer_items {
@@ -2219,246 +2206,239 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
   }
 }
 
-fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let elem_type_str = collection_element_type(receiver_type: receiver.inferred, rc_types: rc_types)
+  let contextual_acc_type = match result_type {
+    Some { value: Resolved { node: method_result_type } } => Some { value: method_result_type }
+    _ => none
+  }
+  let acc_type_node = match fold_accumulator_type {
+    Some { value: acc_type } =>
+      let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
+      if node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit) {
+        match contextual_acc_type {
+          Some { value: concrete_type } => concrete_type
+          None => acc_type
+        }
+      } else { acc_type }
+    None =>
+      match contextual_acc_type {
+        Some { value: concrete_type } => concrete_type
+        None =>
+          match args |> first {
+            Some { value: init_arg } =>
+              if arg_value(n: init_arg).inferred != none {
+                rt_type(n: arg_value(n: init_arg))
+              } else { type_variable_node(id: "fold_accum") }
+            None => type_variable_node(id: "fold_accum")
+          }
+      }
+  }
+  let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
+  let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
+  let init_str = match args |> first {
+    Some { value: init_arg } =>
+      match arg_value(n: init_arg).expr_data {
+        ExprCall { call_semantics: _ } =>
+          if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
+            concat("<", acc_type_str, ">::new()")
+          } else if init_func == "empty_map" {
+            "<HashMap<String, _>>::new()"
+          } else {
+            emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          }
+        _ => emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      }
+    None => "compile_error!(\"missing fold init argument\")"
+  }
+  let fold_fn = match args |> skip(1) |> first {
+    Some { value: a } =>
+      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    None => "compile_error!(\"missing fold function argument\")"
+  }
+  concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
+}
+
+fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let elem_type_str = match receiver.inferred {
+    Some { value: Resolved { node: rt } } =>
+      let resolved = rt
+      let elem = for_each_element_type_node(n: resolved)
+      let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
+      if elem.name != "" && !elem_is_type_var {
+        emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
+      } else { "_" }
+    _ => "_"
+  }
+  let sort_key_fn = match args |> first {
+    Some { value: a } =>
+      emit_typed_collection_lambda(lambda_expr: arg_value(n: a), elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    None => "compile_error!(\"missing sort_by key function argument\")"
+  }
+  concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
+}
+
+fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-  let elem_type_str = collection_element_type(receiver_type: receiver.inferred, rc_types: rc_types)
-  match intrinsic {
-    MethodCount => concat("(", recv_str, ".len() as i64)")
-    MethodJoin => concat(recv_str, ".join(&", first_arg_str, ")")
-    MethodSplit => concat(recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
-    MethodLast => concat(recv_str, ".last().cloned()")
-    MethodFirst => concat(recv_str, ".first().cloned()")
-    MethodEnumerate =>
-      concat(recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
-    MethodChars => concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
-    MethodStringContains => concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
-    MethodConcat => {
-      let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-      let all_arg_strs = concat([recv_str], arg_strs)
-      emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
-    }
-    MethodMap =>
-      // RC4: If the receiver is Optional, emit .map(|p| body) to preserve Option type.
-      // Otherwise use the standard for-loop collect pattern for lists.
-      let recv_is_optional = match receiver.inferred {
-        Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
-        _ => false
-      }
-      if recv_is_optional {
-        match args |> first {
-          Some { value: a } =>
-            match arg_value(n: a).expr_data {
-              ExprLambda { semantics: semantics } =>
-                let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-                let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-                let p = emit_ident(name: dag_name, target: Rust)
-                let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-                let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-                concat(recv_str, ".map(|", p, "| ", body_str, ")")
-              _ => concat(recv_str, ".map(", first_arg_str, ")")
-            }
-          None => concat(recv_str, ".map(", first_arg_str, ")")
-        }
-      } else {
-        match args |> first {
-          Some { value: a } =>
-            match arg_value(n: a).expr_data {
-              ExprLambda { semantics: semantics } =>
-                let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-                let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-                let p = emit_ident(name: dag_name, target: Rust)
-                let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-                let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-                concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result }")
-              _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
-            }
-          None => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
-        }
-      }
-    MethodFilter =>
-      match args |> first {
-        Some { value: a } =>
-          match arg_value(n: a).expr_data {
-            ExprLambda { semantics: semantics } =>
-              let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-              let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = emit_ident(name: dag_name, target: Rust)
-              let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __result.push(", p, "); } } __result }")
-            _ => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
-          }
-        None => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
-      }
-    MethodAny =>
-      match args |> first {
-        Some { value: a } =>
-          match arg_value(n: a).expr_data {
-            ExprLambda { semantics: semantics } =>
-              let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-              let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = emit_ident(name: dag_name, target: Rust)
-              let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              concat("{ let mut __found = false; for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __found = true; break; } } __found }")
-            _ => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
-          }
-        None => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
-      }
-    MethodAll =>
-      match args |> first {
-        Some { value: a } =>
-          match arg_value(n: a).expr_data {
-            ExprLambda { semantics: semantics } =>
-              let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-              let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = emit_ident(name: dag_name, target: Rust)
-              let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              concat("{ let mut __all = true; for ", p, " in ", recv_str, ".iter().cloned() { if !(", body_str, ") { __all = false; break; } } __all }")
-            _ => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
-          }
-        None => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
-      }
-    MethodFlatMap =>
-      match args |> first {
-        Some { value: a } =>
-          match arg_value(n: a).expr_data {
-            ExprLambda { semantics: semantics } =>
-              let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-              let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
-              let p = emit_ident(name: dag_name, target: Rust)
-              let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
-              let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend(", body_str, "); } __result }")
-            _ => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
-          }
-        None => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
-      }
-    MethodSkip => concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
-    MethodTake => concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
-    MethodFold => {
-      let contextual_acc_type = match result_type {
-        Some { value: Resolved { node: method_result_type } } => Some { value: method_result_type }
-        _ => none
-      }
-      let acc_type_node = match fold_accumulator_type {
-        Some { value: acc_type } =>
-          let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
-          if node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit) {
-            match contextual_acc_type {
-              Some { value: concrete_type } => concrete_type
-              None => acc_type
-            }
-          } else { acc_type }
-        None =>
-          match contextual_acc_type {
-            Some { value: concrete_type } => concrete_type
-            None =>
-              // Fallback: infer accumulator type from init expression's return type.
-              match args |> first {
-                Some { value: init_arg } =>
-                  if arg_value(n: init_arg).inferred != none {
-                    rt_type(n: arg_value(n: init_arg))
-                  } else { type_variable_node(id: "fold_accum") }
-                None => type_variable_node(id: "fold_accum")
-              }
-          }
-      }
-      let acc_type_str = emit_node_type_rc(n: acc_type_node, target: Rust, rc_types: rc_types)
-      // Check if the acc type has any Unit/empty children (incomplete type inference)
-      let acc_has_unit_child = acc_type_node.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type_node.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
-      let init_str = match args |> first {
-        Some { value: init_arg } =>
-          match arg_value(n: init_arg).expr_data {
-            ExprCall { call_semantics: _ } =>
-              if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
-                concat("<", acc_type_str, ">::new()")
-              } else if init_func == "empty_map" {
-                // Partial turbofish: tell Rust the key type, infer value type from context
-                "<HashMap<String, _>>::new()"
-              } else {
-                emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              }
-            _ => emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          }
-        None => "compile_error!(\"missing fold init argument\")"
-      }
-      let fold_fn = match args |> skip(1) |> first {
-        Some { value: a } =>
-          emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: acc_type_str, elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        None => "compile_error!(\"missing fold function argument\")"
-      }
-      concat(recv_str, ".iter().cloned().fold(", init_str, ", ", fold_fn, ")")
-    }
-    MethodSortBy =>
-      // Annotate sort_by closure params with the element type to avoid E0282.
-      let elem_type_str = match receiver.inferred {
-        Some { value: Resolved { node: rt } } =>
-          let resolved = rt
-          let elem = for_each_element_type_node(n: resolved)
-          let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
-          if elem.name != "" && !elem_is_type_var {
-            emit_node_type_rc(n: elem, target: Rust, rc_types: rc_types)
-          } else { "_" }
-        _ => "_"
-      }
-      let sort_key_fn = match args |> first {
-        Some { value: a } =>
-          emit_typed_collection_lambda(lambda_expr: arg_value(n: a), elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        None => "compile_error!(\"missing sort_by key function argument\")"
-      }
-      concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
-    MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
+  let recv_is_optional = match receiver.inferred {
+    Some { value: Resolved { node: rt } } => rt.return_cardinality == CardOptional
+    _ => false
   }
-}
-
-fn rust_bridge_fn_name(method: RuntimeBridgeMethod) -> String {
-  bridge_method_base_name(method: method)
-}
-
-fn emit_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let function_name = rust_bridge_fn_name(method: method)
-  let lowered = if (method == BridgeGet) {
-    let list_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    let index_str = match args |> first {
-      Some { value: a } => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      None => "compile_error!(\"get method missing index\")"
+  if recv_is_optional {
+    match args |> first {
+      Some { value: a } =>
+        match arg_value(n: a).expr_data {
+          ExprLambda { semantics: semantics } =>
+            let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+            let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+            let p = emit_ident(name: dag_name, target: Rust)
+            let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+            let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+            concat(recv_str, ".map(|", p, "| ", body_str, ")")
+          _ => concat(recv_str, ".map(", first_arg_str, ")")
+        }
+      None => concat(recv_str, ".map(", first_arg_str, ")")
     }
-    concat(list_str, ".get((", index_str, ") as usize).cloned()")
-  } else if (method == BridgeWith) {
-    let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-    let type_name = match receiver.inferred {
-      Some { value: Resolved { node: rt } } =>
-        let rt_is_error = if rt.inferred != none { is_compiler_error(inferred: rt.inferred.value) } else { false }
-        if rt_is_error || rt.name == "" {
-          "compile_error!(\"with method missing resolved record type\")"
-        } else { rt.name }
-      _ => "compile_error!(\"with method missing resolved record type\")"
-    }
-    if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
-    let update_arg = (args |> first).value.value
-    let field_strs = match update_arg.expr_data {
-      ExprRecordLit { parent_enum: _ } =>
-        update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
-      _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)]
-    }
-    let fields_str = field_strs |> join(separator: ", ")
-    let needs_rc = emit_map_has(m: rc_types, key: type_name)
-    let spread = if needs_rc { concat("(*", base_str, ").clone()") } else { concat(base_str, ".clone()") }
-    let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
-    if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
   } else {
-    let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
-      concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-    } else {
-      emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    match args |> first {
+      Some { value: a } =>
+        match arg_value(n: a).expr_data {
+          ExprLambda { semantics: semantics } =>
+            let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+            let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+            let p = emit_ident(name: dag_name, target: Rust)
+            let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+            let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+            concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result }")
+          _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+        }
+      None => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
     }
-    let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-    let all_strs = concat([recv_str], arg_strs)
-    concat("v2_rt::", emit_ident(name: function_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
   }
+}
+
+fn emit_rust_filter_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  match args |> first {
+    Some { value: a } =>
+      match arg_value(n: a).expr_data {
+        ExprLambda { semantics: semantics } =>
+          let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+          let p = emit_ident(name: dag_name, target: Rust)
+          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __result.push(", p, "); } } __result }")
+        _ => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+      }
+    None => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+  }
+}
+
+fn emit_rust_any_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  match args |> first {
+    Some { value: a } =>
+      match arg_value(n: a).expr_data {
+        ExprLambda { semantics: semantics } =>
+          let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+          let p = emit_ident(name: dag_name, target: Rust)
+          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          concat("{ let mut __found = false; for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __found = true; break; } } __found }")
+        _ => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
+      }
+    None => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
+  }
+}
+
+fn emit_rust_all_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  match args |> first {
+    Some { value: a } =>
+      match arg_value(n: a).expr_data {
+        ExprLambda { semantics: semantics } =>
+          let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+          let p = emit_ident(name: dag_name, target: Rust)
+          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          concat("{ let mut __all = true; for ", p, " in ", recv_str, ".iter().cloned() { if !(", body_str, ") { __all = false; break; } } __all }")
+        _ => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
+      }
+    None => concat(recv_str, ".iter().cloned().all(", first_arg_str, ")")
+  }
+}
+
+fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  match args |> first {
+    Some { value: a } =>
+      match arg_value(n: a).expr_data {
+        ExprLambda { semantics: semantics } =>
+          let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
+          let p = emit_ident(name: dag_name, target: Rust)
+          let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
+          let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend(", body_str, "); } __result }")
+        _ => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+      }
+    None => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+  }
+}
+
+fn emit_rust_get_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let list_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let index_str = match args |> first {
+    Some { value: a } => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    None => "compile_error!(\"get method missing index\")"
+  }
+  concat(list_str, ".get((", index_str, ") as usize).cloned()")
+}
+
+fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let base_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  let type_name = match receiver.inferred {
+    Some { value: Resolved { node: rt } } =>
+      let rt_is_error = if rt.inferred != none { is_compiler_error(inferred: rt.inferred.value) } else { false }
+      if rt_is_error || rt.name == "" {
+        "compile_error!(\"with method missing resolved record type\")"
+      } else { rt.name }
+    _ => "compile_error!(\"with method missing resolved record type\")"
+  }
+  if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
+  let update_arg = (args |> first).value.value
+  let field_strs = match update_arg.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
+    _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)]
+  }
+  let fields_str = field_strs |> join(separator: ", ")
+  let needs_rc = emit_map_has(m: rc_types, key: type_name)
+  let spread = if needs_rc { concat("(*", base_str, ").clone()") } else { concat(base_str, ".clone()") }
+  let raw = concat(type_name, " { ", fields_str, ", ..", spread, " }")
+  if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
+}
+
+fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  let function_name = method_name
+  let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
+    concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+  } else {
+    emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+  }
+  let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+  let all_strs = concat([recv_str], arg_strs)
+  let lowered = concat("v2_rt::", emit_ident(name: function_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
   if rust_runtime_bridge_wraps_result_in_rc(function_name: function_name, receiver: receiver, scope: scope) {
     concat(lowered, ".map(Rc::new)")
   } else {
@@ -2476,22 +2456,71 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       concat(var_name, ".", emit_ident(name: method, target: Rust), "(", args_str, ").await?")
     }
     AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type } => {
-      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
-      match intrinsic_match {
-        Some { value: intrinsic } =>
-          emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        None => {
-          let bridge_match = map_get(runtime_bridge_method_index(), method_name)
-          match bridge_match {
-            Some { value: bridge_method } =>
-              emit_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            None =>
-              let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-              let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-              let args_str = arg_strs |> join(separator: ", ")
-              concat(recv_str, ".", emit_ident(name: method_name, target: Rust), "(", args_str, ")")
-          }
-        }
+      if method_name == "fold" {
+        emit_rust_fold_method_call(fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "sort_by" {
+        emit_rust_sort_by_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "map" {
+        emit_rust_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "filter" {
+        emit_rust_filter_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "any" {
+        emit_rust_any_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "all" {
+        emit_rust_all_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "flat_map" {
+        emit_rust_flat_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "get" {
+        emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "with" {
+        emit_rust_with_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "count" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat("(", recv_str, ".len() as i64)")
+      } else if method_name == "join" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".join(&", first_arg_str, ")")
+      } else if method_name == "split" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
+      } else if method_name == "last" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".last().cloned()")
+      } else if method_name == "first" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".first().cloned()")
+      } else if method_name == "enumerate" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
+      } else if method_name == "chars" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
+      } else if method_name == "string_contains" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
+      } else if method_name == "concat" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+        let all_arg_strs = concat([recv_str], arg_strs)
+        emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
+      } else if method_name == "skip" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
+      } else if method_name == "take" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
+      } else if method_name == "append" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
+      } else {
+        // Generic bridge method: v2_rt::method_name(receiver, args...)
+        emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       }
     }
     PlainMethodSemantics =>

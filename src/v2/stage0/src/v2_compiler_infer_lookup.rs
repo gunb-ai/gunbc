@@ -60,7 +60,6 @@ use crate::v2_std_core::RuntimeBridgeMethod::*;
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, error_type_node, node_is_optional, node_is_map, normalize_access_type_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
-pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index};
 pub use crate::v2_compiler_infer_types::{method_receiver_element_node};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult, check_service_method_call_node};

@@ -33,20 +33,8 @@ import v2.std.core {
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
   ExprIndex, ExprSlice, ExprReturn,
   make_expr_node,
-  IntrinsicMethod,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
-  RuntimeBridgeMethod,
-  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
-  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
-  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
-  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
-  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
-  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
   FieldSummary, TupleFirst, TupleSecond,
   Text, Interpolation,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
@@ -64,7 +52,6 @@ import v2.compiler.languages {
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, rt_type }
 import v2.compiler.infer_method {
-  intrinsic_method_index, runtime_bridge_method_index
 }
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
@@ -780,43 +767,40 @@ fn emit_py_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
-fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn py_bridge_method_name(method_name: String) -> String {
+  // Python reserved word `with` requires override; all others use method name directly.
+  if method_name == "with" { "with_update" } else { method_name }
+}
+
+fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
   let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
-  match intrinsic {
-    MethodCount => concat("len(", recv_str, ")")
-    MethodJoin => concat(first_arg_str, ".join(", recv_str, ")")
-    MethodSplit => concat(recv_str, ".split(", first_arg_str, ")")
-    MethodLast => concat(recv_str, "[-1] if ", recv_str, " else None")
-    MethodFirst => concat(recv_str, "[0] if ", recv_str, " else None")
-    MethodEnumerate => concat("list(enumerate(", recv_str, "))")
-    MethodChars => concat("list(", recv_str, ")")
-    MethodStringContains => concat(first_arg_str, " in ", recv_str)
-    MethodConcat => concat(recv_str, " + ", first_arg_str)
-    MethodMap => concat("[", first_arg_str, "(x) for x in ", recv_str, "]")
-    MethodFilter => concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]")
-    MethodAny => concat("any(", first_arg_str, "(x) for x in ", recv_str, ")")
-    MethodAll => concat("all(", first_arg_str, "(x) for x in ", recv_str, ")")
-    MethodFlatMap => concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]")
-    MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
-    MethodTake => concat(recv_str, "[:", first_arg_str, "]")
-    MethodFold => concat("functools.reduce(", first_arg_str, ", ", recv_str, ")")
-    MethodSortBy => concat("sorted(", recv_str, ", key=", first_arg_str, ")")
-    MethodAppend => concat(recv_str, " + [", first_arg_str, "]")
+  if method_name == "count" { concat("len(", recv_str, ")") }
+  else if method_name == "join" { concat(first_arg_str, ".join(", recv_str, ")") }
+  else if method_name == "split" { concat(recv_str, ".split(", first_arg_str, ")") }
+  else if method_name == "last" { concat(recv_str, "[-1] if ", recv_str, " else None") }
+  else if method_name == "first" { concat(recv_str, "[0] if ", recv_str, " else None") }
+  else if method_name == "enumerate" { concat("list(enumerate(", recv_str, "))") }
+  else if method_name == "chars" { concat("list(", recv_str, ")") }
+  else if method_name == "string_contains" { concat(first_arg_str, " in ", recv_str) }
+  else if method_name == "concat" { concat(recv_str, " + ", first_arg_str) }
+  else if method_name == "map" { concat("[", first_arg_str, "(x) for x in ", recv_str, "]") }
+  else if method_name == "filter" { concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]") }
+  else if method_name == "any" { concat("any(", first_arg_str, "(x) for x in ", recv_str, ")") }
+  else if method_name == "all" { concat("all(", first_arg_str, "(x) for x in ", recv_str, ")") }
+  else if method_name == "flat_map" { concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]") }
+  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
+  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
+  else if method_name == "fold" { concat("functools.reduce(", first_arg_str, ", ", recv_str, ")") }
+  else if method_name == "sort_by" { concat("sorted(", recv_str, ", key=", first_arg_str, ")") }
+  else if method_name == "append" { concat(recv_str, " + [", first_arg_str, "]") }
+  else {
+    // Generic bridge method: function_name(receiver, args...)
+    let function_name = py_bridge_method_name(method_name: method_name)
+    let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
+    let all_args = concat([recv_str], arg_strs)
+    concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
   }
-}
-
-fn py_bridge_method_name(method: RuntimeBridgeMethod) -> String {
-  // Python reserved word `with` requires override; all others use base name.
-  if (method == BridgeWith) { "with_update" } else { bridge_method_base_name(method: method) }
-}
-
-fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let function_name = py_bridge_method_name(method: method)
-  let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
-  let all_args = concat([recv_str], arg_strs)
-  concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
 }
 
 fn emit_py_plain_method_call(receiver: Node, method: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -834,22 +818,8 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
-    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } => {
-      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
-      match intrinsic_match {
-        Some { value: intrinsic } =>
-          emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
-        None => {
-          let bridge_match = map_get(runtime_bridge_method_index(), method_name)
-          match bridge_match {
-            Some { value: bridge_method } =>
-              emit_py_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
-            None =>
-              emit_py_plain_method_call(receiver: receiver, method: method_name, args: args, registry: registry, scope: scope, depth: depth)
-          }
-        }
-      }
-    }
+    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
+      emit_py_algebra_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     PlainMethodSemantics =>
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }

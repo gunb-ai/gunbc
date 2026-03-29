@@ -20,23 +20,14 @@ import v2.std.core {
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach,
   arg_value, arm_body,
-  IntrinsicMethod,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   MethodSemantics, AlgebraMethodSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
-  RuntimeBridgeMethod, BridgeReverse,
   binop_left, binop_right,
   foreach_collection, foreach_body,
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes
-}
-import v2.compiler.infer_method {
-  intrinsic_method_index, runtime_bridge_method_index
 }
 
 // =========================================================================
@@ -105,32 +96,31 @@ type CostShape
   | ShapeIterateBody { produces_collection: Bool }
   | ShapeSortBody
 
-// Map an IntrinsicMethod to its cost shape. This is the single authority
-// on what cost structure each intrinsic method has. The complexity analyzer
-// dispatches on this via the reconcile-provided MethodSemantics, not by
-// string-matching method names.
-fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> CostShape {
-  match method {
-    MethodMap => ShapeIterateBody { produces_collection: true }
-    MethodFlatMap => ShapeIterateBody { produces_collection: true }
-    MethodFilter => ShapeIterateBody { produces_collection: true }
-    MethodEnumerate => ShapeIterateBody { produces_collection: true }
-    MethodSkip => ShapeIterateBody { produces_collection: true }
-    MethodTake => ShapeIterateBody { produces_collection: true }
-    MethodFold => ShapeIterateBody { produces_collection: false }
-    MethodAny => ShapeIterateBody { produces_collection: false }
-    MethodAll => ShapeIterateBody { produces_collection: false }
-    MethodSortBy => ShapeSortBody
-    MethodCount => ShapeLinearScan { produces_collection: false }
-    MethodFirst => ShapeLinearScan { produces_collection: false }
-    MethodLast => ShapeLinearScan { produces_collection: false }
-    MethodJoin => ShapeLinearScan { produces_collection: false }
-    MethodStringContains => ShapeLinearScan { produces_collection: false }
-    MethodConcat => ShapeLinearScan { produces_collection: false }
-    MethodChars => ShapeLinearScan { produces_collection: true }
-    MethodSplit => ShapeLinearScan { produces_collection: true }
-    MethodAppend => ShapeConstant
-  }
+// Map a method name to its cost shape. This is the single authority
+// on what cost structure each algebra method has. The complexity analyzer
+// dispatches on this via the reconcile-provided MethodSemantics method_name.
+// Returns None for methods not in the known set (bridge methods are O(1)).
+fn method_cost_shape(method_name: String) -> CostShape? {
+  if method_name == "map" { Some { value: ShapeIterateBody { produces_collection: true } } }
+  else if method_name == "flat_map" { Some { value: ShapeIterateBody { produces_collection: true } } }
+  else if method_name == "filter" { Some { value: ShapeIterateBody { produces_collection: true } } }
+  else if method_name == "enumerate" { Some { value: ShapeIterateBody { produces_collection: true } } }
+  else if method_name == "skip" { Some { value: ShapeIterateBody { produces_collection: true } } }
+  else if method_name == "take" { Some { value: ShapeIterateBody { produces_collection: true } } }
+  else if method_name == "fold" { Some { value: ShapeIterateBody { produces_collection: false } } }
+  else if method_name == "any" { Some { value: ShapeIterateBody { produces_collection: false } } }
+  else if method_name == "all" { Some { value: ShapeIterateBody { produces_collection: false } } }
+  else if method_name == "sort_by" { Some { value: ShapeSortBody } }
+  else if method_name == "count" { Some { value: ShapeLinearScan { produces_collection: false } } }
+  else if method_name == "first" { Some { value: ShapeLinearScan { produces_collection: false } } }
+  else if method_name == "last" { Some { value: ShapeLinearScan { produces_collection: false } } }
+  else if method_name == "join" { Some { value: ShapeLinearScan { produces_collection: false } } }
+  else if method_name == "string_contains" { Some { value: ShapeLinearScan { produces_collection: false } } }
+  else if method_name == "concat" { Some { value: ShapeLinearScan { produces_collection: false } } }
+  else if method_name == "chars" { Some { value: ShapeLinearScan { produces_collection: true } } }
+  else if method_name == "split" { Some { value: ShapeLinearScan { produces_collection: true } } }
+  else if method_name == "append" { Some { value: ShapeConstant } }
+  else { none }
 }
 
 // =========================================================================
@@ -356,23 +346,18 @@ fn scalar_output() -> Map<String, CostExpr> {
 // Size-preserving methods (map, filter, etc.) pass through to the inner receiver.
 // =========================================================================
 
-fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> Bool {
-  (method == MethodMap) || (method == MethodFilter) || (method == MethodFlatMap)
-  || (method == MethodSkip) || (method == MethodEnumerate) || (method == MethodSortBy)
-  || (method == MethodConcat)
+fn is_size_preserving_method(method_name: String) -> Bool {
+  method_name == "map" || method_name == "filter" || method_name == "flat_map"
+  || method_name == "skip" || method_name == "enumerate" || method_name == "sort_by"
+  || method_name == "concat" || method_name == "reverse"
 }
 
 fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool {
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } => {
-        let intrinsic_match = map_get(intrinsic_method_index(), method_name)
-        match intrinsic_match {
-          Some { value: method } => is_size_preserving_intrinsic_method(method: method)
-          None => method_name == "reverse"
-        }
-      }
+      AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
+        is_size_preserving_method(method_name: method_name)
       _ => false
     }
   }
@@ -939,13 +924,12 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       let method_cost_result = if ms == none { none } else {
         match ms.value {
           AlgebraMethodSemantics { method_name: mn, fold_accumulator_type: _ } => {
-            let intrinsic_match = map_get(intrinsic_method_index(), mn)
-            match intrinsic_match {
-              Some { value: im } =>
-                let shape = intrinsic_method_cost_shape(method: im)
+            let shape_match = method_cost_shape(method_name: mn)
+            match shape_match {
+              Some { value: shape } =>
                 Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index) }
               None =>
-                // All runtime bridge methods are O(1)
+                // All methods not in the known set (bridge methods) are O(1)
                 Some { value: SummaryResult {
                   summary: ComplexitySummary {
                     work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
