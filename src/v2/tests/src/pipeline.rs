@@ -2,7 +2,88 @@
 
 use crate::helpers::*;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
+use v2_compiler::v2_compiler_compile::SourceFile;
 use serde_json::Value;
+use std::rc::Rc;
+
+// ── Full DSL compilation (non-consensual: all files, no exceptions) ────
+
+/// Scans dsl/ for all .dag files and compiles them as a unit.
+/// No hardcoded file list. If a .dag file exists, it must compile.
+#[test]
+#[ignore] // run with: cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored
+fn full_dsl_compiles() {
+    let ws = workspace_root();
+    let dsl_dir = ws.join("dsl");
+
+    let mut sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&dsl_dir, &dsl_dir, &mut sources);
+
+    assert!(
+        !sources.is_empty(),
+        "no .dag files found in dsl/ — something is wrong"
+    );
+
+    let result = v2_compiler::v2_compiler_compile::compile_sources(
+        sources.clone(),
+        RenderTarget::Rust,
+    );
+
+    let diag_count = result.diagnostics.len() as usize;
+    if diag_count > 0 {
+        let msgs = diagnostic_messages(&result);
+        panic!(
+            "full dsl/ compilation produced {} diagnostics (expected 0):\n{}",
+            diag_count,
+            msgs.iter()
+                .enumerate()
+                .map(|(i, m)| format!("  [{}] {}", i, m))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    assert!(
+        !result.files.is_empty(),
+        "0 files emitted despite 0 diagnostics"
+    );
+
+    eprintln!(
+        "full_dsl_compiles: {} .dag files → {} emitted files, 0 diagnostics",
+        sources.len(),
+        result.files.len()
+    );
+}
+
+fn collect_dag_sources(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    sources: &mut Vec<Rc<SourceFile>>,
+) {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_sources(root, &path, sources);
+        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            let content = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+            let rel = path
+                .strip_prefix(root.parent().unwrap_or(root))
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .to_string();
+            sources.push(Rc::new(SourceFile {
+                path: rel,
+                content,
+            }));
+        }
+    }
+}
 
 // ── Basic pipeline tests ────────────────────────────────────────────────
 

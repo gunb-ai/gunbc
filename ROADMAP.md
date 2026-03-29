@@ -2374,3 +2374,40 @@ Generated tests are first-class compiler outputs. They must:
    operation, assert the return value.
 4. **Parity across targets.** Same operations tested, same mock data,
    same assertion shape.
+
+### Non-Consensual Testing (2026-03-29)
+
+**Principle:** if a `.dag` file exists in this repo, it is tested. No opt-in,
+no hardcoded file lists, no exceptions. The test system discovers files by
+scanning the filesystem, not by reading a manifest.
+
+**Current gap:** tests use hardcoded file lists. `self_compile_all_modules`
+has a static `vec![]` of source files. `prepare_sources` cherry-picks files
+into a temp directory. Adding a new `.dag` file (e.g., `std/stack.dag`) does
+not add it to any test. CI passes with broken domain files.
+
+**Required tests (scan-based, no file lists):**
+
+| Test | What it does | Catches |
+|------|-------------|---------|
+| `all_dsl_files_parse` | Scan `dsl/`, parse each `.dag` file, assert 0 errors | New files with syntax errors |
+| `full_dsl_compiles` | Compile all of `dsl/` as a unit, assert 0 diagnostics | Import resolution, type errors, inference regressions |
+| `full_dsl_emits_rust` | Compile to Rust, `cargo check` the output | Codegen regressions (Bool, serde, async) |
+| `full_dsl_emits_python` | Compile to Python, `python3 -m py_compile` each file | Python codegen regressions |
+| `per_file_mock_tests` | For every service operation with `mock_response`, generate and run a test | Service definitions produce working code |
+
+**Test generation direction:**
+
+The testgen system should walk every `.dag` file in the repo and for each:
+
+1. **Types:** generate roundtrip tests (construct → serialize → deserialize → assert equal)
+2. **Services with mocks:** generate mock invocation tests (instantiate with mock, call operation, assert output matches mock_response shape)
+3. **Pure functions (fn):** generate property tests where possible (type-driven input generation, assert no panics, assert return type matches)
+4. **Workflows (func):** generate dry-run tests (all services use mock_response, assert workflow completes without error)
+
+The generated tests are committed alongside the `.dag` source. CI runs them.
+Adding a `.dag` file automatically generates tests on the next testgen pass.
+Removing a `.dag` file automatically removes its tests.
+
+**CI must run:** `full_dsl_compiles` on every PR. No PR merges if any `.dag`
+file in the repo fails to compile. This is the non-negotiable gate.
