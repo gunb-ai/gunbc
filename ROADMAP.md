@@ -805,49 +805,78 @@ hand-written rules for things the graph already tells us.
 typed graph → structural comparison → coercion direction → target-basis graph → renderer
 ```
 
-**Three coercion directions, two are structural:**
+**Four coercion directions, all structurally deducible:**
 
-| Direction | Graph relationship | Cost | Example |
-|---|---|---|---|
-| **Upcast** (widen) | Source is subgraph of target | **Free** | `Url → String` — Url has every String edge plus more. Forget the extras. |
-| **Downcast** (narrow) | Target is subgraph of source | **Needs check** | `String → Url` — target has constraints source doesn't. Runtime validation or explicit `as`. |
-| **Sidecast** (lateral) | No subgraph relationship | **Needs .dag process** | `Celsius → Fahrenheit`, `List → Set`, `Int → String` — structural transformation, not deducible. |
+| Direction | Graph relationship | Information | Safety | Example |
+|---|---|---|---|---|
+| **Widening** | Source is refinement of target | Forgets constraints | Safe, free | `Url → String` |
+| **Narrowing** | Target has constraints source lacks | Adds constraints | Needs validation | `String → Url` |
+| **Isomorphism** | Path through shared base, lossless | Same info, different view | Safe, pure function | `Celsius ↔ Kelvin ↔ Fahrenheit` |
+| **Projection** | Source has structure target lacks | Loses information | Must acknowledge loss | `List → Set` (loses order) |
 
-Upcasting and downcasting are NEVER hand-written rules. The compiler
-compares the source and target graphs: if one is a subgraph of the
-other, the direction and cost are determined. Only sidecasts need
-explicit `.dag` transformation processes — authored by users or
-libraries, not embedded in the compiler.
+All four are structurally deducible from the graph. The compiler
+reads the type relationships and determines direction + cost. No
+hand-written coercion rules.
+
+**Key insight: most "sidecasts" dissolve with proper modeling.** If
+Celsius and Fahrenheit both model absolute temperature through Kelvin
+(a shared structural base), the "conversion" is:
+
+```
+Celsius → Kelvin    (isomorphism, pure: kelvin = celsius + 273.15)
+Kelvin → Fahrenheit (isomorphism, pure: f = kelvin * 9/5 - 459.67)
+```
+
+Both legs are pure and invertible. The compiler finds the path through
+the type graph — no authored transformation needed. If you find
+yourself writing a "sidecast," your types may be under-modeled: there's
+a shared base you haven't declared.
 
 **Worked examples:**
 
 ```
-UPCAST (free, structural):
+WIDENING (free, structural):
   Url → String
-  Source graph: Node "Url" { scheme: String, host: String, ... }
-  Target graph: Node "String" (leaf)
   Url IS a String (refinement). Source has all target edges + more.
-  Compiler sees: subgraph ✓. Cost: free. No rule needed.
+  Compiler sees: subgraph ✓. Cost: free.
 
-DOWNCAST (checked, structural):
-  Float → Int
-  Source graph: Node "Float" = Field<Word64>
-  Target graph: Node "Int" = OrderedRing<Word64>
-  Int has constraints Float doesn't (no fractional part).
-  Compiler sees: target has extra constraints. Cost: runtime check.
-  Developer must write explicit `as` or `truncate`.
+NARROWING (checked, structural):
+  String → Url
+  Target has constraints (scheme, host) source doesn't guarantee.
+  Compiler sees: extra constraints. Must validate or fail.
 
-SIDECAST (explicit .dag process):
+ISOMORPHISM (pure, through shared base):
   Celsius → Fahrenheit
-  No subgraph relationship — different structures entirely.
-  Requires: fn to_fahrenheit(c: Celsius) -> Fahrenheit { c * 9/5 + 32 }
-  This is a .dag function, not a compiler rule.
+  Both are views of absolute temperature (Kelvin).
+  Compiler finds: Celsius → Kelvin → Fahrenheit (both invertible).
+  Cost: two pure functions. No information lost.
 
+PROJECTION (lossy, explicit acknowledgment):
   List → Set
-  Loses information (order, duplicates). Not a subgraph.
-  Requires: fn to_set(list: List<T>) -> Set<T> { ... }
-  User/library authored. The compiler can't deduce this.
+  Set has LESS structure than List (no order, no duplicates).
+  Compiler sees: target lacks edges source has (position, multiplicity).
+  Developer must acknowledge what's lost: to_set(list) is explicit.
+  The compiler can enumerate exactly what's discarded.
+
+  Float → Int
+  Int has LESS precision than Float (no fractional part).
+  Compiler sees: target lacks precision edge.
+  Developer must acknowledge: truncate(f) or round(f) is explicit.
 ```
+
+**Unsafe coercions are not allowed.** The compiler either:
+- Proves the transformation is safe (widening, isomorphism) → allows
+- Identifies exactly what's lost (projection) → shows the structural
+  diff and requires the user to write the explicit transform
+- Finds a path through a shared base → uses it automatically
+- Can't find any structural path → compile error with guidance:
+  "these types differ by [edges X, Y, Z] — write a function that
+  handles the difference, or declare a shared base"
+
+The error messages show the structural transform required — what
+edges exist in the source but not the target, what constraints the
+target adds. The user writes the transform; the compiler verifies it
+handles every structural difference. No silent information loss.
 
 **For language targets, the same model applies:**
 
@@ -859,20 +888,24 @@ against the basis:
 |---|---|---|
 | Product | Rust: struct ✓ | **Identity** — same structure, different syntax |
 | Coproduct | Rust: enum ✓ | **Identity** |
-| Coproduct | SPICE: no native tagged union | **Sidecast** — needs `.dag` lowering process (mux from switches) |
+| Coproduct | SPICE: no native tagged union | **Isomorphism** — mux from switches is structurally equivalent (one-of-N selection) |
 | Cardinality | Verilog: tri-state ✓ | **Identity** |
 | Function | English: paragraph ✓ | **Identity** |
 
-When the source pattern IS in the target's basis → identity (free,
-structural). When it's NOT → the language plugin provides a `.dag`
-sidecast process for that pattern. Only the non-native patterns need
-explicit processes.
+When the source pattern IS in the target's basis → identity (free).
+When it's NOT → the compiler looks for a structural isomorphism in
+the target's basis (e.g., coproduct ↔ mux: both are one-of-N
+selection). The language plugin declares these isomorphisms in
+`coerce.dag`. The compiler doesn't guess — it follows declared
+structural equivalences.
 
-**Why this avoids duplicate representations:** coercion rules for
-upcasting/downcasting would duplicate what the graph already
-expresses. The graph IS the type relationship. Reading it is free.
-Only sidecasts — where the relationship genuinely doesn't exist in
-the structure — need authored processes.
+**Why this avoids duplicate representations:** the graph IS the type
+relationship. Widening, narrowing, and projection are structural
+observations — the compiler reads them from the graph. Isomorphisms
+through shared bases are structural paths — the compiler finds them.
+Only language-specific structural equivalences (coproduct ↔ mux)
+need to be declared, and those are properties of the target domain,
+not rules duplicated from the source types.
 
 **Rendering happens AFTER coercion.** The renderer walks the
 target-basis graph (already in native patterns) and produces text.
@@ -895,13 +928,16 @@ module weather.convert
 
 import std.types { Float, String }
 
-type Celsius = Float where label("°C")
-type Fahrenheit = Float where label("°F")
+// Kelvin is the shared structural base for temperature
+type Kelvin = Float where label("K") where range(0.0, max_float)
 
-// Sidecast: Celsius and Fahrenheit are both Float refinements
-// but not in a subtype relationship — needs explicit process
-fn to_fahrenheit(c: Celsius) -> Fahrenheit { c * 9.0 / 5.0 + 32.0 }
-fn to_celsius(f: Fahrenheit) -> Celsius { (f - 32.0) * 5.0 / 9.0 }
+// Celsius and Fahrenheit are isomorphic views of Kelvin
+// The compiler finds the path: Celsius → Kelvin → Fahrenheit
+type Celsius = Kelvin where offset(-273.15) where label("°C")
+type Fahrenheit = Kelvin where scale(9.0/5.0) where offset(-459.67) where label("°F")
+
+// No explicit conversion functions needed — the compiler derives
+// Celsius → Fahrenheit through Kelvin (both legs are pure isomorphisms)
 
 type TemperatureReading {
   value: Celsius
@@ -932,9 +968,9 @@ type TemperatureReport
     }
   },
   "coercion_plan": {
-    "Celsius → Float": "upcast, free (Celsius is Float refinement)",
-    "Float → Celsius": "downcast, needs validation (where label check)",
-    "Celsius → Fahrenheit": "sidecast, via to_fahrenheit (user-authored)"
+    "Celsius → Float": "widening, free (Celsius refines Float)",
+    "Float → Celsius": "narrowing, needs validation (range + offset)",
+    "Celsius → Fahrenheit": "isomorphism via Kelvin (compiler-derived, pure)"
   }
 }
 ```
@@ -951,7 +987,8 @@ enum TemperatureReport {
     DailyAverage { readings: Rc<Vec<TemperatureReading>>, avg: f64 },
     Error { message: String },
 }
-fn to_fahrenheit(c: f64) -> f64 { c * 9.0 / 5.0 + 32.0 }
+// to_fahrenheit derived by compiler: celsius + 273.15 then * 9/5 - 459.67
+fn celsius_to_fahrenheit(c: f64) -> f64 { c * 9.0 / 5.0 + 32.0 }
 ```
 
 **Compiled to SPICE (sidecast for coproduct — mux from switches):**
@@ -1001,7 +1038,7 @@ A temperature report is one of:
 | Behavioral (type roundtrip) | `TemperatureReading` construct → serialize → deserialize → equal |
 | Behavioral (function) | `to_fahrenheit(100.0) == 212.0`, `to_celsius(32.0) == 0.0` |
 | Edge contracts | `Celsius → to_fahrenheit → Fahrenheit`: sidecast process exists, types match |
-| Coercion correctness | Upcast `Celsius → Float` is free. Downcast `Float → Celsius` requires validation. Sidecast `Celsius → Fahrenheit` uses `to_fahrenheit`. |
+| Coercion correctness | Widening `Celsius → Float` is free. Narrowing `Float → Celsius` requires validation. Isomorphism `Celsius → Fahrenheit` via Kelvin is compiler-derived. |
 | Differential/parity | All 3 targets produce structurally equivalent output |
 | Guarantee receipt | Receipt matches expectations, no `report_only` gaps |
 
