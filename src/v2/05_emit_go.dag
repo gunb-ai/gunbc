@@ -25,14 +25,12 @@ import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_name, param_node_type_expr,
-  MatchPattern, FieldBinding, LiteralValue,
+  MatchPattern, LiteralValue, field_binding_name, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_name, resource_use_resource,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart,
   DeclaredFuncSig,
-  TransportKind, RestTransport, ShellTransport, FileTransport,
-  is_transport_kind,
   transport_has_auth, transport_auth_header_name,
   transport_headers, transport_env,
   ExprData, NoExprData,
@@ -42,20 +40,8 @@ import v2.std.core {
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
   ExprIndex, ExprSlice, ExprReturn,
   make_expr_node,
-  IntrinsicMethod,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
-  RuntimeBridgeSemantics, ServiceMethodSemantics,
-  RuntimeBridgeMethod,
-  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
-  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
-  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
-  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
-  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
-  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics,
   Text, Interpolation,
   FieldSummary, FieldAccessStyle,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
@@ -80,6 +66,8 @@ import v2.compiler.languages {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, rt_type }
+import v2.compiler.infer_method {
+}
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -118,7 +106,6 @@ import v2.compiler.emit {
   typed_named_arg_matches, order_typed_call_args,
   classify_typed_item,
   extract_test_projections,
-  bridge_method_base_name,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport
@@ -573,7 +560,7 @@ fn emit_go_pattern(pattern: MatchPattern) -> String {
   }
 }
 
-fn emit_go_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> String {
+fn emit_go_variant_pattern(name: String, field_bindings: List<Node>) -> String {
   // Go type switch: case TypeName:
   name
 }
@@ -593,7 +580,7 @@ fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, regis
 fn emit_go_expr_var(expr: Node, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprVar { name: n, binding_kind: _ } => concat(prefix, emit_ident(name: n, target: Go))
+    ExprVar { binding_kind: _ } => concat(prefix, emit_ident(name: n, target: Go))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_var expected ExprVar", target: Go))
   }
 }
@@ -601,7 +588,7 @@ fn emit_go_expr_var(expr: Node, depth: Int) -> String {
 fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprFieldAccess { field: f, summary: summary } =>
+    ExprFieldAccess { summary: summary } =>
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
@@ -618,7 +605,7 @@ fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope:
 fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       concat(prefix, emit_go_typed_call(func: f, args: expr.children, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_call expected ExprCall", target: Go))
   }
@@ -627,7 +614,7 @@ fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 fn emit_go_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprMethodCall { method: m, method_semantics: method_semantics } =>
+    ExprMethodCall { method_semantics: method_semantics } =>
       let r = method_receiver(texpr: expr)
       let a = method_arg_nodes(texpr: expr)
       concat(prefix, emit_go_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope))
@@ -658,7 +645,7 @@ fn emit_go_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScop
 
 fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprLet { name: n } =>
+    ExprLet =>
       let v = let_value(texpr: expr)
       let bd = let_body(texpr: expr)
       emit_go_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
@@ -669,7 +656,7 @@ fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 fn emit_go_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
-    ExprRecordLit { type_name: tn, parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       let fs = expr.children
       concat(prefix, emit_go_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_record_lit expected ExprRecordLit", target: Go))
@@ -710,7 +697,7 @@ fn emit_go_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 
 fn emit_go_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprForEach { variable: v } =>
+    ExprForEach =>
       let c = foreach_collection(texpr: expr)
       let bd = foreach_body(texpr: expr)
       emit_go_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
@@ -803,47 +790,43 @@ fn emit_go_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
-fn emit_go_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
-  let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
-  match intrinsic {
-    MethodCount => concat("len(", recv_str, ")")
-    MethodJoin => concat("strings.Join(", recv_str, ", ", first_arg_str, ")")
-    MethodSplit => concat("strings.Split(", recv_str, ", ", first_arg_str, ")")
-    MethodLast => concat(recv_str, "[len(", recv_str, ")-1]")
-    MethodFirst => concat(recv_str, "[0]")
-    MethodEnumerate => recv_str
-    MethodChars => concat("strings.Split(", recv_str, ", \"\")")
-    MethodStringContains => concat("strings.Contains(", recv_str, ", ", first_arg_str, ")")
-    MethodConcat => concat("append(", recv_str, ", ", first_arg_str, "...)")
-    MethodMap => concat("v2rt.Map(", recv_str, ", ", first_arg_str, ")")
-    MethodFilter => concat("v2rt.Filter(", recv_str, ", ", first_arg_str, ")")
-    MethodAny => concat("v2rt.Any(", recv_str, ", ", first_arg_str, ")")
-    MethodAll => concat("v2rt.All(", recv_str, ", ", first_arg_str, ")")
-    MethodFlatMap => concat("v2rt.FlatMap(", recv_str, ", ", first_arg_str, ")")
-    MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
-    MethodTake => concat(recv_str, "[:", first_arg_str, "]")
-    MethodFold => concat("v2rt.Fold(", recv_str, ", ", first_arg_str, ")")
-    MethodSortBy => concat("v2rt.SortBy(", recv_str, ", ", first_arg_str, ")")
-    MethodAppend => concat("append(", recv_str, ", ", first_arg_str, ")")
-  }
-}
-
-fn go_bridge_method_name(method: RuntimeBridgeMethod) -> String {
-  // Derive PascalCase from the canonical snake_case base name.
-  let base = bridge_method_base_name(method: method)
-  let parts = base |> split(delimiter: "_")
+fn go_bridge_method_name(method_name: String) -> String {
+  // Derive PascalCase from the canonical snake_case method name.
+  let parts = method_name |> split(delimiter: "_")
   let pascal_parts = parts |> map(p => capitalize_first(s: p))
   pascal_parts |> join(separator: "")
 }
 
-fn emit_go_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let method_name = go_bridge_method_name(method: method)
-  let recv_expr = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
-  let recv_str = recv_expr
-  let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0))
-  let args_str = arg_strs |> join(separator: ", ")
-  concat(recv_str, ".", method_name, "(", args_str, ")")
+fn emit_go_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+  let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
+  let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
+  if method_name == "count" { concat("len(", recv_str, ")") }
+  else if method_name == "join" { concat("strings.Join(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "split" { concat("strings.Split(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "last" { concat(recv_str, "[len(", recv_str, ")-1]") }
+  else if method_name == "first" { concat(recv_str, "[0]") }
+  else if method_name == "enumerate" { recv_str }
+  else if method_name == "chars" { concat("strings.Split(", recv_str, ", \"\")") }
+  else if method_name == "string_contains" { concat("strings.Contains(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "concat" { concat("append(", recv_str, ", ", first_arg_str, "...)") }
+  else if method_name == "map" { concat("v2rt.Map(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "filter" { concat("v2rt.Filter(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "any" { concat("v2rt.Any(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "all" { concat("v2rt.All(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "flat_map" { concat("v2rt.FlatMap(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
+  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
+  else if method_name == "fold" { concat("v2rt.Fold(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "sort_by" { concat("v2rt.SortBy(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "append" { concat("append(", recv_str, ", ", first_arg_str, ")") }
+  else {
+    // Generic bridge method: v2rt.PascalCaseName(receiver, args...)
+    let go_name = go_bridge_method_name(method_name: method_name)
+    let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0))
+    let all_args = concat([recv_str], arg_strs)
+    let args_str = all_args |> join(separator: ", ")
+    concat("v2rt.", go_name, "(", args_str, ")")
+  }
 }
 
 fn emit_go_plain_method_call(receiver: Node, method: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -861,10 +844,8 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
-    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } =>
-      emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope)
-    RuntimeBridgeSemantics { method: bridge_method } =>
-      emit_go_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope)
+    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
+      emit_go_algebra_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope)
     PlainMethodSemantics =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
   } }
@@ -1017,7 +998,7 @@ fn emit_go_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>,
 fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
   match body.expr_data {
-    ExprLet { name: n } => {
+    ExprLet => {
       let ch = body.children
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
@@ -1064,7 +1045,7 @@ fn emit_go_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, regi
 fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       let call_str = emit_go_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope)
       concat(prefix, "return ", call_str)
     _ => concat(prefix, emit_error_expr(message: "emit_go_tco_non_self_call expected ExprCall", target: Go))
@@ -1112,7 +1093,7 @@ fn emit_go_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, regis
 fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
-    ExprLet { name: n } =>
+    ExprLet =>
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: 0)
@@ -1212,13 +1193,13 @@ fn emit_go_service_def(
 }
 
 fn emit_go_service_struct(name: String, transport: Node) -> String {
-  let fields = if is_transport_kind(t: transport, kind: RestTransport) {
+  let fields = if transport.name == "rest" {
     let base = "\tBaseURL string"
     let auth_field = if transport_has_auth(t: transport) { "\n\tAuthToken string" } else { "" }
     concat(base, auth_field)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     "\tWorkingDir string"
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     "\tBasePath string"
   } else {
     ""
@@ -1246,11 +1227,11 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
+  if transport.name == "rest" {
     emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     emit_go_file_call(op_name: op_name, depth: depth)
   } else {
     emit_go_local_call(op_name: op_name, depth: depth)

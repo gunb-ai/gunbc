@@ -48,317 +48,47 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, IntrinsicMethod, RuntimeBridgeMethod, leaf_node, with_optional_cardinality};
-use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
-use crate::v2_std_core::RuntimeBridgeMethod::{BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup};
+pub use crate::v2_std_core::{Node, leaf_node, with_optional_cardinality};
 pub use crate::v2_compiler_infer_types::{container_node, tuple_node, error_type_node, bare_map_node, method_receiver_element_node};
 
-pub fn classify_reconciled_intrinsic_method(method: String) -> Option<IntrinsicMethod> {
-    if (method.clone() == "count".to_string()) {
-        Some(IntrinsicMethod::MethodCount)
-} else {
-        if (method.clone() == "join".to_string()) {
-            Some(IntrinsicMethod::MethodJoin)
-} else {
-            if (method.clone() == "split".to_string()) {
-                Some(IntrinsicMethod::MethodSplit)
-} else {
-                if (method.clone() == "last".to_string()) {
-                    Some(IntrinsicMethod::MethodLast)
-} else {
-                    if (method.clone() == "first".to_string()) {
-                        Some(IntrinsicMethod::MethodFirst)
-} else {
-                        if (method.clone() == "enumerate".to_string()) {
-                            Some(IntrinsicMethod::MethodEnumerate)
-} else {
-                            if (method.clone() == "chars".to_string()) {
-                                Some(IntrinsicMethod::MethodChars)
-} else {
-                                if (method.clone() == "string_contains".to_string()) {
-                                    Some(IntrinsicMethod::MethodStringContains)
-} else {
-                                    if (method.clone() == "concat".to_string()) {
-                                        Some(IntrinsicMethod::MethodConcat)
-} else {
-                                        if (method.clone() == "map".to_string()) {
-                                            Some(IntrinsicMethod::MethodMap)
-} else {
-                                            if (method.clone() == "filter".to_string()) {
-                                                Some(IntrinsicMethod::MethodFilter)
-} else {
-                                                if (method.clone() == "any".to_string()) {
-                                                    Some(IntrinsicMethod::MethodAny)
-} else {
-                                                    if (method.clone() == "all".to_string()) {
-                                                        Some(IntrinsicMethod::MethodAll)
-} else {
-                                                        if (method.clone() == "flat_map".to_string()) {
-                                                            Some(IntrinsicMethod::MethodFlatMap)
-} else {
-                                                            if (method.clone() == "skip".to_string()) {
-                                                                Some(IntrinsicMethod::MethodSkip)
-} else {
-                                                                if (method.clone() == "take".to_string()) {
-                                                                    Some(IntrinsicMethod::MethodTake)
-} else {
-                                                                    if (method.clone() == "fold".to_string()) {
-                                                                        Some(IntrinsicMethod::MethodFold)
-} else {
-                                                                        if (method.clone() == "sort_by".to_string()) {
-                                                                            Some(IntrinsicMethod::MethodSortBy)
-} else {
-                                                                            if (method.clone() == "append".to_string()) {
-                                                                                Some(IntrinsicMethod::MethodAppend)
-} else {
-                                                                                None
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-
-pub fn classify_runtime_bridge_method(method: String) -> Option<RuntimeBridgeMethod> {
-    if (method.clone() == "get".to_string()) {
-        Some(RuntimeBridgeMethod::BridgeGet)
-} else {
-        if (method.clone() == "with".to_string()) {
-            Some(RuntimeBridgeMethod::BridgeWith)
-} else {
-            if (method.clone() == "list_push".to_string()) {
-                Some(RuntimeBridgeMethod::BridgeListPush)
-} else {
-                if (method.clone() == "map_insert".to_string()) {
-                    Some(RuntimeBridgeMethod::BridgeMapInsert)
-} else {
-                    if (method.clone() == "map_merge".to_string()) {
-                        Some(RuntimeBridgeMethod::BridgeMapMerge)
-} else {
-                        if (method.clone() == "map_get".to_string()) {
-                            Some(RuntimeBridgeMethod::BridgeMapGet)
-} else {
-                            if (method.clone() == "map_has".to_string()) {
-                                Some(RuntimeBridgeMethod::BridgeMapHas)
-} else {
-                                if (method.clone() == "emit_map_has".to_string()) {
-                                    Some(RuntimeBridgeMethod::BridgeEmitMapHas)
-} else {
-                                    if (method.clone() == "map_values".to_string()) {
-                                        Some(RuntimeBridgeMethod::BridgeMapValues)
-} else {
-                                        if (method.clone() == "map_keys".to_string()) {
-                                            Some(RuntimeBridgeMethod::BridgeMapKeys)
-} else {
-                                            if (method.clone() == "map_contains_key".to_string()) {
-                                                Some(RuntimeBridgeMethod::BridgeMapContainsKey)
-} else {
-                                                if (method.clone() == "char_at".to_string()) {
-                                                    Some(RuntimeBridgeMethod::BridgeCharAt)
-} else {
-                                                    if (method.clone() == "string_at".to_string()) {
-                                                        Some(RuntimeBridgeMethod::BridgeStringAt)
-} else {
-                                                        if (method.clone() == "string_length".to_string()) {
-                                                            Some(RuntimeBridgeMethod::BridgeStringLength)
-} else {
-                                                            if (method.clone() == "length".to_string()) {
-                                                                Some(RuntimeBridgeMethod::BridgeLength)
-} else {
-                                                                if (method.clone() == "starts_with".to_string()) {
-                                                                    Some(RuntimeBridgeMethod::BridgeStartsWith)
-} else {
-                                                                    if (method.clone() == "ends_with".to_string()) {
-                                                                        Some(RuntimeBridgeMethod::BridgeEndsWith)
-} else {
-                                                                        if (method.clone() == "to_string".to_string()) {
-                                                                            Some(RuntimeBridgeMethod::BridgeToString)
-} else {
-                                                                            if (method.clone() == "trim".to_string()) {
-                                                                                Some(RuntimeBridgeMethod::BridgeTrim)
-} else {
-                                                                                if (method.clone() == "to_lower".to_string()) {
-                                                                                    Some(RuntimeBridgeMethod::BridgeToLower)
-} else {
-                                                                                    if (method.clone() == "to_upper".to_string()) {
-                                                                                        Some(RuntimeBridgeMethod::BridgeToUpper)
-} else {
-                                                                                        if (method.clone() == "replace".to_string()) {
-                                                                                            Some(RuntimeBridgeMethod::BridgeReplace)
-} else {
-                                                                                            if (method.clone() == "substring".to_string()) {
-                                                                                                Some(RuntimeBridgeMethod::BridgeSubstring)
-} else {
-                                                                                                if (method.clone() == "to_int".to_string()) {
-                                                                                                    Some(RuntimeBridgeMethod::BridgeToInt)
-} else {
-                                                                                                    if (method.clone() == "empty_map".to_string()) {
-                                                                                                        Some(RuntimeBridgeMethod::BridgeEmptyMap)
-} else {
-                                                                                                        if (method.clone() == "contains".to_string()) {
-                                                                                                            Some(RuntimeBridgeMethod::BridgeContains)
-} else {
-                                                                                                            if (method.clone() == "reverse".to_string()) {
-                                                                                                                Some(RuntimeBridgeMethod::BridgeReverse)
-} else {
-                                                                                                                if (method.clone() == "lookup".to_string()) {
-                                                                                                                    Some(RuntimeBridgeMethod::BridgeLookup)
-} else {
-                                                                                                                    None
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-}
-
-pub fn infer_intrinsic_method_type_node(receiver_type: Rc<Node>, intrinsic: IntrinsicMethod, fold_accumulator_type: Option<Rc<Node>>) -> Option<Rc<Node>> {
-    {
-        let elem_node = method_receiver_element_node(receiver_type.clone());
-match intrinsic.clone() {
-    IntrinsicMethod::MethodMap => Some(receiver_type.clone()),
-    IntrinsicMethod::MethodFilter => Some(receiver_type.clone()),
-    IntrinsicMethod::MethodEnumerate => Some(container_node("List".to_string(), tuple_node(leaf_node("Int".to_string()), elem_node.clone()))),
-    IntrinsicMethod::MethodFirst => Some(with_optional_cardinality(elem_node.clone())),
-    IntrinsicMethod::MethodLast => Some(with_optional_cardinality(elem_node.clone())),
-    IntrinsicMethod::MethodCount => Some(leaf_node("Int".to_string())),
-    IntrinsicMethod::MethodJoin => Some(leaf_node("String".to_string())),
-    IntrinsicMethod::MethodAny => Some(leaf_node("Bool".to_string())),
-    IntrinsicMethod::MethodAll => Some(leaf_node("Bool".to_string())),
-    IntrinsicMethod::MethodSplit => Some(container_node("List".to_string(), leaf_node("String".to_string()))),
-    IntrinsicMethod::MethodChars => Some(container_node("List".to_string(), leaf_node("String".to_string()))),
-    IntrinsicMethod::MethodFlatMap => Some(receiver_type.clone()),
-    IntrinsicMethod::MethodSkip => Some(receiver_type.clone()),
-    IntrinsicMethod::MethodTake => Some(receiver_type.clone()),
-    IntrinsicMethod::MethodFold => fold_accumulator_type.clone(),
-    IntrinsicMethod::MethodSortBy => Some(receiver_type.clone()),
-    IntrinsicMethod::MethodAppend => Some(receiver_type.clone()),
-    IntrinsicMethod::MethodStringContains => Some(leaf_node("Bool".to_string())),
-    IntrinsicMethod::MethodConcat => Some(receiver_type.clone()),
-}
-}
-}
-
-pub fn infer_runtime_bridge_method_type_node(receiver_type: Rc<Node>, method: RuntimeBridgeMethod) -> Option<Rc<Node>> {
-    {
-        let elem_node = method_receiver_element_node(receiver_type.clone());
-match method.clone() {
-    RuntimeBridgeMethod::BridgeGet => Some(with_optional_cardinality(elem_node.clone())),
-    RuntimeBridgeMethod::BridgeWith => Some(receiver_type.clone()),
-    RuntimeBridgeMethod::BridgeListPush => Some(receiver_type.clone()),
-    RuntimeBridgeMethod::BridgeMapInsert => Some(receiver_type.clone()),
-    RuntimeBridgeMethod::BridgeMapMerge => Some(receiver_type.clone()),
-    RuntimeBridgeMethod::BridgeMapGet => Some(with_optional_cardinality(elem_node.clone())),
-    RuntimeBridgeMethod::BridgeMapHas => Some(leaf_node("Bool".to_string())),
-    RuntimeBridgeMethod::BridgeEmitMapHas => Some(leaf_node("Bool".to_string())),
-    RuntimeBridgeMethod::BridgeMapContainsKey => Some(leaf_node("Bool".to_string())),
-    RuntimeBridgeMethod::BridgeContains => Some(leaf_node("Bool".to_string())),
-    RuntimeBridgeMethod::BridgeMapValues => Some(container_node("List".to_string(), elem_node.clone())),
-    RuntimeBridgeMethod::BridgeMapKeys => Some(container_node("List".to_string(), leaf_node("String".to_string()))),
-    RuntimeBridgeMethod::BridgeCharAt => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeStringAt => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeStringLength => Some(leaf_node("Int".to_string())),
-    RuntimeBridgeMethod::BridgeLength => Some(leaf_node("Int".to_string())),
-    RuntimeBridgeMethod::BridgeStartsWith => Some(leaf_node("Bool".to_string())),
-    RuntimeBridgeMethod::BridgeEndsWith => Some(leaf_node("Bool".to_string())),
-    RuntimeBridgeMethod::BridgeToString => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeTrim => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeToLower => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeToUpper => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeReplace => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeSubstring => Some(leaf_node("String".to_string())),
-    RuntimeBridgeMethod::BridgeToInt => Some(leaf_node("Int".to_string())),
-    RuntimeBridgeMethod::BridgeEmptyMap => Some(bare_map_node()),
-    RuntimeBridgeMethod::BridgeLookup => Some(with_optional_cardinality(elem_node.clone())),
-    RuntimeBridgeMethod::BridgeReverse => Some(receiver_type.clone()),
-}
-}
-}
-
-/// Builtin function return type registry — data table, not if/else branches.
-/// Each entry maps a function name to its return type Node.
-pub fn builtin_function_registry() -> HashMap<String, Rc<Node>> {
-    let mut m: HashMap<String, Rc<Node>> = HashMap::new();
-    // Int-returning functions
-    m.insert("string_length".to_string(), leaf_node("Int".to_string()));
-    m.insert("code_point".to_string(), leaf_node("Int".to_string()));
-    m.insert("to_int".to_string(), leaf_node("Int".to_string()));
-    m.insert("scan_while".to_string(), leaf_node("Int".to_string()));
-    m.insert("scan_string_end".to_string(), leaf_node("Int".to_string()));
-    m.insert("scan_to_eol".to_string(), leaf_node("Int".to_string()));
-    m.insert("skip_horizontal_ws".to_string(), leaf_node("Int".to_string()));
-    // Int?-returning functions
-    m.insert("parse_int".to_string(), with_optional_cardinality(leaf_node("Int".to_string())));
-    // String-returning functions
-    m.insert("char_at".to_string(), leaf_node("String".to_string()));
-    m.insert("substring".to_string(), leaf_node("String".to_string()));
-    m.insert("from_code_point".to_string(), leaf_node("String".to_string()));
-    m.insert("to_string".to_string(), leaf_node("String".to_string()));
-    m.insert("concat".to_string(), leaf_node("String".to_string()));
-    // Map-returning functions
-    m.insert("map_insert".to_string(), bare_map_node());
-    m.insert("map_merge".to_string(), bare_map_node());
-    m.insert("with".to_string(), bare_map_node());
-    // Bool-returning functions
-    m.insert("map_contains_key".to_string(), leaf_node("Bool".to_string()));
-    m.insert("map_has".to_string(), leaf_node("Bool".to_string()));
-    m.insert("emit_map_has".to_string(), leaf_node("Bool".to_string()));
-    // Optional-returning functions (Dynamic placeholder for type variable;
-    // .dag source uses type_variable_node — stage0 gets it on next regen)
-    m.insert("lookup".to_string(), with_optional_cardinality(leaf_node("Dynamic".to_string())));
-    m.insert("map_get".to_string(), with_optional_cardinality(leaf_node("Dynamic".to_string())));
-    m.insert("Some".to_string(), with_optional_cardinality(leaf_node("Dynamic".to_string())));
-    // List-returning functions (Dynamic placeholder for type variable element)
-    m.insert("map_keys".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
-    m.insert("map_values".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
-    m.insert("reverse".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
-    m.insert("list_push".to_string(), container_node("List".to_string(), leaf_node("Dynamic".to_string())));
-    m
-}
-
-thread_local! {
-    static BUILTIN_REGISTRY: HashMap<String, Rc<Node>> = builtin_function_registry();
-}
-
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    BUILTIN_REGISTRY.with(|reg| reg.get(&name).cloned())
+    if (((name.clone() == "string_length".to_string()) || (name.clone() == "code_point".to_string())) || (name.clone() == "to_int".to_string())) {
+        Some(leaf_node("Int".to_string()))
+} else {
+        if (name.clone() == "parse_int".to_string()) {
+            Some(with_optional_cardinality(leaf_node("Int".to_string())))
+} else {
+            if (((((name.clone() == "char_at".to_string()) || (name.clone() == "substring".to_string())) || (name.clone() == "from_code_point".to_string())) || (name.clone() == "to_string".to_string())) || (name.clone() == "concat".to_string())) {
+                Some(leaf_node("String".to_string()))
+} else {
+                if ((((name.clone() == "scan_while".to_string()) || (name.clone() == "scan_string_end".to_string())) || (name.clone() == "scan_to_eol".to_string())) || (name.clone() == "skip_horizontal_ws".to_string())) {
+                    Some(leaf_node("Int".to_string()))
+} else {
+                    if ((name.clone() == "lookup".to_string()) || (name.clone() == "map_get".to_string())) {
+                        Some(with_optional_cardinality(leaf_node("Dynamic".to_string())))
+} else {
+                        if (((name.clone() == "map_insert".to_string()) || (name.clone() == "map_merge".to_string())) || (name.clone() == "with".to_string())) {
+                            Some(bare_map_node())
+} else {
+                            if (((name.clone() == "map_contains_key".to_string()) || (name.clone() == "map_has".to_string())) || (name.clone() == "emit_map_has".to_string())) {
+                                Some(leaf_node("Bool".to_string()))
+} else {
+                                if ((((name.clone() == "map_keys".to_string()) || (name.clone() == "map_values".to_string())) || (name.clone() == "reverse".to_string())) || (name.clone() == "list_push".to_string())) {
+                                    Some(container_node("List".to_string(), leaf_node("Dynamic".to_string())))
+} else {
+                                    if (name.clone() == "Some".to_string()) {
+                                        Some(with_optional_cardinality(leaf_node("Dynamic".to_string())))
+} else {
+                                        None
+}
+}
+}
+}
+}
+}
+}
+}
+}
 }
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
@@ -368,74 +98,3 @@ pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
 }
 }
 
-thread_local! {
-    static INTRINSIC_INDEX: HashMap<String, IntrinsicMethod> = intrinsic_method_index_build();
-    static BRIDGE_INDEX: HashMap<String, RuntimeBridgeMethod> = runtime_bridge_method_index_build();
-}
-
-pub fn intrinsic_method_index() -> HashMap<String, IntrinsicMethod> {
-    INTRINSIC_INDEX.with(|idx| idx.clone())
-}
-
-pub fn runtime_bridge_method_index() -> HashMap<String, RuntimeBridgeMethod> {
-    BRIDGE_INDEX.with(|idx| idx.clone())
-}
-
-fn intrinsic_method_index_build() -> HashMap<String, IntrinsicMethod> {
-    {
-        let m = <HashMap<_, _>>::new();
-let m = v2_rt::map_insert(m.clone(), "count".to_string(), IntrinsicMethod::MethodCount);
-let m = v2_rt::map_insert(m.clone(), "join".to_string(), IntrinsicMethod::MethodJoin);
-let m = v2_rt::map_insert(m.clone(), "split".to_string(), IntrinsicMethod::MethodSplit);
-let m = v2_rt::map_insert(m.clone(), "last".to_string(), IntrinsicMethod::MethodLast);
-let m = v2_rt::map_insert(m.clone(), "first".to_string(), IntrinsicMethod::MethodFirst);
-let m = v2_rt::map_insert(m.clone(), "enumerate".to_string(), IntrinsicMethod::MethodEnumerate);
-let m = v2_rt::map_insert(m.clone(), "chars".to_string(), IntrinsicMethod::MethodChars);
-let m = v2_rt::map_insert(m.clone(), "string_contains".to_string(), IntrinsicMethod::MethodStringContains);
-let m = v2_rt::map_insert(m.clone(), "concat".to_string(), IntrinsicMethod::MethodConcat);
-let m = v2_rt::map_insert(m.clone(), "map".to_string(), IntrinsicMethod::MethodMap);
-let m = v2_rt::map_insert(m.clone(), "filter".to_string(), IntrinsicMethod::MethodFilter);
-let m = v2_rt::map_insert(m.clone(), "any".to_string(), IntrinsicMethod::MethodAny);
-let m = v2_rt::map_insert(m.clone(), "all".to_string(), IntrinsicMethod::MethodAll);
-let m = v2_rt::map_insert(m.clone(), "flat_map".to_string(), IntrinsicMethod::MethodFlatMap);
-let m = v2_rt::map_insert(m.clone(), "skip".to_string(), IntrinsicMethod::MethodSkip);
-let m = v2_rt::map_insert(m.clone(), "take".to_string(), IntrinsicMethod::MethodTake);
-let m = v2_rt::map_insert(m.clone(), "fold".to_string(), IntrinsicMethod::MethodFold);
-let m = v2_rt::map_insert(m.clone(), "sort_by".to_string(), IntrinsicMethod::MethodSortBy);
-let m = v2_rt::map_insert(m.clone(), "append".to_string(), IntrinsicMethod::MethodAppend);
-m.clone()
-}
-}
-
-fn runtime_bridge_method_index_build() -> HashMap<String, RuntimeBridgeMethod> {
-    let m = <HashMap<_, _>>::new();
-    let m = v2_rt::map_insert(m.clone(), "get".to_string(), RuntimeBridgeMethod::BridgeGet);
-    let m = v2_rt::map_insert(m.clone(), "with".to_string(), RuntimeBridgeMethod::BridgeWith);
-    let m = v2_rt::map_insert(m.clone(), "list_push".to_string(), RuntimeBridgeMethod::BridgeListPush);
-    let m = v2_rt::map_insert(m.clone(), "map_insert".to_string(), RuntimeBridgeMethod::BridgeMapInsert);
-    let m = v2_rt::map_insert(m.clone(), "map_merge".to_string(), RuntimeBridgeMethod::BridgeMapMerge);
-    let m = v2_rt::map_insert(m.clone(), "map_get".to_string(), RuntimeBridgeMethod::BridgeMapGet);
-    let m = v2_rt::map_insert(m.clone(), "map_has".to_string(), RuntimeBridgeMethod::BridgeMapHas);
-    let m = v2_rt::map_insert(m.clone(), "emit_map_has".to_string(), RuntimeBridgeMethod::BridgeEmitMapHas);
-    let m = v2_rt::map_insert(m.clone(), "map_values".to_string(), RuntimeBridgeMethod::BridgeMapValues);
-    let m = v2_rt::map_insert(m.clone(), "map_keys".to_string(), RuntimeBridgeMethod::BridgeMapKeys);
-    let m = v2_rt::map_insert(m.clone(), "map_contains_key".to_string(), RuntimeBridgeMethod::BridgeMapContainsKey);
-    let m = v2_rt::map_insert(m.clone(), "char_at".to_string(), RuntimeBridgeMethod::BridgeCharAt);
-    let m = v2_rt::map_insert(m.clone(), "string_at".to_string(), RuntimeBridgeMethod::BridgeStringAt);
-    let m = v2_rt::map_insert(m.clone(), "string_length".to_string(), RuntimeBridgeMethod::BridgeStringLength);
-    let m = v2_rt::map_insert(m.clone(), "length".to_string(), RuntimeBridgeMethod::BridgeLength);
-    let m = v2_rt::map_insert(m.clone(), "starts_with".to_string(), RuntimeBridgeMethod::BridgeStartsWith);
-    let m = v2_rt::map_insert(m.clone(), "ends_with".to_string(), RuntimeBridgeMethod::BridgeEndsWith);
-    let m = v2_rt::map_insert(m.clone(), "to_string".to_string(), RuntimeBridgeMethod::BridgeToString);
-    let m = v2_rt::map_insert(m.clone(), "trim".to_string(), RuntimeBridgeMethod::BridgeTrim);
-    let m = v2_rt::map_insert(m.clone(), "to_lower".to_string(), RuntimeBridgeMethod::BridgeToLower);
-    let m = v2_rt::map_insert(m.clone(), "to_upper".to_string(), RuntimeBridgeMethod::BridgeToUpper);
-    let m = v2_rt::map_insert(m.clone(), "replace".to_string(), RuntimeBridgeMethod::BridgeReplace);
-    let m = v2_rt::map_insert(m.clone(), "substring".to_string(), RuntimeBridgeMethod::BridgeSubstring);
-    let m = v2_rt::map_insert(m.clone(), "to_int".to_string(), RuntimeBridgeMethod::BridgeToInt);
-    let m = v2_rt::map_insert(m.clone(), "empty_map".to_string(), RuntimeBridgeMethod::BridgeEmptyMap);
-    let m = v2_rt::map_insert(m.clone(), "contains".to_string(), RuntimeBridgeMethod::BridgeContains);
-    let m = v2_rt::map_insert(m.clone(), "reverse".to_string(), RuntimeBridgeMethod::BridgeReverse);
-    let m = v2_rt::map_insert(m.clone(), "lookup".to_string(), RuntimeBridgeMethod::BridgeLookup);
-    m.clone()
-}

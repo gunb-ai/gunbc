@@ -48,11 +48,9 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
-use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
-use crate::v2_std_core::MethodSemantics::{IntrinsicMethodSemantics, RuntimeBridgeSemantics, PlainMethodSemantics, ServiceMethodSemantics};
-use crate::v2_std_core::RuntimeBridgeMethod::{BridgeReverse};
+use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
@@ -140,62 +138,27 @@ impl CostShape {
     }
 }
 
-pub fn intrinsic_method_cost_shape(method: IntrinsicMethod) -> Rc<CostShape> {
-    match method.clone() {
-    IntrinsicMethod::MethodMap => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodFlatMap => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodFilter => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodEnumerate => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodSkip => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodTake => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodFold => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodAny => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodAll => Rc::new(CostShape::ShapeIterateBody {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodSortBy => Rc::new(CostShape::ShapeSortBody),
-    IntrinsicMethod::MethodCount => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodFirst => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodLast => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodJoin => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodStringContains => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodConcat => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: false,
-}),
-    IntrinsicMethod::MethodChars => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodSplit => Rc::new(CostShape::ShapeLinearScan {
-    produces_collection: true,
-}),
-    IntrinsicMethod::MethodAppend => Rc::new(CostShape::ShapeConstant),
-}
+pub fn method_cost_shape(method_name: String) -> Option<Rc<CostShape>> {
+    if method_name == "map" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "flat_map" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "filter" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "enumerate" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "skip" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "take" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: true })) }
+    else if method_name == "fold" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: false })) }
+    else if method_name == "any" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: false })) }
+    else if method_name == "all" { Some(Rc::new(CostShape::ShapeIterateBody { produces_collection: false })) }
+    else if method_name == "sort_by" { Some(Rc::new(CostShape::ShapeSortBody)) }
+    else if method_name == "count" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "first" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "last" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "join" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "string_contains" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "concat" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: false })) }
+    else if method_name == "chars" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: true })) }
+    else if method_name == "split" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: true })) }
+    else if method_name == "append" { Some(Rc::new(CostShape::ShapeConstant)) }
+    else { None }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -291,142 +254,27 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
 
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { func: f, call_semantics: _ } =>
-            if f.clone() == func_name.clone() { 1 } else { 0 },
+        ExprData::ExprCall { call_semantics: _ } => {
+    let f = expr_call_func(body.clone());
+            if (f.clone() == func_name.clone()) { 1 } else { 0 }
+},
         _ => 0,
     };
-    let from_children = body.clone().children.iter().cloned().fold(0i64, |acc, child| {
+    let from_children = body.clone().children.clone().iter().cloned().fold(0i64, |acc, child| {
         acc.clone() + count_self_calls(child.clone(), func_name.clone())
     });
     own.clone() + from_children.clone()
 }
 
-/// Count maximum self-calls on any single execution path through an expression.
-/// Match/if arms are mutually exclusive (max, not sum).
-/// Self-calls inside fold/forEach bodies are already bounded by iteration.
-pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
-    use crate::v2_std_core::*;
-    match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { func: f, call_semantics: _ } => {
-            let own = if f.clone() == func_name.clone() { 1i64 } else { 0i64 };
-            let arg_calls = body.clone().children.iter().cloned().fold(0i64, |acc, child| {
-                acc + max_path_self_calls(arg_value(child), func_name.clone())
-            });
-            own + arg_calls
-        }
-        ExprData::ExprMatch => {
-            let scrut_calls = max_path_self_calls(match_scrutinee(body.clone()), func_name.clone());
-            let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arm_node| {
-                let arm_calls = max_path_self_calls(arm_body(arm_node), func_name.clone());
-                if arm_calls > acc { arm_calls } else { acc }
-            });
-            scrut_calls + max_arm
-        }
-        ExprData::ExprIf => {
-            let cond_calls = max_path_self_calls(if_condition(body.clone()), func_name.clone());
-            let then_calls = max_path_self_calls(if_then_branch(body.clone()), func_name.clone());
-            let else_calls = match if_else_branch(body.clone()) {
-                Some(eb) => max_path_self_calls(eb, func_name.clone()),
-                None => 0i64,
-            };
-            let branch_max = if then_calls > else_calls { then_calls } else { else_calls };
-            cond_calls + branch_max
-        }
-        ExprData::ExprForEach { variable: _ } => {
-            // Self-calls inside forEach body are bounded by iteration.
-            // Only count calls in the collection expression.
-            max_path_self_calls(foreach_collection(body.clone()), func_name.clone())
-        }
-        ExprData::ExprLet { name: _ } => {
-            let val_calls = max_path_self_calls(let_value(body.clone()), func_name.clone());
-            let body_calls = match let_body(body.clone()) {
-                Some(b) => max_path_self_calls(b, func_name.clone()),
-                None => 0i64,
-            };
-            val_calls + body_calls
-        }
-        ExprData::ExprBlock => {
-            body.clone().children.iter().cloned().fold(0i64, |acc, child| {
-                acc + max_path_self_calls(child, func_name.clone())
-            })
-        }
-        ExprData::ExprMethodCall { method: _, method_semantics: _ } => {
-            // Receiver + non-lambda args contribute to path calls.
-            // Lambda args (callbacks to fold/map/filter) are iteration-bounded.
-            let recv_calls = max_path_self_calls(method_receiver(body.clone()), func_name.clone());
-            let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arg_node| {
-                let val = arg_value(arg_node);
-                match (*(*val).clone().expr_data.clone()).clone() {
-                    ExprData::ExprLambda { .. } => acc,
-                    _ => acc + max_path_self_calls(val, func_name.clone()),
-                }
-            });
-            recv_calls + arg_calls
-        }
-        _ => {
-            body.clone().children.iter().cloned().fold(0i64, |acc, child| {
-                acc + max_path_self_calls(child, func_name.clone())
-            })
-        }
-    }
-}
-
-/// Check if the function body is a structural descent (catamorphism):
-/// a match/if over the recursive parameter where all self-calls are
-/// inside arms, not at the top level. Total work = O(|tree|).
-pub fn is_structural_descent(body: Rc<Node>, func_name: String) -> bool {
-    use crate::v2_std_core::*;
-    match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprMatch => {
-            let scrut_calls = count_self_calls(match_scrutinee(body.clone()), func_name.clone());
-            scrut_calls == 0
-        }
-        ExprData::ExprIf => {
-            let cond_calls = count_self_calls(if_condition(body.clone()), func_name.clone());
-            cond_calls == 0
-        }
-        ExprData::ExprLet { name: _ } => {
-            let val_calls = count_self_calls(let_value(body.clone()), func_name.clone());
-            if val_calls > 0 { false }
-            else {
-                match let_body(body.clone()) {
-                    Some(b) => is_structural_descent(b, func_name.clone()),
-                    None => false,
-                }
-            }
-        }
-        ExprData::ExprBlock => {
-            let stmts = body.clone().children.clone();
-            let len = stmts.len();
-            if len == 0 { false }
-            else {
-                let prefix_calls: i64 = stmts[..len-1].iter().cloned().fold(0i64, |acc, s| {
-                    acc + count_self_calls(s, func_name.clone())
-                });
-                if prefix_calls > 0 { false }
-                else {
-                    is_structural_descent(stmts[len-1].clone(), func_name.clone())
-                }
-            }
-        }
-        _ => false,
-    }
-}
-
 pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<RecursionPattern> {
-    let path_calls = max_path_self_calls(body.clone(), func_name.clone());
-    if path_calls <= 1 {
-        Rc::new(RecursionPattern::LinearRecursion {
-            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
-        })
-    } else if is_structural_descent(body.clone(), func_name.clone()) {
-        // Structural descent: catamorphism, O(|tree|) not O(k^depth)
+    let calls = count_self_calls(body.clone(), func_name.clone());
+    if (calls.clone() <= 1) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     } else {
         Rc::new(RecursionPattern::DivideAndConquer {
-            split_factor: path_calls,
+            split_factor: calls.clone(),
         })
     }
 }
@@ -479,7 +327,7 @@ pub fn cost_loop(binder: String, iterations: Rc<SizeExpr>, body: Rc<CostExpr>) -
 
 pub fn cost_conditional(condition: Rc<CostExpr>, branches: Vec<Rc<CostExpr>>) -> Rc<CostExpr> {
     {
-        let max_branch = branches.iter().cloned().fold(Rc::new(CostExpr::CostConst {
+        let max_branch = branches.clone().iter().cloned().fold(Rc::new(CostExpr::CostConst {
     value: 0,
 }), |acc: _, b: Rc<CostExpr>| Rc::new(CostExpr::CostMax {
     left: acc.clone(),
@@ -508,8 +356,10 @@ result.clone()
 }
 }
 
-pub fn is_size_preserving_intrinsic_method(method: IntrinsicMethod) -> bool {
-    (((((((method.clone() == IntrinsicMethod::MethodMap) || (method.clone() == IntrinsicMethod::MethodFilter)) || (method.clone() == IntrinsicMethod::MethodFlatMap)) || (method.clone() == IntrinsicMethod::MethodSkip)) || (method.clone() == IntrinsicMethod::MethodEnumerate)) || (method.clone() == IntrinsicMethod::MethodSortBy)) || (method.clone() == IntrinsicMethod::MethodConcat))
+pub fn is_size_preserving_method(method_name: String) -> bool {
+    method_name == "map" || method_name == "filter" || method_name == "flat_map"
+    || method_name == "skip" || method_name == "enumerate" || method_name == "sort_by"
+    || method_name == "concat" || method_name == "reverse"
 }
 
 pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
@@ -517,8 +367,8 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::IntrinsicMethodSemantics { intrinsic: method, .. } => is_size_preserving_intrinsic_method(method.clone()),
-    MethodSemantics::RuntimeBridgeSemantics { method: bridge_method, .. } => (bridge_method.clone() == RuntimeBridgeMethod::BridgeReverse),
+    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } =>
+        is_size_preserving_method(method_name.clone()),
     _ => false,
 }
 }
@@ -527,10 +377,10 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
 pub fn receiver_size_var(mut recv: Rc<Node>) -> Rc<SizeExpr> {
     loop {
         match (*recv.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: vname, .. } => { break Rc::new(SizeExpr::SizeLen {
+    ExprData::ExprVar { .. } => { let vname = expr_var_name(recv.clone()); break Rc::new(SizeExpr::SizeLen {
     collection: vname.clone(),
 }); },
-    ExprData::ExprFieldAccess { field: fname, .. } => { break Rc::new(SizeExpr::SizeLen {
+    ExprData::ExprFieldAccess { .. } => { let fname = field_access_field(recv.clone()); break Rc::new(SizeExpr::SizeLen {
     collection: fname.clone(),
 }); },
     ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => { let inner_recv = match recv.children.clone().first().cloned() {
@@ -565,10 +415,10 @@ pub fn size_binder_name(size: Rc<SizeExpr>) -> String {
 
 pub fn resolve_lambda_arg(mc_arg_nodes: Vec<Rc<Node>>) -> Option<Rc<Node>> {
     {
-        let f_arg = { let mut __result = Vec::new(); for a in mc_arg_nodes.iter().cloned() { if (a.name.clone() == "f".to_string()) { __result.push(a); } } __result }.first().cloned();
+        let f_arg = { let mut __result = Vec::new(); for a in mc_arg_nodes.clone().iter().cloned() { if (a.name.clone() == "f".to_string()) { __result.push(a); } } __result }.first().cloned();
 match f_arg.clone() {
     Some(fa) => Some(arg_value(fa.clone())),
-    None => { let mut __result = Vec::new(); for a in mc_arg_nodes.iter().cloned() { __result.push(arg_value(a.clone())); } __result }.first().cloned(),
+    None => { let mut __result = Vec::new(); for a in mc_arg_nodes.clone().iter().cloned() { __result.push(arg_value(a.clone())); } __result }.first().cloned(),
 }
 }
 }
@@ -576,10 +426,10 @@ match f_arg.clone() {
 pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryResult>, func_index: HashMap<String, Rc<FuncEntry>>) -> Rc<SummaryResult> {
     match lambda_arg.clone() {
     Some(la) => match (*la.expr_data.clone()).clone() {
-    ExprData::ExprVar { name: fn_ref, .. } => match v2_rt::map_get(&func_index, fn_ref.clone()) {
+    ExprData::ExprVar { .. } => { let fn_ref = expr_var_name(la.clone()); match v2_rt::map_get(&func_index, fn_ref.clone()) {
     Some(_) => get_or_compute_summary(fn_ref.clone(), func_index.clone(), recv_r.table.clone()),
     None => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
-},
+} },
     _ => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
 },
     None => Rc::new(SummaryResult {
@@ -625,14 +475,18 @@ Rc::new(SummaryResult {
 })
 },
     CostShape::ShapeSortBody => {
-        // O(n × log(n) × key_cost) — tight bound via CostLog
+        // O(n × log(n) × key_cost). CostLog makes this Proven.
         let lambda_arg = resolve_lambda_arg(mc_args.clone());
 let key_result = match lambda_arg.clone() {
     Some(la) => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
-    work: Rc::new(CostExpr::CostConst { value: 1 }),
-    span: Rc::new(CostExpr::CostConst { value: 1 }),
+    work: Rc::new(CostExpr::CostConst {
+    value: 1,
+}),
+    span: Rc::new(CostExpr::CostConst {
+    value: 1,
+}),
     output_size: <HashMap<_, _>>::new(),
     certainty: Certainty::Proven,
 }),
@@ -642,8 +496,8 @@ let key_result = match lambda_arg.clone() {
 let log_factor = Rc::new(CostExpr::CostLog { base: 2, argument: size.clone() });
 let per_comparison = key_result.summary.clone().work.clone();
 let sort_work = Rc::new(CostExpr::CostMul {
-    left: cost_loop(binder.clone(), size.clone(), per_comparison),
-    right: log_factor,
+    left: cost_loop(binder.clone(), size.clone(), per_comparison.clone()),
+    right: log_factor.clone(),
 });
 let sort_os = v2_rt::map_insert(<HashMap<_, _>>::new(), "result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
@@ -653,7 +507,7 @@ Rc::new(SummaryResult {
     work: cost_seq(recv_r.summary.clone().work.clone(), sort_work.clone()),
     span: cost_seq(recv_r.summary.clone().span.clone(), sort_work.clone()),
     output_size: sort_os.clone(),
-    certainty: key_result.summary.clone().certainty,
+    certainty: key_result.summary.clone().certainty.clone(),
 }),
     table: key_result.table.clone(),
 })
@@ -804,10 +658,7 @@ match (*sbd.clone()).clone() {
 }),
 }
 },
-    CostExpr::CostLog { base: b, argument: a, .. } => Rc::new(CostExpr::CostLog {
-    base: b.clone(),
-    argument: a.clone(),
-}),
+    CostExpr::CostLog { base: b, argument: a } => Rc::new(CostExpr::CostLog { base: b, argument: a }),
 }
     })
 }
@@ -946,9 +797,7 @@ let dominant = if has_cost_sum(l.clone()) {
 };
 dominant.clone()
 },
-    CostExpr::CostLog { argument: a, .. } => {
-                v2_rt::concat(v2_rt::concat("O(log ".to_string(), format_size(a.clone())), ")".to_string())
-},
+    CostExpr::CostLog { argument: a, .. } => format!("O(log({}))", format_size(a.clone())),
 }
 }
     })
@@ -989,7 +838,7 @@ pub struct DeduplicateAcc {
 
 pub fn deduplicate(items: Vec<String>) -> Vec<String> {
     {
-        let result = items.iter().cloned().fold(Rc::new(DeduplicateAcc {
+        let result = items.clone().iter().cloned().fold(Rc::new(DeduplicateAcc {
     seen: <HashMap<_, _>>::new(),
     out: vec![],
 }), |acc: _, item: String| match v2_rt::map_get(&acc.seen.clone(), item.clone()) {
@@ -1032,7 +881,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(name.clone(), ": ".to_st
 
 pub fn format_complexity_report(entries: Vec<Rc<FuncEntry>>, summaries: HashMap<String, Rc<ComplexitySummary>>) -> String {
     {
-        let lines = { let mut __result = Vec::new(); for entry in entries.iter().cloned() { __result.extend(match v2_rt::map_get(&summaries, entry.name.clone()) {
+        let lines = { let mut __result = Vec::new(); for entry in entries.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&summaries, entry.name.clone()) {
     Some(summary) => vec![format_func_complexity(entry.name.clone(), summary.clone())],
     None => vec![],
 }); } __result };
@@ -1121,7 +970,7 @@ Rc::new(SummaryResult {
     table: rr.table.clone(),
 })
 },
-    ExprData::ExprCall { func: fname, .. } => {
+    ExprData::ExprCall { .. } => { let fname = expr_call_func(texpr.clone());
             let callee_result = match v2_rt::map_get(&func_index, fname.clone()) {
     Some(entry) => get_or_compute_summary(fname.clone(), func_index.clone(), table.clone()),
     None => Rc::new(SummaryResult {
@@ -1138,7 +987,7 @@ Rc::new(SummaryResult {
     table: table.clone(),
 }),
 };
-let args_result = texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
+let args_result = texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1172,7 +1021,7 @@ Rc::new(SummaryResult {
     table: args_result.table.clone(),
 })
 },
-    ExprData::ExprMethodCall { method: mname, method_semantics: ms, .. } => {
+    ExprData::ExprMethodCall { method_semantics: ms, .. } => {
             let recv = method_receiver(texpr.clone());
 let mc_args = method_arg_nodes(texpr.clone());
 let recv_r = cost_of_expr(recv.clone(), func_index.clone(), table.clone());
@@ -1182,11 +1031,11 @@ let method_cost_result = if (ms.clone() == None) {
                 None
 } else {
                 match (*ms.clone().unwrap()).clone() {
-    MethodSemantics::IntrinsicMethodSemantics { intrinsic: im, .. } => {
-                    let shape = intrinsic_method_cost_shape(im.clone());
-Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone()))
-},
-    MethodSemantics::RuntimeBridgeSemantics { .. } => Some(Rc::new(SummaryResult {
+    MethodSemantics::AlgebraMethodSemantics { method_name: mn, .. } => {
+                    let shape_match = method_cost_shape(mn.clone());
+match shape_match.clone() {
+    Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone())),
+    None => Some(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(recv_r.summary.clone().work.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
@@ -1199,13 +1048,15 @@ Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), siz
 }),
     table: recv_r.table.clone(),
 })),
+}
+},
     _ => None,
 }
 };
 match method_cost_result.clone() {
     Some(result) => result.clone(),
     _ => {
-                let args_result = mc_args.iter().cloned().fold(Rc::new(SummaryResult {
+                let args_result = mc_args.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1249,7 +1100,7 @@ Rc::new(SummaryResult {
             let scrut = match_scrutinee(texpr.clone());
 let arm_nodes = match_arm_nodes(texpr.clone());
 let s_r = cost_of_expr(scrut.clone(), func_index.clone(), table.clone());
-let arms_accum = arm_nodes.iter().cloned().fold(Rc::new(MatchCostAccum {
+let arms_accum = arm_nodes.clone().iter().cloned().fold(Rc::new(MatchCostAccum {
     result: Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
@@ -1326,7 +1177,7 @@ Rc::new(SummaryResult {
     table: e_result.table.clone(),
 })
 },
-    ExprData::ExprLet { .. } => {
+    ExprData::ExprLet => {
             let v = let_value(texpr.clone());
 let v_r = cost_of_expr(v.clone(), func_index.clone(), table.clone());
 match let_body(texpr.clone()) {
@@ -1345,7 +1196,7 @@ Rc::new(SummaryResult {
     None => v_r.clone(),
 }
 },
-    ExprData::ExprBlock => texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
+    ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1369,7 +1220,7 @@ Rc::new(SummaryResult {
     table: sr.table.clone(),
 })
 }),
-    ExprData::ExprForEach { .. } => {
+    ExprData::ExprForEach => {
             let c = foreach_collection(texpr.clone());
 let bd = foreach_body(texpr.clone());
 let c_r = cost_of_expr(c.clone(), func_index.clone(), table.clone());
@@ -1387,7 +1238,7 @@ Rc::new(SummaryResult {
     table: bd_r.table.clone(),
 })
 },
-    ExprData::NoExprData => texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
+    ExprData::NoExprData => texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1411,7 +1262,7 @@ Rc::new(SummaryResult {
     table: cr.table.clone(),
 })
 }),
-    _ => texpr.children.iter().cloned().fold(Rc::new(SummaryResult {
+    _ => texpr.children.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 1,
@@ -1444,7 +1295,7 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
         if (budget.clone() <= 0) {
             0
 } else {
-            texpr.children.iter().cloned().fold((budget.clone() - 1), |acc: _, child: Rc<Node>| estimate_expr_size(child.clone(), acc.clone()))
+            texpr.children.clone().iter().cloned().fold((budget.clone() - 1), |acc: _, child: Rc<Node>| estimate_expr_size(child.clone(), acc.clone()))
 }
     })
 }
@@ -1523,22 +1374,9 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 }
 
 pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<ComplexityReport> {
-    // BOOTSTRAP PERF: Short-circuit complexity analysis during self-compile.
-    // The fold below clones func_index (HashMap) and intern_table on every
-    // iteration — O(n²) for n functions, ~7GB for the compiler's ~500 funcs.
-    // Complexity reports don't affect code emission; re-enable after stage0
-    // is regenerated with the redundant-clone removal.
-    if std::env::var("GUNBC_SKIP_COMPLEXITY").is_ok() || func_entries.len() > 100 {
-        return Rc::new(ComplexityReport {
-            function_summaries: <HashMap<_, _>>::new(),
-            violations: vec![],
-            intern_table: empty_intern_table(),
-            formatted: "complexity analysis skipped (GUNBC_SKIP_COMPLEXITY)".to_string(),
-        });
-    }
     {
-        let func_index = func_entries.iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
-let result = func_entries.iter().cloned().fold(Rc::new(SummaryResult {
+        let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
+let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
     value: 0,
@@ -1558,7 +1396,7 @@ Rc::new(SummaryResult {
 })
 });
 let summaries_map = result.table.clone().summaries.clone();
-let violations = { let mut __result = Vec::new(); for entry in { let mut __result = Vec::new(); for entry in func_entries.iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
+let violations = { let mut __result = Vec::new(); for entry in { let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
     Some(summary) => is_unknown_cost(summary.work.clone()),
     None => true,
 } { __result.push(entry); } } __result }.iter().cloned() { __result.push(match v2_rt::map_get(&summaries_map, entry.name.clone()) {

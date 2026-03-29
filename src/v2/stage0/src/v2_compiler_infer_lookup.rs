@@ -48,19 +48,16 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, InferredNode, NodeType, Cardinality, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldAccessStyle, FieldValueShape, FieldSummary, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure};
+pub use crate::v2_std_core::{Node, InferredNode, NodeType, Cardinality, MethodSemantics, FieldAccessStyle, FieldValueShape, FieldSummary, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure};
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Cardinality::{Required};
-use crate::v2_std_core::MethodSemantics::{IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
-use crate::v2_std_core::IntrinsicMethod::*;
-use crate::v2_std_core::RuntimeBridgeMethod::*;
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, error_type_node, node_is_optional, node_is_map, normalize_access_type_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};
-pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node};
 pub use crate::v2_compiler_infer_types::{method_receiver_element_node};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_service::{OpEntry, ServiceMethodResult, check_service_method_call_node};
@@ -289,27 +286,50 @@ pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: String) ->
 }
 
 pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>, fold_accumulator_type: Option<Rc<Node>>) -> Rc<Node> {
+    let is_algebra_collection = !result_type.children.is_empty() && (result_type.name == "FreeMonoid" || result_type.name == "PartialFunction");
     if fold_accumulator_type.is_some() {
         match fold_accumulator_type {
             Some(fat) => fat.clone(),
             None => result_type.clone(),
         }
-    } else if (result_type.name.clone() == receiver_type.name.clone()) {
-        // BOOTSTRAP GAP: This branch replaces the result with the receiver
-        // when both have the same collection name (e.g., both "List").
-        // This is correct for filter/map/skip/take (where result IS the
-        // receiver already) but WRONG for enumerate (which wraps elements
-        // in Tuple<Int, Elem>, changing the inner structure).
-        //
-        // The fix needs to detect when the result's inner structure differs
-        // from the receiver's (enumerate: first child is "Tuple" vs element
-        // type). See ROADMAP "Design Direction: Bootstrap Sustainability"
-        // for the detailed fix plan with all method cases enumerated.
-        //
-        // Until fixed, .dag code using `pair.first`/`pair.second` on
-        // enumerate results will produce "no field 'first' on type X"
-        // diagnostics, blocking regeneration (20 diagnostics).
+    } else if result_type.name == receiver_type.name && {
+        // Same collection AND same element structure. enumerate returns
+        // List<Tuple<Int, T>> — same name "List" but different element.
+        let same_child_count = result_type.children.len() == receiver_type.children.len();
+        let same_first_child = match (result_type.children.first(), receiver_type.children.first()) {
+            (Some(rc), Some(rvc)) => rc.name == rvc.name,
+            _ => true,
+        };
+        same_child_count && (result_type.children.is_empty() || same_first_child)
+    } {
         receiver_type.clone()
+    } else if is_algebra_collection || (result_type.name == receiver_type.name && !result_type.children.is_empty()) {
+        let elem = method_receiver_element_node(receiver_type.clone());
+        let substituted_children: Vec<Rc<Node>> = result_type.children.iter().map(|child| {
+            if child.name == elem.name || child.name.is_empty() {
+                elem.clone()
+            } else {
+                substitute_generic_param(child.clone(), elem.clone())
+            }
+        }).collect();
+        Rc::new(Node {
+            name: receiver_type.name.clone(),
+            span: result_type.span.clone(),
+            children: substituted_children,
+            connective: receiver_type.connective.clone(),
+            params: receiver_type.params.clone(),
+            inferred: None,
+            return_cardinality: result_type.return_cardinality.clone(),
+            uses: vec![],
+            body: None,
+            transport: None,
+            properties: vec![],
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(crate::v2_std_core::ExprData::NoExprData),
+        })
     } else if (matches!(result_type.return_cardinality.clone(), Cardinality::CardOptional)) {
         let inner = with_required_cardinality(result_type.clone());
         let elem = method_receiver_element_node(receiver_type.clone());
@@ -323,53 +343,47 @@ pub fn substitute_algebra_result(result_type: Rc<Node>, receiver_type: Rc<Node>,
     }
 }
 
+fn substitute_generic_param(child: Rc<Node>, elem: Rc<Node>) -> Rc<Node> {
+    if child.children.is_empty() && (child.name.is_empty() || child.name == elem.name) {
+        elem.clone()
+    } else {
+        let subst_children: Vec<Rc<Node>> = child.children.iter().map(|c| {
+            substitute_generic_param(c.clone(), elem.clone())
+        }).collect();
+        Rc::new(Node {
+            name: child.name.clone(),
+            span: child.span.clone(),
+            children: subst_children,
+            connective: child.connective.clone(),
+            params: child.params.clone(),
+            inferred: child.inferred.clone(),
+            return_cardinality: child.return_cardinality.clone(),
+            uses: child.uses.clone(),
+            body: child.body.clone(),
+            transport: child.transport.clone(),
+            properties: child.properties.clone(),
+            type_annotation: child.type_annotation.clone(),
+            is_self_recursive: child.is_self_recursive,
+            has_non_tail_self_call: child.has_non_tail_self_call,
+            match_pattern: child.match_pattern.clone(),
+            expr_data: child.expr_data.clone(),
+        })
+    }
+}
+
 pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, method_name: String, fold_accumulator_type: Option<Rc<Node>>, service_registry: HashMap<String, Vec<Rc<OpEntry>>>) -> Rc<KnownMethodResolution> {
     let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
     match tier0_result {
         Some(result_type) => {
-            let intrinsic_idx = intrinsic_method_index();
-            let bridge_idx = runtime_bridge_method_index();
-            let intrinsic_match = v2_rt::map_get(&intrinsic_idx, method_name.clone());
-            let bridge_match = v2_rt::map_get(&bridge_idx, method_name.clone());
-            let semantics: Rc<MethodSemantics> = match intrinsic_match.clone() {
-                Some(intrinsic) => Rc::new(MethodSemantics::IntrinsicMethodSemantics {
-                    intrinsic: intrinsic.clone(),
-                    fold_accumulator_type: fold_accumulator_type.clone(),
-                }),
-                None => match bridge_match.clone() {
-                    Some(bridge) => Rc::new(MethodSemantics::RuntimeBridgeSemantics {
-                        method: bridge.clone(),
-                    }),
-                    None => Rc::new(MethodSemantics::PlainMethodSemantics),
-                },
-            };
-            // BOOTSTRAP FIX: Use intrinsic/bridge return type functions when
-            // the method is known. This avoids substitute_algebra_result's
-            // name-matching heuristic (line 297) which is wrong for enumerate
-            // (loses Tuple<Int, Elem> wrapping because both sides are "List").
-            let resolved_type = match intrinsic_match.clone() {
-                Some(intrinsic) => match infer_intrinsic_method_type_node(
-                    receiver_type.clone(), intrinsic.clone(), fold_accumulator_type.clone(),
-                ) {
-                    Some(rt) => rt,
-                    None => substitute_algebra_result(
-                        result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone(),
-                    ),
-                },
-                None => match bridge_match.clone() {
-                    Some(bridge) => match infer_runtime_bridge_method_type_node(
-                        receiver_type.clone(), bridge.clone(),
-                    ) {
-                        Some(rt) => rt,
-                        None => substitute_algebra_result(
-                            result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone(),
-                        ),
-                    },
-                    None => substitute_algebra_result(
-                        result_type.clone(), receiver_type.clone(), fold_accumulator_type.clone(),
-                    ),
-                },
-            };
+            let semantics: Rc<MethodSemantics> = Rc::new(MethodSemantics::AlgebraMethodSemantics {
+                method_name: method_name.clone(),
+                fold_accumulator_type: fold_accumulator_type.clone(),
+            });
+            let resolved_type = substitute_algebra_result(
+                result_type.clone(),
+                receiver_type.clone(),
+                fold_accumulator_type.clone(),
+            );
             Rc::new(KnownMethodResolution {
                 semantics: Some(semantics),
                 result_type: Some(resolved_type),

@@ -139,7 +139,7 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
 
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
   match texpr.expr_data {
-    ExprVar { name: n } =>
+    ExprVar =>
       if in_tail {
         record_use(accum: accum, name: n, kind: Consumed, site: "return")
       } else {
@@ -148,16 +148,16 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
 
     ExprLiteral { value: _ } => accum
 
-    ExprFieldAccess { field: f } =>
+    ExprFieldAccess =>
       // children = [base]. Check if base is a variable for projection.
       let base_node = field_access_base(texpr: texpr)
       match base_node.expr_data {
-        ExprVar { name: vn } =>
+        ExprVar =>
           record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f))
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false)
       }
 
-    ExprCall { func: fname } =>
+    ExprCall =>
       // children = [arg0_node, arg1_node, ...]. Arg names on node.name.
       if fname == "fold" {
         let init_arg = texpr.children |> filter(a => a.name == "init") |> first
@@ -165,7 +165,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
           Some { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
-              ExprVar { name: vn } =>
+              ExprVar =>
                 record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init")
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false)
             }
@@ -181,7 +181,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
         )
       }
 
-    ExprMethodCall { method: mname } =>
+    ExprMethodCall =>
       // children = [receiver, arg0_node, arg1_node, ...].
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
@@ -192,7 +192,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
           Some { value: ia } =>
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
-              ExprVar { name: vn } =>
+              ExprVar =>
                 record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init")
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false)
             }
@@ -230,7 +230,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
-    ExprLet { name: _ } =>
+    ExprLet =>
       let v = let_value(texpr: texpr)
       let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false)
       match let_body(texpr: texpr) {

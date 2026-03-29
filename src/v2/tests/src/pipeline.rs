@@ -1663,8 +1663,8 @@ fn all_vals(m: Map<String, Int>) -> List<Int> { m |> values }
 #[test]
 fn structural_method_colliding_name_no_bridge() {
     // Regression: a user-defined type with a method named "count" or "has"
-    // must NOT be tagged with IntrinsicMethodSemantics. It should get
-    // PlainMethodSemantics so emit renders it as recv.method(args).
+    // must NOT be tagged with AlgebraMethodSemantics for intrinsic dispatch.
+    // It should get PlainMethodSemantics so emit renders it as recv.method(args).
     let source = r#"module test
 
 type Counter {
