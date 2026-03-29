@@ -2,51 +2,120 @@
 
 ## Thesis
 
-**Node and DAG are the only compiler primitives.**
+### Three Primitives
 
-The compiler is a generic graph processor. It reads `.dag` source, builds
-a graph of `Node`s, applies structural rules, and emits target code. All
-domain knowledge — types, cardinality, containers, optionality, and
-target-language facts — lives in `.dag` definitions, not in the compiler
-implementation.
+The compiler has three fundamental primitives. Everything else is
+compositional modeling over them.
 
-A `Node` is the universal graph carrier. Names introduce opaque
-namespaces over node-shaped compositions. Distinctions such as type
-position, value/expression position, pattern position, and binding-site
-descriptor are operational roles in the pipeline, not separate
-ontological categories of node.
+| Primitive | What it is | Role |
+|-----------|-----------|------|
+| **Node** | The universal carrier | Identity, structure, composition |
+| **Edge** | The connection (DAG) | How nodes relate; the graph |
+| **Bit** | The atomic truth value | `True \| False` — the indivisible fact |
 
-### Three Structural Principles
+From these three, all structural properties emerge:
+
+**Product (AND)** — a node where all child edges are active. "A Person
+has a name AND an age" means both edges carry values.
+
+**Coproduct (OR)** — a node where exactly one child edge is active.
+"A Shape is Circle OR Square" means one edge carries a value.
+
+**Cardinality** — a single bit on an edge. Present or absent.
+
+**Logic gates** — truth tables over Bit. AND, OR, NOT are functions
+from Bit to Bit, not separate primitives. NAND alone is functionally
+complete.
+
+The compiler does not hardcode product or coproduct as primitives. They
+are emergent properties of how nodes compose through edges — activation
+patterns that `.dag` models use, but that the compiler processes
+structurally without special-casing.
+
+### How This Looks in Practice
+
+Every `.dag` type is a composition of Node + Edge + Bit:
+
+```dag
+// Product: a node with all child edges active (AND)
+type SourceSpan {
+  file: FilePath        // edge to FilePath node — always active
+  start: Int            // edge to Int node — always active
+  end: Int              // edge to Int node — always active
+}
+
+// Coproduct: a node with exactly one child edge active (OR)
+type Classical = True | False     // two edges, one active at a time
+type Bool = True | False          // same structure — named differently
+
+// Cardinality: a bit on an edge (present or absent)
+type AccessToken {
+  token: Secret
+  scheme: AuthScheme
+  expires_at: Timestamp?          // edge bit = 0 or 1
+}
+
+// Recursive coproduct: edges can point back into the structure
+type Stack<T>
+  = Empty                         // terminal — no child edges
+  | Push { top: T, rest: Stack<T> }  // product inside a coproduct variant
+
+// Collection algebras: named compositions over the primitives
+type List<element> = FreeMonoid<element>
+type Map<key, value> = PartialFunction<key, value>
+```
+
+The compiler sees the structure — nodes with edges, activation
+patterns, bits — not the names. `SourceSpan` and `AccessToken` are
+both "node with three child edges, all active" to the compiler. The
+names are opaque namespaces for human readability.
+
+### Current Reality: Five Structural Primitives
+
+Today the compiler operates on five primitives, not three:
+
+| Primitive | Status | Target |
+|-----------|--------|--------|
+| Node | Fundamental | Keep |
+| Edge (DAG) | Fundamental | Keep |
+| Bit | Fundamental | Keep |
+| Conj / Disj | Compiler-known enum (`connective` field) | Dissolve — emergent from edge activation patterns |
+| Cardinality | Compiler-known enum | Dissolve — single bit on an edge |
+
+Conj/Disj exist as an explicit `connective` field on Node because the
+compiler was built incrementally. The direction is to collapse them:
+the compiler reads edge activation patterns rather than checking a
+`connective` enum. Product and coproduct become properties that `.dag`
+models express and the compiler recognizes structurally — not
+categories the compiler dispatches on.
+
+### Structural Principles
 
 **1. Names are opaque namespaces.**
 
 Type names (`Int`, `Map`, `List`) are human-readable labels for
-structural compositions, not compiler-meaningful identifiers.
-`Bit`/bitvectors live in the machine layer; `List`, `Map`, `Set` live
-in the algebraic layer with denotational laws. The compiler must not
-branch on node names for structural decisions.
+structural compositions, not compiler-meaningful identifiers. The
+compiler must not branch on node names for structural decisions.
 
 **2. Compiler errors are orthogonal to the node graph.**
 
 When inference fails, the result is not a node — it is a structurally
 distinct failure. `InferredNode = Resolved { node } | CompilerError
-{ message, span }`. Emit never sees error nodes. `Dynamic` and `Error`
-unify into `CompilerError`.
+{ message, span }`. Emit never sees error nodes.
 
 **3. Syntactically distinct forms for the same operation normalize
 before inference.**
 
 The pipeline has a normalization boundary between resolve and infer.
 After normalization: `Call`/`MethodCall` bridging is complete, nodes
-carry declared structural properties from `.dag` type definitions, and
-parameterized types always carry their declared arity of children.
+carry declared structural properties, and parameterized types carry
+their declared arity of children.
 
 ### Decidability
 
-Every `.dag` program is decidable. The DAG is the only computational
-primitive. Recursion, loops, and cyclic-looking patterns are surface
-syntax sugar that decomposes into bounded iteration over finite
-structure.
+Every `.dag` program is decidable. Recursion, loops, and cyclic-looking
+patterns are surface syntax sugar that decomposes into bounded iteration
+over finite structure.
 
 The language provides:
 - `fold`, `map`, `filter`, `flat_map` — bounded by collection size
@@ -59,19 +128,20 @@ unrepresentable, not detected and rejected.
 
 ### Composition Stack
 
-| Layer | What | Location |
-|-------|------|----------|
-| -1 | Type constructors (Product/Coproduct/Cardinality) | Not yet in std |
-| 0 | Logic (`Classical = True \| False`) | `std/logic.dag` |
-| 1 | Machine (`Bit`, `Word32`, `Word64`) | `std/bit.dag` |
-| 2 | Named compositions (`Int`, `String`, `Char`) | `std/integer.dag`, `std/types.dag` |
-| 3 | Collection algebras (`List<A>`, `Set<A>`, `Map<K,V>`) | `std/types.dag` |
-| 4 | Structural compositions + bounded iteration | `std/iteration.dag` |
-| 5 | Parser/source domain (`Token<Shape>`) | Compiler domain |
-| 6 | Compiler domain (records using Layer 4 shapes) | Compiler domain |
+| Layer | What | Built from | Location |
+|-------|------|-----------|----------|
+| 0 | Bit, truth values | Primitive | `std/logic.dag`, `std/bit.dag` |
+| 1 | Machine words (`Word32`, `Word64`) | Bit compositions | `std/bit.dag` |
+| 2 | Named types (`Int`, `String`, `Char`) | Algebraic structures over machine words | `std/integer.dag`, `std/types.dag` |
+| 3 | Collections (`List<A>`, `Set<A>`, `Map<K,V>`) | Algebraic structures with laws | `std/types.dag` |
+| 4 | Structural compositions + bounded iteration | Nodes + edges + collection algebras | `std/iteration.dag` |
+| 5 | Domain types | Compositions of Layers 0-4 | Compiler, user programs |
 
-See `docs/algebraic-type-spec.md` for the collection algebra,
-denotational model, and law layer.
+Product/coproduct are not a layer — they are the composition mechanism
+itself: how nodes at any layer combine through edges.
+
+See `docs/algebraic-type-spec.md` for the collection algebra and
+denotational model.
 
 ### Guarantee Tiers
 
@@ -89,16 +159,16 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 
 ### End Goal
 
-- Zero type-world knowledge in the compiler (names are opaque, inference
-  processes graph structure only, scrambled-name tests pass)
-- Emit is name-opaque: reads `LanguageSpec` + structural declarations,
-  no hardcoded `if type_name == "Map" { "HashMap" }` patterns
-- One shared emit walker drives all target languages
-- Language-specific facts live in `dsl/extdeps/languages/*`
-- All `.dag` programs are decidable by construction
-- Ownership and complexity proofs wired into the pipeline
-- At least one real program compiles and runs end to end
-- Compiler-internal structure converges onto `Node` compositions
+- Three compiler primitives: Node, Edge, Bit. Everything else is
+  compositional modeling.
+- Product/coproduct are emergent, not compiler-known.
+- Names are opaque. Inference processes graph structure only.
+- Emit reads `LanguageSpec` + structural declarations, no hardcoded
+  target-language knowledge.
+- One shared emit walker drives all target languages.
+- All `.dag` programs are decidable by construction.
+- Ownership and complexity proofs wired into the pipeline.
+- At least one real program compiles and runs end to end.
 
 ---
 
@@ -303,18 +373,22 @@ identical graph for all `.dag` files.
 
 ---
 
-### M6: Bit-Graph Model
+### M6: Three Primitives (Node, Edge, Bit)
 
-**What:** Primitives are compositions. `Int = Interpret<Signed, Word64>`.
-The compiler knows only Node, Conj/Disj, Cardinality, and Bit.
+**What:** The compiler collapses from 5 structural primitives to 3.
+Conj/Disj dissolve into edge activation patterns. Cardinality dissolves
+into a single edge bit. `Int = Interpret<Signed, Word64>` — named types
+are compositions, not compiler-known concepts.
 
-**Gate:** `is_kernel_type` dissolved. Bit is the only compiler-known
-type.
+**Gate:** `connective` field removed from Node. `is_kernel_type`
+dissolved. The compiler structurally distinguishes "all edges active"
+from "one edge active" without an enum.
 
 **Depends on:** M5
 
 **Work items:**
-- [ ] Layer -1 type constructors in `std/`
+- [ ] Replace `connective: Conj/Disj` with edge activation model
+- [ ] Cardinality as edge bit, not separate enum
 - [ ] Bit-graph representation for fixed-width types
 - [ ] Full structural type algebra with denotational laws
 
@@ -365,9 +439,11 @@ Currently produces `DivideAndConquer` classification (soft). The
 structural prevention (bounded primitives only) is the real guarantee;
 fail-closed is the safety net during transition.
 
-**Bit-graph type algebra.** The algebraic endgame: `Int` is not a
-compiler-known primitive but `Interpret<Signed, Word64>` — a namespace
-over a bitvector composition. See M6.
+**Three-primitive collapse.** Conj/Disj dissolve into edge activation
+patterns over Bit. Product = all child edges active. Coproduct = exactly
+one active. Logic gates are truth tables (Bit x Bit → Bit), not
+primitives. The compiler reads activation patterns structurally instead
+of dispatching on a `connective` enum. See M6.
 
 ---
 
