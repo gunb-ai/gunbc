@@ -556,32 +556,11 @@ pub enum StringPart {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct OperationDef {
-    pub name: String,
-    pub inputs: Vec<Rc<Node>>,
-    pub outputs: Vec<Rc<Node>>,
-    pub response_props: Vec<Rc<Node>>,
-    pub mock_props: Vec<Rc<Node>>,
-    pub exit_props: Vec<Rc<Node>>,
-    pub modifier_props: Vec<Rc<Node>>,
-    pub transport: Option<Rc<Node>>,
-    pub span: Rc<SourceSpan>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OperationModifier {
     Idempotent,
     Readonly,
     Hermetic,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CapabilityDef {
-    pub name: String,
-    pub inputs: Vec<Rc<Node>>,
-    pub outputs: Vec<Rc<Node>>,
-    pub span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
+pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationModifier, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -167,14 +167,14 @@ pub struct TransportResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpResult {
-    pub operation: Rc<OperationDef>,
+    pub operation: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapResult {
-    pub capability: Rc<CapabilityDef>,
+    pub capability: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -474,7 +474,7 @@ pub struct NamedIntResult {
 pub struct ServiceBodyResult {
     pub config: Option<Rc<ServiceConfig>>,
     pub transport: Rc<Node>,
-    pub operations: Vec<Rc<OperationDef>>,
+    pub operations: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -490,7 +490,7 @@ pub struct IOResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResPropResult {
     pub properties: Vec<Rc<Node>>,
-    pub capabilities: Vec<Rc<CapabilityDef>>,
+    pub capabilities: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -2003,6 +2003,57 @@ pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Vec<Rc<Node>> {
 } else {
         vec![make_field_node("value".to_string(), rt.clone(), Cardinality::Required, None, None, rt.span.clone())]
 }
+}
+
+// Operation / Capability Node constructors (D2d/D2e)
+
+pub fn make_operation_node(name: String, inputs: Vec<Rc<Node>>, outputs: Vec<Rc<Node>>, response_props: Vec<Rc<Node>>, mock_props: Vec<Rc<Node>>, exit_props: Vec<Rc<Node>>, modifier_props: Vec<Rc<Node>>, transport: Option<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
+    let mut all_props = Vec::new();
+    all_props.extend(modifier_props.iter().cloned());
+    all_props.extend(response_props.iter().cloned());
+    all_props.extend(exit_props.iter().cloned());
+    all_props.extend(mock_props.iter().cloned());
+    let params: Vec<Rc<Node>> = { let mut __result = Vec::new(); for f in inputs.iter().cloned() { __result.push(make_param_node(field_node_name(f.clone()), field_node_type_expr(f.clone()), field_node_default_value(f.clone()), f.span.clone())); } __result };
+    Rc::new(Node {
+        name: name,
+        span: span.clone(),
+        children: vec![],
+        params: params,
+        inferred: outputs_to_inferred(outputs, span),
+        return_cardinality: Cardinality::Required,
+        uses: vec![],
+        body: None,
+        connective: None,
+        transport: transport,
+        properties: all_props,
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
+}
+
+pub fn make_capability_node(name: String, inputs: Vec<Rc<Node>>, outputs: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
+    let params: Vec<Rc<Node>> = { let mut __result = Vec::new(); for f in inputs.iter().cloned() { __result.push(make_param_node(field_node_name(f.clone()), field_node_type_expr(f.clone()), field_node_default_value(f.clone()), f.span.clone())); } __result };
+    Rc::new(Node {
+        name: name,
+        span: span.clone(),
+        children: vec![],
+        params: params,
+        inferred: outputs_to_inferred(outputs, span),
+        return_cardinality: Cardinality::Required,
+        uses: vec![],
+        body: None,
+        connective: None,
+        transport: None,
+        properties: vec![],
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })
 }
 
 pub fn parse_dotted_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<NameResult> {
@@ -4349,32 +4400,7 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
 }
-let op_children = { let mut __result = Vec::new(); for op in r.operations.clone().iter().cloned() { __result.push({
-            let all_props = v2_rt::concat(v2_rt::concat(v2_rt::concat(op.modifier_props.clone(), op.response_props.clone()), op.exit_props.clone()), op.mock_props.clone());
-Rc::new(Node {
-    name: op.name.clone(),
-    span: op.span.clone(),
-    children: vec![],
-    params: { let mut __result = Vec::new(); for f in op.inputs.clone().iter().cloned() { __result.push(make_param_node(
-    field_node_name(f.clone()),
-    field_node_type_expr(f.clone()),
-    field_node_default_value(f.clone()),
-    f.span.clone(),
-)); } __result },
-    inferred: outputs_to_inferred(op.outputs.clone(), op.span.clone()),
-    return_cardinality: Cardinality::Required,
-    uses: vec![],
-    body: None,
-    connective: None,
-    transport: op.transport.clone(),
-    properties: all_props.clone(),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}); } __result };
+// Operations are already Nodes (D2d dissolution) -- use directly as children
 let ns_prop = make_field_init_node("namespace_root".to_string(), make_expr_node(Rc::new(ExprData::ExprLiteral {
     value: Rc::new(LiteralValue::LitStr {
     value: namespace_root.clone(),
@@ -4387,7 +4413,7 @@ let svc_props = match r.config.clone() {
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
-    children: op_children.clone(),
+    children: r.operations.clone(),
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -4414,7 +4440,7 @@ pub fn parse_service_body(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
     parse_service_entries(tokens.clone(), state.clone(), None, local_transport_node(current_span(tokens.clone(), state.clone())), vec![])
 }
 
-pub fn parse_service_entries(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut config: Option<Rc<ServiceConfig>>, mut transport: Rc<Node>, mut operations: Vec<Rc<OperationDef>>) -> Rc<ServiceBodyResult> {
+pub fn parse_service_entries(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut config: Option<Rc<ServiceConfig>>, mut transport: Rc<Node>, mut operations: Vec<Rc<Node>>) -> Rc<ServiceBodyResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
@@ -5104,17 +5130,7 @@ continue;
 pub fn parse_operation_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<OpResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
-let dummy_op = Rc::new(OperationDef {
-    name: "".to_string(),
-    inputs: vec![],
-    outputs: vec![],
-    response_props: vec![],
-    mock_props: vec![],
-    exit_props: vec![],
-    modifier_props: vec![],
-    transport: None,
-    span: start_span.clone(),
-});
+let dummy_op = make_operation_node("".to_string(), vec![], vec![], vec![], vec![], vec![], vec![], None, start_span.clone());
 let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwOperation);
 if has_err(r.err.clone()) {
             return Rc::new(OpResult {
@@ -5143,17 +5159,7 @@ if peek_is_lbrace(tokens.clone(), s.clone()) {
 
 pub fn parse_operation_v2_inline(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, name: String, start_span: Rc<SourceSpan>) -> Rc<OpResult> {
     {
-        let dummy_op = Rc::new(OperationDef {
-    name: "".to_string(),
-    inputs: vec![],
-    outputs: vec![],
-    response_props: vec![],
-    mock_props: vec![],
-    exit_props: vec![],
-    modifier_props: vec![],
-    transport: None,
-    span: start_span.clone(),
-});
+        let dummy_op = make_operation_node("".to_string(), vec![], vec![], vec![], vec![], vec![], vec![], None, start_span.clone());
 let mods_r = parse_operation_modifiers(tokens.clone(), state.clone());
 let modifiers = mods_r.modifiers.clone();
 let mod_props = modifiers_to_props(modifiers.clone(), start_span.clone());
@@ -5216,17 +5222,7 @@ if has_err(mock_r.err.clone()) {
 })
 }
 let s = skip_newlines(tokens.clone(), mock_r.state.clone());
-let op = Rc::new(OperationDef {
-    name: name.clone(),
-    inputs: inputs.clone(),
-    outputs: outputs.clone(),
-    response_props: resp_r.responses.clone(),
-    mock_props: mock_r.mocks.clone(),
-    exit_props: vec![],
-    modifier_props: mod_props.clone(),
-    transport: None,
-    span: start_span.clone(),
-});
+let op = make_operation_node(name.clone(), inputs.clone(), outputs.clone(), resp_r.responses.clone(), mock_r.mocks.clone(), vec![], mod_props.clone(), None, start_span.clone());
 Rc::new(OpResult {
     operation: op.clone(),
     state: s.clone(),
@@ -5237,17 +5233,7 @@ Rc::new(OpResult {
 
 pub fn parse_operation_v1_body(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>, name: String, start_span: Rc<SourceSpan>) -> Rc<OpResult> {
     {
-        let dummy_op = Rc::new(OperationDef {
-    name: "".to_string(),
-    inputs: vec![],
-    outputs: vec![],
-    response_props: vec![],
-    mock_props: vec![],
-    exit_props: vec![],
-    modifier_props: vec![],
-    transport: None,
-    span: start_span.clone(),
-});
+        let dummy_op = make_operation_node("".to_string(), vec![], vec![], vec![], vec![], vec![], vec![], None, start_span.clone());
 let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectLBrace);
 if has_err(r.err.clone()) {
             return Rc::new(OpResult {
@@ -5273,17 +5259,7 @@ if has_err(r3.err.clone()) {
     err: r3.err.clone(),
 })
 }
-let op = Rc::new(OperationDef {
-    name: name.clone(),
-    inputs: r2.inputs.clone(),
-    outputs: r2.outputs.clone(),
-    response_props: r2.response_props.clone(),
-    mock_props: r2.mock_props.clone(),
-    exit_props: r2.exit_props.clone(),
-    modifier_props: r2.modifier_props.clone(),
-    transport: r2.transport.clone(),
-    span: start_span.clone(),
-});
+let op = make_operation_node(name.clone(), r2.inputs.clone(), r2.outputs.clone(), r2.response_props.clone(), r2.mock_props.clone(), r2.exit_props.clone(), r2.modifier_props.clone(), r2.transport.clone(), start_span.clone());
 Rc::new(OpResult {
     operation: op.clone(),
     state: skip_newlines(tokens.clone(), r3.state.clone()),
@@ -6498,33 +6474,11 @@ if has_err(r2.err.clone()) {
     err: r2.err.clone(),
 })
 }
-let cap_children = { let mut __result = Vec::new(); for cap in r.capabilities.clone().iter().cloned() { __result.push(Rc::new(Node {
-    name: cap.name.clone(),
-    span: cap.span.clone(),
-    children: vec![],
-    params: { let mut __result = Vec::new(); for f in cap.inputs.clone().iter().cloned() { __result.push(make_param_node(
-    field_node_name(f.clone()),
-    field_node_type_expr(f.clone()),
-    field_node_default_value(f.clone()),
-    f.span.clone(),
-)); } __result },
-    inferred: outputs_to_inferred(cap.outputs.clone(), cap.span.clone()),
-    return_cardinality: Cardinality::Required,
-    uses: vec![],
-    body: None,
-    connective: None,
-    transport: None,
-    properties: vec![],
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})); } __result };
+// Capabilities are already Nodes (D2e dissolution) -- use directly as children
 let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
-    children: cap_children.clone(),
+    children: r.capabilities.clone(),
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -6547,7 +6501,7 @@ Rc::new(ItemResult {
 }
 }
 
-pub fn parse_resource_entries(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut properties: Vec<Rc<Node>>, mut capabilities: Vec<Rc<CapabilityDef>>) -> Rc<ResPropResult> {
+pub fn parse_resource_entries(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut properties: Vec<Rc<Node>>, mut capabilities: Vec<Rc<Node>>) -> Rc<ResPropResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
@@ -6741,12 +6695,7 @@ skip_until_rbrace(tokens.clone(), adv.state.clone())
 pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<CapResult> {
     {
         let start_span = current_span(tokens.clone(), state.clone());
-let dummy_cap = Rc::new(CapabilityDef {
-    name: "".to_string(),
-    inputs: vec![],
-    outputs: vec![],
-    span: start_span.clone(),
-});
+let dummy_cap = make_capability_node("".to_string(), vec![], vec![], start_span.clone());
 let r = expect(tokens.clone(), state.clone(), ExpectedToken::ExpectKwCapability);
 if has_err(r.err.clone()) {
             return Rc::new(CapResult {
@@ -6791,12 +6740,7 @@ if has_err(r3.err.clone()) {
     err: r3.err.clone(),
 })
 }
-let cap = Rc::new(CapabilityDef {
-    name: name.clone(),
-    inputs: io.inputs.clone(),
-    outputs: io.outputs.clone(),
-    span: start_span.clone(),
-});
+let cap = make_capability_node(name.clone(), io.inputs.clone(), io.outputs.clone(), start_span.clone());
 Rc::new(CapResult {
     capability: cap.clone(),
     state: skip_newlines(tokens.clone(), r3.state.clone()),
@@ -6843,12 +6787,7 @@ let outputs = match ret.inferred.clone().as_deref().cloned() {
     Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(rt.clone()),
     _ => vec![],
 };
-let cap = Rc::new(CapabilityDef {
-    name: name.clone(),
-    inputs: inputs.clone(),
-    outputs: outputs.clone(),
-    span: start_span.clone(),
-});
+let cap = make_capability_node(name.clone(), inputs.clone(), outputs.clone(), start_span.clone());
 Rc::new(CapResult {
     capability: cap.clone(),
     state: skip_newlines(tokens.clone(), ret.state.clone()),
@@ -6857,12 +6796,7 @@ Rc::new(CapResult {
 }
 } else {
                 {
-                    let cap = Rc::new(CapabilityDef {
-    name: name.clone(),
-    inputs: vec![],
-    outputs: vec![],
-    span: start_span.clone(),
-});
+                    let cap = make_capability_node(name.clone(), vec![], vec![], start_span.clone());
 Rc::new(CapResult {
     capability: cap.clone(),
     state: skip_newlines(tokens.clone(), s.clone()),

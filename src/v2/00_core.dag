@@ -337,28 +337,7 @@ type StringPart
   = Text { value: String }
   | Interpolation { expr: Node }
 
-// OperationDef: parse-intermediate type. The parser reads operations using this
-// shape, then dissolves fields into Node properties and inferred.
-type OperationDef {
-  name: String
-  inputs: List<Node>
-  outputs: List<Node>
-  response_props: List<Node>
-  mock_props: List<Node>
-  exit_props: List<Node>
-  modifier_props: List<Node>
-  transport: Node?
-  span: SourceSpan
-}
-
 type OperationModifier = Idempotent | Readonly | Hermetic
-
-type CapabilityDef {
-  name: String
-  inputs: List<Node>
-  outputs: List<Node>
-  span: SourceSpan
-}
 
 // =========================================================================
 // Compiler output
@@ -489,7 +468,7 @@ type DeclaredFuncEnv {
 //
 // The type is self-referential: children: List<Node>. An operation is a
 // Node with params and inferred. A capability is a Node with
-// input/output ports. OperationDef and CapabilityDef dissolve into Node.
+// input/output ports. Both are constructed directly as Nodes.
 // =========================================================================
 
 type Node {
