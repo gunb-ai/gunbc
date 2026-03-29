@@ -32,14 +32,7 @@ import v2.std.core {
   TextFile, SourceSpan,
   BinOpKind, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
-  IntrinsicMethod,
-  RuntimeBridgeMethod,
-  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
-  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
-  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
-  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
-  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
-  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
+  expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
   arm_body, arm_pattern, arm_guard,
   arg_name, arg_value,
   field_init_node_name, field_init_node_value,
@@ -51,8 +44,6 @@ import v2.std.core {
   slice_start, slice_end,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
-  TransportKind, RestTransport, ShellTransport, FileTransport,
-  is_transport_kind,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -229,8 +220,9 @@ fn emit_simple_expr(expr: Node, target: RenderTarget) -> String {
     ExprLiteral { value: v } => emit_literal(value: v, target: target)
     ExprError { kind: _, message: message } =>
       emit_error_expr(message: message, target: target)
-    ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: target)
-    ExprFieldAccess { field: f, summary: _ } =>
+    ExprVar { binding_kind: _ } => emit_ident(name: expr_var_name(texpr: expr), target: target)
+    ExprFieldAccess { summary: _ } =>
+      let f = field_access_field(texpr: expr)
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
@@ -332,13 +324,13 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
 // After Expr->Node dissolution, resolved type is on Node.inferred.
 fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
   match texpr.expr_data {
-    ExprLet { name: name } =>
+    ExprLet =>
       // children = [value, body?]. Bodyless let extends scope.
       let ch = texpr.children
       let has_body = (ch |> count) > 1
       if has_body == false {
         let value = let_value(texpr: texpr)
-        extend_scope(scope: scope, name: name, resolved: rt_type(n: value))
+        extend_scope(scope: scope, name: let_binding_name(texpr: texpr), resolved: rt_type(n: value))
       } else {
         scope
       }
@@ -463,13 +455,13 @@ fn emit_data_value_json(value: Node) -> String {
       let el_strs = value.children |> map(e => emit_data_value_json(value: e))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
-    ExprRecordLit { type_name: _, parent_enum: _ } => {
+    ExprRecordLit { parent_enum: _ } => {
       let field_strs = value.children |> map(f =>
         concat("\"", escape_json_string(s: field_init_node_name(n: f)), "\": ", emit_data_value_json(value: field_init_node_value(n: f)))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    ExprVar { name: n, binding_kind: _ } => concat("\"", escape_json_string(s: n), "\"")
+    ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name(texpr: e)), "\"")
     _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
   }
 }
@@ -1069,24 +1061,24 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
 }
 
 // Check if any operation in the service (or the service-level fallback)
-// uses a given transport kind.
-fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind: TransportKind) -> Bool {
-  let from_fallback = is_transport_kind(t: fallback_transport, kind: kind)
+// uses a given transport kind by name.
+fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind_name: String) -> Bool {
+  let from_fallback = fallback_transport.name == kind_name
   let from_ops = op_children |> any(op =>
-    if op.transport != none { is_transport_kind(t: op.transport.value, kind: kind) } else { false }
+    if op.transport != none { op.transport.value.name == kind_name } else { false }
   )
   from_fallback || from_ops
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.
 fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = if is_transport_kind(t: fallback_transport, kind: RestTransport) {
+  let from_fallback = if fallback_transport.name == "rest" {
     transport_has_auth(t: fallback_transport)
   } else { false }
   let from_ops = op_children |> any(op =>
     if op.transport != none {
       let t = op.transport.value
-      if is_transport_kind(t: t, kind: RestTransport) { transport_has_auth(t: t) } else { false }
+      if t.name == "rest" { transport_has_auth(t: t) } else { false }
     } else { false }
   )
   from_fallback || from_ops
@@ -1174,24 +1166,24 @@ fn classify_expr(texpr: Node) -> ExprCategory {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprCatLeaf
     ExprError { kind: _, message: _ } => ExprCatLeaf
-    ExprVar { name: _, binding_kind: _ } => ExprCatLeaf
-    ExprFieldAccess { field: _, summary: _ } => ExprCatCompound
-    ExprCall { func: _, call_semantics: _ } => ExprCatCompound
-    ExprMethodCall { method: _, method_semantics: _ } => ExprCatCompound
-    ExprRecordLit { type_name: _, parent_enum: _ } => ExprCatCompound
+    ExprVar { binding_kind: _ } => ExprCatLeaf
+    ExprFieldAccess { summary: _ } => ExprCatCompound
+    ExprCall { call_semantics: _ } => ExprCatCompound
+    ExprMethodCall { method_semantics: _ } => ExprCatCompound
+    ExprRecordLit { parent_enum: _ } => ExprCatCompound
     ExprListLit => ExprCatCompound
     ExprBinOp { op: _ } => ExprCatCompound
     ExprUnaryOp { op: _ } => ExprCatCompound
-    ExprLambda { params: _, semantics: _ } => ExprCatCompound
+    ExprLambda { semantics: _ } => ExprCatCompound
     ExprStringInterp => ExprCatCompound
     ExprCast => ExprCatCompound
     ExprIndex => ExprCatCompound
     ExprSlice => ExprCatCompound
     ExprMatch => ExprCatControlFlow
     ExprIf => ExprCatControlFlow
-    ExprForEach { variable: _ } => ExprCatControlFlow
+    ExprForEach => ExprCatControlFlow
     ExprBlock => ExprCatControlFlow
-    ExprLet { name: _ } => ExprCatBinding
+    ExprLet => ExprCatBinding
     ExprReturn => ExprCatControlFlow
     NoExprData => ExprCatNone
     _ => ExprCatNone
@@ -1205,7 +1197,8 @@ type FuncBodyShape
 
 fn classify_func_body(body: Node) -> FuncBodyShape {
   match body.expr_data {
-    ExprLet { name: n } =>
+    ExprLet =>
+      let n = let_binding_name(texpr: body)
       let v = let_value(texpr: body)
       let rest = let_body(texpr: body)
       FuncBodyLet { name: n, value: v, rest: rest }
@@ -1226,8 +1219,8 @@ type TcoExprShape
 
 fn classify_tco_expr(texpr: Node) -> TcoExprShape {
   match texpr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
-      TcoCall { func: f, args: texpr.children }
+    ExprCall { call_semantics: _ } =>
+      TcoCall { func: expr_call_func(texpr: texpr), args: texpr.children }
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
@@ -1237,7 +1230,8 @@ fn classify_tco_expr(texpr: Node) -> TcoExprShape {
       let scrut = match_scrutinee(texpr: texpr)
       let arm_list = match_arm_nodes(texpr: texpr)
       TcoMatch { scrutinee: scrut, arms: arm_list }
-    ExprLet { name: n } =>
+    ExprLet =>
+      let n = let_binding_name(texpr: texpr)
       let v = let_value(texpr: texpr)
       let bd = let_body(texpr: texpr)
       TcoLet { name: n, value: v, body: bd }
@@ -1325,8 +1319,8 @@ fn emit_shared_tco_expr(
   emit_default_return: fn(TcoFrame) -> String
 ) -> String {
   match frame.expr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
-      if f == fn_name {
+    ExprCall { call_semantics: _ } =>
+      if expr_call_func(texpr: frame.expr) == fn_name {
         emit_self_call_reassign(TcoReassignInput { args: frame.expr.children, scope: frame.scope, depth: frame.depth })
       } else {
         emit_non_self_call(frame)
@@ -1335,7 +1329,7 @@ fn emit_shared_tco_expr(
       emit_if(frame)
     ExprMatch =>
       emit_match(frame)
-    ExprLet { name: _ } =>
+    ExprLet =>
       emit_let(frame)
     ExprBlock =>
       emit_block(frame)
@@ -1346,7 +1340,7 @@ fn emit_shared_tco_expr(
 
 fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
   match texpr.expr_data {
-    ExprCall { func: f, call_semantics: _ } => f == func_name
+    ExprCall { call_semantics: _ } => expr_call_func(texpr: texpr) == func_name
     ExprIf =>
       // children = [condition, then, else?]. Check branches.
       let then_cand = is_tco_candidate(texpr: if_then_branch(texpr: texpr), func_name: func_name)
@@ -1354,7 +1348,7 @@ fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
       then_cand || else_cand
     ExprMatch =>
       match_arm_nodes(texpr: texpr) |> any(arm_node => is_tco_candidate(texpr: arm_body(n: arm_node), func_name: func_name))
-    ExprLet { name: _ } =>
+    ExprLet =>
       match let_body(texpr: texpr) { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
     ExprBlock =>
       // children = [stmt0, stmt1, ...].
@@ -1522,21 +1516,21 @@ fn emit_shared_expr(
       wrap_result(emit_literal(value: v, target: target))
     ExprError { kind: _, message: message } =>
       wrap_result(emit_error_expr(message: message, target: target))
-    ExprVar { name: _, binding_kind: _ } =>
+    ExprVar { binding_kind: _ } =>
       emit_var(texpr)
-    ExprFieldAccess { field: _, summary: _ } =>
+    ExprFieldAccess { summary: _ } =>
       emit_field_access(texpr)
-    ExprCall { func: _, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       emit_call(texpr)
-    ExprMethodCall { method: _, method_semantics: _ } =>
+    ExprMethodCall { method_semantics: _ } =>
       emit_method_call(texpr)
     ExprMatch =>
       emit_match(texpr)
     ExprIf =>
       emit_if(texpr)
-    ExprLet { name: _ } =>
+    ExprLet =>
       emit_let(texpr)
-    ExprRecordLit { type_name: _, parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       emit_record_lit(texpr)
     ExprBinOp { op: op } =>
       let left = binop_left(texpr: texpr)
@@ -1552,16 +1546,16 @@ fn emit_shared_expr(
     ExprUnaryOp { op: op } =>
       let operand = unaryop_operand(texpr: texpr)
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
-    ExprLambda { params: params, semantics: _ } =>
+    ExprLambda { semantics: _ } =>
       let body = lambda_body(texpr: texpr)
-      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: params, target: target), body_str: recurse(body), target: target))
+      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names(texpr: texpr), target: target), body_str: recurse(body), target: target))
     ExprStringInterp =>
       emit_string_interp(texpr)
     ExprBlock =>
       emit_block(texpr)
     ExprCast =>
       emit_cast(texpr)
-    ExprForEach { variable: _ } =>
+    ExprForEach =>
       emit_for_each(texpr)
     ExprIndex =>
       emit_index(texpr)
@@ -1576,43 +1570,3 @@ fn emit_shared_expr(
   }
 }
 
-// =========================================================================
-// bridge_method_base_name — canonical snake_case name for each bridge method.
-//
-// Single authority for the Bridge* → snake_case mapping. Each backend
-// either uses this directly (Rust) or derives its target convention from
-// it (Python overrides BridgeWith; Go capitalizes segments to PascalCase).
-// =========================================================================
-
-fn bridge_method_base_name(method: RuntimeBridgeMethod) -> String {
-  match method {
-    BridgeGet => "get"
-    BridgeWith => "with"
-    BridgeListPush => "list_push"
-    BridgeMapInsert => "map_insert"
-    BridgeMapMerge => "map_merge"
-    BridgeMapGet => "map_get"
-    BridgeMapHas => "map_has"
-    BridgeEmitMapHas => "emit_map_has"
-    BridgeMapValues => "map_values"
-    BridgeMapKeys => "map_keys"
-    BridgeMapContainsKey => "map_contains_key"
-    BridgeCharAt => "char_at"
-    BridgeStringAt => "string_at"
-    BridgeStringLength => "string_length"
-    BridgeLength => "length"
-    BridgeStartsWith => "starts_with"
-    BridgeEndsWith => "ends_with"
-    BridgeToString => "to_string"
-    BridgeTrim => "trim"
-    BridgeToLower => "to_lower"
-    BridgeToUpper => "to_upper"
-    BridgeReplace => "replace"
-    BridgeSubstring => "substring"
-    BridgeToInt => "to_int"
-    BridgeEmptyMap => "empty_map"
-    BridgeContains => "contains"
-    BridgeReverse => "reverse"
-    BridgeLookup => "lookup"
-  }
-}

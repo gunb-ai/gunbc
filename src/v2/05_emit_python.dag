@@ -16,14 +16,12 @@ import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_name, param_node_type_expr,
-  MatchPattern, FieldBinding, LiteralValue,
+  MatchPattern, LiteralValue, field_binding_name, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_name, resource_use_resource,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart,
   DeclaredFuncSig,
-  TransportKind, RestTransport, ShellTransport, FileTransport,
-  is_transport_kind,
   transport_has_auth, transport_auth_header_name,
   transport_headers, transport_env,
   ExprData, NoExprData,
@@ -33,20 +31,8 @@ import v2.std.core {
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach,
   ExprIndex, ExprSlice, ExprReturn,
   make_expr_node,
-  IntrinsicMethod,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
-  MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
-  RuntimeBridgeSemantics, ServiceMethodSemantics,
-  RuntimeBridgeMethod,
-  BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
-  BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
-  BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength,
-  BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim,
-  BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt,
-  BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics,
   FieldSummary, TupleFirst, TupleSecond,
   Text, Interpolation,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
@@ -69,6 +55,8 @@ import v2.compiler.languages {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, rt_type }
+import v2.compiler.infer_method {
+}
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -107,7 +95,6 @@ import v2.compiler.emit {
   is_service_item, has_service_items,
   classify_typed_item,
   extract_test_projections,
-  bridge_method_base_name,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport
@@ -548,13 +535,13 @@ fn emit_py_pattern(pattern: MatchPattern) -> String {
   }
 }
 
-fn emit_py_variant_pattern(name: String, field_bindings: List<FieldBinding>) -> String {
+fn emit_py_variant_pattern(name: String, field_bindings: List<Node>) -> String {
   if field_bindings |> count == 0 {
     concat(name, "()")
   } else {
     let binding_strs = field_bindings |> map(fb =>
-      let pat_str = emit_py_pattern(pattern: fb.binding)
-      concat(emit_ident(name: fb.field_name, target: Python), "=", pat_str)
+      let pat_str = emit_py_pattern(pattern: field_binding_pattern(n: fb))
+      concat(emit_ident(name: field_binding_name(n: fb), target: Python), "=", pat_str)
     )
     let bindings_str = binding_strs |> join(separator: ", ")
     concat(name, "(", bindings_str, ")")
@@ -575,14 +562,14 @@ fn emit_py_field_access(base: Node, field: String, summary: FieldSummary?, regis
 
 fn emit_py_expr_var(expr: Node) -> String {
   match expr.expr_data {
-    ExprVar { name: n, binding_kind: _ } => emit_ident(name: n, target: Python)
+    ExprVar { binding_kind: _ } => emit_ident(name: n, target: Python)
     _ => emit_error_expr(message: "emit_py_expr_var expected ExprVar", target: Python)
   }
 }
 
 fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprFieldAccess { field: f, summary: summary } =>
+    ExprFieldAccess { summary: summary } =>
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
@@ -598,7 +585,7 @@ fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope:
 
 fn emit_py_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       emit_py_typed_call(func: f, args: expr.children, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_call expected ExprCall", target: Python)
   }
@@ -606,7 +593,7 @@ fn emit_py_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 
 fn emit_py_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprMethodCall { method: m, method_semantics: method_semantics } =>
+    ExprMethodCall { method_semantics: method_semantics } =>
       let r = method_receiver(texpr: expr)
       let a = method_arg_nodes(texpr: expr)
       emit_py_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth)
@@ -637,7 +624,7 @@ fn emit_py_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScop
 
 fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprLet { name: n } =>
+    ExprLet =>
       let v = let_value(texpr: expr)
       let bd = let_body(texpr: expr)
       emit_py_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
@@ -647,7 +634,7 @@ fn emit_py_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferSco
 
 fn emit_py_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprRecordLit { type_name: tn, parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _ } =>
       let fs = expr.children
       emit_py_typed_record_lit(type_name: tn, fields: fs, registry: registry, scope: scope, depth: depth)
     _ => emit_error_expr(message: "emit_py_expr_record_lit expected ExprRecordLit", target: Python)
@@ -686,7 +673,7 @@ fn emit_py_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 
 fn emit_py_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
-    ExprForEach { variable: v } =>
+    ExprForEach =>
       let c = foreach_collection(texpr: expr)
       let bd = foreach_body(texpr: expr)
       emit_py_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth)
@@ -782,43 +769,40 @@ fn emit_py_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String
   concat(base_str, "[", start_str, ":", end_str, "]")
 }
 
-fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn py_bridge_method_name(method_name: String) -> String {
+  // Python reserved word `with` requires override; all others use method name directly.
+  if method_name == "with" { "with_update" } else { method_name }
+}
+
+fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
   let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
-  match intrinsic {
-    MethodCount => concat("len(", recv_str, ")")
-    MethodJoin => concat(first_arg_str, ".join(", recv_str, ")")
-    MethodSplit => concat(recv_str, ".split(", first_arg_str, ")")
-    MethodLast => concat(recv_str, "[-1] if ", recv_str, " else None")
-    MethodFirst => concat(recv_str, "[0] if ", recv_str, " else None")
-    MethodEnumerate => concat("list(enumerate(", recv_str, "))")
-    MethodChars => concat("list(", recv_str, ")")
-    MethodStringContains => concat(first_arg_str, " in ", recv_str)
-    MethodConcat => concat(recv_str, " + ", first_arg_str)
-    MethodMap => concat("[", first_arg_str, "(x) for x in ", recv_str, "]")
-    MethodFilter => concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]")
-    MethodAny => concat("any(", first_arg_str, "(x) for x in ", recv_str, ")")
-    MethodAll => concat("all(", first_arg_str, "(x) for x in ", recv_str, ")")
-    MethodFlatMap => concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]")
-    MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
-    MethodTake => concat(recv_str, "[:", first_arg_str, "]")
-    MethodFold => concat("functools.reduce(", first_arg_str, ", ", recv_str, ")")
-    MethodSortBy => concat("sorted(", recv_str, ", key=", first_arg_str, ")")
-    MethodAppend => concat(recv_str, " + [", first_arg_str, "]")
+  if method_name == "count" { concat("len(", recv_str, ")") }
+  else if method_name == "join" { concat(first_arg_str, ".join(", recv_str, ")") }
+  else if method_name == "split" { concat(recv_str, ".split(", first_arg_str, ")") }
+  else if method_name == "last" { concat(recv_str, "[-1] if ", recv_str, " else None") }
+  else if method_name == "first" { concat(recv_str, "[0] if ", recv_str, " else None") }
+  else if method_name == "enumerate" { concat("list(enumerate(", recv_str, "))") }
+  else if method_name == "chars" { concat("list(", recv_str, ")") }
+  else if method_name == "string_contains" { concat(first_arg_str, " in ", recv_str) }
+  else if method_name == "concat" { concat(recv_str, " + ", first_arg_str) }
+  else if method_name == "map" { concat("[", first_arg_str, "(x) for x in ", recv_str, "]") }
+  else if method_name == "filter" { concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]") }
+  else if method_name == "any" { concat("any(", first_arg_str, "(x) for x in ", recv_str, ")") }
+  else if method_name == "all" { concat("all(", first_arg_str, "(x) for x in ", recv_str, ")") }
+  else if method_name == "flat_map" { concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]") }
+  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
+  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
+  else if method_name == "fold" { concat("functools.reduce(", first_arg_str, ", ", recv_str, ")") }
+  else if method_name == "sort_by" { concat("sorted(", recv_str, ", key=", first_arg_str, ")") }
+  else if method_name == "append" { concat(recv_str, " + [", first_arg_str, "]") }
+  else {
+    // Generic bridge method: function_name(receiver, args...)
+    let function_name = py_bridge_method_name(method_name: method_name)
+    let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
+    let all_args = concat([recv_str], arg_strs)
+    concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
   }
-}
-
-fn py_bridge_method_name(method: RuntimeBridgeMethod) -> String {
-  // Python reserved word `with` requires override; all others use base name.
-  if (method == BridgeWith) { "with_update" } else { bridge_method_base_name(method: method) }
-}
-
-fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let function_name = py_bridge_method_name(method: method)
-  let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-  let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
-  let all_args = concat([recv_str], arg_strs)
-  concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
 }
 
 fn emit_py_plain_method_call(receiver: Node, method: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
@@ -836,10 +820,8 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
-    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } =>
-      emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
-    RuntimeBridgeSemantics { method: bridge_method } =>
-      emit_py_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
+    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
+      emit_py_algebra_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     PlainMethodSemantics =>
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }
@@ -982,7 +964,7 @@ fn emit_py_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>,
 
 fn emit_py_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match body.expr_data {
-    ExprLet { name: n } => {
+    ExprLet => {
       let ch = body.children
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
@@ -1028,7 +1010,7 @@ fn emit_py_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, regi
 
 fn emit_py_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
-    ExprCall { func: f, call_semantics: _ } =>
+    ExprCall { call_semantics: _ } =>
       let call_str = emit_py_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope, depth: frame.depth)
       concat("return ", call_str)
     _ => emit_error_expr(message: "emit_py_tco_non_self_call expected ExprCall", target: Python)
@@ -1073,7 +1055,7 @@ fn emit_py_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, regis
 
 fn emit_py_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>) -> String {
   match frame.expr.expr_data {
-    ExprLet { name: n } =>
+    ExprLet =>
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_py_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth)
@@ -1176,15 +1158,15 @@ fn emit_py_service_def(
 }
 
 fn emit_py_service_init(transport: Node) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
+  if transport.name == "rest" {
     let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
     let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
     concat("def __init__(self, base_url: str", auth_param, "):\n",
       "    self.base_url = base_url", auth_assign)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     concat("def __init__(self, working_dir: str | None = None):\n",
       "    self.working_dir = working_dir")
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     concat("def __init__(self, base_path: str):\n",
       "    self.base_path = base_path")
   } else {
@@ -1211,11 +1193,11 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
+  if transport.name == "rest" {
     emit_py_rest_call(op_name: op_name, transport: transport)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     emit_py_shell_call(op_name: op_name, transport: transport)
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     emit_py_file_call(op_name: op_name)
   } else {
     emit_py_local_call(op_name: op_name)

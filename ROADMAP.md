@@ -1564,17 +1564,17 @@ ExprData                           -- pure operator tag
 
 | Current | Target | Why |
 |---------|--------|-----|
-| `params: List<Param>` | `params: List<Node>` | Param dissolved — name+span are Node's |
-| `uses: List<ResourceUse>` | `uses: List<Node>` | ResourceUse dissolved |
-| `properties: List<FieldInit>` | `properties: List<Node>` | FieldInit dissolved |
-| `ExprVar { name: String }` | `ExprVar` (unit) | Identifier is Node.name |
-| `ExprFieldAccess { field: String }` | `ExprFieldAccess` | Field ref is children[1] |
-| `ExprCall { func: String }` | `ExprCall` | Func ref is children[0] or Node.name |
-| `ExprMethodCall { method: String }` | `ExprMethodCall` | Method ref is a child |
-| `ExprLet { name: String }` | `ExprLet` | Binding name is Node.name |
-| `ExprForEach { variable: String }` | `ExprForEach` | Loop var is Node.name |
+| `params: List<Param>` | `params: List<Node>` | **DONE** (D1c) |
+| `uses: List<ResourceUse>` | `uses: List<Node>` | **DONE** (D1b) |
+| `properties: List<FieldInit>` | `properties: List<Node>` | **DONE** (D1a) |
+| `ExprVar { name: String }` | `ExprVar` (unit) | Identifier is a child Node (span carries text) |
+| `ExprFieldAccess { field: String }` | `ExprFieldAccess` | Field ref is a child Node |
+| `ExprCall { func: String }` | `ExprCall` | Func ref is a child Node |
+| `ExprMethodCall { method: String }` | `ExprMethodCall` | Method ref is a child Node |
+| `ExprLet { name: String }` | `ExprLet` | Binding site is a child Node |
+| `ExprForEach { variable: String }` | `ExprForEach` | Loop var is a child Node |
 | `ExprLambda { params: List<String> }` | `ExprLambda` | Param names are child Nodes |
-| `ExprRecordLit { type_name: String? }` | `ExprRecordLit` | Type ref is a child |
+| `ExprRecordLit { type_name: String? }` | `ExprRecordLit` | Type ref is a child Node |
 
 **Deleted types (10):** Field, Variant, Param, ResourceUse, FieldInit,
 NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef. All
@@ -1585,10 +1585,14 @@ CollectionKind, ExprData (unit variants), MatchPattern, LiteralValue,
 TokenShape, BinOpKind, UnaryOpKind, InferredNode, NodeType. These
 are closed structural properties — not satellite types.
 
-**Retained semantic enums:** IntrinsicMethod, RuntimeBridgeMethod,
-MethodSemantics, CallSemantics, VarBindingKind, FieldSummary,
-LambdaSemantics. These are populated by resolution/inference and
-consumed by emit — they carry structural facts, not names.
+**Retained semantic enums:** CallSemantics, VarBindingKind,
+FieldSummary, LambdaSemantics, FieldAccessStyle, FieldValueShape.
+These carry structural facts, not names.
+
+**Dissolve via .dag modeling (D5b):** IntrinsicMethod (20),
+RuntimeBridgeMethod (25+), MethodSemantics (4), TransportKind (5),
+ConfigPropertyKey (6). Methods/transports become .dag Nodes —
+the enum is replaced by an edge to the definition.
 
 #### What Each Stage Models
 
@@ -1656,38 +1660,173 @@ Go and Python emitters: 0 violations. They model correct emit.
 (~120), structural copying (~125), emit rendering (~175),
 diagnostics (~45).
 
+#### Type Disposition (35 types remaining after D1+D2)
+
+**Keep as-is (structural properties — closed algebraic sets):**
+Connective (3), Cardinality (2), BinOpKind (13), UnaryOpKind (2),
+LiteralValue (5), ExprErrorKind (3), OperationModifier (3),
+Token, TokenShape (28). These represent graph shape, operators, and
+values. Adding a language construct doesn't add variants. (11 types)
+
+**Keep as-is (infrastructure):**
+CompilerDiagnostic (14), ErrorNode, ErrorDAG, CompileResult, TextFile,
+LineCol, NewlineIndex. Diagnostic and pipeline output types. (7 types)
+
+**Keep as-is (semantic metadata — populated by inference, consumed by
+emit, no strings):**
+FieldAccessStyle (5), FieldValueShape (2), FieldSummary,
+VarBindingKind (3), CallSemantics (2), LambdaSemantics. Clean
+structural metadata. (6 types)
+
+**Keep structure, remove String fields (D3):**
+ExprData (9 String fields → children), MatchPattern (Bind.name,
+VariantPattern.name/parent_enum → Node). (2 types)
+
+**Dissolve entirely via .dag modeling (D5):**
+IntrinsicMethod (20), RuntimeBridgeMethod (25+), MethodSemantics (4),
+TransportKind (5), ConfigPropertyKey (6). These exist because the
+compiler doesn't model methods/transports as .dag Nodes — it
+classifies them by string comparison into enum variants. In the
+target model, methods ARE Nodes defined in .dag type algebras.
+The enum is unnecessary. (5 types)
+
+**String-keyed → structural edges (D5):**
+DeclaredFuncSig (carries name: String), DeclaredFuncEnv (Map<String,
+...>). Function scope is string-keyed. With edges, the scope is
+structural. (2 types)
+
+**Wrappers (keep):**
+InferredNode (3), NodeType (4). Inference result discriminators. (2 types)
+
+**Total:** 11 keep + 7 infra + 6 metadata + 2 wrappers = **26 keep.**
+2 D3 + 5 D5-dissolve + 2 D5-structural = **9 to change.**
+
 #### Execution
 
-| Phase | What | Dissolves | Ratchet |
-|-------|------|-----------|---------|
-| D1 | **Satellite type dissolution.** Param, ResourceUse, FieldInit → `List<Node>`. Delete types. | 3 types, ~85 consumer sites | Satellite types: 10 → 7 |
-| D2 | **Parser produces Nodes directly.** `expect_name()` returns leaf Node. Field/Variant/OperationDef/CapabilityDef created as Nodes in parser, never as intermediates. | 4 types, ~80 parser sites | Satellite types: 7 → 3 |
-| D3 | **ExprData String dissolution.** String fields → children. ExprData variants become unit. Parser stores identifiers as child Nodes. | 9 String fields, ~210 consumer sites | ExprData Strings: 9 → 0 |
-| D4 | **Remaining dissolution.** NamedArg, MatchArm, FieldBinding → Node. MatchPattern names → Node.name. | 3 types, ~70 consumer sites | Satellite types: 3 → 0 |
-| D5 | **Edge model.** Resolution produces structural edges (use → definition). Method dispatch via data tables. Inference walks edges. | ~120 scope lookups + ~165 name comparisons | Name reads in inference: current → 0 |
-| D6 | **Delete Node.name.** Emit extracts identifier text via `source_text_at(binding_site.span)`. No stored name field. Delete scrambled-name tests (nothing to scramble). | ~175 emit name reads + `Node.name` field | Node has no name field |
+| Phase | What | Status |
+|-------|------|--------|
+| D1 | **Satellite type dissolution.** FieldInit, ResourceUse, Param, Field, Variant → Node. | **DONE** (5 types deleted) |
+| D2 | **Remaining satellites.** NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef → Node. | **DONE** (5 types deleted) |
+| D3 | **ExprData String dissolution.** 9 String fields → child Nodes with spans. ExprData variants become unit. | **DONE** (~210 consumer sites) |
+| D5a | *Binding edges.* | **NO CHANGE NEEDED.** Current architecture is correct: scope map is temporary, `inferred` carries Rc-shared type (no duplication), names die after inference. |
+| D5b | *Method/transport .dag modeling.* IntrinsicMethod (20), RuntimeBridgeMethod (27), TransportKind (5), ConfigPropertyKey (6) dissolved. MethodSemantics restructured to AlgebraMethodSemantics { method_name }. | **DONE** (58 enum variants deleted) |
+| D5c | *DeclaredFuncSig/Env cleanup.* TypeBinding.name redundancy cleans up with D6. DeclaredFuncSig.name same. | Deferred to D6 |
+| D6 | **Delete Node.name.** Identity is the node itself. Text derived from span. Also dissolve MatchPattern Bind/VariantPattern string fields. Delete scrambled-name tests. | **NEXT** — ~553 .name read sites across 20 files. See D6 scope notes below. |
 
-D1-D4 are the type dissolution (existing pattern applied
-universally). D5 is the architectural change (resolution boundary
-kills names). D6 is the final step: Node.name ceases to exist.
+**D6 scope notes (for next session):**
 
-The L1 ratchet (currently 52) tracks name-read sites in the compiler.
-This model drives L1 to 0.
+~553 `.name` reads across 20 .dag files, categorized:
+- 182 structural passthroughs (disappear with field deletion)
+- 139 Node constructions (remove `name:` field)
+- 122 accessor calls (11 functions return `n.name` — change source)
+- 92 identity checks (`n.name == "String"` etc. — L1 violations)
+- 62 scope keys (Map operations — scope is temporary, acceptable)
+- 60 emit renders (need `source_text_at(span)` or accessor)
+- 64 diagnostics (need accessor for message text)
 
-**On scrambled-name tests.** The current scrambled-name tests are
-validation — they test that inference doesn't branch on names. The
-target model makes this **structural**: Node has no name field.
-Inference can't read the name because there is no name. The
-scrambled-name tests become unnecessary by construction — delete
-them when `Node.name` is removed. Until then, they remain as the
-ratchet.
+Sub-phases:
+1. Decide alternative name source (span derivation vs dedicated field)
+2. Update 16 make_* helpers + 11 accessor functions
+3. Audit 60+ direct Node constructions in 02_parse.dag
+4. Update 92 identity checks + 62 map operations
+5. Update emit + diagnostic layers
+6. Delete Node.name field, delete scrambled-name tests
+
+2 merge regressions to fix first:
+- `complexity_class_sort_proven`: sort_by as ExprCall doesn't route
+  through AlgebraMethodSemantics cost shape path
+- `enumerate_returns_tuple_type`: enumerate type inference affected
+  by method dissolution
+
+**Design principle for D5b:** The compiler's job is NOT to classify
+identifiers into enum variants. The compiler walks a graph of Nodes.
+Every method, transport, config key, and function is a Node defined
+in .dag source. The compiler never classifies by name — it follows
+edges.
+
+**Key finding: the .dag modeling already exists.** `std/algebra.dag`
+already defines methods as structural fields on algebra types:
+`FreeMonoid<T>` has `map`, `filter`, `fold`, `concat`, etc. as
+typed fields. `PartialFunction<K,V>` has `get`, `insert`, `merge`.
+The compiler ignores these definitions and instead hardcodes the
+same information as `IntrinsicMethod` enum variants with string
+classification in `04_method.dag`. The modeling is done — the
+compiler just needs to read it.
+
+**Same pattern as Stream 0 (SyntaxSpec).** Parser keywords were
+hardcoded match arms. SyntaxSpec moved them to .dag data. The parser
+reads the data. Adding a keyword = one data entry, not a code change.
+Method classification is the same: hardcoded enum match arms. Moving
+them to .dag algebra data = the compiler reads from type definitions.
+Adding a method = one field in the algebra type, not a compiler
+enum variant.
+
+**D5b execution plan:**
+
+1. **Compiler reads methods from type algebra Nodes.** During type
+   resolution, when the compiler resolves `List<T>`, it has the
+   `FreeMonoid<T>` Node from `std/algebra.dag`. That Node's fields
+   (children) ARE the method definitions — `map`, `filter`, `fold`
+   etc. Method resolution matches the method name against the type's
+   structural children, not against a hardcoded index map.
+
+2. **Delete `04_method.dag` classification functions.**
+   `intrinsic_method_index()` and `runtime_bridge_method_index()`
+   are the string→enum maps. Delete them. The type algebra IS the
+   method registry.
+
+3. **Delete enums.** IntrinsicMethod (20 variants),
+   RuntimeBridgeMethod (25+ variants). Method identity is the
+   algebra field Node, not an enum variant.
+
+4. **MethodSemantics simplifies.** Currently 4 variants:
+   PlainMethodSemantics, IntrinsicMethodSemantics { intrinsic, ... },
+   RuntimeBridgeSemantics { method }, ServiceMethodSemantics { ... }.
+   With algebra-based resolution, all methods are just Nodes with
+   different properties. The envelope flattens.
+
+5. **Per-language rendering templates.** Emit needs to know how to
+   render `FreeMonoid.map` in Rust vs Python vs Go. This is a
+   language extdep fact — add method rendering templates to
+   `dsl/extdeps/languages/*/runtime.dag`. The pattern matches
+   `SyntaxSpec` in `dsl/extdeps/languages/dag/syntax.dag`.
+
+6. **Cost model on method definitions.** `FreeMonoid.map` is O(n)
+   by definition (spec fact). `PartialFunction.get` is O(1)
+   amortized (spec fact). Add cost annotations to the algebra type
+   fields. Complexity analyzer reads them instead of hardcoding
+   `intrinsic_method_cost_shape()`.
+
+7. **TransportKind + ConfigPropertyKey.** Same pattern — transports
+   and config properties are already parsed as Nodes. Delete the
+   string→enum classification functions. Replace with structural
+   property checks on the transport Node.
+
+**Runtime bridge methods as language extdeps.** `to_string`,
+`char_at`, `starts_with` etc. are language-specific runtime bindings.
+They belong in `dsl/extdeps/languages/*/runtime.dag`. The algebra
+defines the abstract operation; the language extdep defines the
+concrete rendering. This is the same split as SyntaxSpec (abstract
+grammar) vs per-language syntax (concrete tokens).
+
+**On D5a (assessed, no change):** The current inference model is
+already correct. `inferred` stores `Resolved { node: type }` where
+the type is Rc-shared (not copied). The scope map is a temporary
+`Map<String, TypeBinding>` that lives only during the one-pass walk
+and dies after. This IS the resolution boundary — names are consumed
+during the walk, structural edges persist on the graph. No
+architectural change needed.
+
+**On scrambled-name tests.** Validation, not construction. Node has
+no name field in the target model — nothing to scramble. Delete when
+`Node.name` is removed. Until then, they remain as the ratchet.
 
 **Exit criteria:** 0 satellite types. ExprData has 0 String fields.
-Node has no `name` field — identity is the node itself, text is
-derived from span. Inference has no access to name text. Emit
-extracts text via `source_text_at(span)`. Scrambled-name tests
-deleted (invariant holds by construction). Diagnostic span precision
-is automatic (every Node has a span).
+Node has no `name` field. IntrinsicMethod, RuntimeBridgeMethod,
+MethodSemantics, TransportKind, ConfigPropertyKey dissolved —
+methods/transports are .dag Nodes, not compiler enums. Inference
+reads 0 name strings. Emit extracts text via `source_text_at(span)`.
+Scrambled-name tests deleted.
 
 ### Stream 0: Compositional Parser — Status
 
@@ -2247,3 +2386,40 @@ Generated tests are first-class compiler outputs. They must:
    operation, assert the return value.
 4. **Parity across targets.** Same operations tested, same mock data,
    same assertion shape.
+
+### Non-Consensual Testing (2026-03-29)
+
+**Principle:** if a `.dag` file exists in this repo, it is tested. No opt-in,
+no hardcoded file lists, no exceptions. The test system discovers files by
+scanning the filesystem, not by reading a manifest.
+
+**Current gap:** tests use hardcoded file lists. `self_compile_all_modules`
+has a static `vec![]` of source files. `prepare_sources` cherry-picks files
+into a temp directory. Adding a new `.dag` file (e.g., `std/stack.dag`) does
+not add it to any test. CI passes with broken domain files.
+
+**Required tests (scan-based, no file lists):**
+
+| Test | What it does | Catches |
+|------|-------------|---------|
+| `all_dsl_files_parse` | Scan `dsl/`, parse each `.dag` file, assert 0 errors | New files with syntax errors |
+| `full_dsl_compiles` | Compile all of `dsl/` as a unit, assert 0 diagnostics | Import resolution, type errors, inference regressions |
+| `full_dsl_emits_rust` | Compile to Rust, `cargo check` the output | Codegen regressions (Bool, serde, async) |
+| `full_dsl_emits_python` | Compile to Python, `python3 -m py_compile` each file | Python codegen regressions |
+| `per_file_mock_tests` | For every service operation with `mock_response`, generate and run a test | Service definitions produce working code |
+
+**Test generation direction:**
+
+The testgen system should walk every `.dag` file in the repo and for each:
+
+1. **Types:** generate roundtrip tests (construct → serialize → deserialize → assert equal)
+2. **Services with mocks:** generate mock invocation tests (instantiate with mock, call operation, assert output matches mock_response shape)
+3. **Pure functions (fn):** generate property tests where possible (type-driven input generation, assert no panics, assert return type matches)
+4. **Workflows (func):** generate dry-run tests (all services use mock_response, assert workflow completes without error)
+
+The generated tests are committed alongside the `.dag` source. CI runs them.
+Adding a `.dag` file automatically generates tests on the next testgen pass.
+Removing a `.dag` file automatically removes its tests.
+
+**CI must run:** `full_dsl_compiles` on every PR. No PR merges if any `.dag`
+file in the repo fails to compile. This is the non-negotiable gate.

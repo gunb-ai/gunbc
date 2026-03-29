@@ -56,14 +56,11 @@ use FieldAccessStyle::*;
 use FieldValueShape::*;
 use InferredNode::*;
 use NodeType::*;
-use IntrinsicMethod::*;
 use VarBindingKind::*;
 use CallSemantics::*;
-use RuntimeBridgeMethod::*;
 use MethodSemantics::*;
 use ExprErrorKind::*;
-use TransportKind::*;
-use ConfigPropertyKey::*;
+// TransportKind::* and ConfigPropertyKey::* dissolved.
 use ExprData::*;
 use MatchPattern::*;
 use LiteralValue::*;
@@ -199,7 +196,7 @@ lazy_static::lazy_static! {
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    { let mut __found = false; for t in KERNEL_TYPES.iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
+    { let mut __found = false; for t in KERNEL_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
 }
 
 lazy_static::lazy_static! {
@@ -207,7 +204,7 @@ lazy_static::lazy_static! {
 }
 
 pub fn is_container_type(name: String) -> bool {
-    { let mut __found = false; for t in CONTAINER_TYPES.iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
+    { let mut __found = false; for t in CONTAINER_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
 }
 
 pub fn is_kernel_numeric(name: String) -> bool {
@@ -275,29 +272,6 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
     (n.inferred.clone() != None)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum IntrinsicMethod {
-    MethodCount,
-    MethodJoin,
-    MethodSplit,
-    MethodLast,
-    MethodFirst,
-    MethodEnumerate,
-    MethodChars,
-    MethodStringContains,
-    MethodConcat,
-    MethodMap,
-    MethodFilter,
-    MethodAny,
-    MethodAll,
-    MethodFlatMap,
-    MethodSkip,
-    MethodTake,
-    MethodFold,
-    MethodSortBy,
-    MethodAppend,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum VarBindingKind {
     LocalValueBinding,
@@ -327,47 +301,12 @@ pub struct LambdaSemantics {
     pub param_types: Vec<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum RuntimeBridgeMethod {
-    BridgeGet,
-    BridgeWith,
-    BridgeListPush,
-    BridgeMapInsert,
-    BridgeMapMerge,
-    BridgeMapGet,
-    BridgeMapHas,
-    BridgeEmitMapHas,
-    BridgeMapValues,
-    BridgeMapKeys,
-    BridgeMapContainsKey,
-    BridgeCharAt,
-    BridgeStringAt,
-    BridgeStringLength,
-    BridgeLength,
-    BridgeStartsWith,
-    BridgeEndsWith,
-    BridgeToString,
-    BridgeTrim,
-    BridgeToLower,
-    BridgeToUpper,
-    BridgeReplace,
-    BridgeSubstring,
-    BridgeToInt,
-    BridgeEmptyMap,
-    BridgeContains,
-    BridgeReverse,
-    BridgeLookup,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum MethodSemantics {
     PlainMethodSemantics,
-    IntrinsicMethodSemantics {
-        intrinsic: IntrinsicMethod,
+    AlgebraMethodSemantics {
+        method_name: String,
         fold_accumulator_type: Option<Rc<Node>>,
-    },
-    RuntimeBridgeSemantics {
-        method: RuntimeBridgeMethod,
     },
     ServiceMethodSemantics {
         service_name: String,
@@ -382,51 +321,8 @@ pub enum ExprErrorKind {
     InternalExprError,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum TransportKind {
-    LocalTransport,
-    RestTransport,
-    ShellTransport,
-    FileTransport,
-    CustomTransport {
-        name: String,
-    },
-}
-impl TransportKind {
-    pub fn name(&self) -> String {
-        match self {
-            TransportKind::LocalTransport => panic!("no name on unit variant"),
-            TransportKind::RestTransport => panic!("no name on unit variant"),
-            TransportKind::ShellTransport => panic!("no name on unit variant"),
-            TransportKind::FileTransport => panic!("no name on unit variant"),
-            TransportKind::CustomTransport { name: __val, .. } => __val.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConfigPropertyKey {
-    ConfigBaseUrl,
-    ConfigBasePath,
-    ConfigAuthScheme,
-    ConfigAuthHeader,
-    ConfigAuthToken,
-    ConfigOther {
-        name: String,
-    },
-}
-impl ConfigPropertyKey {
-    pub fn name(&self) -> String {
-        match self {
-            ConfigPropertyKey::ConfigBaseUrl => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigBasePath => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigAuthScheme => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigAuthHeader => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigAuthToken => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigOther { name: __val, .. } => __val.clone(),
-        }
-    }
-}
+// TransportKind dissolved — transport identity is t.name string.
+// ConfigPropertyKey dissolved — property identity is the name string.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprData {
@@ -439,28 +335,21 @@ pub enum ExprData {
         message: String,
     },
     ExprVar {
-        name: String,
         binding_kind: Option<Rc<VarBindingKind>>,
     },
     ExprFieldAccess {
-        field: String,
         summary: Option<Rc<FieldSummary>>,
     },
     ExprCall {
-        func: String,
         call_semantics: Option<CallSemantics>,
     },
     ExprMethodCall {
-        method: String,
         method_semantics: Option<Rc<MethodSemantics>>,
     },
     ExprMatch,
     ExprIf,
-    ExprLet {
-        name: String,
-    },
+    ExprLet,
     ExprRecordLit {
-        type_name: Option<String>,
         parent_enum: Option<String>,
     },
     ExprListLit,
@@ -471,15 +360,12 @@ pub enum ExprData {
         op: UnaryOpKind,
     },
     ExprLambda {
-        params: Vec<String>,
         semantics: Option<Rc<LambdaSemantics>>,
     },
     ExprStringInterp,
     ExprBlock,
     ExprCast,
-    ExprForEach {
-        variable: String,
-    },
+    ExprForEach,
     ExprIndex,
     ExprSlice,
     ExprReturn,
@@ -496,16 +382,14 @@ pub enum MatchPattern {
     VariantPattern {
         name: String,
         parent_enum: Option<String>,
-        field_bindings: Vec<Rc<FieldBinding>>,
+        field_bindings: Vec<Rc<Node>>,
     },
     Wildcard,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct FieldBinding {
-    pub field_name: String,
-    pub binding: Rc<MatchPattern>,
-}
+// FieldBinding dissolved into Node (D2c):
+//   field_name → node.name
+//   binding    → node.match_pattern
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LiteralValue {
@@ -558,32 +442,11 @@ pub enum StringPart {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct OperationDef {
-    pub name: String,
-    pub inputs: Vec<Rc<Node>>,
-    pub outputs: Vec<Rc<Node>>,
-    pub response_props: Vec<Rc<Node>>,
-    pub mock_props: Vec<Rc<Node>>,
-    pub exit_props: Vec<Rc<Node>>,
-    pub modifier_props: Vec<Rc<Node>>,
-    pub transport: Option<Rc<Node>>,
-    pub span: Rc<SourceSpan>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OperationModifier {
     Idempotent,
     Readonly,
     Hermetic,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CapabilityDef {
-    pub name: String,
-    pub inputs: Vec<Rc<Node>>,
-    pub outputs: Vec<Rc<Node>>,
-    pub span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -651,6 +514,42 @@ pub fn make_expr_node(expr_data: Rc<ExprData>, children: Vec<Rc<Node>>, inferred
     match_pattern: None,
     expr_data: expr_data.clone(),
 })
+}
+
+pub fn make_named_expr_node(name: String, expr_data: Rc<ExprData>, children: Vec<Rc<Node>>, inferred: Option<Rc<InferredNode>>, span: Rc<SourceSpan>) -> Rc<Node> {
+    Rc::new(Node {
+    name: name.clone(),
+    span: span.clone(),
+    children: children.clone(),
+    connective: None,
+
+    params: vec![],
+    inferred: inferred.clone(),
+    return_cardinality: Cardinality::Required,
+    uses: vec![],
+    body: None,
+    transport: None,
+    properties: vec![],
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: expr_data.clone(),
+})
+}
+
+// D3 accessors: read dissolved String fields from Node.name
+pub fn expr_var_name(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn field_access_field(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn expr_call_func(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn expr_method_name(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn let_binding_name(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn foreach_variable(texpr: Rc<Node>) -> String { texpr.name.clone() }
+pub fn lambda_param_names(texpr: Rc<Node>) -> Vec<String> {
+    texpr.children.iter().skip(1).map(|n| n.name.clone()).collect()
+}
+pub fn record_lit_type_name(texpr: Rc<Node>) -> Option<String> {
+    if texpr.name.is_empty() { None } else { Some(texpr.name.clone()) }
 }
 
 pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<SourceSpan>) -> Rc<Node> {
@@ -759,6 +658,39 @@ pub fn make_field_init_node(name: String, value: Rc<Node>, span: Rc<SourceSpan>)
 })
 }
 
+// Field binding node (D2c): name carries field name, match_pattern carries the binding pattern.
+pub fn make_field_binding_node(field_name: String, binding: Rc<MatchPattern>, span: Rc<SourceSpan>) -> Rc<Node> {
+    Rc::new(Node {
+    name: field_name.clone(),
+    span: span.clone(),
+    children: vec![],
+    connective: None,
+    params: vec![],
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: vec![],
+    body: None,
+    transport: None,
+    properties: vec![],
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: Some(binding.clone()),
+    expr_data: Rc::new(ExprData::NoExprData),
+})
+}
+
+pub fn field_binding_name(n: Rc<Node>) -> String {
+    n.name.clone()
+}
+
+pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
+    match &n.match_pattern {
+        Some(p) => p.clone(),
+        None => Rc::new(MatchPattern::Wildcard),
+    }
+}
+
 pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
     name: "".to_string(),
@@ -808,7 +740,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
 }
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
-    match texpr.children.iter().cloned().skip(index.clone() as usize).collect::<Vec<_>>().first().cloned() {
+    match texpr.children.clone().iter().cloned().skip(index.clone() as usize).collect::<Vec<_>>().first().cloned() {
     Some(v) => v.clone(),
     None => make_expr_error_node(ExprErrorKind::InternalExprError, v2_rt::concat("malformed node: missing ".to_string(), role.clone()), texpr.span.clone()),
 }
@@ -937,7 +869,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
 
 pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if (n.children.clone().len() as i64) > 1 {
-        n.children.iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
+        n.children.clone().iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
     } else {
         None
     }
@@ -993,7 +925,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
 
 pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if (n.children.clone().len() as i64) > 1 {
-        n.children.iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
+        n.children.clone().iter().cloned().skip(1).collect::<Vec<_>>().first().cloned()
     } else {
         None
     }
@@ -1052,7 +984,7 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.iter().cloned().skip(2 as usize).collect::<Vec<_>>().first().cloned()
+    texpr.children.clone().iter().cloned().skip(2 as usize).collect::<Vec<_>>().first().cloned()
 }
 
 pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
@@ -1060,7 +992,7 @@ pub fn match_scrutinee(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn match_arm_nodes(texpr: Rc<Node>) -> Vec<Rc<Node>> {
-    texpr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()
+    texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()
 }
 
 pub fn binop_left(texpr: Rc<Node>) -> Rc<Node> {
@@ -1084,7 +1016,7 @@ pub fn method_receiver(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn method_arg_nodes(texpr: Rc<Node>) -> Vec<Rc<Node>> {
-    texpr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>()
+    texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>()
 }
 
 pub fn call_arg_nodes(texpr: Rc<Node>) -> Vec<Rc<Node>> {
@@ -1100,7 +1032,7 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
-    texpr.children.iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned()
+    texpr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().first().cloned()
 }
 
 pub fn cast_expr(texpr: Rc<Node>) -> Rc<Node> {
@@ -1182,30 +1114,30 @@ pub fn make_transport_node(name: String, properties: Vec<Rc<Node>>, children: Ve
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(transport_kind_name(Rc::new(TransportKind::LocalTransport)), vec![], vec![], span.clone())
+    make_transport_node("local".to_string(), vec![], vec![], span.clone())
 }
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Vec<Rc<Node>>, headers: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let url_field = make_field_init_node(config_property_name(Rc::new(ConfigPropertyKey::ConfigBaseUrl)), base_url.clone(), no_span());
+        let url_field = make_field_init_node("base_url".to_string(), base_url.clone(), no_span());
 let props = v2_rt::concat(v2_rt::concat(vec![url_field.clone()], auth_props.clone()), headers.clone());
-make_transport_node(transport_kind_name(Rc::new(TransportKind::RestTransport)), props.clone(), vec![], span.clone())
+make_transport_node("rest".to_string(), props.clone(), vec![], span.clone())
 }
 }
 
 pub fn shell_transport_node(argv: Vec<Rc<Node>>, env: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(transport_kind_name(Rc::new(TransportKind::ShellTransport)), env.clone(), argv.clone(), span.clone())
+    make_transport_node("shell".to_string(), env.clone(), argv.clone(), span.clone())
 }
 
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let path_field = make_field_init_node(config_property_name(Rc::new(ConfigPropertyKey::ConfigBasePath)), base_path.clone(), no_span());
-make_transport_node(transport_kind_name(Rc::new(TransportKind::FileTransport)), vec![path_field.clone()], vec![], span.clone())
+        let path_field = make_field_init_node("base_path".to_string(), base_path.clone(), no_span());
+make_transport_node("file".to_string(), vec![path_field.clone()], vec![], span.clone())
 }
 }
 
 pub fn find_property(props: Vec<Rc<Node>>, prop_name: String) -> Option<Rc<Node>> {
-    match { let mut __result = Vec::new(); for p in props.iter().cloned() { if (field_init_node_name(p.clone()) == prop_name.clone()) { __result.push(p); } } __result }.first().cloned() {
+    match { let mut __result = Vec::new(); for p in props.clone().iter().cloned() { if (field_init_node_name(p.clone()) == prop_name.clone()) { __result.push(p); } } __result }.first().cloned() {
     Some(fi) => Some(field_init_node_value(fi.clone())),
     None => None,
 }
@@ -1221,78 +1153,15 @@ pub fn find_property_string(props: Vec<Rc<Node>>, prop_name: String) -> Option<S
 }
 }
 
-pub fn config_property_name(key: Rc<ConfigPropertyKey>) -> String {
-    match (*key.clone()).clone() {
-    ConfigPropertyKey::ConfigBaseUrl => "base_url".to_string(),
-    ConfigPropertyKey::ConfigBasePath => "base_path".to_string(),
-    ConfigPropertyKey::ConfigAuthScheme => "auth_scheme".to_string(),
-    ConfigPropertyKey::ConfigAuthHeader => "auth_header".to_string(),
-    ConfigPropertyKey::ConfigAuthToken => "auth_token".to_string(),
-    ConfigPropertyKey::ConfigOther { name: name, .. } => name.clone(),
-}
+// config_property_name, config_property_key, transport_kind_name dissolved.
+// Use direct string literals instead.
+
+pub fn is_config_reserved_key(name: String) -> bool {
+    (name.clone() == "base_url".to_string()) || (name.clone() == "base_path".to_string()) || (name.clone() == "auth_scheme".to_string()) || (name.clone() == "auth_header".to_string()) || (name.clone() == "auth_token".to_string())
 }
 
-pub fn config_property_key(name: String) -> Rc<ConfigPropertyKey> {
-    if (name.clone() == "base_url".to_string()) {
-        Rc::new(ConfigPropertyKey::ConfigBaseUrl)
-} else {
-        if (name.clone() == "base_path".to_string()) {
-            Rc::new(ConfigPropertyKey::ConfigBasePath)
-} else {
-            if (name.clone() == "auth_scheme".to_string()) {
-                Rc::new(ConfigPropertyKey::ConfigAuthScheme)
-} else {
-                if (name.clone() == "auth_header".to_string()) {
-                    Rc::new(ConfigPropertyKey::ConfigAuthHeader)
-} else {
-                    if (name.clone() == "auth_token".to_string()) {
-                        Rc::new(ConfigPropertyKey::ConfigAuthToken)
-} else {
-                        Rc::new(ConfigPropertyKey::ConfigOther {
-    name: name.clone(),
-})
-}
-}
-}
-}
-}
-}
-
-pub fn transport_kind_name(kind: Rc<TransportKind>) -> String {
-    match (*kind.clone()).clone() {
-    TransportKind::LocalTransport => "local".to_string(),
-    TransportKind::RestTransport => "rest".to_string(),
-    TransportKind::ShellTransport => "shell".to_string(),
-    TransportKind::FileTransport => "file".to_string(),
-    TransportKind::CustomTransport { name: name, .. } => name.clone(),
-}
-}
-
-pub fn transport_kind(t: Rc<Node>) -> Rc<TransportKind> {
-    if (t.name.clone() == "local".to_string()) {
-        Rc::new(TransportKind::LocalTransport)
-} else {
-        if (t.name.clone() == "rest".to_string()) {
-            Rc::new(TransportKind::RestTransport)
-} else {
-            if (t.name.clone() == "shell".to_string()) {
-                Rc::new(TransportKind::ShellTransport)
-} else {
-                if (t.name.clone() == "file".to_string()) {
-                    Rc::new(TransportKind::FileTransport)
-} else {
-                    Rc::new(TransportKind::CustomTransport {
-    name: t.name.clone(),
-})
-}
-}
-}
-}
-}
-
-pub fn is_transport_kind(t: Rc<Node>, kind: Rc<TransportKind>) -> bool {
-    (transport_kind_name(transport_kind(t.clone())) == transport_kind_name(kind.clone()))
-}
+// transport_kind_name, transport_kind, is_transport_kind — dissolved.
+// Use direct t.name == "rest" comparison instead.
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationModifier> {
     let fi_name = field_init_node_name(field_init.clone());
@@ -1320,28 +1189,27 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 
 pub fn transport_base_url(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigBaseUrl)))
+    find_property(t.properties.clone(), "base_url".to_string())
 }
 
 pub fn transport_auth_token(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigAuthToken)))
+    find_property(t.properties.clone(), "auth_token".to_string())
 }
 
 pub fn transport_auth_header_name(t: Rc<Node>) -> Option<String> {
-    find_property_string(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigAuthHeader)))
+    find_property_string(t.properties.clone(), "auth_header".to_string())
 }
 
 pub fn transport_has_auth(t: Rc<Node>) -> bool {
-    match find_property(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigAuthToken))) {
+    match find_property(t.properties.clone(), "auth_token".to_string()) {
     Some(_) => true,
     None => false,
 }
 }
 
 pub fn transport_headers(t: Rc<Node>) -> Vec<Rc<Node>> {
-    { let mut __result = Vec::new(); for p in t.properties.iter().cloned() { if {
-        let key = config_property_key(field_init_node_name(p.clone()));
-(((((key.clone() != Rc::new(ConfigPropertyKey::ConfigBaseUrl)) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigBasePath))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthScheme))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthHeader))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthToken)))
+    { let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if {
+        !is_config_reserved_key(field_init_node_name(p.clone()))
 } { __result.push(p); } } __result }
 }
 
@@ -1353,7 +1221,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) ->
     Rc::new(Node {
     name: node.name.clone(),
     span: node.span.clone(),
-    children: { let mut __result = Vec::new(); for child in node.children.iter().cloned() { __result.push(transform(child.clone())); } __result },
+    children: { let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(transform(child.clone())); } __result },
     connective: node.connective.clone(),
     params: node.params.clone(),
     inferred: node.inferred.clone(),
@@ -1373,12 +1241,12 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) ->
 pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => if (f.clone() == fn_name.clone()) {
+    ExprData::ExprCall { .. } => { let f = expr_call_func(texpr.clone()); if (f.clone() == fn_name.clone()) {
             true
 } else {
-            { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found }
-},
-    _ => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found },
+            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found }
+} },
+    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_self_call(child.clone(), fn_name.clone()) { __found = true; break; } } __found },
 }
     })
 }
@@ -1386,20 +1254,20 @@ pub fn expr_has_self_call(texpr: Rc<Node>, fn_name: String) -> bool {
 pub fn expr_has_non_tail_self_call(texpr: Rc<Node>, fn_name: String, in_tail: bool) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => if (f.clone() == fn_name.clone()) {
+    ExprData::ExprCall { .. } => { let f = expr_call_func(texpr.clone()); if (f.clone() == fn_name.clone()) {
             if (in_tail.clone() == false) {
                 true
 } else {
-                { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
+                { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
 }
 } else {
-            { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
-},
+            { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found }
+} },
     ExprData::ExprError { .. } => false,
     ExprData::ExprVar { .. } => false,
     ExprData::ExprLiteral { .. } => false,
-    ExprData::ExprFieldAccess { .. } => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
-    ExprData::ExprMethodCall { .. } => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
+    ExprData::ExprFieldAccess { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
+    ExprData::ExprMethodCall { .. } => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
     ExprData::ExprIf => {
             let cond_bad = expr_has_non_tail_self_call(if_condition(texpr.clone()), fn_name.clone(), false);
 let then_bad = expr_has_non_tail_self_call(if_then_branch(texpr.clone()), fn_name.clone(), in_tail.clone());
@@ -1414,7 +1282,7 @@ let else_bad = match if_else_branch(texpr.clone()) {
 let arms_bad = { let mut __found = false; for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() { if expr_has_non_tail_self_call(arm_body(arm_node.clone()), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found };
 (scrut_bad.clone() || arms_bad.clone())
 },
-    ExprData::ExprLet { .. } => {
+    ExprData::ExprLet => {
             let val_bad = expr_has_non_tail_self_call(let_value(texpr.clone()), fn_name.clone(), false);
 let body_bad = match let_body(texpr.clone()) {
     Some(b) => expr_has_non_tail_self_call(b.clone(), fn_name.clone(), in_tail.clone()),
@@ -1429,7 +1297,7 @@ if (ss_count.clone() == 0) {
                 false
 } else {
                 {
-                    let init_bad = { let mut __found = false; for p in { let mut __result = Vec::new(); for p in ss.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }.iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false) { __found = true; break; } } __found };
+                    let init_bad = { let mut __found = false; for p in { let mut __result = Vec::new(); for p in ss.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { if (p.0.clone() < (ss_count.clone() - 1)) { __result.push(p); } } __result }.iter().cloned() { if expr_has_non_tail_self_call(p.1.clone(), fn_name.clone(), false) { __found = true; break; } } __found };
 let last_bad = match ss.clone().last().cloned() {
     Some(last_expr) => expr_has_non_tail_self_call(last_expr.clone(), fn_name.clone(), in_tail.clone()),
     None => false,
@@ -1438,8 +1306,8 @@ let last_bad = match ss.clone().last().cloned() {
 }
 }
 },
-    ExprData::NoExprData => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found },
-    _ => { let mut __found = false; for child in texpr.children.iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
+    ExprData::NoExprData => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), in_tail.clone()) { __found = true; break; } } __found },
+    _ => { let mut __found = false; for child in texpr.children.clone().iter().cloned() { if expr_has_non_tail_self_call(child.clone(), fn_name.clone(), false) { __found = true; break; } } __found },
 }
     })
 }
@@ -1568,7 +1436,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(ep_prop.clone(), auth_prop.clone()), r
 }
 
 pub fn has_service_config(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.iter().cloned() { if (field_init_node_name(p.clone()) == "svc_endpoint".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (field_init_node_name(p.clone()) == "svc_endpoint".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn service_config_endpoint(n: Rc<Node>) -> Option<Rc<Node>> {
@@ -1655,31 +1523,31 @@ Rc::new(Node {
 }
 
 pub fn is_module_node(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__is_module".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__is_module".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn is_import_node(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__is_import".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__is_import".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn import_is_all(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__import_all".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__import_all".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn import_specific_names(n: Rc<Node>) -> Vec<String> {
-    { let mut __result = Vec::new(); for c in n.children.iter().cloned() { __result.push(c.name.clone()); } __result }
+    { let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { __result.push(c.name.clone()); } __result }
 }
 
 pub fn module_imports(n: Rc<Node>) -> Vec<Rc<Node>> {
-    { let mut __result = Vec::new(); for c in n.children.iter().cloned() { if is_import_node(c.clone()) { __result.push(c); } } __result }
+    { let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if is_import_node(c.clone()) { __result.push(c); } } __result }
 }
 
 pub fn module_items(n: Rc<Node>) -> Vec<Rc<Node>> {
-    { let mut __result = Vec::new(); for c in n.children.iter().cloned() { if (is_import_node(c.clone()) == false) { __result.push(c); } } __result }
+    { let mut __result = Vec::new(); for c in n.children.clone().iter().cloned() { if (is_import_node(c.clone()) == false) { __result.push(c); } } __result }
 }
 
 pub fn is_token_node(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.iter().cloned() { if (p.name.clone() == "__is_token".to_string()) { __found = true; break; } } __found }
+    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "__is_token".to_string()) { __found = true; break; } } __found }
 }
 
 pub fn leaf_node(name: String) -> Rc<Node> {
@@ -1801,16 +1669,21 @@ pub struct NewlineIndex {
     pub source: String,
 }
 
+// Build newline index using CHARACTER offsets (matching the tokenizer).
+// The tokenizer advances pos by 1 per character (via char_at), not per byte.
+// Offsets in this index are character positions, not byte positions.
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
     let mut offsets = Vec::new();
-    for (i, b) in source.as_bytes().iter().enumerate() {
-        if *b == b'\n' {
+    for (i, ch) in source.chars().enumerate() {
+        if ch == '\n' {
             offsets.push((i as i64) + 1);
         }
     }
     Rc::new(NewlineIndex { file, offsets, source })
 }
 
+// Character offset → line:col. Both are 1-based.
+// Offsets are character-indexed (matching tokenizer spans).
 pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
     let offset_usize = offset.max(0) as usize;
     let pos = index.offsets.partition_point(|&o| (o as usize) <= offset_usize);
@@ -1820,25 +1693,26 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
     Rc::new(LineCol { line, col })
 }
 
+// Extract the text of a source line by character offsets.
 pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
     if line < 1 {
         return String::new();
     }
     let line_idx = (line as usize) - 1;
-    let start = if line_idx == 0 { 0usize } else {
+    let char_start = if line_idx == 0 { 0usize } else {
         match index.offsets.get(line_idx - 1) {
             Some(&o) => o as usize,
             None => return String::new(),
         }
     };
-    let end = match index.offsets.get(line_idx) {
+    let char_end = match index.offsets.get(line_idx) {
         Some(&o) => (o as usize).saturating_sub(1), // exclude the '\n'
-        None => index.source.len(),
+        None => index.source.chars().count(),
     };
-    if start > index.source.len() || end > index.source.len() || start > end {
+    if char_start > char_end {
         return String::new();
     }
-    index.source[start..end].to_string()
+    index.source.chars().skip(char_start).take(char_end - char_start).collect()
 }
 
 pub fn node_is_product(n: Rc<Node>) -> bool {

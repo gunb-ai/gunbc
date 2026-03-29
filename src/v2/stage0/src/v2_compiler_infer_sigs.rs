@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, CompilerDiagnostic, ErrorNode, make_error_node, no_span, DeclaredFuncSig};
+pub use crate::v2_std_core::{Node, ExprData, CompilerDiagnostic, ErrorNode, make_error_node, no_span, DeclaredFuncSig, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::ExprData::{ExprCall};
 pub use crate::v2_compiler_infer_types::{emit_map_has};
 
@@ -95,14 +95,14 @@ pub fn collect_calls_in_expr(caller: String, texpr: Rc<Node>, local_func_set: Ha
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let this_edges = match (*texpr.expr_data.clone()).clone() {
-    ExprData::ExprCall { func: f, .. } => if emit_map_has(local_func_set.clone(), f.clone()) {
+    ExprData::ExprCall { .. } => { let f = expr_call_func(texpr.clone()); if emit_map_has(local_func_set.clone(), f.clone()) {
                 vec![Rc::new(CallEdge {
     caller: caller.clone(),
     callee: f.clone(),
 })]
 } else {
                 vec![]
-},
+} },
     _ => vec![],
 };
 let child_edges = { let mut __result = Vec::new(); for child in texpr.children.iter().cloned() { __result.extend(collect_calls_in_expr(caller.clone(), child.clone(), local_func_set.clone())); } __result };

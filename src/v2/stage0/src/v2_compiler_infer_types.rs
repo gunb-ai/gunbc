@@ -387,7 +387,7 @@ pub fn free_monoid_collection_fields(self_type: Rc<Node>, elem: Rc<Node>) -> Vec
         algebra_method_field("sort_by".to_string(), vec![self_type.clone()], self_type.clone()),
         algebra_method_field("append".to_string(), vec![self_type.clone(), elem.clone()], self_type.clone()),
         algebra_method_field("contains".to_string(), vec![self_type.clone(), elem.clone()], bool_type.clone()),
-        algebra_method_field("enumerate".to_string(), vec![self_type.clone()], self_type.clone()),
+        algebra_method_field("enumerate".to_string(), vec![self_type.clone()], container_node(self_type.name.clone(), tuple_node(int_type.clone(), elem.clone()))),
         algebra_method_field("reverse".to_string(), vec![self_type.clone()], self_type.clone()),
         algebra_method_field("join".to_string(), vec![self_type.clone(), string_type.clone()], string_type.clone()),
         algebra_method_field("concat".to_string(), vec![self_type.clone(), self_type.clone()], self_type.clone()),
