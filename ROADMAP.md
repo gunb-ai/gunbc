@@ -1697,9 +1697,34 @@ InferredNode (3), NodeType (4). Inference result discriminators. (2 types)
 | D2 | **Remaining satellites.** NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef → Node. | **DONE** (5 types deleted) |
 | D3 | **ExprData String dissolution.** 9 String fields → child Nodes with spans. ExprData variants become unit. | **DONE** (~210 consumer sites) |
 | D5a | *Binding edges.* | **NO CHANGE NEEDED.** Current architecture is correct: scope map is temporary, `inferred` carries Rc-shared type (no duplication), names die after inference. |
-| D5b | *Method/transport .dag modeling.* Methods and transports become Nodes in .dag type definitions. IntrinsicMethod, RuntimeBridgeMethod, MethodSemantics, TransportKind, ConfigPropertyKey dissolve — method identity IS the edge to the .dag definition Node. | 5 enums, ~56 string comparisons |
+| D5b | *Method/transport .dag modeling.* IntrinsicMethod (20), RuntimeBridgeMethod (27), TransportKind (5), ConfigPropertyKey (6) dissolved. MethodSemantics restructured to AlgebraMethodSemantics { method_name }. | **DONE** (58 enum variants deleted) |
 | D5c | *DeclaredFuncSig/Env cleanup.* TypeBinding.name redundancy cleans up with D6. DeclaredFuncSig.name same. | Deferred to D6 |
-| D6 | **Delete Node.name.** Identity is the node itself. Text derived from span. Also dissolve MatchPattern Bind/VariantPattern string fields. Delete scrambled-name tests. | Node.name field removed |
+| D6 | **Delete Node.name.** Identity is the node itself. Text derived from span. Also dissolve MatchPattern Bind/VariantPattern string fields. Delete scrambled-name tests. | **NEXT** — ~553 .name read sites across 20 files. See D6 scope notes below. |
+
+**D6 scope notes (for next session):**
+
+~553 `.name` reads across 20 .dag files, categorized:
+- 182 structural passthroughs (disappear with field deletion)
+- 139 Node constructions (remove `name:` field)
+- 122 accessor calls (11 functions return `n.name` — change source)
+- 92 identity checks (`n.name == "String"` etc. — L1 violations)
+- 62 scope keys (Map operations — scope is temporary, acceptable)
+- 60 emit renders (need `source_text_at(span)` or accessor)
+- 64 diagnostics (need accessor for message text)
+
+Sub-phases:
+1. Decide alternative name source (span derivation vs dedicated field)
+2. Update 16 make_* helpers + 11 accessor functions
+3. Audit 60+ direct Node constructions in 02_parse.dag
+4. Update 92 identity checks + 62 map operations
+5. Update emit + diagnostic layers
+6. Delete Node.name field, delete scrambled-name tests
+
+2 merge regressions to fix first:
+- `complexity_class_sort_proven`: sort_by as ExprCall doesn't route
+  through AlgebraMethodSemantics cost shape path
+- `enumerate_returns_tuple_type`: enumerate type inference affected
+  by method dissolution
 
 **Design principle for D5b:** The compiler's job is NOT to classify
 identifiers into enum variants. The compiler walks a graph of Nodes.
