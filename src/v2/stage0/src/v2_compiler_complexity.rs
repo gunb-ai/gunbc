@@ -100,6 +100,10 @@ pub enum CostExpr {
         upper: Rc<SizeExpr>,
         body: Rc<CostExpr>,
     },
+    CostLog {
+        base: i64,
+        argument: Rc<SizeExpr>,
+    },
     CostUnknown {
         reason: String,
     },
@@ -471,6 +475,7 @@ Rc::new(SummaryResult {
 })
 },
     CostShape::ShapeSortBody => {
+        // O(n × log(n) × key_cost). CostLog makes this Proven.
         let lambda_arg = resolve_lambda_arg(mc_args.clone());
 let key_result = match lambda_arg.clone() {
     Some(la) => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
@@ -483,12 +488,17 @@ let key_result = match lambda_arg.clone() {
     value: 1,
 }),
     output_size: <HashMap<_, _>>::new(),
-    certainty: Certainty::Conservative,
+    certainty: Certainty::Proven,
 }),
     table: recv_r.table.clone(),
 }),
 };
-let sort_work = cost_loop(binder.clone(), size.clone(), key_result.summary.clone().work.clone());
+let log_factor = Rc::new(CostExpr::CostLog { base: 2, argument: size.clone() });
+let per_comparison = key_result.summary.clone().work.clone();
+let sort_work = Rc::new(CostExpr::CostMul {
+    left: cost_loop(binder.clone(), size.clone(), per_comparison.clone()),
+    right: log_factor.clone(),
+});
 let sort_os = v2_rt::map_insert(<HashMap<_, _>>::new(), "result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
 })));
@@ -497,7 +507,7 @@ Rc::new(SummaryResult {
     work: cost_seq(recv_r.summary.clone().work.clone(), sort_work.clone()),
     span: cost_seq(recv_r.summary.clone().span.clone(), sort_work.clone()),
     output_size: sort_os.clone(),
-    certainty: Certainty::Conservative,
+    certainty: key_result.summary.clone().certainty.clone(),
 }),
     table: key_result.table.clone(),
 })
@@ -648,6 +658,7 @@ match (*sbd.clone()).clone() {
 }),
 }
 },
+    CostExpr::CostLog { base: b, argument: a } => Rc::new(CostExpr::CostLog { base: b, argument: a }),
 }
     })
 }
@@ -786,6 +797,7 @@ let dominant = if has_cost_sum(l.clone()) {
 };
 dominant.clone()
 },
+    CostExpr::CostLog { argument: a, .. } => format!("O(log({}))", format_size(a.clone())),
 }
 }
     })

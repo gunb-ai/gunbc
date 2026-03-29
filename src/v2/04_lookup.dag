@@ -288,6 +288,9 @@ fn substitute_algebra_result(result_type: Node, receiver_type: Node, fold_accumu
   let is_fold = method_name_is_fold(result_type: result_type, fold_accumulator_type: fold_accumulator_type)
   let is_same_collection = result_type.name == receiver_type.name
   let is_optional = result_type.return_cardinality == CardOptional
+  // Algebra return type is a collection (FreeMonoid<...>) — substitute element type
+  // and re-wrap as the receiver's collection type.
+  let is_algebra_collection = result_type.children |> count > 0 && (result_type.name == "FreeMonoid" || result_type.name == "PartialFunction")
   if is_fold {
     match fold_accumulator_type {
       Some { value: fat } => fat
@@ -295,10 +298,30 @@ fn substitute_algebra_result(result_type: Node, receiver_type: Node, fold_accumu
     }
   } else if is_same_collection {
     receiver_type
+  } else if is_algebra_collection {
+    // Return type is e.g. FreeMonoid<Tuple<Int, T>> — substitute T with receiver element,
+    // then re-wrap as receiver collection type (e.g. List<Tuple<Int, String>>).
+    let elem = method_receiver_element_node(receiver_type: receiver_type)
+    let substituted_children = result_type.children |> map(child =>
+      if child.name == elem.name || child.name == "" { elem }
+      else { substitute_generic_param(child: child, elem: elem) }
+    )
+    Node { name: receiver_type.name, span: result_type.span, children: substituted_children, connective: receiver_type.connective, params: receiver_type.params, inferred: none, return_cardinality: result_type.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   } else if is_optional {
     substitute_optional_result(result_type: result_type, receiver_type: receiver_type)
   } else {
     result_type
+  }
+}
+
+// Recursively substitute generic type parameters in a child node.
+// Replaces leaf nodes (no children, empty name) with the concrete element type.
+fn substitute_generic_param(child: Node, elem: Node) -> Node {
+  if child.children |> count == 0 && (child.name == "" || child.name == elem.name) {
+    elem
+  } else {
+    let subst_children = child.children |> map(c => substitute_generic_param(child: c, elem: elem))
+    Node { name: child.name, span: child.span, children: subst_children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, is_self_recursive: child.is_self_recursive, has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, expr_data: child.expr_data }
   }
 }
 
