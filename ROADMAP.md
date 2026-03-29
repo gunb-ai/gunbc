@@ -311,8 +311,14 @@ No parallel file list implementations. Known gap: bootstrap
 - [ ] Parser: support `fn foo<T>(...)` generic function syntax
   (`stack.dag` uses this; parser expects `(` but gets `<`)
 - [ ] Verify no other .dag files break once stack.dag parses
-- [ ] All test harnesses use `--source-root` discovery (no hardcoded
-  file lists in test code)
+- [ ] Unify source discovery: `full_dsl_compiles`, bootstrap
+  `prepare_sources`, and `strict_complexity_violation_count` all use
+  `--source-root` discovery. Currently 4 parallel file-list
+  implementations (CLI, full_dsl_compiles, bootstrap, complexity).
+- [ ] Add regression tests BEFORE M4/M5 work:
+  - Generic fn: `fn foo<T>(x: T) -> T` parses and compiles
+  - Single-variant enum: `type X = Y` defines coproduct, not alias
+  - `uses` binding: body can reference `fs.read()` from `uses fs`
 
 ---
 
@@ -450,9 +456,21 @@ re-test what the compiler already guarantees by construction.
 
 - `extract_test_projections` + `emit_operation_test` + `DryRunMode`:
   working pipeline for service mock tests, 6 syntax tests pass
+- Name invariance: 9 scrambled-name tests (6 inference + 3 emit)
+  covering Rust/Python/Go — all pass in CI
+- Parse/emit round-trip smoke test
+- Python/Go syntax validation (ast.parse, go vet structure check)
+- Ownership analysis wired into pipeline, verified by tests
+- Artifact planning wired into pipeline, verified by tests
 - `compiler_tests.rs`: reads .dag from disk (no embedded source),
   16 test functions covering tokenize/parse/compile/profile
 - `full_dsl_compiles`: discovers all .dag files by scanning `dsl/`
+- 184 tests pass, 9 ignored (expensive bootstrap/performance tests)
+
+The current verification surface is broader than "a few syntax tests."
+The missing piece is not more ad-hoc tests — it's making the
+receipt/status layer authoritative so the roadmap doesn't drift from
+reality.
 
 #### Work items
 
@@ -920,7 +938,9 @@ run on every compilation — they are not separate analysis passes.
   consumer count, not sum)
 - Produces `OwnershipDecision` per binding: `SoleOwner` (can
   `into_inner`), `SharedError` (compile error), `Unclassified` (bug)
-- **Status: fully implemented, NOT wired into pipeline or tests**
+- **Status: wired into pipeline** (`compile.dag` runs `analyze_ownership`
+  on every function, emits `SharedError` diagnostics). Verified by
+  pipeline tests. Not yet ratcheted — no coverage gate in CI.
 
 **Name invariance** (9 scrambled-name tests):
 - Compile two structurally identical programs with different names
@@ -937,7 +957,7 @@ run on every compilation — they are not separate analysis passes.
 | Name invariance | 9 scrambled-name tests | Tested (CI) | None |
 | Complexity bounds | CostExpr per function | Ratcheted (2 violations of 1169) | Want 0; need exponential cost algebra |
 | Decidability | Bounded primitives | Structural (language design) | Fail-closed not wired (general recursion still accepted) |
-| Ownership | Full analysis in pipeline (`compile.dag` runs `analyze_ownership`) | Wired, not ratcheted | Add coverage ratchet, promote to CI |
+| Ownership | Full analysis in pipeline, verified by tests | Wired, not ratcheted | Add coverage ratchet, promote to CI |
 | Bootstrap stability | Fixed-point test | Tested (manual) | Promote to CI |
 | Emitted Rust quality | cargo check + ratchet | Ratcheted (880 errors) | Want 0 (M2 work) |
 | Performance | Wall-clock ratchet | Tested (manual, 30s) | Promote to CI |
