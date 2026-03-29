@@ -42,6 +42,8 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   expr_has_self_call, expr_has_non_tail_self_call,
+  field_access_field,
+  expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_value,
   leaf_node, make_span, with_required_cardinality,

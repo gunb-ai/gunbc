@@ -14256,7 +14256,8 @@ import v2.std.core {
   Cardinality, Required,
   InferredNode, Resolved,
   leaf_node, no_span,
-  unit_type
+  unit_type,
+  expr_var_name, expr_call_func, field_access_field, field_access_base
 }
 import v2.compiler.infer_types {
   emit_map_has
@@ -17107,7 +17108,8 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
-  field_access_base, method_receiver,
+  field_access_base, field_access_field, method_receiver,
+  expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name,
   lambda_body, cast_expr, return_value,
   slice_start, slice_end,
   leaf_node, with_required_cardinality,
@@ -18484,7 +18486,8 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
-  field_access_base, method_receiver,
+  field_access_base, field_access_field, method_receiver,
+  expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name,
   lambda_body, cast_expr, return_value,
   slice_start, slice_end,
   leaf_node, with_required_cardinality,
@@ -19835,6 +19838,8 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   expr_has_self_call, expr_has_non_tail_self_call,
+  field_access_field,
+  expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_value,
   leaf_node, make_span, with_required_cardinality,
@@ -24870,7 +24875,8 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes
+  method_receiver, method_arg_nodes,
+  expr_call_func
 }
 
 // =========================================================================
@@ -26735,7 +26741,8 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes
+  method_receiver, method_arg_nodes,
+  expr_var_name
 }
 
 // =========================================================================

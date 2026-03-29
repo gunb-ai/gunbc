@@ -17,7 +17,8 @@ import v2.std.core {
   Cardinality, Required,
   InferredNode, Resolved,
   leaf_node, no_span,
-  unit_type
+  unit_type,
+  expr_var_name, expr_call_func, field_access_field, field_access_base
 }
 import v2.compiler.infer_types {
   emit_map_has
