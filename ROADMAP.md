@@ -350,8 +350,8 @@ on regenerated stage0 and on a non-trivial user project.
 **Work items:**
 
 *Container sharing (FF-8):*
-- [ ] Define `ContainerOps` type in `languages.dag` — rendering patterns
-  derived from container templates, not hardcoded
+- [ ] Change Rust container templates to shared representations in
+  `LanguageSpec` (`Rc<Vec<{0}>>`, `Rc<HashMap<{0}, {1}>>`)
 - [ ] Change Rust container templates to shared representations
   (`Rc<Vec<{0}>>`, `Rc<HashMap<{0}, {1}>>`)
 - [ ] Update `05_emit_rust.dag` and `runtime_rust.dag` for coherence
@@ -661,11 +661,12 @@ in `syntax.dag`.
 derived from `source_text_at(span)`. Eliminates ~553 `.name` read
 sites, the name registry concept, and scrambled-name tests. See M4.
 
-**ContainerOps (DESIGNED).** Container rendering patterns derived from
-templates, not hardcoded. `ContainerOps` type with fields for every
-rendering pattern (`list_empty`, `list_iterate`, `map_wrap`, etc.).
-Each emission site calls `container_empty_list(cops)` instead of
-`concat("Rc::new(Vec::new())")`. See M2.
+**ContainerOps (SUPERSEDED by rendering table model).** Was a
+stepping stone: type with fields for each container rendering pattern.
+The language-as-coercion-target model subsumes it — container rendering
+is just one entry in the language's rendering table, not a separate
+type. Immediate M2 fix: change Rust container templates to shared
+representations (`Rc<Vec<{0}>>`) in `LanguageSpec`.
 
 ### Structural Prevention of Invariant Violations
 
@@ -679,7 +680,7 @@ when it chooses behavior. The rule, stage by stage:
 | **Before resolve** | Strings are allowed as source payload (token text, identifiers, keywords) |
 | **At resolve** | Strings are consumed to produce edges. Scope maps are resolver-local and die here. |
 | **After resolve** | **No semantic decision may depend on free text.** Anything that changes behavior must be an edge/reference, a closed enum, or a typed boundary fact. |
-| **In emit** | Only the renderer may produce strings. Shared emit returns `EmitNode`, not `String`. |
+| **In emit** | Only the renderer may produce strings. Shared emit walks the graph and invokes the renderer — it never returns `String`. |
 
 This is the existing invariants restated as an API law: names are
 opaque, boundaries must be sufficient, heuristics mean a fact was lost.
@@ -705,7 +706,7 @@ These are text. They don't choose behavior.
 | `kernel_types` / `container_types` | `List<String>` | `List<Node>` — edges to definitions | 2 lists |
 | `variant_to_enum`, `field_type_names` | `Map<String, String>` | Edges on type definition nodes | 4 maps |
 | `builtin_function_registry` | `Map<String, Node>` | Loaded from algebra `.dag` declarations | 30 entries |
-| Shared emit return type | `String` (680 concat calls) | `EmitNode` (semantic tree) | 680 sites |
+| Shared emit return type | `String` (680 concat calls) | Graph walker → renderer (no string return) | 680 sites |
 | Transport dispatch | `transport.name == "rest"` | Closed enum on transport node | 13 sites |
 | Optional hardcoding | `variant_name == "Some"` | Structural Optional with known layout | 6 sites |
 
@@ -854,7 +855,7 @@ Replace `List<String>` and `Map<String, X>` metadata with node edges.
 ```
 Lane A (method/transport dispatch)    independent
 Lane B (Node.name deletion)          depends on A
-Lane C (EmitTree + plugin extraction) depends on B
+Lane C (graph rendering + plugin extraction) depends on B
 Lane D (edge-only facts)             independent, parallel with A/B
 ```
 

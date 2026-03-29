@@ -401,7 +401,7 @@ the majority of all recurring violations:
 
 | Escape hatch | What it enables | Structural fix |
 |---|---|---|
-| `String` return type in emitter | Hardcoded target syntax | EmitTree — emitter returns semantic nodes, not strings |
+| `String` return type in emitter | Hardcoded target syntax | Graph rendering — emitter walks graph, renderer produces strings |
 | `node.name` field | Name-based dispatch anywhere | Delete `Node.name` — structural properties + edges only |
 | `List<String>` fact storage | Copied string lists that go stale | `List<Node>` edges to definitions |
 | Error sentinels in `Node` | Fabricated valid-looking error output | Typed wrappers (`InferredNode` pattern) at every boundary |
@@ -519,18 +519,17 @@ boundary instead of improving the guess.
 **The fix:** push structure earlier in the pipeline so the downstream
 stage can make an exact decision.
 
-**Structural prevention:** EmitTree. The emitter produces semantic
-nodes (`SharedWrap`, `ContainerInit`, `MethodCall`), not target-language
-strings. A separate renderer converts semantic nodes to text using
-`LanguageSpec`. The emitter literally cannot produce `"Rc<Vec<...>>"`
-because it doesn't produce strings — it produces `SharedWrap(
-ContainerInit(List, elems))` and the renderer reads the sharing policy
-from `LanguageSpec` to decide `Rc<Vec<...>>` vs `list[...]` vs
-`[]type`. The escape hatch is string concatenation in the emitter; the
-fix is an API that returns `EmitNode`, not `String`. This is the
-highest-leverage single change — it structurally prevents ~60% of all
-recurring violations (hardcoded Rust syntax, Rc wrapping, container
-patterns, type name dispatch, method rendering).
+**Structural prevention:** Graph rendering. The emitter walks the
+typed graph and invokes the language renderer for each structural
+pattern. The emitter never produces strings — it matches patterns
+(product, coproduct, sequence, etc.) and the renderer converts them
+to target text using `LanguageSpec`. The emitter cannot produce
+`"Rc<Vec<...>>"` because it doesn't produce strings at all. The
+escape hatch is string concatenation in the emitter; the fix is an
+emit stage that walks the graph and delegates to the renderer. This
+is the highest-leverage single change — it structurally prevents
+~60% of all recurring violations (hardcoded target syntax, Rc
+wrapping, container patterns, type name dispatch, method rendering).
 
 ### No parallel implementations
 
