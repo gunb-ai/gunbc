@@ -319,14 +319,30 @@ mock data has a generated test.
 
 **Depends on:** M2 (working codegen baseline)
 
-**Work items:**
-- [ ] `full_dsl_compiles` runs in CI on every PR (not just `--ignored`)
-- [ ] Generated Rust tests compile (`cargo test` on generated test files)
-- [ ] Test freshness gate: regenerate → diff → empty
-- [ ] Python generated tests parse (`python3 -m py_compile`)
-- [ ] Go generated tests compile (`go vet`)
-- [ ] Coverage: every discovered `.dag` file with service operations and
-  mock data has at least one generated test artifact
+**What exists today:**
+- `extract_test_projections` finds service operations with
+  `mock_response` blocks — working, tested
+- `emit_operation_test` generates async test functions with DryRunMode
+  — working, 6 tests pass (Rust/Python/Go syntax validation)
+- `DryRunMode` infrastructure: parser, emitter, service constructors
+  all wired — services can be called with mock data
+- `full_dsl_compiles` test discovers all `.dag` files by scanning
+  `dsl/` — no hardcoded lists
+- `generated_tests.rs` is 27K lines of static test fixtures, not
+  actually generated — this is the gap
+
+**What's missing:**
+- [ ] `full_dsl_compiles` promoted from `--ignored` to CI on every PR
+- [ ] Generated Rust tests actually compile and pass (not just syntax
+  validated — `cargo test` on the generated test module)
+- [ ] Test freshness gate: regenerate → diff → empty (committed tests
+  are derived artifacts, never hand-edited)
+- [ ] Replace static `generated_tests.rs` with actual generated output
+  from the test projection pipeline
+- [ ] Coverage gate: every discovered `.dag` service operation with
+  `mock_response` has a generated test artifact
+- [ ] Python generated tests pass `python3 -m py_compile`
+- [ ] Go generated tests pass `go vet`
 
 ---
 
@@ -508,17 +524,82 @@ information; the bridge enums are redundant. See M7.
 
 ---
 
+## Structural Guarantees and Proofs
+
+### What the Compiler Proves Today
+
+The compiler produces structural proofs alongside emitted code. These
+run on every compilation — they are not separate analysis passes.
+
+**Complexity analysis** (`complexity.dag`, 1475 lines):
+- Computes `work` (sequential cost), `span` (parallel cost), and
+  `output_size` per function as symbolic `CostExpr` trees
+- Handles: literals, variables, binops, calls, method dispatch (via
+  `method_cost_shape` mapping), match/if (max of branches), for-each
+  (bounded by collection), recursion (classified + bounded)
+- `CostExpr` variants: `CostConst`, `CostAdd`, `CostMul`, `CostMax`,
+  `CostSum` (bounded summation), `CostLog` (logarithmic)
+- Recursion classification: `LinearRecursion` (catamorphisms),
+  `DivideAndConquer` (multiple self-calls), `UnresolvableRecursion`
+- Structural descent detection (`is_structural_descent`): recognizes
+  match/if over input where all self-calls are inside arms
+- Self-compile: 1169 function summaries, 2 violations (both
+  `DivideAndConquer` — cost algebra can't express exponentials)
+- Certainty tracking: `Proven | Conservative | Unknown`
+
+**Ownership analysis** (`ownership.dag`, 325 lines):
+- Single-pass AST walk classifying each variable use as
+  `Consumed | Read | Threaded | Projected`
+- Branch-aware merging: match/if arms are mutually exclusive (MAX
+  consumer count, not sum)
+- Produces `OwnershipDecision` per binding: `SoleOwner` (can
+  `into_inner`), `SharedError` (compile error), `Unclassified` (bug)
+- **Status: fully implemented, NOT wired into pipeline or tests**
+
+**Name invariance** (9 scrambled-name tests):
+- Compile two structurally identical programs with different names
+- Normalize both, assert byte-identical typed graphs and emitted source
+- Covers inference (6 tests) and emission (3 tests: Rust/Python/Go)
+- **Status: all pass, not ignored, run in CI**
+
+### What's Proven vs What's Ratcheted
+
+| Guarantee | Mechanism | Status | Gap |
+|-----------|-----------|--------|-----|
+| Syntax validity | Parser + tokenizer | Proven (every compilation) | None |
+| Type soundness | Inference + reconcile | Proven (every compilation) | None |
+| Name invariance | 9 scrambled-name tests | Tested (CI) | None |
+| Complexity bounds | CostExpr per function | Ratcheted (2 violations of 1169) | Want 0; need exponential cost algebra |
+| Decidability | Bounded primitives | Structural (language design) | Fail-closed not wired (general recursion still accepted) |
+| Ownership | Full analysis exists | **Not wired** | Integrate into pipeline, add tests |
+| Bootstrap stability | Fixed-point test | Tested (manual) | Promote to CI |
+| Emitted Rust quality | cargo check + ratchet | Ratcheted (880 errors) | Want 0 (M2 work) |
+| Performance | Wall-clock ratchet | Tested (manual, 30s) | Promote to CI |
+
+### Ratchet Direction
+
+Ratchets are checkpoints on the path to structural guarantees. Each
+ratchet should trend toward its target value and eventually become
+either a Tier 1 guarantee (structurally unrepresentable) or a Tier 2
+guarantee (tested and gated in CI). A ratchet that stops moving is a
+design signal — it means the current approach can't reach the target
+and the machinery needs to change.
+
+---
+
 ## Verification
 
 ### Ratchets
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 0 | 0 | `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored` |
-| full_dsl_compiles | 1 | 0 | `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored` |
+| Self-compile diagnostics | 0 | 0 | `strict_compile_diagnostic_count -- --ignored` |
+| full_dsl_compiles | 1 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 70 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 0 | 0 | Self-compile complexity report |
-| Bootstrap fixed point | PASSES | PASSES | `cargo test -p v2-compiler-tests v2_bootstrap_fixed_point -- --ignored` |
+| Complexity violations | 2 | 0 | `strict_complexity_violation_count -- --ignored` |
+| Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
+| Bootstrap fixed point | PASSES | PASSES | `v2_bootstrap_fixed_point -- --ignored` |
+| Performance | <30s | <30s | `performance_ratchet -- --ignored` |
 
 ### CI Gates
 
