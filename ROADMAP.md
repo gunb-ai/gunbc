@@ -32,10 +32,10 @@ All possible states of a slot on a node:
 
 No third state. The binary distinction (exists / doesn't exist) is
 inherent in both Node and Edge — no separate truth primitive needed.
-This is why Bit and Classical logic are modeled as `.dag` types at
-Layer 0, not as compiler primitives: node existence already carries
-the binary, and `True | False` is a two-variant coproduct expressed
-as edge connectivity patterns.
+Classical logic (`True | False`) is the first modeled layer above
+the substrate: the point where the binary distinction inherent in
+node/edge existence gets a formal name. Bit is classical logic given
+a hardware name. Everything else composes upward from there.
 
 From Node and Edge, all structural properties emerge:
 
@@ -214,20 +214,52 @@ unrepresentable, not detected and rejected.
 
 ### Composition Stack
 
-| Layer | What | Built from | Location |
-|-------|------|-----------|----------|
-| 0 | Classical logic, Bit | First modeled layer above substrate | `std/logic.dag`, `std/bit.dag` |
-| 1 | Machine words (`Word32`, `Word64`) | Bit compositions | `std/bit.dag` |
-| 2 | Named types (`Int`, `String`, `Char`) | Algebraic structures over machine words | `std/integer.dag`, `std/types.dag` |
-| 3 | Collections (`List<A>`, `Set<A>`, `Map<K,V>`) | Algebraic structures with laws | `std/types.dag` |
-| 4 | Structural compositions + bounded iteration | Nodes + edges + collection algebras | `std/iteration.dag` |
-| 5 | Domain types | Compositions of Layers 0-4 | Compiler, user programs |
+The foundation is formal logic, not hardware. Each layer builds on
+the one below through composition. Everything reduces to classical
+truth — the binary distinction inherent in node/edge existence.
 
-Every layer is built from Node + Edge. Product/coproduct are not a
-layer — they are the composition mechanism itself: how nodes at any
-layer combine through edges. Layer 0 (Bit, Classical logic) is the
-first modeled composition above the substrate — the point where the
-binary distinction inherent in node/edge existence gets a name.
+| Layer | What | Built from | Example |
+|-------|------|-----------|---------|
+| 0 | **Classical logic** (`True \| False`) | Substrate (node existence = truth) | `std/logic.dag` |
+| 1 | **Bit** | Classical logic given a hardware name | `std/bit.dag` — `type Bit = Classical` |
+| 2 | **Machine words** (`Word32`, `Word64`) | Compositions of Bits | `std/bit.dag` — `type Word64 = Tuple<Bit, ..., Bit>` |
+| 3 | **Algebraic types** (`Int`, `String`, `Float`) | Algebraic structures over machine words | `Int = OrderedRing<Word64>` |
+| 4 | **Collections** (`List<A>`, `Set<A>`, `Map<K,V>`) | Algebraic structures with laws | `List = FreeMonoid` |
+| 5 | **Structural compositions** + bounded iteration | Nodes + edges + algebras | `std/iteration.dag` |
+| 6 | **Domain types** | Compositions of Layers 0-5 | Compiler, user programs |
+
+Product/coproduct are not a layer — they are the composition
+mechanism: how nodes at any layer combine through edges.
+
+### Type coercion through the stack
+
+Every type must reduce to classical truth through composition.
+This is how new types coerce into target languages — the language
+doesn't need to know what the type IS, only how to render the
+structural patterns it decomposes into.
+
+```
+Bloobear                          -- user-defined Layer 6 type
+  = Product { x: Wobble, y: Int } -- decomposes to product of fields
+    → Wobble decomposes to...     -- each field decomposes further
+    → Int = OrderedRing<Word64>   -- Layer 3: algebraic structure
+      → Word64 = Tuple<Bit×64>   -- Layer 2: machine word
+        → Bit = Classical         -- Layer 1: hardware name
+          → True | False          -- Layer 0: classical truth
+            → node exists or not  -- substrate
+```
+
+The target language renders each structural pattern it encounters
+during decomposition: product → struct/subcircuit/bullet-list,
+coproduct → enum/mux/"either-or", leaf → literal value. The language
+never needs to know what "Bloobear" means — it renders the structure.
+
+**If a new type CAN'T reduce to classical truth** (e.g., fuzzy logic
+with truth values between 0 and 1, or quantum superposition), that's
+a new Layer 0 — a genuinely different logical foundation. This is a
+thesis-level change: the substrate may need to grow, and every
+language plugin needs new rendering entries. This should be
+extraordinarily rare.
 
 See `docs/algebraic-type-spec.md` for the collection algebra and
 denotational model.
