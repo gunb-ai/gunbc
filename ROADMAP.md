@@ -2,57 +2,65 @@
 
 ## Thesis
 
-### Three Primitives
+### Two Primitives
 
-The compiler has three fundamental primitives. Everything else is
-compositional modeling over them.
+The compiler has two fundamental primitives. Everything else —
+including truth — is compositional modeling over them.
 
-| Primitive | What it is | Role |
-|-----------|-----------|------|
-| **Node** | The universal carrier | Identity, structure, composition |
-| **Edge** | The connection (DAG) | How nodes relate; the graph |
-| **Bit** | The atomic truth value | `True \| False` — the indivisible fact |
+| Primitive | What it is |
+|-----------|-----------|
+| **Node** | The universal carrier. A node that exists = something is there. A node that is absent = nothing is there. Existence IS truth. |
+| **Edge** | The relationship between nodes (the DAG). An edge that connects = the relationship holds. An edge that doesn't connect = it doesn't hold. Connectivity IS the binary distinction. |
 
-From these three, all structural properties emerge:
+Truth is not a third primitive. It is the presence of a node — the
+most fundamental fact a graph can express. `True` resolves to "a node
+is here." `False` resolves to "no node at this edge."
 
-**Product (AND)** — a node where all child edges are active. "A Person
-has a name AND an age" means both edges carry values.
+From Node and Edge, all structural properties emerge:
 
-**Coproduct (OR)** — a node where exactly one child edge is active.
-"A Shape is Circle OR Square" means one edge carries a value.
+**Product (AND)** — a node where all child edges connect. "A Person
+has a name AND an age" means both edges point to nodes.
 
-**Cardinality** — a single bit on an edge. Present or absent.
+**Coproduct (OR)** — a node where exactly one child edge connects.
+"A Shape is Circle OR Square" means one edge points to a node.
 
-**Logic gates** — truth tables over Bit. AND, OR, NOT are functions
-from Bit to Bit, not separate primitives. NAND alone is functionally
-complete.
+**Cardinality** — an edge that may or may not connect. Present (node)
+or absent (no node).
 
-The compiler does not hardcode product or coproduct as primitives. They
-are emergent properties of how nodes compose through edges — activation
-patterns that `.dag` models use, but that the compiler processes
-structurally without special-casing.
+**Logic gates** — structural patterns over edge connectivity. AND =
+"both edges connect." OR = "at least one edge connects." These are
+observations about the graph, not computed functions.
+
+**Bit / Classical logic** — still modeled in the language as
+`type Classical = True | False`. Users write boolean values and the
+language has full classical logic. But at the compiler primitive level,
+`True` is a node that exists and `False` is a different node that
+exists — the truth value is carried by *which* edge is active, which
+is itself just edge connectivity.
 
 ### How This Looks in Practice
 
-Every `.dag` type is a composition of Node + Edge + Bit:
+Every `.dag` type is a composition of Node + Edge:
 
 ```dag
-// Product: a node with all child edges active (AND)
+// Product: a node where all child edges connect (AND)
 type SourceSpan {
-  file: FilePath        // edge to FilePath node — always active
-  start: Int            // edge to Int node — always active
-  end: Int              // edge to Int node — always active
+  file: FilePath        // edge to FilePath node — connected
+  start: Int            // edge to Int node — connected
+  end: Int              // edge to Int node — connected
 }
 
-// Coproduct: a node with exactly one child edge active (OR)
-type Classical = True | False     // two edges, one active at a time
-type Bool = True | False          // same structure — named differently
+// Coproduct: a node where exactly one child edge connects (OR)
+// True and False are both nodes that exist — the distinction
+// is WHICH edge is active (edge connectivity, not a truth primitive)
+type Classical = True | False
+type Bool = True | False
 
-// Cardinality: a bit on an edge (present or absent)
+// Cardinality: an edge that may or may not connect
 type AccessToken {
   token: Secret
   scheme: AuthScheme
-  expires_at: Timestamp?          // edge bit = 0 or 1
+  expires_at: Timestamp?          // edge connects or doesn't
 }
 
 // Recursive coproduct: edges can point back into the structure
@@ -60,34 +68,35 @@ type Stack<T>
   = Empty                         // terminal — no child edges
   | Push { top: T, rest: Stack<T> }  // product inside a coproduct variant
 
-// Collection algebras: named compositions over the primitives
+// Collection algebras: named compositions
 type List<element> = FreeMonoid<element>
 type Map<key, value> = PartialFunction<key, value>
 ```
 
-The compiler sees the structure — nodes with edges, activation
-patterns, bits — not the names. `SourceSpan` and `AccessToken` are
-both "node with three child edges, all active" to the compiler. The
-names are opaque namespaces for human readability.
+The compiler sees nodes and edges — not names, not truth values, not
+product/coproduct categories. `SourceSpan` and `AccessToken` are both
+"node with three child edges" to the compiler. The structural
+difference (all-connected vs one-connected) is an edge connectivity
+pattern, not a compiler-known enum.
 
 ### Current Reality: Five Structural Primitives
 
-Today the compiler operates on five primitives, not three:
+Today the compiler operates on five primitives, not two:
 
 | Primitive | Status | Target |
 |-----------|--------|--------|
 | Node | Fundamental | Keep |
 | Edge (DAG) | Fundamental | Keep |
-| Bit | Fundamental | Keep |
-| Conj / Disj | Compiler-known enum (`connective` field) | Dissolve — emergent from edge activation patterns |
-| Cardinality | Compiler-known enum | Dissolve — single bit on an edge |
+| Bit | Compiler-known type | Dissolve — truth is node existence |
+| Conj / Disj | Compiler-known enum (`connective` field) | Dissolve — emergent edge activation patterns |
+| Cardinality | Compiler-known enum | Dissolve — edge connectivity |
 
-Conj/Disj exist as an explicit `connective` field on Node because the
-compiler was built incrementally. The direction is to collapse them:
-the compiler reads edge activation patterns rather than checking a
-`connective` enum. Product and coproduct become properties that `.dag`
-models express and the compiler recognizes structurally — not
-categories the compiler dispatches on.
+The five exist because the compiler was built incrementally. The
+direction is to collapse: Bit dissolves because node existence already
+carries truth. Conj/Disj dissolve because edge connectivity patterns
+already carry product/coproduct. Cardinality dissolves because an edge
+either connects or it doesn't. The compiler reads the graph — it
+doesn't need named categories for what the graph already expresses.
 
 ### Structural Principles
 
@@ -130,15 +139,17 @@ unrepresentable, not detected and rejected.
 
 | Layer | What | Built from | Location |
 |-------|------|-----------|----------|
-| 0 | Bit, truth values | Primitive | `std/logic.dag`, `std/bit.dag` |
+| 0 | Classical logic, Bit | Node existence (True = node, False = no node) | `std/logic.dag`, `std/bit.dag` |
 | 1 | Machine words (`Word32`, `Word64`) | Bit compositions | `std/bit.dag` |
 | 2 | Named types (`Int`, `String`, `Char`) | Algebraic structures over machine words | `std/integer.dag`, `std/types.dag` |
 | 3 | Collections (`List<A>`, `Set<A>`, `Map<K,V>`) | Algebraic structures with laws | `std/types.dag` |
 | 4 | Structural compositions + bounded iteration | Nodes + edges + collection algebras | `std/iteration.dag` |
 | 5 | Domain types | Compositions of Layers 0-4 | Compiler, user programs |
 
-Product/coproduct are not a layer — they are the composition mechanism
-itself: how nodes at any layer combine through edges.
+Every layer is built from Node + Edge. Product/coproduct are not a
+layer — they are the composition mechanism itself: how nodes at any
+layer combine through edges. Truth values (Layer 0) are the first
+modeled composition: node existence expressed as a `.dag` type.
 
 See `docs/algebraic-type-spec.md` for the collection algebra and
 denotational model.
@@ -159,9 +170,9 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 
 ### End Goal
 
-- Three compiler primitives: Node, Edge, Bit. Everything else is
+- Two compiler primitives: Node and Edge. Everything else —
+  including truth, product/coproduct, and cardinality — is
   compositional modeling.
-- Product/coproduct are emergent, not compiler-known.
 - Names are opaque. Inference processes graph structure only.
 - Emit reads `LanguageSpec` + structural declarations, no hardcoded
   target-language knowledge.
@@ -373,22 +384,24 @@ identical graph for all `.dag` files.
 
 ---
 
-### M6: Three Primitives (Node, Edge, Bit)
+### M6: Two Primitives (Node, Edge)
 
-**What:** The compiler collapses from 5 structural primitives to 3.
-Conj/Disj dissolve into edge activation patterns. Cardinality dissolves
-into a single edge bit. `Int = Interpret<Signed, Word64>` — named types
-are compositions, not compiler-known concepts.
+**What:** The compiler collapses from 5 structural primitives to 2.
+Bit dissolves — truth is node existence. Conj/Disj dissolve into edge
+connectivity patterns. Cardinality dissolves — an edge connects or it
+doesn't. `Int = Interpret<Signed, Word64>` — named types are
+compositions, not compiler-known concepts.
 
-**Gate:** `connective` field removed from Node. `is_kernel_type`
-dissolved. The compiler structurally distinguishes "all edges active"
-from "one edge active" without an enum.
+**Gate:** `connective` field removed from Node. `Cardinality` enum
+removed. `is_kernel_type` dissolved. The compiler reads edge
+connectivity patterns — no structural enums remain.
 
 **Depends on:** M5
 
 **Work items:**
-- [ ] Replace `connective: Conj/Disj` with edge activation model
-- [ ] Cardinality as edge bit, not separate enum
+- [ ] Replace `connective: Conj/Disj` with edge connectivity model
+- [ ] Dissolve `Cardinality` enum — edge connects or doesn't
+- [ ] Dissolve Bit as compiler primitive — truth = node existence
 - [ ] Bit-graph representation for fixed-width types
 - [ ] Full structural type algebra with denotational laws
 
@@ -439,11 +452,11 @@ Currently produces `DivideAndConquer` classification (soft). The
 structural prevention (bounded primitives only) is the real guarantee;
 fail-closed is the safety net during transition.
 
-**Three-primitive collapse.** Conj/Disj dissolve into edge activation
-patterns over Bit. Product = all child edges active. Coproduct = exactly
-one active. Logic gates are truth tables (Bit x Bit → Bit), not
-primitives. The compiler reads activation patterns structurally instead
-of dispatching on a `connective` enum. See M6.
+**Two-primitive collapse.** Bit dissolves — truth is node existence.
+Conj/Disj dissolve into edge connectivity patterns. Product = all edges
+connect. Coproduct = one edge connects. Cardinality = edge connects or
+doesn't. The graph already carries all structural information; the
+named enums are redundant. See M6.
 
 ---
 
