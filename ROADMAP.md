@@ -868,17 +868,17 @@ ExprData                           -- pure operator tag
 
 | Current | Target | Why |
 |---------|--------|-----|
-| `params: List<Param>` | `params: List<Node>` | Param dissolved — name+span are Node's |
-| `uses: List<ResourceUse>` | `uses: List<Node>` | ResourceUse dissolved |
-| `properties: List<FieldInit>` | `properties: List<Node>` | FieldInit dissolved |
-| `ExprVar { name: String }` | `ExprVar` (unit) | Identifier is Node.name |
-| `ExprFieldAccess { field: String }` | `ExprFieldAccess` | Field ref is children[1] |
-| `ExprCall { func: String }` | `ExprCall` | Func ref is children[0] or Node.name |
-| `ExprMethodCall { method: String }` | `ExprMethodCall` | Method ref is a child |
-| `ExprLet { name: String }` | `ExprLet` | Binding name is Node.name |
-| `ExprForEach { variable: String }` | `ExprForEach` | Loop var is Node.name |
+| `params: List<Param>` | `params: List<Node>` | **DONE** (D1c) |
+| `uses: List<ResourceUse>` | `uses: List<Node>` | **DONE** (D1b) |
+| `properties: List<FieldInit>` | `properties: List<Node>` | **DONE** (D1a) |
+| `ExprVar { name: String }` | `ExprVar` (unit) | Identifier is a child Node (span carries text) |
+| `ExprFieldAccess { field: String }` | `ExprFieldAccess` | Field ref is a child Node |
+| `ExprCall { func: String }` | `ExprCall` | Func ref is a child Node |
+| `ExprMethodCall { method: String }` | `ExprMethodCall` | Method ref is a child Node |
+| `ExprLet { name: String }` | `ExprLet` | Binding site is a child Node |
+| `ExprForEach { variable: String }` | `ExprForEach` | Loop var is a child Node |
 | `ExprLambda { params: List<String> }` | `ExprLambda` | Param names are child Nodes |
-| `ExprRecordLit { type_name: String? }` | `ExprRecordLit` | Type ref is a child |
+| `ExprRecordLit { type_name: String? }` | `ExprRecordLit` | Type ref is a child Node |
 
 **Deleted types (10):** Field, Variant, Param, ResourceUse, FieldInit,
 NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef. All
@@ -889,10 +889,14 @@ CollectionKind, ExprData (unit variants), MatchPattern, LiteralValue,
 TokenShape, BinOpKind, UnaryOpKind, InferredNode, NodeType. These
 are closed structural properties — not satellite types.
 
-**Retained semantic enums:** IntrinsicMethod, RuntimeBridgeMethod,
-MethodSemantics, CallSemantics, VarBindingKind, FieldSummary,
-LambdaSemantics. These are populated by resolution/inference and
-consumed by emit — they carry structural facts, not names.
+**Retained semantic enums:** CallSemantics, VarBindingKind,
+FieldSummary, LambdaSemantics, FieldAccessStyle, FieldValueShape.
+These carry structural facts, not names.
+
+**Dissolve via .dag modeling (D5b):** IntrinsicMethod (20),
+RuntimeBridgeMethod (25+), MethodSemantics (4), TransportKind (5),
+ConfigPropertyKey (6). Methods/transports become .dag Nodes —
+the enum is replaced by an edge to the definition.
 
 #### What Each Stage Models
 
