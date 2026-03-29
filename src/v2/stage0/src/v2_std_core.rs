@@ -1669,16 +1669,21 @@ pub struct NewlineIndex {
     pub source: String,
 }
 
+// Build newline index using CHARACTER offsets (matching the tokenizer).
+// The tokenizer advances pos by 1 per character (via char_at), not per byte.
+// Offsets in this index are character positions, not byte positions.
 pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
     let mut offsets = Vec::new();
-    for (i, b) in source.as_bytes().iter().enumerate() {
-        if *b == b'\n' {
+    for (i, ch) in source.chars().enumerate() {
+        if ch == '\n' {
             offsets.push((i as i64) + 1);
         }
     }
     Rc::new(NewlineIndex { file, offsets, source })
 }
 
+// Character offset → line:col. Both are 1-based.
+// Offsets are character-indexed (matching tokenizer spans).
 pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
     let offset_usize = offset.max(0) as usize;
     let pos = index.offsets.partition_point(|&o| (o as usize) <= offset_usize);
@@ -1688,25 +1693,26 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
     Rc::new(LineCol { line, col })
 }
 
+// Extract the text of a source line by character offsets.
 pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
     if line < 1 {
         return String::new();
     }
     let line_idx = (line as usize) - 1;
-    let start = if line_idx == 0 { 0usize } else {
+    let char_start = if line_idx == 0 { 0usize } else {
         match index.offsets.get(line_idx - 1) {
             Some(&o) => o as usize,
             None => return String::new(),
         }
     };
-    let end = match index.offsets.get(line_idx) {
+    let char_end = match index.offsets.get(line_idx) {
         Some(&o) => (o as usize).saturating_sub(1), // exclude the '\n'
-        None => index.source.len(),
+        None => index.source.chars().count(),
     };
-    if start > index.source.len() || end > index.source.len() || start > end {
+    if char_start > char_end {
         return String::new();
     }
-    index.source[start..end].to_string()
+    index.source.chars().skip(char_start).take(char_end - char_start).collect()
 }
 
 pub fn node_is_product(n: Rc<Node>) -> bool {
