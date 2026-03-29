@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, NamedArg, MatchArm, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
+pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node, make_param_node, make_field_node, make_variant_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, variant_node_name, variant_node_fields, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node, no_span};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -188,14 +188,14 @@ pub struct PatternResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArmResult {
-    pub arm: Rc<MatchArm>,
+    pub arm: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArgResult {
-    pub arg: Rc<NamedArg>,
+    pub arg: Rc<Node>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -361,7 +361,7 @@ pub struct UsesResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArgsResult {
-    pub args: Vec<Rc<NamedArg>>,
+    pub args: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -382,7 +382,7 @@ pub struct ExprsResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArmsResult {
-    pub arms: Vec<Rc<MatchArm>>,
+    pub arms: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -8478,7 +8478,7 @@ Rc::new(PostfixResult {
 }
 }
 
-pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<NamedArg>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let arg_children = { let mut __result = Vec::new(); for na in args.clone().iter().cloned() { __result.push(make_arg_node(na.name.clone(), na.value.clone(), span.clone())); } __result };
 match (*lhs.expr_data.clone()).clone() {
@@ -8616,7 +8616,7 @@ pub fn parse_arg_list(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
     parse_arg_list_acc(tokens.clone(), state.clone(), vec![])
 }
 
-pub fn parse_arg_list_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<Rc<NamedArg>>) -> Rc<ArgsResult> {
+pub fn parse_arg_list_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<Rc<Node>>) -> Rc<ArgsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 let r = parse_single_arg(tokens.clone(), s.clone());
@@ -8803,7 +8803,7 @@ if has_err(r.err.clone()) {
 })
 }
 Rc::new(ExprResult {
-    expr: make_expr_node(Rc::new(ExprData::ExprMatch), v2_rt::concat(vec![scrutinee.clone()], { let mut __result = Vec::new(); for arm in arms.clone().iter().cloned() { __result.push(make_arm_node(arm.pattern.clone(), arm.guard.clone(), arm.body.clone(), span.clone())); } __result }), None, span.clone()),
+    expr: make_expr_node(Rc::new(ExprData::ExprMatch), v2_rt::concat(vec![scrutinee.clone()], arms.clone()), None, span.clone()),
     state: r.state.clone(),
     err: None,
 })
@@ -8983,7 +8983,7 @@ pub fn parse_match_arms(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> R
     parse_match_arms_acc(tokens.clone(), state.clone(), vec![])
 }
 
-pub fn parse_match_arms_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<Rc<MatchArm>>) -> Rc<ArmsResult> {
+pub fn parse_match_arms_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<Rc<Node>>) -> Rc<ArmsResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone())) {
@@ -9022,11 +9022,7 @@ continue;
 
 pub fn parse_match_arm(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<ArmResult> {
     {
-        let dummy_arm = Rc::new(MatchArm {
-    pattern: Rc::new(MatchPattern::Wildcard),
-    guard: None,
-    body: parse_recovery_placeholder(),
-});
+        let dummy_arm = make_arm_node(Rc::new(MatchPattern::Wildcard), None, parse_recovery_placeholder(), SourceSpan::new(0, 0));
 let r = parse_pattern(tokens.clone(), state.clone());
 if has_err(r.err.clone()) {
             return Rc::new(ArmResult {
@@ -9068,11 +9064,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let arm = Rc::new(MatchArm {
-    pattern: pat.clone(),
-    guard: guard.clone(),
-    body: r.expr.clone(),
-});
+let arm = make_arm_node(pat.clone(), guard.clone(), r.expr.clone(), current_span(tokens.clone(), state.clone()));
 Rc::new(ArmResult {
     arm: arm.clone(),
     state: r.state.clone(),

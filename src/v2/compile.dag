@@ -25,7 +25,8 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable,
   VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
   MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
-  ExprErrorKind, ExprData, NamedArg, MatchArm, MatchPattern, FieldBinding,
+  ExprErrorKind, ExprData, MatchPattern, FieldBinding,
+  arm_pattern, arm_guard, arm_body,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node,
   NewlineIndex, build_newline_index
 }
@@ -315,18 +316,18 @@ fn serialize_match_pattern(pattern: MatchPattern) -> String {
   }
 }
 
-fn serialize_named_arg(arg: NamedArg) -> String {
+fn serialize_named_arg(arg: Node) -> String {
   concat(
-    "{\"name\": ", json_optional_string(value: arg.name),
-    ", \"value\": ", serialize_node(node: arg.value),
+    "{\"name\": ", json_optional_string(value: arg_name(n: arg)),
+    ", \"value\": ", serialize_node(node: arg_value(n: arg)),
     "}")
 }
 
-fn serialize_match_arm(arm: MatchArm) -> String {
+fn serialize_match_arm(arm: Node) -> String {
   concat(
-    "{\"pattern\": ", serialize_match_pattern(pattern: arm.pattern),
-    ", \"guard\": ", json_optional_node(value: arm.guard),
-    ", \"body\": ", serialize_node(node: arm.body),
+    "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm)),
+    ", \"guard\": ", json_optional_node(value: arm_guard(n: arm)),
+    ", \"body\": ", serialize_node(node: arm_body(n: arm)),
     "}")
 }
 

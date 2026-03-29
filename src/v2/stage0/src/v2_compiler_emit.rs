@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, ErrorNode, InferredNode, module_imports, module_items, Connective, ExprData, NamedArg, MatchArm, StringPart, LiteralValue, TextFile, SourceSpan, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, ErrorNode, InferredNode, module_imports, module_items, Connective, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
@@ -99,7 +99,7 @@ pub struct TcoFrame {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TcoReassignInput {
-    pub args: Vec<Rc<NamedArg>>,
+    pub args: Vec<Rc<Node>>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
 }
@@ -319,7 +319,7 @@ pub fn lookup_func_sig_in_scope(scope: Rc<InferScope>, name: String) -> Option<R
     v2_rt::map_get(&scope.func_env.clone().signatures.clone(), name.clone())
 }
 
-pub fn typed_named_arg_matches(arg: Rc<NamedArg>, name: String) -> bool {
+pub fn typed_named_arg_matches(arg: Rc<Node>, name: String) -> bool {
     if (arg.name.clone() == None) {
         false
 } else {
@@ -327,7 +327,7 @@ pub fn typed_named_arg_matches(arg: Rc<NamedArg>, name: String) -> bool {
 }
 }
 
-pub fn order_typed_call_args(args: Vec<Rc<NamedArg>>, func: String, scope: Rc<InferScope>) -> Vec<Rc<NamedArg>> {
+pub fn order_typed_call_args(args: Vec<Rc<Node>>, func: String, scope: Rc<InferScope>) -> Vec<Rc<Node>> {
     {
         let has_unnamed = { let mut __found = false; for arg in args.clone().iter().cloned() { if (arg.name.clone() == None) { __found = true; break; } } __found };
 if has_unnamed.clone() {
@@ -336,7 +336,7 @@ if has_unnamed.clone() {
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
     None => args.clone(),
     Some(sig) => {
-                let arg_map = args.clone().iter().cloned().fold(<HashMap<String, Rc<NamedArg>>>::new(), |acc: _, arg: Rc<NamedArg>| if (arg.name.clone() != None) {
+                let arg_map = args.clone().iter().cloned().fold(<HashMap<String, Rc<Node>>>::new(), |acc: _, arg: Rc<Node>| if (arg.name.clone() != None) {
                     v2_rt::map_insert(acc.clone(), arg.name.clone().clone().unwrap(), arg.clone())
 } else {
                     acc.clone()
@@ -1141,7 +1141,7 @@ Rc::new(FuncBodyShape::FuncBodyLet {
 pub enum TcoExprShape {
     TcoCall {
         func: String,
-        args: Vec<Rc<NamedArg>>,
+        args: Vec<Rc<Node>>,
     },
     TcoIf {
         condition: Rc<Node>,
@@ -1150,7 +1150,7 @@ pub enum TcoExprShape {
     },
     TcoMatch {
         scrutinee: Rc<Node>,
-        arms: Vec<Rc<MatchArm>>,
+        arms: Vec<Rc<Node>>,
     },
     TcoLet {
         name: String,
@@ -1189,11 +1189,7 @@ Rc::new(TcoExprShape::TcoIf {
 },
     ExprData::ExprMatch => {
         let scrut = match_scrutinee(texpr.clone());
-let arm_list = { let mut __result = Vec::new(); for a in match_arm_nodes(texpr.clone()).iter().cloned() { __result.push(Rc::new(MatchArm {
-    pattern: arm_pattern(a.clone()),
-    guard: arm_guard(a.clone()),
-    body: arm_body(a.clone()),
-})); } __result };
+let arm_list = match_arm_nodes(texpr.clone());
 Rc::new(TcoExprShape::TcoMatch {
     scrutinee: scrut.clone(),
     arms: arm_list.clone(),

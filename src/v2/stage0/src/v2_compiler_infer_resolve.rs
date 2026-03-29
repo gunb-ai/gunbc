@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, MatchArm, NamedArg, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span, field_init_node_name, field_init_node_value, make_param_node, make_field_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key};
+pub use crate::v2_std_core::{Node, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span, field_init_node_name, field_init_node_value, make_param_node, make_field_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -86,13 +86,13 @@ pub struct ExprResolveResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamedArgResolveResult {
-    pub arg: Rc<NamedArg>,
+    pub arg: Rc<Node>,
     pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchArmResolveResult {
-    pub arm: Rc<MatchArm>,
+    pub arm: Rc<Node>,
     pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
@@ -701,7 +701,7 @@ Rc::new(ResourceUseResult {
 }
 }
 
-pub fn resolve_named_arg(arg: Rc<NamedArg>, env: Rc<TypeEnv>, module_name: String) -> Rc<NamedArgResolveResult> {
+pub fn resolve_named_arg(arg: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NamedArgResolveResult> {
     {
         let value_result = resolve_expr_types(arg.value.clone(), env.clone(), module_name.clone());
 let value_expr = value_result.expr.clone();
@@ -728,9 +728,10 @@ Rc::new(FieldInitResolveResult {
 }
 }
 
-pub fn resolve_match_arm(arm: Rc<MatchArm>, env: Rc<TypeEnv>, module_name: String) -> Rc<MatchArmResolveResult> {
+pub fn resolve_match_arm(arm: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<MatchArmResolveResult> {
     {
-        let guard_result = match arm.guard.clone() {
+        let arm_g = arm_guard(arm.clone());
+let guard_result = match arm_g.clone() {
     Some(guard) => Some(resolve_expr_types(guard.clone(), env.clone(), module_name.clone())),
     None => None,
 };
@@ -738,18 +739,19 @@ let guard_diags = match guard_result.clone() {
     Some(result) => result.diagnostics.clone(),
     None => vec![],
 };
-let body_result = resolve_expr_types(arm.body.clone(), env.clone(), module_name.clone());
+let body_result = resolve_expr_types(arm_body(arm.clone()), env.clone(), module_name.clone());
 let body_expr = body_result.expr.clone();
 let body_diags = body_result.diagnostics.clone();
 Rc::new(MatchArmResolveResult {
-    arm: Rc::new(MatchArm {
-    pattern: arm.pattern.clone(),
-    guard: match guard_result.clone() {
+    arm: make_arm_node(
+        arm_pattern(arm.clone()),
+        match guard_result.clone() {
     Some(result) => Some(result.expr.clone()),
     None => None,
 },
-    body: body_expr.clone(),
-}),
+        body_expr.clone(),
+        arm.span.clone(),
+    ),
     diagnostics: v2_rt::concat(guard_diags.clone(), body_diags.clone()),
 })
 }

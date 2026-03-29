@@ -307,9 +307,6 @@ type ExprData
   | ExprSlice
   | ExprReturn
 
-type NamedArg { name: String?, value: Node }
-type MatchArm { pattern: MatchPattern, guard: Node?, body: Node }
-
 type MatchPattern
   = Bind { name: String }
   | LitPattern { value: LiteralValue }

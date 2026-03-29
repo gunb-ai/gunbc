@@ -19,7 +19,7 @@ import v2.std.core {
   CardOptional,
   ErrorNode, make_error_node,
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
-  MatchArm, MatchPattern,
+  MatchPattern, arm_pattern,
   leaf_node, with_optional_cardinality,
   none_type, error_type
 }
@@ -179,7 +179,7 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
 
 fn check_match_exhaustiveness(
   scrutinee_type: Node,
-  arms: List<MatchArm>,
+  arms: List<Node>,
   env: TypeEnv,
   span: SourceSpan,
   module_name: String
@@ -212,7 +212,7 @@ fn check_match_exhaustiveness(
     }
     // Check if any arm is a wildcard or bind (covers all remaining).
     let has_catch_all = any(arms, arm =>
-      match arm.pattern {
+      match arm_pattern(n: arm) {
         Wildcard => true
         Bind { name: _ } => true
         _ => false
@@ -223,7 +223,7 @@ fn check_match_exhaustiveness(
     } else {
       // Collect covered variant names from VariantPattern arms.
       let covered_set = arms |> fold(init: empty_map(), f: (acc, arm) =>
-        match arm.pattern {
+        match arm_pattern(n: arm) {
           VariantPattern { name: n, parent_enum: _, field_bindings: _ } => map_insert(acc, n, true)
           _ => acc
         }

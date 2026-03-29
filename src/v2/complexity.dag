@@ -33,8 +33,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes,
-  NamedArg
+  method_receiver, method_arg_nodes
 }
 
 // =========================================================================

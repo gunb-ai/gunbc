@@ -22,7 +22,7 @@ import v2.std.core {
   ErrorNode, make_error_node,
   InternalError, ArityMismatch, UnresolvedType,
   Cardinality, Required,
-  MatchArm, NamedArg, StringPart, Text, Interpolation,
+  StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -31,7 +31,7 @@ import v2.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   ExprErrorKind, SemanticExprError,
   make_expr_node, make_expr_error_node, map_children,
-  make_arg_node, make_arm_node, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node,
+  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
   is_kernel_type, is_transport_kind, is_container_type,
   TransportKind, LocalTransport,
@@ -81,12 +81,12 @@ type ExprResolveResult {
 }
 
 type NamedArgResolveResult {
-  arg: NamedArg
+  arg: Node
   diagnostics: List<ErrorNode>
 }
 
 type MatchArmResolveResult {
-  arm: MatchArm
+  arm: Node
   diagnostics: List<ErrorNode>
 }
 
@@ -566,12 +566,12 @@ fn resolve_resource_use(ru: Node, env: TypeEnv, module_name: String) -> Resource
   }
 }
 
-fn resolve_named_arg(arg: NamedArg, env: TypeEnv, module_name: String) -> NamedArgResolveResult {
-  let value_result = resolve_expr_types(texpr: arg.value, env: env, module_name: module_name)
+fn resolve_named_arg(arg: Node, env: TypeEnv, module_name: String) -> NamedArgResolveResult {
+  let value_result = resolve_expr_types(texpr: arg_value(n: arg), env: env, module_name: module_name)
   let value_expr = value_result.expr
   let value_diags = value_result.diagnostics
   NamedArgResolveResult {
-    arg: NamedArg { name: arg.name, value: value_expr },
+    arg: make_arg_node(name: arg_name(n: arg), value: value_expr, span: arg.span),
     diagnostics: value_diags
   }
 }
@@ -586,8 +586,9 @@ fn resolve_field_init(field_init: Node, env: TypeEnv, module_name: String) -> Fi
   }
 }
 
-fn resolve_match_arm(arm: MatchArm, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
-  let guard_result = match arm.guard {
+fn resolve_match_arm(arm: Node, env: TypeEnv, module_name: String) -> MatchArmResolveResult {
+  let arm_g = arm_guard(n: arm)
+  let guard_result = match arm_g {
     Some { value: guard } => Some { value: resolve_expr_types(texpr: guard, env: env, module_name: module_name) }
     None => none
   }
@@ -595,18 +596,19 @@ fn resolve_match_arm(arm: MatchArm, env: TypeEnv, module_name: String) -> MatchA
     Some { value: result } => result.diagnostics
     None => []
   }
-  let body_result = resolve_expr_types(texpr: arm.body, env: env, module_name: module_name)
+  let body_result = resolve_expr_types(texpr: arm_body(n: arm), env: env, module_name: module_name)
   let body_expr = body_result.expr
   let body_diags = body_result.diagnostics
   MatchArmResolveResult {
-    arm: MatchArm {
-      pattern: arm.pattern,
+    arm: make_arm_node(
+      pattern: arm_pattern(n: arm),
       guard: match guard_result {
         Some { value: result } => Some { value: result.expr }
         None => none
       },
-      body: body_expr
-    },
+      body: body_expr,
+      span: arm.span
+    ),
     diagnostics: concat(guard_diags, body_diags)
   }
 }

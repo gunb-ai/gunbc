@@ -486,20 +486,6 @@ pub enum ExprData {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct NamedArg {
-    pub name: Option<String>,
-    pub value: Rc<Node>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct MatchArm {
-    pub pattern: Rc<MatchPattern>,
-    pub guard: Option<Rc<Node>>,
-    pub body: Rc<Node>,
-}
-
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum MatchPattern {
     Bind {
         name: String,

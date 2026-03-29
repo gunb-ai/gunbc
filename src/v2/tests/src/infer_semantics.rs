@@ -6,7 +6,7 @@ use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_types::{
     bare_map_node, container_node, map_node,
 };
-use v2_compiler::v2_std_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan, leaf_node, with_optional_cardinality};
+use v2_compiler::v2_std_core::{Cardinality, InferredNode, MatchPattern, Node, NodeType, SourceSpan, leaf_node, make_arm_node, with_optional_cardinality};
 
 fn zero_span() -> Rc<SourceSpan> {
     SourceSpan::new(0, 0)
@@ -16,16 +16,17 @@ fn unit_expr() -> Rc<Node> {
     leaf_node("Unit".to_string())
 }
 
-fn variant_arm(name: &str) -> Rc<MatchArm> {
-    Rc::new(MatchArm {
-        pattern: Rc::new(MatchPattern::VariantPattern {
+fn variant_arm(name: &str) -> Rc<Node> {
+    make_arm_node(
+        Rc::new(MatchPattern::VariantPattern {
             name: name.to_string(),
             parent_enum: None,
             field_bindings: Vec::new(),
         }),
-        guard: None,
-        body: unit_expr(),
-    })
+        None,
+        unit_expr(),
+        zero_span(),
+    )
 }
 
 fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: &str) {

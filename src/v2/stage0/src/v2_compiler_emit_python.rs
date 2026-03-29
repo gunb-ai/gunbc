@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchArm, MatchPattern, FieldBinding, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, NamedArg, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, FieldBinding, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -643,11 +643,7 @@ pub fn emit_py_expr_match(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>
     Some(v) => v.clone(),
     None => expr.clone(),
 };
-let arm_list = { let mut __result = Vec::new(); for a in expr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().iter().cloned() { __result.push(Rc::new(MatchArm {
-    pattern: arm_pattern(a.clone()),
-    guard: arm_guard(a.clone()),
-    body: arm_body(a.clone()),
-})); } __result };
+let arm_list = match_arm_nodes(expr.clone());
 emit_py_typed_match(s.clone(), arm_list.clone(), registry.clone(), scope.clone(), depth.clone())
 },
     _ => emit_error_expr("emit_py_expr_match expected ExprMatch".to_string(), RenderTarget::Python),
@@ -798,7 +794,7 @@ pub fn emit_py_typed_expr(texpr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo
     })
 }
 
-pub fn emit_py_typed_call(func: String, args: Vec<Rc<NamedArg>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_typed_call(func: String, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let ordered_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
 let arg_strs = { let mut __result = Vec::new(); for a in ordered_args.clone().iter().cloned() { __result.push(emit_py_typed_expr(a.value.clone(), registry.clone(), scope.clone(), depth.clone())); } __result };
@@ -862,7 +858,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(base_str.c
 }
 }
 
-pub fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Rc<Node>, args: Vec<Rc<NamedArg>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_intrinsic_method_call(intrinsic: IntrinsicMethod, receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let recv_str = emit_py_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone());
 let first_arg_str = emit_py_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone());
@@ -898,7 +894,7 @@ pub fn py_bridge_method_name(method: RuntimeBridgeMethod) -> String {
 }
 }
 
-pub fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Rc<Node>, args: Vec<Rc<NamedArg>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_runtime_bridge_method_call(method: RuntimeBridgeMethod, receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let function_name = py_bridge_method_name(method.clone());
 let recv_str = emit_py_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone());
@@ -908,7 +904,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(emit_ident(function_name.clone(), Rend
 }
 }
 
-pub fn emit_py_plain_method_call(receiver: Rc<Node>, method: String, args: Vec<Rc<NamedArg>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_plain_method_call(receiver: Rc<Node>, method: String, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let recv_str = emit_py_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone());
 let arg_strs = { let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(a.value.clone(), registry.clone(), scope.clone(), depth.clone())); } __result };
@@ -917,7 +913,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.c
 }
 }
 
-pub fn emit_py_typed_method_call(receiver: Rc<Node>, method: String, args: Vec<Rc<NamedArg>>, method_semantics: Option<Rc<MethodSemantics>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_typed_method_call(receiver: Rc<Node>, method: String, args: Vec<Rc<Node>>, method_semantics: Option<Rc<MethodSemantics>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     if (method_semantics.clone() != None) {
         match (*method_semantics.clone().unwrap()).clone() {
     MethodSemantics::ServiceMethodSemantics { service_name: svc_name, .. } => {
@@ -947,14 +943,14 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 }
 
-pub fn emit_py_typed_first_arg(args: Vec<Rc<NamedArg>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_typed_first_arg(args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match args.clone().first().cloned() {
     Some(a) => emit_py_typed_expr(a.value.clone(), registry.clone(), scope.clone(), depth.clone()),
     None => "raise NotImplementedError(\"missing method argument\")".to_string(),
 }
 }
 
-pub fn emit_py_typed_match(scrutinee: Rc<Node>, arms: Vec<Rc<MatchArm>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_typed_match(scrutinee: Rc<Node>, arms: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let scrut_str = emit_py_typed_expr(scrutinee.clone(), registry.clone(), scope.clone(), depth.clone());
 let arm_strs = { let mut __result = Vec::new(); for arm in arms.clone().iter().cloned() { __result.push(emit_py_typed_match_arm(arm.clone(), registry.clone(), scope.clone(), depth.clone())); } __result };
@@ -965,14 +961,14 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone(
 }
 }
 
-pub fn emit_py_typed_match_arm(arm: Rc<MatchArm>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_typed_match_arm(arm: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let pat_str = emit_py_pattern(arm.pattern.clone());
-let guard_str = match arm.guard.clone() {
+        let pat_str = emit_py_pattern(arm_pattern(arm.clone()));
+let guard_str = match arm_guard(arm.clone()) {
     Some(g) => v2_rt::concat(" if ".to_string(), emit_py_typed_expr(g.clone(), registry.clone(), scope.clone(), depth.clone())),
     None => "".to_string(),
 };
-let body_str = emit_py_typed_expr(arm.body.clone(), registry.clone(), scope.clone(), (depth.clone() + 2));
+let body_str = emit_py_typed_expr(arm_body(arm.clone()), registry.clone(), scope.clone(), (depth.clone() + 2));
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent((depth.clone() + 1)), "case ".to_string()), pat_str.clone()), guard_str.clone()), ":
 ".to_string()), make_indent((depth.clone() + 2))), body_str.clone())
 }
@@ -1185,11 +1181,7 @@ pub fn emit_py_tco_match(frame: Rc<TcoFrame>, fn_name: String, params: Vec<Rc<No
     Some(v) => v.clone(),
     None => frame.expr.clone(),
 };
-let arm_list = { let mut __result = Vec::new(); for a in frame.expr.clone().children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().iter().cloned() { __result.push(Rc::new(MatchArm {
-    pattern: arm_pattern(a.clone()),
-    guard: arm_guard(a.clone()),
-    body: arm_body(a.clone()),
-})); } __result };
+let arm_list = match_arm_nodes(frame.expr.clone());
 let scrut_str = emit_py_typed_expr(s.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone());
 let arm_strs = { let mut __result = Vec::new(); for arm in arm_list.clone().iter().cloned() { __result.push(emit_py_typed_tco_match_arm(arm.clone(), fn_name.clone(), params.clone(), registry.clone(), frame.scope.clone(), frame.depth.clone())); } __result };
 let arms_str = arm_strs.clone().join(&"
@@ -1264,20 +1256,20 @@ pub fn emit_py_typed_tco_expr(texpr: Rc<Node>, fn_name: String, params: Vec<Rc<N
 }), fn_name.clone(), |input| emit_py_typed_tco_reassign(input.args.clone(), params.clone(), registry.clone(), input.scope.clone(), input.depth.clone()), |frame| emit_py_tco_non_self_call(frame.clone(), registry.clone()), |frame| emit_py_tco_if(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_match(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_let(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_block(frame.clone(), fn_name.clone(), params.clone(), registry.clone()), |frame| emit_py_tco_default_return(frame.clone(), registry.clone()))
 }
 
-pub fn emit_py_typed_tco_match_arm(arm: Rc<MatchArm>, fn_name: String, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_typed_tco_match_arm(arm: Rc<Node>, fn_name: String, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let pat_str = emit_py_pattern(arm.pattern.clone());
-let guard_str = match arm.guard.clone() {
+        let pat_str = emit_py_pattern(arm_pattern(arm.clone()));
+let guard_str = match arm_guard(arm.clone()) {
     Some(g) => v2_rt::concat(" if ".to_string(), emit_py_typed_expr(g.clone(), registry.clone(), scope.clone(), depth.clone())),
     None => "".to_string(),
 };
-let body_str = emit_py_typed_tco_expr(arm.body.clone(), fn_name.clone(), params.clone(), registry.clone(), scope.clone(), (depth.clone() + 2));
+let body_str = emit_py_typed_tco_expr(arm_body(arm.clone()), fn_name.clone(), params.clone(), registry.clone(), scope.clone(), (depth.clone() + 2));
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent((depth.clone() + 1)), "case ".to_string()), pat_str.clone()), guard_str.clone()), ":
 ".to_string()), make_indent((depth.clone() + 2))), body_str.clone())
 }
 }
 
-pub fn emit_py_typed_tco_reassign(args: Vec<Rc<NamedArg>>, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn emit_py_typed_tco_reassign(args: Vec<Rc<Node>>, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let ordered_args = { let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_py_typed_expr(a.value.clone(), registry.clone(), scope.clone(), depth.clone())); } __result };
 let param_names = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_ident(p.name.clone(), RenderTarget::Python)); } __result };

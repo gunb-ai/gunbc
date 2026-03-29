@@ -27,7 +27,6 @@ import v2.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp,
   ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice,
   ExprError, ExprReturn,
-  NamedArg, MatchArm,
   StringPart, Text, Interpolation,
   LiteralValue,
   TextFile, SourceSpan,
@@ -109,7 +108,7 @@ type TcoFrame {
 }
 
 type TcoReassignInput {
-  args: List<NamedArg>
+  args: List<Node>
   scope: InferScope
   depth: Int
 }
@@ -317,16 +316,17 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
   map_get(scope.func_env.signatures, name)
 }
 
-fn typed_named_arg_matches(arg: NamedArg, name: String) -> Bool {
-  if arg.name == none {
+fn typed_named_arg_matches(arg: Node, name: String) -> Bool {
+  let n = arg_name(n: arg)
+  if n == none {
     false
   } else {
-    arg.name.value == name
+    n.value == name
   }
 }
 
-fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) -> List<NamedArg> {
-  let has_unnamed = args |> any(arg => arg.name == none)
+fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> List<Node> {
+  let has_unnamed = args |> any(arg => arg_name(n: arg) == none)
   if has_unnamed {
     args
   } else {
@@ -334,7 +334,8 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
       None => args
       Some { value: sig } => {
         let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
-          if arg.name != none { map_insert(acc, arg.name.value, arg) } else { acc }
+          let n = arg_name(n: arg)
+          if n != none { map_insert(acc, n.value, arg) } else { acc }
         )
         let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
           map_insert(acc, param_node_name(n: param), true)
@@ -346,10 +347,11 @@ fn order_typed_call_args(args: List<NamedArg>, func: String, scope: InferScope) 
           }
         )
         let leftovers = args |> filter(arg =>
-          if arg.name == none {
+          let n = arg_name(n: arg)
+          if n == none {
             true
           } else {
-            emit_map_has(m: param_name_set, key: arg.name.value) == false
+            emit_map_has(m: param_name_set, key: n.value) == false
           }
         )
         concat(ordered, leftovers)
@@ -1170,9 +1172,9 @@ fn classify_func_body(body: Node) -> FuncBodyShape {
 }
 
 type TcoExprShape
-  = TcoCall { func: String, args: List<NamedArg> }
+  = TcoCall { func: String, args: List<Node> }
   | TcoIf { condition: Node, then_branch: Node, else_branch: Node? }
-  | TcoMatch { scrutinee: Node, arms: List<MatchArm> }
+  | TcoMatch { scrutinee: Node, arms: List<Node> }
   | TcoLet { name: String, value: Node, body: Node? }
   | TcoBlock { stmts: List<Node> }
   | TcoOther { expr: Node }
@@ -1180,8 +1182,7 @@ type TcoExprShape
 fn classify_tco_expr(texpr: Node) -> TcoExprShape {
   match texpr.expr_data {
     ExprCall { func: f, call_semantics: _ } =>
-      let a = texpr.children |> map(a => NamedArg { name: arg_name(n: a), value: arg_value(n: a) })
-      TcoCall { func: f, args: a }
+      TcoCall { func: f, args: texpr.children }
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
@@ -1189,7 +1190,7 @@ fn classify_tco_expr(texpr: Node) -> TcoExprShape {
       TcoIf { condition: c, then_branch: t, else_branch: e }
     ExprMatch =>
       let scrut = match_scrutinee(texpr: texpr)
-      let arm_list = match_arm_nodes(texpr: texpr) |> map(a => MatchArm { pattern: arm_pattern(n: a), guard: arm_guard(n: a), body: arm_body(n: a) })
+      let arm_list = match_arm_nodes(texpr: texpr)
       TcoMatch { scrutinee: scrut, arms: arm_list }
     ExprLet { name: n } =>
       let v = let_value(texpr: texpr)
@@ -1281,8 +1282,7 @@ fn emit_shared_tco_expr(
   match frame.expr.expr_data {
     ExprCall { func: f, call_semantics: _ } =>
       if f == fn_name {
-        let a = frame.expr.children |> map(a => NamedArg { name: arg_name(n: a), value: arg_value(n: a) })
-        emit_self_call_reassign(TcoReassignInput { args: a, scope: frame.scope, depth: frame.depth })
+        emit_self_call_reassign(TcoReassignInput { args: frame.expr.children, scope: frame.scope, depth: frame.depth })
       } else {
         emit_non_self_call(frame)
       }

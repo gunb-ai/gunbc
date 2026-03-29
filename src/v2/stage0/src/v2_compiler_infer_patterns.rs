@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ExprData, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, MatchArm, MatchPattern, leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality};
+pub use crate::v2_std_core::{Node, ExprData, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, MatchPattern, arm_pattern, leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality};
 use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
@@ -243,7 +243,7 @@ node_lookup_resolved(resolved.clone())
 }
 }
 
-pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Vec<Rc<MatchArm>>, env: Rc<TypeEnv>, span: Rc<SourceSpan>, module_name: String) -> Vec<Rc<ErrorNode>> {
+pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Vec<Rc<Node>>, env: Rc<TypeEnv>, span: Rc<SourceSpan>, module_name: String) -> Vec<Rc<ErrorNode>> {
     {
         let scrut_is_optional = node_is_optional(scrutinee_type.clone());
 let resolved_raw = if node_has_structure(scrutinee_type.clone()) {
@@ -266,7 +266,7 @@ if (node_is_coproduct(resolved.clone()) || node_is_optional(resolved.clone())) {
 } else {
                     { let mut __result = Vec::new(); for c in resolved.children.clone().iter().cloned() { __result.push(c.name.clone()); } __result }
 };
-let has_catch_all = { let mut __found = false; for arm in arms.clone().iter().cloned() { if match (*arm.pattern.clone()).clone() {
+let has_catch_all = { let mut __found = false; for arm in arms.clone().iter().cloned() { if match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::Wildcard => true,
     MatchPattern::Bind { .. } => true,
     _ => false,
@@ -275,7 +275,7 @@ if has_catch_all.clone() {
                     vec![]
 } else {
                     {
-                        let covered_set = arms.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, arm: Rc<MatchArm>| match (*arm.pattern.clone()).clone() {
+                        let covered_set = arms.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, arm: Rc<Node>| match (*arm_pattern(arm.clone())).clone() {
     MatchPattern::VariantPattern { name: n, .. } => v2_rt::map_insert(acc.clone(), n.clone(), true),
     _ => acc.clone(),
 });
