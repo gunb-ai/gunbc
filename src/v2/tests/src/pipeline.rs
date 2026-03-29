@@ -710,9 +710,9 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
         "cross_count should have a concrete bound, got {:?}", class);
 }
 
-/// sort_by — should be Conservative certainty (O(n log n) modeled as O(n)).
+/// sort_by — should be Proven with O(n log n) via CostLog.
 #[test]
-fn complexity_class_sort_conservative() {
+fn complexity_class_sort_proven() {
     let source = r#"module sorting
 fn sort_ascending(items: List<Int>) -> List<Int> {
   sort_by(items, fn(a, b) { a - b })
@@ -724,8 +724,8 @@ fn sort_ascending(items: List<Int>) -> List<Int> {
         "sort should have 0 violations: {:?}",
         result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
     let cert = certainty_of(&result, "sort_ascending");
-    assert_eq!(cert, Some(Certainty::Conservative),
-        "sort_by should produce Conservative certainty (algebra lacks log), got {:?}", cert);
+    assert_eq!(cert, Some(Certainty::Proven),
+        "sort_by should produce Proven certainty (CostLog expresses n log n), got {:?}", cert);
 }
 
 /// Chained operations: map then fold — should be O(n), not O(n²).

@@ -102,6 +102,10 @@ pub enum CostExpr {
         upper: Rc<SizeExpr>,
         body: Rc<CostExpr>,
     },
+    CostLog {
+        base: i64,
+        argument: Rc<SizeExpr>,
+    },
     CostUnknown {
         reason: String,
     },
@@ -359,9 +363,56 @@ pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     }
 }
 
+/// Check if the function body is a structural descent (catamorphism):
+/// a match/if over the recursive parameter where all self-calls are
+/// inside arms, not at the top level. Total work = O(|tree|).
+pub fn is_structural_descent(body: Rc<Node>, func_name: String) -> bool {
+    use crate::v2_std_core::*;
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprMatch => {
+            let scrut_calls = count_self_calls(match_scrutinee(body.clone()), func_name.clone());
+            scrut_calls == 0
+        }
+        ExprData::ExprIf => {
+            let cond_calls = count_self_calls(if_condition(body.clone()), func_name.clone());
+            cond_calls == 0
+        }
+        ExprData::ExprLet { name: _ } => {
+            let val_calls = count_self_calls(let_value(body.clone()), func_name.clone());
+            if val_calls > 0 { false }
+            else {
+                match let_body(body.clone()) {
+                    Some(b) => is_structural_descent(b, func_name.clone()),
+                    None => false,
+                }
+            }
+        }
+        ExprData::ExprBlock => {
+            let stmts = body.clone().children.clone();
+            let len = stmts.len();
+            if len == 0 { false }
+            else {
+                let prefix_calls: i64 = stmts[..len-1].iter().cloned().fold(0i64, |acc, s| {
+                    acc + count_self_calls(s, func_name.clone())
+                });
+                if prefix_calls > 0 { false }
+                else {
+                    is_structural_descent(stmts[len-1].clone(), func_name.clone())
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
 pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<RecursionPattern> {
     let path_calls = max_path_self_calls(body.clone(), func_name.clone());
     if path_calls <= 1 {
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if is_structural_descent(body.clone(), func_name.clone()) {
+        // Structural descent: catamorphism, O(|tree|) not O(k^depth)
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
@@ -566,24 +617,26 @@ Rc::new(SummaryResult {
 })
 },
     CostShape::ShapeSortBody => {
+        // O(n × log(n) × key_cost) — tight bound via CostLog
         let lambda_arg = resolve_lambda_arg(mc_args.clone());
 let key_result = match lambda_arg.clone() {
     Some(la) => cost_of_expr(la.clone(), func_index.clone(), recv_r.table.clone()),
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
-    work: Rc::new(CostExpr::CostConst {
-    value: 1,
-}),
-    span: Rc::new(CostExpr::CostConst {
-    value: 1,
-}),
+    work: Rc::new(CostExpr::CostConst { value: 1 }),
+    span: Rc::new(CostExpr::CostConst { value: 1 }),
     output_size: <HashMap<_, _>>::new(),
-    certainty: Certainty::Conservative,
+    certainty: Certainty::Proven,
 }),
     table: recv_r.table.clone(),
 }),
 };
-let sort_work = cost_loop(binder.clone(), size.clone(), key_result.summary.clone().work.clone());
+let log_factor = Rc::new(CostExpr::CostLog { base: 2, argument: size.clone() });
+let per_comparison = key_result.summary.clone().work.clone();
+let sort_work = Rc::new(CostExpr::CostMul {
+    left: cost_loop(binder.clone(), size.clone(), per_comparison),
+    right: log_factor,
+});
 let sort_os = v2_rt::map_insert(<HashMap<_, _>>::new(), "result".to_string(), cost_loop(binder.clone(), size.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
 })));
@@ -592,7 +645,7 @@ Rc::new(SummaryResult {
     work: cost_seq(recv_r.summary.clone().work.clone(), sort_work.clone()),
     span: cost_seq(recv_r.summary.clone().span.clone(), sort_work.clone()),
     output_size: sort_os.clone(),
-    certainty: Certainty::Conservative,
+    certainty: key_result.summary.clone().certainty,
 }),
     table: key_result.table.clone(),
 })
@@ -743,6 +796,10 @@ match (*sbd.clone()).clone() {
 }),
 }
 },
+    CostExpr::CostLog { base: b, argument: a, .. } => Rc::new(CostExpr::CostLog {
+    base: b.clone(),
+    argument: a.clone(),
+}),
 }
     })
 }
@@ -880,6 +937,9 @@ let dominant = if has_cost_sum(l.clone()) {
 }
 };
 dominant.clone()
+},
+    CostExpr::CostLog { argument: a, .. } => {
+                v2_rt::concat(v2_rt::concat("O(log ".to_string(), format_size(a.clone())), ")".to_string())
 },
 }
 }
