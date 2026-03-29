@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Field, Param, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, ResourceUse, MatchArm, FieldInit, NamedArg, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span};
+pub use crate::v2_std_core::{Node, Field, Param, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, ResourceUse, MatchArm, FieldInit, NamedArg, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -57,7 +57,7 @@ use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::TransportKind::{LocalTransport};
-pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, node_is_container, rt_type, collection_kind_for_name};
+pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, node_is_container, rt_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type, is_recursive_type};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -131,22 +131,21 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<No
 }
 
 pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
-    if node_has_structure(n.clone()) {
+    let has_structure = node_has_structure(n.clone());
+    if has_structure {
         false
-} else {
-        if node_is_map(n.clone()) {
-            false
-} else {
-            if node_is_container(n.clone()) {
-                false
-} else {
-                match lookup_type(env.clone(), n.name.clone()) {
-    Some(decl) => ((decl.params.clone().len() as i64) > 0),
-    None => false,
-}
-}
-}
-}
+    } else {
+        match lookup_type(env.clone(), n.name.clone()) {
+            Some(decl) => if ((decl.params.clone().len() as i64) > 0) {
+                if decl.inferred.clone() != None { true }
+                else {
+                    if is_container_type(n.name.clone()) { false }
+                    else { true }
+                }
+            } else { false },
+            None => false,
+        }
+    }
 }
 
 pub fn substitute_type_slots(n: Rc<Node>, slot_bindings: HashMap<String, Rc<Node>>, decl_name: String) -> Rc<Node> {
@@ -168,7 +167,7 @@ Rc::new(Node {
     span: child.span.clone(),
     children: substituted_args.clone(),
     connective: child.connective.clone(),
-    collection_kind: child.collection_kind.clone(),
+
     params: child.params.clone(),
     inferred: child.inferred.clone(),
     return_cardinality: child.return_cardinality.clone(),
@@ -191,7 +190,7 @@ Rc::new(Node {
     span: n.span.clone(),
     children: new_children.clone(),
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: n.return_cardinality.clone(),
@@ -220,35 +219,6 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String, 
     diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: v2_rt::concat(v2_rt::concat("internal: type resolution exceeded depth 100 for '".to_string(), n.name.clone()), "'".to_string()), span: n.span.clone() }), module_name.clone())],
 })
 }
-let n = if (n.collection_kind.clone() == None) {
-                {
-                    let ck = collection_kind_for_name(n.name.clone());
-match ck.clone() {
-    Some(_) => Rc::new(Node {
-    name: n.name.clone(),
-    span: n.span.clone(),
-    children: n.children.clone(),
-    connective: n.connective.clone(),
-    collection_kind: ck.clone(),
-    params: n.params.clone(),
-    inferred: n.inferred.clone(),
-    return_cardinality: n.return_cardinality.clone(),
-    uses: n.uses.clone(),
-    body: n.body.clone(),
-    transport: n.transport.clone(),
-    properties: n.properties.clone(),
-    type_annotation: n.type_annotation.clone(),
-    is_self_recursive: n.is_self_recursive.clone(),
-    has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-    match_pattern: n.match_pattern.clone(),
-    expr_data: n.expr_data.clone(),
-}),
-    None => n.clone(),
-}
-}
-} else {
-                n.clone()
-};
 if node_has_structure(n.clone()) {
                 if node_is_product(n.clone()) {
                     if (n.name.clone() == "Refined".to_string()) {
@@ -263,7 +233,7 @@ Rc::new(NodeResolveResult {
     span: n.span.clone(),
     children: vec![base_resolved.clone()],
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: n.return_cardinality.clone(),
@@ -304,7 +274,7 @@ Rc::new(NodeResolveResult {
     span: child.span.clone(),
     children: child.children.clone(),
     connective: child.connective.clone(),
-    collection_kind: child.collection_kind.clone(),
+
     params: child.params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: rt_resolved.clone(),
@@ -332,7 +302,7 @@ Rc::new(NodeResolveResult {
     span: n.span.clone(),
     children: resolved_children.clone(),
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: n.return_cardinality.clone(),
@@ -390,7 +360,7 @@ Rc::new(NodeResolveResult {
     span: field_child.span.clone(),
     children: field_child.children.clone(),
     connective: field_child.connective.clone(),
-    collection_kind: field_child.collection_kind.clone(),
+
     params: field_child.params.clone(),
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: rt_resolved.clone(),
@@ -418,7 +388,7 @@ Rc::new(NodeResolveResult {
     span: variant_child.span.clone(),
     children: resolved_fields.clone(),
     connective: variant_child.connective.clone(),
-    collection_kind: variant_child.collection_kind.clone(),
+
     params: variant_child.params.clone(),
     inferred: variant_child.inferred.clone(),
     return_cardinality: variant_child.return_cardinality.clone(),
@@ -443,7 +413,7 @@ Rc::new(NodeResolveResult {
     span: n.span.clone(),
     children: resolved_variants.clone(),
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: n.return_cardinality.clone(),
@@ -495,7 +465,7 @@ let result = Rc::new(NodeResolveResult {
     span: n.span.clone(),
     children: substituted_children.clone(),
     connective: decl.connective.clone(),
-    collection_kind: collection_kind_for_name(n.name.clone()),
+
     params: vec![],
     inferred: n.inferred.clone(),
     return_cardinality: n.return_cardinality.clone(),
@@ -536,7 +506,7 @@ Rc::new(NodeResolveResult {
     span: n.span.clone(),
     children: vec![key_resolved.clone(), val_resolved.clone()],
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: n.return_cardinality.clone(),
@@ -566,7 +536,7 @@ Rc::new(NodeResolveResult {
     span: n.span.clone(),
     children: vec![el_resolved.clone()],
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: n.return_cardinality.clone(),
@@ -1434,7 +1404,7 @@ Rc::new(ItemResult {
     body: resolved_body.clone(),
     connective: item.connective.clone(),
     transport: resolved_transport.clone(),
-    collection_kind: item.collection_kind.clone(),
+
     properties: resolved_props.clone(),
     type_annotation: resolved_anno.clone(),
     is_self_recursive: false,

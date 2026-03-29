@@ -53,7 +53,7 @@ import v2.std.core {
   field_init_node_name, field_init_node_value,
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
-  CollectionKind, MapKind,
+
   CardOptional
 }
 

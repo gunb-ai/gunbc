@@ -52,7 +52,6 @@ pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use TokenShape::*;
 use Connective::*;
 use Cardinality::*;
-use CollectionKind::*;
 use FieldAccessStyle::*;
 use FieldValueShape::*;
 use InferredNode::*;
@@ -171,15 +170,6 @@ pub enum Cardinality {
     CardOptional,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CollectionKind {
-    ListKind,
-    SetKind,
-    NonEmptyListKind,
-    NonEmptySetKind,
-    MapKind,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     pub name: String,
@@ -239,6 +229,14 @@ lazy_static::lazy_static! {
 
 pub fn is_kernel_type(name: String) -> bool {
     { let mut __found = false; for t in KERNEL_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
+}
+
+lazy_static::lazy_static! {
+    pub static ref CONTAINER_TYPES: Vec<String> = vec!["List".to_string(), "Set".to_string(), "NonEmptyList".to_string(), "NonEmptySet".to_string(), "Map".to_string()];
+}
+
+pub fn is_container_type(name: String) -> bool {
+    { let mut __found = false; for t in CONTAINER_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
 }
 
 pub fn is_kernel_numeric(name: String) -> bool {
@@ -667,7 +665,6 @@ pub struct Node {
     pub span: Rc<SourceSpan>,
     pub children: Vec<Rc<Node>>,
     pub connective: Option<Connective>,
-    pub collection_kind: Option<CollectionKind>,
     pub params: Vec<Rc<Param>>,
     pub inferred: Option<Rc<InferredNode>>,
     pub return_cardinality: Cardinality,
@@ -688,7 +685,7 @@ pub fn make_expr_node(expr_data: Rc<ExprData>, children: Vec<Rc<Node>>, inferred
     span: span.clone(),
     children: children.clone(),
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: inferred.clone(),
     return_cardinality: Cardinality::Required,
@@ -710,7 +707,7 @@ pub fn make_expr_error_node(kind: ExprErrorKind, message: String, span: Rc<Sourc
     span: span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: Some(Rc::new(InferredNode::CompilerError {
     message: message.clone(),
@@ -743,7 +740,7 @@ Rc::new(Node {
     span: span.clone(),
     children: vec![value.clone()],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -771,7 +768,7 @@ Rc::new(Node {
     span: span.clone(),
     children: children.clone(),
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -794,7 +791,7 @@ pub fn make_field_init_node(name: String, value: Rc<Node>, span: Rc<SourceSpan>)
     span: span.clone(),
     children: vec![value.clone()],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -816,7 +813,7 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
     span: span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -842,7 +839,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     span: span.clone(),
     children: vec![expr.clone()],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -1035,7 +1032,7 @@ pub fn make_transport_node(name: String, properties: Vec<Rc<FieldInit>>, childre
     span: span.clone(),
     children: children.clone(),
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -1230,7 +1227,6 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node>) ->
     span: node.span.clone(),
     children: { let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(transform(child.clone())); } __result },
     connective: node.connective.clone(),
-    collection_kind: node.collection_kind.clone(),
     params: node.params.clone(),
     inferred: node.inferred.clone(),
     return_cardinality: node.return_cardinality.clone(),
@@ -1489,7 +1485,7 @@ Rc::new(Node {
     span: span.clone(),
     children: v2_rt::concat(imports.clone(), items.clone()),
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -1533,7 +1529,7 @@ Rc::new(Node {
     span: span.clone(),
     children: specific_names.clone(),
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -1584,7 +1580,7 @@ pub fn leaf_node(name: String) -> Rc<Node> {
     span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -1606,7 +1602,7 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     span: span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,
@@ -1642,7 +1638,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     span: n.span.clone(),
     children: n.children.clone(),
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+    
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: Cardinality::CardOptional,
@@ -1664,7 +1660,7 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     span: n.span.clone(),
     children: n.children.clone(),
     connective: n.connective.clone(),
-    collection_kind: n.collection_kind.clone(),
+    
     params: n.params.clone(),
     inferred: n.inferred.clone(),
     return_cardinality: Cardinality::Required,

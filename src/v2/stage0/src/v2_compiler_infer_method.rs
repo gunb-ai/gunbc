@@ -384,3 +384,36 @@ let m = v2_rt::map_insert(m.clone(), "append".to_string(), IntrinsicMethod::Meth
 m.clone()
 }
 }
+
+pub fn runtime_bridge_method_index() -> HashMap<String, RuntimeBridgeMethod> {
+    let m = <HashMap<_, _>>::new();
+    let m = v2_rt::map_insert(m.clone(), "get".to_string(), RuntimeBridgeMethod::BridgeGet);
+    let m = v2_rt::map_insert(m.clone(), "with".to_string(), RuntimeBridgeMethod::BridgeWith);
+    let m = v2_rt::map_insert(m.clone(), "list_push".to_string(), RuntimeBridgeMethod::BridgeListPush);
+    let m = v2_rt::map_insert(m.clone(), "map_insert".to_string(), RuntimeBridgeMethod::BridgeMapInsert);
+    let m = v2_rt::map_insert(m.clone(), "map_merge".to_string(), RuntimeBridgeMethod::BridgeMapMerge);
+    let m = v2_rt::map_insert(m.clone(), "map_get".to_string(), RuntimeBridgeMethod::BridgeMapGet);
+    let m = v2_rt::map_insert(m.clone(), "map_has".to_string(), RuntimeBridgeMethod::BridgeMapHas);
+    let m = v2_rt::map_insert(m.clone(), "emit_map_has".to_string(), RuntimeBridgeMethod::BridgeEmitMapHas);
+    let m = v2_rt::map_insert(m.clone(), "map_values".to_string(), RuntimeBridgeMethod::BridgeMapValues);
+    let m = v2_rt::map_insert(m.clone(), "map_keys".to_string(), RuntimeBridgeMethod::BridgeMapKeys);
+    let m = v2_rt::map_insert(m.clone(), "map_contains_key".to_string(), RuntimeBridgeMethod::BridgeMapContainsKey);
+    let m = v2_rt::map_insert(m.clone(), "char_at".to_string(), RuntimeBridgeMethod::BridgeCharAt);
+    let m = v2_rt::map_insert(m.clone(), "string_at".to_string(), RuntimeBridgeMethod::BridgeStringAt);
+    let m = v2_rt::map_insert(m.clone(), "string_length".to_string(), RuntimeBridgeMethod::BridgeStringLength);
+    let m = v2_rt::map_insert(m.clone(), "length".to_string(), RuntimeBridgeMethod::BridgeLength);
+    let m = v2_rt::map_insert(m.clone(), "starts_with".to_string(), RuntimeBridgeMethod::BridgeStartsWith);
+    let m = v2_rt::map_insert(m.clone(), "ends_with".to_string(), RuntimeBridgeMethod::BridgeEndsWith);
+    let m = v2_rt::map_insert(m.clone(), "to_string".to_string(), RuntimeBridgeMethod::BridgeToString);
+    let m = v2_rt::map_insert(m.clone(), "trim".to_string(), RuntimeBridgeMethod::BridgeTrim);
+    let m = v2_rt::map_insert(m.clone(), "to_lower".to_string(), RuntimeBridgeMethod::BridgeToLower);
+    let m = v2_rt::map_insert(m.clone(), "to_upper".to_string(), RuntimeBridgeMethod::BridgeToUpper);
+    let m = v2_rt::map_insert(m.clone(), "replace".to_string(), RuntimeBridgeMethod::BridgeReplace);
+    let m = v2_rt::map_insert(m.clone(), "substring".to_string(), RuntimeBridgeMethod::BridgeSubstring);
+    let m = v2_rt::map_insert(m.clone(), "to_int".to_string(), RuntimeBridgeMethod::BridgeToInt);
+    let m = v2_rt::map_insert(m.clone(), "empty_map".to_string(), RuntimeBridgeMethod::BridgeEmptyMap);
+    let m = v2_rt::map_insert(m.clone(), "contains".to_string(), RuntimeBridgeMethod::BridgeContains);
+    let m = v2_rt::map_insert(m.clone(), "reverse".to_string(), RuntimeBridgeMethod::BridgeReverse);
+    let m = v2_rt::map_insert(m.clone(), "lookup".to_string(), RuntimeBridgeMethod::BridgeLookup);
+    m.clone()
+}

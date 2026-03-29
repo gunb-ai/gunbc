@@ -101,7 +101,7 @@ let value_field = Rc::new(Node {
     span: scrut.span.clone(),
     children: vec![],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: Some(Rc::new(InferredNode::Resolved {
     node: inner.clone(),
@@ -122,7 +122,7 @@ let some_node = Rc::new(Node {
     span: scrut.span.clone(),
     children: vec![value_field.clone()],
     connective: None,
-    collection_kind: None,
+
     params: vec![],
     inferred: None,
     return_cardinality: Cardinality::Required,

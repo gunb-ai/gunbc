@@ -209,4 +209,115 @@ service github.Pulls {
       404 => { message: "Not Found", documentation_url: "https://docs.github.com/rest" } "Repository or PR not found"
     }
   }
+
+  // Spec: https://docs.github.com/en/rest/pulls/reviews
+  // Stateless dedup: check if a review exists at a specific commit SHA.
+  // Returns review count -- 0 means not yet reviewed at this commit.
+  operation ListReviews {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+    }
+    output {
+      reviews: List<PullReview>
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews"
+    }
+    response {
+      200 => List<PullReview>
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+    mock_response {
+      200 => [] "No reviews yet"
+    }
+  }
+
+  // Spec: https://docs.github.com/en/rest/pulls/reviews#create-a-review
+  // Posts a review with line-level comments. Idempotent when guarded
+  // by ListReviews check (don't post if review at this SHA exists).
+  operation CreateReview {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+      commit_id: String
+      body: String
+      event: String = "COMMENT"
+      comments: Json
+    }
+    output {
+      id: Int from "id"
+      html_url: String from "html_url"
+    }
+    transport rest {
+      method: POST,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews",
+      body: { commit_id: commit_id, body: body, event: event, comments: comments }
+    }
+    response {
+      200 => Json
+      401 => GitHubErrorShape
+      422 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+    mock_response {
+      200 => { id: 1, html_url: "https://github.com/mock/pull/1#pullrequestreview-1" } "Review created"
+    }
+  }
+
+  // Spec: https://docs.github.com/en/rest/pulls/comments
+  // Lists review comments (line-level). Used for resolution checking.
+  operation ListComments {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      pull_number: Int
+    }
+    output {
+      comments: List<ReviewComment>
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/comments"
+    }
+    response {
+      200 => List<ReviewComment>
+      401 => GitHubErrorShape
+      404 => GitHubErrorShape
+      5xx => GitHubErrorShape
+    }
+    mock_response {
+      200 => [] "No comments"
+    }
+  }
+}
+
+// -- Review and comment types -----------------------------------------
+
+type PullReview {
+  id: Int
+  body: String
+  state: String
+  commit_id: String
+  html_url: String
+}
+
+type ReviewComment {
+  id: Int
+  node_id: String
+  path: String
+  line: Int?
+  original_line: Int?
+  body: String
+  html_url: String
 }

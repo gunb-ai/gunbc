@@ -383,6 +383,27 @@ lags will be masked by a fallback (see above).
 **The test:** if a code path exists only to provide a result that
 another code path also produces, one of them should be deleted.
 
+### Boundary sufficiency
+
+A stage boundary is *sufficient* when the data it carries contains all
+the structural facts the downstream stage needs, making name-based proxy
+reads unnecessary. When a stage branches on a name to make a structural
+decision, the boundary is insufficient — a fact is missing.
+
+**The diagnostic:** scramble all user-defined names across a boundary.
+If downstream decisions change, a structural fact is missing and the
+name was used as a proxy. The scrambled-name test reveals exactly which
+decisions depend on names, pointing to the missing facts.
+
+**The fix:** always enrich the boundary, never restrict access. When
+inference needs "has math methods," the fix is "put algebra membership
+in the boundary data," not "hide the name." When emit needs "how to
+declare a variable," the fix is "read LanguageSpec," not "prevent
+hardcoding."
+
+See ROADMAP "Design Direction: Boundary Sufficiency" for the gap
+inventory and execution phases.
+
 ### Explicit boundary contracts
 
 Each stage of the pipeline (parse → typecheck → lower → resolve →
@@ -1269,58 +1290,26 @@ will hit the same issue.
 
 ---
 
-### CollectionKind is bridge debt (2026-03-26)
+### CollectionKind — DISSOLVED (2026-03-28)
 
-**Invariant violated:** Domain lives in the DSL, not in Rust. No case
-enumeration for open sets.
+**Previously:** `CollectionKind` enum (6 variants) on `Node`, 184 sites
+across 17 files. Compiler branched on enum to distinguish collection types.
+Every `Node { ... }` literal had to set `collection_kind` correctly or
+`node_is_map`/`node_is_container` silently returned false.
 
-`CollectionKind = ListKind | SetKind | MapKind | ...` is a closed enum
-on `Node` that the compiler branches on to distinguish collection types.
-P5.7b introduced it to replace the worse `properties |> any(p => p.name
-== "container_kind")` string-keyed pattern. It is the same class of
-violation as the deleted `BuiltinTypeKind` — compiler-side domain
-knowledge that should live in `.dag` declarations.
+**Resolution:** Enum deleted, field removed from Node. Collection-ness is
+now derived structurally after resolution: containers are the only type
+nodes with `children > 0 && connective == NoConnective`. Three structural
+predicates (`node_is_collection`, `node_is_keyed_collection`,
+`node_is_element_collection`) replace all enum matching. A `container_types`
+data list in `00_core.dag` controls which types stay unexpanded during
+resolve. Emit uses `to_snake(n.name)` as LanguageSpec template key.
 
-**Why it's fragile (demonstrated 2026-03-26):** Every `Node { ... }`
-literal in the codebase must set `collection_kind` correctly, or
-`node_is_map`/`node_is_container` silently returns false. Parser-
-produced nodes have `collection_kind: none` because the parser doesn't
-know about collection kinds. The regression was silent until a test
-checked `m[k]` on a `Map<String, Int>` parameter.
-
-**Short-term invariant (per bridge policy):**
-
-- **Canonical authority:** `collection_kind_for_name` in `04_types.dag`.
-- **Trust boundary:** Before `resolve_node_bounded`, `collection_kind`
-  may be absent (parser-produced nodes have `none`). After
-  normalization at resolve entry, if derivable, it must equal
-  `collection_kind_for_name(name)`. Treat as a **normalized cache of
-  name-derived knowledge**, not independent structural truth.
-- **Regression test:** `map_index_emits_lookup_style_rust` — the test
-  that caught the 2026-03-26 regression.
-- **Deletion point:** Phase 5 L1=0 gate.
-
-Note: `collection_kind_for_name` is itself a name-checking function —
-L1 domain knowledge. The normalization is a mitigation, not a fix.
-
-**Deletion point:** Phase 5 L1=0 gate. When collection types have
-real `.dag` declarations with structural method algebras (indexing,
-iteration, membership — declared in the type system, not in compiler
-enums), `CollectionKind` dissolves. The compiler reads structural
-properties from declarations instead of branching on an enum.
-
-**The pure Node model path:** Collections are `.dag` declarations with
-arity (already done: `type Map<key, value>`) and method algebras (not
-yet: the `.dag` language needs method declarations on types). When
-method dispatch reads the type's declared methods instead of a compiler
-enum, `node_is_map` becomes "does this type declare an `index` method?"
-— a structural query, not a name/enum check.
-
-| # | Severity | Where | What |
-|---|----------|-------|------|
-| IV-11 | MED | `00_core.dag:120` | `CollectionKind` enum is L1 domain knowledge, same class as deleted `BuiltinTypeKind` |
-| IV-12 | MED | `04_types.dag:52` | `collection_kind_for_name` maps names to enum — name-checking function |
-| IV-13 | LOW | `04_resolve.dag:197-206` | Normalization at resolve entry — mitigation for parser not setting field |
+| # | Status | What |
+|---|--------|------|
+| IV-11 | **FIXED** | `CollectionKind` enum deleted |
+| IV-12 | **FIXED** | `collection_kind_for_name` deleted |
+| IV-13 | **FIXED** | Normalization block deleted (no field to normalize) |
 
 ---
 

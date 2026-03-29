@@ -60,7 +60,6 @@ import v2.std.core {
   field_init_node_name, field_init_node_value,
   leaf_node, make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
   Cardinality, Required, CardOptional
 }
 
@@ -78,7 +77,8 @@ import v2.compiler.runtime_rust { rust_runtime_source }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
-  rt_type, emit_map_has
+  rt_type, emit_map_has,
+  node_is_keyed_collection, node_is_element_collection
 }
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer_items {
@@ -132,7 +132,7 @@ import v2.compiler.emit {
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -1486,8 +1486,8 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 }
 
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, vtoe: Map<String, String>, rc_types: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
-  if name == "none" || name == "None" { "None" }
-  else if name == "true" || name == "false" { name }
+  if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
+  else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info)
     let ref_str = match variant_parent {
@@ -1535,8 +1535,8 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   match texpr.expr_data {
     ExprVar { name: n, binding_kind: binding_kind } =>
       // Emit var without .clone() for borrowing contexts.
-      if n == "none" || n == "None" { "None" }
-      else if n == "true" || n == "false" { n }
+      if n == "none" || n == "None" { emit_keyword(key: "null", target: Rust) }
+      else if n == "true" || n == "false" { emit_keyword(key: n, target: Rust) }
       else {
         let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info)
         match variant_parent {
@@ -1633,7 +1633,7 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>) -> Bool {
 fn rust_map_value_type(receiver_type: Node, scope: InferScope) -> Node? {
   let resolved = normalize_access_type_node(n: receiver_type)
   let map_type = normalize_access_type_node(n: resolved)
-  let is_map = map_type.collection_kind == MapKind
+  let is_map = node_is_keyed_collection(n: map_type)
   if is_map {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
@@ -1871,7 +1871,7 @@ fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolve
 
 fn is_map_typed_expr(texpr: Node) -> Bool {
   match texpr.inferred {
-    Some { value: Resolved { node: n } } => n.collection_kind == MapKind
+    Some { value: Resolved { node: n } } => node_is_keyed_collection(n: n)
     _ => false
   }
 }
@@ -2092,7 +2092,7 @@ fn emit_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>, sc
   let base_str = emit_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let index_str = emit_typed_expr(texpr: index, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   let base_node = normalize_access_type_node(n: rt_type(n: base))
-  let is_map = base_node.collection_kind == MapKind
+  let is_map = node_is_keyed_collection(n: base_node)
   if is_rust_string_like(n: base_node) {
     concat("v2_rt::char_at(&", base_str, ", ", index_str, ")")
   } else if is_map {
@@ -2118,8 +2118,7 @@ fn emit_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, It
 fn collection_element_type(receiver_type: InferredNode?, rc_types: Map<String, Bool>) -> String {
   match receiver_type {
     Some { value: Resolved { node: rt } } =>
-      let rt_ck = rt.collection_kind
-      let __rt_is_container = rt_ck == ListKind || rt_ck == SetKind || rt_ck == NonEmptyListKind || rt_ck == NonEmptySetKind
+      let __rt_is_container = node_is_element_collection(n: rt)
       if __rt_is_container {
         match rt.children |> first {
           Some { value: elem_node } => emit_node_type_rc(n: elem_node, target: Rust, rc_types: rc_types)
@@ -2339,7 +2338,7 @@ fn emit_intrinsic_typed_method_call(intrinsic: IntrinsicMethod, fold_accumulator
       let acc_type_node = match fold_accumulator_type {
         Some { value: acc_type } =>
           let acc_children_have_unit = acc_type.children |> any(c => (c.connective == Conj && c.children |> count == 0) || c.name == "") || acc_type.children |> any(c => c.children |> any(gc => (gc.connective == Conj && gc.children |> count == 0) || gc.name == ""))
-          if acc_type.collection_kind == MapKind && (acc_type.children |> count == 0 || acc_children_have_unit) {
+          if node_is_keyed_collection(n: acc_type) && (acc_type.children |> count == 0 || acc_children_have_unit) {
             match contextual_acc_type {
               Some { value: concrete_type } => concrete_type
               None => acc_type
@@ -3368,8 +3367,7 @@ fn emit_shell_return(inferred: Node) -> String {
   if is_bool {
     "Ok(output.status.success())"
   } else {
-    let eff_ck = effective.collection_kind
-    let __eff_is_container = eff_ck == ListKind || eff_ck == SetKind || eff_ck == NonEmptyListKind || eff_ck == NonEmptySetKind
+    let __eff_is_container = node_is_element_collection(n: effective)
     if __eff_is_container {
       "Ok(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())"
     } else if is_product && effective.children |> count > 1 {
@@ -3469,7 +3467,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       "        .expect(\"valid data definition\")\n",
       "}")
   } else {
-    let is_map = type_node.collection_kind == MapKind
+    let is_map = node_is_keyed_collection(n: type_node)
     if is_map {
     // Map data: emit as lazy_static with explicit insert() calls.
     // The value is a RecordLit whose field names are map keys and field values are map values.
@@ -3571,7 +3569,7 @@ fn emit_rust_default_value(param: Param) -> String {
   // Use DAG names for comparison (these are stable), target names for output.
   if type_name == "String" || type_name == "Secret" { "String::new()" }
   else if type_name == "Int" { "0" }
-  else if type_name == "Bool" { "false" }
+  else if type_name == "Bool" { emit_keyword(key: "false", target: Rust) }
   else if type_name == "Float" { "0.0" }
   else if type_name == "Unit" { "()" }
   else if type_name == "Json" { "serde_json::Value::Null" }
@@ -3662,7 +3660,7 @@ fn cli_default_literal_value(expr: Node) -> String? {
       LitStr { value: s } => Some { value: s }
       LitInt { value: i } => Some { value: to_string(value: i) }
       LitFloat { value: f } => Some { value: f }
-      LitBool { value: b } => Some { value: if b { "true" } else { "false" } }
+      LitBool { value: b } => Some { value: if b { emit_keyword(key: "true", target: Rust) } else { emit_keyword(key: "false", target: Rust) } }
       LitNull => none
     }
     _ => none

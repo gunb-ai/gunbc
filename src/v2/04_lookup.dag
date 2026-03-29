@@ -22,14 +22,16 @@ import v2.std.core {
   FieldSummary,
   leaf_node, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-  CollectionKind, MapKind, NoCollection,
+
   CardOptional
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
-  normalize_access_type_node,
+  normalize_access_type_node, node_is_keyed_collection,
+  method_receiver_element_node,
   rt_type, rt_node,
-  emit_map_has
+  emit_map_has,
+  enrich_kernel_type
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
@@ -39,8 +41,7 @@ import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
 }
 import v2.compiler.infer_method {
-  classify_reconciled_intrinsic_method, classify_runtime_bridge_method,
-  infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node
+  intrinsic_method_index, runtime_bridge_method_index
 }
 import v2.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv
@@ -185,7 +186,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if map_type.collection_kind == MapKind && map_type.children |> count >= 2 {
+  if node_is_keyed_collection(n: map_type) && map_type.children |> count >= 2 {
     match map_type.children |> skip(1) |> first {
       Some { value: value_type } => Some { value: value_type }
       None => none
@@ -234,51 +235,133 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 // a child with the requested method name (e.g., OrderedRing<T>.add).
 // Returns the RETURN TYPE of calling that method, not the method's
 // signature. For add: fn(T,T)->T, returns T (the call result type).
+fn lookup_field_in_product(product: Node, method_name: String) -> Node? {
+  let matching = product.children |> filter(c => c.name == method_name)
+  match matching |> first {
+    Some { value: field } =>
+      match field.inferred {
+        Some { value: Resolved { node: rt } } =>
+          if rt.params |> count > 0 {
+            match rt.inferred {
+              Some { value: Resolved { node: return_type } } => Some { value: return_type }
+              _ => Some { value: rt }
+            }
+          } else {
+            Some { value: rt }
+          }
+        _ => none
+      }
+    None => none
+  }
+}
+
 fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
+  // First: check the receiver's own structural fields (Conj product).
   let is_product = receiver_type.connective == Conj
   if is_product {
-    let matching = receiver_type.children |> filter(c => c.name == method_name)
-    match matching |> first {
-      Some { value: field } =>
-        // Found a structural field matching the method name.
-        // The field's inferred type is the method's signature.
-        // If it's a callable (has params), extract its return type.
-        // If it's a non-callable (e.g., zero: T), return its type directly.
-        match field.inferred {
-          Some { value: Resolved { node: rt } } =>
-            if rt.params |> count > 0 {
-              // Callable field: return type is the callable's own inferred type
-              match rt.inferred {
-                Some { value: Resolved { node: return_type } } => Some { value: return_type }
-                _ => Some { value: rt }
-              }
-            } else {
-              // Non-callable field (e.g., zero: T, one: T): return type directly
-              Some { value: rt }
-            }
-          _ => none
-        }
+    let direct = lookup_field_in_product(product: receiver_type, method_name: method_name)
+    match direct {
+      Some { value: _ } => direct
       None => none
     }
-  } else { none }
+  } else {
+    // Second: check the algebra registry for kernel type methods.
+    // enrich_kernel_type builds a Conj product with algebraic fields
+    // (add, mul, compare, concat, etc.) for Int/Float/Bool/String.
+    // The enriched node is NOT the type binding — it's a side table
+    // so that type nodes in the graph stay as bare leaves.
+    let enriched = enrich_kernel_type(name: receiver_type.name, base: receiver_type)
+    if enriched.connective == Conj && enriched.children |> count > 0 {
+      lookup_field_in_product(product: enriched, method_name: method_name)
+    } else {
+      none
+    }
+  }
+}
+
+// Substitute algebra field return types with concrete types from the
+// receiver. The algebra registry uses bare leaf references (self_type,
+// elem) which need to become the actual receiver type and element type
+// at the call site.
+//
+// Rules:
+//   - Return type name matches receiver name → use receiver_type (preserves children)
+//   - Return type is Optional and inner matches element → use Optional(elem)
+//   - Otherwise → return as-is (already concrete: int_type, bool_type, etc.)
+fn substitute_algebra_result(result_type: Node, receiver_type: Node, fold_accumulator_type: Node?) -> Node {
+  // fold is special: return type comes from the accumulator, not the algebra field
+  let is_fold = method_name_is_fold(result_type: result_type, fold_accumulator_type: fold_accumulator_type)
+  let is_same_collection = result_type.name == receiver_type.name
+  let is_optional = result_type.return_cardinality == CardOptional
+  if is_fold {
+    match fold_accumulator_type {
+      Some { value: fat } => fat
+      None => result_type
+    }
+  } else if is_same_collection {
+    receiver_type
+  } else if is_optional {
+    substitute_optional_result(result_type: result_type, receiver_type: receiver_type)
+  } else {
+    result_type
+  }
+}
+
+// Optional wrapping: substitute the inner type of an optional result
+// with the concrete element type from the receiver.
+fn substitute_optional_result(result_type: Node, receiver_type: Node) -> Node {
+  let inner = with_required_cardinality(n: result_type)
+  let elem = method_receiver_element_node(receiver_type: receiver_type)
+  if inner.name == elem.name || inner.name == "" || inner.children |> count == 0 {
+    with_optional_cardinality(n: elem)
+  } else {
+    result_type
+  }
+}
+
+// Detect fold by checking if fold_accumulator_type is provided and the
+// algebra field return type is generic (matches self_type pattern).
+fn method_name_is_fold(result_type: Node, fold_accumulator_type: Node?) -> Bool {
+  fold_accumulator_type != none
 }
 
 fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
-  // Tier 0: Structural field lookup for non-collection types only.
-  // Collection types (List, Map, Set) fall through to Tiers 2/3 which
-  // provide the correct IntrinsicMethodSemantics/RuntimeBridgeSemantics
-  // that emit needs for target-specific rendering patterns.
-  // Non-collection types (user-defined, algebra types) get
-  // PlainMethodSemantics — emit renders as plain recv.method(args).
-  let is_collection = receiver_type.collection_kind != NoCollection
-  let tier0_result = if is_collection { none } else { lookup_structural_method(receiver_type: receiver_type, method_name: method_name) }
+  // Tier 0: Structural field lookup for ALL types (including collections).
+  // The algebra registry (enrich_kernel_type) provides fields for kernel
+  // types; user-defined types have their own structural children.
+  //
+  // Emit-prep reclassification: when Tier 0 finds a method, check the
+  // intrinsic/bridge indexes to tag with the correct MethodSemantics
+  // for emit. Return types from the algebra field are substituted with
+  // concrete types from the receiver (e.g., bare "List" → List<Int>).
+  let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
     Some { value: result_type } =>
+      // Emit-prep: reclassify for emit if this is an intrinsic or bridge method
+      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
+      let bridge_match = map_get(runtime_bridge_method_index(), method_name)
+      let semantics = match intrinsic_match {
+        Some { value: intrinsic } =>
+          IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type }
+        None => match bridge_match {
+          Some { value: bridge } => RuntimeBridgeSemantics { method: bridge }
+          None => PlainMethodSemantics
+        }
+      }
+      // Substitute algebra field return types with concrete receiver types.
+      // refine_collection_result_type further specializes map/flat_map/fold
+      // at the call site using typed callback args.
+      let resolved_type = substitute_algebra_result(
+        result_type: result_type,
+        receiver_type: receiver_type,
+        fold_accumulator_type: fold_accumulator_type
+      )
       KnownMethodResolution {
-        semantics: Some { value: PlainMethodSemantics },
-        result_type: Some { value: result_type }
+        semantics: Some { value: semantics },
+        result_type: Some { value: resolved_type }
       }
     None =>
+  // Tier 1: Service method lookup
   match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry) {
     Some { value: svc_result } =>
       KnownMethodResolution {
@@ -286,30 +369,8 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
         result_type: Some { value: svc_result.result_type }
       }
     None =>
-      match classify_reconciled_intrinsic_method(method: method_name) {
-        Some { value: intrinsic } =>
-          KnownMethodResolution {
-            semantics: Some { value: IntrinsicMethodSemantics {
-              intrinsic: intrinsic,
-              fold_accumulator_type: fold_accumulator_type
-            } },
-            result_type: infer_intrinsic_method_type_node(
-              receiver_type: receiver_type,
-              intrinsic: intrinsic,
-              fold_accumulator_type: fold_accumulator_type
-            )
-          }
-        None =>
-          match classify_runtime_bridge_method(method: method_name) {
-            Some { value: bridge_method } =>
-              KnownMethodResolution {
-                semantics: Some { value: RuntimeBridgeSemantics { method: bridge_method } },
-                result_type: infer_runtime_bridge_method_type_node(receiver_type: receiver_type, method: bridge_method)
-              }
-            None =>
-              KnownMethodResolution { semantics: none, result_type: none }
-          }
-      }
+      // No structural field found, not a service method — method not found.
+      KnownMethodResolution { semantics: none, result_type: none }
   }
   }
 }
