@@ -391,6 +391,26 @@ language grows by one type, one expression form, or one transport, how
 many files need editing? The sustainable compiler is one where that
 number is 1. Every invariant below serves that goal.
 
+### Escape Hatches (why violations keep recurring)
+
+Each invariant below has a **structural prevention** that makes
+violations unrepresentable. But violations keep recurring because the
+codebase still has escape hatches — API surfaces where the wrong thing
+is easy and the right thing is hard. Five escape hatches account for
+the majority of all recurring violations:
+
+| Escape hatch | What it enables | Structural fix |
+|---|---|---|
+| `String` return type in emitter | Hardcoded target syntax | EmitTree — emitter returns semantic nodes, not strings |
+| `node.name` field | Name-based dispatch anywhere | Delete `Node.name` — structural properties + edges only |
+| `List<String>` fact storage | Copied string lists that go stale | `List<Node>` edges to definitions |
+| Error sentinels in `Node` | Fabricated valid-looking error output | Typed wrappers (`InferredNode` pattern) at every boundary |
+| Hand-editable generated code | Parallel implementations that diverge | Committed binary + regenerate→diff→empty CI gate |
+
+Eliminating these five surfaces makes the invariants self-enforcing.
+The invariants become properties of the API, not rules you have to
+remember.
+
 Active liabilities and their measured costs are tracked in the
 **Open Debt** section at the bottom of this file.
 
@@ -415,8 +435,15 @@ is a derived copy that should be deleted or computed.
 
 **The fix:** delete the derived representation and read from the source.
 If the source isn't accessible, make it accessible — don't cache a copy
-that can go stale. (See POSTMORTEM FC-7: `PortMultiplicity` duplicated
-`Cardinality`, ResourceHandle had 3 fields in DSL but 4 in Rust.)
+that can go stale.
+
+**Structural prevention:** Facts are edges to definitions, not copied
+strings. `kernel_types` is not `List<String> = ["Int", "Bool", ...]`
+— it is `List<Node>` pointing to the actual type definition nodes. You
+can't have a stale name because you don't have a name — you have a
+reference. If the definition changes, the edge follows. The escape
+hatch is `String`-typed fact storage; the fix is `Node`-typed
+(edge-based) fact storage.
 
 ### No case enumeration for open sets
 
@@ -432,8 +459,16 @@ enumeration that should be replaced with a structural walk.
 Matching on a closed enum (`WrapperKind::List | Set | Optional | ...`)
 is fine — adding a variant is a compiler error. The problem is
 open-ended lists keyed by strings, type names, or error message
-substrings. (See POSTMORTEM FC-7: `mock_element_expr` was a 100+ line
-match on type name strings.)
+substrings.
+
+**Structural prevention:** Data tables loaded at pipeline startup,
+not match arms in code. The `SyntaxSpec` pattern: keywords, operators,
+and item forms are data in `.dag` files. `parse_item` reads the data
+— there are no match arms to add. The same pattern applies to method
+dispatch (algebra types in `std/algebra.dag`), type dispatch (structural
+properties on nodes), and container ops (templates in `LanguageSpec`).
+The escape hatch is `if name == "..."` branches; the fix is a data
+lookup where the data is the `.dag` source itself.
 
 ### No fallbacks that fabricate
 
@@ -445,15 +480,24 @@ it must return `Err`.
 
 Fabrication fallbacks are the mechanism by which duplicate
 representations and missed enumerations become invisible. They convert
-hard failures into silent wrong behavior. (See POSTMORTEM FC-7:
-`scalar_witness_for_base` fabricated `Str("<Type>")` instead of
-returning `None`.)
+hard failures into silent wrong behavior.
 
 Sample: ownership should not compile to
 `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())`. Either the
 compiler proves a single semantic consumer and emits the move, or it
 surfaces that the proof is missing. The clone branch is a fallback,
 even if it preserves correctness.
+
+**Structural prevention:** Typed boundaries that can't represent error
+states. `InferredNode = Resolved { node } | CompilerError { ... }`
+already does this for inference — you can't accidentally treat an error
+as a valid type. The same pattern applies to the emit boundary: emit
+receives a type that can't represent error-contaminated nodes. If
+inference failed, the node doesn't reach emit — not because a gate
+checked for errors, but because the type system makes it
+unrepresentable. The escape hatch is `String`/`Node` types that can
+carry error sentinels (`"<error:...>"`, `Dynamic`, `LitNull`); the fix
+is wrapper types where the error case is structurally distinct.
 
 ### Heuristics indicate lost structure
 
@@ -473,30 +517,20 @@ loss. The preferred fix is to carry the missing fact in the type/IR/API
 boundary instead of improving the guess.
 
 **The fix:** push structure earlier in the pipeline so the downstream
-stage can make an exact decision. If the local change cannot safely
-repair the upstream contract yet, fail clearly or record a follow-up
-task naming where the information degraded and what explicit structure
-should replace the heuristic.
+stage can make an exact decision.
 
-Temporary heuristics must not become invisible debt. If a heuristic is
-introduced as a staging move, the same change should record a shrinking
-ratchet for it: a named debt entry, a bounded site count, or a test that
-proves one heuristic family was removed. "Temporary" without a ratchet
-means "permanent later."
-
-Sample: on 2026-03-20 the emission-representation work was first framed
-as five per-binding lattices: flow cardinality, value width, call
-reachability, loop invariance, and build-reduce. Backends then mapped
-each lattice position to constructs like bare move vs Rc, byte vs
-String, inline vs stacker. That was cleaner than ad hoc guesses, but in
-practice it still risked becoming a heuristic matrix: pick a bucket,
-then let the backend widen to a fallback-shaped implementation. The
-stronger version kept only direct behavioral facts plus forcing
-witnesses: consumed/read/projected edges, semantic consumer count,
-escape/materialization, loop invariance, value shape. "Shared" needs
-the specific extra consume site. "Materialized" needs the specific
-escape. If no witness exists, the compiler has lost structure and
-should be fixed upstream instead of widening by default.
+**Structural prevention:** EmitTree. The emitter produces semantic
+nodes (`SharedWrap`, `ContainerInit`, `MethodCall`), not target-language
+strings. A separate renderer converts semantic nodes to text using
+`LanguageSpec`. The emitter literally cannot produce `"Rc<Vec<...>>"`
+because it doesn't produce strings — it produces `SharedWrap(
+ContainerInit(List, elems))` and the renderer reads the sharing policy
+from `LanguageSpec` to decide `Rc<Vec<...>>` vs `list[...]` vs
+`[]type`. The escape hatch is string concatenation in the emitter; the
+fix is an API that returns `EmitNode`, not `String`. This is the
+highest-leverage single change — it structurally prevents ~60% of all
+recurring violations (hardcoded Rust syntax, Rc wrapping, container
+patterns, type name dispatch, method rendering).
 
 ### No parallel implementations
 
@@ -507,6 +541,13 @@ lags will be masked by a fallback (see above).
 
 **The test:** if a code path exists only to provide a result that
 another code path also produces, one of them should be deleted.
+
+**Structural prevention:** Single source + derivation. Stage0 is
+generated from `.dag` source — never hand-edited. The regeneration
+script is the only path from `.dag` to `.rs`. Committed binary approach
+means CI verifies regenerate → diff → empty. The escape hatch is
+hand-editing generated code; the fix is making regeneration the only
+write path and failing CI if the generated output doesn't match.
 
 ### Boundary sufficiency
 
@@ -526,8 +567,14 @@ in the boundary data," not "hide the name." When emit needs "how to
 declare a variable," the fix is "read LanguageSpec," not "prevent
 hardcoding."
 
-See ROADMAP "Design Direction: Boundary Sufficiency" for the gap
-inventory and execution phases.
+**Structural prevention:** Typed boundaries where insufficient data
+is a compile error. If emit needs algebra membership and the boundary
+doesn't carry it, emit can't compile — the field doesn't exist on the
+boundary type. The escape hatch is `node.name` (any string, always
+accessible, carries no structural guarantee); the fix is deleting
+`Node.name` (M4/D6) so the only way to get information about a node
+is through its structural properties and edges. The scrambled-name
+tests are the diagnostic; `Node.name` deletion is the prevention.
 
 ### Explicit boundary contracts
 
@@ -595,6 +642,14 @@ paths, type registries) through its own output types (`CompileOutput`,
 `InferredEntrypoint`, etc.), not through runtime callbacks, string
 conventions, or hardcoded lists. Each piece of metadata should have
 exactly one producer.
+
+**Structural prevention:** Guarantee receipt. The compiler emits a
+machine-readable receipt on every run that records what was discovered,
+what was proven, what was tested, and what's uncertain. If a guarantee
+isn't in the receipt, it doesn't exist. Markdown dashboards are derived
+from the receipt — never the source of truth. The escape hatch is
+metadata scattered across log output, comments, and separate scripts;
+the fix is one structured artifact that CI can enforce.
 
 ## Engineering Standards
 
