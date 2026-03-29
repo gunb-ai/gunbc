@@ -61,7 +61,7 @@ use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
 use crate::v2_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding, VariantValueBinding};
 use crate::v2_std_core::CallSemantics::{PlainCallSemantics, LookupCallSemantics};
-use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::RuntimeBridgeMethod::{BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup};
 use crate::v2_std_core::ExprErrorKind::{ParseRecoveryError, SemanticExprError, InternalExprError};
 use crate::v2_std_core::TransportKind::{LocalTransport};
@@ -815,21 +815,23 @@ pub fn refine_collection_result_type(semantics: Option<Rc<MethodSemantics>>, typ
     {
         let receiver_type_name = receiver_type.name.clone();
 let receiver_is_map = node_is_map(receiver_type.clone());
-let intrinsic = if (semantics.clone() == None) {
+let method_name = if (semantics.clone() == None) {
             None
 } else {
             match (*semantics.clone().unwrap()).clone() {
-    MethodSemantics::IntrinsicMethodSemantics { intrinsic: im, .. } => Some(im),
+    MethodSemantics::AlgebraMethodSemantics { method_name: mn, .. } => Some(mn),
     _ => None,
 }
 };
-let bridge = if (semantics.clone() == None) {
+let intrinsic = if (method_name.clone() == None) {
             None
 } else {
-            match (*semantics.clone().unwrap()).clone() {
-    MethodSemantics::RuntimeBridgeSemantics { method: bm, .. } => Some(bm),
-    _ => None,
-}
+            v2_rt::map_get(&intrinsic_method_index(), method_name.clone().unwrap())
+};
+let bridge = if (method_name.clone() == None) {
+            None
+} else {
+            v2_rt::map_get(&runtime_bridge_method_index(), method_name.clone().unwrap())
 };
 if intrinsic_is(intrinsic.clone(), MethodMap) {
             match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }.first().cloned() {

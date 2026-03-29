@@ -25,7 +25,7 @@ import v2.std.core {
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
+  MethodSemantics, AlgebraMethodSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
   RuntimeBridgeMethod, BridgeReverse,
   binop_left, binop_right,
@@ -34,6 +34,9 @@ import v2.std.core {
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes
+}
+import v2.compiler.infer_method {
+  intrinsic_method_index, runtime_bridge_method_index
 }
 
 // =========================================================================
@@ -363,10 +366,13 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } =>
-        is_size_preserving_intrinsic_method(method: method)
-      RuntimeBridgeSemantics { method: bridge_method } =>
-        bridge_method == BridgeReverse
+      AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } => {
+        let intrinsic_match = map_get(intrinsic_method_index(), method_name)
+        match intrinsic_match {
+          Some { value: method } => is_size_preserving_intrinsic_method(method: method)
+          None => method_name == "reverse"
+        }
+      }
       _ => false
     }
   }
@@ -927,25 +933,30 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       let size = receiver_size_var(recv: recv)
       let binder = size_binder_name(size: size)
       // Dispatch on reconcile-provided method semantics.
-      // IntrinsicMethodSemantics carries the IntrinsicMethod; map it to CostShape.
-      // RuntimeBridgeSemantics covers O(1) bridge methods (map_get, list_push, etc.).
+      // AlgebraMethodSemantics carries the method name; look up intrinsic index for CostShape.
+      // Bridge methods (not in intrinsic index) are O(1).
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } =>
-            let shape = intrinsic_method_cost_shape(method: im)
-            Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index) }
-          RuntimeBridgeSemantics { method: _ } =>
-            // All runtime bridge methods are O(1)
-            Some { value: SummaryResult {
-              summary: ComplexitySummary {
-                work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
-                span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
-                output_size: empty_map(),
-                certainty: recv_r.summary.certainty
-              },
-              table: recv_r.table
-            } }
+          AlgebraMethodSemantics { method_name: mn, fold_accumulator_type: _ } => {
+            let intrinsic_match = map_get(intrinsic_method_index(), mn)
+            match intrinsic_match {
+              Some { value: im } =>
+                let shape = intrinsic_method_cost_shape(method: im)
+                Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index) }
+              None =>
+                // All runtime bridge methods are O(1)
+                Some { value: SummaryResult {
+                  summary: ComplexitySummary {
+                    work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+                    span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
+                    output_size: empty_map(),
+                    certainty: recv_r.summary.certainty
+                  },
+                  table: recv_r.table
+                } }
+            }
+          }
           _ => none
         }
       }

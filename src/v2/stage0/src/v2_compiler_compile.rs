@@ -50,7 +50,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 
 pub use crate::v2_std_core::{CompileResult, TextFile, SourceSpan, CompilerDiagnostic, ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, no_span, Connective, Cardinality, resource_use_name, resource_use_resource, module_imports, module_items, is_import_node, import_is_all, import_specific_names, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode, VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod, MethodSemantics, ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern, arm_pattern, arm_guard, arm_body, arg_name, arg_value, LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node, NewlineIndex, build_newline_index, field_init_node_name, field_init_node_value, param_node_name, param_node_type_expr, param_node_default_value, param_node_span, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, field_node_span, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
-use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::Connective::*;
 use crate::v2_std_core::Cardinality::*;
 use crate::v2_std_core::FieldAccessStyle::*;
@@ -344,8 +344,7 @@ pub fn serialize_lambda_semantics(value: Option<Rc<LambdaSemantics>>) -> String 
 pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>) -> String {
     match value.clone().as_deref().cloned() {
     Some(MethodSemantics::PlainMethodSemantics) => "{\"kind\": \"PlainMethodSemantics\"}".to_string(),
-    Some(MethodSemantics::IntrinsicMethodSemantics { fold_accumulator_type: fold_accumulator_type, .. }) => v2_rt::concat(v2_rt::concat("{\"kind\": \"IntrinsicMethodSemantics\", \"fold_accumulator_type\": ".to_string(), json_optional_node(fold_accumulator_type.clone())), "}".to_string()),
-    Some(MethodSemantics::RuntimeBridgeSemantics { .. }) => "{\"kind\": \"RuntimeBridgeSemantics\"}".to_string(),
+    Some(MethodSemantics::AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ".to_string(), json_quote(method_name.clone())), ", \"fold_accumulator_type\": ".to_string()), json_optional_node(fold_accumulator_type.clone())), "}".to_string()),
     Some(MethodSemantics::ServiceMethodSemantics { service_name: service_name, op_params: op_params, .. }) => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ".to_string(), json_quote(service_name.clone())), ", \"op_params\": ".to_string()), json_list({ let mut __result = Vec::new(); for p in op_params.clone().iter().cloned() { __result.push(serialize_param(p.clone())); } __result })), "}".to_string()),
     None => "null".to_string(),
 }

@@ -251,8 +251,7 @@ type RuntimeBridgeMethod
 
 type MethodSemantics
   = PlainMethodSemantics
-  | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
-  | RuntimeBridgeSemantics { method: RuntimeBridgeMethod }
+  | AlgebraMethodSemantics { method_name: String, fold_accumulator_type: Node? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError

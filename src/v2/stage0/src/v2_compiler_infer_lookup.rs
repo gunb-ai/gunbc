@@ -52,7 +52,7 @@ pub use crate::v2_std_core::{Node, InferredNode, NodeType, Cardinality, Intrinsi
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Cardinality::{Required};
-use crate::v2_std_core::MethodSemantics::{IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
 use crate::v2_std_core::IntrinsicMethod::*;
@@ -313,22 +313,10 @@ pub fn resolve_known_method_node(receiver: Rc<Node>, receiver_type: Rc<Node>, me
     let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
     match tier0_result {
         Some(result_type) => {
-            let intrinsic_idx = intrinsic_method_index();
-            let bridge_idx = runtime_bridge_method_index();
-            let intrinsic_match = v2_rt::map_get(&intrinsic_idx, method_name.clone());
-            let bridge_match = v2_rt::map_get(&bridge_idx, method_name.clone());
-            let semantics: Rc<MethodSemantics> = match intrinsic_match.clone() {
-                Some(intrinsic) => Rc::new(MethodSemantics::IntrinsicMethodSemantics {
-                    intrinsic: intrinsic.clone(),
-                    fold_accumulator_type: fold_accumulator_type.clone(),
-                }),
-                None => match bridge_match.clone() {
-                    Some(bridge) => Rc::new(MethodSemantics::RuntimeBridgeSemantics {
-                        method: bridge.clone(),
-                    }),
-                    None => Rc::new(MethodSemantics::PlainMethodSemantics),
-                },
-            };
+            let semantics: Rc<MethodSemantics> = Rc::new(MethodSemantics::AlgebraMethodSemantics {
+                method_name: method_name.clone(),
+                fold_accumulator_type: fold_accumulator_type.clone(),
+            });
             let resolved_type = substitute_algebra_result(
                 result_type.clone(),
                 receiver_type.clone(),

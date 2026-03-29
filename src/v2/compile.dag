@@ -24,7 +24,7 @@ import v2.std.core {
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError, TypeVariable,
   VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
   arm_pattern, arm_guard, arm_body,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node,
@@ -370,13 +370,13 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
   match value {
     Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    Some { value: IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } } =>
+    Some { value: AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type } } =>
       concat(
-        "{\"kind\": \"IntrinsicMethodSemantics\", \"fold_accumulator_type\": ",
+        "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
+        json_quote(s: method_name),
+        ", \"fold_accumulator_type\": ",
         json_optional_node(value: fold_accumulator_type),
         "}")
-    Some { value: RuntimeBridgeSemantics { method: _ } } =>
-      "{\"kind\": \"RuntimeBridgeSemantics\"}"
     Some { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",

@@ -362,12 +362,9 @@ pub enum RuntimeBridgeMethod {
 #[derive(Debug, Clone, PartialEq)]
 pub enum MethodSemantics {
     PlainMethodSemantics,
-    IntrinsicMethodSemantics {
-        intrinsic: IntrinsicMethod,
+    AlgebraMethodSemantics {
+        method_name: String,
         fold_accumulator_type: Option<Rc<Node>>,
-    },
-    RuntimeBridgeSemantics {
-        method: RuntimeBridgeMethod,
     },
     ServiceMethodSemantics {
         service_name: String,

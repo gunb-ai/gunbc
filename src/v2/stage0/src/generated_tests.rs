@@ -2096,8 +2096,7 @@ type RuntimeBridgeMethod
 
 type MethodSemantics
   = PlainMethodSemantics
-  | IntrinsicMethodSemantics { intrinsic: IntrinsicMethod, fold_accumulator_type: Node? }
-  | RuntimeBridgeSemantics { method: RuntimeBridgeMethod }
+  | AlgebraMethodSemantics { method_name: String, fold_accumulator_type: Node? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Param> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
@@ -9383,8 +9382,8 @@ import v2.std.core {
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
-  RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics,
   RuntimeBridgeMethod,
   BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
   BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
@@ -9426,7 +9425,8 @@ import v2.compiler.infer_types {
   enrich_kernel_type
 }
 import v2.compiler.infer_method {
-  infer_builtin_call_type, resolve_builtin_call_type
+  infer_builtin_call_type, resolve_builtin_call_type,
+  intrinsic_method_index, runtime_bridge_method_index
 }
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
@@ -12149,8 +12149,7 @@ import v2.std.core {
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required,
   IntrinsicMethod,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
-  RuntimeBridgeMethod,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
@@ -12464,17 +12463,9 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
     Some { value: result_type } =>
-      // Emit-prep: reclassify for emit if this is an intrinsic or bridge method
-      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
-      let bridge_match = map_get(runtime_bridge_method_index(), method_name)
-      let semantics = match intrinsic_match {
-        Some { value: intrinsic } =>
-          IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type }
-        None => match bridge_match {
-          Some { value: bridge } => RuntimeBridgeSemantics { method: bridge }
-          None => PlainMethodSemantics
-        }
-      }
+      // Method found structurally — carry the method name for emit lookup.
+      // No enum reclassification. Emit uses per-language rendering tables.
+      let semantics = AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type }
       // Substitute algebra field return types with concrete receiver types.
       // refine_collection_result_type further specializes map/flat_map/fold
       // at the call site using typed callback args.
@@ -16735,8 +16726,8 @@ import v2.std.core {
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
-  RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics,
   RuntimeBridgeMethod,
   BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
   BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
@@ -16762,6 +16753,9 @@ import v2.compiler.languages {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, rt_type }
+import v2.compiler.infer_method {
+  intrinsic_method_index, runtime_bridge_method_index
+}
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -17543,10 +17537,22 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<NamedArg
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
-    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } =>
-      emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope)
-    RuntimeBridgeSemantics { method: bridge_method } =>
-      emit_go_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope)
+    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } => {
+      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
+      match intrinsic_match {
+        Some { value: intrinsic } =>
+          emit_go_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope)
+        None => {
+          let bridge_match = map_get(runtime_bridge_method_index(), method_name)
+          match bridge_match {
+            Some { value: bridge_method } =>
+              emit_go_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope)
+            None =>
+              emit_go_plain_method_call(receiver: receiver, method: method_name, args: args, registry: registry, scope: scope)
+          }
+        }
+      }
+    }
     PlainMethodSemantics =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
   } }
@@ -18117,8 +18123,8 @@ import v2.std.core {
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
-  RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics,
   RuntimeBridgeMethod,
   BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
   BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
@@ -18142,6 +18148,9 @@ import v2.compiler.languages {
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding }
 import v2.compiler.infer_types { for_each_element_type_node, rt_type }
+import v2.compiler.infer_method {
+  intrinsic_method_index, runtime_bridge_method_index
+}
 import v2.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 import v2.compiler.infer_items {
   ResolvedGraph, TypedModule,
@@ -18911,10 +18920,22 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<NamedArg
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
-    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: _ } =>
-      emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
-    RuntimeBridgeSemantics { method: bridge_method } =>
-      emit_py_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
+    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } => {
+      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
+      match intrinsic_match {
+        Some { value: intrinsic } =>
+          emit_py_intrinsic_method_call(intrinsic: intrinsic, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
+        None => {
+          let bridge_match = map_get(runtime_bridge_method_index(), method_name)
+          match bridge_match {
+            Some { value: bridge_method } =>
+              emit_py_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
+            None =>
+              emit_py_plain_method_call(receiver: receiver, method: method_name, args: args, registry: registry, scope: scope, depth: depth)
+          }
+        }
+      }
+    }
     PlainMethodSemantics =>
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }
@@ -19463,8 +19484,8 @@ import v2.std.core {
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
-  RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics,
   RuntimeBridgeMethod, BridgeGet, BridgeWith, BridgeMapGet, BridgeLookup,
   BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapHas,
   BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey,
@@ -19512,6 +19533,9 @@ import v2.compiler.infer_types {
   normalize_access_type_node, for_each_element_type_node,
   rt_type, emit_map_has,
   node_is_keyed_collection, node_is_element_collection
+}
+import v2.compiler.infer_method {
+  intrinsic_method_index, runtime_bridge_method_index
 }
 import v2.compiler.infer_sigs { ResolvedFuncEnv }
 import v2.compiler.infer_items {
@@ -21900,12 +21924,25 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<NamedArg>, 
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", emit_ident(name: method, target: Rust), "(", args_str, ").await?")
     }
-    IntrinsicMethodSemantics { intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type } => {
-      let lowered = emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      lowered
+    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type } => {
+      let intrinsic_match = map_get(intrinsic_method_index(), method_name)
+      match intrinsic_match {
+        Some { value: intrinsic } =>
+          emit_intrinsic_typed_method_call(intrinsic: intrinsic, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        None => {
+          let bridge_match = map_get(runtime_bridge_method_index(), method_name)
+          match bridge_match {
+            Some { value: bridge_method } =>
+              emit_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+            None =>
+              let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+              let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+              let args_str = arg_strs |> join(separator: ", ")
+              concat(recv_str, ".", emit_ident(name: method_name, target: Rust), "(", args_str, ")")
+          }
+        }
+      }
     }
-    RuntimeBridgeSemantics { method: bridge_method } =>
-      emit_runtime_bridge_method_call(method: bridge_method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     PlainMethodSemantics =>
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       let arg_strs = args |> map(a => emit_typed_expr(texpr: a.value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
@@ -23621,7 +23658,7 @@ import v2.std.core {
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError,
   VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, ServiceConfig, Node, ErrorCategory,
   NewlineIndex, build_newline_index
@@ -23996,13 +24033,13 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
   match value {
     Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    Some { value: IntrinsicMethodSemantics { intrinsic: _, fold_accumulator_type: fold_accumulator_type } } =>
+    Some { value: AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type } } =>
       concat(
-        "{\"kind\": \"IntrinsicMethodSemantics\", \"fold_accumulator_type\": ",
+        "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
+        json_quote(s: method_name),
+        ", \"fold_accumulator_type\": ",
         json_optional_node(value: fold_accumulator_type),
         "}")
-    Some { value: RuntimeBridgeSemantics { method: _ } } =>
-      "{\"kind\": \"RuntimeBridgeSemantics\"}"
     Some { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
         "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
@@ -24468,9 +24505,12 @@ import v2.std.core {
   MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
   MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap,
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
-  MethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics,
+  MethodSemantics, AlgebraMethodSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
   RuntimeBridgeMethod, BridgeReverse
+}
+import v2.compiler.infer_method {
+  intrinsic_method_index, runtime_bridge_method_index
 }
 
 // =========================================================================
@@ -24693,10 +24733,13 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   if method_semantics == none { false }
   else {
     match method_semantics.value {
-      IntrinsicMethodSemantics { intrinsic: method, fold_accumulator_type: _ } =>
-        is_size_preserving_intrinsic_method(method: method)
-      RuntimeBridgeSemantics { method: bridge_method } =>
-        bridge_method == BridgeReverse
+      AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } => {
+        let intrinsic_match = map_get(intrinsic_method_index(), method_name)
+        match intrinsic_match {
+          Some { value: method } => is_size_preserving_intrinsic_method(method: method)
+          None => method_name == "reverse"
+        }
+      }
       _ => false
     }
   }
@@ -25254,25 +25297,30 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       let size = receiver_size_var(recv: recv)
       let binder = size_binder_name(size: size)
       // Dispatch on reconcile-provided method semantics.
-      // IntrinsicMethodSemantics carries the IntrinsicMethod; map it to CostShape.
-      // RuntimeBridgeSemantics covers O(1) bridge methods (map_get, list_push, etc.).
+      // AlgebraMethodSemantics carries the method name; look up intrinsic index for CostShape.
+      // Bridge methods (not in intrinsic index) are O(1).
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } =>
-            let shape = intrinsic_method_cost_shape(method: im)
-            Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index) }
-          RuntimeBridgeSemantics { method: _ } =>
-            // All runtime bridge methods are O(1)
-            Some { value: SummaryResult {
-              summary: ComplexitySummary {
-                work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
-                span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
-                output_size: empty_map(),
-                certainty: recv_r.summary.certainty
-              },
-              table: recv_r.table
-            } }
+          AlgebraMethodSemantics { method_name: mn, fold_accumulator_type: _ } => {
+            let intrinsic_match = map_get(intrinsic_method_index(), mn)
+            match intrinsic_match {
+              Some { value: im } =>
+                let shape = intrinsic_method_cost_shape(method: im)
+                Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index) }
+              None =>
+                // All runtime bridge methods are O(1)
+                Some { value: SummaryResult {
+                  summary: ComplexitySummary {
+                    work: cost_seq(a: recv_r.summary.work, b: CostConst { value: 1 }),
+                    span: cost_seq(a: recv_r.summary.span, b: CostConst { value: 1 }),
+                    output_size: empty_map(),
+                    certainty: recv_r.summary.certainty
+                  },
+                  table: recv_r.table
+                } }
+            }
+          }
           _ => none
         }
       }

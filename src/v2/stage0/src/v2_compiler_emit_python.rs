@@ -55,7 +55,7 @@ use crate::v2_std_core::BinOpKind::{NullCoalesce};
 use crate::v2_std_core::TransportKind::{RestTransport, ShellTransport, FileTransport};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
-use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, IntrinsicMethodSemantics, RuntimeBridgeSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::RuntimeBridgeMethod::{BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup};
 use crate::v2_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -66,6 +66,7 @@ pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Python};
 pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, test_conventions_for_target};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
+pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index};
 pub use crate::v2_compiler_infer_types::{for_each_element_type_node, node_is_optional, node_is_map, rt_type};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
@@ -922,8 +923,19 @@ let arg_strs = { let mut __result = Vec::new(); for a in args.clone().iter().clo
 let args_str = arg_strs.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("await ".to_string(), var_name.clone()), ".".to_string()), emit_ident(method.clone(), RenderTarget::Python)), "(".to_string()), args_str.clone()), ")".to_string())
 },
-    MethodSemantics::IntrinsicMethodSemantics { intrinsic: intrinsic, .. } => emit_py_intrinsic_method_call(intrinsic.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
-    MethodSemantics::RuntimeBridgeSemantics { method: bridge_method, .. } => emit_py_runtime_bridge_method_call(bridge_method.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
+    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } => {
+        let intrinsic_match = v2_rt::map_get(&intrinsic_method_index(), method_name.clone());
+match intrinsic_match.clone() {
+    Some(intrinsic) => emit_py_intrinsic_method_call(intrinsic.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
+    None => {
+        let bridge_match = v2_rt::map_get(&runtime_bridge_method_index(), method_name.clone());
+match bridge_match.clone() {
+    Some(bridge_method) => emit_py_runtime_bridge_method_call(bridge_method.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
+    None => emit_py_plain_method_call(receiver.clone(), method_name.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
+}
+    },
+}
+},
     MethodSemantics::PlainMethodSemantics => emit_py_plain_method_call(receiver.clone(), method.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
 }
 } else {

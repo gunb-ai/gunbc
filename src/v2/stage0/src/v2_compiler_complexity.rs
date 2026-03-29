@@ -51,7 +51,8 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::IntrinsicMethod::{MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst, MethodEnumerate, MethodChars, MethodStringContains, MethodConcat, MethodMap, MethodFilter, MethodAny, MethodAll, MethodFlatMap, MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend};
-use crate::v2_std_core::MethodSemantics::{IntrinsicMethodSemantics, RuntimeBridgeSemantics, PlainMethodSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
+pub use crate::v2_compiler_infer_method::{intrinsic_method_index, runtime_bridge_method_index};
 use crate::v2_std_core::RuntimeBridgeMethod::{BridgeReverse};
 use SizeExpr::*;
 use CostExpr::*;
@@ -398,8 +399,13 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::IntrinsicMethodSemantics { intrinsic: method, .. } => is_size_preserving_intrinsic_method(method.clone()),
-    MethodSemantics::RuntimeBridgeSemantics { method: bridge_method, .. } => (bridge_method.clone() == RuntimeBridgeMethod::BridgeReverse),
+    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } => {
+        let intrinsic_match = v2_rt::map_get(&intrinsic_method_index(), method_name.clone());
+match intrinsic_match.clone() {
+    Some(method) => is_size_preserving_intrinsic_method(method.clone()),
+    None => (method_name.clone() == "reverse".to_string()),
+}
+},
     _ => false,
 }
 }
@@ -1054,11 +1060,14 @@ let method_cost_result = if (ms.clone() == None) {
                 None
 } else {
                 match (*ms.clone().unwrap()).clone() {
-    MethodSemantics::IntrinsicMethodSemantics { intrinsic: im, .. } => {
-                    let shape = intrinsic_method_cost_shape(im.clone());
+    MethodSemantics::AlgebraMethodSemantics { method_name: mn, .. } => {
+                    let intrinsic_match = v2_rt::map_get(&intrinsic_method_index(), mn.clone());
+match intrinsic_match.clone() {
+    Some(im) => {
+        let shape = intrinsic_method_cost_shape(im.clone());
 Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone()))
-},
-    MethodSemantics::RuntimeBridgeSemantics { .. } => Some(Rc::new(SummaryResult {
+    },
+    None => Some(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(recv_r.summary.clone().work.clone(), Rc::new(CostExpr::CostConst {
     value: 1,
@@ -1071,6 +1080,8 @@ Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), siz
 }),
     table: recv_r.table.clone(),
 })),
+}
+},
     _ => None,
 }
 };

@@ -54,8 +54,8 @@ import v2.std.core {
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
   CallSemantics, PlainCallSemantics, LookupCallSemantics,
-  MethodSemantics, PlainMethodSemantics, IntrinsicMethodSemantics,
-  RuntimeBridgeSemantics, ServiceMethodSemantics,
+  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
+  ServiceMethodSemantics,
   RuntimeBridgeMethod,
   BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge,
   BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys,
@@ -843,18 +843,18 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
 fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<Node>, receiver_type: Node, fallback: Node) -> Node {
   let receiver_type_name = receiver_type.name
   let receiver_is_map = node_is_keyed_collection(n: receiver_type)
-  // Extract intrinsic/bridge from semantics for enum dispatch.
-  let intrinsic = if semantics == none { none } else {
+  // Extract method_name from AlgebraMethodSemantics, then look up intrinsic/bridge indexes.
+  let method_name = if semantics == none { none } else {
     match semantics.value {
-      IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } => Some { value: im }
+      AlgebraMethodSemantics { method_name: mn, fold_accumulator_type: _ } => Some { value: mn }
       _ => none
     }
   }
-  let bridge = if semantics == none { none } else {
-    match semantics.value {
-      RuntimeBridgeSemantics { method: bm } => Some { value: bm }
-      _ => none
-    }
+  let intrinsic = if method_name == none { none } else {
+    map_get(intrinsic_method_index(), method_name.value)
+  }
+  let bridge = if method_name == none { none } else {
+    map_get(runtime_bridge_method_index(), method_name.value)
   }
   if intrinsic_is(opt: intrinsic, expected: MethodMap) {
     match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
