@@ -800,12 +800,8 @@ The compiler needs exactly these types:
 ```
 Token { text, span, shape }       -- tokenizer → parser boundary
 
-NameId = Int                       -- opaque identifier (NOT a string)
-NameRegistry { names: Map<NameId, String> }  -- rendering only
-
 Node {                             -- THE universal structural type
-  id: NameId                       -- opaque (NOT a readable string)
-  span: SourceSpan                 -- source location
+  span: SourceSpan                 -- identity + source text
   children: List<Node>             -- ALL structural composition
   connective: Connective           -- Conj / Disj / None
   collection_kind: CollectionKind  -- container shape
@@ -822,6 +818,35 @@ Node {                             -- THE universal structural type
   match_pattern: MatchPattern?     -- pattern discriminator
   expr_data: ExprData              -- expression operator (NO String fields)
 }
+```
+
+**No `name` field. No `id` field. No name registry.**
+
+A node IS its own identity (reference equality / structural
+position). The source text at a node's span IS its "name" — derived
+at render time via `source_text_at(span)`, never stored. The
+`NewlineIndex` (already built per file) provides the source text.
+
+- **Identity**: the node itself. Two nodes are the same iff they
+  are the same node. No labels needed.
+- **Rendering text**: `source[span.start..span.end]`. Derived from
+  span, not stored. Emit extracts text when it needs to produce
+  an identifier in the output.
+- **Binding resolution**: edges from reference-site node to
+  binding-site node. The binding site's span gives you the text
+  when emit needs it.
+- **Synthetic nodes** (compiler-generated, no source text): empty
+  span. Emit handles them structurally (e.g., generated type
+  names come from the type definition's structural position, not
+  from a stored string).
+
+This eliminates:
+- `Node.name: String` (current — 730 read sites)
+- `Node.id: NameId` (proposed intermediate — unnecessary)
+- `NameRegistry` (unnecessary — span IS the registry)
+- Scrambled-name tests (nothing to scramble)
+
+```
 
 ExprData                           -- pure operator tag
   = NoExprData
@@ -879,35 +904,35 @@ consumed by emit — they carry structural facts, not names.
 **Parse** (tokens → Node tree):
 - Input: token sequence
 - Output: Module Node with children (imports, items, expressions)
-- Names: embeds token.text as Node.name on child Nodes
+- Each identifier token becomes a child Node with a span. The
+  span IS the name — `source_text_at(span)` recovers the text.
 - Intermediates: **NONE in target model.** Parser produces Nodes
-  directly. No Field/Variant/Param/OperationDef. `expect_name()`
-  returns a leaf Node (not a String).
+  directly. No Field/Variant/Param/OperationDef.
 
 **Resolve** (Node tree → edges + ordering):
-- Input: Nodes with names, children, connective
-- Reads: Node.name (to match imports to modules, names to exports)
-- Output: same Nodes + ResolvedImport edges + dep_order
-- **THIS IS WHERE NAMES DIE.** Resolve is the last stage that reads
-  Node.name for structural decisions. Its output includes edges
-  (import → module, name → definition) that downstream stages follow.
+- Input: Nodes with spans, children, connective
+- Reads: `source_text_at(node.span)` to match imports to modules,
+  names to exports. This is the ONLY stage that reads text.
+- Output: same Nodes + structural edges (reference → definition) +
+  dep_order
+- **Names die here.** Resolve reads source text, produces edges.
+  Everything downstream follows edges.
 
 **Infer** (edges → types):
-- Input: resolved Node tree with edges
-- Reads: Node.children, connective, edges (NOT names)
+- Input: resolved Node tree with structural edges
+- Reads: Node.children, connective, edges (NEVER source text)
 - Output: same Nodes + `Node.inferred` set on every expression +
   semantic enums populated (MethodSemantics, CallSemantics, etc.)
-- Names: **NEVER READS.** Walks structural edges from resolution.
-  Method dispatch via data tables (name → IntrinsicMethod), not
-  string comparison. Tables are loaded at resolution, not hard-coded
-  in inference.
+- Method dispatch via data tables loaded at resolution, not
+  string comparison in inference.
 
 **Emit** (typed graph → target code):
 - Input: fully typed Nodes with semantics
 - Reads: Node.inferred, expr_data semantics, children
 - Output: TextFile (target-language source)
-- Names: reads from a **name registry** for rendering identifiers.
-  Never reads Node.name to make a rendering DECISION.
+- Identifier text: `source_text_at(binding_site.span)` — follows
+  edge to binding site, extracts text from source at that span.
+  Never makes a rendering DECISION based on name content.
 
 #### Audit Summary (2026-03-28)
 
@@ -944,28 +969,29 @@ diagnostics (~45).
 | D3 | **ExprData String dissolution.** String fields → children. ExprData variants become unit. Parser stores identifiers as child Nodes. | 9 String fields, ~210 consumer sites | ExprData Strings: 9 → 0 |
 | D4 | **Remaining dissolution.** NamedArg, MatchArm, FieldBinding → Node. MatchPattern names → Node.name. | 3 types, ~70 consumer sites | Satellite types: 3 → 0 |
 | D5 | **Edge model.** Resolution produces structural edges (use → definition). Method dispatch via data tables. Inference walks edges. | ~120 scope lookups + ~165 name comparisons | Name reads in inference: current → 0 |
-| D6 | **Name registry.** Emit reads identifier text from registry. Node.name becomes opaque post-resolution. | ~175 emit name reads | Post-resolution name reads: 0 |
+| D6 | **Delete Node.name.** Emit extracts identifier text via `source_text_at(binding_site.span)`. No stored name field. Delete scrambled-name tests (nothing to scramble). | ~175 emit name reads + `Node.name` field | Node has no name field |
 
 D1-D4 are the type dissolution (existing pattern applied
 universally). D5 is the architectural change (resolution boundary
-kills names). D6 is the rendering boundary (names are registry data).
+kills names). D6 is the final step: Node.name ceases to exist.
 
 The L1 ratchet (currently 52) tracks name-read sites in the compiler.
 This model drives L1 to 0.
 
 **On scrambled-name tests.** The current scrambled-name tests are
 validation — they test that inference doesn't branch on names. The
-target model makes this **structural**: `Node.id` is an opaque `NameId`,
-not a `String`. Inference can't read the name because there is no
-string to read. The scrambled-name tests become unnecessary by
-construction. Delete them when `Node.name: String` → `Node.id: NameId`
-lands. Until then, they remain as the ratchet.
+target model makes this **structural**: Node has no name field.
+Inference can't read the name because there is no name. The
+scrambled-name tests become unnecessary by construction — delete
+them when `Node.name` is removed. Until then, they remain as the
+ratchet.
 
 **Exit criteria:** 0 satellite types. ExprData has 0 String fields.
-`Node.id` is opaque `NameId` (not `String`). Inference has no access
-to name text. Emit + diagnostics read from `NameRegistry` only.
-Scrambled-name tests deleted (invariant holds by construction).
-Diagnostic span precision is automatic (every Node has a span).
+Node has no `name` field — identity is the node itself, text is
+derived from span. Inference has no access to name text. Emit
+extracts text via `source_text_at(span)`. Scrambled-name tests
+deleted (invariant holds by construction). Diagnostic span precision
+is automatic (every Node has a span).
 
 ### Stream 0: Compositional Parser — Status
 
