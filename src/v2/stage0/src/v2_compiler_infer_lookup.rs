@@ -48,15 +48,13 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, InferredNode, NodeType, Cardinality, IntrinsicMethod, MethodSemantics, RuntimeBridgeMethod, FieldAccessStyle, FieldValueShape, FieldSummary, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure};
+pub use crate::v2_std_core::{Node, InferredNode, NodeType, Cardinality, MethodSemantics, FieldAccessStyle, FieldValueShape, FieldSummary, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure};
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Cardinality::{Required};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::FieldAccessStyle::{OptionalUnwrap};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
-use crate::v2_std_core::IntrinsicMethod::*;
-use crate::v2_std_core::RuntimeBridgeMethod::*;
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, error_type_node, node_is_optional, node_is_map, normalize_access_type_node, rt_type, rt_node, emit_map_has, enrich_kernel_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type};
 pub use crate::v2_compiler_infer_emit_info::{build_struct_field_summaries, build_enum_field_summaries};

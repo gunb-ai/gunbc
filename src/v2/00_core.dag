@@ -185,27 +185,6 @@ fn has_inferred(n: Node) -> Bool {
   n.inferred != none
 }
 
-type IntrinsicMethod
-  = MethodCount
-  | MethodJoin
-  | MethodSplit
-  | MethodLast
-  | MethodFirst
-  | MethodEnumerate
-  | MethodChars
-  | MethodStringContains
-  | MethodConcat
-  | MethodMap
-  | MethodFilter
-  | MethodAny
-  | MethodAll
-  | MethodFlatMap
-  | MethodSkip
-  | MethodTake
-  | MethodFold
-  | MethodSortBy
-  | MethodAppend
-
 type VarBindingKind
   = LocalValueBinding
   | FunctionValueBinding
@@ -218,36 +197,6 @@ type CallSemantics
 type LambdaSemantics {
   param_types: List<Node>
 }
-
-type RuntimeBridgeMethod
-  = BridgeGet
-  | BridgeWith
-  | BridgeListPush
-  | BridgeMapInsert
-  | BridgeMapMerge
-  | BridgeMapGet
-  | BridgeMapHas
-  | BridgeEmitMapHas
-  | BridgeMapValues
-  | BridgeMapKeys
-  | BridgeMapContainsKey
-  | BridgeCharAt
-  | BridgeStringAt
-  | BridgeStringLength
-  | BridgeLength
-  | BridgeStartsWith
-  | BridgeEndsWith
-  | BridgeToString
-  | BridgeTrim
-  | BridgeToLower
-  | BridgeToUpper
-  | BridgeReplace
-  | BridgeSubstring
-  | BridgeToInt
-  | BridgeEmptyMap
-  | BridgeContains
-  | BridgeReverse
-  | BridgeLookup
 
 type MethodSemantics
   = PlainMethodSemantics

@@ -113,7 +113,6 @@ import v2.compiler.emit {
   classify_typed_item,
   has_mock_prefix,
   extract_test_projections,
-  bridge_method_base_name,
   is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core,
   service_fallback_transport, effective_operation_transport,

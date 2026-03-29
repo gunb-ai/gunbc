@@ -23,7 +23,7 @@ import v2.std.core {
   module_imports, module_items, is_import_node, import_is_all, import_specific_names,
   FieldAccessStyle, FieldValueShape, FieldSummary,
   InferredNode, Resolved, CompilerError, TypeVariable,
-  VarBindingKind, CallSemantics, LambdaSemantics, RuntimeBridgeMethod,
+  VarBindingKind, CallSemantics, LambdaSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
   arm_pattern, arm_guard, arm_body,

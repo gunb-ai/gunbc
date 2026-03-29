@@ -56,10 +56,8 @@ use FieldAccessStyle::*;
 use FieldValueShape::*;
 use InferredNode::*;
 use NodeType::*;
-use IntrinsicMethod::*;
 use VarBindingKind::*;
 use CallSemantics::*;
-use RuntimeBridgeMethod::*;
 use MethodSemantics::*;
 use ExprErrorKind::*;
 use TransportKind::*;
@@ -275,29 +273,6 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
     (n.inferred.clone() != None)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum IntrinsicMethod {
-    MethodCount,
-    MethodJoin,
-    MethodSplit,
-    MethodLast,
-    MethodFirst,
-    MethodEnumerate,
-    MethodChars,
-    MethodStringContains,
-    MethodConcat,
-    MethodMap,
-    MethodFilter,
-    MethodAny,
-    MethodAll,
-    MethodFlatMap,
-    MethodSkip,
-    MethodTake,
-    MethodFold,
-    MethodSortBy,
-    MethodAppend,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum VarBindingKind {
     LocalValueBinding,
@@ -325,38 +300,6 @@ pub enum CallSemantics {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LambdaSemantics {
     pub param_types: Vec<Rc<Node>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum RuntimeBridgeMethod {
-    BridgeGet,
-    BridgeWith,
-    BridgeListPush,
-    BridgeMapInsert,
-    BridgeMapMerge,
-    BridgeMapGet,
-    BridgeMapHas,
-    BridgeEmitMapHas,
-    BridgeMapValues,
-    BridgeMapKeys,
-    BridgeMapContainsKey,
-    BridgeCharAt,
-    BridgeStringAt,
-    BridgeStringLength,
-    BridgeLength,
-    BridgeStartsWith,
-    BridgeEndsWith,
-    BridgeToString,
-    BridgeTrim,
-    BridgeToLower,
-    BridgeToUpper,
-    BridgeReplace,
-    BridgeSubstring,
-    BridgeToInt,
-    BridgeEmptyMap,
-    BridgeContains,
-    BridgeReverse,
-    BridgeLookup,
 }
 
 #[derive(Debug, Clone, PartialEq)]

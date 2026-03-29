@@ -48,18 +48,16 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, ErrorNode, InferredNode, module_imports, module_items, Connective, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, ErrorNode, InferredNode, module_imports, module_items, Connective, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOpKind, UnaryOpKind, DeclaredFuncSig, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
-use crate::v2_std_core::RuntimeBridgeMethod::{BridgeGet, BridgeWith, BridgeListPush, BridgeMapInsert, BridgeMapMerge, BridgeMapGet, BridgeMapHas, BridgeEmitMapHas, BridgeMapValues, BridgeMapKeys, BridgeMapContainsKey, BridgeCharAt, BridgeStringAt, BridgeStringLength, BridgeLength, BridgeStartsWith, BridgeEndsWith, BridgeToString, BridgeTrim, BridgeToLower, BridgeToUpper, BridgeReplace, BridgeSubstring, BridgeToInt, BridgeEmptyMap, BridgeContains, BridgeReverse, BridgeLookup};
 use crate::v2_std_core::TransportKind::{RestTransport, ShellTransport, FileTransport};
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
-use crate::v2_std_core::IntrinsicMethod::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
 pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, node_is_collection, node_is_keyed_collection, node_is_element_collection, rt_type, emit_map_has};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
@@ -1472,35 +1470,3 @@ wrap_result(emit_return(recurse(ret_val.clone()), target.clone()))
 }
 }
 
-pub fn bridge_method_base_name(method: RuntimeBridgeMethod) -> String {
-    match method.clone() {
-    RuntimeBridgeMethod::BridgeGet => "get".to_string(),
-    RuntimeBridgeMethod::BridgeWith => "with".to_string(),
-    RuntimeBridgeMethod::BridgeListPush => "list_push".to_string(),
-    RuntimeBridgeMethod::BridgeMapInsert => "map_insert".to_string(),
-    RuntimeBridgeMethod::BridgeMapMerge => "map_merge".to_string(),
-    RuntimeBridgeMethod::BridgeMapGet => "map_get".to_string(),
-    RuntimeBridgeMethod::BridgeMapHas => "map_has".to_string(),
-    RuntimeBridgeMethod::BridgeEmitMapHas => "emit_map_has".to_string(),
-    RuntimeBridgeMethod::BridgeMapValues => "map_values".to_string(),
-    RuntimeBridgeMethod::BridgeMapKeys => "map_keys".to_string(),
-    RuntimeBridgeMethod::BridgeMapContainsKey => "map_contains_key".to_string(),
-    RuntimeBridgeMethod::BridgeCharAt => "char_at".to_string(),
-    RuntimeBridgeMethod::BridgeStringAt => "string_at".to_string(),
-    RuntimeBridgeMethod::BridgeStringLength => "string_length".to_string(),
-    RuntimeBridgeMethod::BridgeLength => "length".to_string(),
-    RuntimeBridgeMethod::BridgeStartsWith => "starts_with".to_string(),
-    RuntimeBridgeMethod::BridgeEndsWith => "ends_with".to_string(),
-    RuntimeBridgeMethod::BridgeToString => "to_string".to_string(),
-    RuntimeBridgeMethod::BridgeTrim => "trim".to_string(),
-    RuntimeBridgeMethod::BridgeToLower => "to_lower".to_string(),
-    RuntimeBridgeMethod::BridgeToUpper => "to_upper".to_string(),
-    RuntimeBridgeMethod::BridgeReplace => "replace".to_string(),
-    RuntimeBridgeMethod::BridgeSubstring => "substring".to_string(),
-    RuntimeBridgeMethod::BridgeToInt => "to_int".to_string(),
-    RuntimeBridgeMethod::BridgeEmptyMap => "empty_map".to_string(),
-    RuntimeBridgeMethod::BridgeContains => "contains".to_string(),
-    RuntimeBridgeMethod::BridgeReverse => "reverse".to_string(),
-    RuntimeBridgeMethod::BridgeLookup => "lookup".to_string(),
-}
-}
