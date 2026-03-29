@@ -127,6 +127,110 @@ type SyntaxSpec {
   keyword_set: Map<String, Bool>
 }
 
+// =========================================================================
+// LintModel — what makes rendered code valid
+//
+// LanguageSpec carries facts the emitter needs to render target syntax.
+// SyntaxSpec carries facts the parser needs to recognize source syntax.
+// LintModel carries facts about what makes rendered code valid:
+// import derivation, type well-formedness, expression well-formedness,
+// naming conventions, and formatting rules.
+//
+// The emitter reads the LintModel. Correct output is structural, not
+// verified. cargo check / clippy / pylint are redundant confirmations.
+// =========================================================================
+
+// -- Import derivation: what triggers a use/import statement ---------------
+
+type ImportTrigger
+  = TypeUsageTrigger { type_name: String }
+  | TraitImplTrigger { trait_name: String }
+  | DeriveMacroTrigger { macro_name: String }
+  | ContainerUsageTrigger { container: String }
+  | AsyncUsageTrigger
+
+type ImportRule {
+  trigger: ImportTrigger
+  import_path: String
+}
+
+// -- Type well-formedness: rules for valid type declarations ---------------
+
+type PrimitiveLowering {
+  dag_name: String
+  target_name: String
+}
+
+type AlgebraicLowering {
+  dag_name: String
+  target_template: String
+}
+
+type TypeWellFormedness {
+  primitive_lowerings: List<PrimitiveLowering>
+  algebraic_lowerings: List<AlgebraicLowering>
+  callable_template: String
+  generic_params_from_dag: Bool
+}
+
+// -- Expression well-formedness: rules for valid expressions ---------------
+
+type ServiceBindingStrategy
+  = ParamInjection
+  | ConstructInBody
+  | GlobalSingleton
+
+type ExprWellFormedness {
+  async_propagation: Bool
+  statement_terminator: String
+  brace_escape_in_format: Bool
+  service_binding: ServiceBindingStrategy
+}
+
+// -- Naming conventions: identifier casing per language --------------------
+
+type CaseStyle
+  = PascalCaseStyle
+  | SnakeCaseStyle
+  | CamelCaseStyle
+  | ScreamingSnakeStyle
+
+type NamingConvention {
+  type_names: CaseStyle
+  function_names: CaseStyle
+  module_names: CaseStyle
+  constant_names: CaseStyle
+  enum_variant_names: CaseStyle
+}
+
+// -- Formatting model: indentation, line width, grouping ------------------
+
+type IndentStyle
+  = SpaceIndent { width: Int }
+  | TabIndent
+
+type ImportGroupStyle
+  = StdExternalLocal
+  | NoGrouping
+
+type FormatModel {
+  indent: IndentStyle
+  max_line_width: Int?
+  import_grouping: ImportGroupStyle
+  trailing_newline: Bool
+}
+
+// -- LintModel: the complete validity model per language -------------------
+
+type LintModel {
+  name: String
+  import_rules: List<ImportRule>
+  type_rules: TypeWellFormedness
+  expr_rules: ExprWellFormedness
+  naming: NamingConvention
+  formatting: FormatModel
+}
+
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "rust",

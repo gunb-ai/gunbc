@@ -290,23 +290,30 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
 //   - Otherwise → return as-is (already concrete: int_type, bool_type, etc.)
 fn substitute_algebra_result(result_type: Node, receiver_type: Node, fold_accumulator_type: Node?) -> Node {
   // fold is special: return type comes from the accumulator, not the algebra field
-  if method_name_is_fold(result_type: result_type, fold_accumulator_type: fold_accumulator_type) {
+  let is_fold = method_name_is_fold(result_type: result_type, fold_accumulator_type: fold_accumulator_type)
+  let is_same_collection = result_type.name == receiver_type.name
+  let is_optional = result_type.return_cardinality == CardOptional
+  if is_fold {
     match fold_accumulator_type {
       Some { value: fat } => fat
       None => result_type
     }
-  } else if result_type.name == receiver_type.name {
-    // Same collection type: use the concrete receiver (preserves element children)
+  } else if is_same_collection {
     receiver_type
-  } else if result_type.return_cardinality == CardOptional {
-    // Optional wrapping: substitute the inner type
-    let inner = with_required_cardinality(n: result_type)
-    let elem = method_receiver_element_node(receiver_type: receiver_type)
-    if inner.name == elem.name || inner.name == "" || inner.children |> count == 0 {
-      with_optional_cardinality(n: elem)
-    } else {
-      result_type
-    }
+  } else if is_optional {
+    substitute_optional_result(result_type: result_type, receiver_type: receiver_type)
+  } else {
+    result_type
+  }
+}
+
+// Optional wrapping: substitute the inner type of an optional result
+// with the concrete element type from the receiver.
+fn substitute_optional_result(result_type: Node, receiver_type: Node) -> Node {
+  let inner = with_required_cardinality(n: result_type)
+  let elem = method_receiver_element_node(receiver_type: receiver_type)
+  if inner.name == elem.name || inner.name == "" || inner.children |> count == 0 {
+    with_optional_cardinality(n: elem)
   } else {
     result_type
   }
