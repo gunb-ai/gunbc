@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, InferredNode, module_imports, module_items, Connective, Field, Param, ExprData, NamedArg, MatchArm, FieldInit, StringPart, LiteralValue, TextFile, SourceSpan, ResourceUse, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand};
+pub use crate::v2_std_core::{Node, ErrorNode, InferredNode, module_imports, module_items, Connective, Field, Param, ExprData, NamedArg, MatchArm, FieldInit, StringPart, LiteralValue, TextFile, SourceSpan, ResourceUse, BinOpKind, UnaryOpKind, DeclaredFuncSig, IntrinsicMethod, RuntimeBridgeMethod, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
@@ -81,7 +81,7 @@ use TcoExprShape::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitResult {
     pub files: Vec<Rc<TextFile>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

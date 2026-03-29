@@ -38,7 +38,8 @@ import v2.std.core {
   rt_node, has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required, CardOptional,
-  diagnostic_node,
+  ErrorNode, make_error_node, is_error_diagnostic,
+  InternalError,
   ResourceUse,
   kernel_types, is_kernel_type,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -75,7 +76,7 @@ import v2.std.core {
   Text, Interpolation,
   leaf_node, with_optional_cardinality, with_required_cardinality,
   ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind,
-  no_span,
+  no_span, make_span,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type
 }
@@ -154,7 +155,7 @@ import v2.compiler.infer_access {
 
 type ItemContribution {
   resolved_item: Node
-  resolve_diagnostics: List<Node>
+  resolve_diagnostics: List<ErrorNode>
   func_sig: DeclaredFuncSig?
   svc_entries: List<OpEntry>
   svc_local: TypeBinding?
@@ -167,7 +168,7 @@ type ModuleContext {
   svc_registry: Map<String, List<OpEntry>>
   locals: Map<String, TypeBinding>
   item_registry: Map<String, ItemInfo>
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type InferScope {
@@ -181,12 +182,12 @@ type InferScope {
 
 type InferResult {
   typed: Node
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type BlockInferState {
   scope: InferScope
-  diag_chunks: List<List<Node>>
+  diag_chunks: List<List<ErrorNode>>
   last_type: Node
   typed_stmts: List<Node>
 }
@@ -194,7 +195,7 @@ type BlockInferState {
 // SG-9: Tail-recursive block inference. Each accumulated list is a standalone
 // parameter (Rc refcount=1) so list_push avoids deep clone.
 fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
-    typed_stmts: List<Node>, diag_chunks: List<List<Node>>,
+    typed_stmts: List<Node>, diag_chunks: List<List<ErrorNode>>,
     last_type: Node) -> BlockInferState {
   match remaining |> first {
     None => BlockInferState { scope: scope, diag_chunks: diag_chunks,
@@ -221,51 +222,51 @@ fn infer_block_stmts(remaining: List<Node>, scope: InferScope,
 
 type TypedItemResult {
   item: Node
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type ArmInferResult {
   typed_arm: MatchArm
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
   body_type: Node
 }
 
 type PatternScopeResult {
   scope: InferScope
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 
 type StringPartInferResult {
   typed_part: StringPart
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type ArgInferResult {
   typed_arg: NamedArg
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type FieldInferResult {
   typed_field: FieldInit
   infer_result: InferResult
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type BuildTypeEnvResult {
   env: TypeEnv
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type ParentModulesResult {
   modules: List<TypedModule>
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Internal result type for variant-level resolution.
 type VariantResult {
   variant: Variant
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Accumulator for cycle detection fold.
@@ -293,7 +294,7 @@ type LocalContributionState {
   svc_registry: Map<String, List<OpEntry>>
   svc_locals: Map<String, TypeBinding>
   item_registry: Map<String, ItemInfo>
-  diag_chunks: List<List<Node>>
+  diag_chunks: List<List<ErrorNode>>
 }
 
 fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<String, TypedModule>, env: TypeEnv,
@@ -448,16 +449,16 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   }
 }
 
-fn inference_error(message: String, span: SourceSpan, module_name: String) -> Node {
-  diagnostic_node(severity: "error", message: message, span: span, module_name: Some { value: module_name }, category: none)
+fn inference_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
+  make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> Node {
-  diagnostic_node(severity: "error", message: message, span: span, module_name: Some { value: module_name }, category: Some { value: category })
+fn categorized_error(message: String, span: SourceSpan, module_name: String, category: String) -> ErrorNode {
+  make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -1983,7 +1984,7 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>) -> BuildTypeEnvResult {
   // Seed the kernel with primitive types so they resolve even when
   // std.types is not in the compilation set (e.g., in isolated tests).
-  let zero_span = SourceSpan { start: 0, end: 0 }
+  let zero_span = make_span(start: 0, end: 0)
   // Build kernel type bindings. Unit is the terminal object — empty product
   // (Conj + 0 children), structurally unique among kernel types.
   let kernel_bindings_base = fold(
@@ -2023,7 +2024,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set }
-  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span, module_name: Some { value: module.module.name }, category: Some { value: "unresolved_name" })] })
+  let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module.module.name, "'"), span: imp.target_module.value.span }, module_name: module.module.name)] })
 
   // Collect local type definitions from module items.
   // Nodes with capabilities are registered as nominal types so they can be
@@ -2128,7 +2129,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 // Used by the per-module profile test to isolate whether OOM is in
 // merge+cycles vs type resolution.
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>) -> BuildTypeEnvResult {
-  let zero_span = SourceSpan { start: 0, end: 0 }
+  let zero_span = make_span(start: 0, end: 0)
   let kernel_bindings = fold(
     kernel_types,
     init: empty_map(),
@@ -2262,7 +2263,7 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
     svc_registry: Map<String, List<OpEntry>>,
     svc_locals: Map<String, TypeBinding>,
     item_registry: Map<String, ItemInfo>,
-    diag_chunks: List<List<Node>>) -> LocalContributionState {
+    diag_chunks: List<List<ErrorNode>>) -> LocalContributionState {
   match remaining |> first {
     None =>
       LocalContributionState {
@@ -2370,7 +2371,7 @@ fn build_module_context(contributions: List<ItemContribution>,
 
 type TypecheckModuleResult {
   typed: TypedModule
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 
@@ -2382,7 +2383,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   // Gate: if type environment construction produced errors (unresolved types),
   // halt before inference. This makes unresolved nodes structurally impossible
   // downstream -- inference and emit never see them.
-  let env_errors = env_diags |> filter(d => diagnostic_is_error(n: d))
+  let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   if env_errors |> count > 0 {
     return TypecheckModuleResult {
       typed: TypedModule {
@@ -2451,14 +2452,14 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
 type EnvResolveResult {
   env: TypeEnv
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Result of resolving a single type binding -- follows the same
 // value+diagnostics pattern as ResolveResult, ItemResult, etc.
 type BindingResult {
   binding: TypeBinding
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Accumulator for single-pass fold over type bindings:
@@ -2466,7 +2467,7 @@ type BindingResult {
 // eliminating duplicate resolve_node calls.
 type BindingsAccum {
   bindings: Map<String, TypeBinding>
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<String, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
@@ -2489,7 +2490,7 @@ fn topo_resolve_types(
     remaining: List<String>,
     env: TypeEnv,
     module_name: String,
-    diagnostics: List<Node>,
+    diagnostics: List<ErrorNode>,
     local_names: Map<String, Bool>,
     deps_map: Map<String, List<String>>
 ) -> EnvResolveResult {
@@ -2574,7 +2575,7 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
   let diagnostics = flat_map(resolved.resolved_imports, imp =>
     match map_get(module_index, imp.module_path) {
       Some { value: _ } => []
-      None => [diagnostic_node(severity: "error", message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"), span: imp.target_module.value.span, module_name: Some { value: resolved.module.name }, category: Some { value: "unresolved_name" })]
+      None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while ordering '", resolved.module.name, "'"), span: imp.target_module.value.span }, module_name: resolved.module.name)]
     }
   )
   ParentModulesResult { modules: modules, diagnostics: diagnostics }
@@ -2639,7 +2640,7 @@ fn typecheck_modules(
   modules: List<TypedModule>,
   module_index: Map<String, TypedModule>,
   item_registry: Map<String, ItemInfo>,
-  diag_chunks: List<List<Node>>
+  diag_chunks: List<List<ErrorNode>>
 ) -> TypedGraph {
   match remaining |> first {
     None =>

@@ -511,9 +511,13 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ## Current State (2026-03-28)
 
-**TOP PRIORITY: Diagnostic quality.** The DSL is unusable until
-diagnostics include file name, line:column, source context, and
-actionable suggestions. See "Diagnostic quality" section below.
+**Diagnostic quality: LANDED.** Typed `CompilerDiagnostic` enum (14
+variants), `ErrorNode` with causal DAG edges, `SourceSpan` carries
+file path from tokenizer, `NewlineIndex` for O(log n) byte→line:col.
+Renderer shows file:line:col, source context with caret spans,
+topo-sorted output (roots first, cascades grouped). Old string-keyed
+`diagnostic_node()` infrastructure fully deleted. See "Diagnostic
+Quality Design" section below for the design rationale.
 
 **Phases 1-4 complete. Phase 5 active. Stream 0 (compositional parser)
 landed (PR #226).**
@@ -544,10 +548,9 @@ cross-module imports, cascading type mismatches.
 templates escaped across 18 DSL files. Remaining ~1 parse diagnostic
 (block/record disambiguation). Compiler correctly fails closed.
 
-**Diagnostic quality: INSUFFICIENT.** Diagnostics report byte offsets
-with no file name, no line:column, no source context. Implementation
-path: file name in SourceSpan, byte→line:column, source-context
-rendering, parse-context threading, suggestions.
+**Diagnostic quality: LANDED.** `CompilerDiagnostic` typed enum,
+`ErrorNode` with causal edges, file:line:col rendering, source
+context with caret spans. Old `diagnostic_node()` deleted.
 
 **Known invariant violation: Option rendering splits absence variants.**
 Absence-variant rendering should be a LanguageSpec declaration, not
@@ -568,7 +571,7 @@ III (divergent paths ~17). Most symptoms resolved through Phases 1-4.
 - **Stream 0 (compositional parser) — LANDED (PR #226)**
 - **Decidability (DAG-reducibility) — active**
 - **Guarantee enforcement (all Tier 3 → Tier 2) — Lane A done (PR #227)**
-- **Diagnostic quality — TOP PRIORITY (blocks DSL usability)**
+- **Diagnostic quality — LANDED (typed CompilerDiagnostic, ErrorDAG, file:line:col renderer)**
 
 ---
 
@@ -592,6 +595,377 @@ See git history for full stage breakdown.
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` | Rust container templates → `Rc<Vec<{0}>>` etc. + emitter + runtime + stage0 regen | Eliminate O(n) clone class (FF-8) |
 | **Stream 4: Guarantee Enforcement** | *(unassigned)* | Wire Tier 3 machinery into gates; add Tier 4 ratchets as design directions land | Complexity ratchet, L1 ratchet in CI, keyword arm ratchet, round-trip smoke test |
 | **Stream 5: Compiler Correctness** | *(unassigned)* | Fix emitted Rust errors (~280→0); space complexity tracking; regeneration script | Generated stage0 passes `cargo check`; space bounds in complexity report |
+| **Stream 6: Diagnostic Quality** | `warm-lynx-757` | **LANDED.** Typed CompilerDiagnostic (14 variants), ErrorNode/ErrorDAG, SourceSpan carries file, NewlineIndex, topo-sort renderer with source context | ~~Every error has file:line:col~~ **DONE**; ~~cascades trace to root~~ **DONE** |
+| **Stream 7: Name Elimination** | *(unassigned)* | Resolution produces structural edges, not string-keyed scopes. Names consumed at resolution boundary, dead after. Inference/emit never read name strings. | L1 name-read ratchet = 0; scope maps keyed by Node ref, not String |
+
+### Diagnostic Quality Design
+
+**Problem.** The DSL is unusable until diagnostics are actionable.
+Today: byte offsets, no file name, no line:column, no source context,
+printed via `Debug`. The C++ problem: one root cause produces N
+unrelated-looking errors because cascade suppression doesn't exist.
+
+**Design principle: root cause by construction.**
+
+Errors are a DAG. Each error is a node in that DAG. Root-cause errors
+have no parents. Cascade errors carry explicit parent pointers — they
+are structurally linked, not heuristically suppressed. The output is
+the **minimal actionable set**: every error the user must independently
+fix. Errors that would be eliminated by fixing a root cause are
+cascades, not independent errors. Errors that share a category but
+have different root causes are independent — all shown.
+
+**Invariant review checklist (verified against INVARIANTS.md):**
+
+| Invariant | How this design satisfies it |
+|-----------|----------------------------|
+| **Performance** | Newline index: O(n) build, O(log n) lookup. Error DAG topo-sort: O(V+E). Errors in Vec, id = index → O(1) causality lookup. No rescans. |
+| **No duplicate representations** | Line:col computed at render time from `SourceSpan` + newline index — not stored. File path originates in tokenizer, flows forward in `SourceSpan`. One source of truth per fact. |
+| **No case enumeration for open sets** | `CompilerDiagnostic` is a closed enum (compiler error categories are closed). Adding a variant is a compile error at all match sites. |
+| **No fallbacks that fabricate** | If a stage can't determine causality, it emits an independent error — never guesses a parent. |
+| **Explicit boundary contracts** | `ErrorDAG` is the boundary type between pipeline and renderer. Typed variants, not string-keyed properties. |
+| **Facts flow forward** | File path enters at tokenization (where the file is known), carried in `SourceSpan` through every stage. Never reconstructed. |
+| **Heuristics indicate lost structure** | Replaces string-keyed property extraction (`diagnostic_severity()` matching on `p.name == "severity"`) with typed variant fields. |
+
+**Compositional error model.**
+
+The current `diagnostic_node()` stuffs severity, module_name, and
+category into string-keyed Node properties — the same anti-pattern
+the reviewer flagged (string-keyed global maps). The fix: model
+compiler errors the same way `std/errors.dag` models domain errors —
+as typed compositions with required fields.
+
+```
+// SourceSpan gains a file field. File originates at tokenization
+// (the only place that knows which file is being read) and flows
+// forward through every pipeline stage. Line:col are NOT stored —
+// they are derived at render time from the newline index.
+type SourceSpan {
+  file: FilePath
+  start: Int
+  end: Int
+}
+
+// Newline index — built once per source file, O(n). Byte offset →
+// line:col is O(log n) binary search on the offset table.
+// This is render-time infrastructure, not stored in the error.
+type NewlineIndex {
+  file: FilePath
+  offsets: List<Int>        // byte offset of each newline
+  source: String            // original source text (for context)
+}
+
+// Error variant — each variant carries its own required fields.
+// You cannot construct an error without a span (which carries file).
+// The set of variants is closed — adding one is a compile error
+// at every match site.
+type CompilerDiagnostic
+  = UnresolvedName     { name: String, span: SourceSpan }
+  | TypeMismatch       { expected: String, got: String, span: SourceSpan }
+  | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
+  | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
+  | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
+  | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
+  | CircularDependency { modules: List<String>, span: SourceSpan }
+  | DuplicateModule    { name: String, span: SourceSpan }
+  | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
+  | ParseError         { message: String, span: SourceSpan }
+
+// Error DAG node — wraps a diagnostic with its causal parents.
+// Errors stored in Vec<ErrorNode>; id = Vec index → O(1) lookup.
+// caused_by is empty for root causes, non-empty for cascades.
+type ErrorNode {
+  diagnostic: CompilerDiagnostic
+  caused_by: List<Int>         // indices into ErrorDAG.errors
+  module_name: String
+}
+
+// Pipeline result carries the error DAG, not a flat list.
+type ErrorDAG {
+  errors: List<ErrorNode>      // id = position in list
+}
+```
+
+**Propagation rule.** When a pipeline stage encounters an input that
+is already a `CompilerError`, it emits a new `ErrorNode` with
+`caused_by` pointing to the input error's index — not an independent
+error. If causality is unknown, the error is emitted as a root cause
+(empty `caused_by`) — never a guessed parent. The `cascade_error`
+category is deleted; causality is structural.
+
+**Display contract: minimal actionable set.**
+
+The renderer computes which errors are independently actionable:
+- **Root causes** (empty `caused_by`): always shown.
+- **Cascade errors**: shown only if they require independent user
+  action (e.g., a cascade that reveals a *second* problem beyond the
+  root cause). Suppressed if fixing the root cause would eliminate
+  them — determined structurally from the `caused_by` edges, not by
+  heuristic.
+- **Independent errors** that share a category but have different root
+  causes: all shown. 50 independent `unresolved_name` errors from 50
+  missing imports = 50 actionable items.
+
+Display order is topological: roots first, then dependents grouped
+under their root.
+
+```
+error[unresolved_name] src/v2/04_infer.dag:127:5
+ │ unknown type `Foo`
+ │
+127 │   let x: Foo = bar()
+ │          ^^^
+ │
+ ├─ error[type_mismatch] src/v2/05_emit.dag:84:12
+ │   expected `Foo`, got compiler error
+ │
+ │  84 │   let result: Foo = process(x)
+ │   │               ^^^
+ │
+ ╰─ error[field_not_found] src/v2/05_emit.dag:91:8
+    no field `name` on compiler error
+
+   91 │   x.name
+    │     ^^^^
+
+error[unresolved_name] src/v2/03_resolve.dag:42:3
+ │ unknown module `std.missing`
+ │
+42 │   import std.missing { Thing }
+ │          ^^^^^^^^^^^
+
+2 root errors, 5 total (3 cascades from root #1)
+```
+
+**Performance contract.**
+
+| Operation | Bound | Notes |
+|-----------|-------|-------|
+| Newline index construction | O(n) per file | Single scan of source bytes |
+| Byte offset → line:col | O(log n) | Binary search on newline offsets |
+| Error DAG construction | O(1) per error | Vec push + parent index |
+| Causality lookup | O(1) | Vec index, not search |
+| Topo-sort for display | O(V+E) | V = error count, E = causality edges |
+| Source context extraction | O(1) per error | Newline index → line start/end offsets |
+
+No operation is worse than linear in input size. No operation rescans
+the full source or full error list.
+
+**What this eliminates:**
+- String-keyed property extraction (severity, module_name, category
+  are typed fields, not string lookups).
+- Cascade storms — one missing import no longer produces N independent
+  errors. Cascades exist but are structurally linked to their root.
+- Disconnected errors — every non-root error says exactly *which*
+  root error caused it.
+- Byte-offset-only output — `SourceSpan` carries file, renderer
+  computes line:col from newline index.
+- Stored derived data — line:col never stored, always computed.
+
+**Implementation path (ordered by dependency):**
+
+| Step | What | Status |
+|------|------|--------|
+| D1 | Add `file: FilePath` to `SourceSpan`, thread through tokenizer | **DONE** |
+| D2 | `NewlineIndex`: per-file offset table, O(n) build, O(log n) lookup | **DONE** |
+| D3 | `CompilerDiagnostic` (14 variants), `ErrorNode`, `ErrorDAG` | **DONE** |
+| D4 | Replace 26 `diagnostic_node()` calls with typed constructors | **DONE** |
+| D5 | Migrate pipeline from `List<Node>` to `List<ErrorNode>` (46 type decls) | **DONE** |
+| D6 | Delete old `diagnostic_node()` + 9 accessor functions | **DONE** |
+| D7 | Error DAG renderer: topo-sort, file:line:col, source context, carets | **DONE** |
+
+All steps landed on branch `warm-lynx-757`.
+
+### Stream 7: Target Compositional Model
+
+**Problem.** The compiler has 45 types in `00_core.dag`. The thesis
+says "everything is a Node." In practice, 10 satellite types
+duplicate Node's name+span fields, ExprData carries 9 String
+identifier payloads outside the graph, and names survive past
+resolution because scope maps are string-keyed. The fragmentation
+produces ~730 name/string operations across the codebase, of which
+~260 are structural violations (the compiler branches on name
+content).
+
+**Root cause.** The compiler was built incrementally. Module, Import,
+and ServiceConfig dissolved into Node. Field, Variant, Param,
+ResourceUse, FieldInit, NamedArg, MatchArm, FieldBinding,
+OperationDef, and CapabilityDef did not. The dissolution PATTERN
+exists and works — it was not applied universally.
+
+#### Target Model
+
+The compiler needs exactly these types:
+
+```
+Token { text, span, shape }       -- tokenizer → parser boundary
+
+NameId = Int                       -- opaque identifier (NOT a string)
+NameRegistry { names: Map<NameId, String> }  -- rendering only
+
+Node {                             -- THE universal structural type
+  id: NameId                       -- opaque (NOT a readable string)
+  span: SourceSpan                 -- source location
+  children: List<Node>             -- ALL structural composition
+  connective: Connective           -- Conj / Disj / None
+  collection_kind: CollectionKind  -- container shape
+  params: List<Node>               -- parameters (NOT List<Param>)
+  inferred: InferredNode?          -- resolved type (set by infer)
+  return_cardinality: Cardinality  -- output multiplicity
+  uses: List<Node>                 -- resource deps (NOT List<ResourceUse>)
+  body: Node?                      -- computation body
+  transport: Node?                 -- transport binding
+  properties: List<Node>           -- metadata (NOT List<FieldInit>)
+  type_annotation: Node?           -- explicit type
+  is_self_recursive: Bool
+  has_non_tail_self_call: Bool
+  match_pattern: MatchPattern?     -- pattern discriminator
+  expr_data: ExprData              -- expression operator (NO String fields)
+}
+
+ExprData                           -- pure operator tag
+  = NoExprData
+  | ExprLiteral { value: LiteralValue }
+  | ExprError { kind: ExprErrorKind, message: String }
+  | ExprVar { binding_kind: VarBindingKind? }
+  | ExprFieldAccess { summary: FieldSummary? }
+  | ExprCall { call_semantics: CallSemantics? }
+  | ExprMethodCall { method_semantics: MethodSemantics? }
+  | ExprMatch | ExprIf | ExprLet | ExprRecordLit
+  | ExprListLit | ExprBinOp { op: BinOpKind }
+  | ExprUnaryOp { op: UnaryOpKind }
+  | ExprLambda { semantics: LambdaSemantics? }
+  | ExprStringInterp | ExprBlock | ExprCast
+  | ExprForEach | ExprIndex | ExprSlice | ExprReturn
+```
+
+**What changed from current:**
+
+| Current | Target | Why |
+|---------|--------|-----|
+| `params: List<Param>` | `params: List<Node>` | Param dissolved — name+span are Node's |
+| `uses: List<ResourceUse>` | `uses: List<Node>` | ResourceUse dissolved |
+| `properties: List<FieldInit>` | `properties: List<Node>` | FieldInit dissolved |
+| `ExprVar { name: String }` | `ExprVar` (unit) | Identifier is Node.name |
+| `ExprFieldAccess { field: String }` | `ExprFieldAccess` | Field ref is children[1] |
+| `ExprCall { func: String }` | `ExprCall` | Func ref is children[0] or Node.name |
+| `ExprMethodCall { method: String }` | `ExprMethodCall` | Method ref is a child |
+| `ExprLet { name: String }` | `ExprLet` | Binding name is Node.name |
+| `ExprForEach { variable: String }` | `ExprForEach` | Loop var is Node.name |
+| `ExprLambda { params: List<String> }` | `ExprLambda` | Param names are child Nodes |
+| `ExprRecordLit { type_name: String? }` | `ExprRecordLit` | Type ref is a child |
+
+**Deleted types (10):** Field, Variant, Param, ResourceUse, FieldInit,
+NamedArg, MatchArm, FieldBinding, OperationDef, CapabilityDef. All
+dissolve into Node following the existing Module/Import pattern.
+
+**Retained structural enums:** Connective, Cardinality,
+CollectionKind, ExprData (unit variants), MatchPattern, LiteralValue,
+TokenShape, BinOpKind, UnaryOpKind, InferredNode, NodeType. These
+are closed structural properties — not satellite types.
+
+**Retained semantic enums:** IntrinsicMethod, RuntimeBridgeMethod,
+MethodSemantics, CallSemantics, VarBindingKind, FieldSummary,
+LambdaSemantics. These are populated by resolution/inference and
+consumed by emit — they carry structural facts, not names.
+
+#### What Each Stage Models
+
+**Tokenize** (bytes → tokens):
+- Input: raw source + filename
+- Output: `List<Token>` — (text, span, shape) tuples
+- Names: produces them from source text. Legitimate.
+
+**Parse** (tokens → Node tree):
+- Input: token sequence
+- Output: Module Node with children (imports, items, expressions)
+- Names: embeds token.text as Node.name on child Nodes
+- Intermediates: **NONE in target model.** Parser produces Nodes
+  directly. No Field/Variant/Param/OperationDef. `expect_name()`
+  returns a leaf Node (not a String).
+
+**Resolve** (Node tree → edges + ordering):
+- Input: Nodes with names, children, connective
+- Reads: Node.name (to match imports to modules, names to exports)
+- Output: same Nodes + ResolvedImport edges + dep_order
+- **THIS IS WHERE NAMES DIE.** Resolve is the last stage that reads
+  Node.name for structural decisions. Its output includes edges
+  (import → module, name → definition) that downstream stages follow.
+
+**Infer** (edges → types):
+- Input: resolved Node tree with edges
+- Reads: Node.children, connective, edges (NOT names)
+- Output: same Nodes + `Node.inferred` set on every expression +
+  semantic enums populated (MethodSemantics, CallSemantics, etc.)
+- Names: **NEVER READS.** Walks structural edges from resolution.
+  Method dispatch via data tables (name → IntrinsicMethod), not
+  string comparison. Tables are loaded at resolution, not hard-coded
+  in inference.
+
+**Emit** (typed graph → target code):
+- Input: fully typed Nodes with semantics
+- Reads: Node.inferred, expr_data semantics, children
+- Output: TextFile (target-language source)
+- Names: reads from a **name registry** for rendering identifiers.
+  Never reads Node.name to make a rendering DECISION.
+
+#### Audit Summary (2026-03-28)
+
+~730 name/string operations. ~260 are violations.
+
+**Sources (parser, ~80 embeddings):** `expect_name()` → String →
+8 ExprData fields (29 sites) + 8 AST struct types (50+ sites).
+
+**Violations by file:**
+
+| File | Violations | Root cause |
+|------|-----------|------------|
+| `04_method.dag` | 56 (100%) | Method dispatch by string comparison |
+| `05_emit_rust.dag` | 51 (37%) | Function dispatch, Rc wrapping, variant special-casing |
+| `04_types.dag` | 22 (39%) | Type identity checks by name |
+| `05_emit.dag` | 18 (53%) | Refined/Tuple handling |
+| `04_infer.dag` | 17 (13%) | Special-case name comparisons |
+| `00_core.dag` | 14 (100%) | `is_kernel_type`, transport/config dispatch |
+| `04_access.dag` | 10 (100%) | Redundant with structural properties |
+| `ownership.dag` | 6 | fold/init detection by name |
+
+Go and Python emitters: 0 violations. They model correct emit.
+
+**Legitimate name reads (~470):** scope lookup during resolution
+(~120), structural copying (~125), emit rendering (~175),
+diagnostics (~45).
+
+#### Execution
+
+| Phase | What | Dissolves | Ratchet |
+|-------|------|-----------|---------|
+| D1 | **Satellite type dissolution.** Param, ResourceUse, FieldInit → `List<Node>`. Delete types. | 3 types, ~85 consumer sites | Satellite types: 10 → 7 |
+| D2 | **Parser produces Nodes directly.** `expect_name()` returns leaf Node. Field/Variant/OperationDef/CapabilityDef created as Nodes in parser, never as intermediates. | 4 types, ~80 parser sites | Satellite types: 7 → 3 |
+| D3 | **ExprData String dissolution.** String fields → children. ExprData variants become unit. Parser stores identifiers as child Nodes. | 9 String fields, ~210 consumer sites | ExprData Strings: 9 → 0 |
+| D4 | **Remaining dissolution.** NamedArg, MatchArm, FieldBinding → Node. MatchPattern names → Node.name. | 3 types, ~70 consumer sites | Satellite types: 3 → 0 |
+| D5 | **Edge model.** Resolution produces structural edges (use → definition). Method dispatch via data tables. Inference walks edges. | ~120 scope lookups + ~165 name comparisons | Name reads in inference: current → 0 |
+| D6 | **Name registry.** Emit reads identifier text from registry. Node.name becomes opaque post-resolution. | ~175 emit name reads | Post-resolution name reads: 0 |
+
+D1-D4 are the type dissolution (existing pattern applied
+universally). D5 is the architectural change (resolution boundary
+kills names). D6 is the rendering boundary (names are registry data).
+
+The L1 ratchet (currently 52) tracks name-read sites in the compiler.
+This model drives L1 to 0.
+
+**On scrambled-name tests.** The current scrambled-name tests are
+validation — they test that inference doesn't branch on names. The
+target model makes this **structural**: `Node.id` is an opaque `NameId`,
+not a `String`. Inference can't read the name because there is no
+string to read. The scrambled-name tests become unnecessary by
+construction. Delete them when `Node.name: String` → `Node.id: NameId`
+lands. Until then, they remain as the ratchet.
+
+**Exit criteria:** 0 satellite types. ExprData has 0 String fields.
+`Node.id` is opaque `NameId` (not `String`). Inference has no access
+to name text. Emit + diagnostics read from `NameRegistry` only.
+Scrambled-name tests deleted (invariant holds by construction).
+Diagnostic span precision is automatic (every Node has a span).
 
 ### Stream 0: Compositional Parser — Status
 

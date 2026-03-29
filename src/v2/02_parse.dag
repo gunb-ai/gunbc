@@ -52,8 +52,8 @@ import v2.std.core {
   ShLitStr, ShLitInt, ShLitFloat, ShIdent,
   ShStrBegin, ShStrMid, ShStrEnd,
   ShNewline, ShEof, ShUnknown,
-  SourceSpan,
-  diagnostic_node,
+  SourceSpan, make_span,
+  ErrorNode, make_error_node, ParseError,
   with_required_cardinality
 }
 
@@ -76,7 +76,7 @@ type ParserState {
 
 type ParseResult {
   module: Node?
-  error: Node?
+  error: ErrorNode?
 }
 
 // Typed parse results -- replace the untyped PR type.
@@ -88,25 +88,25 @@ type AdvanceResult { token: Token, state: ParserState }
 type EatResult { consumed: Bool, state: ParserState, token: Token? }
 
 // Typed PR replacements (flat -- r.val.X becomes r.X)
-type TokenResult { token: Token, state: ParserState, err: Node? }
-type NameResult { name: String, state: ParserState, err: Node? }
-type ExprResult { expr: Node, state: ParserState, err: Node? }
-type ItemResult { item: Node, state: ParserState, err: Node? }
-type TypeResult { type_expr: Node, state: ParserState, err: Node? }
-type ModuleResult { module: Node, state: ParserState, err: Node? }
-type ImportResult { import: Node, state: ParserState, err: Node? }
-type VariantResult { variant: Variant, state: ParserState, err: Node? }
-type PredResult { predicate: FieldInit, state: ParserState, err: Node? }
-type ParamResult { param: Param, state: ParserState, err: Node? }
-type TransportResult { transport: Node, state: ParserState, err: Node? }
-type OpResult { operation: OperationDef, state: ParserState, err: Node? }
-type CapResult { capability: CapabilityDef, state: ParserState, err: Node? }
-type PatternResult { pattern: MatchPattern, state: ParserState, err: Node? }
-type ArmResult { arm: MatchArm, state: ParserState, err: Node? }
-type ArgResult { arg: NamedArg, state: ParserState, err: Node? }
-type FieldResult { field: Field, state: ParserState, err: Node? }
-type FieldInitResult { field: FieldInit, state: ParserState, err: Node? }
-type ResUseResult { resource_use: ResourceUse, state: ParserState, err: Node? }
+type TokenResult { token: Token, state: ParserState, err: ErrorNode? }
+type NameResult { name: String, state: ParserState, err: ErrorNode? }
+type ExprResult { expr: Node, state: ParserState, err: ErrorNode? }
+type ItemResult { item: Node, state: ParserState, err: ErrorNode? }
+type TypeResult { type_expr: Node, state: ParserState, err: ErrorNode? }
+type ModuleResult { module: Node, state: ParserState, err: ErrorNode? }
+type ImportResult { import: Node, state: ParserState, err: ErrorNode? }
+type VariantResult { variant: Variant, state: ParserState, err: ErrorNode? }
+type PredResult { predicate: FieldInit, state: ParserState, err: ErrorNode? }
+type ParamResult { param: Param, state: ParserState, err: ErrorNode? }
+type TransportResult { transport: Node, state: ParserState, err: ErrorNode? }
+type OpResult { operation: OperationDef, state: ParserState, err: ErrorNode? }
+type CapResult { capability: CapabilityDef, state: ParserState, err: ErrorNode? }
+type PatternResult { pattern: MatchPattern, state: ParserState, err: ErrorNode? }
+type ArmResult { arm: MatchArm, state: ParserState, err: ErrorNode? }
+type ArgResult { arg: NamedArg, state: ParserState, err: ErrorNode? }
+type FieldResult { field: Field, state: ParserState, err: ErrorNode? }
+type FieldInitResult { field: FieldInit, state: ParserState, err: ErrorNode? }
+type ResUseResult { resource_use: ResourceUse, state: ParserState, err: ErrorNode? }
 
 // Generic prefix result: shared across TypeBody, ExprBody, BlockBody items.
 type ItemPrefixResult {
@@ -116,13 +116,13 @@ type ItemPrefixResult {
   inferred: InferredNode?
   uses: List<ResourceUse>
   state: ParserState
-  err: Node?
+  err: ErrorNode?
 }
 
 // Parser-local intermediate: ServiceConfig is dissolved into Node properties at the
 // service Node construction boundary. This type exists only inside the parser.
 type ServiceConfig { endpoint: Node, auth: Node?, rate_limit: Node?, retry: Node? }
-type ConfigResult { config: ServiceConfig, state: ParserState, err: Node? }
+type ConfigResult { config: ServiceConfig, state: ParserState, err: ErrorNode? }
 
 // Pratt parser binding power
 type BindingPower { left: Int, right: Int }
@@ -147,21 +147,21 @@ type ExpectedToken
   | ExpectPipe
 
 // List results
-type ImportsResult { imports: List<Node>, state: ParserState, err: Node? }
-type ItemsResult { items: List<Node>, state: ParserState, err: Node? }
-type NamesResult { names: List<String>, state: ParserState, err: Node? }
-type FieldsResult { fields: List<Field>, state: ParserState, err: Node? }
-type FieldInitsResult { fields: List<FieldInit>, state: ParserState, err: Node? }
-type VariantsResult { variants: List<Variant>, state: ParserState, err: Node? }
-type PredsResult { predicates: List<FieldInit>, state: ParserState, err: Node? }
-type ParamsResult { params: List<Param>, state: ParserState, err: Node? }
-type UsesResult { uses: List<ResourceUse>, state: ParserState, err: Node? }
-type ArgsResult { args: List<NamedArg>, state: ParserState, err: Node? }
-type StmtsResult { stmts: List<Node>, state: ParserState, err: Node? }
-type ExprsResult { exprs: List<Node>, state: ParserState, err: Node? }
-type ArmsResult { arms: List<MatchArm>, state: ParserState, err: Node? }
-type ModsResult { modifiers: List<OperationModifier>, state: ParserState, err: Node? }
-type BindingsResult { field_bindings: List<FieldBinding>, state: ParserState, err: Node? }
+type ImportsResult { imports: List<Node>, state: ParserState, err: ErrorNode? }
+type ItemsResult { items: List<Node>, state: ParserState, err: ErrorNode? }
+type NamesResult { names: List<Node>, state: ParserState, err: ErrorNode? }
+type FieldsResult { fields: List<Field>, state: ParserState, err: ErrorNode? }
+type FieldInitsResult { fields: List<FieldInit>, state: ParserState, err: ErrorNode? }
+type VariantsResult { variants: List<Variant>, state: ParserState, err: ErrorNode? }
+type PredsResult { predicates: List<FieldInit>, state: ParserState, err: ErrorNode? }
+type ParamsResult { params: List<Param>, state: ParserState, err: ErrorNode? }
+type UsesResult { uses: List<ResourceUse>, state: ParserState, err: ErrorNode? }
+type ArgsResult { args: List<NamedArg>, state: ParserState, err: ErrorNode? }
+type StmtsResult { stmts: List<Node>, state: ParserState, err: ErrorNode? }
+type ExprsResult { exprs: List<Node>, state: ParserState, err: ErrorNode? }
+type ArmsResult { arms: List<MatchArm>, state: ParserState, err: ErrorNode? }
+type ModsResult { modifiers: List<OperationModifier>, state: ParserState, err: ErrorNode? }
+type BindingsResult { field_bindings: List<FieldBinding>, state: ParserState, err: ErrorNode? }
 
 fn parse_recovery_expr(span: SourceSpan, message: String) -> Node {
   make_expr_error_node(kind: ParseRecoveryError, message: message, span: span)
@@ -169,38 +169,38 @@ fn parse_recovery_expr(span: SourceSpan, message: String) -> Node {
 
 fn parse_recovery_placeholder() -> Node {
   parse_recovery_expr(
-    span: SourceSpan { start: 0, end: 0 },
+    span: make_span(start: 0, end: 0),
     message: "parser recovery placeholder"
   )
 }
 
 // Optional results
-type OptRetResult { inferred: InferredNode?, state: ParserState, err: Node? }
-type GuardResult { guard: Node?, state: ParserState, err: Node? }
-type FromKeyResult { from_key: String?, state: ParserState, err: Node? }
+type OptRetResult { inferred: InferredNode?, state: ParserState, err: ErrorNode? }
+type GuardResult { guard: Node?, state: ParserState, err: ErrorNode? }
+type FromKeyResult { from_key: String?, state: ParserState, err: ErrorNode? }
 
 // Multi-field results
-type PostfixResult { expr: Node, changed: Bool, state: ParserState, err: Node? }
-type LambdaCheckResult { is_lambda: Bool, params: List<String>, state: ParserState, err: Node? }
-type IdentCollectResult { success: Bool, params: List<String>, state: ParserState, err: Node? }
-type RangeArgsResult { min_val: Int?, max_val: Int?, state: ParserState, err: Node? }
-type NamedIntResult { arg_name: String, arg_value: Int, state: ParserState, err: Node? }
-type ServiceBodyResult { config: ServiceConfig?, transport: Node, operations: List<OperationDef>, state: ParserState, err: Node? }
-type IOResult { inputs: List<Field>, outputs: List<Field>, state: ParserState, err: Node? }
-type ResPropResult { properties: List<FieldInit>, capabilities: List<CapabilityDef>, state: ParserState, err: Node? }
-type ResponsesResult { responses: List<FieldInit>, state: ParserState, err: Node? }
-type MocksResult { mocks: List<FieldInit>, state: ParserState, err: Node? }
-type ExitEntriesResult { entries: List<FieldInit>, state: ParserState, err: Node? }
-type RespEntriesResult { entries: List<FieldInit>, state: ParserState, err: Node? }
-type MockEntriesResult { entries: List<FieldInit>, state: ParserState, err: Node? }
+type PostfixResult { expr: Node, changed: Bool, state: ParserState, err: ErrorNode? }
+type LambdaCheckResult { is_lambda: Bool, params: List<String>, state: ParserState, err: ErrorNode? }
+type IdentCollectResult { success: Bool, params: List<String>, state: ParserState, err: ErrorNode? }
+type RangeArgsResult { min_val: Int?, max_val: Int?, state: ParserState, err: ErrorNode? }
+type NamedIntResult { arg_name: String, arg_value: Int, state: ParserState, err: ErrorNode? }
+type ServiceBodyResult { config: ServiceConfig?, transport: Node, operations: List<OperationDef>, state: ParserState, err: ErrorNode? }
+type IOResult { inputs: List<Field>, outputs: List<Field>, state: ParserState, err: ErrorNode? }
+type ResPropResult { properties: List<FieldInit>, capabilities: List<CapabilityDef>, state: ParserState, err: ErrorNode? }
+type ResponsesResult { responses: List<FieldInit>, state: ParserState, err: ErrorNode? }
+type MocksResult { mocks: List<FieldInit>, state: ParserState, err: ErrorNode? }
+type ExitEntriesResult { entries: List<FieldInit>, state: ParserState, err: ErrorNode? }
+type RespEntriesResult { entries: List<FieldInit>, state: ParserState, err: ErrorNode? }
+type MockEntriesResult { entries: List<FieldInit>, state: ParserState, err: ErrorNode? }
 type OpBodyResult {
   inputs: List<Field>, outputs: List<Field>,
   modifier_props: List<FieldInit>, transport: Node?,
   exit_props: List<FieldInit>, response_props: List<FieldInit>,
   mock_props: List<FieldInit>,
-  state: ParserState, err: Node?
+  state: ParserState, err: ErrorNode?
 }
-type UnitResult { state: ParserState, err: Node? }
+type UnitResult { state: ParserState, err: ErrorNode? }
 
 // For parse_optional_from_key/parse_config_fields/parse_op_body_entries desc:
 type DescResult { desc: String?, state: ParserState }
@@ -229,7 +229,7 @@ fn current_span(tokens: List<Token>, state: ParserState) -> SourceSpan {
   let tok = peek(tokens: tokens, state: state)
   match tok {
     Some { value: t } => t.span
-    None => SourceSpan { start: 0, end: 0 }
+    None => make_span(start: 0, end: 0)
   }
 }
 
@@ -241,17 +241,17 @@ fn advance(tokens: List<Token>, state: ParserState) -> AdvanceResult {
       AdvanceResult { token: t, state: next }
     }
     None => {
-      let eof_tok = Token { text: "", span: SourceSpan { start: 0, end: 0 }, shape: ShEof }
+      let eof_tok = Token { text: "", span: make_span(start: 0, end: 0), shape: ShEof }
       AdvanceResult { token: eof_tok, state: state }
     }
   }
 }
 
-fn parse_error(msg: String, span: SourceSpan) -> Node {
-  diagnostic_node(severity: "error", message: msg, span: span, module_name: none, category: none)
+fn parse_error(msg: String, span: SourceSpan) -> ErrorNode {
+  make_error_node(diagnostic: ParseError { message: msg, span: span }, module_name: "")
 }
 
-fn has_err(err: Node?) -> Bool {
+fn has_err(err: ErrorNode?) -> Bool {
   match err {
     Some { value: _ } => true
     None => false
@@ -600,7 +600,7 @@ fn expect(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> T
       None => "EOF"
     }
     let wanted = expected_token_name(expected: expected)
-    TokenResult { token: Token { text: "", span: SourceSpan { start: 0, end: 0 }, shape: ShEof }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
+    TokenResult { token: Token { text: "", span: make_span(start: 0, end: 0), shape: ShEof }, state: state, err: Some { value: parse_error(msg: "expected {wanted}, found {found}", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
@@ -926,18 +926,19 @@ fn parse_import_names(tokens: List<Token>, state: ParserState) -> NamesResult {
   parse_import_names_acc(tokens: tokens, state: state, acc: [])
 }
 
-fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<String>) -> NamesResult {
+fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> NamesResult {
   let s = skip_newlines(tokens: tokens, state: state)
   if peek_is_rbrace(tokens: tokens, state: s) {
     NamesResult { names: acc, state: s, err: none }
   } else {
+    let name_span = current_span(tokens: tokens, state: s)
     let r = parse_dotted_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return NamesResult { names: [], state: r.state, err: r.err } }
-    let name = r.name
+    let name_node = leaf_node(name: r.name, span: name_span)
     let s = skip_newlines(tokens: tokens, state: r.state)
     let e = eat(tokens: tokens, state: s, expected: ExpectComma)
     let s = skip_newlines(tokens: tokens, state: if e.consumed { e.state } else { s })
-    parse_import_names_acc(tokens: tokens, state: s, acc: list_push(acc, name))
+    parse_import_names_acc(tokens: tokens, state: s, acc: list_push(acc, name_node))
   }
 }
 
@@ -1255,7 +1256,7 @@ fn parse_predicates_acc(tokens: List<Token>, state: ParserState, acc: List<Field
 // parse_single_predicate: pattern("...") | range(min: N, max: N) | non_empty | format(name) | brand("...") | content(name)
 // Returns FieldInit directly -- no intermediate Predicate type needed.
 fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult {
-  let zero_span = SourceSpan { start: 0, end: 0 }
+  let zero_span = make_span(start: 0, end: 0)
   let dummy_pred = FieldInit { name: "", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: zero_span) }
   // Use expect_name to accept keywords (like "pattern") as predicate names.
   let r = expect_name(tokens: tokens, state: state)
@@ -1588,7 +1589,7 @@ fn collect_type_param_names(tokens: List<Token>, state: ParserState, params: Lis
 type TypeArgsResult {
   args: List<Node>
   state: ParserState
-  err: Node?
+  err: ErrorNode?
 }
 
 // Collect comma-separated type args until > is reached.
@@ -1932,7 +1933,7 @@ fn parse_uses_entry(tokens: List<Token>, state: ParserState) -> ResUseResult {
 
 // Parse resource config args: comma-separated name: ident pairs.
 // e.g. mode: ReadWrite, scope: Local
-type ResConfigResult { fields: List<FieldInit>, state: ParserState, err: Node? }
+type ResConfigResult { fields: List<FieldInit>, state: ParserState, err: ErrorNode? }
 
 fn parse_resource_config_args(tokens: List<Token>, state: ParserState) -> ResConfigResult {
   parse_resource_config_acc(tokens: tokens, state: skip_newlines(tokens: tokens, state: state), acc: [])
@@ -1942,7 +1943,7 @@ fn parse_resource_config_acc(tokens: List<Token>, state: ParserState, acc: List<
   if peek_is_rparen(tokens: tokens, state: state) {
     return ResConfigResult { fields: acc, state: state, err: none }
   }
-  let zero_span = SourceSpan { start: 0, end: 0 }
+  let zero_span = make_span(start: 0, end: 0)
   let r = expect_name(tokens: tokens, state: state)
   if has_err(err: r.err) { return ResConfigResult { fields: [], state: r.state, err: r.err } }
   let field_name = r.name
@@ -2103,7 +2104,7 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
     let cfg = ServiceConfig {
       endpoint: match endpoint {
         Some { value: e } => e
-        None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 })
+        None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
       },
       auth: auth,
       rate_limit: rate_limit,
@@ -2111,7 +2112,7 @@ fn parse_config_fields(tokens: List<Token>, state: ParserState, endpoint: Node?,
     }
     ConfigResult { config: cfg, state: s, err: none }
   } else {
-    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 }), auth: none, rate_limit: none, retry: none }
+    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), auth: none, rate_limit: none, retry: none }
     let r = expect_ident(tokens: tokens, state: s)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, state: r.state, err: r.err } }
     let fname = r.name
@@ -2191,7 +2192,7 @@ fn parse_rest_fields(tokens: List<Token>, state: ParserState, base_url: Node?) -
   if peek_is_rbrace(tokens: tokens, state: s) || at_end(tokens: tokens, state: s) {
     let bu = match base_url {
       Some { value: e } => e
-      None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 })
+      None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
     }
     TransportResult { transport: rest_transport_node(base_url: bu, auth_props: [], headers: [], span: span), state: s, err: none }
   } else {
@@ -2262,7 +2263,7 @@ fn parse_file_fields(tokens: List<Token>, state: ParserState, base_path: Node?) 
   if peek_is_rbrace(tokens: tokens, state: s) || at_end(tokens: tokens, state: s) {
     let bp = match base_path {
       Some { value: e } => e
-      None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: SourceSpan { start: 0, end: 0 })
+      None => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
     }
     TransportResult { transport: file_transport_node(base_path: bp, span: span), state: s, err: none }
   } else {
@@ -3765,7 +3766,7 @@ fn is_constraint_bracket(tokens: List<Token>, state: ParserState) -> Bool {
 
 // Parse constraint annotations: [after X, when Y, ...]
 // Returns list of FieldInit where name is "after" or "when" and value is the expression.
-type ConstraintsResult { constraints: List<FieldInit>, state: ParserState, err: Node? }
+type ConstraintsResult { constraints: List<FieldInit>, state: ParserState, err: ErrorNode? }
 
 fn parse_constraint_annotations(tokens: List<Token>, state: ParserState) -> ConstraintsResult {
   let e = eat(tokens: tokens, state: state, expected: ExpectLBracket)

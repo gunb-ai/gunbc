@@ -46,7 +46,7 @@ import v2.std.core {
   MethodSkip, MethodTake, MethodFold, MethodSortBy, MethodAppend,
   NamedArg, MatchArm, FieldInit,
   MatchPattern, FieldBinding,
-  TextFile, diagnostic_node, SourceSpan,
+  TextFile, ErrorNode, make_error_node, InternalError, SourceSpan,
   ResourceUse,
   BinOpKind,
   UnaryOpKind, StringPart, Text, Interpolation,
@@ -58,7 +58,7 @@ import v2.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   arg_name, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_value,
-  leaf_node, with_required_cardinality,
+  leaf_node, make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   CollectionKind, ListKind, SetKind, NonEmptyListKind, NonEmptySetKind, MapKind, NoCollection,
   Cardinality, Required, CardOptional
@@ -132,7 +132,7 @@ import v2.compiler.emit {
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: SourceSpan { start: 0, end: 0 }, children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: "", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, collection_kind: NoCollection, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -3669,17 +3669,17 @@ fn cli_default_literal_value(expr: Node) -> String? {
   }
 }
 
-fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<Node> {
+fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<ErrorNode> {
   workflow_funcs |> flat_map(wf =>
     wf.params |> flat_map(param =>
       match param.default_value {
         Some { value: dv } => match cli_default_literal_value(expr: dv) {
           Some { value: _ } => []
-          None => [diagnostic_node(severity: "error", message: concat(
+          None => [make_error_node(diagnostic: InternalError { message: concat(
               "workflow CLI default for parameter `",
               param.name,
               "` must be a string, int, float, or bool literal"
-            ), span: param.span, module_name: Some { value: wf.module_name }, category: none)]
+            ), span: param.span }, module_name: wf.module_name)]
         }
         None => []
       }

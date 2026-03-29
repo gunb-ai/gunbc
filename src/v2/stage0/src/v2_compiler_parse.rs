@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{module_node, import_node, Node, InferredNode, NodeType, rt_node, Connective, Field, Variant, Param, ResourceUse, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, diagnostic_node, node_is_product, node_is_coproduct, with_required_cardinality};
+pub use crate::v2_std_core::{module_node, import_node, leaf_node_with_span, Node, InferredNode, NodeType, rt_node, Connective, Field, Variant, Param, ResourceUse, Cardinality, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, NamedArg, MatchArm, FieldInit, MatchPattern, FieldBinding, LiteralValue, ExprErrorKind, BinOpKind, UnaryOpKind, StringPart, local_transport_node, rest_transport_node, shell_transport_node, file_transport_node, service_config_properties, OperationDef, OperationModifier, CapabilityDef, Token, TokenShape, SourceSpan, node_is_product, node_is_coproduct, with_required_cardinality, CompilerDiagnostic, ErrorNode, make_error_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::Connective::{Conj, Disj};
@@ -72,7 +72,7 @@ pub struct ParserState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseResult {
     pub module: Option<Rc<Node>>,
-    pub error: Option<Rc<Node>>,
+    pub error: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,147 +92,147 @@ pub struct EatResult {
 pub struct TokenResult {
     pub token: Rc<Token>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NameResult {
     pub name: String,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprResult {
     pub expr: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemResult {
     pub item: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
     pub type_expr: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModuleResult {
     pub module: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportResult {
     pub import: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantResult {
     pub variant: Rc<Variant>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PredResult {
     pub predicate: Rc<FieldInit>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamResult {
     pub param: Rc<Param>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransportResult {
     pub transport: Rc<Node>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OpResult {
     pub operation: Rc<OperationDef>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapResult {
     pub capability: Rc<CapabilityDef>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatternResult {
     pub pattern: Rc<MatchPattern>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArmResult {
     pub arm: Rc<MatchArm>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArgResult {
     pub arg: Rc<NamedArg>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldResult {
     pub field: Rc<Field>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInitResult {
     pub field: Rc<FieldInit>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResUseResult {
     pub resource_use: Rc<ResourceUse>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResConfigResult {
     pub fields: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConstraintsResult {
     pub constraints: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -247,7 +247,7 @@ pub struct ServiceConfig {
 pub struct ConfigResult {
     pub config: Rc<ServiceConfig>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -300,105 +300,105 @@ pub enum ExpectedToken {
 pub struct ImportsResult {
     pub imports: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemsResult {
     pub items: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamesResult {
-    pub names: Vec<String>,
+    pub names: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldsResult {
     pub fields: Vec<Rc<Field>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInitsResult {
     pub fields: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantsResult {
     pub variants: Vec<Rc<Variant>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PredsResult {
     pub predicates: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamsResult {
     pub params: Vec<Rc<Param>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UsesResult {
     pub uses: Vec<Rc<ResourceUse>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArgsResult {
     pub args: Vec<Rc<NamedArg>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StmtsResult {
     pub stmts: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprsResult {
     pub exprs: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArmsResult {
     pub arms: Vec<Rc<MatchArm>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModsResult {
     pub modifiers: Vec<OperationModifier>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BindingsResult {
     pub field_bindings: Vec<Rc<FieldBinding>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
@@ -406,31 +406,28 @@ pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
 }
 
 pub fn parse_recovery_placeholder() -> Rc<Node> {
-    parse_recovery_expr(Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}), "parser recovery placeholder".to_string())
+    parse_recovery_expr(SourceSpan::new(0, 0), "parser recovery placeholder".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OptRetResult {
     pub inferred: Option<Rc<InferredNode>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GuardResult {
     pub guard: Option<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FromKeyResult {
     pub from_key: Option<String>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -438,7 +435,7 @@ pub struct PostfixResult {
     pub expr: Rc<Node>,
     pub changed: bool,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -446,7 +443,7 @@ pub struct LambdaCheckResult {
     pub is_lambda: bool,
     pub params: Vec<String>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -454,7 +451,7 @@ pub struct IdentCollectResult {
     pub success: bool,
     pub params: Vec<String>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -462,7 +459,7 @@ pub struct RangeArgsResult {
     pub min_val: Option<i64>,
     pub max_val: Option<i64>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -470,7 +467,7 @@ pub struct NamedIntResult {
     pub arg_name: String,
     pub arg_value: i64,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -479,7 +476,7 @@ pub struct ServiceBodyResult {
     pub transport: Rc<Node>,
     pub operations: Vec<Rc<OperationDef>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -487,7 +484,7 @@ pub struct IOResult {
     pub inputs: Vec<Rc<Field>>,
     pub outputs: Vec<Rc<Field>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -495,42 +492,42 @@ pub struct ResPropResult {
     pub properties: Vec<Rc<FieldInit>>,
     pub capabilities: Vec<Rc<CapabilityDef>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResponsesResult {
     pub responses: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MocksResult {
     pub mocks: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExitEntriesResult {
     pub entries: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RespEntriesResult {
     pub entries: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MockEntriesResult {
     pub entries: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -543,13 +540,13 @@ pub struct OpBodyResult {
     pub response_props: Vec<Rc<FieldInit>>,
     pub mock_props: Vec<Rc<FieldInit>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnitResult {
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -581,10 +578,7 @@ pub fn current_span(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<So
         let tok = peek(tokens, state.clone());
 match tok.clone() {
     Some(t) => t.span.clone(),
-    None => Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    None => SourceSpan::new(0, 0),
 }
 }
 }
@@ -603,10 +597,7 @@ Rc::new(AdvanceResult {
     None => {
             let eof_tok = Rc::new(Token {
     text: "".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     shape: TokenShape::ShEof,
 });
 Rc::new(AdvanceResult {
@@ -618,11 +609,11 @@ Rc::new(AdvanceResult {
 }
 }
 
-pub fn parse_error(msg: String, span: Rc<SourceSpan>) -> Rc<Node> {
-    diagnostic_node("error".to_string(), msg.clone(), span.clone(), None, None)
+pub fn parse_error(msg: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
+    make_error_node(Rc::new(CompilerDiagnostic::ParseError { message: msg.clone(), span: span.clone() }), "".to_string())
 }
 
-pub fn has_err(err: Option<Rc<Node>>) -> bool {
+pub fn has_err(err: Option<Rc<ErrorNode>>) -> bool {
     match err.clone() {
     Some(_) => true,
     None => false,
@@ -1713,10 +1704,7 @@ let wanted = expected_token_name(expected.clone());
 Rc::new(TokenResult {
     token: Rc::new(Token {
     text: "".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     shape: TokenShape::ShEof,
 }),
     state: state.clone(),
@@ -2282,7 +2270,7 @@ pub fn parse_import_names(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) ->
     parse_import_names_acc(tokens.clone(), state.clone(), vec![])
 }
 
-pub fn parse_import_names_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<String>) -> Rc<NamesResult> {
+pub fn parse_import_names_acc(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut acc: Vec<Rc<Node>>) -> Rc<NamesResult> {
     loop {
         let s = skip_newlines(tokens.clone(), state.clone());
 if peek_is_rbrace(tokens.clone(), s.clone()) {
@@ -2292,7 +2280,8 @@ if peek_is_rbrace(tokens.clone(), s.clone()) {
     err: None,
 });
 } else {
-            let r = parse_dotted_ident(tokens.clone(), s.clone());
+            let name_span = current_span(tokens.clone(), s.clone());
+let r = parse_dotted_ident(tokens.clone(), s.clone());
 if has_err(r.err.clone()) {
                 return Rc::new(NamesResult {
     names: vec![],
@@ -2300,7 +2289,7 @@ if has_err(r.err.clone()) {
     err: r.err.clone(),
 })
 }
-let name = r.name.clone();
+let name_node = leaf_node_with_span(r.name.clone(), name_span.clone());
 let s = skip_newlines(tokens.clone(), r.state.clone());
 let e = eat(tokens.clone(), s.clone(), ExpectedToken::ExpectComma);
 let s = skip_newlines(tokens.clone(), if e.consumed.clone() {
@@ -2311,7 +2300,7 @@ let s = skip_newlines(tokens.clone(), if e.consumed.clone() {
 {
                 let __tco_0 = tokens.clone();
 let __tco_1 = s.clone();
-let __tco_2 = v2_rt::list_push(acc.clone(), name.clone());
+let __tco_2 = v2_rt::list_push(acc.clone(), name_node.clone());
 tokens = __tco_0;
 state = __tco_1;
 acc = __tco_2;
@@ -2866,10 +2855,7 @@ continue;
 
 pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<PredResult> {
     {
-        let zero_span = Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-});
+        let zero_span = SourceSpan::new(0, 0);
 let dummy_pred = Rc::new(FieldInit {
     name: "".to_string(),
     value: make_expr_node(Rc::new(ExprData::ExprLiteral {
@@ -3692,7 +3678,7 @@ continue;
 pub struct TypeArgsResult {
     pub args: Vec<Rc<Node>>,
     pub state: Rc<ParserState>,
-    pub err: Option<Rc<Node>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 pub fn collect_type_args(mut tokens: Rc<Vec<Rc<Token>>>, mut state: Rc<ParserState>, mut args: Vec<Rc<Node>>) -> Rc<TypeArgsResult> {
@@ -4714,10 +4700,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
     value: Rc::new(LiteralValue::LitStr {
     value: "".to_string(),
 }),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
+}), vec![], None, SourceSpan::new(0, 0)),
 },
     auth: auth.clone(),
     rate_limit: rate_limit.clone(),
@@ -4734,10 +4717,7 @@ break Rc::new(ConfigResult {
     value: Rc::new(LiteralValue::LitStr {
     value: "".to_string(),
 }),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
+}), vec![], None, SourceSpan::new(0, 0)),
     auth: None,
     rate_limit: None,
     retry: None,
@@ -5004,10 +4984,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
     value: Rc::new(LiteralValue::LitStr {
     value: "".to_string(),
 }),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
+}), vec![], None, SourceSpan::new(0, 0)),
 };
 break Rc::new(TransportResult {
     transport: rest_transport_node(bu.clone(), vec![], vec![], span.clone()),
@@ -5187,10 +5164,7 @@ if (peek_is_rbrace(tokens.clone(), s.clone()) || at_end(tokens.clone(), s.clone(
     value: Rc::new(LiteralValue::LitStr {
     value: "".to_string(),
 }),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
+}), vec![], None, SourceSpan::new(0, 0)),
 };
 break Rc::new(TransportResult {
     transport: file_transport_node(bp.clone(), span.clone()),

@@ -9,7 +9,7 @@ module v2.compiler.infer_items
 
 import std.types { SourceSpan }
 import v2.std.core {
-  Node, Param, Field,
+  Node, ErrorNode, Param, Field,
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -56,7 +56,7 @@ type TypedModule {
 type TypedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // ResolvedGraph: the reconcile-to-emit boundary type.
@@ -66,7 +66,7 @@ type TypedGraph {
 type ResolvedGraph {
   modules: List<TypedModule>
   item_registry: Map<String, ItemInfo>
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
   emit_graph_info: EmitGraphInfo
 }
 

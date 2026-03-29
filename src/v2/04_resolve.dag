@@ -17,7 +17,8 @@ import v2.std.core {
   Node, Field, Param,
   NodeType, Typed, InferError, InferVariable, Untyped, rt_node,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  diagnostic_node,
+  ErrorNode, make_error_node,
+  InternalError, ArityMismatch, UnresolvedType,
   Cardinality, Required,
   NoCollection,
   ResourceUse,
@@ -60,61 +61,61 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type NodeResolveResult {
   resolved: Node
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Internal result type for item-level resolution.
 type ItemResult {
   item: Node
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Internal result type for field-level resolution.
 type FieldResult {
   field: Field
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type ExprResolveResult {
   expr: Node
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type NamedArgResolveResult {
   arg: NamedArg
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type MatchArmResolveResult {
   arm: MatchArm
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type FieldInitResolveResult {
   field_init: FieldInit
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type StringPartResolveResult {
   part: StringPart
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type TransportResolveResult {
   transport: Node
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Internal result type for param-level resolution.
 type ParamResult {
   param: Param
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // Internal result type for resource-use resolution.
 type ResourceUseResult {
   resource_use: ResourceUse
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 // =========================================================================
@@ -233,7 +234,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   if depth > 100 {
     return NodeResolveResult {
       resolved: n,
-      diagnostics: [diagnostic_node(severity: "error", message: concat("internal: type resolution exceeded depth 100 for '", n.name, "'"), span: n.span, module_name: Some { value: module_name }, category: Some { value: "invalid_operation" })]
+      diagnostics: [make_error_node(diagnostic: InternalError { message: concat("internal: type resolution exceeded depth 100 for '", n.name, "'"), span: n.span }, module_name: module_name)]
     }
   }
   // Normalize collection_kind: parser-produced nodes have collection_kind: none.
@@ -344,7 +345,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let expected_arity = decl.params |> count
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
-      [diagnostic_node(severity: "error", message: concat("type ", n.name, " expects ", to_string(value: expected_arity), " type arguments, got ", to_string(value: actual_arity)), span: n.span, module_name: Some { value: module_name }, category: Some { value: "type_mismatch" })]
+      [make_error_node(diagnostic: ArityMismatch { name: n.name, expected: expected_arity, got: actual_arity, span: n.span }, module_name: module_name)]
     } else { [] }
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
     let resolved_args = map(arg_results, ar => ar.resolved)
@@ -467,7 +468,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           } else {
             NodeResolveResult {
               resolved: n,
-              diagnostics: [diagnostic_node(severity: "error", message: concat("unresolved type '", n.name, "'"), span: n.span, module_name: Some { value: module_name }, category: Some { value: "unresolved_name" })]
+              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: n.name, span: n.span }, module_name: module_name)]
             }
           }
       }
@@ -490,7 +491,7 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
         // returns InferError for CompilerError — no name check needed.
         NodeResolveResult {
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
-          diagnostics: [diagnostic_node(severity: "error", message: msg, span: sp, module_name: Some { value: module_name }, category: none)]
+          diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]
         }
       TypeVariable { id: _ } =>
         // TypeVariable: unresolved type variable, preserve structurally.
@@ -679,7 +680,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
     ExprError { kind: kind, message: message } =>
       ExprResolveResult {
         expr: make_expr_error_node(kind: kind, message: message, span: texpr.span),
-        diagnostics: [diagnostic_node(severity: "error", message: message, span: texpr.span, module_name: Some { value: module_name }, category: Some { value: "cascade_error" })]
+        diagnostics: [make_error_node(diagnostic: InternalError { message: message, span: texpr.span }, module_name: module_name)]
       }
     ExprVar { name: _, binding_kind: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
     ExprFieldAccess { field: _, summary: _ } =>

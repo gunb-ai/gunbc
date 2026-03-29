@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Param, Field, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, leaf_node, node_has_structure, node_is_product, node_is_coproduct};
+pub use crate::v2_std_core::{Node, ErrorNode, Param, Field, InferredNode, Cardinality, expr_has_self_call, expr_has_non_tail_self_call, leaf_node, node_has_structure, node_is_product, node_is_coproduct};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required};
 pub use crate::v2_compiler_infer_types::{rt_type};
@@ -92,14 +92,14 @@ pub struct TypedModule {
 pub struct TypedGraph {
     pub modules: Vec<Rc<TypedModule>>,
     pub item_registry: HashMap<String, Rc<ItemInfo>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedGraph {
     pub modules: Vec<Rc<TypedModule>>,
     pub item_registry: HashMap<String, Rc<ItemInfo>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 

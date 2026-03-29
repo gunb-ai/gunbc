@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, ExprData, InferredNode, NodeType, Cardinality, diagnostic_node, MatchArm, MatchPattern, leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality};
+pub use crate::v2_std_core::{Node, ExprData, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, MatchArm, MatchPattern, leaf_node, node_is_coproduct, node_has_structure, with_optional_cardinality};
 use crate::v2_std_core::ExprData::{NoExprData};
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
@@ -63,7 +63,7 @@ use PatternSubject::*;
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeLookupResult {
     pub status: Rc<NodeLookupStatus>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -173,7 +173,7 @@ pub fn node_lookup_resolved(node: Rc<Node>) -> Rc<NodeLookupResult> {
 })
 }
 
-pub fn node_lookup_failed(diagnostics: Vec<Rc<Node>>) -> Rc<NodeLookupResult> {
+pub fn node_lookup_failed(diagnostics: Vec<Rc<ErrorNode>>) -> Rc<NodeLookupResult> {
     Rc::new(NodeLookupResult {
     status: Rc::new(NodeLookupStatus::LookupFailed),
     diagnostics: diagnostics.clone(),
@@ -196,13 +196,13 @@ pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
 }
 
 pub fn variant_not_found_result(scrut: Rc<Node>, variant_name: String, module_name: String) -> Rc<NodeLookupResult> {
-    node_lookup_failed(vec![diagnostic_node("error".to_string(), v2_rt::concat("variant '".to_string(), v2_rt::concat(variant_name.clone(), v2_rt::concat("' not found in type '".to_string(), v2_rt::concat(scrut.name.clone(), "'".to_string())))), scrut.span.clone(), Some(module_name.clone()), Some("variant_not_found".to_string()))])
+    node_lookup_failed(vec![make_error_node(Rc::new(CompilerDiagnostic::VariantNotFound { variant: variant_name.clone(), type_name: scrut.name.clone(), span: scrut.span.clone() }), module_name.clone())])
 }
 
 pub fn lookup_variant_in_type(scrut: Rc<PatternSubject>, variant_name: String, module_name: String) -> Rc<NodeLookupResult> {
     match (*scrut.clone()).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(vec![]),
-    PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(vec![diagnostic_node("error".to_string(), v2_rt::concat("cannot resolve variant '".to_string(), v2_rt::concat(variant_name.clone(), "' on Dynamic scrutinee".to_string())), dynamic_span.clone(), Some(module_name.clone()), Some("variant_not_found".to_string()))]),
+    PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(vec![make_error_node(Rc::new(CompilerDiagnostic::VariantNotFound { variant: variant_name.clone(), type_name: "unresolved".to_string(), span: dynamic_span.clone() }), module_name.clone())]),
     PatternSubject::PatternResolved { node: scrut_node, .. } => {
         let scrut_opt = node_is_optional(scrut_node.clone());
 if (((node_has_structure(scrut_node.clone()) == false) && ((scrut_node.children.clone().len() as i64) == 0)) && (scrut_opt.clone() == false)) {
@@ -232,18 +232,18 @@ match direct_match.clone() {
 pub fn lookup_field_in_variant(variant: Rc<PatternSubject>, field_name: String, module_name: String) -> Rc<NodeLookupResult> {
     match (*variant.clone()).clone() {
     PatternSubject::PatternLookupBlocked => node_lookup_failed(vec![]),
-    PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(vec![diagnostic_node("error".to_string(), v2_rt::concat("cannot resolve field '".to_string(), v2_rt::concat(field_name.clone(), "' on Dynamic variant".to_string())), dynamic_span.clone(), Some(module_name.clone()), Some("field_not_found".to_string()))]),
+    PatternSubject::PatternDynamic { span: dynamic_span, .. } => node_lookup_failed(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound { field: field_name.clone(), type_name: "unresolved".to_string(), span: dynamic_span.clone() }), module_name.clone())]),
     PatternSubject::PatternResolved { node: variant_node, .. } => match { let mut __result = Vec::new(); for c in variant_node.children.clone().iter().cloned() { if (c.name.clone() == field_name.clone()) { __result.push(c); } } __result }.first().cloned() {
     Some(field_child) => {
         let resolved = child_inferred_or_name(field_child.clone());
 node_lookup_resolved(resolved.clone())
 },
-    None => node_lookup_failed(vec![diagnostic_node("error".to_string(), v2_rt::concat("field '".to_string(), v2_rt::concat(field_name.clone(), v2_rt::concat("' not found in variant '".to_string(), v2_rt::concat(variant_node.name.clone(), "'".to_string())))), variant_node.span.clone(), Some(module_name.clone()), Some("field_not_found".to_string()))]),
+    None => node_lookup_failed(vec![make_error_node(Rc::new(CompilerDiagnostic::FieldNotFound { field: field_name.clone(), type_name: variant_node.name.clone(), span: variant_node.span.clone() }), module_name.clone())]),
 },
 }
 }
 
-pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Vec<Rc<MatchArm>>, env: Rc<TypeEnv>, span: Rc<SourceSpan>, module_name: String) -> Vec<Rc<Node>> {
+pub fn check_match_exhaustiveness(scrutinee_type: Rc<Node>, arms: Vec<Rc<MatchArm>>, env: Rc<TypeEnv>, span: Rc<SourceSpan>, module_name: String) -> Vec<Rc<ErrorNode>> {
     {
         let scrut_is_optional = node_is_optional(scrutinee_type.clone());
 let resolved_raw = if node_has_structure(scrutinee_type.clone()) {
@@ -281,7 +281,7 @@ if has_catch_all.clone() {
 });
 let uncovered = { let mut __result = Vec::new(); for v in variant_names.clone().iter().cloned() { if (emit_map_has(covered_set.clone(), v.clone()) == false) { __result.push(v); } } __result };
 if ((uncovered.clone().len() as i64) > 0) {
-                            vec![diagnostic_node("error".to_string(), v2_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), uncovered.clone().join(&", ".to_string())), span.clone(), Some(module_name.clone()), Some("invalid_operation".to_string()))]
+                            vec![make_error_node(Rc::new(CompilerDiagnostic::NonExhaustiveMatch { missing: uncovered.clone(), span: span.clone() }), module_name.clone())]
 } else {
                             vec![]
 }

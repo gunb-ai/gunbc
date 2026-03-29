@@ -166,6 +166,7 @@ type Path          = String where non_empty
 // --- Source locations (Level 1: Positional refinements) -------------------
 
 type SourceSpan {
+  file: FilePath
   start: Int
   end: Int
 }

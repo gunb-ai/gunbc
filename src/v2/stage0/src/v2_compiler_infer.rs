@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Field, Variant, Param, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, CollectionKind, diagnostic_is_error, rt_node, has_inferred, InferredNode, NodeType, Cardinality, diagnostic_node, ResourceUse, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
+pub use crate::v2_std_core::{Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Field, Variant, Param, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, CollectionKind, is_error_diagnostic, rt_node, has_inferred, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, ResourceUse, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, IntrinsicMethod, VarBindingKind, CallSemantics, MethodSemantics, RuntimeBridgeMethod, LambdaSemantics, ExprErrorKind, TransportKind, is_transport_kind, BinOpKind, UnaryOpKind, MatchArm, MatchPattern, FieldBinding, FieldInit, NamedArg, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
@@ -90,7 +90,7 @@ pub use crate::v2_compiler_infer_access::{AccessCheckResultNode, check_index_acc
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemContribution {
     pub resolved_item: Rc<Node>,
-    pub resolve_diagnostics: Vec<Rc<Node>>,
+    pub resolve_diagnostics: Vec<Rc<ErrorNode>>,
     pub func_sig: Option<Rc<DeclaredFuncSig>>,
     pub svc_entries: Vec<Rc<OpEntry>>,
     pub svc_local: Option<Rc<TypeBinding>>,
@@ -104,7 +104,7 @@ pub struct ModuleContext {
     pub svc_registry: HashMap<String, Vec<Rc<OpEntry>>>,
     pub locals: HashMap<String, Rc<TypeBinding>>,
     pub item_registry: HashMap<String, Rc<ItemInfo>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,18 +120,18 @@ pub struct InferScope {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InferResult {
     pub typed: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockInferState {
     pub scope: Rc<InferScope>,
-    pub diag_chunks: Vec<Vec<Rc<Node>>>,
+    pub diag_chunks: Vec<Vec<Rc<ErrorNode>>>,
     pub last_type: Rc<Node>,
     pub typed_stmts: Vec<Rc<Node>>,
 }
 
-pub fn infer_block_stmts(mut remaining: Vec<Rc<Node>>, mut scope: Rc<InferScope>, mut typed_stmts: Vec<Rc<Node>>, mut diag_chunks: Vec<Vec<Rc<Node>>>, mut last_type: Rc<Node>) -> Rc<BlockInferState> {
+pub fn infer_block_stmts(mut remaining: Vec<Rc<Node>>, mut scope: Rc<InferScope>, mut typed_stmts: Vec<Rc<Node>>, mut diag_chunks: Vec<Vec<Rc<ErrorNode>>>, mut last_type: Rc<Node>) -> Rc<BlockInferState> {
     loop {
         match remaining.clone().first().cloned() {
     None => { break Rc::new(BlockInferState {
@@ -165,57 +165,57 @@ continue;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedItemResult {
     pub item: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArmInferResult {
     pub typed_arm: Rc<MatchArm>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
     pub body_type: Rc<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatternScopeResult {
     pub scope: Rc<InferScope>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringPartInferResult {
     pub typed_part: Rc<StringPart>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArgInferResult {
     pub typed_arg: Rc<NamedArg>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInferResult {
     pub typed_field: Rc<FieldInit>,
     pub infer_result: Rc<InferResult>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuildTypeEnvResult {
     pub env: Rc<TypeEnv>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParentModulesResult {
     pub modules: Vec<Rc<TypedModule>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantResult {
     pub variant: Rc<Variant>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -238,7 +238,7 @@ pub struct LocalContributionState {
     pub svc_registry: HashMap<String, Vec<Rc<OpEntry>>>,
     pub svc_locals: HashMap<String, Rc<TypeBinding>>,
     pub item_registry: HashMap<String, Rc<ItemInfo>>,
-    pub diag_chunks: Vec<Vec<Rc<Node>>>,
+    pub diag_chunks: Vec<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn merge_scope_from_imports(mut remaining: Vec<Rc<ResolvedImport>>, mut parent_index: HashMap<String, Rc<TypedModule>>, mut env: Rc<TypeEnv>, mut func_sigs: HashMap<String, Rc<DeclaredFuncSig>>, mut svc_registry: HashMap<String, Vec<Rc<OpEntry>>>, mut svc_locals: HashMap<String, Rc<TypeBinding>>) -> Rc<InferScopeComponents> {
@@ -391,12 +391,12 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
 }
 }
 
-pub fn inference_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<Node> {
-    diagnostic_node("error".to_string(), message.clone(), span.clone(), Some(module_name.clone()), None)
+pub fn inference_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
+    make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: message.clone(), span: span.clone() }), module_name.clone())
 }
 
-pub fn categorized_error(message: String, span: Rc<SourceSpan>, module_name: String, category: String) -> Rc<Node> {
-    diagnostic_node("error".to_string(), message.clone(), span.clone(), Some(module_name.clone()), Some(category.clone()))
+pub fn categorized_error(message: String, span: Rc<SourceSpan>, module_name: String, category: String) -> Rc<ErrorNode> {
+    make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: message.clone(), span: span.clone() }), module_name.clone())
 }
 
 pub fn inferred_from_node_type(result: Rc<NodeType>, fallback_message: String, fallback_span: Rc<SourceSpan>) -> Rc<InferredNode> {
@@ -2115,10 +2115,7 @@ pub fn infer_items(items: Vec<Rc<Node>>, scope: Rc<InferScope>) -> Vec<Rc<TypedI
 
 pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: HashMap<String, Rc<TypedModule>>) -> Rc<BuildTypeEnvResult> {
     {
-        let zero_span = Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-});
+        let zero_span = SourceSpan::new(0, 0);
 let kernel_bindings = KERNEL_TYPES.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
@@ -2223,7 +2220,7 @@ let import_env = Rc::new(TypeEnv {
 });
 let import_diags = { let mut __result = Vec::new(); for imp in module.resolved_imports.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
     Some(_) => vec![],
-    None => vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("missing parent environment for imported module '".to_string(), imp.module_path.clone()), "' while typechecking '".to_string()), module.module.clone().name.clone()), "'".to_string()), imp.target_span.clone().clone().unwrap(), Some(module.module.clone().name.clone()), Some("unresolved_name".to_string()))],
+    None => vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: format!("missing parent environment for imported module '{}' while typechecking '{}'", imp.module_path, module.module.name), span: imp.target_span.clone().clone().unwrap() }), module.module.clone().name.clone())],
 }); } __result };
 let local_bindings = module_items(module.module.clone()).iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, item: Rc<Node>| if node_has_structure(item.clone()) {
             {
@@ -2392,10 +2389,7 @@ Rc::new(BuildTypeEnvResult {
 
 pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: HashMap<String, Rc<TypedModule>>) -> Rc<BuildTypeEnvResult> {
     {
-        let zero_span = Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-});
+        let zero_span = SourceSpan::new(0, 0);
 let kernel_bindings = KERNEL_TYPES.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
@@ -2711,7 +2705,7 @@ Rc::new(ItemContribution {
 }
 }
 
-pub fn fold_module_contributions(mut remaining: Vec<Rc<ItemContribution>>, mut resolved_items: Vec<Rc<Node>>, mut func_sigs: HashMap<String, Rc<DeclaredFuncSig>>, mut svc_registry: HashMap<String, Vec<Rc<OpEntry>>>, mut svc_locals: HashMap<String, Rc<TypeBinding>>, mut item_registry: HashMap<String, Rc<ItemInfo>>, mut diag_chunks: Vec<Vec<Rc<Node>>>) -> Rc<LocalContributionState> {
+pub fn fold_module_contributions(mut remaining: Vec<Rc<ItemContribution>>, mut resolved_items: Vec<Rc<Node>>, mut func_sigs: HashMap<String, Rc<DeclaredFuncSig>>, mut svc_registry: HashMap<String, Vec<Rc<OpEntry>>>, mut svc_locals: HashMap<String, Rc<TypeBinding>>, mut item_registry: HashMap<String, Rc<ItemInfo>>, mut diag_chunks: Vec<Vec<Rc<ErrorNode>>>) -> Rc<LocalContributionState> {
     loop {
         match remaining.clone().first().cloned() {
     None => { break Rc::new(LocalContributionState {
@@ -2786,7 +2780,7 @@ Rc::new(ModuleContext {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypecheckModuleResult {
     pub typed: Rc<TypedModule>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn typecheck_module(resolved: Rc<ResolvedModule>, parent_index: HashMap<String, Rc<TypedModule>>) -> Rc<TypecheckModuleResult> {
@@ -2794,7 +2788,7 @@ pub fn typecheck_module(resolved: Rc<ResolvedModule>, parent_index: HashMap<Stri
         let env_result = build_type_env(resolved.clone(), parent_index.clone());
 let env = env_result.env.clone();
 let env_diags = env_result.diagnostics.clone();
-let env_errors = { let mut __result = Vec::new(); for d in env_diags.clone().iter().cloned() { if diagnostic_is_error(d.clone()) { __result.push(d); } } __result };
+let env_errors = { let mut __result = Vec::new(); for d in env_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result };
 if ((env_errors.clone().len() as i64) > 0) {
             return Rc::new(TypecheckModuleResult {
     typed: Rc::new(TypedModule {
@@ -2847,19 +2841,19 @@ Rc::new(TypecheckModuleResult {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnvResolveResult {
     pub env: Rc<TypeEnv>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BindingResult {
     pub binding: Rc<TypeBinding>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BindingsAccum {
     pub bindings: HashMap<String, Rc<TypeBinding>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn resolve_env_bindings(env: Rc<TypeEnv>, module_name: String, local_names: HashMap<String, bool>, deps_map: HashMap<String, Vec<String>>) -> Rc<EnvResolveResult> {
@@ -2869,7 +2863,7 @@ topo_resolve_types(remaining.clone(), env.clone(), module_name.clone(), vec![], 
 }
 }
 
-pub fn topo_resolve_types(mut remaining: Vec<String>, mut env: Rc<TypeEnv>, mut module_name: String, mut diagnostics: Vec<Rc<Node>>, mut local_names: HashMap<String, bool>, mut deps_map: HashMap<String, Vec<String>>) -> Rc<EnvResolveResult> {
+pub fn topo_resolve_types(mut remaining: Vec<String>, mut env: Rc<TypeEnv>, mut module_name: String, mut diagnostics: Vec<Rc<ErrorNode>>, mut local_names: HashMap<String, bool>, mut deps_map: HashMap<String, Vec<String>>) -> Rc<EnvResolveResult> {
     loop {
         if ((remaining.clone().len() as i64) == 0) {
             return Rc::new(EnvResolveResult {
@@ -2958,7 +2952,7 @@ pub fn collect_parent_envs(resolved: Rc<ResolvedModule>, module_index: HashMap<S
 }); } __result };
 let diagnostics = { let mut __result = Vec::new(); for imp in resolved.resolved_imports.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&module_index, imp.module_path.clone()) {
     Some(_) => vec![],
-    None => vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("missing parent environment for imported module '".to_string(), imp.module_path.clone()), "' while ordering '".to_string()), resolved.module.clone().name.clone()), "'".to_string()), imp.target_span.clone().clone().unwrap(), Some(resolved.module.clone().name.clone()), Some("unresolved_name".to_string()))],
+    None => vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: format!("missing parent environment for imported module '{}' while ordering '{}'", imp.module_path, resolved.module.name), span: imp.target_span.clone().clone().unwrap() }), resolved.module.clone().name.clone())],
 }); } __result };
 Rc::new(ParentModulesResult {
     modules: modules.clone(),
@@ -2991,7 +2985,7 @@ pub fn typecheck(graph: Rc<ModuleGraph>) -> Rc<TypedGraph> {
     typecheck_modules(graph.modules.clone(), vec![], <HashMap<_, _>>::new(), <HashMap<_, _>>::new(), vec![])
 }
 
-pub fn typecheck_modules(mut remaining: Vec<Rc<ResolvedModule>>, mut modules: Vec<Rc<TypedModule>>, mut module_index: HashMap<String, Rc<TypedModule>>, mut item_registry: HashMap<String, Rc<ItemInfo>>, mut diag_chunks: Vec<Vec<Rc<Node>>>) -> Rc<TypedGraph> {
+pub fn typecheck_modules(mut remaining: Vec<Rc<ResolvedModule>>, mut modules: Vec<Rc<TypedModule>>, mut module_index: HashMap<String, Rc<TypedModule>>, mut item_registry: HashMap<String, Rc<ItemInfo>>, mut diag_chunks: Vec<Vec<Rc<ErrorNode>>>) -> Rc<TypedGraph> {
     loop {
         match remaining.clone().first().cloned() {
     None => { let expanded_registry = expand_transitive_services(modules.clone(), item_registry.clone(), 5);

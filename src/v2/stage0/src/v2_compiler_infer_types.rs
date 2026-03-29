@@ -102,10 +102,7 @@ pub fn collection_kind_for_name(name: String) -> Option<CollectionKind> {
 pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: kind_name.clone(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![element.clone()],
     connective: None,
     collection_kind: collection_kind_for_name(kind_name.clone()),
@@ -127,16 +124,10 @@ pub fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
 pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Tuple".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![Rc::new(Node {
     name: "first".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
     collection_kind: None,
@@ -156,10 +147,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     expr_data: Rc::new(ExprData::NoExprData),
 }), Rc::new(Node {
     name: "second".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
     collection_kind: None,
@@ -198,10 +186,7 @@ pub fn tuple_node(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Map".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![key.clone(), value.clone()],
     connective: None,
     collection_kind: Some(CollectionKind::MapKind),
@@ -223,10 +208,7 @@ pub fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
 pub fn bare_map_node() -> Rc<Node> {
     Rc::new(Node {
     name: "Map".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
     collection_kind: Some(CollectionKind::MapKind),
@@ -248,10 +230,7 @@ pub fn bare_map_node() -> Rc<Node> {
 pub fn callable_node(func_params: Vec<Rc<Param>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
     name: "Callable".to_string(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
     collection_kind: None,

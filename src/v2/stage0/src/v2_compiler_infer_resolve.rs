@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, Field, Param, NodeType, rt_node, InferredNode, diagnostic_node, Cardinality, ResourceUse, MatchArm, FieldInit, NamedArg, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span};
+pub use crate::v2_std_core::{Node, Field, Param, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, ResourceUse, MatchArm, FieldInit, NamedArg, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
@@ -63,67 +63,67 @@ pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type, is_recursive_type};
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeResolveResult {
     pub resolved: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemResult {
     pub item: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldResult {
     pub field: Rc<Field>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprResolveResult {
     pub expr: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NamedArgResolveResult {
     pub arg: Rc<NamedArg>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchArmResolveResult {
     pub arm: Rc<MatchArm>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldInitResolveResult {
     pub field_init: Rc<FieldInit>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringPartResolveResult {
     pub part: Rc<StringPart>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransportResolveResult {
     pub transport: Rc<Node>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParamResult {
     pub param: Rc<Param>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResourceUseResult {
     pub resource_use: Rc<ResourceUse>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
@@ -217,7 +217,7 @@ pub fn resolve_node_bounded(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String, 
             if (depth.clone() > 100) {
                 return Rc::new(NodeResolveResult {
     resolved: n.clone(),
-    diagnostics: vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat("internal: type resolution exceeded depth 100 for '".to_string(), n.name.clone()), "'".to_string()), n.span.clone(), Some(module_name.clone()), Some("invalid_operation".to_string()))],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: v2_rt::concat(v2_rt::concat("internal: type resolution exceeded depth 100 for '".to_string(), n.name.clone()), "'".to_string()), span: n.span.clone() }), module_name.clone())],
 })
 }
 let n = if (n.collection_kind.clone() == None) {
@@ -472,7 +472,7 @@ Rc::new(NodeResolveResult {
 let expected_arity = (decl.params.clone().len() as i64);
 let actual_arity = (n.children.clone().len() as i64);
 let arity_diags = if (expected_arity.clone() != actual_arity.clone()) {
-                            vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("type ".to_string(), n.name.clone()), " expects ".to_string()), v2_rt::to_string(expected_arity.clone())), " type arguments, got ".to_string()), v2_rt::to_string(actual_arity.clone())), n.span.clone(), Some(module_name.clone()), Some("type_mismatch".to_string()))]
+                            vec![make_error_node(Rc::new(CompilerDiagnostic::ArityMismatch { name: n.name.clone(), expected: expected_arity.clone(), got: actual_arity.clone(), span: n.span.clone() }), module_name.clone())]
 } else {
                             vec![]
 };
@@ -625,7 +625,7 @@ Rc::new(NodeResolveResult {
 } else {
                                         Rc::new(NodeResolveResult {
     resolved: n.clone(),
-    diagnostics: vec![diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat("unresolved type '".to_string(), n.name.clone()), "'".to_string()), n.span.clone(), Some(module_name.clone()), Some("unresolved_name".to_string()))],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType { name: n.name.clone(), span: n.span.clone() }), module_name.clone())],
 })
 },
 }
@@ -655,7 +655,7 @@ pub fn resolve_optional_node(n: Option<Rc<InferredNode>>, env: Rc<TypeEnv>, modu
     InferredNode::Resolved { node: inner, .. } => resolve_node(inner.clone(), env.clone(), module_name.clone()),
     InferredNode::CompilerError { message: msg, span: sp, .. } => Rc::new(NodeResolveResult {
     resolved: leaf_node("Error".to_string()),
-    diagnostics: vec![diagnostic_node("error".to_string(), msg.clone(), sp.clone(), Some(module_name.clone()), None)],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: msg.clone(), span: sp.clone() }), module_name.clone())],
 }),
 }
 }
@@ -854,7 +854,7 @@ pub fn resolve_expr_types(texpr: Rc<Node>, env: Rc<TypeEnv>, module_name: String
 }),
     ExprData::ExprError { kind: kind, message: message, .. } => Rc::new(ExprResolveResult {
     expr: make_expr_error_node(kind.clone(), message.clone(), texpr.span.clone()),
-    diagnostics: vec![diagnostic_node("error".to_string(), message.clone(), texpr.span.clone(), Some(module_name.clone()), Some("cascade_error".to_string()))],
+    diagnostics: vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError { message: message.clone(), span: texpr.span.clone() }), module_name.clone())],
 }),
     ExprData::ExprVar { .. } => Rc::new(ExprResolveResult {
     expr: texpr.clone(),

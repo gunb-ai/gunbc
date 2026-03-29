@@ -9,7 +9,7 @@ use v2_compiler::v2_compiler_infer_types::{
 use v2_compiler::v2_std_core::{Cardinality, InferredNode, MatchArm, MatchPattern, Node, NodeType, SourceSpan, leaf_node, with_optional_cardinality};
 
 fn zero_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan { start: 0, end: 0 })
+    SourceSpan::new(0, 0)
 }
 
 fn unit_expr() -> Rc<Node> {
@@ -121,10 +121,11 @@ fn pattern_lookup_reports_dynamic_scrutinee_explicitly() {
 
     assert!(matches!(lookup.status.as_ref(), NodeLookupStatus::LookupFailed));
     assert_eq!(lookup.diagnostics.len(), 1);
+    let diag_msg = v2_compiler::v2_std_core::diagnostic_to_message(lookup.diagnostics[0].diagnostic.clone());
     assert!(
-        lookup.diagnostics[0].name.contains("Dynamic scrutinee"),
-        "expected targeted Dynamic diagnostic, got {:?}",
-        lookup.diagnostics[0].name
+        diag_msg.contains("variant") && diag_msg.contains("not found"),
+        "expected targeted VariantNotFound diagnostic, got {:?}",
+        diag_msg
     );
 }
 
@@ -154,8 +155,9 @@ fn optional_match_exhaustiveness_reports_missing_none() {
     );
 
     assert_eq!(diags.len(), 1);
-    assert!(diags[0].name.contains("non-exhaustive"));
-    assert!(diags[0].name.contains("None"));
+    let diag0_msg = v2_compiler::v2_std_core::diagnostic_to_message(diags[0].diagnostic.clone());
+    assert!(diag0_msg.contains("non-exhaustive"));
+    assert!(diag0_msg.contains("None"));
 }
 
 #[test]

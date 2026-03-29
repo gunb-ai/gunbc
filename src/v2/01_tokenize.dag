@@ -14,6 +14,7 @@ module v2.compiler.tokenize
 
 import std.types { SourceSpan }
 import v2.std.core {
+  make_file_span,
   Token, TokenShape,
   ShKeyword,
   ShLBrace, ShRBrace, ShLParen, ShRParen, ShLBracket, ShRBracket,
@@ -93,6 +94,7 @@ type ScanResult {
 
 type SourceRef {
   text: String
+  file: String
 }
 
 // === Token construction helper ===
@@ -103,14 +105,14 @@ fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
 
 // === Entry point ===
 
-fn tokenize(source: String) -> List<Token> {
-  let src = SourceRef { text: source }
+fn tokenize(source: String, file: String) -> List<Token> {
+  let src = SourceRef { text: source, file: file }
   let initial = TokPos { pos: 0, interp_depth: [] }
   // Tokens are passed as a separate TCO parameter so that Rc::try_unwrap
   // succeeds in the loop (the standalone Rc has refcount 1, unlike a field
   // inside an Rc-wrapped struct which always has refcount >= 2).
   let final_state = tokenize_loop(source: src, tokens: [], pos: initial)
-  let eof_span = SourceSpan { start: final_state.pos, end: final_state.pos }
+  let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
   list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof))
 }
 
@@ -125,7 +127,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
 
   // Newlines are significant (statement separation)
   if ch == "\n" {
-    let tok = make_token(text: "\n", span: SourceSpan { start: s.pos, end: s.pos + 1 }, shape: ShNewline)
+    let tok = make_token(text: "\n", span: make_file_span(file: source.file, start: s.pos, end: s.pos + 1), shape: ShNewline)
     return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
       pos: s.pos + 1, interp_depth: s.interp_depth
     })
@@ -146,7 +148,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
     } else {
       // Nested brace inside interpolation expression -- decrement depth
       let new_depth = replace_last(stack: s.interp_depth, value: top - 1)
-      let tok = make_token(text: "}", span: SourceSpan { start: s.pos, end: s.pos + 1 }, shape: ShRBrace)
+      let tok = make_token(text: "}", span: make_file_span(file: source.file, start: s.pos, end: s.pos + 1), shape: ShRBrace)
       return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
         pos: s.pos + 1, interp_depth: new_depth
       })
@@ -169,26 +171,26 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
     char_at(s: source.text, pos: pos.pos + 1)
   } else { "" }
 
-  if ch == "=" && next_ch == ">" { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2) }
-  if ch == "-" && next_ch == ">" { return emit(pos: pos, shape: ShArrow, text: "->", len: 2) }
-  if ch == "=" && next_ch == "=" { return emit(pos: pos, shape: ShEqEq, text: "==", len: 2) }
-  if ch == "!" && next_ch == "=" { return emit(pos: pos, shape: ShNe, text: "!=", len: 2) }
-  if ch == "<" && next_ch == "=" { return emit(pos: pos, shape: ShLe, text: "<=", len: 2) }
-  if ch == ">" && next_ch == "=" { return emit(pos: pos, shape: ShGe, text: ">=", len: 2) }
-  if ch == "&" && next_ch == "&" { return emit(pos: pos, shape: ShAnd, text: "&&", len: 2) }
-  if ch == "|" && next_ch == "|" { return emit(pos: pos, shape: ShOr, text: "||", len: 2) }
-  if ch == "|" && next_ch == ">" { return emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2) }
-  if ch == "|" { return emit(pos: pos, shape: ShPipe, text: "|", len: 1) }
-  if ch == "?" && next_ch == "?" { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2) }
-  if ch == "." && next_ch == "." { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2) }
+  if ch == "=" && next_ch == ">" { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
+  if ch == "-" && next_ch == ">" { return emit(pos: pos, shape: ShArrow, text: "->", len: 2, file: source.file) }
+  if ch == "=" && next_ch == "=" { return emit(pos: pos, shape: ShEqEq, text: "==", len: 2, file: source.file) }
+  if ch == "!" && next_ch == "=" { return emit(pos: pos, shape: ShNe, text: "!=", len: 2, file: source.file) }
+  if ch == "<" && next_ch == "=" { return emit(pos: pos, shape: ShLe, text: "<=", len: 2, file: source.file) }
+  if ch == ">" && next_ch == "=" { return emit(pos: pos, shape: ShGe, text: ">=", len: 2, file: source.file) }
+  if ch == "&" && next_ch == "&" { return emit(pos: pos, shape: ShAnd, text: "&&", len: 2, file: source.file) }
+  if ch == "|" && next_ch == "|" { return emit(pos: pos, shape: ShOr, text: "||", len: 2, file: source.file) }
+  if ch == "|" && next_ch == ">" { return emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2, file: source.file) }
+  if ch == "|" { return emit(pos: pos, shape: ShPipe, text: "|", len: 1, file: source.file) }
+  if ch == "?" && next_ch == "?" { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
+  if ch == "." && next_ch == "." { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
 
   // Single-character operators not in the table
-  if ch == "=" { return emit(pos: pos, shape: ShEq, text: "=", len: 1) }
-  if ch == "<" { return emit(pos: pos, shape: ShLt, text: "<", len: 1) }
-  if ch == ">" { return emit(pos: pos, shape: ShGt, text: ">", len: 1) }
-  if ch == "-" { return emit(pos: pos, shape: ShMinus, text: "-", len: 1) }
-  if ch == "!" { return emit(pos: pos, shape: ShBang, text: "!", len: 1) }
-  if ch == "?" { return emit(pos: pos, shape: ShQuestion, text: "?", len: 1) }
+  if ch == "=" { return emit(pos: pos, shape: ShEq, text: "=", len: 1, file: source.file) }
+  if ch == "<" { return emit(pos: pos, shape: ShLt, text: "<", len: 1, file: source.file) }
+  if ch == ">" { return emit(pos: pos, shape: ShGt, text: ">", len: 1, file: source.file) }
+  if ch == "-" { return emit(pos: pos, shape: ShMinus, text: "-", len: 1, file: source.file) }
+  if ch == "!" { return emit(pos: pos, shape: ShBang, text: "!", len: 1, file: source.file) }
+  if ch == "?" { return emit(pos: pos, shape: ShQuestion, text: "?", len: 1, file: source.file) }
 
   // Braces -- need special handling for interpolation depth tracking
   if ch == "{" {
@@ -197,7 +199,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
     } else {
       pos.interp_depth
     }
-    let tok = make_token(text: "{", span: SourceSpan { start: pos.pos, end: pos.pos + 1 }, shape: ShLBrace)
+    let tok = make_token(text: "{", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShLBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: new_depth
     }
@@ -206,7 +208,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
   if ch == "}" {
     // Not inside interpolation (that case handled in tokenize_loop).
     // This is a normal RBrace.
-    let tok = make_token(text: "}", span: SourceSpan { start: pos.pos, end: pos.pos + 1 }, shape: ShRBrace)
+    let tok = make_token(text: "}", span: make_file_span(file: source.file, start: pos.pos, end: pos.pos + 1), shape: ShRBrace)
     return ScanResult {
       pos: pos.pos + 1, token: tok, interp_depth: pos.interp_depth
     }
@@ -214,15 +216,15 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: String) -> ScanResult {
 
   // Single-char punctuation from table
   match lookup(single_punct, key: ch) {
-    Some { value: sh } => emit(pos: pos, shape: sh, text: ch, len: 1)
-    None => emit(pos: pos, shape: ShUnknown, text: ch, len: 1)
+    Some { value: sh } => emit(pos: pos, shape: sh, text: ch, len: 1, file: source.file)
+    None => emit(pos: pos, shape: ShUnknown, text: ch, len: 1, file: source.file)
   }
 }
 
 // === Helpers ===
 
-fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int) -> ScanResult {
-  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: pos.pos + len }, shape: shape)
+fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) -> ScanResult {
+  let token = make_token(text: text, span: make_file_span(file: file, start: pos.pos, end: pos.pos + len), shape: shape)
   ScanResult {
     pos: pos.pos + len,
     token: token,
@@ -234,7 +236,7 @@ fn scan_ident(source: SourceRef, pos: TokPos) -> ScanResult {
   let end = scan_while(s: source.text, start: pos.pos, pred: is_ident_char)
   let text = substring(s: source.text, start: pos.pos, end: end)
   let shape = if is_keyword_text(text: text) { ShKeyword } else { ShIdent }
-  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: end }, shape: shape)
+  let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: end), shape: shape)
   ScanResult { pos: end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -244,7 +246,7 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   if int_end + 1 < string_length(s: source.text) && char_at(s: source.text, pos: int_end) == "." && is_digit(ch: char_at(s: source.text, pos: int_end + 1)) {
     let frac_end = scan_while(s: source.text, start: int_end + 1, pred: is_digit)
     let text = substring(s: source.text, start: pos.pos, end: frac_end)
-    let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: frac_end }, shape: ShLitFloat)
+    let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: ShLitFloat)
     return ScanResult { pos: frac_end, token: token, interp_depth: pos.interp_depth }
   }
   let text = substring(s: source.text, start: pos.pos, end: int_end)
@@ -253,7 +255,7 @@ fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
     Some { value: _ } => ShLitInt
     None => ShUnknown
   }
-  let token = make_token(text: text, span: SourceSpan { start: pos.pos, end: int_end }, shape: shape)
+  let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: int_end), shape: shape)
   ScanResult { pos: int_end, token: token, interp_depth: pos.interp_depth }
 }
 
@@ -280,7 +282,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShLitStr)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShLitStr)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -288,7 +290,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrBegin)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrBegin)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -297,7 +299,7 @@ fn scan_string(source: SourceRef, pos: TokPos) -> ScanResult {
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos), shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth
@@ -314,7 +316,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
   match result {
     ClosedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrEnd)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrEnd)
       ScanResult {
         pos: end_pos + 1, token: token,
         interp_depth: pos.interp_depth
@@ -322,7 +324,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     InterpolationStart { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos + 1 }, shape: ShStrMid)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos + 1), shape: ShStrMid)
       ScanResult {
         pos: end_pos + 1,
         token: token,
@@ -331,7 +333,7 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
     }
     UnterminatedString { content, end_pos } => {
       let processed = process_escapes(raw: content)
-      let token = make_token(text: processed, span: SourceSpan { start: span_start, end: end_pos }, shape: ShUnknown)
+      let token = make_token(text: processed, span: make_file_span(file: source.file, start: span_start, end: end_pos), shape: ShUnknown)
       ScanResult {
         pos: end_pos, token: token,
         interp_depth: pos.interp_depth

@@ -35,7 +35,7 @@ import v2.std.core {
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes,
-  NamedArg, diagnostic_is_error
+  NamedArg
 }
 
 // =========================================================================

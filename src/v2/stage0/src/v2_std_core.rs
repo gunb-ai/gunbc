@@ -639,7 +639,7 @@ pub struct CapabilityDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompileResult {
     pub files: Vec<Rc<TextFile>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1320,132 +1320,108 @@ let last_bad = match ss.clone().last().cloned() {
     })
 }
 
-pub fn diagnostic_node(severity: String, message: String, span: Rc<SourceSpan>, module_name: Option<String>, category: Option<String>) -> Rc<Node> {
-    {
-        let sev_prop = Rc::new(FieldInit {
-    name: "severity".to_string(),
-    value: make_expr_node(Rc::new(ExprData::ExprLiteral {
-    value: Rc::new(LiteralValue::LitStr {
-    value: severity.clone(),
-}),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
-});
-let mod_prop = match module_name.clone() {
-    Some(mn) => vec![Rc::new(FieldInit {
-    name: "module_name".to_string(),
-    value: make_expr_node(Rc::new(ExprData::ExprLiteral {
-    value: Rc::new(LiteralValue::LitStr {
-    value: mn.clone(),
-}),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
-})],
-    None => vec![],
-};
-let cat_prop = match category.clone() {
-    Some(cat) => vec![Rc::new(FieldInit {
-    name: "category".to_string(),
-    value: make_expr_node(Rc::new(ExprData::ExprLiteral {
-    value: Rc::new(LiteralValue::LitStr {
-    value: cat.clone(),
-}),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
-})],
-    None => vec![],
-};
-Rc::new(Node {
-    name: message.clone(),
-    span: span.clone(),
-    children: vec![],
-    connective: None,
-    collection_kind: None,
-    params: vec![],
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: vec![],
-    body: None,
-    transport: None,
-    properties: v2_rt::concat(v2_rt::concat(vec![sev_prop.clone()], mod_prop.clone()), cat_prop.clone()),
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})
-}
+// ── Typed diagnostics ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CompilerDiagnostic {
+    UnresolvedImport { module_path: String, importing_module: String, span: Rc<SourceSpan> },
+    MissingExport { name: String, module_path: String, importing_module: String, span: Rc<SourceSpan> },
+    UnresolvedType { name: String, span: Rc<SourceSpan> },
+    TypeMismatch { expected: String, got: String, span: Rc<SourceSpan> },
+    ArityMismatch { name: String, expected: i64, got: i64, span: Rc<SourceSpan> },
+    VariantNotFound { variant: String, type_name: String, span: Rc<SourceSpan> },
+    FieldNotFound { field: String, type_name: String, span: Rc<SourceSpan> },
+    NonExhaustiveMatch { missing: Vec<String>, span: Rc<SourceSpan> },
+    CircularDependency { modules: Vec<String>, span: Rc<SourceSpan> },
+    DuplicateModule { name: String, span: Rc<SourceSpan> },
+    MissingAnnotation { fn_name: String, what: String, span: Rc<SourceSpan> },
+    ParseError { message: String, span: Rc<SourceSpan> },
+    InternalError { message: String, span: Rc<SourceSpan> },
+    OwnershipWarning { binding: String, fn_name: String, consumers: i64, span: Rc<SourceSpan> },
 }
 
-pub fn is_diagnostic_node(n: Rc<Node>) -> bool {
-    { let mut __found = false; for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "severity".to_string()) { __found = true; break; } } __found }
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorNode {
+    pub diagnostic: Rc<CompilerDiagnostic>,
+    pub caused_by: Vec<i64>,
+    pub module_name: String,
 }
 
-pub fn diagnostic_is_error(n: Rc<Node>) -> bool {
-    (diagnostic_severity(n.clone()) == "error".to_string())
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorDAG {
+    pub errors: Vec<Rc<ErrorNode>>,
 }
 
-pub fn diagnostic_severity(n: Rc<Node>) -> String {
-    {
-        let sev_prop = { let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "severity".to_string()) { __result.push(p); } } __result }.first().cloned();
-match sev_prop.clone() {
-    Some(prop) => match (*prop.value.clone().expr_data.clone()).clone() {
-    ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-    LiteralValue::LitStr { value: s, .. } => s.clone(),
-    _ => "error".to_string(),
-},
-    _ => "error".to_string(),
-},
-    None => "error".to_string(),
-}
-}
-}
-
-pub fn diagnostic_message(n: Rc<Node>) -> String {
-    n.name.clone()
-}
-
-pub fn diagnostic_module_name(n: Rc<Node>) -> Option<String> {
-    {
-        let mod_prop = { let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "module_name".to_string()) { __result.push(p); } } __result }.first().cloned();
-match mod_prop.clone() {
-    Some(prop) => match (*prop.value.clone().expr_data.clone()).clone() {
-    ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-    LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
-    _ => None,
-},
-    _ => None,
-},
-    None => None,
-}
-}
+pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
+    match &*d {
+        CompilerDiagnostic::UnresolvedImport { span, .. } => span.clone(),
+        CompilerDiagnostic::MissingExport { span, .. } => span.clone(),
+        CompilerDiagnostic::UnresolvedType { span, .. } => span.clone(),
+        CompilerDiagnostic::TypeMismatch { span, .. } => span.clone(),
+        CompilerDiagnostic::ArityMismatch { span, .. } => span.clone(),
+        CompilerDiagnostic::VariantNotFound { span, .. } => span.clone(),
+        CompilerDiagnostic::FieldNotFound { span, .. } => span.clone(),
+        CompilerDiagnostic::NonExhaustiveMatch { span, .. } => span.clone(),
+        CompilerDiagnostic::CircularDependency { span, .. } => span.clone(),
+        CompilerDiagnostic::DuplicateModule { span, .. } => span.clone(),
+        CompilerDiagnostic::MissingAnnotation { span, .. } => span.clone(),
+        CompilerDiagnostic::ParseError { span, .. } => span.clone(),
+        CompilerDiagnostic::InternalError { span, .. } => span.clone(),
+        CompilerDiagnostic::OwnershipWarning { span, .. } => span.clone(),
+    }
 }
 
-pub fn diagnostic_category(n: Rc<Node>) -> Option<String> {
-    {
-        let cat_prop = { let mut __result = Vec::new(); for p in n.properties.clone().iter().cloned() { if (p.name.clone() == "category".to_string()) { __result.push(p); } } __result }.first().cloned();
-match cat_prop.clone() {
-    Some(prop) => match (*prop.value.clone().expr_data.clone()).clone() {
-    ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-    LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
-    _ => None,
-},
-    _ => None,
-},
-    None => None,
-}
-}
+pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
+    match &*d {
+        CompilerDiagnostic::UnresolvedImport { module_path, importing_module, .. } =>
+            format!("unresolved import: module '{}' not found (imported by '{}')", module_path, importing_module),
+        CompilerDiagnostic::MissingExport { name, module_path, importing_module, .. } =>
+            format!("name '{}' not found in module '{}' (imported by '{}')", name, module_path, importing_module),
+        CompilerDiagnostic::UnresolvedType { name, .. } =>
+            format!("unresolved type '{}'", name),
+        CompilerDiagnostic::TypeMismatch { expected, got, .. } =>
+            format!("type mismatch: expected '{}', got '{}'", expected, got),
+        CompilerDiagnostic::ArityMismatch { name, expected, got, .. } =>
+            format!("type {} expects {} type arguments, got {}", name, expected, got),
+        CompilerDiagnostic::VariantNotFound { variant, type_name, .. } =>
+            format!("variant '{}' not found in type '{}'", variant, type_name),
+        CompilerDiagnostic::FieldNotFound { field, type_name, .. } =>
+            format!("field '{}' not found in type '{}'", field, type_name),
+        CompilerDiagnostic::NonExhaustiveMatch { missing, .. } =>
+            format!("non-exhaustive match: missing variant(s) {}", missing.join(", ")),
+        CompilerDiagnostic::CircularDependency { modules, .. } =>
+            format!("circular dependency detected: {}", modules.join(" -> ")),
+        CompilerDiagnostic::DuplicateModule { name, .. } =>
+            format!("duplicate module declaration: '{}'", name),
+        CompilerDiagnostic::MissingAnnotation { fn_name, what, .. } =>
+            format!("function '{}' requires {} annotation", fn_name, what),
+        CompilerDiagnostic::ParseError { message, .. } => message.clone(),
+        CompilerDiagnostic::InternalError { message, .. } => message.clone(),
+        CompilerDiagnostic::OwnershipWarning { binding, fn_name, consumers, .. } =>
+            format!("ownership: binding '{}' in '{}' has {} consumers", binding, fn_name, consumers),
+    }
 }
 
-pub fn diagnostic_span(n: Rc<Node>) -> Rc<SourceSpan> {
-    n.span.clone()
+pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
+    !matches!(&*d, CompilerDiagnostic::OwnershipWarning { .. })
 }
+
+pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
+    Rc::new(ErrorNode {
+        diagnostic,
+        caused_by: vec![],
+        module_name,
+    })
+}
+
+pub fn make_cascade_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String, caused_by: Vec<i64>) -> Rc<ErrorNode> {
+    Rc::new(ErrorNode {
+        diagnostic,
+        caused_by,
+        module_name,
+    })
+}
+
 
 pub fn service_config_properties(endpoint: Rc<Node>, auth: Option<Rc<Node>>, rate_limit: Option<Rc<Node>>, retry: Option<Rc<Node>>) -> Vec<Rc<FieldInit>> {
     {
@@ -1506,10 +1482,7 @@ pub fn module_node(name: String, imports: Vec<Rc<Node>>, items: Vec<Rc<Node>>, s
     value: Rc::new(LiteralValue::LitStr {
     value: "true".to_string(),
 }),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
+}), vec![], None, SourceSpan::new(0, 0)),
 });
 Rc::new(Node {
     name: name.clone(),
@@ -1533,7 +1506,7 @@ Rc::new(Node {
 }
 }
 
-pub fn import_node(module_path: String, is_all: bool, specific_names: Vec<String>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn import_node(module_path: String, is_all: bool, specific_names: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let import_prop = Rc::new(FieldInit {
     name: "__is_import".to_string(),
@@ -1541,10 +1514,7 @@ pub fn import_node(module_path: String, is_all: bool, specific_names: Vec<String
     value: Rc::new(LiteralValue::LitStr {
     value: "true".to_string(),
 }),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
+}), vec![], None, SourceSpan::new(0, 0)),
 });
 let all_prop = if is_all.clone() {
             vec![Rc::new(FieldInit {
@@ -1553,40 +1523,15 @@ let all_prop = if is_all.clone() {
     value: Rc::new(LiteralValue::LitStr {
     value: "true".to_string(),
 }),
-}), vec![], None, Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-})),
+}), vec![], None, SourceSpan::new(0, 0)),
 })]
 } else {
             vec![]
 };
-let name_children = { let mut __result = Vec::new(); for n in specific_names.clone().iter().cloned() { __result.push(Rc::new(Node {
-    name: n.clone(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
-    children: vec![],
-    connective: None,
-    collection_kind: None,
-    params: vec![],
-    inferred: None,
-    return_cardinality: Cardinality::Required,
-    uses: vec![],
-    body: None,
-    transport: None,
-    properties: vec![],
-    type_annotation: None,
-    is_self_recursive: false,
-    has_non_tail_self_call: false,
-    match_pattern: None,
-    expr_data: Rc::new(ExprData::NoExprData),
-})); } __result };
 Rc::new(Node {
     name: module_path.clone(),
     span: span.clone(),
-    children: name_children.clone(),
+    children: specific_names.clone(),
     connective: None,
     collection_kind: None,
     params: vec![],
@@ -1636,10 +1581,7 @@ pub fn is_token_node(n: Rc<Node>) -> bool {
 pub fn leaf_node(name: String) -> Rc<Node> {
     Rc::new(Node {
     name: name.clone(),
-    span: Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
-}),
+    span: SourceSpan::new(0, 0),
     children: vec![],
     connective: None,
     collection_kind: None,
@@ -1658,11 +1600,40 @@ pub fn leaf_node(name: String) -> Rc<Node> {
 })
 }
 
-pub fn no_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan {
-    start: 0,
-    end: 0,
+pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+    Rc::new(Node {
+    name: name.clone(),
+    span: span.clone(),
+    children: vec![],
+    connective: None,
+    collection_kind: None,
+    params: vec![],
+    inferred: None,
+    return_cardinality: Cardinality::Required,
+    uses: vec![],
+    body: None,
+    transport: None,
+    properties: vec![],
+    type_annotation: None,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: None,
+    expr_data: Rc::new(ExprData::NoExprData),
 })
+}
+
+impl SourceSpan {
+    pub fn new(start: i64, end: i64) -> Rc<SourceSpan> {
+        Rc::new(SourceSpan { file: String::new(), start, end })
+    }
+
+    pub fn with_file(file: String, start: i64, end: i64) -> Rc<SourceSpan> {
+        Rc::new(SourceSpan { file, start, end })
+    }
+}
+
+pub fn no_span() -> Rc<SourceSpan> {
+    SourceSpan::new(0, 0)
 }
 
 pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
@@ -1707,6 +1678,63 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     match_pattern: n.match_pattern.clone(),
     expr_data: n.expr_data.clone(),
 })
+}
+
+// =========================================================================
+// NewlineIndex — byte-offset-to-line:col translation
+// =========================================================================
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineCol {
+    pub line: i64,
+    pub col: i64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewlineIndex {
+    pub file: String,
+    pub offsets: Vec<i64>,
+    pub source: String,
+}
+
+pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
+    let mut offsets = Vec::new();
+    for (i, b) in source.as_bytes().iter().enumerate() {
+        if *b == b'\n' {
+            offsets.push((i as i64) + 1);
+        }
+    }
+    Rc::new(NewlineIndex { file, offsets, source })
+}
+
+pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> Rc<LineCol> {
+    let offset_usize = offset.max(0) as usize;
+    let pos = index.offsets.partition_point(|&o| (o as usize) <= offset_usize);
+    let line = (pos as i64) + 1;
+    let line_start = if pos == 0 { 0i64 } else { index.offsets[pos - 1] };
+    let col = offset - line_start + 1;
+    Rc::new(LineCol { line, col })
+}
+
+pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
+    if line < 1 {
+        return String::new();
+    }
+    let line_idx = (line as usize) - 1;
+    let start = if line_idx == 0 { 0usize } else {
+        match index.offsets.get(line_idx - 1) {
+            Some(&o) => o as usize,
+            None => return String::new(),
+        }
+    };
+    let end = match index.offsets.get(line_idx) {
+        Some(&o) => (o as usize).saturating_sub(1), // exclude the '\n'
+        None => index.source.len(),
+    };
+    if start > index.source.len() || end > index.source.len() || start > end {
+        return String::new();
+    }
+    index.source[start..end].to_string()
 }
 
 pub fn node_is_product(n: Rc<Node>) -> bool {

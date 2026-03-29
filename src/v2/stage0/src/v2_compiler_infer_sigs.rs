@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, Param, ExprData, diagnostic_node, no_span, DeclaredFuncSig};
+pub use crate::v2_std_core::{Node, Param, ExprData, CompilerDiagnostic, ErrorNode, make_error_node, no_span, DeclaredFuncSig};
 use crate::v2_std_core::ExprData::{ExprCall};
 pub use crate::v2_compiler_infer_types::{emit_map_has};
 
@@ -68,13 +68,13 @@ pub struct ResolvedFuncEnv {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolveFuncSigsResult {
     pub func_env: Rc<ResolvedFuncEnv>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SigsAccum {
     pub signatures: HashMap<String, Rc<ResolvedFuncSig>>,
-    pub diagnostics: Vec<Rc<Node>>,
+    pub diagnostics: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -147,7 +147,7 @@ pub fn merge_remaining_declared(declared_sigs: HashMap<String, Rc<DeclaredFuncSi
 })
 }
 
-pub fn topo_resolve_loop(mut remaining: Vec<String>, mut resolved: HashMap<String, Rc<ResolvedFuncSig>>, mut declared_sigs: HashMap<String, Rc<DeclaredFuncSig>>, mut call_edges: Vec<Rc<CallEdge>>, mut local_func_set: HashMap<String, bool>, mut module_name: String, mut diagnostics: Vec<Rc<Node>>) -> Rc<ResolveFuncSigsResult> {
+pub fn topo_resolve_loop(mut remaining: Vec<String>, mut resolved: HashMap<String, Rc<ResolvedFuncSig>>, mut declared_sigs: HashMap<String, Rc<DeclaredFuncSig>>, mut call_edges: Vec<Rc<CallEdge>>, mut local_func_set: HashMap<String, bool>, mut module_name: String, mut diagnostics: Vec<Rc<ErrorNode>>) -> Rc<ResolveFuncSigsResult> {
     loop {
         if ((remaining.clone().len() as i64) == 0) {
             {
@@ -182,7 +182,7 @@ if ((ready.clone().len() as i64) == 0) {
 } else {
                     Rc::new(SigsAccum {
     signatures: acc.signatures.clone(),
-    diagnostics: v2_rt::list_push(acc.diagnostics.clone(), diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat("recursive function '".to_string(), fn_name.clone()), "' requires return type annotation".to_string()), no_span(), Some(module_name.clone()), Some("type_mismatch".to_string()))),
+    diagnostics: v2_rt::list_push(acc.diagnostics.clone(), make_error_node(Rc::new(CompilerDiagnostic::MissingAnnotation { fn_name: fn_name.clone(), what: "return type (recursive)".to_string(), span: no_span() }), module_name.clone())),
 })
 },
     None => acc.clone(),
@@ -212,7 +212,7 @@ let ready_accum = ready.clone().iter().cloned().fold(Rc::new(SigsAccum {
 } else {
             Rc::new(SigsAccum {
     signatures: acc.signatures.clone(),
-    diagnostics: v2_rt::list_push(acc.diagnostics.clone(), diagnostic_node("error".to_string(), v2_rt::concat(v2_rt::concat("function '".to_string(), fn_name.clone()), "' requires return type annotation".to_string()), no_span(), Some(module_name.clone()), Some("type_mismatch".to_string()))),
+    diagnostics: v2_rt::list_push(acc.diagnostics.clone(), make_error_node(Rc::new(CompilerDiagnostic::MissingAnnotation { fn_name: fn_name.clone(), what: "return type".to_string(), span: no_span() }), module_name.clone())),
 })
 },
     None => acc.clone(),

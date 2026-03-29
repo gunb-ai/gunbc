@@ -4,9 +4,15 @@
 
 use clap::{Parser, Subcommand};
 
+use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_compile;
+use v2_compiler::v2_compiler_compile::PipelineResult;
 use v2_compiler::v2_compiler_artifact;
+use v2_compiler::v2_std_core::{
+    is_error_diagnostic, diagnostic_to_message, diagnostic_to_span,
+    byte_to_line_col, source_line_at, NewlineIndex,
+};
 
 #[derive(Parser)]
 #[command(name = "v2-compiled", about = "Generated CLI from DAG compiler")]
@@ -90,13 +96,115 @@ let _result = match cli.command {
             }
             eprintln!("compiled: {} files emitted, {} diagnostics",
                 result.files.len(), result.diagnostics.len());
-            for (i, d) in result.diagnostics.iter().take(20).enumerate() {
-                eprintln!("  [{}]: {:?}", i, d);
-            }
+            render_diagnostics(&result);
             if result.files.is_empty() {
                 eprintln!("error: no files emitted");
                 std::process::exit(1);
             }
         },
     };
+}
+
+fn render_diagnostics(result: &PipelineResult) {
+    if result.diagnostics.is_empty() {
+        return;
+    }
+
+    // Build file → NewlineIndex lookup.
+    let index_map: HashMap<String, Rc<NewlineIndex>> = result
+        .newline_indices
+        .iter()
+        .map(|idx| (idx.file.clone(), idx.clone()))
+        .collect();
+
+    // Partition into roots (caused_by empty) and cascades.
+    let mut roots: Vec<usize> = Vec::new();
+    let mut cascades_by_parent: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (i, d) in result.diagnostics.iter().enumerate() {
+        if d.caused_by.is_empty() {
+            roots.push(i);
+        } else {
+            for parent_id in &d.caused_by {
+                cascades_by_parent
+                    .entry(*parent_id as usize)
+                    .or_default()
+                    .push(i);
+            }
+        }
+    }
+
+    let root_count = roots.len();
+    let total = result.diagnostics.len();
+    let cascade_count = total - root_count;
+
+    // Render roots first, then their cascades grouped underneath.
+    for &root_idx in &roots {
+        render_one_diagnostic(&result.diagnostics[root_idx], &index_map, "");
+        if let Some(children) = cascades_by_parent.get(&root_idx) {
+            for &child_idx in children {
+                render_one_diagnostic(&result.diagnostics[child_idx], &index_map, "  ");
+            }
+        }
+    }
+
+    // Summary line.
+    if cascade_count > 0 {
+        eprintln!("\n{} root errors, {} total ({} cascades)", root_count, total, cascade_count);
+    } else {
+        eprintln!("\n{} error(s)", total);
+    }
+}
+
+fn render_one_diagnostic(
+    d: &v2_compiler::v2_std_core::ErrorNode,
+    index_map: &HashMap<String, Rc<NewlineIndex>>,
+    indent: &str,
+) {
+    let severity = if is_error_diagnostic(d.diagnostic.clone()) { "error" } else { "warning" };
+    let message = diagnostic_to_message(d.diagnostic.clone());
+    let span = diagnostic_to_span(d.diagnostic.clone());
+
+    // Resolve file:line:col if we have a newline index for this file.
+    let location = if !span.file.is_empty() {
+        if let Some(idx) = index_map.get(&span.file) {
+            let lc = byte_to_line_col(idx.clone(), span.start);
+            format!("{}:{}:{}", span.file, lc.line, lc.col)
+        } else {
+            span.file.clone()
+        }
+    } else if !d.module_name.is_empty() {
+        d.module_name.clone()
+    } else {
+        String::new()
+    };
+
+    // Print error header.
+    if location.is_empty() {
+        eprintln!("{}{}: {}", indent, severity, message);
+    } else {
+        eprintln!("{}{}[{}]: {}", indent, severity, location, message);
+    }
+
+    // Print source context if we have a newline index.
+    if !span.file.is_empty() {
+        if let Some(idx) = index_map.get(&span.file) {
+            let lc = byte_to_line_col(idx.clone(), span.start);
+            let line_text = source_line_at(idx.clone(), lc.line);
+            let line_num = format!("{}", lc.line);
+            let gutter_width = line_num.len();
+            eprintln!("{} {} |", indent, " ".repeat(gutter_width));
+            eprintln!("{} {} | {}", indent, line_num, line_text);
+
+            // Caret span.
+            let span_len = std::cmp::max(1, (span.end - span.start) as usize);
+            let col_offset = (lc.col - 1) as usize;
+            eprintln!(
+                "{} {} | {}{}",
+                indent,
+                " ".repeat(gutter_width),
+                " ".repeat(col_offset),
+                "^".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))
+            );
+        }
+    }
 }

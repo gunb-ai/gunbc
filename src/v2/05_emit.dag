@@ -18,7 +18,7 @@
 module v2.compiler.emit
 
 import v2.std.core {
-  Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
   Field, Param,
   ExprData, NoExprData,
@@ -94,7 +94,7 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type EmitResult {
   files: List<TextFile>
-  diagnostics: List<Node>
+  diagnostics: List<ErrorNode>
 }
 
 type BlockEmitState {
