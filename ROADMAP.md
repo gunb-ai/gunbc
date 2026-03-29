@@ -966,89 +966,94 @@ authority. The invariants say: speculative or lossy boundary fact
 tables should be deleted rather than carried forward. "Temporary"
 without a ratchet means "permanent later."
 
-#### Backend model: emergent graph coercion
+#### Backend model: graph coercion
 
-Coercion is not a rule engine. It is **emergent from graph structure.**
-The compiler reads the source graph and the target's basis, and the
-coercion direction falls out of the subgraph relationship — no
-hand-written rules for things the graph already tells us.
+The backend is a graph→graph coercion engine. The graph structure
+tells the compiler WHAT kind of coercion is needed. It does NOT always
+tell the compiler HOW to discharge the proof — some steps need
+evidence or explicit transforms.
 
 ```
-typed graph → structural comparison → coercion direction → target-basis graph → renderer
+typed graph → carrier + constraint analysis → coercion plan → target-basis graph → renderer
 ```
 
-**Four coercion directions, all structurally deducible:**
+Note: "subgraph" is too literal as the universal test. The real
+relation is **carrier compatibility + constraint entailment** — same
+carrier with fewer guarantees (widen), same carrier with more
+guarantees (refine/validate), or different carrier entirely
+(transform/lower).
 
-| Direction | Graph relationship | Information | Safety | Example |
+**Five coercion kinds with witness types:**
+
+| Kind | What happens | Witness | Implicit? | Example |
 |---|---|---|---|---|
-| **Widening** | Source is refinement of target | Forgets constraints | Safe, free | `Url → String` |
-| **Narrowing** | Target has constraints source lacks | Adds constraints | Needs validation | `String → Url` |
-| **Isomorphism** | Path through shared base, lossless | Same info, different view | Safe, pure function | `Celsius ↔ Kelvin ↔ Fahrenheit` |
-| **Projection** | Source has structure target lacks | Loses information | Must acknowledge loss | `List → Set` (loses order) |
+| **Widen** | Erase guarantees | `Free` | Yes | `Url → String` (predicate erasure) |
+| **Refine** | Add guarantees already proven by structure | `Proven` | Yes | `NonEmpty<List<T>>` → compiler sees non-empty evidence |
+| **Validate** | Add guarantees by runtime check | `Checked` | No — explicit `as` or inserted check, visible in receipt | `String → Url` (needs URL validator) |
+| **Project** | Lose structural information | `Lossy` | No — explicit acknowledgment | `List → Set` (loses order), `Float → Int` (truncate) |
+| **Transform/Lower** | Compute new representation | `Transformed` | No — `.dag` process or plugin lowering | `Celsius → Fahrenheit` (domain), coproduct → SPICE mux (backend) |
 
-All four are structurally deducible from the graph. The compiler
-reads the type relationships and determines direction + cost. No
-hand-written coercion rules.
+**Key distinctions from earlier model:**
 
-**Key insight: most "sidecasts" dissolve with proper modeling.** If
-Celsius and Fahrenheit both model absolute temperature through Kelvin
-(a shared structural base), the "conversion" is:
+- **Upcasts (widen) are implicit.** Free, no evidence needed.
+- **Refinements with proof already present are implicit.** The graph
+  carries the evidence; the compiler reads it.
+- **Downcasts (validate) are NOT generally implicit.** Only the subset
+  already proven by structure is implicit. Everything else needs an
+  explicit check — otherwise we reintroduce hidden fabrication.
+- **Transform and lower are separate concerns that share a mechanism.**
+  `Celsius → Fahrenheit` is a user-space domain transform.
+  `coproduct → SPICE mux` is a backend lowering. Both need authored
+  `.dag` processes, but they're not the same category — domain
+  transforms live in user/library code, backend lowerings live in
+  language plugins.
+
+**Key insight: most domain transforms dissolve with proper modeling.**
+If Celsius and Fahrenheit both model absolute temperature through
+Kelvin (a shared structural base), the compiler finds the path:
 
 ```
-Celsius → Kelvin    (isomorphism, pure: kelvin = celsius + 273.15)
-Kelvin → Fahrenheit (isomorphism, pure: f = kelvin * 9/5 - 459.67)
+Celsius → Kelvin    (widen/refine: same carrier, offset transform)
+Kelvin → Fahrenheit (widen/refine: same carrier, scale + offset)
 ```
 
-Both legs are pure and invertible. The compiler finds the path through
-the type graph — no authored transformation needed. If you find
-yourself writing a "sidecast," your types may be under-modeled: there's
-a shared base you haven't declared.
+Both legs have proven witnesses. The compiler finds the path through
+the type graph. If you find yourself writing an explicit transform,
+your types may be under-modeled: there's a shared base you haven't
+declared.
 
 **Worked examples:**
 
 ```
-WIDENING (free, structural):
-  Url → String
-  Url IS a String (refinement). Source has all target edges + more.
-  Compiler sees: subgraph ✓. Cost: free.
+WIDEN (implicit, Free):
+  Url → String — predicate erasure. Same carrier, fewer guarantees.
 
-NARROWING (checked, structural):
-  String → Url
-  Target has constraints (scheme, host) source doesn't guarantee.
-  Compiler sees: extra constraints. Must validate or fail.
+REFINE (implicit if proven, Proven):
+  xs |> filter(non_empty) |> first → NonEmptyString
+  Compiler sees: filter guarantees non-empty. Evidence: Proven.
 
-ISOMORPHISM (pure, through shared base):
-  Celsius → Fahrenheit
-  Both are views of absolute temperature (Kelvin).
-  Compiler finds: Celsius → Kelvin → Fahrenheit (both invertible).
-  Cost: two pure functions. No information lost.
+VALIDATE (explicit, Checked):
+  String → Url — needs URL validator. Compiler shows: "String lacks
+  scheme/host constraints. Insert url_parse(s) or use as_url(s)."
+  The check is visible in the guarantee receipt.
 
-PROJECTION (lossy, explicit acknowledgment):
-  List → Set
-  Set has LESS structure than List (no order, no duplicates).
-  Compiler sees: target lacks edges source has (position, multiplicity).
-  Developer must acknowledge what's lost: to_set(list) is explicit.
-  The compiler can enumerate exactly what's discarded.
+PROJECT (explicit, Lossy):
+  List → Set — compiler shows: "target lacks position, multiplicity.
+  Use to_set(list). Acknowledge: order lost, duplicates removed."
 
-  Float → Int
-  Int has LESS precision than Float (no fractional part).
-  Compiler sees: target lacks precision edge.
-  Developer must acknowledge: truncate(f) or round(f) is explicit.
+TRANSFORM (explicit .dag process, Transformed):
+  Celsius → Fahrenheit — through Kelvin shared base if modeled.
+  Otherwise: user writes fn to_fahrenheit(c: Celsius) -> Fahrenheit.
+
+LOWER (plugin .dag process, Transformed):
+  coproduct → SPICE mux — language plugin declares the lowering.
+  Lives in dsl/extdeps/languages/spice/coerce.dag, not in user code.
 ```
 
-**Unsafe coercions are not allowed.** The compiler either:
-- Proves the transformation is safe (widening, isomorphism) → allows
-- Identifies exactly what's lost (projection) → shows the structural
-  diff and requires the user to write the explicit transform
-- Finds a path through a shared base → uses it automatically
-- Can't find any structural path → compile error with guidance:
-  "these types differ by [edges X, Y, Z] — write a function that
-  handles the difference, or declare a shared base"
-
-The error messages show the structural transform required — what
-edges exist in the source but not the target, what constraints the
-target adds. The user writes the transform; the compiler verifies it
-handles every structural difference. No silent information loss.
+**The guarantee receipt records every non-Free step:** kind, witness
+type, what evidence was used (or what check was inserted, or what
+process was invoked). No silent coercions. The receipt is the audit
+trail.
 
 **For language targets, the same model applies:**
 
