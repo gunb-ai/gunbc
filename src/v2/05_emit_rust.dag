@@ -1486,8 +1486,8 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 }
 
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, vtoe: Map<String, String>, rc_types: Map<String, Bool>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
-  if name == "none" || name == "None" { "None" }
-  else if name == "true" || name == "false" { name }
+  if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
+  else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info)
     let ref_str = match variant_parent {
@@ -1535,8 +1535,8 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   match texpr.expr_data {
     ExprVar { name: n, binding_kind: binding_kind } =>
       // Emit var without .clone() for borrowing contexts.
-      if n == "none" || n == "None" { "None" }
-      else if n == "true" || n == "false" { n }
+      if n == "none" || n == "None" { emit_keyword(key: "null", target: Rust) }
+      else if n == "true" || n == "false" { emit_keyword(key: n, target: Rust) }
       else {
         let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info)
         match variant_parent {
@@ -3569,7 +3569,7 @@ fn emit_rust_default_value(param: Param) -> String {
   // Use DAG names for comparison (these are stable), target names for output.
   if type_name == "String" || type_name == "Secret" { "String::new()" }
   else if type_name == "Int" { "0" }
-  else if type_name == "Bool" { "false" }
+  else if type_name == "Bool" { emit_keyword(key: "false", target: Rust) }
   else if type_name == "Float" { "0.0" }
   else if type_name == "Unit" { "()" }
   else if type_name == "Json" { "serde_json::Value::Null" }
@@ -3660,7 +3660,7 @@ fn cli_default_literal_value(expr: Node) -> String? {
       LitStr { value: s } => Some { value: s }
       LitInt { value: i } => Some { value: to_string(value: i) }
       LitFloat { value: f } => Some { value: f }
-      LitBool { value: b } => Some { value: if b { "true" } else { "false" } }
+      LitBool { value: b } => Some { value: if b { emit_keyword(key: "true", target: Rust) } else { emit_keyword(key: "false", target: Rust) } }
       LitNull => none
     }
     _ => none

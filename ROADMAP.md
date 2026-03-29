@@ -484,7 +484,7 @@ coverage without enforcement.
 | All functions have proven space bounds | `output_size` field exists in `ComplexitySummary` but only populated for collection-producing ops; most branches return `empty_map()` | Replace `output_size` map with `space: CostExpr` peer to `work`/`span`; populate at every branch using space composition algebra (same walk, different combinators) |
 | L1 type knowledge = 0 | `scripts/l1-ratchet.sh` counts violations | Script not in CI; no test wraps it |
 | Ownership proof coverage | `ownership.dag` runs, produces ownership annotations | No ratchet on uncovered functions |
-| Emitted Rust compiles | Stage0 → `cargo check` | ~280 errors; no ratchet tracking reduction |
+| Emitted Rust compiles | Stage0 → `cargo check` | 589 errors; ratchet exists (Lane A) but count still high |
 
 **These are the immediate action items.** Each one has working
 machinery — the gap is wiring it into a test that fails on regression.
@@ -545,6 +545,380 @@ machinery — the gap is wiring it into a test that fails on regression.
 
 ---
 
+## Design Direction: Boundary Sufficiency
+
+**Problem:** The compiler has ~362 sites where stages branch on
+type/method names instead of reading structural facts from data. These
+cluster around 4 missing wiring points — places where data exists but the
+stage bypasses it. When a boundary doesn't carry a fact the downstream
+stage needs, the stage uses the name as a proxy.
+
+**Principle:** A stage boundary is *sufficient* when the data it carries
+contains all the structural facts the downstream stage needs, making
+name-based proxy reads unnecessary. Sufficiency is additive (enrich
+boundaries), not subtractive (restrict access). No policy, no opacity —
+just completeness.
+
+**The test:** scramble all user-defined names flowing across a boundary.
+If every downstream decision remains identical, the boundary is
+sufficient. The existing 6 scrambled-name inference tests already prove
+this for resolve→infer. Extending these to emit proves it end-to-end.
+
+**Why not ratchets:** A ratchet counts proxy sites. Fix one missing fact,
+and hundreds of sites disappear — but the ratchet tracks them one by one.
+Sufficiency testing proves the property directly. It's self-maintaining:
+new features get covered when they appear in test programs.
+
+**Critical discovery:** The data already exists on both sides.
+`LanguageSpec` in `dsl/std/languages.dag` is fully populated (20+
+sub-types, all populated for Rust/Go/Python). `enrich_kernel_type`
+already produces correct Conj products. `std/algebra.dag` documents the
+hierarchy. The emitter and inference stages *bypass* this data.
+
+### Gap Inventory
+
+| # | Gap | Sites | Data exists at | Stage bypasses with |
+|---|-----|-------|----------------|---------------------|
+| 1 | Emitter bypasses LanguageSpec | ~57 | `dsl/std/languages.dag` (StatementSyntax, CollectionOps, etc.) | `match target { Rust => "let " ... }` |
+| 2 | enrich_kernel_type branches on names | ~120 | `std/algebra.dag` + already-correct Conj products | `if name == "Int" { ... }` |
+| 3 | Builtin call sigs are code | ~30 | Should be `.dag` extern fn declarations | `if name == "string_length" { ... }` |
+| 4 | Method-name dispatch in inference | ~56 | `intrinsic_method_index()` already maps to enum | `if method_name == "fold" { ... }` |
+
+### Execution Phases
+
+**BS-1 (emit wiring):** Replace ~57 `match target` branches with
+LanguageSpec field lookups. The spec is already threaded through emit.
+Each `Rust => "let "` becomes `spec.statements.let_binding`. Mechanical.
+
+**BS-2 (algebra data table):** Replace 7-branch `if name ==` chain in
+`enrich_kernel_type` with a data map lookup. Define `data kernel_algebra`
+mapping type names to field lists. One lookup replaces 7 branches.
+
+**BS-3 (emit sufficiency proofs):** Extend scrambled-name tests to emit.
+Compile with normal names and scrambled names, normalize emitted code,
+assert structural identity. Proves emit decisions are name-independent.
+
+**BS-4 (method enum dispatch):** Convert `if method_name == "fold"`
+string dispatch to `match intrinsic { Fold => ... }` enum dispatch.
+Same pattern complexity.dag already uses. Closed-set exhaustive matching
+replaces open-set string matching.
+
+```
+BS-1 (emit wiring)  ───→ BS-3 (emit sufficiency tests)
+                              ↑
+BS-2 (algebra data) ───→ BS-4 (method enum dispatch)
+```
+
+BS-1 and BS-2 are independent. BS-3 depends on BS-1. BS-4 depends on
+BS-2's pattern.
+
+### Progress (2026-03-28)
+
+BS-1 through BS-4 landed. 38 proxy-read sites converted to structural
+dispatch. 3 scrambled-name emit tests added (all pass). 156 tests, 0
+failures.
+
+### Remaining proxy-read sites (exhaustive inventory)
+
+Every remaining site where the compiler branches on a name. Organized
+by the structural fact being proxied.
+
+**Category A: Kernel type identity (12 sites, data-driven)**
+
+These use `is_kernel_type()` and `is_container_type()` which read from
+data constants (`kernel_types`, `container_types`). Already data-driven
+— the list is declared, not coded as branches. Dissolves when kernel
+types are loaded from `.dag` declarations via import resolution (FF-9).
+
+| File | Site | What it checks |
+|------|------|----------------|
+| `04_types.dag:363,599` | `rt.name != "None" && !is_kernel_type(rt.name)` | User-defined vs kernel in type shape |
+| `04_types.dag:623-626` | `is_kernel_type(n.name)` | Wrapping decision in node_type_shape |
+| `04_infer.dag:2526` | `is_kernel_type(dep) \|\| dep == "None"` | Cycle detection filtering |
+| `04_resolve.dag:150` | `is_container_type(n.name)` | Prevent container expansion |
+| `04_resolve.dag:450` | `is_kernel_type(n.name)` | Alias transparency |
+| `02_parse.dag:2536` | `is_container_type(n.name) && n.name == "Map"` | Map vs other containers |
+| `02_parse.dag:2542` | `n.name == "Refined"` | Refinement type detection |
+| `02_parse.dag:2548` | `n.name == ""` | Tuple (anonymous) detection |
+| `04_types.dag:341` | `n.name == "Refined"` | Unwrap refined types |
+
+**Category B: Builtin function dispatch (26 branches, 1 function)**
+
+`infer_builtin_call_type` in `04_method.dag:71-93` maps free-standing
+builtin function names to return types. These are runtime bridge
+functions (`string_length`, `code_point`, `char_at`, `scan_while`,
+`lookup`, `map_get`, etc.) whose signatures are not declared in `.dag`.
+
+Fix direction: **compositional .dag modeling**, not a new enum. These
+are functions — they should have `.dag` declarations with typed
+parameters and return types, loaded into the function environment during
+`build_type_env`. Once declared, they resolve through the same
+structural lookup path as user-defined functions.
+`infer_builtin_call_type` dissolves entirely.
+
+**Category C: Method index maps (2 maps, ~47 entries)**
+
+`intrinsic_method_index()` (19 entries) and
+`runtime_bridge_method_index()` (28 entries) in `04_method.dag` map
+method name strings to `IntrinsicMethod`/`RuntimeBridgeMethod` enums.
+
+These are inherently name→enum bridges — the compiler needs to
+recognize "fold" to know it has special typing. The maps are the right
+intermediate step. Long-term: method behavior declared in `.dag` type
+algebra definitions, making the enums unnecessary. Short-term: the maps
+centralize the knowledge and the enum gives exhaustiveness checking.
+
+**Category D: Optional/sum variant names (14 sites)**
+
+`"Some"`, `"None"`, `"value"` appear in inference, lookup, patterns,
+and emit. These are the absence/presence variants of the optional type.
+
+| File | Sites | What it checks |
+|------|-------|----------------|
+| `04_infer.dag:508` | `variant_name == "Some" \|\| "None"` | Optional cardinality |
+| `04_patterns.dag:146` | `variant_name == "None"` | Exhaustiveness for None |
+| `04_lookup.dag:93,203` | `field_name == "value"` | Optional inner value access |
+| `04_infer.dag:1832` | `fir.typed_field.name == "value"` | Record literal value field |
+| `05_emit_rust.dag:1176,1190,1271,1344,1394,2612,2629,2806` | `name == "Some" \|\| "None"` | Rust Option variant rendering |
+| `04_types.dag:363,599` | `rt.name != "None"` | Filter None from type shape |
+
+Fix direction: Optional is a structural concept (cardinality on
+bindings), not a named type. The remaining `Some`/`None` references are
+in emit (rendering Rust's `Option` type). These dissolve when Optional
+rendering moves to a LanguageSpec declaration (`absence_variant`,
+`presence_variant` fields) — already identified in INVARIANTS.md.
+
+**Category E: Tuple field names (2 sites)**
+
+`"first"`, `"second"` in `04_emit_info.dag:116,125` detect 2-tuples.
+These are named product fields — structural (Conj + 2 children + named
+"first"/"second"). Dissolves when tuples are positional rather than
+named, or when emit reads tuple structure from the node shape rather
+than checking field names.
+
+**Category F: Transport kind dispatch (7 sites)**
+
+`transport_kind()` in `00_core.dag:788-791` converts transport node
+names to `TransportKind` enum via `if t.name == "local"` etc. Used in
+resolve and all 3 emitters.
+
+Already partially structural (the enum exists). Remaining name
+comparison is the parse→enum bridge. Dissolves when transport kind is
+set structurally at parse time rather than inferred from the node name.
+
+**Category G: Configuration property keys (2 sites)**
+
+`config_property_key()` and `config_property_name()` in `00_core.dag`
+convert between string property names and `ConfigPropertyKey` enum.
+Small, stable, closed set. Low priority.
+
+**Category H: Diagnostic/AST marker properties (8 sites)**
+
+`p.name == "severity"`, `p.name == "__is_module"`, etc. in
+`00_core.dag`. These are structural markers on AST nodes — properties
+that classify node purpose. They're the `.dag` equivalent of AST node
+kinds. Dissolves when node classification uses ExprData or a structural
+field rather than property name strings.
+
+**Category I: Target language dispatch (12 sites)**
+
+`match target { Rust => ... Go => ... Python => ... }` in
+`languages.dag` and emit files. These dispatch on the `RenderTarget`
+enum (closed set, exhaustive). This is structural — the enum is the
+right representation. The issue is when the branch body hardcodes
+syntax strings instead of reading from spec. BS-1 addressed the shared
+emit cases; per-backend files still have rendering logic that's
+inherently target-specific.
+
+**Category J: Builtin value names in emit (3 sites)**
+
+`func == "empty_map"`, `func == "lookup"` in `05_emit_rust.dag`.
+Runtime bridge function names used for Rust-specific rendering. Same
+fix direction as Category B — declare as `.dag` functions, resolve
+structurally.
+
+### Scrambled-name test expansion ideas
+
+The current emit tests use simple struct programs. More complex programs
+would stress-test further and catch subtler name dependencies:
+
+1. **Enums with data variants.** `type Color = Red { r: Int } | Green`
+   scrambled to `type Shade = Alpha { r: Int } | Beta`. Tests enum
+   rendering, variant qualification, match arm construction.
+
+2. **Generic types.** `type Box<T> { value: T }` with `Box<Foo>` usage.
+   Tests generic parameter rendering, type substitution in emit.
+
+3. **Container types with user types.** `List<Foo>`, `Map<String, Bar>`.
+   Tests container template application with user type arguments.
+
+4. **Method calls on user types.** Functions that call methods on
+   struct fields. Tests method dispatch rendering is name-independent.
+
+5. **Nested types.** `type Outer { inner: Inner }` with field access
+   `o.inner.x`. Tests chained field access rendering.
+
+6. **Optional fields.** `type Config { name: String? }` with match on
+   presence/absence. Tests Optional rendering path.
+
+7. **Services (if supported in test harness).** Service definitions
+   with operations. Tests service rendering path.
+
+Each test follows the same pattern: compile A and B with scrambled
+user-defined names, normalize, assert structural identity. Adding
+these incrementally as emit correctness improves.
+
+### Relationship to existing streams
+
+- **Theme A** (~177 sites): BS-2 + BS-4 (done)
+- **Theme B** (~57 sites): BS-1 (done)
+- **Stream 1 (L1 dissolution)**: BS-2 directly reduces L1 ratchet
+- **Guarantee Map**: BS-3 promotes emit sufficiency from Tier 3 → Tier 2
+- **Category B** (builtins): compositional .dag modeling, not new enums
+
+---
+
+## Design Direction: Emission Correctness by Construction (LintModel)
+
+**Problem:** The emission pipeline produces code by string concatenation.
+Whether the output is valid (compiles, passes linting) is discovered
+only by running external tools after the fact. 589 Rust errors and
+parallel Python issues result from the emitter "forgetting" imports,
+type params, async annotations, and primitive lowerings. Fixing these
+one-by-one is patching; the structural fix is making incorrect emission
+unrepresentable.
+
+**Principle:** Model what `cargo check`, `clippy`, `pylint`, `go vet`
+etc. enforce as **data per language**. The emitter reads the model.
+Correct output is structural, not verified.
+
+```
+Current:  emit (string concat) → hope → cargo check (external oracle)
+Target:   emit (reads LintModel) → correct by construction → cargo check (redundant)
+```
+
+### The three-spec model
+
+```
+LanguageSpec — how to RENDER target syntax (keywords, templates, conventions)
+SyntaxSpec   — how to PARSE source syntax (item forms, operators, literals)
+LintModel    — what makes rendered code VALID (imports, types, expressions, naming)
+```
+
+`LanguageSpec` and `SyntaxSpec` already exist. `LintModel` completes the
+triangle. Together they model the full language as data, enabling
+parse-emit symmetry with correctness guarantees.
+
+### What the LintModel carries
+
+| Rule category | What it models | External tool equivalent |
+|---|---|---|
+| Import derivation | "using type X in module M → import Y" | `cargo check` E0433, `pylint` import-error |
+| Type well-formedness | "generic type must declare params; primitives must lower" | `cargo check` E0412/E0425 |
+| Expression well-formedness | "await requires async fn; statements need terminators" | `cargo check` E0728, `pylint` syntax-error |
+| Naming conventions | "types PascalCase, functions snake_case" | `clippy` naming warnings, `pylint` naming |
+| Formatting | "indentation width, brace style, import grouping" | `rustfmt`, `black`, `gofmt` |
+
+### How it clears 589 errors by construction
+
+| Error category | LintModel rule | Construction guarantee |
+|---|---|---|
+| Deserialize import (316) | `TraitImpl("Deserialize")` → `use serde::Deserialize;` | Can't render trait impl without import |
+| Generic params (122) | Generic type declaration must carry param list from DAG | Can't render `T` without declaring `<T>` |
+| `Bool`→`bool` (40) | `Primitive("Bool")` → `"bool"` (read from `rust_primitives`) | All primitives lowered via type map |
+| `async fn` (17) | `AwaitInBody` → async function declaration | Can't render await without async |
+| `FreeMonoid`→`Vec` (12) | `AlgebraicType("FreeMonoid")` → `"Vec"` | Algebraic types lowered via type map |
+| `Callable` (9) | `CallableType` → `Rc<dyn Fn(T) -> U>` | Callable rendering is a type rule |
+| Service vars (20) | Service dep → in-scope binding construction | Can't render service call without binding |
+| String escapes (6) | Brace escaping rule per interpolation syntax | Format string rendered per language spec |
+
+### Swappable models
+
+LintModel instances are data, not code. Different instances for different
+strictness levels:
+
+```
+rust_standard_lint    — cargo check + default clippy
+rust_strict_lint      — clippy::pedantic, no unwrap, no expect
+python_standard_lint  — py_compile + pylint defaults
+python_strict_lint    — ruff strict, mypy
+```
+
+The emitter is generic over the model. `--lint strict` vs `--lint standard`
+selects the instance. The language extdep carries multiple model instances;
+the CLI flag picks one.
+
+### Import derivation — highest leverage rule
+
+Import derivation clears 316 of 589 errors (54%) by construction. The
+mechanism:
+
+1. Emitter renders a type reference → records a `TypeUsage` fact
+2. Emitter renders a trait impl → records a `TraitUsage` fact
+3. At module close, the renderer reads the LintModel's import rules
+4. Each `TypeUsage`/`TraitUsage` → matching `ImportRule` → `use` statement
+5. Import statements emitted in module preamble, grouped and sorted
+
+Missing imports are **structurally unrepresentable**. If you rendered
+the type, the import exists. This is the same principle as
+`ExpectedToken` making invalid parser dispatch unrepresentable.
+
+### Internal unit testing (not external tool invocation)
+
+Each LintModel rule is testable in isolation:
+
+| Test kind | What it verifies | Speed |
+|---|---|---|
+| **Model test** | "Rust import model: Deserialize impl → `use serde::Deserialize;`" | Fast, no I/O |
+| **Pipeline test** | "Emitter records TypeUsage when rendering type reference" | Fast, no I/O |
+| **Renderer test** | "Module renderer: collected usages → correct `use` statements" | Fast, no I/O |
+
+These test the MODEL's rules, not the output's text. They're ordinary
+unit tests that run in `cargo test`, not `--ignored`.
+
+### Hermetic integration tests (confirmation, not gate)
+
+As redundant confirmation, hermetic `#[test]` functions invoke external
+tools on a known `.dag` → emit → tool → assert pipeline:
+
+| Test | External tool | Pattern |
+|---|---|---|
+| `rust_emit_compiles` | `cargo check` on emitted Rust | Same as existing `python_test_file_syntax_valid` |
+| `rust_emit_lints_clean` | `cargo clippy` on emitted Rust | subprocess, assert exit 0 |
+| `python_emit_compiles` | `python -m py_compile` on emitted Python | Already exists in `pipeline.rs` |
+| `go_emit_compiles` | `go build` on emitted Go | subprocess, assert exit 0 |
+
+These are `--ignored` tests (slow, need toolchains installed). They are
+**self-contained unit tests**, not a maintained CI process. They confirm
+the LintModel is complete — the model guarantees correctness; the
+integration test confirms the guarantee.
+
+### Relationship to existing infrastructure
+
+The data already partially exists:
+
+| Existing file | What it has | What's missing |
+|---|---|---|
+| `rust/imports.dag` | `use` templates, crate structure, `base_deps` | Derivation rules (WHEN to import) |
+| `rust/types.dag` | `rust_primitives` with `Bool→bool` mapping | Emitter reading this map for ALL rendering |
+| `rust/async.dag` | `async fn` templates, `await_suffix` | Propagation rule (body with await → async fn) |
+| `LanguageSpec` | Syntax rendering, serialization, scaffold | `lint: LintModel` field |
+
+The LintModel connects existing data to the emission pipeline via rules.
+The data is modeled; the rules are not.
+
+### Enforcement (see Guarantee Map)
+
+| Tier | What | When |
+|---|---|---|
+| **Tier 1** (structural) | Import derivation: can't render type without import | E1 lands |
+| **Tier 1** (structural) | Type well-formedness: can't render generic without params | E2 lands |
+| **Tier 2** (tested) | Internal model tests: verify rules produce correct output | E4 lands |
+| **Tier 2** (tested) | Hermetic integration: `cargo check` = 0 errors | E5 lands |
+| **Tier 2** (tested) | Hermetic linting: `cargo clippy` = 0 warnings | E5 lands |
+
+---
+
 ## Current State (2026-03-28)
 
 **TOP PRIORITY: Compiler thesis inversion (~362 hardcoded name-based
@@ -552,8 +926,11 @@ branches).** The compiler encodes knowledge as code branches instead of
 reading data. Three themes: (A) type/method dispatch by string
 comparison, (B) emission hardcodes target syntax instead of reading
 LanguageSpec, (C) testgen doesn't test compiler. See "Compiler
-structural audit" section below. Until this is fixed, every new type,
-method, or language target requires editing compiler source.
+structural audit" section below. **Fix direction: Boundary Sufficiency
+(BS-1 through BS-4).** The data already exists (LanguageSpec is fully
+populated, algebra products are correct); stages bypass it. See
+"Design Direction: Boundary Sufficiency" for the 4-gap analysis and
+execution phases.
 
 **PRIORITY 2: Diagnostic quality.** The DSL is unusable until
 diagnostics include file name, line:column, source context, and
@@ -575,15 +952,41 @@ binary compiles all .dag source: **46 files emitted, 0 diagnostics.**
 
 **Verification ratchets (Lane A complete, PR #227):**
 - Diagnostic ratchet: 0 (passes)
-- Emitted Rust error ratchet: 872 errors (down from 1242)
+- Emitted Rust error ratchet: 589 errors (down from 872)
 - L1 ratchet: 51 (delegates to scripts/l1-ratchet.sh)
 - Keyword arm count: 9 (exact match)
 - Complexity ratchet: 2 violations (pre-existing)
 
-**Stage0 regeneration: BLOCKED on 872 codegen errors.** Fixes applied
-(PR #229): serde removal, generic type params, container casing, type
-map routing, callable error recovery. Remaining: callable rendering,
-cross-module imports, cascading type mismatches.
+**Codegen audit (2026-03-28): 589 Rust errors, 9 categories.**
+Prior fixes (PR #229) were partial — serde removed from NonEmpty
+wrappers but `impl Deserialize` still emitted without `use` imports;
+generics fixed for some types but `FreeMonoid<T>` etc. still emit `T`
+undeclared. Full breakdown:
+
+| Category | Count | Root cause |
+|----------|------:|------------|
+| Deserialize trait not found | 316 | Emitter generates `impl Deserialize` but doesn't add `use serde::Deserialize;` at module top |
+| Type param `T` not found | 122 | Generic types like `FreeMonoid<T>` emit `T` without declaring it as a type parameter |
+| `Bool` type not found | 40 | `.dag` `Bool` → Rust should be `bool` (primitive lowering) |
+| Service vars not in scope | ~20 | `github_pulls`, `shell_exec`, `cron_tab` etc. — service instances not instantiated |
+| `await` outside async | 17 | `func` should emit `async fn` but emits sync `fn` |
+| `free_monoid` type not found | 12 | `FreeMonoid<T>` not lowered to `Vec<T>` |
+| `Callable` type not found | 9 | `fn(T) -> U` type syntax not mapped to Rust `Fn` trait |
+| String escape `\{ \}` | 6 | Literal brace escapes in strings not handled |
+| Missing mock data | 6 | Dry-run mode references missing mock responses |
+| Other | ~41 | Missing values/imports, trait resolution |
+
+Top 5 by impact (fixing these clears ~95%):
+1. **Deserialize `use` statement** (316) — add `use serde::Deserialize;` to every module that has `impl Deserialize`
+2. **Generic type params** (122) — `FreeMonoid<T>`, `PartialFunction<K,V>` need actual generic `struct` declarations with `<T>`, `<K,V>`
+3. **`Bool`→`bool`** (40) — primitive type lowering
+4. **`async fn`** (17) — `func` should emit `async fn`; service instances should be passed as params or constructed
+5. **`FreeMonoid`→`Vec`** (12) — algebraic types should lower to Rust stdlib types
+
+**Python codegen has the same structural issues** (match syntax,
+statement/expression confusion, async). Both backends need the same
+set of fixes in the emit pipeline — the root cause is shared emit
+not reading enough from `LanguageSpec`.
 
 **DSL compilation:** 78 files, 0 diagnostics, 94 files emitted (PR #228).
 Compiler correctly fails closed (0 files emitted when any diagnostic exists).
@@ -740,20 +1143,24 @@ patterns).
 with lib.rs, serde imports, duplicate types). Manual stage0 porting
 works but the script needs fixing for sustainable regeneration.
 
-### Stage 2: Rust Codegen (~280 errors)
+### Stage 2: Rust Codegen (589 errors)
 
 | Gap | Errors | Root cause | Fix location |
 |-----|-------:|------------|--------------|
-| `Bool` → `bool` | ~153 | Primitive type mapping missing | `05_emit_rust.dag` |
-| `Deserialize` trait | ~124 | Emitter generates serde derives without deps | `05_emit_rust.dag` |
-| `expr_children` helpers | ~130 | P5.11 accessors emitted as calls but undefined | `05_emit.dag` |
-| Module name mismatch | ~15 | `regenerate-stage0.sh` renames vs `lib.rs` | Script fix |
-| `CodegenBackend` undeclared | ~10 | Type referenced but not emitted | `05_emit.dag` |
-| `Secret` duplicate | 1 | Two modules emit same struct | `05_emit.dag` namespace |
-| `Unit` unhandled | 1 | Not mapped to `()` | `05_emit_rust.dag` |
+| Deserialize `use` import | 316 | `impl Deserialize` emitted without `use serde::Deserialize;` | `05_emit_rust.dag` module preamble |
+| Generic type params undeclared | 122 | `FreeMonoid<T>` emits `T` without `<T>` on struct/enum | `05_emit.dag` generic emission |
+| `Bool` → `bool` | 40 | Primitive type lowering missing | `05_emit_rust.dag` type map |
+| Service vars not in scope | ~20 | Service instances (`github_pulls`, etc.) not instantiated | `05_emit.dag` service rendering |
+| `await` outside `async` | 17 | `func` emits sync `fn`, should be `async fn` | `05_emit_rust.dag` func rendering |
+| `FreeMonoid` → `Vec` | 12 | Algebraic types not lowered to stdlib equivalents | `05_emit_rust.dag` type map |
+| `Callable` type | 9 | `fn(T) -> U` not mapped to `Fn` trait | `05_emit_rust.dag` type map |
+| String brace escapes | 6 | `\{` `\}` not handled in string emission | `05_emit.dag` string rendering |
+| Missing mock data | 6 | Dry-run mode references undefined mock responses | `05_emit.dag` mock rendering |
+| Other | ~41 | Missing values/imports, trait resolution | Various |
 
-Priority: `Bool`→`bool` clears ~153 of ~280 errors. Serde removal
-clears ~124. Together they resolve ~95% of codegen errors.
+Priority: Deserialize `use` (316) + generic params (122) + `Bool`→`bool` (40)
+clears ~80%. Adding `async fn` (17) + `FreeMonoid`→`Vec` (12) clears ~95%.
+Python has the same structural issues — both backends need the same emit fixes.
 
 ### Stage 3: Domain Workflow Compilation
 
@@ -791,7 +1198,8 @@ incremental after the binary works.
 | **Stream 2: Expression Model & Frontend** | *(unassigned)* | P5.1 token coherence, P5.5 residual enum cleanup, `assemble_stage0` fixups | Structural model maturity |
 | **Stream 3: Container Sharing** | `perf/v2-tokenizer-root-cause` | Rust container templates → `Rc<Vec<{0}>>` etc. + emitter + runtime + stage0 regen | Eliminate O(n) clone class (FF-8) |
 | **Stream 4: Guarantee Enforcement** | *(unassigned)* | Wire Tier 3 machinery into gates; add Tier 4 ratchets as design directions land | Complexity ratchet, L1 ratchet in CI, keyword arm ratchet, round-trip smoke test |
-| **Stream 5: Compiler Correctness** | *(unassigned)* | Fix emitted Rust errors (~280→0); space complexity tracking; regeneration script | Generated stage0 passes `cargo check`; space bounds in complexity report |
+| **Stream 5: Compiler Correctness** | *(unassigned)* | Space complexity tracking; regeneration script | Space bounds in complexity report; regen script works |
+| **Stream 6: Emission Correctness (LintModel)** | *(unassigned)* | LintModel type, import derivation, type/expr well-formedness, hermetic integration tests | Emitted Rust/Python/Go compiles, lints clean; 0 errors by construction not verification |
 
 ### Stream 0: Compositional Parser — Implementation Plan
 
@@ -962,6 +1370,190 @@ connects Stream 3 (container sharing) to Stream 5 Track B (space) —
 the fix makes clone cost O(1), and the space analyzer proves it stays
 that way.
 
+### Stream 6: Emission Correctness (LintModel) — Implementation Plan
+
+**Goal:** Emitted code compiles and lints clean by construction, not by
+running external tools. The LintModel carries target-language validity
+rules as `.dag` data. The emitter reads the model. Incorrect emission
+is structurally unrepresentable.
+
+**E1: LintModel type + import derivation (clears ~316 errors)**
+
+1. Define `LintModel`, `ImportRule`, `ImportTrigger` types in `languages.dag`:
+
+   ```
+   type ImportTrigger
+     = TypeUsage { type_name: String }
+     | TraitImpl { trait_name: String }
+     | DeriveMacro { macro_name: String }
+     | ContainerUsage { container: String }
+     | AsyncUsage
+
+   type ImportRule {
+     trigger: ImportTrigger
+     import_path: String
+   }
+
+   type LintModel {
+     name: String
+     import_rules: List<ImportRule>
+     type_rules: TypeWellFormedness
+     expr_rules: ExprWellFormedness
+     naming: NamingConvention
+     formatting: FormatModel
+   }
+   ```
+
+2. Add `lint: LintModel` field to `LanguageSpec`.
+3. Define `rust_standard_lint`, `python_standard_lint`, `go_standard_lint`
+   in language extdeps — import derivation rules for each language.
+4. Wire import collection into emitter: rendering a type/trait records a
+   `TypeUsage` fact; module close derives `use` statements from LintModel
+   import rules.
+5. Internal model tests: for each `ImportRule`, verify the correct `use`
+   statement is derived.
+
+**Gate:** 316 Deserialize errors → 0 (by construction).
+
+**E2: Type well-formedness rules (clears ~174 errors)**
+
+1. Define `TypeWellFormedness` rules:
+
+   ```
+   type TypeWellFormedness {
+     primitive_map: List<PrimitiveLowering>      // Bool → bool
+     algebraic_map: List<AlgebraicLowering>      // FreeMonoid<T> → Vec<T>
+     callable_template: String                   // fn(T)->U → Rc<dyn Fn(T)->U>
+     generic_params_from_dag: Bool               // struct Foo<T> from DAG slots
+   }
+   ```
+
+2. Wire primitive lowering to read from `rust_primitives` (already in
+   `types.dag` — `Bool→bool` is modeled, emitter just doesn't read it
+   everywhere).
+3. Add algebraic lowering rules: `FreeMonoid→Vec`, `PartialFunction→HashMap`,
+   `BooleanAlgebra→bool` with explicit map in language extdep.
+4. Generic param enforcement: struct/enum declarations MUST carry params
+   from the DAG type definition's generic slots. Not optional.
+5. Callable rendering: `Callable` types → language-specific function type
+   (`Rc<dyn Fn(T) -> U>` in Rust, `Callable[[T], U]` in Python).
+6. Internal tests: each lowering rule produces correct declaration.
+
+**Gate:** 122 generic + 40 Bool + 12 FreeMonoid + 9 Callable = 183 errors → 0.
+
+**E3: Expression well-formedness rules (clears ~43 errors)**
+
+1. Define `ExprWellFormedness` rules:
+
+   ```
+   type ExprWellFormedness {
+     async_propagation: Bool           // await in body → async fn
+     statement_terminator: String      // ";" (Rust), "" (Python)
+     brace_escape_in_format: Bool      // \{ → {{ in format!()
+     service_binding_strategy: ServiceBindingStrategy
+   }
+
+   type ServiceBindingStrategy
+     = ParamInjection                  // service as fn param
+     | ConstructInBody                 // let client = Client::new()
+     | GlobalSingleton                 // lazy_static / once_cell
+   ```
+
+2. Async propagation: walk function body for `await` usage, set function
+   declaration to `async` if any await found. Data-driven per language
+   (Rust: `async fn`, Python: `async def`, Go: goroutine spawn).
+3. Service instance construction: LintModel declares the strategy;
+   emitter reads it to produce the correct binding pattern.
+4. String brace escaping: `format!()` requires `{{`/`}}` for literal
+   braces; f-strings require `{{`/`}}`. Rule per language.
+5. Internal tests: each rule produces valid expressions.
+
+**Gate:** 17 async + 20 service + 6 string = 43 errors → 0.
+
+**E4: Naming + formatting (quality, not correctness)**
+
+1. Define naming convention rules (already partially in LanguageSpec):
+
+   ```
+   type NamingConvention {
+     types: CaseStyle          // PascalCase (Rust/Go), PascalCase (Python)
+     functions: CaseStyle      // snake_case (Rust/Python), camelCase (Go)
+     modules: CaseStyle        // snake_case (Rust/Python), lowercase (Go)
+     constants: CaseStyle      // SCREAMING_SNAKE (Rust/Python), PascalCase (Go)
+     enum_variants: CaseStyle  // PascalCase (Rust), SCREAMING_SNAKE (Proto)
+   }
+   ```
+
+2. Define formatting model (partially in LanguageSpec `indentation_width`):
+
+   ```
+   type FormatModel {
+     indent_width: Int                  // 4 (Rust/Python), tab (Go)
+     indent_char: String                // " " or "\t"
+     max_line_width: Int?               // 100 (rustfmt default)
+     import_grouping: ImportGroupStyle  // std/external/crate (Rust)
+     trailing_newline: Bool
+   }
+   ```
+
+3. Internal tests: rendered names/formatting match convention rules.
+
+**E5: Hermetic integration tests (confirmation, not gate)**
+
+1. `rust_emit_compiles`: compile known `.dag` file → emit Rust → write
+   to temp dir with `Cargo.toml` → `cargo check` → assert exit 0.
+   Same pattern as existing `python_test_file_syntax_valid` in `pipeline.rs`.
+2. `rust_emit_lints_clean`: same pipeline → `cargo clippy -- -D warnings`
+   → assert exit 0.
+3. `python_emit_compiles`: extend existing `ast.parse` test to full
+   corpus. Add `mypy --strict` for type-checked Python.
+4. `go_emit_compiles`: emit Go → write temp dir → `go build` → assert
+   exit 0.
+5. All marked `#[ignore]` — slow, need toolchains. Run manually or in
+   CI with toolchain matrix. Self-contained unit tests, not maintained
+   processes.
+
+**Gate:** All integration tests pass (redundant — should already pass
+if LintModel rules are correct).
+
+**E6: Swappable models + cross-language parity**
+
+1. Define `rust_strict_lint` (clippy pedantic), `python_strict_lint`
+   (ruff strict + mypy). Add to language extdeps alongside standard models.
+2. CLI flag: `--lint standard | --lint strict` selects model instance.
+3. Python codegen: apply same LintModel rules to fix match syntax,
+   statement/expression confusion, async patterns.
+4. Go codegen: apply LintModel rules for Go-specific patterns
+   (implicit interfaces, goroutines, error returns).
+5. Cross-language parity test: compile same `.dag` file to all targets,
+   all pass their respective integration tests.
+
+**Gate:** Rust + Python + Go all produce valid, linted code from the
+same `.dag` source.
+
+### Stream 6 execution order
+
+```
+E1 (import derivation)     E2 (type rules)     E3 (expr rules)
+     │                          │                    │
+     │ 316 errors               │ 183 errors         │ 43 errors
+     │                          │                    │
+     ├──────────────────────────┼────────────────────┤
+     │                          │                    │
+     ▼                          ▼                    ▼
+E4 (naming/formatting)    ← quality layer, depends on E1-E3 pipeline
+     │
+     ▼
+E5 (hermetic integration) ← confirmation layer, validates E1-E4
+     │
+     ▼
+E6 (swappable + parity)   ← multi-language, depends on E5 passing
+```
+
+E1-E3 can run in parallel (independent rule categories). E4 depends on
+the emission pipeline changes from E1-E3. E5 depends on E1-E3 clearing
+errors. E6 extends to multiple languages and strictness levels.
+
 ---
 
 ## Workboard: Parallel Lanes
@@ -971,9 +1563,12 @@ diagnostic (0), emitted Rust errors (1184/1200), L1 (51), keyword
 arms (9), complexity (2). Space complexity (Lane A Phase 2) deferred
 until Lane B drives error count down.
 
-**Current priority: Lane B (Compiler Output).** The 1184 cargo check
-errors in regenerated stage0 are the single deficit blocking
-bootstrap regeneration and the committed-binary approach.
+**Current priority: Lane B (Compiler Output).** 589 Rust codegen
+errors block bootstrap regeneration and the committed-binary approach.
+Python codegen has parallel structural issues. Both backends need the
+same emit pipeline fixes. **Approach: Stream 6 (LintModel)** — model
+target-language validity rules as data; emit correct code by
+construction, not verification.
 
 **Lanes B and C run in parallel.** They touch different files and have
 independent exit criteria.
@@ -982,27 +1577,27 @@ independent exit criteria.
 Lane A: Verification ✓           Lane B: Compiler Output       Lane C: Language Design
 (DONE — PR #227)                 (make output correct)         (make the language right)
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-✓ Emitted Rust error ratchet     Stream 5A: Codegen fixes      Stream 0: Compositional
-✓ Complexity ratchet (2)           (1184 → 0 errors)             Parser (R3)
-✓ L1 ratchet (51, via script)    ┌─────────────────────┐       · SyntaxSpec extraction
-✓ Keyword arm count (9)          │ E0425 (541): generic │       · parse_item reads spec
-                                 │   type params <T>    │       · round-trip smoke test
-Deferred:                        │ E0433 (404): serde   │
-· Space as peer dimension        │   NonEmpty wrappers  │     Decidability invariant
-                                 │ E0220 (140): derived │       · Audit iteration prims
-                                 └─────────────────────┘       · Wire RecursionPattern
-                                 Stream 5C: Regen script
-                                   · ✓ cargo run (Docker)     Stream 1: L1 Dissolution
-                                   · Regenerate + commit        · Type constructors → 0
-                                                                · Type-name comparisons
-                                 Stream 3: Container FF-8       · CollectionKind dissolves
+✓ Emitted Rust error ratchet     Stream 6: LintModel            Stream 0: Compositional
+✓ Complexity ratchet (2)         (correctness by construction)    Parser (R3)
+✓ L1 ratchet (51, via script)   ┌─────────────────────┐       · SyntaxSpec extraction
+✓ Keyword arm count (9)         │ E1: Import rules(316)│       · parse_item reads spec
+                                │ E2: Type rules (183) │       · round-trip smoke test
+Deferred:                       │ E3: Expr rules  (43) │
+· Space as peer dimension       │ E4: Naming/format    │     Decidability invariant
+                                │ E5: Hermetic tests   │       · Audit iteration prims
+                                │ E6: Swap + parity    │       · Wire RecursionPattern
+                                └─────────────────────┘
+                                 Stream 5C: Regen script      Stream 1: L1 Dissolution
+                                   · ✓ cargo run (Docker)       · Type constructors → 0
+                                   · Regenerate + commit         · Type-name comparisons
+                                 Stream 3: Container FF-8        · CollectionKind ✓ dissolved
                                    · Rc<Vec<{0}>> templates
                                    · Atomic with regen
 ─────────────────────────        ─────────────────────────     ─────────────────────────
-Exit: ✓ Done                     Exit: cargo check 0 errors    Exit: parse_item 0 keyword
-                                   on generated stage0;           arms; decidability is
-                                   committed binary (not          structural (Tier 1);
-                                   source); FF-8 eliminated       L1 ratchet = 0
+Exit: ✓ Done                     Exit: emitted Rust/Python/Go   Exit: parse_item 0 keyword
+                                   compiles + lints clean by       arms; decidability is
+                                   construction; hermetic tests    structural (Tier 1);
+                                   confirm; FF-8 eliminated        L1 ratchet = 0
 ```
 
 ### Lane A status (2026-03-28): DONE
@@ -1024,8 +1619,9 @@ Lane A ──→ Lane C:  Complexity ratchet verifies decidability — the
                      a blocking dependency (Tier 1 guarantee holds
                      by construction) but provides observability.
 
-Lane B ──→ Lane B:  Regen script (5C) unblocks emitted Rust fixes
-                     (5A). 5C first, then 5A is automated.
+Lane B ──→ Lane B:  Stream 6 (LintModel) is the approach for Lane B.
+                     E1-E3 clear errors structurally; E5 confirms.
+                     Regen script (5C) unblocks stage0 regeneration.
 
 Lane B ──→ Lane A:  Container sharing (FF-8) feeds space complexity
                      clone cost model. Space analyzer can land first;
@@ -1040,20 +1636,30 @@ Lane C ──→ Lane A:  Compositional parser enables round-trip smoke
 
 **Lane A: ✓ DONE** (PR #227)
 
-**Lane B (current priority — 996 errors → 0):**
-1. ✓ Fix regen script for Docker (cargo run instead of binary path)
-2. ✓ Remove serde from NonEmpty wrappers (138 → 0 serde errors)
-3. ✓ Fix generics emission — `<T>` on struct/enum defs (~130 errors)
-4. ✓ Fix container/generic casing — FreeMonoid not free_monoid
-5. ✓ Fix callable error recovery — empty name, not "Callable" (Part 1)
-6. Callable rendering (Part 2) — zero-param fn() → Rc<dyn Fn() -> T>.
-   Structural identification works (inferred != none predicate) but
-   rendering change causes ~186 cascading type mismatches. Needs full
-   emit pipeline to agree: struct fields, function sigs, call sites.
-7. Remaining E0425 (388): `Tuple`, `Bool` type names unresolved
-8. Regenerate stage0, verify cargo check passes
-9. Committed binary approach (never hand-edit generated code again)
-10. Container sharing (FF-8, atomic with regen)
+**Lane B (current priority — 589 errors → 0 via Stream 6 LintModel):**
+
+Prior fixes (PR #229):
+- ✓ Fix regen script for Docker (cargo run instead of binary path)
+- ✓ Remove serde from NonEmpty wrappers (partial — 316 Deserialize errors remain)
+- ✓ Fix generics emission for some types (partial — 122 generic param errors remain)
+- ✓ Fix container/generic casing — FreeMonoid not free_monoid
+- ✓ Fix callable error recovery — empty name, not "Callable" (Part 1)
+
+Remaining — **approached via LintModel (Stream 6), not one-by-one patches:**
+
+| Phase | Errors cleared | Approach |
+|-------|---------------:|----------|
+| **E1: Import derivation** | 316 | `LintModel.import_rules` + emitter TypeUsage tracking |
+| **E2: Type well-formedness** | 183 | Primitive/algebraic/generic/callable rules from `types.dag` |
+| **E3: Expr well-formedness** | 43 | Async propagation, service binding, brace escaping |
+| **E4: Naming + formatting** | quality | Convention rules, rustfmt/black/gofmt compliance |
+| **E5: Hermetic integration** | confirm | `cargo check` / `clippy` / `py_compile` as `#[test]` |
+| **E6: Swappable + parity** | all targets | Rust + Python + Go via same LintModel mechanism |
+
+After E1-E3 (589 → ~0):
+7. Regenerate stage0, verify cargo check passes
+8. Committed binary approach (never hand-edit generated code again)
+9. Container sharing (FF-8, atomic with regen)
 
 **Lane C (runs in parallel, no blocking deps):**
 1. Decidability audit (review iteration primitives)

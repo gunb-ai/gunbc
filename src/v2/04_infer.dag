@@ -95,7 +95,8 @@ import v2.compiler.infer_types {
   enrich_kernel_type
 }
 import v2.compiler.infer_method {
-  infer_builtin_call_type, resolve_builtin_call_type
+  infer_builtin_call_type, resolve_builtin_call_type,
+  intrinsic_method_index, runtime_bridge_method_index
 }
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
@@ -626,16 +627,27 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
   }
 }
 
+// Check if an optional intrinsic matches a specific variant.
+fn intrinsic_is(opt: IntrinsicMethod?, expected: IntrinsicMethod) -> Bool {
+  if opt == none { false } else { opt.value == expected }
+}
+
+// Check if an optional bridge method matches a specific variant.
+fn bridge_is(opt: RuntimeBridgeMethod?, expected: RuntimeBridgeMethod) -> Bool {
+  if opt == none { false } else { opt.value == expected }
+}
+
 // Check if a named arg has a specific name.
 fn arg_has_name(arg: NamedArg, name: String) -> Bool {
   if arg.name == none { false } else { arg.name.value == name }
 }
 
 // Extract fold init arg info from the method args list.
-// Returns the inferred init arg if the method is "fold" and has enough args.
+// Returns the inferred init arg if the method is fold and has enough args.
 // `method_args` should be the args excluding the collection receiver (already skipped for ExprCall).
-fn extract_fold_init_info(method_name: String, method_args: List<NamedArg>, min_args: Int, scope: InferScope) -> ArgInferResult? {
-  if method_name == "fold" && method_args |> count >= min_args {
+fn extract_fold_init_info(intrinsic: IntrinsicMethod?, method_args: List<NamedArg>, min_args: Int, scope: InferScope) -> ArgInferResult? {
+  let is_fold = intrinsic_is(opt: intrinsic, expected: MethodFold)
+  if is_fold && method_args |> count >= min_args {
     let init_arg = match method_args |> filter(a => arg_has_name(arg: a, name: "init")) |> first {
       Some { value: a } => Some { value: a }
       None => method_args |> first
@@ -651,17 +663,18 @@ fn extract_fold_init_info(method_name: String, method_args: List<NamedArg>, min_
 
 // Infer method args with element type context and fold special-casing.
 // Shared between ExprCall bridge and ExprMethodCall paths.
-fn infer_method_args_with_fold(method_name: String, method_args: List<NamedArg>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(intrinsic: IntrinsicMethod?, method_args: List<NamedArg>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, scope: InferScope) -> List<ArgInferResult> {
+  let is_fold = intrinsic_is(opt: intrinsic, expected: MethodFold)
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
     let idx = idx_pair.first
     let is_init_arg = arg_has_name(arg: a, name: "init") || (a.name == none && idx == 0)
-    if method_name == "fold" && fold_info != none && is_init_arg {
+    if is_fold && fold_info != none && is_init_arg {
       match fold_info {
         Some { value: fi } => fi
         None => infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
       }
-    } else if method_name == "fold" && fold_info != none {
+    } else if is_fold && fold_info != none {
       infer_fold_lambda_arg(arg: a, scope: scope, acc_type: fold_acc_type, elem_type: element_type)
     } else {
       infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
@@ -821,27 +834,40 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
   }
 }
 
-fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>, receiver_type: Node, fallback: Node) -> Node {
+fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<NamedArg>, receiver_type: Node, fallback: Node) -> Node {
   let receiver_type_name = receiver_type.name
   let receiver_is_map = node_is_keyed_collection(n: receiver_type)
-  if method_name == "map" {
+  // Extract intrinsic/bridge from semantics for enum dispatch.
+  let intrinsic = if semantics == none { none } else {
+    match semantics.value {
+      IntrinsicMethodSemantics { intrinsic: im, fold_accumulator_type: _ } => Some { value: im }
+      _ => none
+    }
+  }
+  let bridge = if semantics == none { none } else {
+    match semantics.value {
+      RuntimeBridgeSemantics { method: bm } => Some { value: bm }
+      _ => none
+    }
+  }
+  if intrinsic_is(opt: intrinsic, expected: MethodMap) {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } =>
         let lambda_ret = rt_type(n: lambda_arg.value)
         container_node(kind_name: receiver_type_name, element: lambda_ret)
       None => fallback
     }
-  } else if method_name == "flat_map" {
+  } else if intrinsic_is(opt: intrinsic, expected: MethodFlatMap) {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
-  } else if method_name == "fold" {
+  } else if intrinsic_is(opt: intrinsic, expected: MethodFold) {
     match typed_args |> filter(a => is_lambda_expr(e: a.value)) |> first {
       Some { value: lambda_arg } => match rt_node(n: lambda_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
-  } else if method_name == "list_push" && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
+  } else if bridge_is(opt: bridge, expected: BridgeListPush) && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
     match typed_args |> first {
       Some { value: item_arg } => match rt_node(n: item_arg.value) {
         Typed { node: rt } => container_node(kind_name: "List", element: rt)
@@ -851,7 +877,7 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
       }
       None => fallback
     }
-  } else if method_name == "map_insert" && receiver_type.children |> count == 0 && receiver_is_map && typed_args |> count >= 2 {
+  } else if bridge_is(opt: bridge, expected: BridgeMapInsert) && receiver_type.children |> count == 0 && receiver_is_map && typed_args |> count >= 2 {
     let key_type = match typed_args |> first {
       Some { value: key_arg } => match rt_node(n: key_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
@@ -861,7 +887,7 @@ fn refine_collection_result_type(method_name: String, typed_args: List<NamedArg>
         map_node(key: key_type, value: match rt_node(n: val_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback })
       None => fallback
     }
-  } else if method_name == "map_merge" && receiver_is_map && typed_args |> count >= 1 {
+  } else if bridge_is(opt: bridge, expected: BridgeMapMerge) && receiver_is_map && typed_args |> count >= 1 {
     let overlay_type = match typed_args |> first {
       Some { value: overlay_arg } => match rt_node(n: overlay_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => receiver_type  InferVariable { id: _ } => receiver_type  Untyped => receiver_type }
       None => receiver_type
@@ -1032,7 +1058,9 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       let has_lambda = call_args |> any(a => is_lambda_expr(e: a.value))
       // For Call form, args after the first are the "method args" (first is the collection).
       let call_method_args = call_args |> skip(1)
-      let call_fold_info = extract_fold_init_info(method_name: func_name, method_args: call_method_args, min_args: 2, scope: scope)
+      // Classify method name to enum once for dispatch.
+      let call_intrinsic = map_get(intrinsic_method_index(), func_name)
+      let call_fold_info = extract_fold_init_info(intrinsic: call_intrinsic, method_args: call_method_args, min_args: 2, scope: scope)
       let call_fold_acc_type = match call_fold_info {
         Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
@@ -1044,7 +1072,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             let first_result = infer_expr(texpr: first_arg.value, scope: scope)
             let first_type = rt_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type)
-            let remaining_results = infer_method_args_with_fold(method_name: func_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
+            let remaining_results = infer_method_args_with_fold(intrinsic: call_intrinsic, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
             concat(
               [ArgInferResult { typed_arg: NamedArg { name: first_arg.name, value: first_result.typed }, diagnostics: first_result.diagnostics }],
               remaining_results
@@ -1115,7 +1143,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
             Some { value: mt } => mt
             None => error_type
           }
-          let bridge_result_type = refine_collection_result_type(method_name: func_name, typed_args: remaining, receiver_type: first_arg_type, fallback: base_result_type)
+          let bridge_result_type = refine_collection_result_type(semantics: method_resolution.semantics, typed_args: remaining, receiver_type: first_arg_type, fallback: base_result_type)
           let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: ta.name, value: ta.value, span: span))
           InferResult {
             typed: make_expr_node(
@@ -1232,12 +1260,14 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
       // For fold: also infer init arg to type accumulator param.
       let recv_rt = rt_type(n: recv_typed)
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
-      let fold_info = extract_fold_init_info(method_name: method_name, method_args: mc_args, min_args: 2, scope: scope)
+      // Classify method name to enum once for dispatch.
+      let mc_intrinsic = map_get(intrinsic_method_index(), method_name)
+      let fold_info = extract_fold_init_info(intrinsic: mc_intrinsic, method_args: mc_args, min_args: 2, scope: scope)
       let fold_acc_type = match fold_info {
         Some { value: fi } => match rt_node(n: fi.typed_arg.value) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
       }
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
+      let mc_arg_infer_results = infer_method_args_with_fold(intrinsic: mc_intrinsic, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let method_resolution = resolve_known_method_node(
@@ -1251,7 +1281,7 @@ fn infer_expr(texpr: Node, scope: InferScope) -> InferResult {
         Some { value: rt } => rt
         None => recv_rt
       }
-      let result_type = refine_collection_result_type(method_name: method_name, typed_args: typed_mc_args, receiver_type: recv_rt, fallback: base_result_type)
+      let result_type = refine_collection_result_type(semantics: method_resolution.semantics, typed_args: typed_mc_args, receiver_type: recv_rt, fallback: base_result_type)
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
       let typed_mc_arg_nodes = typed_mc_args |> map(ta => make_arg_node(name: ta.name, value: ta.value, span: span))
       let mc_texpr = make_expr_node(

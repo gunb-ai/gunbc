@@ -34,7 +34,9 @@ data go_keywords: Map<String, String> = {
 data go_container_templates: Map<String, String> = {
   "list": "[]\{0\}", "set": "map[\{0\}]struct{}",
   "non_empty_list": "[]\{0\}", "non_empty_set": "map[\{0\}]struct{}",
-  "optional": "*\{0\}", "map": "map[\{0\}]\{1\}"
+  "optional": "*\{0\}", "map": "map[\{0\}]\{1\}",
+  "free_monoid": "[]\{0\}", "partial_function": "map[\{0\}]\{1\}",
+  "boolean_algebra": "bool"
 }
 
 // -- Reserved words ------------------------------------------------------

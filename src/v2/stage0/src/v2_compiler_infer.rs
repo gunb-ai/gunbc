@@ -72,7 +72,7 @@ use crate::v2_std_core::StringPart::{Text, Interpolation};
 
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedModule, ResolvedImport};
 pub use crate::v2_compiler_infer_types::{child_inferred_or_name, container_node, map_node, bare_map_node, tuple_node, callable_node, callable_inferred, error_type_node, node_is_container, node_is_optional, node_is_map, node_is_leaf, node_is_named_ref, normalize_access_type_node, node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type, node_type_deps, is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node, method_receiver_element_node, infer_literal_node, infer_binop_type_node, extract_optional_inner_node, for_each_element_type_node, rt_type, emit_map_has, enrich_kernel_type};
-pub use crate::v2_compiler_infer_method::{classify_reconciled_intrinsic_method, classify_runtime_bridge_method, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node, infer_builtin_call_type, resolve_builtin_call_type};
+pub use crate::v2_compiler_infer_method::{classify_reconciled_intrinsic_method, classify_runtime_bridge_method, infer_intrinsic_method_type_node, infer_runtime_bridge_method_type_node, infer_builtin_call_type, resolve_builtin_call_type, intrinsic_method_index, runtime_bridge_method_index};
 pub use crate::v2_compiler_infer_cycle::{detect_type_cycles_kahn};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, is_recursive_type, lookup_type, merge_envs};
 pub use crate::v2_compiler_infer_resolve::{resolve_node, resolve_item_types, NodeResolveResult, ItemResult};
@@ -589,6 +589,22 @@ Rc::new(PatternScopeResult {
     })
 }
 
+pub fn intrinsic_is(opt: Option<IntrinsicMethod>, expected: IntrinsicMethod) -> bool {
+    if (opt.clone() == None) {
+        false
+} else {
+        (opt.clone().unwrap() == expected.clone())
+}
+}
+
+pub fn bridge_is(opt: Option<RuntimeBridgeMethod>, expected: RuntimeBridgeMethod) -> bool {
+    if (opt.clone() == None) {
+        false
+} else {
+        (opt.clone().unwrap() == expected.clone())
+}
+}
+
 pub fn arg_has_name(arg: Rc<NamedArg>, name: String) -> bool {
     if (arg.name.clone() == None) {
         false
@@ -597,8 +613,9 @@ pub fn arg_has_name(arg: Rc<NamedArg>, name: String) -> bool {
 }
 }
 
-pub fn extract_fold_init_info(method_name: String, method_args: Vec<Rc<NamedArg>>, min_args: i64, scope: Rc<InferScope>) -> Option<Rc<ArgInferResult>> {
-    if ((method_name.clone() == "fold".to_string()) && ((method_args.clone().len() as i64) >= min_args.clone())) {
+pub fn extract_fold_init_info(intrinsic: Option<IntrinsicMethod>, method_args: Vec<Rc<NamedArg>>, min_args: i64, scope: Rc<InferScope>) -> Option<Rc<ArgInferResult>> {
+    let is_fold = intrinsic_is(intrinsic.clone(), MethodFold);
+    if (is_fold && ((method_args.clone().len() as i64) >= min_args.clone())) {
         {
             let init_arg = match { let mut __result = Vec::new(); for a in method_args.clone().iter().cloned() { if arg_has_name(a.clone(), "init".to_string()) { __result.push(a); } } __result }.first().cloned() {
     Some(a) => Some(a.clone()),
@@ -623,18 +640,19 @@ Some(Rc::new(ArgInferResult {
 }
 }
 
-pub fn infer_method_args_with_fold(method_name: String, method_args: Vec<Rc<NamedArg>>, fold_info: Option<Rc<ArgInferResult>>, fold_acc_type: Rc<Node>, element_type: Rc<Node>, scope: Rc<InferScope>) -> Vec<Rc<ArgInferResult>> {
+pub fn infer_method_args_with_fold(intrinsic: Option<IntrinsicMethod>, method_args: Vec<Rc<NamedArg>>, fold_info: Option<Rc<ArgInferResult>>, fold_acc_type: Rc<Node>, element_type: Rc<Node>, scope: Rc<InferScope>) -> Vec<Rc<ArgInferResult>> {
+    let is_fold = intrinsic_is(intrinsic.clone(), MethodFold);
     { let mut __result = Vec::new(); for idx_pair in method_args.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>().iter().cloned() { __result.push({
         let a = idx_pair.1.clone();
 let idx = idx_pair.0.clone();
 let is_init_arg = (arg_has_name(a.clone(), "init".to_string()) || ((a.name.clone() == None) && (idx.clone() == 0)));
-if (((method_name.clone() == "fold".to_string()) && (fold_info.clone() != None)) && is_init_arg.clone()) {
+if ((is_fold && (fold_info.clone() != None)) && is_init_arg.clone()) {
             match fold_info.clone() {
     Some(fi) => fi.clone(),
     None => infer_arg_with_element_type(a.clone(), element_type.clone(), scope.clone()),
 }
 } else {
-            if ((method_name.clone() == "fold".to_string()) && (fold_info.clone() != None)) {
+            if (is_fold && (fold_info.clone() != None)) {
                 infer_fold_lambda_arg(a.clone(), scope.clone(), fold_acc_type.clone(), element_type.clone())
 } else {
                 infer_arg_with_element_type(a.clone(), element_type.clone(), scope.clone())
@@ -807,11 +825,27 @@ Rc::new(ArgInferResult {
 }
 }
 
-pub fn refine_collection_result_type(method_name: String, typed_args: Vec<Rc<NamedArg>>, receiver_type: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
+pub fn refine_collection_result_type(semantics: Option<Rc<MethodSemantics>>, typed_args: Vec<Rc<NamedArg>>, receiver_type: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
     {
         let receiver_type_name = receiver_type.name.clone();
 let receiver_is_map = node_is_map(receiver_type.clone());
-if (method_name.clone() == "map".to_string()) {
+let intrinsic = if (semantics.clone() == None) {
+            None
+} else {
+            match (*semantics.clone().unwrap()).clone() {
+    MethodSemantics::IntrinsicMethodSemantics { intrinsic: im, .. } => Some(im),
+    _ => None,
+}
+};
+let bridge = if (semantics.clone() == None) {
+            None
+} else {
+            match (*semantics.clone().unwrap()).clone() {
+    MethodSemantics::RuntimeBridgeSemantics { method: bm, .. } => Some(bm),
+    _ => None,
+}
+};
+if intrinsic_is(intrinsic.clone(), MethodMap) {
             match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(a.value.clone()) { __result.push(a); } } __result }.first().cloned() {
     Some(lambda_arg) => {
                 let lambda_ret = rt_type(lambda_arg.value.clone());
@@ -820,7 +854,7 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
     None => fallback.clone(),
 }
 } else {
-            if (method_name.clone() == "flat_map".to_string()) {
+            if intrinsic_is(intrinsic.clone(), MethodFlatMap) {
                 match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(a.value.clone()) { __result.push(a); } } __result }.first().cloned() {
     Some(lambda_arg) => match (*rt_node(lambda_arg.value.clone())).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
@@ -830,7 +864,7 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
     None => fallback.clone(),
 }
 } else {
-                if (method_name.clone() == "fold".to_string()) {
+                if intrinsic_is(intrinsic.clone(), MethodFold) {
                     match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(a.value.clone()) { __result.push(a); } } __result }.first().cloned() {
     Some(lambda_arg) => match (*rt_node(lambda_arg.value.clone())).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
@@ -840,7 +874,7 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
     None => fallback.clone(),
 }
 } else {
-                    if (((method_name.clone() == "list_push".to_string()) && ((typed_args.clone().len() as i64) >= 1)) && ((receiver_type.children.clone().len() as i64) == 0)) {
+                    if ((bridge_is(bridge.clone(), BridgeListPush) && ((typed_args.clone().len() as i64) >= 1)) && ((receiver_type.children.clone().len() as i64) == 0)) {
                         match typed_args.clone().first().cloned() {
     Some(item_arg) => match (*rt_node(item_arg.value.clone())).clone() {
     NodeType::Typed { node: rt, .. } => container_node("List".to_string(), rt.clone()),
@@ -850,7 +884,7 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
     None => fallback.clone(),
 }
 } else {
-                        if ((((method_name.clone() == "map_insert".to_string()) && ((receiver_type.children.clone().len() as i64) == 0)) && receiver_is_map.clone()) && ((typed_args.clone().len() as i64) >= 2)) {
+                        if (((bridge_is(bridge.clone(), BridgeMapInsert) && ((receiver_type.children.clone().len() as i64) == 0)) && receiver_is_map.clone()) && ((typed_args.clone().len() as i64) >= 2)) {
                             {
                                 let key_type = match typed_args.clone().first().cloned() {
     Some(key_arg) => match (*rt_node(key_arg.value.clone())).clone() {
@@ -870,7 +904,7 @@ match typed_args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>().fi
 }
 }
 } else {
-                            if (((method_name.clone() == "map_merge".to_string()) && receiver_is_map.clone()) && ((typed_args.clone().len() as i64) >= 1)) {
+                            if ((bridge_is(bridge.clone(), BridgeMapMerge) && receiver_is_map.clone()) && ((typed_args.clone().len() as i64) >= 1)) {
                                 {
                                     let overlay_type = match typed_args.clone().first().cloned() {
     Some(overlay_arg) => match (*rt_node(overlay_arg.value.clone())).clone() {
@@ -1070,7 +1104,8 @@ let sig_params = match sig.clone() {
 };
 let has_lambda = { let mut __found = false; for a in call_args.clone().iter().cloned() { if is_lambda_expr(a.value.clone()) { __found = true; break; } } __found };
 let call_method_args = call_args.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>();
-let call_fold_info = extract_fold_init_info(func_name.clone(), call_method_args.clone(), 2, scope.clone());
+let call_intrinsic = intrinsic_method_index().get(&func_name).cloned();
+let call_fold_info = extract_fold_init_info(call_intrinsic.clone(), call_method_args.clone(), 2, scope.clone());
 let call_fold_acc_type = match call_fold_info.clone() {
     Some(fi) => match (*rt_node(fi.typed_arg.clone().value.clone())).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
@@ -1085,7 +1120,7 @@ let arg_infer_results = if ((has_lambda.clone() && ((call_args.clone().len() as 
                     let first_result = infer_expr(first_arg.value.clone(), scope.clone());
 let first_type = rt_type(first_result.typed.clone());
 let elem_type = for_each_element_type_node(first_type.clone());
-let remaining_results = infer_method_args_with_fold(func_name.clone(), call_method_args.clone(), call_fold_info.clone(), call_fold_acc_type.clone(), elem_type.clone(), scope.clone());
+let remaining_results = infer_method_args_with_fold(call_intrinsic.clone(), call_method_args.clone(), call_fold_info.clone(), call_fold_acc_type.clone(), elem_type.clone(), scope.clone());
 v2_rt::concat(vec![Rc::new(ArgInferResult {
     typed_arg: Rc::new(NamedArg {
     name: first_arg.name.clone(),
@@ -1163,7 +1198,7 @@ let base_result_type = match method_resolution.result_type.clone() {
     Some(mt) => mt.clone(),
     None => error_type_node(),
 };
-let bridge_result_type = refine_collection_result_type(func_name.clone(), remaining.clone(), first_arg_type.clone(), base_result_type.clone());
+let bridge_result_type = refine_collection_result_type(method_resolution.semantics.clone(), remaining.clone(), first_arg_type.clone(), base_result_type.clone());
 let remaining_arg_nodes = { let mut __result = Vec::new(); for ta in remaining.clone().iter().cloned() { __result.push(make_arg_node(ta.name.clone(), ta.value.clone(), span.clone())); } __result };
 Rc::new(InferResult {
     typed: make_expr_node(Rc::new(ExprData::ExprMethodCall {
@@ -1286,7 +1321,8 @@ let recv_typed = recv_result.typed.clone();
 let recv_diags = recv_result.diagnostics.clone();
 let recv_rt = rt_type(recv_typed.clone());
 let recv_elem_type = for_each_element_type_node(recv_rt.clone());
-let fold_info = extract_fold_init_info(method_name.clone(), mc_args.clone(), 2, scope.clone());
+let mc_intrinsic = intrinsic_method_index().get(&method_name).cloned();
+let fold_info = extract_fold_init_info(mc_intrinsic.clone(), mc_args.clone(), 2, scope.clone());
 let fold_acc_type = match fold_info.clone() {
     Some(fi) => match (*rt_node(fi.typed_arg.clone().value.clone())).clone() {
     NodeType::Typed { node: rt, .. } => rt.clone(),
@@ -1295,7 +1331,7 @@ let fold_acc_type = match fold_info.clone() {
 },
     None => error_type_node(),
 };
-let mc_arg_infer_results = infer_method_args_with_fold(method_name.clone(), mc_args.clone(), fold_info.clone(), fold_acc_type.clone(), recv_elem_type.clone(), scope.clone());
+let mc_arg_infer_results = infer_method_args_with_fold(mc_intrinsic.clone(), mc_args.clone(), fold_info.clone(), fold_acc_type.clone(), recv_elem_type.clone(), scope.clone());
 let typed_mc_args = { let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.push(air.typed_arg.clone()); } __result };
 let mc_arg_diags = { let mut __result = Vec::new(); for air in mc_arg_infer_results.clone().iter().cloned() { __result.extend(air.diagnostics.clone()); } __result };
 let method_resolution = resolve_known_method_node(recv_typed.clone(), recv_rt.clone(), method_name.clone(), if (fold_info.clone() != None) {
@@ -1307,7 +1343,7 @@ let base_result_type = match method_resolution.result_type.clone() {
     Some(rt) => rt.clone(),
     None => recv_rt.clone(),
 };
-let result_type = refine_collection_result_type(method_name.clone(), typed_mc_args.clone(), recv_rt.clone(), base_result_type.clone());
+let result_type = refine_collection_result_type(method_resolution.semantics.clone(), typed_mc_args.clone(), recv_rt.clone(), base_result_type.clone());
 let method_semantics = if (method_resolution.semantics.clone() != None) {
                 method_resolution.semantics.clone()
 } else {

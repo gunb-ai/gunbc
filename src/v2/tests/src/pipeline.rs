@@ -1333,3 +1333,176 @@ fn greet(name: String) -> String { concat("Hello, ", name) }
     let mod_obj = module.get("module").expect("should have module field");
     assert_eq!(mod_obj["name"], "roundtrip", "module name should match");
 }
+
+// ── Scrambled name emit tests ─────────────────────────────────────────
+//
+// These tests verify that emission is name-opaque: replacing all user-
+// defined type names with arbitrary strings produces identical emitted
+// source code (after normalizing names back to ordinal placeholders).
+//
+// This is the emit-side complement to the inference scrambled-name tests
+// above. If these tests fail, it reveals places where emit makes
+// decisions based on type names rather than structural facts.
+
+/// Normalize emitted source: replace each user-defined name with its
+/// ordinal placeholder. Longer names are replaced first to avoid partial
+/// matches (e.g. "FooBar" before "Foo").
+fn normalize_emitted_source(source: &str, names: &[&str], prefix: &str) -> String {
+    // Build replacement pairs sorted by descending length (longest first)
+    let mut pairs: Vec<(&str, String)> = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (*name, format!("{}{}", prefix, i)))
+        .collect();
+    pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+
+    let mut result = source.to_string();
+    for (name, placeholder) in &pairs {
+        result = result.replace(name, placeholder);
+    }
+    result
+}
+
+/// Assert that two programs produce structurally identical emitted source
+/// after normalizing user-defined type names.
+///
+/// Compiles both programs with the given target, finds files matching the
+/// `file_selector` predicate, normalizes names, and asserts equality.
+fn assert_scrambled_name_emit_eq(
+    source_a: &str,
+    source_b: &str,
+    names_a: &[&str],
+    names_b: &[&str],
+    target: RenderTarget,
+    file_selector: fn(&str) -> bool,
+    label: &str,
+) {
+    assert_eq!(names_a.len(), names_b.len(), "name lists must be parallel");
+
+    let result_a = compile_dag_target(source_a, target);
+    let result_b = compile_dag_target(source_b, target);
+
+    // Find the main source file from each result
+    let file_a = result_a
+        .files
+        .iter()
+        .find(|f| file_selector(&f.path))
+        .unwrap_or_else(|| {
+            let paths: Vec<_> = result_a.files.iter().map(|f| f.path.as_str()).collect();
+            panic!("{label}: no matching file in program A, available: {paths:?}")
+        });
+    let file_b = result_b
+        .files
+        .iter()
+        .find(|f| file_selector(&f.path))
+        .unwrap_or_else(|| {
+            let paths: Vec<_> = result_b.files.iter().map(|f| f.path.as_str()).collect();
+            panic!("{label}: no matching file in program B, available: {paths:?}")
+        });
+
+    let norm_a = normalize_emitted_source(&file_a.content, names_a, "__T");
+    let norm_b = normalize_emitted_source(&file_b.content, names_b, "__T");
+
+    assert_eq!(
+        norm_a, norm_b,
+        "scrambled-name emit mismatch in {label}:\n\
+         --- normalized A ---\n{norm_a}\n\
+         --- normalized B ---\n{norm_b}",
+    );
+}
+
+#[test]
+fn scrambled_name_emit_rust() {
+    // Function names deliberately avoid containing type names to prevent
+    // false normalization hits (e.g. "make_foo" PascalCased to "MakeFoo"
+    // would collide with type name "Foo").
+    let source_a = "\
+module test
+
+type Foo { x: Int  y: String }
+type Bar { label: String  count: Int }
+
+fn create() -> Foo { Foo { x: 1, y: \"hello\" } }
+fn get_label(b: Bar) -> String { b.label }
+";
+    let source_b = "\
+module test
+
+type Zqx { x: Int  y: String }
+type Wmn { label: String  count: Int }
+
+fn create() -> Zqx { Zqx { x: 1, y: \"hello\" } }
+fn get_label(b: Wmn) -> String { b.label }
+";
+    assert_scrambled_name_emit_eq(
+        source_a,
+        source_b,
+        &["Foo", "Bar"],
+        &["Zqx", "Wmn"],
+        RenderTarget::Rust,
+        |path| path.ends_with(".rs") && path.contains("src/"),
+        "Rust emit (simple structs)",
+    );
+}
+
+#[test]
+fn scrambled_name_emit_python() {
+    let source_a = "\
+module test
+
+type Foo { x: Int  y: String }
+type Bar { label: String  count: Int }
+
+fn create() -> Foo { Foo { x: 1, y: \"hello\" } }
+fn get_label(b: Bar) -> String { b.label }
+";
+    let source_b = "\
+module test
+
+type Zqx { x: Int  y: String }
+type Wmn { label: String  count: Int }
+
+fn create() -> Zqx { Zqx { x: 1, y: \"hello\" } }
+fn get_label(b: Wmn) -> String { b.label }
+";
+    assert_scrambled_name_emit_eq(
+        source_a,
+        source_b,
+        &["Foo", "Bar"],
+        &["Zqx", "Wmn"],
+        RenderTarget::Python,
+        |path| path.ends_with(".py") && !path.contains("__init__"),
+        "Python emit (simple structs)",
+    );
+}
+
+#[test]
+fn scrambled_name_emit_go() {
+    let source_a = "\
+module test
+
+type Foo { x: Int  y: String }
+type Bar { label: String  count: Int }
+
+fn create() -> Foo { Foo { x: 1, y: \"hello\" } }
+fn get_label(b: Bar) -> String { b.label }
+";
+    let source_b = "\
+module test
+
+type Zqx { x: Int  y: String }
+type Wmn { label: String  count: Int }
+
+fn create() -> Zqx { Zqx { x: 1, y: \"hello\" } }
+fn get_label(b: Wmn) -> String { b.label }
+";
+    assert_scrambled_name_emit_eq(
+        source_a,
+        source_b,
+        &["Foo", "Bar"],
+        &["Zqx", "Wmn"],
+        RenderTarget::Go,
+        |path| path.ends_with(".go") && !path.contains("go.mod") && !path.contains("_test.go"),
+        "Go emit (simple structs)",
+    );
+}
