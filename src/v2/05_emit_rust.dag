@@ -3464,50 +3464,44 @@ fn emit_capability_method(cap_node: Node) -> String {
 // =========================================================================
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  // Data defs use lazy_static (requires Sync) or serde (requires Deserialize),
-  // so render types without Rc wrapping.
-  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_map())
-  let upper_name = to_screaming_snake(name: name)
+  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: rc_types)
+  let fn_name = to_snake(name: name)
   if is_simple_type_node(n: type_node) {
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
+    let upper_name = to_screaming_snake(name: name)
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     concat(rust_visibility_prefix(), "const ", upper_name, ": ", ty_str, " = ", val_str, ";")
   } else if has_nested_records_node(n: type_node) {
-    // Complex data with nested anonymous records -> serde deserialization
     let json_str = emit_data_value_json(value: value)
-    concat(rust_visibility_prefix(), "fn ", to_snake(name: name), "() -> ", ty_str, " {\n",
+    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",
       "}")
   } else {
     let is_map = node_is_keyed_collection(n: type_node)
     if is_map {
-    // Map data: emit as lazy_static with explicit insert() calls.
-    // The value is a RecordLit whose field names are map keys and field values are map values.
+    // Map data: emit as function with explicit insert() calls.
     match value.expr_data {
       ExprRecordLit { type_name: _, parent_enum: _ } =>
         let inserts = value.children |> map(f =>
-          let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
-          concat("        __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
+          let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+          concat("    __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
         )
         let inserts_str = inserts |> join(separator: "\n")
-        concat("lazy_static::lazy_static! {\n",
-          "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = {\n",
-          "        let mut __m = HashMap::new();\n",
+        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+          "    let mut __m = HashMap::new();\n",
           inserts_str, "\n",
-          "        __m\n",
-          "    };\n",
+          "    Rc::new(__m)\n",
           "}")
       _ =>
-        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
-        concat("lazy_static::lazy_static! {\n",
-          "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+          "    ", val_str, "\n",
           "}")
     }
     } else {
-      // Complex types use lazy_static for heap-allocated values
-      let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info)
-      concat("lazy_static::lazy_static! {\n",
-        "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+      let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+        "    ", val_str, "\n",
         "}")
     }
   }
