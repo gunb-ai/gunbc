@@ -60,8 +60,7 @@ use VarBindingKind::*;
 use CallSemantics::*;
 use MethodSemantics::*;
 use ExprErrorKind::*;
-use TransportKind::*;
-use ConfigPropertyKey::*;
+// TransportKind::* and ConfigPropertyKey::* dissolved.
 use ExprData::*;
 use MatchPattern::*;
 use LiteralValue::*;
@@ -322,51 +321,8 @@ pub enum ExprErrorKind {
     InternalExprError,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum TransportKind {
-    LocalTransport,
-    RestTransport,
-    ShellTransport,
-    FileTransport,
-    CustomTransport {
-        name: String,
-    },
-}
-impl TransportKind {
-    pub fn name(&self) -> String {
-        match self {
-            TransportKind::LocalTransport => panic!("no name on unit variant"),
-            TransportKind::RestTransport => panic!("no name on unit variant"),
-            TransportKind::ShellTransport => panic!("no name on unit variant"),
-            TransportKind::FileTransport => panic!("no name on unit variant"),
-            TransportKind::CustomTransport { name: __val, .. } => __val.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConfigPropertyKey {
-    ConfigBaseUrl,
-    ConfigBasePath,
-    ConfigAuthScheme,
-    ConfigAuthHeader,
-    ConfigAuthToken,
-    ConfigOther {
-        name: String,
-    },
-}
-impl ConfigPropertyKey {
-    pub fn name(&self) -> String {
-        match self {
-            ConfigPropertyKey::ConfigBaseUrl => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigBasePath => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigAuthScheme => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigAuthHeader => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigAuthToken => panic!("no name on unit variant"),
-            ConfigPropertyKey::ConfigOther { name: __val, .. } => __val.clone(),
-        }
-    }
-}
+// TransportKind dissolved — transport identity is t.name string.
+// ConfigPropertyKey dissolved — property identity is the name string.
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprData {
@@ -1158,25 +1114,25 @@ pub fn make_transport_node(name: String, properties: Vec<Rc<Node>>, children: Ve
 }
 
 pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(transport_kind_name(Rc::new(TransportKind::LocalTransport)), vec![], vec![], span.clone())
+    make_transport_node("local".to_string(), vec![], vec![], span.clone())
 }
 
 pub fn rest_transport_node(base_url: Rc<Node>, auth_props: Vec<Rc<Node>>, headers: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let url_field = make_field_init_node(config_property_name(Rc::new(ConfigPropertyKey::ConfigBaseUrl)), base_url.clone(), no_span());
+        let url_field = make_field_init_node("base_url".to_string(), base_url.clone(), no_span());
 let props = v2_rt::concat(v2_rt::concat(vec![url_field.clone()], auth_props.clone()), headers.clone());
-make_transport_node(transport_kind_name(Rc::new(TransportKind::RestTransport)), props.clone(), vec![], span.clone())
+make_transport_node("rest".to_string(), props.clone(), vec![], span.clone())
 }
 }
 
 pub fn shell_transport_node(argv: Vec<Rc<Node>>, env: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(transport_kind_name(Rc::new(TransportKind::ShellTransport)), env.clone(), argv.clone(), span.clone())
+    make_transport_node("shell".to_string(), env.clone(), argv.clone(), span.clone())
 }
 
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
-        let path_field = make_field_init_node(config_property_name(Rc::new(ConfigPropertyKey::ConfigBasePath)), base_path.clone(), no_span());
-make_transport_node(transport_kind_name(Rc::new(TransportKind::FileTransport)), vec![path_field.clone()], vec![], span.clone())
+        let path_field = make_field_init_node("base_path".to_string(), base_path.clone(), no_span());
+make_transport_node("file".to_string(), vec![path_field.clone()], vec![], span.clone())
 }
 }
 
@@ -1197,78 +1153,15 @@ pub fn find_property_string(props: Vec<Rc<Node>>, prop_name: String) -> Option<S
 }
 }
 
-pub fn config_property_name(key: Rc<ConfigPropertyKey>) -> String {
-    match (*key.clone()).clone() {
-    ConfigPropertyKey::ConfigBaseUrl => "base_url".to_string(),
-    ConfigPropertyKey::ConfigBasePath => "base_path".to_string(),
-    ConfigPropertyKey::ConfigAuthScheme => "auth_scheme".to_string(),
-    ConfigPropertyKey::ConfigAuthHeader => "auth_header".to_string(),
-    ConfigPropertyKey::ConfigAuthToken => "auth_token".to_string(),
-    ConfigPropertyKey::ConfigOther { name: name, .. } => name.clone(),
-}
+// config_property_name, config_property_key, transport_kind_name dissolved.
+// Use direct string literals instead.
+
+pub fn is_config_reserved_key(name: String) -> bool {
+    (name.clone() == "base_url".to_string()) || (name.clone() == "base_path".to_string()) || (name.clone() == "auth_scheme".to_string()) || (name.clone() == "auth_header".to_string()) || (name.clone() == "auth_token".to_string())
 }
 
-pub fn config_property_key(name: String) -> Rc<ConfigPropertyKey> {
-    if (name.clone() == "base_url".to_string()) {
-        Rc::new(ConfigPropertyKey::ConfigBaseUrl)
-} else {
-        if (name.clone() == "base_path".to_string()) {
-            Rc::new(ConfigPropertyKey::ConfigBasePath)
-} else {
-            if (name.clone() == "auth_scheme".to_string()) {
-                Rc::new(ConfigPropertyKey::ConfigAuthScheme)
-} else {
-                if (name.clone() == "auth_header".to_string()) {
-                    Rc::new(ConfigPropertyKey::ConfigAuthHeader)
-} else {
-                    if (name.clone() == "auth_token".to_string()) {
-                        Rc::new(ConfigPropertyKey::ConfigAuthToken)
-} else {
-                        Rc::new(ConfigPropertyKey::ConfigOther {
-    name: name.clone(),
-})
-}
-}
-}
-}
-}
-}
-
-pub fn transport_kind_name(kind: Rc<TransportKind>) -> String {
-    match (*kind.clone()).clone() {
-    TransportKind::LocalTransport => "local".to_string(),
-    TransportKind::RestTransport => "rest".to_string(),
-    TransportKind::ShellTransport => "shell".to_string(),
-    TransportKind::FileTransport => "file".to_string(),
-    TransportKind::CustomTransport { name: name, .. } => name.clone(),
-}
-}
-
-pub fn transport_kind(t: Rc<Node>) -> Rc<TransportKind> {
-    if (t.name.clone() == "local".to_string()) {
-        Rc::new(TransportKind::LocalTransport)
-} else {
-        if (t.name.clone() == "rest".to_string()) {
-            Rc::new(TransportKind::RestTransport)
-} else {
-            if (t.name.clone() == "shell".to_string()) {
-                Rc::new(TransportKind::ShellTransport)
-} else {
-                if (t.name.clone() == "file".to_string()) {
-                    Rc::new(TransportKind::FileTransport)
-} else {
-                    Rc::new(TransportKind::CustomTransport {
-    name: t.name.clone(),
-})
-}
-}
-}
-}
-}
-
-pub fn is_transport_kind(t: Rc<Node>, kind: Rc<TransportKind>) -> bool {
-    (transport_kind_name(transport_kind(t.clone())) == transport_kind_name(kind.clone()))
-}
+// transport_kind_name, transport_kind, is_transport_kind — dissolved.
+// Use direct t.name == "rest" comparison instead.
 
 pub fn field_init_operation_modifier(field_init: Rc<Node>) -> Option<OperationModifier> {
     let fi_name = field_init_node_name(field_init.clone());
@@ -1296,19 +1189,19 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 
 pub fn transport_base_url(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigBaseUrl)))
+    find_property(t.properties.clone(), "base_url".to_string())
 }
 
 pub fn transport_auth_token(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigAuthToken)))
+    find_property(t.properties.clone(), "auth_token".to_string())
 }
 
 pub fn transport_auth_header_name(t: Rc<Node>) -> Option<String> {
-    find_property_string(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigAuthHeader)))
+    find_property_string(t.properties.clone(), "auth_header".to_string())
 }
 
 pub fn transport_has_auth(t: Rc<Node>) -> bool {
-    match find_property(t.properties.clone(), config_property_name(Rc::new(ConfigPropertyKey::ConfigAuthToken))) {
+    match find_property(t.properties.clone(), "auth_token".to_string()) {
     Some(_) => true,
     None => false,
 }
@@ -1316,8 +1209,7 @@ pub fn transport_has_auth(t: Rc<Node>) -> bool {
 
 pub fn transport_headers(t: Rc<Node>) -> Vec<Rc<Node>> {
     { let mut __result = Vec::new(); for p in t.properties.clone().iter().cloned() { if {
-        let key = config_property_key(field_init_node_name(p.clone()));
-(((((key.clone() != Rc::new(ConfigPropertyKey::ConfigBaseUrl)) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigBasePath))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthScheme))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthHeader))) && (key.clone() != Rc::new(ConfigPropertyKey::ConfigAuthToken)))
+        !is_config_reserved_key(field_init_node_name(p.clone()))
 } { __result.push(p); } } __result }
 }
 

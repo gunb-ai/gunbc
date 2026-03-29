@@ -49,14 +49,14 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{Node, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_transport_kind, is_container_type, TransportKind, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span, field_init_node_name, field_init_node_value, make_param_node, make_field_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_named_expr_node, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name, lambda_param_names, foreach_variable};
+pub use crate::v2_std_core::{Node, NodeType, rt_node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, Cardinality, StringPart, MatchPattern, ExprData, make_expr_node, make_expr_error_node, map_children, make_arg_node, arg_name, arg_value, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node, make_transport_node, local_transport_node, is_kernel_type, is_container_type, leaf_node, with_optional_cardinality, with_required_cardinality, node_has_structure, node_is_product, no_span, field_init_node_name, field_init_node_value, make_param_node, make_field_node, param_node_name, param_node_type_expr, param_node_default_value, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key, make_named_expr_node, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name, lambda_param_names, foreach_variable};
 use crate::v2_std_core::NodeType::{Typed, InferError, Untyped};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Cardinality::{Required, CardOptional};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
-use crate::v2_std_core::TransportKind::{LocalTransport};
+// TransportKind::{LocalTransport} dissolved.
 pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, node_is_container, rt_type};
 pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type, is_recursive_type};
 
@@ -777,7 +777,7 @@ Rc::new(StringPartResolveResult {
 }
 
 pub fn resolve_transport_binding(transport: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<TransportResolveResult> {
-    if is_transport_kind(transport.clone(), Rc::new(TransportKind::LocalTransport)) {
+    if (transport.name.clone() == "local".to_string()) {
         Rc::new(TransportResolveResult {
     transport: transport.clone(),
     diagnostics: vec![],

@@ -26,7 +26,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     pub fn as_set(&self) -> &std::collections::BTreeSet<T> { &self.0 }
     pub fn into_set(self) -> std::collections::BTreeSet<T> { self.0 }
 }
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, LiteralValue, ExprData, make_expr_node, make_arg_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, TextFile, CompilerDiagnostic, ErrorNode, make_error_node, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, TransportKind, is_transport_kind, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, leaf_node, with_required_cardinality, node_has_structure, node_is_product, node_is_coproduct, FieldAccessStyle, FieldValueShape, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, LiteralValue, ExprData, make_expr_node, make_arg_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, TextFile, CompilerDiagnostic, ErrorNode, make_error_node, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, leaf_node, with_required_cardinality, node_has_structure, node_is_product, node_is_coproduct, FieldAccessStyle, FieldValueShape, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
@@ -36,7 +36,7 @@ use crate::v2_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding
 use crate::v2_std_core::CallSemantics::{PlainCallSemantics, LookupCallSemantics};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
-use crate::v2_std_core::TransportKind::{LocalTransport, RestTransport, ShellTransport, FileTransport};
+// TransportKind::{LocalTransport, RestTransport, ShellTransport, FileTransport} dissolved.
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::MatchPattern::*;
 use crate::v2_std_core::BinOpKind::*;
@@ -3392,9 +3392,9 @@ pub struct ".to_string()), name.clone()), " {
 
 pub fn emit_service_config_fields(fallback_transport: Rc<Node>, op_children: Vec<Rc<Node>>) -> String {
     {
-        let has_shell = service_uses_transport(fallback_transport.clone(), op_children.clone(), Rc::new(TransportKind::ShellTransport));
-let has_rest = service_uses_transport(fallback_transport.clone(), op_children.clone(), Rc::new(TransportKind::RestTransport));
-let has_file = service_uses_transport(fallback_transport.clone(), op_children.clone(), Rc::new(TransportKind::FileTransport));
+        let has_shell = service_uses_transport(fallback_transport.clone(), op_children.clone(), "shell".to_string());
+let has_rest = service_uses_transport(fallback_transport.clone(), op_children.clone(), "rest".to_string());
+let has_file = service_uses_transport(fallback_transport.clone(), op_children.clone(), "file".to_string());
 let has_auth = service_has_rest_auth(fallback_transport.clone(), op_children.clone());
 let shell_field = if has_shell.clone() {
             "    pub working_dir: Option<String>,
@@ -3447,13 +3447,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("impl ".to
 
 pub fn emit_service_new_method(name: String, fallback_transport: Rc<Node>, op_children: Vec<Rc<Node>>) -> String {
     {
-        let has_shell = service_uses_transport(fallback_transport.clone(), op_children.clone(), Rc::new(TransportKind::ShellTransport));
-let has_rest = service_uses_transport(fallback_transport.clone(), op_children.clone(), Rc::new(TransportKind::RestTransport));
-let has_file = service_uses_transport(fallback_transport.clone(), op_children.clone(), Rc::new(TransportKind::FileTransport));
+        let has_shell = service_uses_transport(fallback_transport.clone(), op_children.clone(), "shell".to_string());
+let has_rest = service_uses_transport(fallback_transport.clone(), op_children.clone(), "rest".to_string());
+let has_file = service_uses_transport(fallback_transport.clone(), op_children.clone(), "file".to_string());
 let has_auth = service_has_rest_auth(fallback_transport.clone(), op_children.clone());
 let base_url_default = if has_rest.clone() {
             {
-                let from_fallback = if is_transport_kind(fallback_transport.clone(), Rc::new(TransportKind::RestTransport)) {
+                let from_fallback = if (fallback_transport.name.clone() == "rest".to_string()) {
                     match transport_base_url(fallback_transport.clone()) {
     Some(bu) => match (*bu.expr_data.clone()).clone() {
     ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; s.clone() },
@@ -3569,13 +3569,13 @@ compile_error!(\"no mock data available for dry-run operation: ".to_string()), o
 }
 
 pub fn emit_transport_call(transport: Rc<Node>, op_name: String, registry: HashMap<String, Rc<ItemInfo>>, depth: i64, inferred: Rc<Node>) -> String {
-    if is_transport_kind(transport.clone(), Rc::new(TransportKind::RestTransport)) {
+    if (transport.name.clone() == "rest".to_string()) {
         emit_rest_call(op_name.clone(), transport.clone(), registry.clone(), depth.clone())
 } else {
-        if is_transport_kind(transport.clone(), Rc::new(TransportKind::ShellTransport)) {
+        if (transport.name.clone() == "shell".to_string()) {
             emit_shell_call(op_name.clone(), transport.clone(), registry.clone(), depth.clone(), inferred.clone())
 } else {
-            if is_transport_kind(transport.clone(), Rc::new(TransportKind::FileTransport)) {
+            if (transport.name.clone() == "file".to_string()) {
                 emit_file_call(op_name.clone(), inferred.clone())
 } else {
                 emit_local_call(op_name.clone())

@@ -38,8 +38,6 @@ import v2.std.core {
   resource_use_name, resource_use_resource,
   BinOpKind,
   UnaryOpKind, StringPart, Text, Interpolation,
-  TransportKind, LocalTransport, RestTransport, ShellTransport, FileTransport,
-  is_transport_kind,
   transport_base_url,
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
@@ -3242,9 +3240,9 @@ fn emit_service_struct(name: String, fallback_transport: Node, op_children: List
 }
 
 fn emit_service_config_fields(fallback_transport: Node, op_children: List<Node>) -> String {
-  let has_shell = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: ShellTransport)
-  let has_rest = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: RestTransport)
-  let has_file = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: FileTransport)
+  let has_shell = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind_name: "shell")
+  let has_rest = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind_name: "rest")
+  let has_file = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind_name: "file")
   let has_auth = service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
   let shell_field = if has_shell { "    pub working_dir: Option<String>,\n" } else { "" }
   let rest_field = if has_rest { "    pub base_url: String,\n" } else { "" }
@@ -3268,13 +3266,13 @@ fn emit_service_impl(name: String, transport: Node, op_children: List<Node>, reg
 // Emit a `new` constructor for a service struct that accepts DryRunMode.
 // Scans all operations to determine which transport fields to initialize.
 fn emit_service_new_method(name: String, fallback_transport: Node, op_children: List<Node>) -> String {
-  let has_shell = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: ShellTransport)
-  let has_rest = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: RestTransport)
-  let has_file = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind: FileTransport)
+  let has_shell = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind_name: "shell")
+  let has_rest = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind_name: "rest")
+  let has_file = service_uses_transport(fallback_transport: fallback_transport, op_children: op_children, kind_name: "file")
   let has_auth = service_has_rest_auth(fallback_transport: fallback_transport, op_children: op_children)
   // Find a default base_url from the service-level REST transport or from any REST op
   let base_url_default = if has_rest {
-    let from_fallback = if is_transport_kind(t: fallback_transport, kind: RestTransport) {
+    let from_fallback = if fallback_transport.name == "rest" {
       match transport_base_url(t: fallback_transport) {
         Some { value: bu } => match bu.expr_data {
           ExprLiteral { value: LitStr { value: s } } => s
@@ -3358,11 +3356,11 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
 }
 
 fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
+  if transport.name == "rest" {
     emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred)
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     emit_file_call(op_name: op_name, inferred: inferred)
   } else {
     emit_local_call(op_name: op_name)

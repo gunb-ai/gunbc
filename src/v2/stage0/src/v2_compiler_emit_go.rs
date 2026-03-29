@@ -48,11 +48,11 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
-use crate::v2_std_core::TransportKind::{RestTransport, ShellTransport, FileTransport};
+// TransportKind::{RestTransport, ShellTransport, FileTransport} dissolved.
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
@@ -1367,7 +1367,7 @@ v2_rt::concat(v2_rt::concat(struct_def.clone(), "
 
 pub fn emit_go_service_struct(name: String, transport: Rc<Node>) -> String {
     {
-        let fields = if is_transport_kind(transport.clone(), Rc::new(TransportKind::RestTransport)) {
+        let fields = if (transport.name.clone() == "rest".to_string()) {
             {
                 let base = "	BaseURL string".to_string();
 let auth_field = if transport_has_auth(transport.clone()) {
@@ -1379,10 +1379,10 @@ let auth_field = if transport_has_auth(transport.clone()) {
 v2_rt::concat(base.clone(), auth_field.clone())
 }
 } else {
-            if is_transport_kind(transport.clone(), Rc::new(TransportKind::ShellTransport)) {
+            if (transport.name.clone() == "shell".to_string()) {
                 "	WorkingDir string".to_string()
 } else {
-                if is_transport_kind(transport.clone(), Rc::new(TransportKind::FileTransport)) {
+                if (transport.name.clone() == "file".to_string()) {
                     "	BasePath string".to_string()
 } else {
                     "".to_string()
@@ -1414,13 +1414,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_go_transport_call(transport: Rc<Node>, op_name: String, registry: HashMap<String, Rc<ItemInfo>>, depth: i64) -> String {
-    if is_transport_kind(transport.clone(), Rc::new(TransportKind::RestTransport)) {
+    if (transport.name.clone() == "rest".to_string()) {
         emit_go_rest_call(op_name.clone(), transport.clone(), depth.clone())
 } else {
-        if is_transport_kind(transport.clone(), Rc::new(TransportKind::ShellTransport)) {
+        if (transport.name.clone() == "shell".to_string()) {
             emit_go_shell_call(op_name.clone(), transport.clone(), depth.clone())
 } else {
-            if is_transport_kind(transport.clone(), Rc::new(TransportKind::FileTransport)) {
+            if (transport.name.clone() == "file".to_string()) {
                 emit_go_file_call(op_name.clone(), depth.clone())
 } else {
                 emit_go_local_call(op_name.clone(), depth.clone())

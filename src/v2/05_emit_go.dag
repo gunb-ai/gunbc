@@ -31,8 +31,6 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart,
   DeclaredFuncSig,
-  TransportKind, RestTransport, ShellTransport, FileTransport,
-  is_transport_kind,
   transport_has_auth, transport_auth_header_name,
   transport_headers, transport_env,
   ExprData, NoExprData,
@@ -1188,13 +1186,13 @@ fn emit_go_service_def(
 }
 
 fn emit_go_service_struct(name: String, transport: Node) -> String {
-  let fields = if is_transport_kind(t: transport, kind: RestTransport) {
+  let fields = if transport.name == "rest" {
     let base = "\tBaseURL string"
     let auth_field = if transport_has_auth(t: transport) { "\n\tAuthToken string" } else { "" }
     concat(base, auth_field)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     "\tWorkingDir string"
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     "\tBasePath string"
   } else {
     ""
@@ -1222,11 +1220,11 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
+  if transport.name == "rest" {
     emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     emit_go_file_call(op_name: op_name, depth: depth)
   } else {
     emit_go_local_call(op_name: op_name, depth: depth)

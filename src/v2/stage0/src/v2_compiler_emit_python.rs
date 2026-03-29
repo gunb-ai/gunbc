@@ -48,11 +48,11 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, TransportKind, is_transport_kind, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
-use crate::v2_std_core::TransportKind::{RestTransport, ShellTransport, FileTransport};
+// TransportKind::{RestTransport, ShellTransport, FileTransport} dissolved.
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
@@ -1284,7 +1284,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_py_service_init(transport: Rc<Node>) -> String {
-    if is_transport_kind(transport.clone(), Rc::new(TransportKind::RestTransport)) {
+    if (transport.name.clone() == "rest".to_string()) {
         {
             let auth_param = if transport_has_auth(transport.clone()) {
                 ", auth_token: str".to_string()
@@ -1301,11 +1301,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def __init__(self, base
 ".to_string()), "    self.base_url = base_url".to_string()), auth_assign.clone())
 }
 } else {
-        if is_transport_kind(transport.clone(), Rc::new(TransportKind::ShellTransport)) {
+        if (transport.name.clone() == "shell".to_string()) {
             v2_rt::concat("def __init__(self, working_dir: str | None = None):
 ".to_string(), "    self.working_dir = working_dir".to_string())
 } else {
-            if is_transport_kind(transport.clone(), Rc::new(TransportKind::FileTransport)) {
+            if (transport.name.clone() == "file".to_string()) {
                 v2_rt::concat("def __init__(self, base_path: str):
 ".to_string(), "    self.base_path = base_path".to_string())
 } else {
@@ -1334,13 +1334,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_py_transport_call(transport: Rc<Node>, op_name: String, registry: HashMap<String, Rc<ItemInfo>>) -> String {
-    if is_transport_kind(transport.clone(), Rc::new(TransportKind::RestTransport)) {
+    if (transport.name.clone() == "rest".to_string()) {
         emit_py_rest_call(op_name.clone(), transport.clone())
 } else {
-        if is_transport_kind(transport.clone(), Rc::new(TransportKind::ShellTransport)) {
+        if (transport.name.clone() == "shell".to_string()) {
             emit_py_shell_call(op_name.clone(), transport.clone())
 } else {
-            if is_transport_kind(transport.clone(), Rc::new(TransportKind::FileTransport)) {
+            if (transport.name.clone() == "file".to_string()) {
                 emit_py_file_call(op_name.clone())
 } else {
                 emit_py_local_call(op_name.clone())

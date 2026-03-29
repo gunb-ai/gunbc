@@ -22,8 +22,6 @@ import v2.std.core {
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart,
   DeclaredFuncSig,
-  TransportKind, RestTransport, ShellTransport, FileTransport,
-  is_transport_kind,
   transport_has_auth, transport_auth_header_name,
   transport_headers, transport_env,
   ExprData, NoExprData,
@@ -1155,15 +1153,15 @@ fn emit_py_service_def(
 }
 
 fn emit_py_service_init(transport: Node) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
+  if transport.name == "rest" {
     let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
     let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
     concat("def __init__(self, base_url: str", auth_param, "):\n",
       "    self.base_url = base_url", auth_assign)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     concat("def __init__(self, working_dir: str | None = None):\n",
       "    self.working_dir = working_dir")
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     concat("def __init__(self, base_path: str):\n",
       "    self.base_path = base_path")
   } else {
@@ -1190,11 +1188,11 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  if is_transport_kind(t: transport, kind: RestTransport) {
+  if transport.name == "rest" {
     emit_py_rest_call(op_name: op_name, transport: transport)
-  } else if is_transport_kind(t: transport, kind: ShellTransport) {
+  } else if transport.name == "shell" {
     emit_py_shell_call(op_name: op_name, transport: transport)
-  } else if is_transport_kind(t: transport, kind: FileTransport) {
+  } else if transport.name == "file" {
     emit_py_file_call(op_name: op_name)
   } else {
     emit_py_local_call(op_name: op_name)

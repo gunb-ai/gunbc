@@ -48,14 +48,14 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, ErrorNode, InferredNode, module_imports, module_items, Connective, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOpKind, UnaryOpKind, DeclaredFuncSig, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, TransportKind, is_transport_kind, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, ErrorNode, InferredNode, module_imports, module_items, Connective, ExprData, StringPart, LiteralValue, TextFile, SourceSpan, BinOpKind, UnaryOpKind, DeclaredFuncSig, arm_body, arm_pattern, arm_guard, arg_name, arg_value, field_init_node_name, field_init_node_value, expr_has_self_call, expr_has_non_tail_self_call, local_transport_node, transport_has_auth, field_init_operation_modifier, operation_modifier_name, leaf_node, node_is_product, node_is_coproduct, node_has_structure, with_required_cardinality, binop_left, binop_right, field_access_base, if_condition, if_then_branch, if_else_branch, lambda_body, let_value, let_body, match_scrutinee, match_arm_nodes, return_value, unaryop_operand, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError, ExprReturn};
 use crate::v2_std_core::StringPart::{Text, Interpolation};
 
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
-use crate::v2_std_core::TransportKind::{RestTransport, ShellTransport, FileTransport};
+// TransportKind::{RestTransport, ShellTransport, FileTransport} dissolved.
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
@@ -982,11 +982,11 @@ pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> R
 }
 }
 
-pub fn service_uses_transport(fallback_transport: Rc<Node>, op_children: Vec<Rc<Node>>, kind: Rc<TransportKind>) -> bool {
+pub fn service_uses_transport(fallback_transport: Rc<Node>, op_children: Vec<Rc<Node>>, kind_name: String) -> bool {
     {
-        let from_fallback = is_transport_kind(fallback_transport.clone(), kind.clone());
+        let from_fallback = (fallback_transport.name.clone() == kind_name.clone());
 let from_ops = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
-            is_transport_kind(op.transport.clone().clone().unwrap(), kind.clone())
+            (op.transport.clone().clone().unwrap().name.clone() == kind_name.clone())
 } else {
             false
 } { __found = true; break; } } __found };
@@ -996,7 +996,7 @@ let from_ops = { let mut __found = false; for op in op_children.clone().iter().c
 
 pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Vec<Rc<Node>>) -> bool {
     {
-        let from_fallback = if is_transport_kind(fallback_transport.clone(), Rc::new(TransportKind::RestTransport)) {
+        let from_fallback = if (fallback_transport.name.clone() == "rest".to_string()) {
             transport_has_auth(fallback_transport.clone())
 } else {
             false
@@ -1004,7 +1004,7 @@ pub fn service_has_rest_auth(fallback_transport: Rc<Node>, op_children: Vec<Rc<N
 let from_ops = { let mut __found = false; for op in op_children.clone().iter().cloned() { if if (op.transport.clone() != None) {
             {
                 let t = op.transport.clone().clone().unwrap();
-if is_transport_kind(t.clone(), Rc::new(TransportKind::RestTransport)) {
+if (t.name.clone() == "rest".to_string()) {
                     transport_has_auth(t.clone())
 } else {
                     false

@@ -53,8 +53,6 @@ import v2.std.core {
   ServiceMethodSemantics,
   LambdaSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
-  TransportKind, LocalTransport,
-  is_transport_kind,
   BinOpKind, Add, Sub, Mul, Div, Mod,
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe,
   BinAnd, BinOr, NullCoalesce,
