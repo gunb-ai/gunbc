@@ -26,7 +26,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     pub fn as_set(&self) -> &std::collections::BTreeSet<T> { &self.0 }
     pub fn into_set(self) -> std::collections::BTreeSet<T> { self.0 }
 }
-pub use crate::v2_std_core::{authored_name_at, NewlineIndex, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, LiteralValue, ExprData, make_expr_node, make_arg_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, TextFile, CompilerDiagnostic, ErrorNode, make_error_node, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, leaf_node, with_required_cardinality, node_has_structure, node_is_product, node_is_coproduct, FieldAccessStyle, FieldValueShape, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{authored_name_at, NewlineIndex, param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, LiteralValue, ExprData, make_expr_node, make_arg_node, LambdaSemantics, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, TextFile, CompilerDiagnostic, ErrorNode, make_error_node, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, expr_has_self_call, expr_has_non_tail_self_call, arg_name, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name, field_init_node_value, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, leaf_node, with_required_cardinality, node_has_structure, node_is_product, node_is_coproduct, FieldAccessStyle, FieldValueShape, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
@@ -2128,7 +2128,8 @@ if is_func.clone() {
 }
 
 pub fn fill_default_args(ordered: Vec<Rc<Node>>, callee: Option<Rc<ItemInfo>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> Vec<Rc<Node>> {
-    let si = scope.type_env.source_index.clone();
+    // Boundary: info.params come from the declaring module. Caller's
+    // source_index can't recover cross-module names. Use param_node_name.
 match callee.clone() {
     Some(info) => {
         let provided_names = { let mut __result = Vec::new(); for a in ordered.clone().iter().cloned() { __result.push(match arg_name(a.clone()) {
@@ -2136,14 +2137,14 @@ match callee.clone() {
     None => "".to_string(),
 }); } __result };
 let missing_with_defaults = { let mut __result = Vec::new(); for p in info.params.clone().iter().cloned() { if {
-            let is_provided = { let mut __found = false; for n in provided_names.clone().iter().cloned() { if (n.clone() == p.name.clone()) { __found = true; break; } } __found };
+            let is_provided = { let mut __found = false; for n in provided_names.clone().iter().cloned() { if (n.clone() == param_node_name(p.clone())) { __found = true; break; } } __found };
 if is_provided.clone() {
                 false
 } else {
                 (param_node_default_value(p.clone()) != None)
 }
 } { __result.push(p); } } __result };
-let default_args = { let mut __result = Vec::new(); for p in missing_with_defaults.clone().iter().cloned() { __result.push(make_arg_node(Some(authored_name_at(si.clone(), p.clone())), param_node_default_value(p.clone()).clone().unwrap(), p.span.clone())); } __result };
+let default_args = { let mut __result = Vec::new(); for p in missing_with_defaults.clone().iter().cloned() { __result.push(make_arg_node(Some(param_node_name(p.clone())), param_node_default_value(p.clone()).clone().unwrap(), p.span.clone())); } __result };
 v2_rt::concat(ordered.clone(), default_args.clone())
 },
     None => ordered.clone(),
