@@ -87,6 +87,14 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
     authored_name_at(env.source_index.clone(), node.clone())
 }
 
+pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
+    lookup_type(env, node.name.clone())
+}
+
+pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
+    is_recursive_type(env, node.name.clone())
+}
+
 pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {
     {
         let merged_bindings = envs.iter().cloned().fold(

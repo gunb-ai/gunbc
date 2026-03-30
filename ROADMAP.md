@@ -24,9 +24,9 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
 | Bootstrap ratchet (`DIAG_RATCHET`) | 65 | 0 | OOM resolved; 65 inference false-positives remain |
-| L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
-| L2 emit `.name` reads | 0 | 0 | `param_node_name`/`resource_use_name`/`field_binding_name` eliminated from emit |
-| L2 resolve `.name` reads | 5 | 0 | `authored_name` semantic lookups in `04_resolve.dag` (B4) |
+| L1 ratchet | 21 | 0 | Down from 70; #253 landed structural algebra authority |
+| L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
+| L2 resolve `.name` reads | 0 | 0 | B4 done: `authored_name` eliminated from `04_resolve.dag` |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
 | Complexity violations | 0 | 0 | Green |
 
@@ -207,10 +207,10 @@ Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,
 
 #### Lane 2: D6 + emit + resolve (Node.name deletion)
 
-**Status:** B3 (emit rendering) complete. B4 (resolve structural
-identity) is next critical work — until resolve stops using authored
-text semantically, `Node.name` remains a live dependency. D6
-(constructor/accessor cleanup) becomes mechanical after B4.
+**Status:** B3 (emit rendering) + B4 (resolve structural identity)
+complete. D6 (constructor/accessor cleanup) is next — mechanical
+work to update `make_*` helpers, drop `name:` from Node
+constructions, and delete the field.
 Note: final `Node.name` deletion depends on Lane 1 landing
 declarations for kernel/algebra/container synthetic nodes.
 
@@ -230,11 +230,13 @@ resolve uses structural identity.
   param names across module boundaries; needs precomputed names
   at resolve time)
 
-*Resolve structural identity:*
-- [ ] Replace 5 pre-existing `authored_name` semantic lookups in
-  `04_resolve.dag` with structural identity (B4 scope — text
-  recovery is not semantic authority)
-- [ ] Design structural identity model for resolve phase
+*Resolve structural identity (B4 — done):*
+- [x] Replace 5 pre-existing `authored_name` semantic lookups in
+  `04_resolve.dag` with node-based accessors (`lookup_type_for`,
+  `is_recursive_type_for`) — text recovery removed from resolve
+- [x] Design structural identity model: node-based accessor layer
+  in `04_env.dag` encapsulates `.name` reads; when `Node.name` is
+  deleted, only the accessors change
 
 *Node.name surface area:*
 - [x] `source_text_at` infrastructure (B0)

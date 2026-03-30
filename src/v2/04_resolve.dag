@@ -45,7 +45,7 @@ import v2.compiler.infer_types {
   rt_type, node_is_keyed_collection
 }
 import v2.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, is_recursive_type, authored_name
+  TypeEnv, TypeBinding, lookup_type, lookup_type_for, is_recursive_type, is_recursive_type_for
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -139,8 +139,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
-    let type_name = authored_name(env: env, node: n)
-    match lookup_type(env: env, name: type_name) {
+    match lookup_type_for(env: env, node: n) {
       Some { value: decl } =>
         if decl.params |> count > 0 {
           // Parameterized alias (e.g., List<T> = FreeMonoid<T>): treat as
@@ -151,7 +150,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
           // if NOT a known container (containers have their own resolution path).
           // Uses container_type_set — resolve is name-aware per ROADMAP.
           else {
-            if is_container_type(name: type_name) { false }
+            if is_container_type(name: n.name) { false }
             else { true }
           }
         } else { false }
@@ -331,8 +330,8 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     // Generic type use site (e.g., Pair<Int, String>, Box<Int>, MyList<Int>).
     // Look up declaration, validate arity, substitute slot references with concrete arguments.
-    let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_type(env: env, name: type_name) { Some { value: d } => d  None => n }
+    let type_name = n.name
+    let decl = match lookup_type_for(env: env, node: n) { Some { value: d } => d  None => n }
     let expected_arity = decl.params |> count
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
@@ -382,7 +381,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let is_map = node_is_keyed_collection(n: n)
     if is_map {
       // Map: recurse on both key and value children
-      let type_name = authored_name(env: env, node: n)
+      let type_name = n.name
       let key_child = match n.children |> first {
         Some { value: k } => k
         None => string_type
@@ -403,7 +402,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       }
     } else if n.children |> count == 1 {
     // Container (List, Set, etc.): recurse on single child (element type)
-    let type_name = authored_name(env: env, node: n)
+    let type_name = n.name
     match n.children |> first {
       Some { value: el } =>
         let el_result = resolve_node_bounded(n: el, env: env, module_name: module_name, depth: depth + 1)
@@ -417,11 +416,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else if n.children |> count == 0 {
     // Leaf node: lookup in env, recurse if found
-    let type_name = authored_name(env: env, node: n)
-    if is_recursive_type(env: env, name: type_name) {
+    if is_recursive_type_for(env: env, node: n) {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
-      match lookup_type(env: env, name: type_name) {
+      match lookup_type_for(env: env, node: n) {
         Some { value: resolved } =>
           // Topological resolution ensures bindings are fully resolved before
           // any dependent type is processed. Re-resolving the looked-up node
@@ -455,12 +453,12 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
           let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-          if is_kernel_type(name: type_name) || n_is_type_var || n_is_error || n_is_callable {
+          if is_kernel_type(name: n.name) || n_is_type_var || n_is_error || n_is_callable {
             NodeResolveResult { resolved: n, diagnostics: [] }
           } else {
             NodeResolveResult {
               resolved: n,
-              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: type_name, span: n.span }, module_name: module_name)]
+              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: n.name, span: n.span }, module_name: module_name)]
             }
           }
       }

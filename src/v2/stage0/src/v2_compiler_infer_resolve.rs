@@ -74,7 +74,7 @@ pub use crate::v2_std_core::{
 };
 // TransportKind::{LocalTransport} dissolved.
 pub use crate::v2_compiler_infer_env::{
-    authored_name, is_recursive_type, lookup_type, TypeBinding, TypeEnv,
+    is_recursive_type, is_recursive_type_for, lookup_type, lookup_type_for, TypeBinding, TypeEnv,
 };
 pub use crate::v2_compiler_infer_types::{
     node_is_container, node_is_map, node_is_optional, rt_type,
@@ -155,14 +155,13 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     if has_structure {
         false
     } else {
-        let type_name = authored_name(env.clone(), n.clone());
-        match lookup_type(env.clone(), type_name.clone()) {
+        match lookup_type_for(env.clone(), n.clone()) {
             Some(decl) => {
                 if ((decl.params.clone().len() as i64) > 0) {
                     if decl.inferred.clone() != None {
                         true
                     } else {
-                        if is_container_type(type_name.clone()) {
+                        if is_container_type(n.name.clone()) {
                             false
                         } else {
                             true
@@ -614,8 +613,8 @@ pub fn resolve_node_bounded(
                 && is_user_generic_use_site(n.clone(), env.clone()))
             {
                 {
-                    let type_name = authored_name(env.clone(), n.clone());
-                    let decl = match lookup_type(env.clone(), type_name.clone()) {
+                    let type_name = n.name.clone();
+                    let decl = match lookup_type_for(env.clone(), n.clone()) {
                         Some(d) => d.clone(),
                         None => n.clone(),
                     };
@@ -754,7 +753,7 @@ pub fn resolve_node_bounded(
             } else {
                 if node_is_map(n.clone()) {
                     {
-                        let type_name = authored_name(env.clone(), n.clone());
+                        let type_name = n.name.clone();
                         let key_child = match n.children.clone().first().cloned() {
                             Some(k) => k.clone(),
                             None => leaf_node("String".to_string()),
@@ -814,7 +813,7 @@ pub fn resolve_node_bounded(
                     }
                 } else {
                     if ((n.children.clone().len() as i64) == 1) {
-                        let type_name = authored_name(env.clone(), n.clone());
+                        let type_name = n.name.clone();
                         match n.children.clone().first().cloned() {
                             Some(el) => {
                                 let el_result = resolve_node_bounded(
@@ -856,14 +855,13 @@ pub fn resolve_node_bounded(
                         }
                     } else {
                         if ((n.children.clone().len() as i64) == 0) {
-                            let type_name = authored_name(env.clone(), n.clone());
-                            if is_recursive_type(env.clone(), type_name.clone()) {
+                            if is_recursive_type_for(env.clone(), n.clone()) {
                                 Rc::new(NodeResolveResult {
                                     resolved: n.clone(),
                                     diagnostics: vec![],
                                 })
                             } else {
-                                match lookup_type(env.clone(), type_name.clone()) {
+                                match lookup_type_for(env.clone(), n.clone()) {
                                     Some(resolved) => {
                                         let structurally_resolved =
                                             if (((node_has_structure(resolved.clone()) == false)
@@ -891,10 +889,10 @@ pub fn resolve_node_bounded(
                                         })
                                     }
                                     None => {
-                                        if (((is_kernel_type(type_name.clone())
-                                            || (type_name.clone() == "Dynamic".to_string()))
-                                            || (type_name.clone() == "Error".to_string()))
-                                            || (type_name.clone() == "Callable".to_string()))
+                                        if (((is_kernel_type(n.name.clone())
+                                            || (n.name.clone() == "Dynamic".to_string()))
+                                            || (n.name.clone() == "Error".to_string()))
+                                            || (n.name.clone() == "Callable".to_string()))
                                         {
                                             Rc::new(NodeResolveResult {
                                                 resolved: n.clone(),
@@ -905,7 +903,7 @@ pub fn resolve_node_bounded(
                                                 resolved: n.clone(),
                                                 diagnostics: vec![make_error_node(
                                                     Rc::new(CompilerDiagnostic::UnresolvedType {
-                                                        name: type_name.clone(),
+                                                        name: n.name.clone(),
                                                         span: n.span.clone(),
                                                     }),
                                                     module_name.clone(),

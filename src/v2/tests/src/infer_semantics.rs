@@ -6,8 +6,8 @@ use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
 use v2_compiler::v2_compiler_infer_types::{bare_map_node, container_node, map_node};
 use v2_compiler::v2_std_core::{
-    build_newline_index, leaf_node, make_arm_node, with_optional_cardinality, Cardinality,
-    ExprData, InferredNode, MatchPattern, Node, NodeType, SourceSpan,
+    leaf_node, make_arm_node, with_optional_cardinality, Cardinality, ExprData, InferredNode,
+    MatchPattern, Node, NodeType, SourceSpan,
 };
 
 fn zero_span() -> Rc<SourceSpan> {
@@ -222,15 +222,11 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
 }
 
 #[test]
-fn resolve_node_uses_ident_span_source_text_when_name_is_stale() {
-    let file = "test.dag".to_string();
-    let source = "type User = String\n".to_string();
-    let index = build_newline_index(file.clone(), source);
-    let ident_span = SourceSpan::with_file(file, 5, 9);
-    let stale_ref = Rc::new(Node {
-        name: "Bogus".to_string(),
-        span: ident_span.clone(),
-        ident_span: Some(ident_span.clone()),
+fn resolve_node_uses_node_name_for_lookup() {
+    let node_ref = Rc::new(Node {
+        name: "User".to_string(),
+        span: zero_span(),
+        ident_span: None,
         children: Vec::new(),
         connective: None,
         params: Vec::new(),
@@ -256,10 +252,10 @@ fn resolve_node_uses_ident_span_source_text_when_name_is_stale() {
         )])),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
-        source_index: Some(index),
+        source_index: None,
     });
 
-    let result = resolve_node(stale_ref, env, "test".to_string());
+    let result = resolve_node(node_ref, env, "test".to_string());
 
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     assert_eq!(result.resolved.name, "User");
