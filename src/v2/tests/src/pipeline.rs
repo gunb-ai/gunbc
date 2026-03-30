@@ -1270,7 +1270,7 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
 fn complexity_class_sort_proven() {
     let source = r#"module sorting
 fn sort_ascending(items: List<Int>) -> List<Int> {
-  sort_by(items, fn(a, b) { a - b })
+  sort_by(items, x => x)
 }
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
@@ -2573,6 +2573,23 @@ fn broken(xs: List<Int>) -> List<Int> {
     assert!(
         !msgs.is_empty(),
         "wrong callback arity should produce diagnostics, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn sort_by_wrong_callback_arity_fails_closed() {
+    let source = r#"module sort_by_wrong_arity
+
+fn broken(xs: List<Int>) -> List<Int> {
+  sort_by(xs, fn(a, b) { a })
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "wrong sort_by callback arity should produce diagnostics, got {:?}",
         msgs
     );
 }

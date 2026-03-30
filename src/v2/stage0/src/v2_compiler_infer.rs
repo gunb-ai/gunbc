@@ -191,6 +191,14 @@ pub struct InferResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CallBridgeContext {
+    pub receiver_arg: Rc<Node>,
+    pub receiver_result: Rc<InferResult>,
+    pub receiver_type: Rc<Node>,
+    pub method_resolution: Rc<KnownMethodResolution>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockInferState {
     pub scope: Rc<InferScope>,
     pub diag_chunks: Vec<Vec<Rc<ErrorNode>>>,
@@ -1981,29 +1989,49 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     },
                     None => error_type_node(),
                 };
-                let arg_infer_results = if (((call_args.clone().len() as i64) >= 1)
-                    && (sig.clone() == None))
+                let call_bridge = if ((sig.clone() == None)
+                    && ((call_args.clone().len() as i64) >= 1))
                 {
                     match call_args.clone().first().cloned() {
                         Some(first_arg) => {
                             let first_result =
                                 infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
                             let first_type = rt_type(first_result.typed.clone());
-                            let provisional_method_resolution = resolve_known_method_node(
+                            let method_resolution = resolve_known_method_node(
                                 first_result.typed.clone(),
                                 first_type.clone(),
                                 func_name.clone(),
-                                None,
+                                if (call_fold_info.clone() != None) {
+                                    Some(call_fold_acc_type.clone())
+                                } else {
+                                    None
+                                },
                                 scope.service_registry.clone(),
                             );
-                            if ((provisional_method_resolution.result_type.clone() != None)
+                            Some(Rc::new(CallBridgeContext {
+                                receiver_arg: first_arg.clone(),
+                                receiver_result: first_result.clone(),
+                                receiver_type: first_type.clone(),
+                                method_resolution: method_resolution.clone(),
+                            }))
+                        }
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+                let arg_infer_results = if (call_bridge.clone() != None) {
+                    match call_bridge.clone() {
+                        Some(bridge) => {
+                            if ((bridge.method_resolution.result_type.clone() != None)
                                 && ((call_args.clone().len() as i64) >= 2))
                             {
-                                let elem_type = for_each_element_type_node(first_type.clone());
+                                let elem_type =
+                                    for_each_element_type_node(bridge.receiver_type.clone());
                                 let remaining_results = infer_method_args_with_fold(
                                     call_method_name.clone(),
                                     call_method_args.clone(),
-                                    provisional_method_resolution.semantics.clone(),
+                                    bridge.method_resolution.semantics.clone(),
                                     call_fold_info.clone(),
                                     call_fold_acc_type.clone(),
                                     elem_type.clone(),
@@ -2012,11 +2040,14 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                 v2_rt::concat(
                                     vec![Rc::new(ArgInferResult {
                                         typed_arg: make_arg_node(
-                                            arg_name(first_arg.clone()),
-                                            first_result.typed.clone(),
-                                            first_arg.span.clone(),
+                                            arg_name(bridge.receiver_arg.clone()),
+                                            bridge.receiver_result.typed.clone(),
+                                            bridge.receiver_arg.span.clone(),
                                         ),
-                                        diagnostics: first_result.diagnostics.clone(),
+                                        diagnostics: bridge
+                                            .receiver_result
+                                            .diagnostics
+                                            .clone(),
                                     })],
                                     remaining_results.clone(),
                                 )
@@ -2024,11 +2055,14 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                 v2_rt::concat(
                                     vec![Rc::new(ArgInferResult {
                                         typed_arg: make_arg_node(
-                                            arg_name(first_arg.clone()),
-                                            first_result.typed.clone(),
-                                            first_arg.span.clone(),
+                                            arg_name(bridge.receiver_arg.clone()),
+                                            bridge.receiver_result.typed.clone(),
+                                            bridge.receiver_arg.span.clone(),
                                         ),
-                                        diagnostics: first_result.diagnostics.clone(),
+                                        diagnostics: bridge
+                                            .receiver_result
+                                            .diagnostics
+                                            .clone(),
                                     })],
                                     {
                                         let mut __result = Vec::new();
@@ -2150,28 +2184,37 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     }
                 } else {
                     {
-                        let first_arg_type = match typed_args.clone().first().cloned() {
-                            Some(ta) => rt_type(arg_value(ta.clone())),
-                            None => leaf_node("Unit".to_string()),
+                        let first_arg_type = match call_bridge.clone() {
+                            Some(bridge) => bridge.receiver_type.clone(),
+                            None => match typed_args.clone().first().cloned() {
+                                Some(ta) => rt_type(arg_value(ta.clone())),
+                                None => leaf_node("Unit".to_string()),
+                            },
                         };
-                        let method_receiver = match typed_args.clone().first().cloned() {
-                            Some(ta) => arg_value(ta.clone()),
-                            None => internal_expr_error_node(
-                                "method bridge missing receiver".to_string(),
-                                span.clone(),
+                        let method_receiver = match call_bridge.clone() {
+                            Some(bridge) => bridge.receiver_result.typed.clone(),
+                            None => match typed_args.clone().first().cloned() {
+                                Some(ta) => arg_value(ta.clone()),
+                                None => internal_expr_error_node(
+                                    "method bridge missing receiver".to_string(),
+                                    span.clone(),
+                                ),
+                            },
+                        };
+                        let method_resolution = match call_bridge.clone() {
+                            Some(bridge) => bridge.method_resolution.clone(),
+                            None => resolve_known_method_node(
+                                method_receiver.clone(),
+                                first_arg_type.clone(),
+                                func_name.clone(),
+                                if (call_fold_info.clone() != None) {
+                                    Some(call_fold_acc_type.clone())
+                                } else {
+                                    None
+                                },
+                                scope.service_registry.clone(),
                             ),
                         };
-                        let method_resolution = resolve_known_method_node(
-                            method_receiver.clone(),
-                            first_arg_type.clone(),
-                            func_name.clone(),
-                            if (call_fold_info.clone() != None) {
-                                Some(call_fold_acc_type.clone())
-                            } else {
-                                None
-                            },
-                            scope.service_registry.clone(),
-                        );
                         let is_known_method = (method_resolution.result_type.clone() != None);
                         if (is_known_method.clone() && ((typed_args.clone().len() as i64) > 0)) {
                             {
@@ -2391,13 +2434,6 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let recv_diags = recv_result.diagnostics.clone();
                 let recv_rt = rt_type(recv_typed.clone());
                 let recv_elem_type = for_each_element_type_node(recv_rt.clone());
-                let provisional_method_resolution = resolve_known_method_node(
-                    recv_typed.clone(),
-                    recv_rt.clone(),
-                    method_name.clone(),
-                    None,
-                    scope.service_registry.clone(),
-                );
                 let mc_method_name: Option<String> = Some(method_name.clone());
                 let fold_info = extract_fold_init_info(
                     mc_method_name.clone(),
@@ -2413,10 +2449,21 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     },
                     None => error_type_node(),
                 };
+                let method_resolution = resolve_known_method_node(
+                    recv_typed.clone(),
+                    recv_rt.clone(),
+                    method_name.clone(),
+                    if (fold_info.clone() != None) {
+                        Some(fold_acc_type.clone())
+                    } else {
+                        None
+                    },
+                    scope.service_registry.clone(),
+                );
                 let mc_arg_infer_results = infer_method_args_with_fold(
                     mc_method_name.clone(),
                     mc_args.clone(),
-                    provisional_method_resolution.semantics.clone(),
+                    method_resolution.semantics.clone(),
                     fold_info.clone(),
                     fold_acc_type.clone(),
                     recv_elem_type.clone(),
@@ -2436,17 +2483,6 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     }
                     __result
                 };
-                let method_resolution = resolve_known_method_node(
-                    recv_typed.clone(),
-                    recv_rt.clone(),
-                    method_name.clone(),
-                    if (fold_info.clone() != None) {
-                        Some(fold_acc_type.clone())
-                    } else {
-                        None
-                    },
-                    scope.service_registry.clone(),
-                );
                 let base_result_type = match method_resolution.result_type.clone() {
                     Some(rt) => rt.clone(),
                     None => recv_rt.clone(),

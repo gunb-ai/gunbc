@@ -803,7 +803,7 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
                 AlgebraTypeTemplate::CallableOf {
                     param_types: vec![AlgebraTypeTemplate::ReceiverElement],
                     return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
-                        name: "Ordering".to_string(),
+                        name: "MappedElement".to_string(),
                     }),
                 },
             ],

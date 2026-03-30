@@ -264,7 +264,7 @@ data free_monoid_collection_templates: List<AlgebraFieldTemplate> = [
       ReceiverSelf,
       CallableOf {
         param_types: [ReceiverElement],
-        return_type: NamedTemplate { name: "Ordering" }
+        return_type: NamedTemplate { name: "MappedElement" }
       }
     ], return_type: ReceiverSelf },
   { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf },
