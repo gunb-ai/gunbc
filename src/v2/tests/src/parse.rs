@@ -258,6 +258,29 @@ fn tokenize_produces_correct_kinds() {
     );
 }
 
+// ── source_text_at: span→text recovery ──────────────────────────────────
+
+#[test]
+fn source_text_at_recovers_token_text() {
+    let source = "fn add(a: Int, b: Int) -> Int { a }";
+    let tokens = tokenize(source);
+    // Every non-Eof token's span should recover its text
+    for tok in &tokens {
+        if matches!(tok.shape, TokenShape::ShEof) {
+            continue;
+        }
+        let recovered = v2_compiler::v2_std_core::source_text_at(
+            source.to_string(),
+            tok.span.clone(),
+        );
+        assert_eq!(
+            recovered, tok.text,
+            "source_text_at should recover '{}' from span {}..{}, got '{}'",
+            tok.text, tok.span.start, tok.span.end, recovered
+        );
+    }
+}
+
 // ── Phase 3/4: parse-level tests ────────────────────────────────────────
 
 #[test]

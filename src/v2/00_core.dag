@@ -1268,6 +1268,13 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
   ""
 }
 
+// Extract source text for a span. Character-indexed (matching tokenizer).
+// Lane B infrastructure: replaces node.name reads for rendering.
+fn source_text_at(source: String, span: SourceSpan) -> String {
+  // Placeholder: real logic lives in Rust stage0.
+  ""
+}
+
 fn with_optional_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }

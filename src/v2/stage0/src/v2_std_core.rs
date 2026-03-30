@@ -1705,6 +1705,16 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
     index.source.chars().skip(char_start).take(char_end - char_start).collect()
 }
 
+/// Extract source text for a span using character offsets (matching tokenizer).
+pub fn source_text_at(source: String, span: Rc<SourceSpan>) -> String {
+    let start = span.start.max(0) as usize;
+    let end = span.end.max(0) as usize;
+    if start >= end {
+        return String::new();
+    }
+    source.chars().skip(start).take(end - start).collect()
+}
+
 pub fn node_is_product(n: Rc<Node>) -> bool {
     ((n.connective.clone() != None) && (n.connective.clone() == Some(Connective::Conj)))
 }
