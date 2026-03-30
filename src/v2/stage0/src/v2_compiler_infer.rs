@@ -2464,6 +2464,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     } else {
                         None
                     },
+                    scope.type_env.clone(),
                     scope.service_registry.clone(),
                 );
                 let mc_arg_infer_results = infer_method_args_with_fold(
