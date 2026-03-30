@@ -6938,7 +6938,7 @@ pub fn node_to_name_str(n: Rc<Node>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let has_children = ((n.children.clone().len() as i64) > 0);
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        let is_map_collection =
+        let is_binary_container =
             crate::v2_std_core::is_container_type(n.name.clone()) && n.children.len() == 2;
         if is_optional.clone() {
             v2_rt::concat(
@@ -6946,10 +6946,10 @@ pub fn node_to_name_str(n: Rc<Node>) -> String {
                 node_to_name_str(with_required_cardinality(n.clone())),
             )
         } else {
-            if is_map_collection {
+            if is_binary_container {
                 if ((n.children.clone().len() as i64) > 1) {
                     v2_rt::concat(
-                        "Map_".to_string(),
+                        v2_rt::concat(n.name.clone(), "_".to_string()),
                         node_to_name_str(last_child_or_self(n.clone())),
                     )
                 } else {
