@@ -5,63 +5,12 @@
 
 #![allow(clippy::disallowed_macros)]
 
-// ── Helper: copy curated bootstrap sources into the legacy flat layout ────
+// ── Helper: copy the curated bootstrap source tree into a temp workspace ──
 //
-// This remains the stable ratchet path until full source-root bootstrap is
-// green. Source-root coverage lives in separate ignored tests below.
-
-fn prepare_sources(sources_dir: &std::path::Path) {
-    let ws = crate::helpers::workspace_root();
-
-    // Copy v2 compiler .dag files into the flat bootstrap source dir.
-    for entry in std::fs::read_dir(ws.join("src/v2")).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().map(|e| e == "dag").unwrap_or(false) {
-            std::fs::copy(&path, sources_dir.join(entry.file_name())).unwrap();
-        }
-    }
-
-    // Copy language extdeps
-    let lang_dirs = ["rust", "python", "go"];
-    for lang in &lang_dirs {
-        let src = ws.join(format!("dsl/extdeps/languages/{}/emit.dag", lang));
-        if src.exists() {
-            let dst_dir = sources_dir.join(format!("dsl/extdeps/languages/{}", lang));
-            std::fs::create_dir_all(&dst_dir).unwrap();
-            std::fs::copy(&src, dst_dir.join("emit.dag")).unwrap();
-        }
-    }
-    {
-        let dag_syntax_src = ws.join("dsl/extdeps/languages/dag/syntax.dag");
-        if dag_syntax_src.exists() {
-            let dst_dir = sources_dir.join("dsl/extdeps/languages/dag");
-            std::fs::create_dir_all(&dst_dir).unwrap();
-            std::fs::copy(&dag_syntax_src, dst_dir.join("syntax.dag")).unwrap();
-        }
-    }
-
-    let dst_dir = sources_dir.join("dsl/std");
-    std::fs::create_dir_all(&dst_dir).unwrap();
-    let std_files = [
-        "constructors",
-        "types", "algebra", "containers",
-        "logic", "bit", "integer", "float", "string_type",
-        "encoding",
-        "syntax",
-    ];
-    for name in &std_files {
-        let src = ws.join(format!("dsl/std/{}.dag", name));
-        if src.exists() {
-            std::fs::copy(&src, dst_dir.join(format!("{}.dag", name))).unwrap();
-        }
-    }
-}
-
-// ── Helper: copy the same curated bootstrap set into a real source tree ───
-//
-// This path exercises `--source-root` import-driven resolution. It remains an
-// exploratory bootstrap path until regeneration is green.
+// The file set is still curated, but the directory layout now matches the
+// real compiler entrypoints so bootstrap tests exercise `--source-root`
+// import-driven resolution instead of the older flattened `--source-dir`
+// mode.
 
 fn prepare_source_tree(workspace_dir: &std::path::Path) {
     let ws = crate::helpers::workspace_root();
@@ -70,7 +19,7 @@ fn prepare_source_tree(workspace_dir: &std::path::Path) {
     std::fs::create_dir_all(&v2_dir).unwrap();
     std::fs::create_dir_all(&dsl_dir).unwrap();
 
-    // Copy v2 compiler .dag files
+    // Copy v2 compiler .dag files into the flat bootstrap source dir.
     for entry in std::fs::read_dir(ws.join("src/v2")).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
@@ -89,8 +38,6 @@ fn prepare_source_tree(workspace_dir: &std::path::Path) {
             std::fs::copy(&src, dst_dir.join("emit.dag")).unwrap();
         }
     }
-    // dag/syntax.dag: imported by tokenize + parse. Requires std/syntax.dag.
-    // Previously excluded (OOM pre-FF-8). FF-8 sharing now in LanguageSpec.
     {
         let dag_syntax_src = ws.join("dsl/extdeps/languages/dag/syntax.dag");
         if dag_syntax_src.exists() {
@@ -173,15 +120,17 @@ fn strict_compile_diagnostic_count() {
     let sources_dir = std::env::temp_dir().join("v2-diag-sources");
     let _ = std::fs::remove_dir_all(&sources_dir);
     std::fs::create_dir_all(&sources_dir).unwrap();
-    prepare_sources(&sources_dir);
+    prepare_source_tree(&sources_dir);
 
     let out_dir = std::env::temp_dir().join("v2-diag-output");
     let _ = std::fs::remove_dir_all(&out_dir);
 
     let output = std::process::Command::new(&stage0_bin)
         .arg("compile")
-        .arg("--source-dir")
-        .arg(&sources_dir)
+        .arg("--source-root")
+        .arg(sources_dir.join("src/v2"))
+        .arg("--source-root")
+        .arg(sources_dir.join("dsl"))
         .arg("--output-dir")
         .arg(&out_dir)
         .output()
