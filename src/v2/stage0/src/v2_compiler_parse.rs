@@ -3919,6 +3919,31 @@ if has_err(r.err.clone()) {
 })
 }
 let name = r.name.clone();
+// Parse optional type params: fn foo<T, U>(...)
+let tp_result = parse_optional_type_params(tokens.clone(), r.state.clone());
+let type_params = tp_result.params.clone();
+let tp_props: Vec<Rc<Node>> = if !type_params.is_empty() {
+    vec![Rc::new(Node {
+        name: "__type_params".to_string(),
+        span: start_span.clone(),
+        children: type_params.clone(),
+        connective: None,
+        params: vec![],
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: vec![],
+        body: None,
+        transport: None,
+        properties: vec![],
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    })]
+} else {
+    vec![]
+};
 let named_dummy = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -3930,14 +3955,14 @@ let named_dummy = Rc::new(Node {
     body: None,
     connective: None,
     transport: None,
-    properties: vec![],
+    properties: tp_props.clone(),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-let r = parse_params(tokens.clone(), r.state.clone());
+let r = parse_params(tokens.clone(), tp_result.state.clone());
 if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
     item: named_dummy.clone(),
@@ -3977,7 +4002,7 @@ let item = Rc::new(Node {
     body: Some(body.clone()),
     connective: None,
     transport: None,
-    properties: vec![],
+    properties: tp_props.clone(),
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,

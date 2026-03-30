@@ -44,7 +44,7 @@ import v2.compiler.infer_types {
   rt_type, node_is_keyed_collection
 }
 import v2.compiler.infer_env {
-  TypeEnv, lookup_type, is_recursive_type
+  TypeEnv, TypeBinding, lookup_type, is_recursive_type
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -878,7 +878,29 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
 // field types, etc.) and resolves each one against the environment.
 // =========================================================================
 
+// Extract function type parameter names from the __type_params property node.
+fn fn_type_param_names(item: Node) -> List<String> {
+  item.properties |> flat_map(p =>
+    if p.name == "__type_params" {
+      p.children |> map(c => param_node_name(n: c))
+    } else { [] }
+  )
+}
+
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
+  // Register function type params (e.g., <T, B>) as TypeVariable bindings
+  // so bare references to T/B in params/body don't produce UnresolvedType.
+  let tp_names = fn_type_param_names(item: item)
+  let env = fold(tp_names, init: env, f: (e, tp_name) =>
+    TypeEnv {
+      bindings: map_insert(e.bindings, tp_name, TypeBinding {
+        name: tp_name,
+        resolved: Node { name: tp_name, span: no_span(), children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      }),
+      recursive_types: e.recursive_types,
+      recursive_type_set: e.recursive_type_set
+    }
+  )
   // Resolve params
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)

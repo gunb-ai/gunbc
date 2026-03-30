@@ -1800,9 +1800,14 @@ fn parse_fn_after_kw(tokens: List<Token>, state: ParserState, start_span: Source
 // from parse_item_prefix. Parses the block body and assembles the Node.
 fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
   let name = prefix.name
+  let type_params = prefix.type_params
   let params = prefix.params
   let inferred = prefix.inferred
-  let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  // Store type params in properties so the resolver can register them as TypeVariables
+  let tp_props = if type_params |> count > 0 {
+    [Node { name: "__type_params", span: start_span, children: type_params, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }]
+  } else { [] }
+  let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: tp_props, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   // Body: { exprs }
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: prefix.state))
@@ -1812,7 +1817,7 @@ fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, star
   let item = Node { name: name, span: start_span, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Some { value: body }, connective: NoConnective, transport: none,
-    properties: [], type_annotation: none,
+    properties: tp_props, type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }

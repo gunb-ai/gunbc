@@ -58,7 +58,7 @@ use crate::v2_std_core::MatchPattern::{Wildcard};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 // TransportKind::{LocalTransport} dissolved.
 pub use crate::v2_compiler_infer_types::{node_is_optional, node_is_map, node_is_container, rt_type};
-pub use crate::v2_compiler_infer_env::{TypeEnv, lookup_type, is_recursive_type};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, lookup_type, is_recursive_type};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeResolveResult {
@@ -1302,9 +1302,52 @@ Rc::new(ExprResolveResult {
     })
 }
 
+pub fn fn_type_param_names(item: Rc<Node>) -> Vec<String> {
+    let mut result = Vec::new();
+    for p in item.properties.iter().cloned() {
+        if p.name == "__type_params" {
+            for c in p.children.iter().cloned() {
+                result.push(param_node_name(c.clone()));
+            }
+        }
+    }
+    result
+}
+
 pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<ItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
+            // Register function type params as bindings so bare T/B don't produce UnresolvedType.
+            // stage0: no TypeVariable variant, so use a plain leaf node. The resolver
+            // finds it via lookup_type and passes through without diagnostics.
+            let tp_names = fn_type_param_names(item.clone());
+            let env = tp_names.iter().cloned().fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| {
+                Rc::new(TypeEnv {
+                    bindings: Rc::new(v2_rt::map_insert((*e.bindings).clone(), tp_name.clone(), Rc::new(TypeBinding {
+                        name: tp_name.clone(),
+                        resolved: Rc::new(Node {
+                            name: tp_name.clone(),
+                            span: no_span(),
+                            children: vec![],
+                            connective: None,
+                            params: vec![],
+                            inferred: None,
+                            return_cardinality: Cardinality::Required,
+                            uses: vec![],
+                            body: None,
+                            transport: None,
+                            properties: vec![],
+                            type_annotation: None,
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                        }),
+                    }))),
+                    recursive_types: e.recursive_types.clone(),
+                    recursive_type_set: e.recursive_type_set.clone(),
+                })
+            });
             let param_results = { let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(resolve_param(p.clone(), env.clone(), module_name.clone())); } __result };
 let resolved_params = { let mut __result = Vec::new(); for pr in param_results.clone().iter().cloned() { __result.push(pr.param.clone()); } __result };
 let param_diags = { let mut __result = Vec::new(); for pr in param_results.clone().iter().cloned() { __result.extend(pr.diagnostics.clone()); } __result };
