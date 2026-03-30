@@ -28,7 +28,8 @@ import v2.std.core {
   ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
   arm_pattern, arm_guard, arm_body,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node,
-  NewlineIndex, build_newline_index
+  NewlineIndex, build_newline_index,
+  field_access_field, expr_call_func, lambda_param_names, record_lit_type_name, foreach_variable
 }
 import v2.compiler.tokenize { tokenize }
 import v2.compiler.parse { parse, ParseResult }
@@ -392,6 +393,12 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
 // serialized uniformly from node.children via serialize_node.
 fn serialize_expr_data(expr_node: Node) -> String {
   let ch = expr_node.children
+  let name = expr_node.name
+  let field = field_access_field(texpr: expr_node)
+  let func = expr_call_func(texpr: expr_node)
+  let params = lambda_param_names(texpr: expr_node)
+  let type_name = record_lit_type_name(texpr: expr_node)
+  let variable = foreach_variable(texpr: expr_node)
   match expr_node.expr_data {
     NoExprData => "{\"kind\": \"NoExprData\"}"
     ExprLiteral { value: value } =>
