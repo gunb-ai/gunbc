@@ -124,6 +124,31 @@ fn foo(item: String) -> String {
     assert_parses(source, "typecheck_match_with_itemresult");
 }
 
+// ── M1 regression: generic function syntax ──────────────────────────────
+
+#[test]
+fn parse_generic_fn() {
+    let source = r#"module test
+fn identity<T>(x: T) -> T {
+  x
+}"#;
+    assert_parses(source, "generic fn");
+}
+
+#[test]
+fn parse_multi_type_param_fn() {
+    let source = r#"module test
+fn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {
+  init
+}"#;
+    assert_parses(source, "multi-type-param generic fn");
+}
+
+#[test]
+fn stack_parses_strict() {
+    assert_parses_strict("dsl/std/stack.dag");
+}
+
 // ── Phase 0: strict parse audit (.dag files) ────────────────────────────
 
 #[test]

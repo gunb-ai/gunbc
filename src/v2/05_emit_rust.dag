@@ -2329,7 +2329,6 @@ fn emit_rust_any_method_call(receiver: Node, args: List<Node>, registry: Map<Str
       }
     None => concat(recv_str, ".iter().cloned().any(", first_arg_str, ")")
   }
-<<<<<<< HEAD
 }
 
 fn emit_rust_all_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
