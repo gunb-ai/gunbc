@@ -367,9 +367,9 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   } else if (kind == TypedItemDataDef) {
     emit_go_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   } else if (kind == TypedItemServiceDef) {
-    emit_go_service_def(item: item, registry: registry)
+    emit_go_service_def(item: item, registry: registry, source: scope.source_text)
   } else if (kind == TypedItemResourceDef) {
-    emit_go_resource_def(item: item)
+    emit_go_resource_def(item: item, source: scope.source_text)
   } else {
     concat("func init() { panic(\"EMIT BUG: unhandled item: ", item_text, "\") }")
   }
@@ -1183,15 +1183,16 @@ fn emit_go_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Ma
 
 fn emit_go_service_def(
   item: Node,
-  registry: Map<String, ItemInfo>
+  registry: Map<String, ItemInfo>,
+  source: String
 ) -> String {
-  let safe_name = sanitize_service_name(name: item.name)
+  let safe_name = sanitize_service_name(name: source_text_at(source: source, span: item.span))
   let transport = service_fallback_transport(item: item)
   let struct_def = emit_go_service_struct(name: safe_name, transport: transport)
   // After dissolution, operation children are identified by having params
   let op_children = item.children |> filter(c => c.params |> count > 0)
   let methods = op_children |> map(op_node =>
-    emit_go_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry)
+    emit_go_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, source: source)
   )
   let methods_str = methods |> join(separator: "\n\n")
   concat(struct_def, "\n\n", methods_str)
@@ -1216,17 +1217,17 @@ fn emit_go_service_struct(name: String, transport: Node) -> String {
   }
 }
 
-fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>) -> String {
+fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, source: String) -> String {
+  let op_text = source_text_at(source: source, span: op_node.span)
   let input_params = op_node.params |> map(p =>
     concat(emit_ident(name: param_node_name(n: p), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
   let receiver = concat("(c *", service_name, ")")
-  // After dissolution, inferred on the child node IS the output type
   let ret_type = emit_node_type(n: rt_type(n: op_node), target: Go)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
-  let body = emit_go_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry, depth: 1)
-  concat("func ", receiver, " ", go_export_ident(name: op_node.name),
+  let body = emit_go_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: 1)
+  concat("func ", receiver, " ", go_export_ident(name: op_text),
     "(", params_str, ") (", ret_type, ", error) {\n",
     body, "\n}")
 }
@@ -1317,23 +1318,22 @@ fn emit_go_local_call(op_name: String, depth: Int) -> String {
 // "implements" needed).
 // =========================================================================
 
-fn emit_go_resource_def(item: Node) -> String {
-  // After dissolution, capability children are identified by having params
+fn emit_go_resource_def(item: Node, source: String) -> String {
+  let item_text = source_text_at(source: source, span: item.span)
   let cap_children = item.children |> filter(c => c.params |> count > 0)
-  let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c, depth: 1))
+  let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c, depth: 1, source: source))
   let methods_str = methods |> join(separator: "\n")
-  concat("type ", item.name, " interface {\n",
+  concat("type ", item_text, " interface {\n",
     methods_str, "\n}")
 }
 
-fn emit_go_capability_method(cap_node: Node, depth: Int) -> String {
+fn emit_go_capability_method(cap_node: Node, depth: Int, source: String) -> String {
   let input_params = cap_node.params |> map(p =>
     concat(emit_ident(name: param_node_name(n: p), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go))
   )
   let params_str = input_params |> join(separator: ", ")
-  // After dissolution, inferred on the child node IS the output type
   let ret = emit_node_type(n: rt_type(n: cap_node), target: Go)
-  concat(make_indent(level: depth), go_export_ident(name: cap_node.name), "(", params_str, ") (", ret, ", error)")
+  concat(make_indent(level: depth), go_export_ident(name: source_text_at(source: source, span: cap_node.span)), "(", params_str, ") (", ret, ", error)")
 }
 
 // =========================================================================
