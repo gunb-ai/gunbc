@@ -53,6 +53,7 @@ type TypedModule {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
+  source_text: String
 }
 
 type TypedGraph {

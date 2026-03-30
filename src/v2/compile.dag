@@ -686,7 +686,8 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     FrontendResult { graph: none, diagnostics: parse_diagnostics }
   } else {
     let modules = map(parse_results, p => p.module.value)
-    let graph = resolve_modules(modules: modules)
+    let source_map = fold(sources, init: empty_map(), f: (acc, s) => map_insert(acc, s.path, s.content))
+    let graph = resolve_modules(modules: modules, source_map: source_map)
     FrontendResult {
       graph: Some { value: graph },
       diagnostics: concat(parse_diagnostics, graph.diagnostics)

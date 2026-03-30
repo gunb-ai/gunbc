@@ -28,6 +28,7 @@ type ResolvedModule {
   module: Node
   resolved_imports: List<ResolvedImport>
   dep_order: Int
+  source_text: String
 }
 
 type ResolvedImport {
@@ -70,7 +71,7 @@ fn map_has(m: Map<String, Bool>, key: String) -> Bool {
 // Entry point
 // =========================================================================
 
-fn resolve_modules(modules: List<Node>) -> ModuleGraph {
+fn resolve_modules(modules: List<Node>, source_map: Map<String, String>) -> ModuleGraph {
   // Phase 1: check for duplicate module declarations
   let dup_diags = check_duplicate_modules(modules: modules)
 
@@ -124,10 +125,12 @@ fn resolve_modules(modules: List<Node>) -> ModuleGraph {
           // imports_by_name should contain every module -- None is
           // unreachable. Default to [] only as a safe fallback.
           Some { value: imps } =>
+            let src = match map_get(source_map, m.span.file) { Some { value: s } => s  None => "" }
             [ResolvedModule {
               module: m,
               resolved_imports: imps,
-              dep_order: order
+              dep_order: order,
+              source_text: src
             }]
           None => []
         }
