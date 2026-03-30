@@ -696,14 +696,15 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
 // Check if a type node references a recursive type that needs Box indirection.
 // List and Map provide heap indirection naturally; Optional does not.
 // RC2: Rc<T> also provides heap indirection, so skip Box for Rc-wrapped types.
-fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> Bool {
+fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, source: String) -> Bool {
   if n.children |> count == 0 {
-    if emit_map_has(m: rc_types, key: n.name) { false }
-    else { emit_map_has(m: recursive_types, key: n.name) }
+    let tn = source_text_at(source: source, span: n.span)
+    if emit_map_has(m: rc_types, key: tn) { false }
+    else { emit_map_has(m: recursive_types, key: tn) }
   } else {
     let is_optional = n.return_cardinality == CardOptional
     if is_optional {
-      needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, rc_types: rc_types)
+      needs_box_wrapping(n: with_required_cardinality(n: n), recursive_types: recursive_types, rc_types: rc_types, source: source)
     } else {
       false
     }
@@ -754,7 +755,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   // Struct fields use Rc-wrapped types for consistency with function signatures.
   let rt_child = rt_type(n: child)
   let ty = emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
-  let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, rc_types: rc_types) {
+  let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, rc_types: rc_types, source: source) {
     concat("Box<", ty, ">")
   } else { ty }
   // Check for from_key in child properties
@@ -855,7 +856,7 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
     let field_lines = child.children |> map(f =>
       let rt_f = rt_type(n: f)
       let ty = emit_node_type_rc(n: rt_f, target: Rust, rc_types: rc_types)
-      let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, rc_types: rc_types) {
+      let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, rc_types: rc_types, source: source) {
         concat("Box<", ty, ">")
       } else { ty }
       concat("        ", emit_ident(name: source_text_at(source: source, span: f.span), target: Rust), ": ", final_ty, ",")
