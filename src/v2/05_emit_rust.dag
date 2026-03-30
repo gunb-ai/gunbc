@@ -2292,6 +2292,7 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
     Some { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
         ExprCall { call_semantics: _ } =>
+          let init_func = expr_call_func(texpr: arg_value(n: init_arg))
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             concat("v2_rt::rc_empty_map::<", rust_empty_map_value_type_str(map_type: acc_type_node, rc_types: rc_types), ">()")
           } else if init_func == "empty_map" {
