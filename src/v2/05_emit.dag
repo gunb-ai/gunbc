@@ -33,7 +33,7 @@ import v2.std.core {
   TextFile, SourceSpan,
   BinOpKind, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
-  expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
+  lambda_param_names, record_lit_type_name,
   arm_body, arm_pattern, arm_guard,
   arg_name, arg_value,
   field_init_node_name, field_init_node_value,
@@ -219,34 +219,34 @@ type InterpPart {
   arg_expr: String
 }
 
-fn emit_simple_expr(expr: Node, target: RenderTarget) -> String {
+fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex?) -> String {
   match expr.expr_data {
     ExprLiteral { value: v } => emit_literal(value: v, target: target)
     ExprError { kind: _, message: message } =>
       emit_error_expr(message: message, target: target)
-    ExprVar { binding_kind: _ } => emit_ident(name: expr_var_name(texpr: expr), target: target)
+    ExprVar { binding_kind: _ } => emit_ident(name: authored_name_at(source_index: source_index, node: expr), target: target)
     ExprFieldAccess { summary: _ } =>
-      let f = field_access_field(texpr: expr)
+      let f = authored_name_at(source_index: source_index, node: expr)
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
           Some { value: svc_name } => service_var_name(service_name: svc_name)
-          None => concat(emit_simple_expr(expr: b, target: target), ".", emit_ident(name: f, target: target))
+          None => concat(emit_simple_expr(expr: b, target: target, source_index: source_index), ".", emit_ident(name: f, target: target))
         }
       } else {
-        concat(emit_simple_expr(expr: b, target: target), ".", emit_ident(name: f, target: target))
+        concat(emit_simple_expr(expr: b, target: target, source_index: source_index), ".", emit_ident(name: f, target: target))
       }
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
         ExprLiteral { value: LitStr { value: text } } => Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
-      emit_simple_string_interp(parts: ps, target: target)
+      emit_simple_string_interp(parts: ps, target: target, source_index: source_index)
     _ => emit_error_expr(message: "unsupported simple expr in test/mock binding", target: target)
   }
 }
 
-fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> String {
+fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, source_index: NewlineIndex?) -> String {
   match target {
     Rust =>
       let fmt_parts = parts |> map(p => match p {
@@ -257,7 +257,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
             |> split(delimiter: "}") |> join(separator: "}}")
           InterpPart { format_segment: escaped2, arg_expr: "" }
         Interpolation { expr: e } =>
-          InterpPart { format_segment: "{}", arg_expr: emit_simple_expr(expr: e, target: target) }
+          InterpPart { format_segment: "{}", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
       let args = fmt_parts
@@ -273,7 +273,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
       let fmt_parts = parts |> map(p => match p {
         Text { value: v } => InterpPart { format_segment: v, arg_expr: "" }
         Interpolation { expr: e } =>
-          InterpPart { format_segment: "%v", arg_expr: emit_simple_expr(expr: e, target: target) }
+          InterpPart { format_segment: "%v", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
       })
       let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
       let args = fmt_parts
@@ -291,7 +291,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
           v |> split(delimiter: "{") |> join(separator: "{{")
             |> split(delimiter: "}") |> join(separator: "}}")
         Interpolation { expr: e } =>
-          concat("{", emit_simple_expr(expr: e, target: target), "}")
+          concat("{", emit_simple_expr(expr: e, target: target, source_index: source_index), "}")
       })
       concat("f\"", segments |> join(separator: ""), "\"")
     _ => emit_error_expr(message: "unsupported simple string interpolation target", target: target)
@@ -334,7 +334,7 @@ fn scope_after_expr(texpr: Node, scope: InferScope) -> InferScope {
       let has_body = (ch |> count) > 1
       if has_body == false {
         let value = let_value(texpr: texpr)
-        extend_scope(scope: scope, name: let_binding_name(texpr: texpr), resolved: rt_type(n: value))
+        extend_scope(scope: scope, name: authored_name_at(source_index: scope.type_env.source_index, node: texpr), resolved: rt_type(n: value))
       } else {
         scope
       }
@@ -450,7 +450,7 @@ fn has_nested_records_node(n: Node) -> Bool {
 // JSON emission for data values -- used with serde_json::json!() macro
 // =========================================================================
 
-fn emit_data_value_json(value: Node) -> String {
+fn emit_data_value_json(value: Node, source_index: NewlineIndex?) -> String {
   match value.expr_data {
     ExprLiteral { value: v } => match v {
       LitStr { value: s } => concat("\"", escape_json_string(s: s), "\"")
@@ -460,16 +460,16 @@ fn emit_data_value_json(value: Node) -> String {
       LitNull => "null"
     }
     ExprListLit => {
-      let el_strs = value.children |> map(e => emit_data_value_json(value: e))
+      let el_strs = value.children |> map(e => emit_data_value_json(value: e, source_index: source_index))
       concat("[", el_strs |> join(separator: ", "), "]")
     }
     ExprRecordLit { parent_enum: _ } => {
       let field_strs = value.children |> map(f =>
-        concat("\"", escape_json_string(s: field_init_node_name(n: f)), "\": ", emit_data_value_json(value: field_init_node_value(n: f)))
+        concat("\"", escape_json_string(s: field_init_node_name(n: f)), "\": ", emit_data_value_json(value: field_init_node_value(n: f), source_index: source_index))
       )
       concat("{", field_strs |> join(separator: ", "), "}")
     }
-    ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: expr_var_name(texpr: e)), "\"")
+    ExprVar { binding_kind: _ } => concat("\"", escape_json_string(s: authored_name_at(source_index: source_index, node: value)), "\"")
     _ => "<<<UNSUPPORTED_MOCK_EXPR>>>"
   }
 }
@@ -1218,10 +1218,10 @@ type FuncBodyShape
   | FuncBodyBlock { stmts: List<Node> }
   | FuncBodyExpr { expr: Node }
 
-fn classify_func_body(body: Node) -> FuncBodyShape {
+fn classify_func_body(body: Node, source_index: NewlineIndex?) -> FuncBodyShape {
   match body.expr_data {
     ExprLet =>
-      let n = let_binding_name(texpr: body)
+      let n = authored_name_at(source_index: source_index, node: body)
       let v = let_value(texpr: body)
       let rest = let_body(texpr: body)
       FuncBodyLet { name: n, value: v, rest: rest }
@@ -1240,10 +1240,10 @@ type TcoExprShape
   | TcoBlock { stmts: List<Node> }
   | TcoOther { expr: Node }
 
-fn classify_tco_expr(texpr: Node) -> TcoExprShape {
+fn classify_tco_expr(texpr: Node, source_index: NewlineIndex?) -> TcoExprShape {
   match texpr.expr_data {
     ExprCall { call_semantics: _ } =>
-      TcoCall { func: expr_call_func(texpr: texpr), args: texpr.children }
+      TcoCall { func: authored_name_at(source_index: source_index, node: texpr), args: texpr.children }
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
@@ -1254,7 +1254,7 @@ fn classify_tco_expr(texpr: Node) -> TcoExprShape {
       let arm_list = match_arm_nodes(texpr: texpr)
       TcoMatch { scrutinee: scrut, arms: arm_list }
     ExprLet =>
-      let n = let_binding_name(texpr: texpr)
+      let n = authored_name_at(source_index: source_index, node: texpr)
       let v = let_value(texpr: texpr)
       let bd = let_body(texpr: texpr)
       TcoLet { name: n, value: v, body: bd }
@@ -1341,9 +1341,10 @@ fn emit_shared_tco_expr(
   emit_block: fn(TcoFrame) -> String,
   emit_default_return: fn(TcoFrame) -> String
 ) -> String {
+  let si = frame.scope.type_env.source_index
   match frame.expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      if expr_call_func(texpr: frame.expr) == fn_name {
+      if authored_name_at(source_index: si, node: frame.expr) == fn_name {
         emit_self_call_reassign(TcoReassignInput { args: frame.expr.children, scope: frame.scope, depth: frame.depth })
       } else {
         emit_non_self_call(frame)
@@ -1361,24 +1362,24 @@ fn emit_shared_tco_expr(
   }
 }
 
-fn is_tco_candidate(texpr: Node, func_name: String) -> Bool {
+fn is_tco_candidate(texpr: Node, func_name: String, source_index: NewlineIndex?) -> Bool {
   match texpr.expr_data {
-    ExprCall { call_semantics: _ } => expr_call_func(texpr: texpr) == func_name
+    ExprCall { call_semantics: _ } => authored_name_at(source_index: source_index, node: texpr) == func_name
     ExprIf =>
       // children = [condition, then, else?]. Check branches.
-      let then_cand = is_tco_candidate(texpr: if_then_branch(texpr: texpr), func_name: func_name)
-      let else_cand = match if_else_branch(texpr: texpr) { Some { value: e } => is_tco_candidate(texpr: e, func_name: func_name)  None => false }
+      let then_cand = is_tco_candidate(texpr: if_then_branch(texpr: texpr), func_name: func_name, source_index: source_index)
+      let else_cand = match if_else_branch(texpr: texpr) { Some { value: e } => is_tco_candidate(texpr: e, func_name: func_name, source_index: source_index)  None => false }
       then_cand || else_cand
     ExprMatch =>
-      match_arm_nodes(texpr: texpr) |> any(arm_node => is_tco_candidate(texpr: arm_body(n: arm_node), func_name: func_name))
+      match_arm_nodes(texpr: texpr) |> any(arm_node => is_tco_candidate(texpr: arm_body(n: arm_node), func_name: func_name, source_index: source_index))
     ExprLet =>
-      match let_body(texpr: texpr) { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name)  None => false }
+      match let_body(texpr: texpr) { Some { value: b } => is_tco_candidate(texpr: b, func_name: func_name, source_index: source_index)  None => false }
     ExprBlock =>
       // children = [stmt0, stmt1, ...].
-      texpr.children |> any(s => is_tco_candidate(texpr: s, func_name: func_name))
+      texpr.children |> any(s => is_tco_candidate(texpr: s, func_name: func_name, source_index: source_index))
     NoExprData =>
       // Wrapper nodes -- recurse through children.
-      texpr.children |> any(child => is_tco_candidate(texpr: child, func_name: func_name))
+      texpr.children |> any(child => is_tco_candidate(texpr: child, func_name: func_name, source_index: source_index))
     _ => false
   }
 }

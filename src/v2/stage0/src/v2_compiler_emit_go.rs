@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{authored_name_at, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_pattern, LiteralValue, NewlineIndex, TextFile, SourceSpan, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{authored_name_at, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_pattern, LiteralValue, NewlineIndex, TextFile, SourceSpan, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -187,7 +187,7 @@ pub fn go_test_name(projection: Rc<TestProjection>) -> String {
 
 pub fn go_mock_expr_uses_fmt(expr: Rc<Node>) -> bool {
     {
-        let rendered = emit_simple_expr(expr.clone(), RenderTarget::Go);
+        let rendered = emit_simple_expr(expr.clone(), RenderTarget::Go, None);
 ((rendered.clone().split(&"fmt.Sprintf(".to_string()).map(|s| s.to_string()).collect::<Vec<_>>().len() as i64) > 1)
 }
 }
@@ -258,7 +258,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 
 pub fn emit_go_mock_prop_setup(mock_prop: Rc<Node>, depth: i64) -> String {
-    v2_rt::concat(v2_rt::concat(emit_ident(field_init_node_name(mock_prop.clone()), RenderTarget::Go), " := ".to_string()), emit_simple_expr(field_init_node_value(mock_prop.clone()), RenderTarget::Go))
+    v2_rt::concat(v2_rt::concat(emit_ident(field_init_node_name(mock_prop.clone()), RenderTarget::Go), " := ".to_string()), emit_simple_expr(field_init_node_value(mock_prop.clone()), RenderTarget::Go, None))
 }
 
 pub fn emit_go_module(typed_module: Rc<TypedModule>, registry: HashMap<String, Rc<ItemInfo>>) -> Rc<TextFile> {
@@ -600,11 +600,11 @@ match summary.clone() {
 }
 }
 
-pub fn emit_go_expr_var(expr: Rc<Node>, depth: i64) -> String {
+pub fn emit_go_expr_var(expr: Rc<Node>, depth: i64, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprVar { .. } => { let n = expr_var_name(expr.clone()); v2_rt::concat(prefix.clone(), emit_ident(n.clone(), RenderTarget::Go)) },
+    ExprData::ExprVar { .. } => { let n = authored_name_at(source_index.clone(), expr.clone()); v2_rt::concat(prefix.clone(), emit_ident(n.clone(), RenderTarget::Go)) },
     _ => v2_rt::concat(prefix.clone(), emit_error_expr("emit_go_expr_var expected ExprVar".to_string(), RenderTarget::Go)),
 }
 }
@@ -615,7 +615,8 @@ pub fn emit_go_expr_field_access(expr: Rc<Node>, registry: HashMap<String, Rc<It
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { summary: summary, .. } => {
-    let f = field_access_field(expr.clone());
+    let si = scope.type_env.source_index.clone();
+    let f = authored_name_at(si.clone(), expr.clone());
             let b = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -639,7 +640,8 @@ pub fn emit_go_expr_call(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-    let f = expr_call_func(expr.clone());
+    let si = scope.type_env.source_index.clone();
+    let f = authored_name_at(si.clone(), expr.clone());
             let a = expr.children.clone();
 v2_rt::concat(prefix.clone(), emit_go_typed_call(f.clone(), a.clone(), registry.clone(), scope.clone()))
 },
@@ -653,7 +655,8 @@ pub fn emit_go_expr_method_call(expr: Rc<Node>, registry: HashMap<String, Rc<Ite
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
     ExprData::ExprMethodCall { method_semantics: method_semantics, .. } => {
-    let m = expr_method_name(expr.clone());
+    let si = scope.type_env.source_index.clone();
+    let m = authored_name_at(si.clone(), expr.clone());
             let r = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
@@ -701,7 +704,8 @@ emit_go_typed_if(c.clone(), t.clone(), e.clone(), registry.clone(), scope.clone(
 pub fn emit_go_expr_let(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprLet => {
-    let n = let_binding_name(expr.clone());
+    let si = scope.type_env.source_index.clone();
+    let n = authored_name_at(si.clone(), expr.clone());
         let v = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -780,7 +784,8 @@ v2_rt::concat(prefix.clone(), emit_go_typed_cast(e.clone(), t.clone(), registry.
 pub fn emit_go_expr_for_each(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprForEach => {
-    let v = foreach_variable(expr.clone());
+    let si = scope.type_env.source_index.clone();
+    let v = authored_name_at(si.clone(), expr.clone());
         let c = match expr.children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => expr.clone(),
@@ -844,7 +849,7 @@ emit_shared_expr(texpr.clone(), RenderTarget::Go, |result| if (result.clone() ==
                 "".to_string()
 } else {
                 v2_rt::concat(prefix.clone(), result.clone())
-}, |child| emit_go_typed_expr(child.clone(), registry.clone(), scope.clone(), 0), |expr| emit_go_expr_var(expr.clone(), depth.clone()), |expr| emit_go_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone()))
+}, |child| emit_go_typed_expr(child.clone(), registry.clone(), scope.clone(), 0), |expr| emit_go_expr_var(expr.clone(), depth.clone(), scope.type_env.source_index.clone()), |expr| emit_go_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone()), |expr| emit_go_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone()))
 }
     })
 }
@@ -1143,7 +1148,8 @@ pub fn emit_go_typed_func_body(body: Rc<Node>, registry: HashMap<String, Rc<Item
             let prefix = make_indent(depth.clone());
 match (*body.expr_data.clone()).clone() {
     ExprData::ExprLet => {
-    let n = let_binding_name(body.clone());
+    let si = scope.type_env.source_index.clone();
+    let n = authored_name_at(si.clone(), body.clone());
                 let ch = body.children.clone();
 let v = match ch.clone().first().cloned() {
     Some(val) => val.clone(),
@@ -1201,7 +1207,8 @@ pub fn emit_go_tco_non_self_call(frame: Rc<TcoFrame>, registry: HashMap<String, 
         let prefix = make_indent(frame.depth.clone());
 match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => {
-    let f = expr_call_func(frame.expr.clone());
+    let si = frame.scope.type_env.source_index.clone();
+    let f = authored_name_at(si.clone(), frame.expr.clone());
             let a = frame.expr.clone().children.clone();
 let call_str = emit_go_typed_call(f.clone(), a.clone(), registry.clone(), frame.scope.clone());
 v2_rt::concat(v2_rt::concat(prefix.clone(), "return ".to_string()), call_str.clone())
@@ -1274,7 +1281,8 @@ pub fn emit_go_tco_let(frame: Rc<TcoFrame>, fn_name: String, params: Vec<Rc<Node
         let prefix = make_indent(frame.depth.clone());
 match (*frame.expr.clone().expr_data.clone()).clone() {
     ExprData::ExprLet => {
-    let n = let_binding_name(frame.expr.clone());
+    let si = frame.scope.type_env.source_index.clone();
+    let n = authored_name_at(si.clone(), frame.expr.clone());
             let v = match frame.expr.clone().children.clone().first().cloned() {
     Some(val) => val.clone(),
     None => frame.expr.clone(),

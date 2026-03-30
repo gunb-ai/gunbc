@@ -10212,7 +10212,7 @@ pub fn try_postfix(
     }
 }
 
-pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, _span: Rc<SourceSpan>) -> Rc<Node> {
     {
         match (*lhs.expr_data.clone()).clone() {
             ExprData::ExprVar { .. } => make_named_expr_node(
@@ -10222,7 +10222,7 @@ pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) 
                 }),
                 args.clone(),
                 None,
-                span.clone(),
+                lhs.span.clone(),
             ),
             ExprData::ExprFieldAccess { .. } => make_named_expr_node(
                 lhs.name.clone(),
@@ -10234,7 +10234,7 @@ pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) 
                     args.clone(),
                 ),
                 None,
-                span.clone(),
+                lhs.span.clone(),
             ),
             _ => make_named_expr_node(
                 lhs.name.clone(),
@@ -10243,7 +10243,7 @@ pub fn make_call_expr(lhs: Rc<Node>, args: Vec<Rc<Node>>, span: Rc<SourceSpan>) 
                 }),
                 args.clone(),
                 None,
-                span.clone(),
+                lhs.span.clone(),
             ),
         }
     }

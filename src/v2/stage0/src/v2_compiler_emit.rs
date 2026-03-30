@@ -56,11 +56,11 @@ use crate::v2_std_core::ExprData::{
 use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 use crate::v2_std_core::StringPart::{Interpolation, Text};
 pub use crate::v2_std_core::{
-    arg_name, arg_value, arm_body, arm_guard, arm_pattern, binop_left, binop_right, expr_call_func,
-    expr_has_non_tail_self_call, expr_has_self_call, expr_method_name, expr_var_name,
-    field_access_base, field_access_field, field_init_node_name, field_init_node_value,
-    field_init_operation_modifier, foreach_variable, if_condition, if_else_branch, if_then_branch,
-    lambda_body, lambda_param_names, leaf_node, let_binding_name, let_body, let_value,
+    arg_name, arg_value, arm_body, arm_guard, arm_pattern, binop_left, binop_right,
+    expr_has_non_tail_self_call, expr_has_self_call,
+    field_access_base, field_init_node_name, field_init_node_value,
+    field_init_operation_modifier, if_condition, if_else_branch, if_then_branch,
+    lambda_body, lambda_param_names, leaf_node, let_body, let_value,
     local_transport_node, match_arm_nodes, match_scrutinee, module_imports, module_items,
     node_has_structure, node_is_coproduct, node_is_product, operation_modifier_name,
     param_node_default_value, param_node_name, param_node_type_expr, record_lit_type_name,
@@ -248,7 +248,7 @@ pub struct InterpPart {
     pub arg_expr: String,
 }
 
-pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
+pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: v, .. } => emit_literal(v.clone(), target.clone()),
@@ -256,18 +256,18 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
                 message: message, ..
             } => emit_error_expr(message.clone(), target.clone()),
             ExprData::ExprVar { .. } => {
-                let n = expr_var_name(expr.clone());
+                let n = authored_name_at(source_index.clone(), expr.clone());
                 emit_ident(n.clone(), target.clone())
             }
             ExprData::ExprFieldAccess { .. } => {
-                let f = field_access_field(expr.clone());
+                let f = authored_name_at(source_index.clone(), expr.clone());
                 let b = field_access_base(expr.clone());
                 if is_typed_service_call_receiver(expr.clone()) {
                     match extract_typed_service_name(expr.clone()) {
                         Some(svc_name) => service_var_name(svc_name.clone()),
                         None => v2_rt::concat(
                             v2_rt::concat(
-                                emit_simple_expr(b.clone(), target.clone()),
+                                emit_simple_expr(b.clone(), target.clone(), source_index.clone()),
                                 ".".to_string(),
                             ),
                             emit_ident(f.clone(), target.clone()),
@@ -275,7 +275,7 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
                     }
                 } else {
                     v2_rt::concat(
-                        v2_rt::concat(emit_simple_expr(b.clone(), target.clone()), ".".to_string()),
+                        v2_rt::concat(emit_simple_expr(b.clone(), target.clone(), source_index.clone()), ".".to_string()),
                         emit_ident(f.clone(), target.clone()),
                     )
                 }
@@ -301,7 +301,7 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
                     }
                     __result
                 };
-                emit_simple_string_interp(ps.clone(), target.clone())
+                emit_simple_string_interp(ps.clone(), target.clone(), source_index.clone())
             }
             _ => emit_error_expr(
                 "unsupported simple expr in test/mock binding".to_string(),
@@ -311,7 +311,7 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget) -> String {
     })
 }
 
-pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarget) -> String {
+pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
     match target.clone() {
         RenderTarget::Rust => {
             let fmt_parts = {
@@ -338,7 +338,7 @@ pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarge
                         }
                         StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
                             format_segment: "{}".to_string(),
-                            arg_expr: emit_simple_expr(e.clone(), target.clone()),
+                            arg_expr: emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
                         }),
                     });
                 }
@@ -402,7 +402,7 @@ pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarge
                         }),
                         StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
                             format_segment: "%v".to_string(),
-                            arg_expr: emit_simple_expr(e.clone(), target.clone()),
+                            arg_expr: emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
                         }),
                     });
                 }
@@ -473,7 +473,7 @@ pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarge
                         StringPart::Interpolation { expr: e, .. } => v2_rt::concat(
                             v2_rt::concat(
                                 "{".to_string(),
-                                emit_simple_expr(e.clone(), target.clone()),
+                                emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
                             ),
                             "}".to_string(),
                         ),
@@ -525,7 +525,8 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
 pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLet => {
-            let name = let_binding_name(texpr.clone());
+            let si = scope.type_env.source_index.clone();
+            let name = authored_name_at(si.clone(), texpr.clone());
             let ch = texpr.children.clone();
             let has_body = ((ch.clone().len() as i64) > 1);
             if (has_body.clone() == false) {
@@ -718,7 +719,7 @@ pub fn has_nested_records_node(mut n: Rc<Node>) -> bool {
     }
 }
 
-pub fn emit_data_value_json(value: Rc<Node>) -> String {
+pub fn emit_data_value_json(value: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
@@ -741,7 +742,7 @@ pub fn emit_data_value_json(value: Rc<Node>) -> String {
                 let el_strs = {
                     let mut __result = Vec::new();
                     for e in value.children.clone().iter().cloned() {
-                        __result.push(emit_data_value_json(e.clone()));
+                        __result.push(emit_data_value_json(e.clone(), source_index.clone()));
                     }
                     __result
                 };
@@ -762,7 +763,7 @@ pub fn emit_data_value_json(value: Rc<Node>) -> String {
                                 ),
                                 "\": ".to_string(),
                             ),
-                            emit_data_value_json(field_init_node_value(f.clone())),
+                            emit_data_value_json(field_init_node_value(f.clone()), source_index.clone()),
                         ));
                     }
                     __result
@@ -773,7 +774,7 @@ pub fn emit_data_value_json(value: Rc<Node>) -> String {
                 )
             }
             ExprData::ExprVar { .. } => {
-                let n = expr_var_name(value.clone());
+                let n = authored_name_at(source_index.clone(), value.clone());
                 v2_rt::concat(
                     v2_rt::concat("\"".to_string(), escape_json_string(n.clone())),
                     "\"".to_string(),
@@ -1872,10 +1873,10 @@ pub enum FuncBodyShape {
     },
 }
 
-pub fn classify_func_body(body: Rc<Node>) -> Rc<FuncBodyShape> {
+pub fn classify_func_body(body: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<FuncBodyShape> {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprLet => {
-            let n = let_binding_name(body.clone());
+            let n = authored_name_at(source_index.clone(), body.clone());
             let v = let_value(body.clone());
             let rest = let_body(body.clone());
             Rc::new(FuncBodyShape::FuncBodyLet {
@@ -1919,10 +1920,10 @@ pub enum TcoExprShape {
     },
 }
 
-pub fn classify_tco_expr(texpr: Rc<Node>) -> Rc<TcoExprShape> {
+pub fn classify_tco_expr(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<TcoExprShape> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            let f = expr_call_func(texpr.clone());
+            let f = authored_name_at(source_index.clone(), texpr.clone());
             let a = texpr.children.clone();
             Rc::new(TcoExprShape::TcoCall {
                 func: f.clone(),
@@ -1948,7 +1949,7 @@ pub fn classify_tco_expr(texpr: Rc<Node>) -> Rc<TcoExprShape> {
             })
         }
         ExprData::ExprLet => {
-            let n = let_binding_name(texpr.clone());
+            let n = authored_name_at(source_index.clone(), texpr.clone());
             let v = let_value(texpr.clone());
             let bd = let_body(texpr.clone());
             Rc::new(TcoExprShape::TcoLet {
@@ -2096,7 +2097,8 @@ pub fn emit_shared_tco_expr(
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            let f = expr_call_func(frame.expr.clone());
+            let si = frame.scope.type_env.source_index.clone();
+            let f = authored_name_at(si.clone(), frame.expr.clone());
             if (f.clone() == fn_name.clone()) {
                 {
                     let a = frame.expr.clone().children.clone();
@@ -2118,17 +2120,17 @@ pub fn emit_shared_tco_expr(
     }
 }
 
-pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String) -> bool {
+pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String, source_index: Option<Rc<NewlineIndex>>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                let f = expr_call_func(texpr.clone());
+                let f = authored_name_at(source_index.clone(), texpr.clone());
                 (f.clone() == func_name.clone())
             }
             ExprData::ExprIf => {
-                let then_cand = is_tco_candidate(if_then_branch(texpr.clone()), func_name.clone());
+                let then_cand = is_tco_candidate(if_then_branch(texpr.clone()), func_name.clone(), source_index.clone());
                 let else_cand = match if_else_branch(texpr.clone()) {
-                    Some(e) => is_tco_candidate(e.clone(), func_name.clone()),
+                    Some(e) => is_tco_candidate(e.clone(), func_name.clone(), source_index.clone()),
                     None => false,
                 };
                 (then_cand.clone() || else_cand.clone())
@@ -2136,7 +2138,7 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String) -> bool {
             ExprData::ExprMatch => {
                 let mut __found = false;
                 for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() {
-                    if is_tco_candidate(arm_body(arm_node.clone()), func_name.clone()) {
+                    if is_tco_candidate(arm_body(arm_node.clone()), func_name.clone(), source_index.clone()) {
                         __found = true;
                         break;
                     }
@@ -2144,13 +2146,13 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String) -> bool {
                 __found
             }
             ExprData::ExprLet => match let_body(texpr.clone()) {
-                Some(b) => is_tco_candidate(b.clone(), func_name.clone()),
+                Some(b) => is_tco_candidate(b.clone(), func_name.clone(), source_index.clone()),
                 None => false,
             },
             ExprData::ExprBlock => {
                 let mut __found = false;
                 for s in texpr.children.clone().iter().cloned() {
-                    if is_tco_candidate(s.clone(), func_name.clone()) {
+                    if is_tco_candidate(s.clone(), func_name.clone(), source_index.clone()) {
                         __found = true;
                         break;
                     }
@@ -2160,7 +2162,7 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String) -> bool {
             ExprData::NoExprData => {
                 let mut __found = false;
                 for child in texpr.children.clone().iter().cloned() {
-                    if is_tco_candidate(child.clone(), func_name.clone()) {
+                    if is_tco_candidate(child.clone(), func_name.clone(), source_index.clone()) {
                         __found = true;
                         break;
                     }
