@@ -184,6 +184,80 @@ The developer gets immediate feedback: "your type has no samples"
 or "your function violates its algebra's round-trip law" — as compile
 errors, not as a test report they might not read.
 
+### Construct statuses
+
+The compiler assigns a status to every construct:
+
+| Status | Meaning | Blocks compile? |
+|---|---|---|
+| `proven` | Compiler proved structurally (type, decidability, ownership) | No — nothing to test |
+| `tested` | Hermetic test ran and passed | No |
+| `under_specified` | Missing samples, mocks, witnesses, or behavioral oracle | **Yes** |
+| `invalid` | Hermetic test failed or law violated | **Yes** |
+| `integration_pending` | Integration contract exists, not yet verified live | No |
+| `integration_failed` | Live integration test failed (CI lane only) | No — does not block ordinary compile |
+
+`under_specified` and `invalid` block compilation. The compiler
+cannot form a trustworthy test surface for these constructs.
+`integration_pending` does NOT block compilation — a network outage
+should not prevent `gunbc compile`.
+
+### Pipeline order
+
+```
+1. parse / resolve / infer
+2. collect proof + test obligations
+3. fail immediately on invalid / under_specified
+4. run hermetic checks (DryRun + Selective Real)
+5. emit target artifacts to temp location
+6. run generated target tests (cargo check, syntax, etc.)
+7. publish final artifacts only if all hermetic verification passes
+```
+
+Artifacts are emitted LAST, not first. A construct that can't prove
+its correctness never reaches the output directory.
+
+### Phased compile-error policy
+
+Not all test tracks are implemented. The compile-error policy
+phases in as each track lands:
+
+| Phase | What becomes a compile error | When |
+|---|---|---|
+| **Now** | Missing `mock_response` for service claiming hermetic verification | M2 |
+| **Phase 1** | Failed DryRun / service mock tests | M3 (track implemented) |
+| **Phase 2** | Missing samples for types requiring behavioral testing | M3 (samples track) |
+| **Phase 3** | Failed type roundtrip tests | M3 (roundtrip track) |
+| **Phase 4** | Failed algebraic law checks, missing oracle | M3 (law track) |
+| **Phase 5** | Failed workflow dry-run coverage | M3 (workflow track) |
+
+Each track promotes from "not checked" to "compile error" as it
+becomes implemented. The receipt records which tracks are active.
+
+### What blocks compile vs what doesn't
+
+```
+BLOCKS COMPILE (hermetic):
+  Missing mock for a declared hermetic boundary
+  Missing samples/witness for a construct requiring tests
+  Missing behavioral oracle for non-structurally-provable construct
+  Failed DryRun / Selective Real test
+  Stale generated artifacts (freshness violation)
+
+DOES NOT BLOCK COMPILE (integration):
+  GitHub API is down
+  Cloud service returns 500
+  Network timeout
+  Live integration test failure
+  (These fail in the CI integration lane, not in gunbc compile)
+
+BLOCKS COMPILE (integration contract):
+  Missing integration profile for an external boundary
+  Missing DryRun mock for a transport
+  Missing response type contract for a service
+  (The CONTRACT must exist even if the live test hasn't run)
+```
+
 ## Integration testing: generated, not blocking
 
 Integration tests (real HTTP, real databases, real file I/O) CANNOT
