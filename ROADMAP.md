@@ -238,14 +238,17 @@ resolve uses structural identity.
   in `04_env.dag` encapsulates `.name` reads; when `Node.name` is
   deleted, only the accessors change
 
-*Node.name surface area:*
+*Node.name surface area (D6):*
 - [x] `source_text_at` infrastructure (B0)
 - [x] Source text threaded through pipeline (B2)
 - [x] Synthetic name dissolution: tuple constants, module markers (B1)
 - [x] `extern fn` syntax deleted
-- [ ] Update 17 `make_*` helpers + 11 accessor functions
+- [x] Accessor layer: `lookup_type_for`, `is_recursive_type_for`,
+  `authored_name_at`, `lambda_param_names_at` encapsulate all
+  `.name`-as-identity reads (emit + resolve + infer + lookup)
+- [ ] Update 17 `make_*` helpers (blocked: all `.name` reads replaced)
 - [ ] Update ~256 Node constructions to drop `name:`
-- [ ] Migrate synthetic node identity to structural
+- [ ] Migrate synthetic node identity to structural (blocked: L1)
 - [ ] Delete `Node.name` field + scrambled-name tests
 
 *Synthetic node audit (D6 blocker):*
