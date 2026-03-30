@@ -315,9 +315,11 @@ internals)
 - [x] `source_text_at` infrastructure (B0) + test proving span→text recovery
 - [x] Thread source_text through pipeline: SourceFile → ResolvedModule →
   TypeEnv → InferScope → TypedModule → emit (B2/B2.5)
-- [x] Migrate emit rendering reads (item/field/variant/service/operation
-  names) to `source_text_at` across Rust/Python/Go backends (B3)
-- [x] Migrate resolve type lookups to `source_text_at` (B4a)
+- [ ] Migrate emit rendering reads to `source_text_at` (B3 — REVERTED:
+  parser item spans point to keyword tokens, not identifiers. Needs
+  identifier span stored separately before B3 can proceed.)
+- [ ] Migrate resolve type lookups to `source_text_at` (B4a — REVERTED:
+  same span issue)
 - [x] Synthetic name dissolution: tuple field constants centralized,
   module/import markers moved to property values (B1b/B1c)
 - [x] `extern fn` syntax deleted (dead code, wrong model)
