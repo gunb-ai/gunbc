@@ -2675,6 +2675,9 @@ fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field
 }
 
 fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope) -> Bool {
+  let n = expr_var_name(texpr: texpr)
+  let tn = record_lit_type_name(texpr: texpr)
+  let f = field_access_field(texpr: texpr)
   match texpr.expr_data {
     ExprLiteral { value: v } => match v { LitNull => true, _ => false }
     ExprVar { binding_kind: _ } =>
