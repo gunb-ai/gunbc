@@ -67,49 +67,57 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 
 ### M2: Users Can Compile .dag to Working Rust
 
-**Status:** In progress. Decidability, sharing, scoping done.
+**Status:** In progress. Decidability gate, sharing bridge-reduction, inference context done.
 **Gate:** `gunbc compile dsl/examples/weather/ --target rust && cargo check`
 
 *Fail-closed decidability:*
-- [x] Reject non-descending recursion as hard compile error
-  (`fn spin(n: n)` must not compile)
+- [x] Reject unchanged-argument recursion (`fn spin(n: n)` → error)
+- [x] Reject ascending-argument recursion (`fn spin(n: n+1)` → error)
+- [x] Allow proven descent (`n-1`, `n/2`, structural catamorphism)
 - [x] Wire complexity ratchet into fail-closed gate
+- [ ] Mutual recursion detection (SCC-based, not yet implemented)
 
 *Container sharing (FF-8):*
-- [x] Add sharing strategy to LanguageSpec (wrap template, construct
-  template, which types need sharing). Rust: Rc-wrap, Go: pointer,
-  Python: reference semantics.
-- [x] Shared emitter reads LanguageSpec sharing fields; per-language
-  emitters stop hardcoding wrap decisions
+- [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
+  (Rust: `Rc<{0}>`, Python/Go: identity — bridge-reduction, not
+  full authority dissolution)
+- [x] Shared emitter reads `wrap_shared_type()` instead of
+  hardcoding `Rc<...>` (rendering moved to spec; which-types-wrap
+  decision still name-based via `rc_types`)
+- [ ] Dissolve `rc_types` name-based wrapping authority
 - [ ] Land atomically with stage0 regeneration
+
+*Inference context (new):*
+- [x] Add `expected: Node?` parameter to `infer_expr` (41 call sites)
+- [x] ExprLambda uses `expected` for param typing (replaces
+  `infer_lambda_with_element_type` bypass for `infer_arg_with_element_type`)
+- [ ] Dissolve remaining bypass functions (`infer_lambda_with_callable_type`,
+  `infer_fold_lambda_arg`)
 
 *No-fabrication cleanup:*
 - [x] Remove `Dynamic` as universal compatibility in `node_type_equals`
 - [ ] Remove `LitNull` sentinel from inference (14 sites; 23 parser
   sites are OK — error recovery)
-- [x] Promote `access_error` / `inference_error` from Warning to Error
-  (already InternalError — was never Warning)
 - [ ] Remove callable-to-value fabrication in `lookup_in_scope`
 - [ ] Delete `try_unwrap` clone fallback
 
-*Codegen correctness:*
-- [x] Primitive type lowering (`Bool` → `bool`, `Unit` → `()`)
-- [x] Algebraic types → stdlib (`FreeMonoid<T>` → `Vec<T>`)
-- [x] `Callable` type → `Rc<dyn Fn(...) -> T>`
-- [x] `async fn` emission for service operations
-- [x] Fix `uses` variable scoping (bug: parsed but never added to scope)
+*Codegen correctness (pre-existing, not new in this PR):*
+- Primitive type lowering, algebraic types, callable type, async fn
+  emission all work (confirmed, not changed by this PR)
+- [x] Fix `uses` variable scoping in emission (emit side — infer
+  side was already correct)
 - [ ] Variadic arguments (currently strict arity; should be free from
   modeling)
 
 *Bootstrap:*
-- [ ] Regenerate stage0 with `regenerate-stage0.sh`
+- [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
+- [ ] Regenerate stage0 with `regenerate-stage0.sh` (blocked by 65
+  inference false-positives: pipe-to-bare-function element type loss)
 - [ ] CI-verified regeneration (regenerate + diff = empty)
-- [ ] `dag/syntax.dag` inclusion without OOM
 
 *User experience:*
 - [x] `dsl/examples/weather/` committed example project
-- [x] Error messages: file:line:col with source context
-  (already in main.rs: `render_one_diagnostic` with `byte_to_line_col`)
+- Error messages already have file:line:col (pre-existing in main.rs)
 
 **Bridges owned by M2:**
 
