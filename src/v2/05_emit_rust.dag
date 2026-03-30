@@ -2467,7 +2467,7 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
     _ => "compile_error!(\"with method missing resolved record type\")"
   }
   if args |> count == 0 { return "compile_error!(\"with method missing update record\")" }
-  let update_arg = (args |> first).value.value
+  let update_arg = arg_value(n: (args |> first).value)
   let field_strs = match update_arg.expr_data {
     ExprRecordLit { parent_enum: _ } =>
       update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)))
