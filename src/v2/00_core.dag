@@ -1283,6 +1283,13 @@ fn source_text_at(source: String, span: SourceSpan) -> String {
   ""
 }
 
+// Tuple field name constants — centralized authority.
+// BRIDGE: synthetic strings set by the tuple constructor in 04_types.dag.
+// Deletion point: when Tuple is a .dag type definition and the compiler
+// reads field names from the declaration instead of hardcoding them.
+fn tuple_first_name() -> String { "first" }
+fn tuple_second_name() -> String { "second" }
+
 fn with_optional_cardinality(n: Node) -> Node {
   Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
