@@ -609,20 +609,17 @@ fn parse_error_does_not_leak_to_resolve() {
 // ── Complexity report tests ─────────────────────────────────────────────
 
 #[test]
-fn complexity_report_formatted() {
+fn complexity_report_structured() {
     let source = "module cplx\nfn constant_work(x: Int) -> Int { x }\nfn linear_map(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i + 1 })\n}\nfn linear_fold(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn nested_iteration(groups: List<List<Int>>) -> List<Int> {\n  flat_map(groups, fn(g) { map(g, fn(i) { i }) })\n}\nfn filter_then_map(items: List<Int>) -> List<Int> {\n  let filtered = filter(items, fn(i) { i > 0 })\n  map(filtered, fn(i) { i * 2 })\n}\nfn for_each_loop(items: List<Int>) -> List<Int> {\n  for i in items { i + 1 }\n}\nfn count_items(items: List<Int>) -> Int {\n  items |> count\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
-    assert!(
-        result.complexity.formatted.contains("constant_work: O(1)"),
-        "complexity report should contain 'constant_work: O(1)', got:\n{}",
-        result.complexity.formatted
-    );
+    let class = complexity_class_of(&result, "constant_work");
+    assert_eq!(class.as_deref(), Some("O(1)"),
+        "constant_work should be O(1), got {:?}", class);
     assert!(
         result.complexity.violations.is_empty(),
-        "well-typed simple functions should have 0 complexity violations, got {}:\n{}",
+        "well-typed simple functions should have 0 complexity violations, got {}",
         result.complexity.violations.len(),
-        result.complexity.formatted
     );
 }
 
@@ -1106,25 +1103,23 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
         assert!(found,
             "function '{}' should have a complexity summary (keys: {:?})", func, keys);
     }
-    // Verify the formatted report is non-empty and contains function names
-    assert!(!result.complexity.formatted.is_empty(),
-        "formatted complexity report should not be empty");
+    // Verify every expected function has a summary in the structural data
+    assert!(!summaries.is_empty(),
+        "function_summaries should not be empty");
 }
 
+/// Structural data scales to any number of functions without elision.
 #[test]
-fn complexity_report_elides_large_self_compile_style_reports() {
+fn complexity_report_scales_to_large_programs() {
     let mut source = String::from("module huge\n");
     for idx in 0..401 {
         source.push_str(&format!("fn f{idx}(x: Int) -> Int {{ x + 1 }}\n"));
     }
     let result = compile_dag(&source);
-    assert!(
-        result.complexity.formatted.contains("complexity report elided for 401 functions"),
-        "large complexity reports should be elided, got:\n{}",
-        result.complexity.formatted
-    );
     assert_eq!(result.complexity.function_summaries.len(), 401,
-        "large-report elision should preserve function summaries");
+        "structural data should contain all 401 function summaries");
+    assert!(result.complexity.violations.is_empty(),
+        "constant functions should have 0 violations");
 }
 
 #[test]
@@ -1201,13 +1196,8 @@ fn complexity_self_analysis_subset() {
         }
     }
 
-    // Print full formatted report
-    if !result.complexity.formatted.is_empty() {
-        eprintln!("\nFORMATTED REPORT (first 50 lines):");
-        for line in result.complexity.formatted.lines().take(50) {
-            eprintln!("  {}", line);
-        }
-    }
+    eprintln!("\nSUMMARY: {} functions, {} violations",
+        summaries.len(), violations.len());
 }
 
 #[test]

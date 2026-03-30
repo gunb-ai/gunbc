@@ -364,12 +364,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn is_non_computed_recursive_arg(",
         "fn self_calls_use_non_computed_args(",
         "fn is_structural_descent(",
-        "fn analyze_simplified_complexity(",
-        "fn classify_simplified_complexity(",
-        "fn complexity_dominates(",
-        "data large_complexity_report_limit: Int = 400",
-        "log_factor: Bool",
-        "is_unknown: Bool",
+        "fn normalize_asymptotic(",
+        "fn normalize_constants(",
+        "fn format_cost_class(",
+        "fn format_cost_inner(",
+        "fn parenthesize_additive_cost(",
+        "fn classify_complexity(",
         "ExprReturn",
     ] {
         assert_live_contains(
@@ -386,12 +386,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn is_non_computed_recursive_arg(",
         "pub fn self_calls_use_non_computed_args(",
         "pub fn is_structural_descent(",
-        "pub fn analyze_simplified_complexity(",
-        "pub fn classify_simplified_complexity(",
-        "pub fn complexity_dominates(",
-        "pub const LARGE_COMPLEXITY_REPORT_LIMIT: usize = 400;",
-        "pub log_factor: bool,",
-        "pub is_unknown: bool,",
+        "pub fn normalize_asymptotic(",
+        "pub fn normalize_constants(",
+        "pub fn format_cost_class(",
+        "pub fn format_cost_inner(",
+        "pub fn parenthesize_additive_cost(",
+        "pub fn classify_complexity(",
         "ExprData::ExprReturn",
     ] {
         assert_live_contains(
@@ -401,13 +401,20 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         );
     }
 
-    assert!(
-        source.contains("func_entries |> count > large_complexity_report_limit"),
-        "source complexity report should use the named large-report cutoff"
+    assert_live_not_contains(
+        &source,
+        "type ComplexityClass",
+        "ComplexityClass should not exist — CostExpr is the single authority"
     );
-    assert!(
-        stage0.contains("func_entries.len() > LARGE_COMPLEXITY_REPORT_LIMIT"),
-        "stage0 complexity report should use the named large-report cutoff"
+    assert_live_not_contains(
+        &source,
+        "formatted: String",
+        "ComplexityReport should not carry a formatted string field"
+    );
+    assert_live_not_contains(
+        &stage0,
+        "pub formatted: String",
+        "stage0 ComplexityReport should not carry a formatted string field"
     );
 }
 
