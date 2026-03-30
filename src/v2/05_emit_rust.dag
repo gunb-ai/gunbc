@@ -2393,7 +2393,7 @@ fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Ma
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend(", body_str, "); } __result })")
+          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend((*", body_str, ").iter().cloned()); } __result })")
         _ => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
       }
     None => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
@@ -2500,7 +2500,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       } else if method_name == "split" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>())")
       } else if method_name == "last" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         concat(recv_str, ".last().cloned()")
@@ -2509,10 +2509,10 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         concat(recv_str, ".first().cloned()")
       } else if method_name == "enumerate" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>())")
       } else if method_name == "chars" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>())")
       } else if method_name == "string_contains" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2525,11 +2525,11 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       } else if method_name == "skip" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>())")
       } else if method_name == "take" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat("Rc::new(", recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>())")
       } else if method_name == "append" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
