@@ -662,7 +662,7 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
   let kind = classify_typed_item(item: item)
   let item_text = source_text_at(source: scope.source_text, span: item.span)
   if (kind == TypedItemTypeDef) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, rc_types: rc_types, source: scope.source_text)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, rc_types: rc_types)
   } else if (kind == TypedItemTypeAlias) {
     concat(rust_visibility_prefix(), "type ", item_text, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
@@ -720,20 +720,19 @@ fn emit_type_params(params: List<Node>) -> String {
   }
 }
 
-fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, source: String) -> String {
+fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   let type_params = emit_type_params(params: item.params)
-  let item_text = source_text_at(source: source, span: item.span)
   let is_product = item.connective == Conj
   if is_product {
-    emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types, source: source)
+    emit_struct_from_children(name: item.name, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   } else {
-    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types, source: source)
+    emit_enum_from_children(name: item.name, type_params: type_params, children: item.children, recursive_types: recursive_types, rc_types: rc_types)
   }
 }
 
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
-fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, source: String) -> String {
+fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   // rust_struct_derives is the base derive set from extdeps.languages.rust.emit.
   // Non-Rc types get Copy added as a Rust-specific value semantics optimization.
   let derives = if emit_map_has(m: rc_types, key: name) {
@@ -744,13 +743,13 @@ fn emit_struct_from_children(name: String, type_params: String, children: List<N
   if children |> count == 0 {
     concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, ";")
   } else {
-    let field_lines = children |> map(child => emit_struct_field_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types, source: source))
+    let field_lines = children |> map(child => emit_struct_field_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types))
     let fields_str = field_lines |> join(separator: "\n")
     concat(derives, "\n", rust_visibility_prefix(), "struct ", name, type_params, " {\n", fields_str, "\n}")
   }
 }
 
-fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, source: String) -> String {
+fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   // Struct fields use Rc-wrapped types for consistency with function signatures.
   let rt_child = rt_type(n: child)
   let ty = emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
@@ -768,7 +767,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
     }
     None => ""
   }
-  concat(rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: source_text_at(source: source, span: child.span), target: Rust), ": ", final_ty, ",")
+  concat(rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: child.name, target: Rust), ": ", final_ty, ",")
 }
 
 fn enum_derives(children: List<Node>) -> String {
@@ -781,32 +780,36 @@ fn enum_derives(children: List<Node>) -> String {
   }
 }
 
-fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, source: String) -> String {
+fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   let derives = enum_derives(children: children)
-  let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types, source: source))
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, rc_types: rc_types))
   let variants_str = variant_lines |> join(separator: "\n")
   let enum_def = concat(derives, "\n", rust_serde_tag_attr(), "\n", rust_visibility_prefix(), "enum ", name, type_params, " {\n", variants_str, "\n}")
-  let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, rc_types: rc_types, source: source)
+  // Generate accessor methods for shared fields (fields present in ALL variants).
+  let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, rc_types: rc_types)
   if accessor_impl == "" { enum_def }
   else { concat(enum_def, "\n", accessor_impl) }
 }
 
-fn find_shared_enum_fields(children: List<Node>, source: String) -> List<String> {
+fn find_shared_enum_fields(children: List<Node>) -> List<String> {
+  // Only consider variants with fields (skip unit variants).
   let fielded = children |> filter(child => child.children |> count > 0)
   if fielded |> count == 0 { return [] }
+  // Get field names from first fielded variant.
   let first_fields = match fielded |> first {
-    Some { value: v } => v.children |> map(f => source_text_at(source: source, span: f.span))
+    Some { value: v } => v.children |> map(f => f.name)
     None => []
   }
+  // Keep only fields that appear in ALL fielded variants.
   first_fields |> filter(fname =>
     fielded |> all(variant =>
-      variant.children |> any(f => source_text_at(source: source, span: f.span) == fname)
+      variant.children |> any(f => f.name == fname)
     )
   )
 }
 
-fn emit_enum_shared_accessors(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, source: String) -> String {
-  let all_shared = find_shared_enum_fields(children: children, source: source)
+fn emit_enum_shared_accessors(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
+  let all_shared = find_shared_enum_fields(children: children)
   if all_shared |> count == 0 { return "" }
   // Only keep fields whose type is consistent across all fielded variants.
   let fielded = children |> filter(child => child.children |> count > 0)
@@ -814,7 +817,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   let first_fielded = (fielded |> first).value
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
-      match variant.children |> filter(f => source_text_at(source: source, span: f.span) == fname) |> first {
+      match variant.children |> filter(f => f.name == fname) |> first {
         Some { value: f } => emit_node_type_rc(n: rt_type(n: f), target: Rust, rc_types: rc_types)
         None => ""
       }
@@ -828,16 +831,16 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   if shared |> count == 0 { return "" }
   // For each shared field, generate an accessor method.
   let accessor_fns = shared |> map(fname =>
-    let ty = match first_fielded.children |> filter(f => source_text_at(source: source, span: f.span) == fname) |> first {
+    let ty = match first_fielded.children |> filter(f => f.name == fname) |> first {
       Some { value: f } => emit_node_type_rc(n: rt_type(n: f), target: Rust, rc_types: rc_types)
       None => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     // Generate match arms for each variant.
     let arms = children |> map(child =>
       if child.children |> count == 0 {
-        concat("            ", name, "::", source_text_at(source: source, span: child.span), " => panic!(\"no ", fname, " on unit variant\"),")
+        concat("            ", name, "::", child.name, " => panic!(\"no ", fname, " on unit variant\"),")
       } else {
-        concat("            ", name, "::", source_text_at(source: source, span: child.span), " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => __val.clone(),")
+        concat("            ", name, "::", child.name, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => __val.clone(),")
       }
     )
     let arms_str = arms |> join(separator: "\n")
@@ -847,21 +850,22 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   concat("impl", type_params, " ", name, type_params, " {\n", fns_str, "\n}")
 }
 
-fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, source: String) -> String {
-  let child_text = source_text_at(source: source, span: child.span)
+fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>) -> String {
   if child.children |> count == 0 {
-    concat("    ", child_text, ",")
+    // Unit variant -- no fields
+    concat("    ", child.name, ",")
   } else {
+    // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
       let rt_f = rt_type(n: f)
       let ty = emit_node_type_rc(n: rt_f, target: Rust, rc_types: rc_types)
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, rc_types: rc_types) {
         concat("Box<", ty, ">")
       } else { ty }
-      concat("        ", emit_ident(name: source_text_at(source: source, span: f.span), target: Rust), ": ", final_ty, ",")
+      concat("        ", emit_ident(name: f.name, target: Rust), ": ", final_ty, ",")
     )
     let fields_str = field_lines |> join(separator: "\n")
-    concat("    ", child_text, " {\n", fields_str, "\n    },")
+    concat("    ", child.name, " {\n", fields_str, "\n    },")
   }
 }
 
