@@ -2344,6 +2344,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
         match arg_value(n: a).expr_data {
           ExprLambda { semantics: semantics } =>
             let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+            let ps = lambda_param_names(texpr: arg_value(n: a))
             let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2359,6 +2360,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
         match arg_value(n: a).expr_data {
           ExprLambda { semantics: semantics } =>
             let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+            let ps = lambda_param_names(texpr: arg_value(n: a))
             let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2379,6 +2381,7 @@ fn emit_rust_filter_method_call(receiver: Node, args: List<Node>, registry: Map<
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let ps = lambda_param_names(texpr: arg_value(n: a))
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2398,6 +2401,7 @@ fn emit_rust_any_method_call(receiver: Node, args: List<Node>, registry: Map<Str
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let ps = lambda_param_names(texpr: arg_value(n: a))
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2417,6 +2421,7 @@ fn emit_rust_all_method_call(receiver: Node, args: List<Node>, registry: Map<Str
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let ps = lambda_param_names(texpr: arg_value(n: a))
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2436,6 +2441,7 @@ fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Ma
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
+          let ps = lambda_param_names(texpr: arg_value(n: a))
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
