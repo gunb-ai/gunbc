@@ -982,8 +982,40 @@ fn parenthesize_additive_cost(expr: CostExpr) -> String {
   }
 }
 
-fn classify_complexity(expr: CostExpr) -> String {
-  format_cost_class(expr: normalize_asymptotic(expr: simplify_cost(expr: expr)))
+// Structural classification: returns the normalized CostExpr that IS the
+// complexity class.  CostExpr is the single authority — no separate
+// ComplexityClass type.  O(...) strings are produced only by
+// format_complexity_class at the formatting boundary.
+fn classify_complexity(expr: CostExpr) -> CostExpr {
+  normalize_asymptotic(expr: simplify_cost(expr: expr))
+}
+
+// Formatting boundary: O(...) string for display / diagnostics only.
+fn format_complexity_class(expr: CostExpr) -> String {
+  format_cost_class(expr: classify_complexity(expr: expr))
+}
+
+// Structural fail-closed check: does the classified CostExpr contain
+// any CostUnknown?  Fail-closed means unknown complexity is always a
+// violation -- no steady-state O(?) success output.
+fn is_unknown_class(expr: CostExpr) -> Bool {
+  let classified = classify_complexity(expr: expr)
+  cost_contains_unknown(expr: classified)
+}
+
+fn cost_contains_unknown(expr: CostExpr) -> Bool {
+  match expr {
+    CostUnknown { reason: _ } => true
+    CostAdd { left: l, right: r } =>
+      cost_contains_unknown(expr: l) || cost_contains_unknown(expr: r)
+    CostMul { left: l, right: r } =>
+      cost_contains_unknown(expr: l) || cost_contains_unknown(expr: r)
+    CostMax { left: l, right: r } =>
+      cost_contains_unknown(expr: l) || cost_contains_unknown(expr: r)
+    CostSum { binder: _, upper: _, body: b } =>
+      cost_contains_unknown(expr: b)
+    _ => false
+  }
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.

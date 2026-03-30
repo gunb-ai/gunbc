@@ -990,8 +990,35 @@ pub fn parenthesize_additive_cost(expr: Rc<CostExpr>) -> String {
     }
 }
 
-pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
-    format_cost_class(normalize_asymptotic(simplify_cost(expr.clone())))
+// Structural classification: returns the normalized CostExpr that IS the
+// complexity class.  CostExpr is the single authority.
+pub fn classify_complexity(expr: Rc<CostExpr>) -> Rc<CostExpr> {
+    normalize_asymptotic(simplify_cost(expr.clone()))
+}
+
+// Formatting boundary: O(...) string for display / diagnostics only.
+pub fn format_complexity_class(expr: Rc<CostExpr>) -> String {
+    format_cost_class(classify_complexity(expr.clone()))
+}
+
+// Structural fail-closed check: does the classified CostExpr contain
+// any CostUnknown?  Fail-closed means unknown complexity is always a
+// violation -- no steady-state O(?) success output.
+pub fn is_unknown_class(expr: Rc<CostExpr>) -> bool {
+    let classified = classify_complexity(expr.clone());
+    cost_contains_unknown(classified)
+}
+
+pub fn cost_contains_unknown(expr: Rc<CostExpr>) -> bool {
+    match &*expr {
+        CostExpr::CostUnknown { .. } => true,
+        CostExpr::CostAdd { left: l, right: r }
+        | CostExpr::CostMul { left: l, right: r }
+        | CostExpr::CostMax { left: l, right: r } =>
+            cost_contains_unknown(l.clone()) || cost_contains_unknown(r.clone()),
+        CostExpr::CostSum { body: b, .. } => cost_contains_unknown(b.clone()),
+        _ => false,
+    }
 }
 
 pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Vec<String> {

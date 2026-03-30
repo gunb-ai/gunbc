@@ -1100,9 +1100,10 @@ fn process_items(items: List<Int>) -> Int {
 //   O(2^n)   — decidability prevents unbounded branching
 //   O(n!)    — not constructible from bounded iteration
 
-use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty, CostExpr, SizeExpr};
+use v2_compiler::v2_compiler_complexity::{classify_complexity, format_complexity_class, Certainty, CostExpr, SizeExpr};
 
 /// Helper: get the complexity class string for a function in a compile result.
+/// Uses format_complexity_class (the formatting boundary) for display.
 fn complexity_class_of(
     result: &v2_compiler::v2_compiler_compile::PipelineResult,
     func: &str,
@@ -1111,7 +1112,48 @@ fn complexity_class_of(
         .complexity
         .function_summaries
         .get(func)
+        .map(|s| format_complexity_class(s.work.clone()))
+}
+
+/// Helper: get the structural complexity class (normalized CostExpr) for a function.
+fn structural_class_of(
+    result: &v2_compiler::v2_compiler_compile::PipelineResult,
+    func: &str,
+) -> Option<std::rc::Rc<CostExpr>> {
+    result
+        .complexity
+        .function_summaries
+        .get(func)
         .map(|s| classify_complexity(s.work.clone()))
+}
+
+/// Helper: structural check — does a CostExpr tree contain a CostLog node?
+fn cost_contains_log(expr: &CostExpr) -> bool {
+    match expr {
+        CostExpr::CostLog { .. } => true,
+        CostExpr::CostAdd { left, right }
+        | CostExpr::CostMul { left, right }
+        | CostExpr::CostMax { left, right } => cost_contains_log(left) || cost_contains_log(right),
+        CostExpr::CostSum { body, .. } => cost_contains_log(body),
+        _ => false,
+    }
+}
+
+/// Helper: structural check — is this CostExpr a constant (O(1))?
+fn is_constant_class(expr: &CostExpr) -> bool {
+    matches!(expr, CostExpr::CostConst { .. })
+}
+
+/// Helper: structural check — does a CostExpr contain CostUnknown?
+fn cost_contains_unknown(expr: &CostExpr) -> bool {
+    match expr {
+        CostExpr::CostUnknown { .. } => true,
+        CostExpr::CostAdd { left, right }
+        | CostExpr::CostMul { left, right }
+        | CostExpr::CostMax { left, right } => cost_contains_unknown(left) || cost_contains_unknown(right),
+        CostExpr::CostSum { body, .. } => cost_contains_unknown(body),
+        _ => false,
+    }
 }
 
 /// Helper: get certainty for a function.
@@ -1305,10 +1347,24 @@ fn complexity_class_add_keeps_log_terms() {
         }),
         right: Rc::new(CostExpr::CostConst { value: 1 }),
     });
+    // Structural check: classify_complexity returns a CostExpr; verify
+    // the normalized form structurally contains a CostLog term.
     let class = classify_complexity(expr);
     assert!(
-        class.contains("log"),
-        "CostAdd should preserve log-dominant terms, got {class}"
+        cost_contains_log(&class),
+        "CostAdd should preserve log-dominant terms, got {:?}", class
+    );
+    // Formatting boundary check: display string should mention "log".
+    let formatted = format_complexity_class(Rc::new(CostExpr::CostAdd {
+        left: Rc::new(CostExpr::CostLog {
+            base: 2,
+            argument: Rc::new(SizeExpr::SizeVar { name: "n".to_string() }),
+        }),
+        right: Rc::new(CostExpr::CostConst { value: 1 }),
+    }));
+    assert!(
+        formatted.contains("log"),
+        "format_complexity_class should produce O(...log...), got {formatted}"
     );
 }
 
@@ -1323,10 +1379,47 @@ fn complexity_class_max_keeps_log_terms() {
             }),
         }),
     });
+    // Structural check: normalized CostExpr should contain CostLog.
     let class = classify_complexity(expr);
     assert!(
-        class.contains("log"),
-        "CostMax should preserve log-dominant terms, got {class}"
+        cost_contains_log(&class),
+        "CostMax should preserve log-dominant terms, got {:?}", class
+    );
+}
+
+/// Structural classification: O(1) functions produce CostConst.
+#[test]
+fn structural_classify_constant_is_cost_const() {
+    let source = r#"module sconst
+fn add(a: Int, b: Int) -> Int { a + b }
+"#;
+    let files: Vec<(&str, &str)> = vec![("sconst.dag", source)];
+    let result = compile_multi(&files);
+    let class = structural_class_of(&result, "add");
+    assert!(
+        class.as_ref().is_some_and(|c| is_constant_class(c)),
+        "add should structurally classify as CostConst, got {:?}",
+        class
+    );
+}
+
+/// Structural classification: CostUnknown is detectable without string matching.
+#[test]
+fn structural_unknown_is_fail_closed() {
+    use v2_compiler::v2_compiler_complexity::is_unknown_class;
+    // A CostUnknown expr should be classified as unknown.
+    let unknown = Rc::new(CostExpr::CostUnknown {
+        reason: "test".to_string(),
+    });
+    assert!(
+        is_unknown_class(unknown),
+        "CostUnknown should be detected as unknown class (fail-closed)"
+    );
+    // A known expr should not be classified as unknown.
+    let known = Rc::new(CostExpr::CostConst { value: 1 });
+    assert!(
+        !is_unknown_class(known),
+        "CostConst should not be unknown class"
     );
 }
 
@@ -1500,7 +1593,7 @@ fn complexity_self_analysis_subset() {
     for func in &key_fns {
         if let Some(summary) = summaries.get(*func) {
             let class =
-                v2_compiler::v2_compiler_complexity::classify_complexity(summary.work.clone());
+                v2_compiler::v2_compiler_complexity::format_complexity_class(summary.work.clone());
             let cert = match summary.certainty {
                 v2_compiler::v2_compiler_complexity::Certainty::Proven => "Proven",
                 v2_compiler::v2_compiler_complexity::Certainty::Conservative => "Conservative",
