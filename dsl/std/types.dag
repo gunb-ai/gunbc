@@ -128,6 +128,7 @@ type Tuple<first, second> {
 
 // Declaration-owned placeholders for higher-order collection methods.
 // Inference substitutes these structurally from the typed callback/init args.
+// They are compiler-internal witness slots, not public types for user modules.
 type MappedElement
 type FoldAccumulator
 
@@ -156,7 +157,7 @@ type List<element> {
   last: fn(List<element>) -> element?
   skip: fn(List<element>, Int) -> List<element>
   take: fn(List<element>, Int) -> List<element>
-  sort_by: fn(List<element>, fn(element) -> Ordering) -> List<element>
+  sort_by: fn(List<element>, fn(element) -> MappedElement) -> List<element>
   append: fn(List<element>, element) -> List<element>
   contains: fn(List<element>, element) -> Bool
   enumerate: fn(List<element>) -> List<Tuple<Int, element>>
@@ -179,7 +180,7 @@ type Set<element> {
   last: fn(Set<element>) -> element?
   skip: fn(Set<element>, Int) -> Set<element>
   take: fn(Set<element>, Int) -> Set<element>
-  sort_by: fn(Set<element>, fn(element) -> Ordering) -> Set<element>
+  sort_by: fn(Set<element>, fn(element) -> MappedElement) -> Set<element>
   append: fn(Set<element>, element) -> Set<element>
   contains: fn(Set<element>, element) -> Bool
   enumerate: fn(Set<element>) -> Set<Tuple<Int, element>>
@@ -202,7 +203,7 @@ type NonEmptyList<element> {
   last: fn(NonEmptyList<element>) -> element?
   skip: fn(NonEmptyList<element>, Int) -> NonEmptyList<element>
   take: fn(NonEmptyList<element>, Int) -> NonEmptyList<element>
-  sort_by: fn(NonEmptyList<element>, fn(element) -> Ordering) -> NonEmptyList<element>
+  sort_by: fn(NonEmptyList<element>, fn(element) -> MappedElement) -> NonEmptyList<element>
   append: fn(NonEmptyList<element>, element) -> NonEmptyList<element>
   contains: fn(NonEmptyList<element>, element) -> Bool
   enumerate: fn(NonEmptyList<element>) -> NonEmptyList<Tuple<Int, element>>
@@ -225,7 +226,7 @@ type NonEmptySet<element> {
   last: fn(NonEmptySet<element>) -> element?
   skip: fn(NonEmptySet<element>, Int) -> NonEmptySet<element>
   take: fn(NonEmptySet<element>, Int) -> NonEmptySet<element>
-  sort_by: fn(NonEmptySet<element>, fn(element) -> Ordering) -> NonEmptySet<element>
+  sort_by: fn(NonEmptySet<element>, fn(element) -> MappedElement) -> NonEmptySet<element>
   append: fn(NonEmptySet<element>, element) -> NonEmptySet<element>
   contains: fn(NonEmptySet<element>, element) -> Bool
   enumerate: fn(NonEmptySet<element>) -> NonEmptySet<Tuple<Int, element>>

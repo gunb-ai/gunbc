@@ -1158,13 +1158,17 @@ pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
     (n.name.clone() == "Dynamic".to_string())
 }
 
+pub fn is_bridge_placeholder_type_name(name: String) -> bool {
+    (name.clone() == "T".to_string())
+        || (name.clone() == "K".to_string())
+        || (name.clone() == "V".to_string())
+        || (name.clone() == "MappedElement".to_string())
+        || (name.clone() == "FoldAccumulator".to_string())
+}
+
 pub fn node_is_bridge_placeholder_name(n: Rc<Node>) -> bool {
     (n.children.clone().is_empty() && n.params.clone().is_empty())
-        && ((n.name.clone() == "T".to_string())
-            || (n.name.clone() == "K".to_string())
-            || (n.name.clone() == "V".to_string())
-            || (n.name.clone() == "MappedElement".to_string())
-            || (n.name.clone() == "FoldAccumulator".to_string()))
+        && is_bridge_placeholder_type_name(n.name.clone())
 }
 
 pub fn node_is_collection(n: Rc<Node>) -> bool {
@@ -1328,10 +1332,6 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
         let right_opt = node_is_optional(right.clone());
         if (node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone())) {
             break true;
-        } else if (node_is_bridge_placeholder_name(left.clone())
-            || node_is_bridge_placeholder_name(right.clone()))
-        {
-            break true;
         } else {
                 if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
                     break true;
@@ -1488,6 +1488,122 @@ pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
             right.clone()
         } else {
             left.clone()
+        }
+    }
+}
+
+pub fn node_type_compatible_with_formal_placeholders(
+    actual: Rc<Node>,
+    formal: Rc<Node>,
+) -> bool {
+    let actual_opt = node_is_optional(actual.clone());
+    let formal_opt = node_is_optional(formal.clone());
+    if (node_is_bridge_error_name(actual.clone()) || node_is_bridge_error_name(formal.clone())) {
+        true
+    } else if node_is_bridge_placeholder_name(formal.clone()) {
+        true
+    } else if (actual_opt.clone() && (formal.name.clone() == "Unit".to_string())) {
+        true
+    } else if ((actual.name.clone() == "Unit".to_string()) && formal_opt.clone()) {
+        true
+    } else {
+        let actual_is_callable = (actual.params.clone().len() as i64) > 0;
+        let formal_is_callable = (formal.params.clone().len() as i64) > 0;
+        if (actual_is_callable || formal_is_callable) {
+            if ((!actual_is_callable) || (!formal_is_callable)) {
+                false
+            } else if ((actual.params.clone().len() as i64)
+                != (formal.params.clone().len() as i64))
+            {
+                false
+            } else {
+                let params_compatible = actual
+                    .params
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .cloned()
+                    .all(|pair| {
+                        match formal
+                            .params
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(pair.0.clone() as usize)
+                            .collect::<Vec<_>>()
+                            .first()
+                            .cloned()
+                        {
+                            Some(formal_param) => node_type_compatible_with_formal_placeholders(
+                                param_node_type_expr(pair.1.clone()),
+                                param_node_type_expr(formal_param.clone()),
+                            ),
+                            None => false,
+                        }
+                    });
+                if !params_compatible {
+                    false
+                } else {
+                    node_type_compatible_with_formal_placeholders(
+                        callable_inferred(actual.clone()),
+                        callable_inferred(formal.clone()),
+                    )
+                }
+            }
+        } else {
+            let actual_is_container = node_is_element_collection(actual.clone());
+            let formal_is_container = node_is_element_collection(formal.clone());
+            if (actual_is_container && formal_is_container) {
+                if (actual.name.clone() != formal.name.clone()) {
+                    false
+                } else {
+                    match actual.children.clone().first().cloned() {
+                        Some(actual_el) => match formal.children.clone().first().cloned() {
+                            Some(formal_el) => {
+                                let actual_el_is_unit = (actual_el.connective.clone()
+                                    == Some(Connective::Conj))
+                                    && ((actual_el.children.clone().len() as i64) == 0);
+                                let formal_el_is_unit = (formal_el.connective.clone()
+                                    == Some(Connective::Conj))
+                                    && ((formal_el.children.clone().len() as i64) == 0);
+                                if (actual_el_is_unit || formal_el_is_unit) {
+                                    true
+                                } else {
+                                    node_type_compatible_with_formal_placeholders(
+                                        actual_el.clone(),
+                                        formal_el.clone(),
+                                    )
+                                }
+                            }
+                            None => true,
+                        },
+                        None => true,
+                    }
+                }
+            } else if (actual_opt && formal_opt) {
+                let actual_inner = with_required_cardinality(actual.clone());
+                let formal_inner = with_required_cardinality(formal.clone());
+                let actual_inner_is_unit = (actual_inner.connective.clone() == Some(Connective::Conj))
+                    && ((actual_inner.children.clone().len() as i64) == 0);
+                let formal_inner_is_unit = (formal_inner.connective.clone() == Some(Connective::Conj))
+                    && ((formal_inner.children.clone().len() as i64) == 0);
+                if (actual_inner_is_unit || formal_inner_is_unit) {
+                    true
+                } else {
+                    node_type_compatible_with_formal_placeholders(
+                        actual_inner.clone(),
+                        formal_inner.clone(),
+                    )
+                }
+            } else if (actual_opt || formal_opt) {
+                false
+            } else {
+                actual.name.clone() == formal.name.clone()
+            }
         }
     }
 }

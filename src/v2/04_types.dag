@@ -483,10 +483,12 @@ fn node_type_shape(n: Node) -> String {
   }
 }
 
+fn is_bridge_placeholder_type_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}
+
 fn node_is_bridge_placeholder_name(n: Node) -> Bool {
-  n.children == [] && n.params == [] && (
-    n.name == "T" || n.name == "K" || n.name == "V" || n.name == "MappedElement" || n.name == "FoldAccumulator"
-  )
+  n.children == [] && n.params == [] && is_bridge_placeholder_type_name(name: n.name)
 }
 
 fn node_type_compatible(left: Node, right: Node) -> Bool {
@@ -496,15 +498,12 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
   let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
   let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
-  let left_placeholder = node_is_bridge_placeholder_name(n: left)
-  let right_placeholder = node_is_bridge_placeholder_name(n: right)
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
   let right_is_unit = right.connective == Conj && right.children |> count == 0
   let left_is_unit = left.connective == Conj && left.children |> count == 0
   if left_err || right_err { true }
   else if left_tv || right_tv { true }
-  else if left_placeholder || right_placeholder { true }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else {
@@ -554,6 +553,73 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     }
     else if left_opt || right_opt { false }
     else { left.name == right.name }
+    }
+  }
+}
+
+// Bridge-only callable compatibility. Placeholder slots like MappedElement
+// are tolerated only on the formal side of higher-order algebra methods.
+fn node_type_compatible_with_formal_placeholders(actual: Node, formal: Node) -> Bool {
+  let actual_err = if actual.inferred != none { is_compiler_error(inferred: actual.inferred.value) } else { false }
+  let formal_err = if formal.inferred != none { is_compiler_error(inferred: formal.inferred.value) } else { false }
+  let actual_tv = if actual.inferred != none { is_type_variable(inferred: actual.inferred.value) } else { false }
+  let formal_tv = if formal.inferred != none { is_type_variable(inferred: formal.inferred.value) } else { false }
+  let actual_opt = actual.return_cardinality == CardOptional
+  let formal_opt = formal.return_cardinality == CardOptional
+  let formal_is_unit = formal.connective == Conj && formal.children |> count == 0
+  let actual_is_unit = actual.connective == Conj && actual.children |> count == 0
+  if actual_err || formal_err { true }
+  else if actual_tv || formal_tv { true }
+  else if node_is_bridge_placeholder_name(n: formal) { true }
+  else if actual_opt && formal_is_unit { true }
+  else if actual_is_unit && formal_opt { true }
+  else {
+    let actual_is_callable = actual.params |> count > 0
+    let formal_is_callable = formal.params |> count > 0
+    if actual_is_callable || formal_is_callable {
+      if actual_is_callable == false || formal_is_callable == false { false }
+      else if actual.params |> count != formal.params |> count { false }
+      else {
+        let params_compatible = actual.params |> enumerate |> all(pair =>
+          match formal.params |> skip(pair.first) |> first {
+            Some { value: formal_param } =>
+              node_type_compatible_with_formal_placeholders(actual: param_node_type_expr(n: pair.second), formal: param_node_type_expr(n: formal_param))
+            None => false
+          }
+        )
+        if params_compatible == false { false }
+        else { node_type_compatible_with_formal_placeholders(actual: callable_inferred(n: actual), formal: callable_inferred(n: formal)) }
+      }
+    } else {
+      let actual_is_container = node_is_element_collection(n: actual)
+      let formal_is_container = node_is_element_collection(n: formal)
+      if actual_is_container && formal_is_container {
+        if actual.name != formal.name { false }
+        else {
+          match actual.children |> first {
+            Some { value: actual_el } =>
+              match formal.children |> first {
+                Some { value: formal_el } =>
+                  let actual_el_is_unit = actual_el.connective == Conj && actual_el.children |> count == 0
+                  let formal_el_is_unit = formal_el.connective == Conj && formal_el.children |> count == 0
+                  if actual_el_is_unit || formal_el_is_unit { true }
+                  else { node_type_compatible_with_formal_placeholders(actual: actual_el, formal: formal_el) }
+                None => true
+              }
+            None => true
+          }
+        }
+      }
+      else if actual_opt && formal_opt {
+        let actual_inner = with_required_cardinality(n: actual)
+        let formal_inner = with_required_cardinality(n: formal)
+        let actual_inner_is_unit = actual_inner.connective == Conj && actual_inner.children |> count == 0
+        let formal_inner_is_unit = formal_inner.connective == Conj && formal_inner.children |> count == 0
+        if actual_inner_is_unit || formal_inner_is_unit { true }
+        else { node_type_compatible_with_formal_placeholders(actual: actual_inner, formal: formal_inner) }
+      }
+      else if actual_opt || formal_opt { false }
+      else { actual.name == formal.name }
     }
   }
 }

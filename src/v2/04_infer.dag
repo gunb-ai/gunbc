@@ -73,8 +73,8 @@ import v2.compiler.infer_types {
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
-  node_is_bridge_placeholder_name,
-  node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
+  is_bridge_placeholder_type_name, node_is_bridge_placeholder_name,
+  node_type_shape, node_type_compatible, node_type_compatible_with_formal_placeholders, node_type_equals, prefer_specific_type,
   node_type_deps,
   method_receiver_element_node,
   infer_literal_node, infer_binop_type_node,
@@ -724,7 +724,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, se
           } else {
             let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: formal_type })
             let inferred_type = rt_type(n: ar.typed)
-            let callable_diags = if formal_type.params |> count > 0 && node_type_compatible(left: inferred_type, right: formal_type) == false {
+            let callable_diags = if formal_type.params |> count > 0 && node_type_compatible_with_formal_placeholders(actual: inferred_type, formal: formal_type) == false {
               [inference_error(
                 message: concat("callable argument type mismatch: expected '", node_type_shape(n: formal_type), "', got '", node_type_shape(n: inferred_type), "'"),
                 span: a.span,
@@ -2212,7 +2212,20 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  // Bridge placeholder slots remain available inside std.types declarations,
+  // but importing modules must not see them as ambient user-facing types.
+  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) =>
+    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
+      if is_bridge_placeholder_type_name(name: name) {
+        bacc
+      } else {
+        match map_get(env.bindings, name) {
+          Some { value: binding } => map_insert(bacc, name, binding)
+          None => bacc
+        }
+      }
+    )
+  )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, source_index: source_index }
@@ -2337,7 +2350,19 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   }
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
+  // Mirror the same placeholder filtering in the unresolved environment path.
+  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) =>
+    fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
+      if is_bridge_placeholder_type_name(name: name) {
+        bacc
+      } else {
+        match map_get(env.bindings, name) {
+          Some { value: binding } => map_insert(bacc, name, binding)
+          None => bacc
+        }
+      }
+    )
+  )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, source_index: source_index }

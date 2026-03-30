@@ -2563,6 +2563,22 @@ fn labels(xs: List<Int>) -> List<String> {
 }
 
 #[test]
+fn sort_by_named_callable_accepts_key_extractor_result_type() {
+    let source = r#"module sort_by_named_callable
+
+fn render_key(x: Int) -> String {
+  x |> to_string
+}
+
+fn sort_values(xs: List<Int>) -> List<Int> {
+  sort_by(xs, render_key)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn fold_inline_lambda_returns_accumulator_type() {
     let source = r#"module fold_string_accumulator
 
@@ -2663,6 +2679,23 @@ fn broken(xs: List<Int>) -> List<String> {
     assert!(
         !msgs.is_empty(),
         "wrong named callback return type should produce diagnostics, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn higher_order_placeholders_are_not_user_visible_types() {
+    let source = r#"module placeholder_escape
+
+fn leak(x: MappedElement, acc: FoldAccumulator) -> MappedElement {
+  x
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "bridge placeholder types should not be available in user signatures, got {:?}",
         msgs
     );
 }
