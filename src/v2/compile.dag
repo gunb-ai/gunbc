@@ -574,6 +574,7 @@ fn serialize_node(node: Node) -> String {
   concat(
     "{\"name\": ", json_quote(s: node.name),
     ", \"span\": ", serialize_span(span: node.span),
+    ", \"ident_span\": ", json_optional_span(value: node.ident_span),
     ", \"children\": ", json_list(items: node.children |> map(child => serialize_node(node: child))),
     ", \"connective\": ",
     match node.connective {
@@ -770,7 +771,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // Stage 4: Reconcile namespaces and infer the module graph.
       // The env-error gate inside reconcile() prevents unresolved type
       // references from reaching emit.
-      let typed = reconcile(graph: norm.graph)
+      let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
+      let typed = reconcile(graph: norm.graph, source_indices: source_indices)
       let typed_diags = typed.diagnostics
 
       // Stage 5: Complexity analysis.

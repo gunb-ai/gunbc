@@ -145,6 +145,56 @@ fn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {
 }
 
 #[test]
+fn item_ident_spans_point_at_identifiers_not_keywords() {
+    let source = r#"module test
+type Widget = String
+fn make_widget() -> Widget {
+  Widget
+}
+service weather.api {
+}"#;
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "parse error: {:?}",
+        result.error.as_ref().map(|e| e.diagnostic.clone())
+    );
+
+    let module = result.module.clone().expect("module");
+    assert_eq!(module.children.len(), 3, "expected three top-level items");
+
+    let type_item = module.children[0].clone();
+    let type_ident = type_item.ident_span.clone().expect("type ident span");
+    assert_eq!(
+        type_item.span.start,
+        source.find("type Widget").unwrap() as i64
+    );
+    assert_eq!(type_ident.start, source.find("Widget").unwrap() as i64);
+    assert!(type_ident.start > type_item.span.start);
+
+    let fn_item = module.children[1].clone();
+    let fn_ident = fn_item.ident_span.clone().expect("fn ident span");
+    assert_eq!(
+        fn_item.span.start,
+        source.find("fn make_widget").unwrap() as i64
+    );
+    assert_eq!(fn_ident.start, source.find("make_widget").unwrap() as i64);
+    assert!(fn_ident.start > fn_item.span.start);
+
+    let service_item = module.children[2].clone();
+    let service_ident = service_item.ident_span.clone().expect("service ident span");
+    assert_eq!(
+        service_item.span.start,
+        source.find("service weather.api").unwrap() as i64
+    );
+    assert_eq!(
+        service_ident.start,
+        source.find("weather.api").unwrap() as i64
+    );
+    assert!(service_ident.start > service_item.span.start);
+}
+
+#[test]
 fn stack_parses_strict() {
     assert_parses_strict("dsl/std/stack.dag");
 }
@@ -252,7 +302,9 @@ fn tokenizer_two_char_operators() {
 fn tokenizer_scans_pipe_arrow() {
     let tokens = tokenize("items |> count");
     assert!(
-        tokens.iter().any(|t| matches!(t.shape, TokenShape::ShPipeArrow)),
+        tokens
+            .iter()
+            .any(|t| matches!(t.shape, TokenShape::ShPipeArrow)),
         "should contain PipeArrow token"
     );
 }

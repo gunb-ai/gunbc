@@ -300,7 +300,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), source_index: none },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
@@ -311,7 +311,7 @@ fn empty_emit_scope() -> InferScope {
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
+    type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,
@@ -1584,4 +1584,3 @@ fn emit_shared_expr(
     NoExprData => wrap_result("")
   }
 }
-

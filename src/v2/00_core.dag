@@ -423,6 +423,7 @@ type DeclaredFuncEnv {
 type Node {
   name: String
   span: SourceSpan
+  ident_span: SourceSpan?
   // Fractal composition -- operations, capabilities, items are all children
   children: List<Node>
   // Logical connective -- And (record/all-hold), Or (sum/one-holds), NoConnective (leaf)
@@ -447,11 +448,15 @@ type Node {
   expr_data: ExprData
 }
 
+fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
+  if name == "" { none } else { Some { value: span } }
+}
+
 // Construct a Node carrying expression data (P5.11 dissolved form).
 // Children are passed explicitly — ExprData is pure operator metadata.
 fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: children,
+    name: "", span: span, ident_span: none, children: children,
     connective: NoConnective,
 
     params: [], inferred: inferred, return_cardinality: Required,
@@ -465,7 +470,7 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
 // The name field carries the identifier that was formerly in ExprData.
 fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: children,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children,
     connective: NoConnective,
 
     params: [], inferred: inferred, return_cardinality: Required,
@@ -477,7 +482,7 @@ fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>,
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [], connective: NoConnective,
+    name: "", span: span, ident_span: none, children: [], connective: NoConnective,
    
     params: [], inferred: Some { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
@@ -500,7 +505,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
 fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
   let arg_name = match name { Some { value: n } => n  None => "" }
   Node {
-    name: arg_name, span: span, children: [value], connective: NoConnective,
+    name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: span), children: [value], connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -514,7 +519,7 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan) -> Node {
 fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
   let children = match guard { Some { value: g } => [g, body]  None => [body] }
   Node {
-    name: "", span: span, children: children, connective: NoConnective,
+    name: "", span: span, ident_span: none, children: children, connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -527,7 +532,7 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
 // Resource use node: name carries the resource binding name, child is the resource type node.
 fn make_resource_use_node(name: String, resource: Node, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: [resource], connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [resource], connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -548,7 +553,7 @@ fn resource_use_resource(n: Node) -> Node {
 // Field init node: name carries the field name, child is the value expression.
 fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: [value], connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [value], connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -560,7 +565,7 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan) -> Node {
 // Field binding node (D2c): name carries the field name, match_pattern carries the binding pattern.
 fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan) -> Node {
   Node {
-    name: field_name, span: span, children: [], connective: NoConnective,
+    name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -577,7 +582,7 @@ fn field_binding_pattern(n: Node) -> MatchPattern {
 // Text part node: a literal string fragment in string interpolation.
 fn make_text_part_node(text: String, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [], connective: NoConnective,
+    name: "", span: span, ident_span: none, children: [], connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -590,7 +595,7 @@ fn make_text_part_node(text: String, span: SourceSpan) -> Node {
 // Interpolation part node: child is the interpolated expression.
 fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, children: [expr], connective: NoConnective,
+    name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
@@ -625,7 +630,7 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
 fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan) -> Node {
   let children = match default_value { Some { value: dv } => [type_expr, dv]  None => [type_expr] }
   Node {
-    name: name, span: span, children: children, connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -658,7 +663,7 @@ fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, defa
     None => []
   }
   Node {
-    name: name, span: span, children: children, connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: cardinality,
     uses: [], body: none, transport: none, properties: props,
     type_annotation: none, is_self_recursive: false,
@@ -695,7 +700,7 @@ fn field_node_span(n: Node) -> SourceSpan { n.span }
 // Variant constructor: a Node with name + span + children (dissolved Field nodes).
 fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: fields, connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: fields, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
@@ -865,7 +870,7 @@ fn record_lit_type_name(texpr: Node) -> String? {
 
 fn make_transport_node(name: String, properties: List<Node>, children: List<Node>, span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, children: children, connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: children, connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: properties,
@@ -994,7 +999,7 @@ fn transport_env(t: Node) -> List<Node> {
 
 fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
   Node {
-    name: node.name, span: node.span,
+    name: node.name, span: node.span, ident_span: node.ident_span,
     children: node.children |> map(child => transform(child)),
     connective: node.connective,
     params: node.params, inferred: node.inferred,
@@ -1145,7 +1150,7 @@ fn service_config_retry(n: Node) -> Node? {
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
   let marker = make_field_init_node(name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
   Node {
-    name: name, span: span, children: concat(imports, items), connective: NoConnective,
+    name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: concat(imports, items), connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [marker],
@@ -1160,7 +1165,7 @@ fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, sp
     [make_field_init_node(name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))]
   } else { [] }
   Node {
-    name: module_path, span: span, children: specific_names, connective: NoConnective,
+    name: module_path, span: span, ident_span: default_ident_span(name: module_path, span: span), children: specific_names, connective: NoConnective,
    
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: concat([import_prop], all_prop),
@@ -1210,11 +1215,11 @@ fn is_token_node(n: Node) -> Bool {
 // =========================================================================
 
 fn leaf_node(name: String) -> Node {
-  Node { name: name, span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
-  Node { name: name, span: span, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Kernel type constants — single-authority definitions for built-in types.
@@ -1222,17 +1227,17 @@ fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
 // Each constant encodes the structural form once; callers reference it.
 // Unit is the terminal object (empty product: Conj + 0 children).
 // All others are bare leaves until std declarations carry richer structure.
-data unit_type: Node = Node { name: "Unit", span: make_span(start: 0, end: 0), children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data bool_type: Node = Node { name: "Bool", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data string_type: Node = Node { name: "String", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data int_type: Node = Node { name: "Int", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data float_type: Node = Node { name: "Float", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-data none_type: Node = Node { name: "None", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data unit_type: Node = Node { name: "Unit", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data bool_type: Node = Node { name: "Bool", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data string_type: Node = Node { name: "String", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data int_type: Node = Node { name: "Int", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data float_type: Node = Node { name: "Float", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+data none_type: Node = Node { name: "None", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 // Tuple type name — tuples are parameterized Conj products, no bare constant.
 data tuple_type_name: String = "Tuple"
 // Error sentinel — inference failed. Downstream code uses rt_node()
 // which returns InferError, so no name check on "Error" needed.
-data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: Some { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
+data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_span(start: Int, end: Int) -> SourceSpan {
   SourceSpan { file: "", start: start, end: end }
@@ -1282,11 +1287,16 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
   ""
 }
 
+// Extract source text by character-indexed span. O(n) over span width.
+fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
+  // Placeholder: real logic lives in Rust stage0.
+  ""
+}
+
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { name: n.name, span: n.span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+  Node { name: n.name, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
-

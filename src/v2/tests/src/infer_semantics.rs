@@ -1,12 +1,14 @@
 use std::rc::Rc;
 
 use v2_compiler::v2_compiler_infer_access;
-use v2_compiler::v2_compiler_infer_env::TypeEnv;
+use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
-use v2_compiler::v2_compiler_infer_types::{
-    bare_map_node, container_node, map_node,
+use v2_compiler::v2_compiler_infer_resolve::resolve_node;
+use v2_compiler::v2_compiler_infer_types::{bare_map_node, container_node, map_node};
+use v2_compiler::v2_std_core::{
+    build_newline_index, leaf_node, make_arm_node, with_optional_cardinality, Cardinality,
+    ExprData, InferredNode, MatchPattern, Node, NodeType, SourceSpan,
 };
-use v2_compiler::v2_std_core::{Cardinality, InferredNode, MatchPattern, Node, NodeType, SourceSpan, leaf_node, make_arm_node, with_optional_cardinality};
 
 fn zero_span() -> Rc<SourceSpan> {
     SourceSpan::new(0, 0)
@@ -84,14 +86,22 @@ fn invalid_slice_returns_compiler_error_type() {
 #[test]
 fn valid_map_index_preserves_optional_value_type() {
     let result = v2_compiler_infer_access::check_index_access_node(
-        map_node(leaf_node("String".to_string()), leaf_node("Int".to_string())),
+        map_node(
+            leaf_node("String".to_string()),
+            leaf_node("Int".to_string()),
+        ),
         leaf_node("String".to_string()),
         zero_span(),
         "test".to_string(),
     );
 
     assert!(result.diagnostics.is_empty());
-    match result.inferred.as_ref().expect("expected return type").as_ref() {
+    match result
+        .inferred
+        .as_ref()
+        .expect("expected return type")
+        .as_ref()
+    {
         InferredNode::Resolved { node, .. } => {
             assert_eq!(node.name, "Int");
             assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
@@ -102,13 +112,21 @@ fn valid_map_index_preserves_optional_value_type() {
 
 #[test]
 fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
-    let subject = v2_compiler_infer_patterns::pattern_subject_from_node_type(Rc::new(NodeType::InferError {
-        message: "upstream failure".to_string(),
-        span: zero_span(),
-    }));
-    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(subject, "Some".to_string(), "test".to_string());
+    let subject =
+        v2_compiler_infer_patterns::pattern_subject_from_node_type(Rc::new(NodeType::InferError {
+            message: "upstream failure".to_string(),
+            span: zero_span(),
+        }));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Some".to_string(),
+        "test".to_string(),
+    );
 
-    assert!(matches!(lookup.status.as_ref(), NodeLookupStatus::LookupFailed));
+    assert!(matches!(
+        lookup.status.as_ref(),
+        NodeLookupStatus::LookupFailed
+    ));
     assert!(
         lookup.diagnostics.is_empty(),
         "upstream infer failure should not add cascade diagnostics"
@@ -117,12 +135,21 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
 
 #[test]
 fn pattern_lookup_reports_dynamic_scrutinee_explicitly() {
-    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(leaf_node("Dynamic".to_string()));
-    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(subject, "Some".to_string(), "test".to_string());
+    let subject =
+        v2_compiler_infer_patterns::pattern_subject_from_node(leaf_node("Dynamic".to_string()));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Some".to_string(),
+        "test".to_string(),
+    );
 
-    assert!(matches!(lookup.status.as_ref(), NodeLookupStatus::LookupFailed));
+    assert!(matches!(
+        lookup.status.as_ref(),
+        NodeLookupStatus::LookupFailed
+    ));
     assert_eq!(lookup.diagnostics.len(), 1);
-    let diag_msg = v2_compiler::v2_std_core::diagnostic_to_message(lookup.diagnostics[0].diagnostic.clone());
+    let diag_msg =
+        v2_compiler::v2_std_core::diagnostic_to_message(lookup.diagnostics[0].diagnostic.clone());
     assert!(
         diag_msg.contains("variant") && diag_msg.contains("not found"),
         "expected targeted VariantNotFound diagnostic, got {:?}",
@@ -132,8 +159,14 @@ fn pattern_lookup_reports_dynamic_scrutinee_explicitly() {
 
 #[test]
 fn optional_pattern_lookup_still_resolves_some_variant() {
-    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(leaf_node("String".to_string())));
-    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(subject, "Some".to_string(), "test".to_string());
+    let subject = v2_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
+        leaf_node("String".to_string()),
+    ));
+    let lookup = v2_compiler_infer_patterns::lookup_variant_in_type(
+        subject,
+        "Some".to_string(),
+        "test".to_string(),
+    );
 
     match lookup.status.as_ref() {
         NodeLookupStatus::LookupResolved { node, .. } => {
@@ -150,7 +183,12 @@ fn optional_match_exhaustiveness_reports_missing_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         vec![variant_arm("Some")],
-        Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(vec![]), recursive_type_set: Rc::new(std::collections::HashMap::new()) }),
+        Rc::new(TypeEnv {
+            bindings: Rc::new(std::collections::HashMap::new()),
+            recursive_types: Rc::new(vec![]),
+            recursive_type_set: Rc::new(std::collections::HashMap::new()),
+            source_index: None,
+        }),
         zero_span(),
         "test".to_string(),
     );
@@ -166,7 +204,12 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
     let diags = v2_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
         vec![variant_arm("Some"), variant_arm("None")],
-        Rc::new(TypeEnv { bindings: Rc::new(std::collections::HashMap::new()), recursive_types: Rc::new(vec![]), recursive_type_set: Rc::new(std::collections::HashMap::new()) }),
+        Rc::new(TypeEnv {
+            bindings: Rc::new(std::collections::HashMap::new()),
+            recursive_types: Rc::new(vec![]),
+            recursive_type_set: Rc::new(std::collections::HashMap::new()),
+            source_index: None,
+        }),
         zero_span(),
         "test".to_string(),
     );
@@ -176,4 +219,48 @@ fn optional_match_exhaustiveness_accepts_some_and_none() {
         "Some/None arms should exhaust Optional matches, got {:?}",
         diags
     );
+}
+
+#[test]
+fn resolve_node_uses_ident_span_source_text_when_name_is_stale() {
+    let file = "test.dag".to_string();
+    let source = "type User = String\n".to_string();
+    let index = build_newline_index(file.clone(), source);
+    let ident_span = SourceSpan::with_file(file, 5, 9);
+    let stale_ref = Rc::new(Node {
+        name: "Bogus".to_string(),
+        span: ident_span.clone(),
+        ident_span: Some(ident_span.clone()),
+        children: Vec::new(),
+        connective: None,
+        params: Vec::new(),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Vec::new(),
+        body: None,
+        transport: None,
+        properties: Vec::new(),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+    });
+    let env = Rc::new(TypeEnv {
+        bindings: Rc::new(std::collections::HashMap::from([(
+            "User".to_string(),
+            Rc::new(TypeBinding {
+                name: "User".to_string(),
+                resolved: leaf_node("User".to_string()),
+            }),
+        )])),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: Rc::new(std::collections::HashMap::new()),
+        source_index: Some(index),
+    });
+
+    let result = resolve_node(stale_ref, env, "test".to_string());
+
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(result.resolved.name, "User");
 }

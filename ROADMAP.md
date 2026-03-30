@@ -105,12 +105,6 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [ ] CI-verified regeneration (regenerate + diff = empty)
 - [ ] `dag/syntax.dag` inclusion without OOM
 
-*Complexity-modeling hardening (non-critical path):*
-- [ ] Structural complexity-class value (replace `ComplexityClassInfo`
-  string fields)
-- [ ] `O(...)` strings only at formatting boundary
-- [ ] `large_complexity_report_limit` into formatting policy
-
 *User experience:*
 - [ ] `dsl/examples/weather/` committed example project
 - [ ] Error messages: file:line:col with source context
@@ -195,6 +189,18 @@ tests pass (then deleted).
 - [ ] 69 type constructor sites → 0
 - [ ] 1 type-name comparison → 0
 - [ ] CollectionKind bridge dissolves when method algebras land
+
+*Structural complexity facts (moved from M2 / PR #249):*
+- [ ] Replace `ComplexityClassInfo` string bags with structural
+  `ComplexityClass`
+- [ ] `O(...)` strings exist only at formatting boundary
+- [ ] Unknown complexity stays fail-closed; no steady-state `O(?)`
+  success output
+- [ ] `ClassProduct` formatting parenthesizes additive children
+- [ ] Source-audit parity checks use `live_source` /
+  `assert_live_*`, not raw `contains(...)`
+- [ ] Delete `large_complexity_report_limit` / large-report elision
+  bridge
 
 **Bridges owned by M4:**
 

@@ -6,7 +6,7 @@
 //
 module v2.compiler.infer_env
 
-import v2.std.core { Node }
+import v2.std.core { Node, NewlineIndex, source_text_at }
 
 // =========================================================================
 // Types
@@ -16,6 +16,7 @@ type TypeEnv {
   bindings: Map<String, TypeBinding>
   recursive_types: List<String>
   recursive_type_set: Map<String, Bool>
+  source_index: NewlineIndex?
 }
 
 type TypeBinding {
@@ -42,9 +43,27 @@ fn lookup_type(env: TypeEnv, name: String) -> Node? {
   }
 }
 
+fn authored_name(env: TypeEnv, node: Node) -> String {
+  match node.ident_span {
+    Some { value: span } =>
+      match env.source_index {
+        Some { value: index } =>
+          if span.file == index.file {
+            let text = source_text_at(index: index, span: span)
+            if text == "" { node.name } else { text }
+          } else { node.name }
+        None => node.name
+      }
+    None => node.name
+  }
+}
+
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set }
+  let source_index = fold(envs, init: none, f: (acc, env) =>
+    if env.source_index != none { env.source_index } else { acc }
+  )
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, source_index: source_index }
 }
