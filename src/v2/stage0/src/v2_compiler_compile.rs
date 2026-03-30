@@ -1613,13 +1613,33 @@ pub fn front_end_sources(sources: Vec<Rc<SourceFile>>) -> Rc<FrontendResult> {
             })
         } else {
             {
-                let modules = {
+                let parsed_modules = {
                     let mut __result = Vec::new();
                     for p in parse_results.clone().iter().cloned() {
                         __result.push(p.module.clone().clone().unwrap());
                     }
                     __result
                 };
+                let modules = v2_rt::concat(
+                    {
+                        let mut __result = Vec::new();
+                        for m in parsed_modules.clone().iter().cloned() {
+                            if (m.name.clone() == "std.types".to_string()) {
+                                __result.push(m);
+                            }
+                        }
+                        __result
+                    },
+                    {
+                        let mut __result = Vec::new();
+                        for m in parsed_modules.clone().iter().cloned() {
+                            if (m.name.clone() != "std.types".to_string()) {
+                                __result.push(m);
+                            }
+                        }
+                        __result
+                    },
+                );
                 let graph = resolve_modules(modules.clone());
                 Rc::new(FrontendResult {
                     graph: Some(graph.clone()),

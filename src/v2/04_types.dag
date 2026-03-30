@@ -421,7 +421,10 @@ fn normalize_access_type_node(n: Node) -> Node {
     n.children |> first
   } else { none }
   match unwrapped {
-    Some { value: base } => normalize_access_type_node(n: base)
+    Some { value: base } =>
+      let normalized = normalize_access_type_node(n: base)
+      let is_optional = n.return_cardinality == CardOptional
+      if is_optional { with_optional_cardinality(n: normalized) } else { normalized }
     None => n
   }
 }

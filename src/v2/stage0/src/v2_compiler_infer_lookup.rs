@@ -57,17 +57,18 @@ pub use crate::v2_compiler_infer_service::{
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v2_compiler_infer_types::method_receiver_element_node;
 pub use crate::v2_compiler_infer_types::{
-    child_inferred_or_name, emit_map_has, enrich_kernel_type, error_type_node, node_is_map,
-    node_is_optional, normalize_access_type_node, rt_node, rt_type,
+    child_inferred_or_name, emit_map_has, error_type_node, node_is_map, node_is_optional,
+    normalize_access_type_node, rt_node, rt_type,
 };
 use crate::v2_std_core::Cardinality::Required;
 use crate::v2_std_core::FieldAccessStyle::OptionalUnwrap;
 use crate::v2_std_core::FieldValueShape::{OptionalValue, PlainValue};
-use crate::v2_std_core::InferredNode::Resolved;
+use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::NodeType::{InferError, Typed, Untyped};
 pub use crate::v2_std_core::{
-    leaf_node, node_has_structure, node_is_coproduct, node_is_product, with_optional_cardinality,
+    is_container_type, leaf_node, make_param_node, node_has_structure, node_is_coproduct,
+    node_is_product, param_node_default_value, param_node_type_expr, with_optional_cardinality,
     with_required_cardinality, Cardinality, FieldAccessStyle, FieldSummary, FieldValueShape,
     InferredNode, MethodSemantics, Node, NodeType,
 };
@@ -95,40 +96,39 @@ pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc
     v2_rt::map_get(&func_env.signatures.clone(), name.clone())
 }
 
-pub fn lookup_field_type_node(n: Rc<Node>, field_name: String) -> Option<Rc<Node>> {
+pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+    let _ = inferred;
+    false
+}
+
+pub fn lookup_field_type_node(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    field_name: String,
+) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if node_is_optional(n.clone()) {
-            {
-                let inner = with_required_cardinality(n.clone());
-                if (field_name.clone() == "value".to_string()) {
-                    Some(inner.clone())
-                } else {
-                    match lookup_field_type_node(inner.clone(), field_name.clone()) {
-                        Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
-                        None => None,
-                    }
+            let inner = with_required_cardinality(n.clone());
+            if (field_name.clone() == "value".to_string()) {
+                Some(inner.clone())
+            } else {
+                match lookup_field_type_node(env.clone(), inner.clone(), field_name.clone()) {
+                    Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
+                    None => None,
                 }
             }
         } else {
-            if node_has_structure(n.clone()) {
-                if node_is_product(n.clone()) {
-                    match {
-                        let mut __result = Vec::new();
-                        for c in n.children.iter().cloned() {
-                            if (c.name.clone() == field_name.clone()) {
-                                __result.push(c);
-                            }
-                        }
-                        __result
-                    }
-                    .first()
-                    .cloned()
-                    {
-                        Some(field_child) => Some(child_inferred_or_name(field_child.clone())),
-                        None => None,
-                    }
+            let surface = resolve_type_surface_node(env.clone(), n.clone(), false);
+            if node_has_structure(surface.clone()) {
+                if node_is_product(surface.clone()) {
+                    surface
+                        .children
+                        .iter()
+                        .cloned()
+                        .find(|c| c.name.clone() == field_name.clone())
+                        .map(|field_child| child_inferred_or_name(field_child.clone()))
                 } else {
-                    lookup_coproduct_common_field_node(n.children.clone(), field_name.clone())
+                    lookup_coproduct_common_field_node(surface.children.clone(), field_name.clone())
                 }
             } else {
                 None
@@ -141,49 +141,27 @@ pub fn lookup_coproduct_common_field_node(
     variants: Vec<Rc<Node>>,
     field_name: String,
 ) -> Option<Rc<Node>> {
-    {
-        let found_in_all = {
-            let mut __all = true;
-            for v in variants.iter().cloned() {
-                if !({
-                    let mut __found = false;
-                    for c in v.children.iter().cloned() {
-                        if (c.name.clone() == field_name.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }) {
-                    __all = false;
-                    break;
-                }
-            }
-            __all
-        };
-        let first_field = if found_in_all.clone() {
-            match variants.clone().first().cloned() {
-                Some(first_variant) => {
-                    let mut __result = Vec::new();
-                    for c in first_variant.children.iter().cloned() {
-                        if (c.name.clone() == field_name.clone()) {
-                            __result.push(c);
-                        }
-                    }
-                    __result
-                }
-                .first()
-                .cloned(),
-                None => None,
-            }
-        } else {
-            None
-        };
-        match first_field.clone() {
-            Some(field_child) => Some(child_inferred_or_name(field_child.clone())),
-            None => None,
-        }
-    }
+    let found_in_all = variants.iter().cloned().all(|v| {
+        v.children
+            .iter()
+            .cloned()
+            .any(|c| c.name.clone() == field_name.clone())
+    });
+    let first_field = if found_in_all {
+        variants
+            .first()
+            .cloned()
+            .and_then(|first_variant| {
+                first_variant
+                    .children
+                    .iter()
+                    .cloned()
+                    .find(|c| c.name.clone() == field_name.clone())
+            })
+    } else {
+        None
+    };
+    first_field.map(|field_child| child_inferred_or_name(field_child.clone()))
 }
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
@@ -196,78 +174,81 @@ pub fn resolve_scrutinee_type_node_seen(
     seen: HashMap<String, bool>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let n_is_type_var = n
+            .inferred
+            .clone()
+            .map(|inferred| is_type_variable(inferred.clone()))
+            .unwrap_or(false);
+        if n_is_type_var {
+            return n.clone();
+        }
         let normed = normalize_access_type_node(n.clone());
         if ((node_has_structure(normed.clone()) == false)
             && ((normed.children.clone().len() as i64) == 0))
         {
-            {
-                let canonical = normed.name.clone();
-                if (normed.inferred.clone() != None) {
-                    {
-                        let next_seen = if (canonical.clone() == "".to_string()) {
-                            seen.clone()
-                        } else {
-                            v2_rt::map_insert(seen.clone(), canonical.clone(), true)
-                        };
-                        match (*rt_node(normed.clone())).clone() {
-                            NodeType::Typed { node: target, .. } => {
-                                if ((((target.name.clone() == normed.name.clone())
-                                    && (target.inferred.clone() == None))
-                                    && (node_has_structure(target.clone()) == false))
-                                    && ((target.children.clone().len() as i64) == 0))
-                                {
-                                    normed.clone()
-                                } else {
-                                    resolve_scrutinee_type_node_seen(
-                                        env.clone(),
-                                        target.clone(),
-                                        next_seen.clone(),
-                                    )
-                                }
-                            }
-                            NodeType::InferError { .. } => normed.clone(),
-                            NodeType::Untyped => normed.clone(),
-                        }
-                    }
+            let canonical = normed.name.clone();
+            if normed.inferred.clone().is_some() {
+                let next_seen = if (canonical.clone() == "".to_string()) {
+                    seen.clone()
                 } else {
-                    if ((canonical.clone() != "".to_string())
-                        && emit_map_has(seen.clone(), canonical.clone()))
-                    {
-                        leaf_node(normed.name.clone())
-                    } else {
+                    v2_rt::map_insert(seen.clone(), canonical.clone(), true)
+                };
+                match (*rt_node(normed.clone())).clone() {
+                    NodeType::Typed { node: target, .. } => {
+                        if ((((target.name.clone() == normed.name.clone())
+                            && (target.inferred.clone() == None))
+                            && (node_has_structure(target.clone()) == false))
+                            && ((target.children.clone().len() as i64) == 0))
                         {
-                            let next_seen = if (canonical.clone() == "".to_string()) {
-                                seen.clone()
+                            normed.clone()
+                        } else {
+                            let result = resolve_scrutinee_type_node_seen(
+                                env.clone(),
+                                target.clone(),
+                                next_seen.clone(),
+                            );
+                            if node_is_optional(normed.clone()) {
+                                with_optional_cardinality(result.clone())
                             } else {
-                                v2_rt::map_insert(seen.clone(), canonical.clone(), true)
-                            };
-                            match lookup_type(env.clone(), normed.name.clone()) {
-                                Some(resolved) => {
-                                    if ((((resolved.name.clone() == normed.name.clone())
-                                        && (resolved.inferred.clone() == None))
-                                        && (node_has_structure(resolved.clone()) == false))
-                                        && ((resolved.children.clone().len() as i64) == 0))
-                                    {
-                                        normed.clone()
-                                    } else {
-                                        {
-                                            let result = resolve_scrutinee_type_node_seen(
-                                                env.clone(),
-                                                resolved.clone(),
-                                                next_seen.clone(),
-                                            );
-                                            if node_is_optional(normed.clone()) {
-                                                with_optional_cardinality(result.clone())
-                                            } else {
-                                                result.clone()
-                                            }
-                                        }
-                                    }
-                                }
-                                None => normed.clone(),
+                                result.clone()
                             }
                         }
                     }
+                    NodeType::InferError { .. } => normed.clone(),
+                    NodeType::Untyped => normed.clone(),
+                }
+            } else if ((canonical.clone() != "".to_string())
+                && emit_map_has(seen.clone(), canonical.clone()))
+            {
+                leaf_node(normed.name.clone())
+            } else {
+                let next_seen = if (canonical.clone() == "".to_string()) {
+                    seen.clone()
+                } else {
+                    v2_rt::map_insert(seen.clone(), canonical.clone(), true)
+                };
+                match lookup_type(env.clone(), normed.name.clone()) {
+                    Some(resolved) => {
+                        if ((((resolved.name.clone() == normed.name.clone())
+                            && (resolved.inferred.clone() == None))
+                            && (node_has_structure(resolved.clone()) == false))
+                            && ((resolved.children.clone().len() as i64) == 0))
+                        {
+                            normed.clone()
+                        } else {
+                            let result = resolve_scrutinee_type_node_seen(
+                                env.clone(),
+                                resolved.clone(),
+                                next_seen.clone(),
+                            );
+                            if node_is_optional(normed.clone()) {
+                                with_optional_cardinality(result.clone())
+                            } else {
+                                result.clone()
+                            }
+                        }
+                    }
+                    None => normed.clone(),
                 }
             }
         } else {
@@ -276,27 +257,303 @@ pub fn resolve_scrutinee_type_node_seen(
     })
 }
 
-pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
-    {
-        let normed = normalize_access_type_node(type_node.clone());
-        let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
-        let map_type = normalize_access_type_node(resolved.clone());
-        if (node_is_map(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
-            match map_type
-                .children
-                .iter()
-                .cloned()
-                .skip(1 as usize)
-                .collect::<Vec<_>>()
-                .first()
-                .cloned()
-            {
-                Some(value_type) => Some(value_type.clone()),
-                None => None,
+pub fn lookup_surface_slot(
+    slot_names: Vec<String>,
+    actuals: Vec<Rc<Node>>,
+    slot_name: String,
+) -> Option<Rc<Node>> {
+    slot_names
+        .iter()
+        .cloned()
+        .enumerate()
+        .find(|(_, name)| name.clone() == slot_name.clone())
+        .and_then(|(idx, _)| actuals.iter().cloned().nth(idx))
+}
+
+pub fn substitute_surface_slots(
+    n: Rc<Node>,
+    slot_names: Vec<String>,
+    actuals: Vec<Rc<Node>>,
+    decl_name: String,
+) -> Rc<Node> {
+    let is_slot = ((n.children.clone().len() as i64) == 0)
+        && (node_has_structure(n.clone()) == false)
+        && (n.body.clone() == None)
+        && (n.inferred.clone() == None);
+    if is_slot {
+        match lookup_surface_slot(slot_names.clone(), actuals.clone(), n.name.clone()) {
+            Some(concrete) => {
+                if node_is_optional(n.clone()) {
+                    with_optional_cardinality(concrete.clone())
+                } else {
+                    concrete.clone()
+                }
             }
-        } else {
-            None
+            None => n.clone(),
         }
+    } else {
+        let substituted_children = n
+            .children
+            .iter()
+            .cloned()
+            .map(|child| {
+                if ((child.name.clone() == decl_name.clone())
+                    && (node_has_structure(child.clone()) == false))
+                {
+                    let substituted_args = child
+                        .children
+                        .iter()
+                        .cloned()
+                        .map(|arg| {
+                            substitute_surface_slots(
+                                arg.clone(),
+                                slot_names.clone(),
+                                actuals.clone(),
+                                decl_name.clone(),
+                            )
+                        })
+                        .collect();
+                    Rc::new(Node {
+                        name: child.name.clone(),
+                        span: child.span.clone(),
+                        ident_span: child.ident_span.clone(),
+                        children: substituted_args,
+                        connective: child.connective.clone(),
+                        params: child.params.clone(),
+                        inferred: child.inferred.clone(),
+                        return_cardinality: child.return_cardinality.clone(),
+                        uses: child.uses.clone(),
+                        body: child.body.clone(),
+                        transport: child.transport.clone(),
+                        properties: child.properties.clone(),
+                        type_annotation: child.type_annotation.clone(),
+                        is_self_recursive: child.is_self_recursive,
+                        has_non_tail_self_call: child.has_non_tail_self_call,
+                        match_pattern: child.match_pattern.clone(),
+                        expr_data: child.expr_data.clone(),
+                    })
+                } else {
+                    substitute_surface_slots(
+                        child.clone(),
+                        slot_names.clone(),
+                        actuals.clone(),
+                        decl_name.clone(),
+                    )
+                }
+            })
+            .collect();
+        let substituted_params = n
+            .params
+            .iter()
+            .cloned()
+            .map(|p| {
+                make_param_node(
+                    p.name.clone(),
+                    substitute_surface_slots(
+                        param_node_type_expr(p.clone()),
+                        slot_names.clone(),
+                        actuals.clone(),
+                        decl_name.clone(),
+                    ),
+                    param_node_default_value(p.clone()).map(|dv| {
+                        substitute_surface_slots(
+                            dv.clone(),
+                            slot_names.clone(),
+                            actuals.clone(),
+                            decl_name.clone(),
+                        )
+                    }),
+                    p.span.clone(),
+                )
+            })
+            .collect();
+        let substituted_inferred = match n.inferred.clone().map(|i| (*i).clone()) {
+            Some(InferredNode::Resolved { node: rt }) => Some(Rc::new(InferredNode::Resolved {
+                node: substitute_surface_slots(
+                    rt.clone(),
+                    slot_names.clone(),
+                    actuals.clone(),
+                    decl_name.clone(),
+                ),
+            })),
+            Some(InferredNode::CompilerError { message, span }) => {
+                Some(Rc::new(InferredNode::CompilerError {
+                    message: message.clone(),
+                    span: span.clone(),
+                }))
+            }
+            None => None,
+        };
+        Rc::new(Node {
+            name: n.name.clone(),
+            span: n.span.clone(),
+            ident_span: n.ident_span.clone(),
+            children: substituted_children,
+            connective: n.connective.clone(),
+            params: substituted_params,
+            inferred: substituted_inferred,
+            return_cardinality: n.return_cardinality.clone(),
+            uses: n.uses.clone(),
+            body: n.body.clone(),
+            transport: n.transport.clone(),
+            properties: n.properties.clone(),
+            type_annotation: n.type_annotation.clone(),
+            is_self_recursive: n.is_self_recursive,
+            has_non_tail_self_call: n.has_non_tail_self_call,
+            match_pattern: n.match_pattern.clone(),
+            expr_data: n.expr_data.clone(),
+        })
+    }
+}
+
+pub fn should_expand_surface_type(n: Rc<Node>, expand_containers: bool) -> bool {
+    let nominal = (node_has_structure(n.clone()) == false) && (n.name.clone() != "".to_string());
+    if !nominal {
+        false
+    } else if expand_containers {
+        true
+    } else {
+        !is_container_type(n.name.clone())
+    }
+}
+
+pub fn resolve_type_surface_node(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    expand_containers: bool,
+) -> Rc<Node> {
+    resolve_type_surface_node_seen(
+        env.clone(),
+        n.clone(),
+        <HashMap<_, _>>::new(),
+        expand_containers,
+    )
+}
+
+pub fn resolve_type_surface_node_seen(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    seen: HashMap<String, bool>,
+    expand_containers: bool,
+) -> Rc<Node> {
+    let resolved = resolve_scrutinee_type_node_seen(env.clone(), n.clone(), seen.clone());
+    let canonical = resolved.name.clone();
+    let already_seen = (canonical.clone() != "".to_string())
+        && emit_map_has(seen.clone(), canonical.clone());
+    let next_seen = if (canonical.clone() == "".to_string()) {
+        seen.clone()
+    } else {
+        v2_rt::map_insert(seen.clone(), canonical.clone(), true)
+    };
+    if ((!should_expand_surface_type(resolved.clone(), expand_containers)) || already_seen) {
+        resolved.clone()
+    } else {
+        match lookup_type(env.clone(), canonical.clone()) {
+            Some(declaration) => {
+                let expected_arity = declaration.params.clone().len() as i64;
+                let actual_arity = resolved.children.clone().len() as i64;
+                if ((expected_arity > 0) && (expected_arity != actual_arity)) {
+                    resolved.clone()
+                } else {
+                    let slot_names: Vec<String> = declaration
+                        .params
+                        .iter()
+                        .cloned()
+                        .map(|p| p.name.clone())
+                        .collect();
+                    let actuals: Vec<Rc<Node>> = resolved
+                        .children
+                        .iter()
+                        .cloned()
+                        .map(|arg| {
+                            resolve_scrutinee_type_node_seen(
+                                env.clone(),
+                                arg.clone(),
+                                next_seen.clone(),
+                            )
+                        })
+                        .collect();
+                    if ((declaration.inferred.clone() != None)
+                        && ((declaration.children.clone().len() as i64) == 0)
+                        && (node_has_structure(declaration.clone()) == false))
+                    {
+                        let alias_target = match (*rt_node(declaration.clone())).clone() {
+                            NodeType::Typed { node: target, .. } => substitute_surface_slots(
+                                target.clone(),
+                                slot_names.clone(),
+                                actuals.clone(),
+                                declaration.name.clone(),
+                            ),
+                            NodeType::InferError { .. } => resolved.clone(),
+                            NodeType::Untyped => resolved.clone(),
+                        };
+                        let surface = resolve_type_surface_node_seen(
+                            env.clone(),
+                            alias_target.clone(),
+                            next_seen.clone(),
+                            expand_containers,
+                        );
+                        if node_is_optional(resolved.clone()) {
+                            with_optional_cardinality(surface.clone())
+                        } else {
+                            surface.clone()
+                        }
+                    } else if node_has_structure(declaration.clone()) {
+                        let substituted_children: Vec<Rc<Node>> = declaration
+                            .children
+                            .iter()
+                            .cloned()
+                            .map(|child| {
+                                substitute_surface_slots(
+                                    child.clone(),
+                                    slot_names.clone(),
+                                    actuals.clone(),
+                                    declaration.name.clone(),
+                                )
+                            })
+                            .collect();
+                        let surface = Rc::new(Node {
+                            name: resolved.name.clone(),
+                            span: resolved.span.clone(),
+                            ident_span: resolved.ident_span.clone(),
+                            children: substituted_children,
+                            connective: declaration.connective.clone(),
+                            params: vec![],
+                            inferred: declaration.inferred.clone(),
+                            return_cardinality: declaration.return_cardinality.clone(),
+                            uses: declaration.uses.clone(),
+                            body: declaration.body.clone(),
+                            transport: declaration.transport.clone(),
+                            properties: declaration.properties.clone(),
+                            type_annotation: declaration.type_annotation.clone(),
+                            is_self_recursive: declaration.is_self_recursive,
+                            has_non_tail_self_call: declaration.has_non_tail_self_call,
+                            match_pattern: declaration.match_pattern.clone(),
+                            expr_data: declaration.expr_data.clone(),
+                        });
+                        if node_is_optional(resolved.clone()) {
+                            with_optional_cardinality(surface.clone())
+                        } else {
+                            surface.clone()
+                        }
+                    } else {
+                        resolved.clone()
+                    }
+                }
+            }
+            None => resolved.clone(),
+        }
+    }
+}
+
+pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    let normed = normalize_access_type_node(type_node.clone());
+    let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
+    let map_type = normalize_access_type_node(resolved.clone());
+    if (node_is_map(map_type.clone()) && ((map_type.children.clone().len() as i64) >= 2)) {
+        map_type.children.iter().cloned().nth(1)
+    } else {
+        None
     }
 }
 
@@ -306,43 +563,35 @@ pub fn field_summary_for_type(
     field: String,
 ) -> Option<Rc<FieldSummary>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
+        let resolved = resolve_type_surface_node(env.clone(), base_type.clone(), false);
         let normed = normalize_access_type_node(resolved.clone());
         let normed_opt = node_is_optional(normed.clone());
-        if ((field.clone() == "value".to_string()) && normed_opt.clone()) {
+        if ((field.clone() == "value".to_string()) && normed_opt) {
             Some(Rc::new(FieldSummary {
                 access_style: FieldAccessStyle::OptionalUnwrap,
                 value_shape: FieldValueShape::PlainValue,
             }))
-        } else {
-            if normed_opt.clone() {
-                {
-                    let inner = with_required_cardinality(normed.clone());
-                    match field_summary_for_type(inner.clone(), env.clone(), field.clone()) {
-                        Some(inner_summary) => Some(Rc::new(FieldSummary {
-                            access_style: inner_summary.access_style.clone(),
-                            value_shape: FieldValueShape::OptionalValue,
-                        })),
-                        None => None,
-                    }
-                }
-            } else {
-                if (node_has_structure(resolved.clone()) == false) {
-                    None
-                } else {
-                    if node_is_product(resolved.clone()) {
-                        v2_rt::map_get(
-                            &build_struct_field_summaries(resolved.children.clone()),
-                            field.clone(),
-                        )
-                    } else {
-                        v2_rt::map_get(
-                            &build_enum_field_summaries(resolved.children.clone()),
-                            field.clone(),
-                        )
-                    }
-                }
+        } else if normed_opt {
+            let inner = with_required_cardinality(normed.clone());
+            match field_summary_for_type(inner.clone(), env.clone(), field.clone()) {
+                Some(inner_summary) => Some(Rc::new(FieldSummary {
+                    access_style: inner_summary.access_style.clone(),
+                    value_shape: FieldValueShape::OptionalValue,
+                })),
+                None => None,
             }
+        } else if (node_has_structure(resolved.clone()) == false) {
+            None
+        } else if node_is_product(resolved.clone()) {
+            v2_rt::map_get(
+                &build_struct_field_summaries(resolved.children.clone()),
+                field.clone(),
+            )
+        } else {
+            v2_rt::map_get(
+                &build_enum_field_summaries(resolved.children.clone()),
+                field.clone(),
+            )
         }
     })
 }
@@ -387,23 +636,20 @@ pub fn lookup_field_in_product(
 }
 
 pub fn lookup_structural_method(
+    type_env: Rc<TypeEnv>,
     receiver_type: Rc<Node>,
     method_name: String,
 ) -> Option<Rc<MethodFieldResult>> {
-    let is_product = node_is_product(receiver_type.clone());
+    let surface = resolve_type_surface_node(type_env.clone(), receiver_type.clone(), true);
+    let is_product = node_is_product(surface.clone());
     if is_product {
-        let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone());
+        let direct = lookup_field_in_product(surface.clone(), method_name.clone());
         match direct {
             Some(_) => direct,
             None => None,
         }
     } else {
-        let enriched = enrich_kernel_type(receiver_type.name.clone(), receiver_type.clone());
-        if (node_is_product(enriched.clone()) && (enriched.children.clone().len() as i64) > 0) {
-            lookup_field_in_product(enriched.clone(), method_name.clone())
-        } else {
-            None
-        }
+        None
     }
 }
 
@@ -427,9 +673,11 @@ pub fn resolve_known_method_node(
     receiver_type: Rc<Node>,
     method_name: String,
     fold_accumulator_type: Option<Rc<Node>>,
+    type_env: Rc<TypeEnv>,
     service_registry: HashMap<String, Vec<Rc<OpEntry>>>,
 ) -> Rc<KnownMethodResolution> {
-    let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
+    let tier0_result =
+        lookup_structural_method(type_env.clone(), receiver_type.clone(), method_name.clone());
     match tier0_result {
         Some(mfr) => {
             let semantics: Rc<MethodSemantics> = Rc::new(MethodSemantics::AlgebraMethodSemantics {

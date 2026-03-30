@@ -323,21 +323,41 @@ fn adjacency_add_edge(adjacency: Map<String, List<String>>, from_module: String,
   map_insert(adjacency, from_module, list_push(existing, to_module))
 }
 
+fn topo_sort_key(name: String) -> String {
+  if name == "std.types" { "" } else { name }
+}
+
 fn topological_sort(modules: List<Node>) -> TopoResult {
   let module_names = modules |> map(m => m.name)
+  let has_std_types = module_names |> any(name => name == "std.types")
+  let explicit_edges = modules |> flat_map(m =>
+    module_imports(n: m) |> map(imp => DepEdge { from_module: imp.name, to_module: m.name })
+  )
+  let implicit_std_types_edges = if has_std_types {
+    modules |> flat_map(m =>
+      let imports_std_types = module_imports(n: m) |> any(imp => imp.name == "std.types")
+      if m.name != "std.types" && m.name != "std.algebra" && imports_std_types == false {
+        [DepEdge { from_module: "std.types", to_module: m.name }]
+      } else {
+        []
+      }
+    )
+  } else {
+    []
+  }
 
   // Build adjacency list: from_module → [to_module, ...]
   // "from_module is imported by to_module" means when from_module is sorted,
   // to_module's in-degree decreases.
-  let adjacency = modules |> flat_map(m =>
-    module_imports(n: m) |> map(imp => DepEdge { from_module: imp.name, to_module: m.name })
-  ) |> fold(init: empty_map(), f: (acc, edge) =>
+  let adjacency = concat(explicit_edges, implicit_std_types_edges) |> fold(init: empty_map(), f: (acc, edge) =>
     adjacency_add_edge(adjacency: acc, from_module: edge.from_module, to_module: edge.to_module)
   )
 
   // Compute initial in-degrees directly from import counts.
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
-    map_insert(acc, m.name, module_imports(n: m) |> count)
+    let imports_std_types = module_imports(n: m) |> any(imp => imp.name == "std.types")
+    let implicit_std_types_in_degree = if has_std_types && m.name != "std.types" && m.name != "std.algebra" && imports_std_types == false { 1 } else { 0 }
+    map_insert(acc, m.name, module_imports(n: m) |> count + implicit_std_types_in_degree)
   )
 
   // Initial queue: all modules with in-degree 0 (no imports), sorted for determinism.
@@ -346,7 +366,7 @@ fn topological_sort(modules: List<Node>) -> TopoResult {
       Some { value: 0 } => true
       _ => false
     })
-    |> sort_by(name => name)
+    |> sort_by(name => topo_sort_key(name: name))
 
   // Process queue: dequeue node, add to sorted, decrement neighbors.
   let result = kahn_drain(
@@ -420,7 +440,7 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<Stri
       _ => false
     }
   ) |> fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-  let new_zero = map_keys(new_zero_set) |> sort_by(name => name)
+  let new_zero = map_keys(new_zero_set) |> sort_by(name => topo_sort_key(name: name))
 
   kahn_drain(
     queue: new_zero,

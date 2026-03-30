@@ -151,6 +151,24 @@ fn resolve_imports_transitively(
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
 
+    if let Some(std_types_path) = index.get("std.types") {
+        if let Ok(std_types_content) = std::fs::read_to_string(std_types_path) {
+            let rel_path = std_types_path
+                .strip_prefix(workspace_root())
+                .unwrap_or(std_types_path)
+                .to_string_lossy()
+                .to_string();
+            seen.insert(
+                "std.types".to_string(),
+                Rc::new(SourceFile {
+                    path: rel_path.clone(),
+                    content: std_types_content.clone(),
+                }),
+            );
+            queue.push((rel_path, std_types_content));
+        }
+    }
+
     // Seed with the entry
     queue.push((entry_path.to_string(), entry_content.to_string()));
 

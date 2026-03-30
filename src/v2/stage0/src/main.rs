@@ -136,6 +136,20 @@ fn resolve_transitively_with_seen(
 ) -> Vec<Rc<v2_compiler_compile::SourceFile>> {
     let mut queue: Vec<(String, String)> = entry_sources;
 
+    if !seen.contains_key("std.types") {
+        if let Some(file_path) = index.get("std.types") {
+            if let Ok(file_content) = std::fs::read_to_string(file_path) {
+                let rel_path = file_path.to_string_lossy().to_string();
+                let source = Rc::new(v2_compiler_compile::SourceFile {
+                    path: rel_path.clone(),
+                    content: file_content.clone(),
+                });
+                seen.insert("std.types".to_string(), source);
+                queue.push((rel_path, file_content));
+            }
+        }
+    }
+
     while let Some((_path, content)) = queue.pop() {
         let imports = extract_import_paths(&content);
         for module_path in imports {

@@ -269,18 +269,32 @@ v2_rt::map_insert(adjacency.clone(), from_module.clone(), v2_rt::list_push(exist
 }
 }
 
+pub fn topo_sort_key(name: String) -> String {
+    if (name.clone() == "std.types".to_string()) {
+        "".to_string()
+    } else {
+        name.clone()
+    }
+}
+
 pub fn topological_sort(modules: Vec<Rc<Node>>) -> Rc<TopoResult> {
     {
         let module_names = { let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.push(m.name.clone()); } __result };
-let adjacency = { let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.extend({ let mut __result = Vec::new(); for imp in module_imports(m.clone()).iter().cloned() { __result.push(Rc::new(DepEdge {
+let has_std_types = module_names.clone().iter().cloned().any(|name| name.clone() == "std.types".to_string());
+let explicit_edges = { let mut __result = Vec::new(); for m in modules.iter().cloned() { __result.extend({ let mut __result = Vec::new(); for imp in module_imports(m.clone()).iter().cloned() { __result.push(Rc::new(DepEdge {
     from_module: imp.name.clone(),
     to_module: m.name.clone(),
-})); } __result }); } __result }.iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc: _, edge: Rc<DepEdge>| adjacency_add_edge(acc.clone(), edge.from_module.clone(), edge.to_module.clone()));
-let in_degree_map = modules.iter().cloned().fold(<HashMap<String, i64>>::new(), |acc: _, m: Rc<Node>| v2_rt::map_insert(acc.clone(), m.name.clone(), (module_imports(m.clone()).len() as i64)));
+})); } __result }); } __result };
+let implicit_std_types_edges = if has_std_types.clone() { { let mut __result = Vec::new(); for m in modules.iter().cloned() { let imports_std_types = module_imports(m.clone()).iter().cloned().any(|imp| imp.name.clone() == "std.types".to_string()); if ((((m.name.clone() != "std.types".to_string()) && (m.name.clone() != "std.algebra".to_string())) && !imports_std_types.clone())) { __result.push(Rc::new(DepEdge {
+    from_module: "std.types".to_string(),
+    to_module: m.name.clone(),
+})); } } __result } } else { vec![] };
+let adjacency = v2_rt::concat(explicit_edges.clone(), implicit_std_types_edges.clone()).iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc: _, edge: Rc<DepEdge>| adjacency_add_edge(acc.clone(), edge.from_module.clone(), edge.to_module.clone()));
+let in_degree_map = modules.iter().cloned().fold(<HashMap<String, i64>>::new(), |acc: _, m: Rc<Node>| { let imports_std_types = module_imports(m.clone()).iter().cloned().any(|imp| imp.name.clone() == "std.types".to_string()); let implicit_std_types_in_degree = if (((has_std_types.clone() && (m.name.clone() != "std.types".to_string())) && (m.name.clone() != "std.algebra".to_string())) && !imports_std_types.clone()) { 1 } else { 0 }; v2_rt::map_insert(acc.clone(), m.name.clone(), ((module_imports(m.clone()).len() as i64) + implicit_std_types_in_degree.clone())) });
 let initial_queue = { let mut __sorted = { let mut __result = Vec::new(); for name in module_names.iter().cloned() { if match v2_rt::map_get(&in_degree_map, name.clone()) {
     Some(0) => true,
     _ => false,
-} { __result.push(name); } } __result }.clone(); __sorted.sort_by(|a: &String, b: &String| { let __ka = (|name: String| name.clone())(a.clone()); let __kb = (|name: String| name.clone())(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted };
+} { __result.push(name); } } __result }.clone(); __sorted.sort_by(|a: &String, b: &String| { let __ka = topo_sort_key(a.clone()); let __kb = topo_sort_key(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted };
 let result = kahn_drain(initial_queue.clone(), vec![], in_degree_map.clone(), adjacency.clone());
 let module_count = (modules.clone().len() as i64);
 if ((result.sorted.clone().len() as i64) == module_count.clone()) {
@@ -344,7 +358,7 @@ let new_zero_set = { let mut __result = Vec::new(); for neighbor in { let mut __
     Some(0) => true,
     _ => false,
 } { __result.push(neighbor); } } __result }.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), true));
-let new_zero = { let mut __sorted = v2_rt::map_keys(&new_zero_set).clone(); __sorted.sort_by(|a: &String, b: &String| { let __ka = (|name: String| name.clone())(a.clone()); let __kb = (|name: String| name.clone())(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted };
+let new_zero = { let mut __sorted = v2_rt::map_keys(&new_zero_set).clone(); __sorted.sort_by(|a: &String, b: &String| { let __ka = topo_sort_key(a.clone()); let __kb = topo_sort_key(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted };
 {
             let __tco_0 = new_zero.clone();
 let __tco_1 = batch_result.sorted.clone();

@@ -1227,7 +1227,11 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
             };
         match unwrapped.clone() {
             Some(base) => {
-                let __tco_0 = base.clone();
+                let __tco_0 = if node_is_optional(n.clone()) {
+                    with_optional_cardinality(base.clone())
+                } else {
+                    base.clone()
+                };
                 n = __tco_0;
                 continue;
             }

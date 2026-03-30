@@ -145,7 +145,7 @@ pub use crate::v2_compiler_infer_sigs::{
 };
 pub use crate::v2_compiler_infer_types::{
     bare_map_node, callable_inferred, callable_node, child_inferred_or_name, container_node,
-    emit_map_has, enrich_kernel_type, error_type_node, extract_optional_inner_node,
+    emit_map_has, error_type_node, extract_optional_inner_node,
     for_each_element_type_node, infer_binop_type_node, infer_literal_node, is_bool_type_node,
     is_float_type_node, is_int_type_node, is_string_type_node, map_node,
     method_receiver_element_node, node_is_bridge_placeholder_name, node_is_container, node_is_leaf, node_is_map, node_is_named_ref,
@@ -1843,7 +1843,11 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                         diagnostics: base_diags.clone(),
                     })
                 } else {
-                    match lookup_field_type_node(resolved_base.clone(), field_name.clone()) {
+                    match lookup_field_type_node(
+                        scope.type_env.clone(),
+                        resolved_base.clone(),
+                        field_name.clone(),
+                    ) {
                         Some(field_type) => {
                             let field_summary = field_summary_for_type(
                                 base_rt.clone(),
@@ -1994,6 +1998,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                 first_type.clone(),
                                 func_name.clone(),
                                 None,
+                                scope.type_env.clone(),
                                 scope.service_registry.clone(),
                             );
                             if ((provisional_method_resolution.result_type.clone() != None)
@@ -2170,6 +2175,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                             } else {
                                 None
                             },
+                            scope.type_env.clone(),
                             scope.service_registry.clone(),
                         );
                         let is_known_method = (method_resolution.result_type.clone() != None);
@@ -2396,6 +2402,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     recv_rt.clone(),
                     method_name.clone(),
                     None,
+                    scope.type_env.clone(),
                     scope.service_registry.clone(),
                 );
                 let mc_method_name: Option<String> = Some(method_name.clone());
@@ -2445,6 +2452,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     } else {
                         None
                     },
+                    scope.type_env.clone(),
                     scope.service_registry.clone(),
                 );
                 let base_result_type = match method_resolution.result_type.clone() {
@@ -3788,7 +3796,24 @@ pub fn build_type_env(
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
             source_index: source_index.clone(),
         });
-        let parent_envs = {
+        let imports_std_types = module
+            .resolved_imports
+            .clone()
+            .iter()
+            .cloned()
+            .any(|imp| imp.module_path.clone() == "std.types".to_string());
+        let std_types_parent_env = if ((module.module.clone().name.clone()
+            != "std.types".to_string())
+            && !imports_std_types)
+        {
+            match v2_rt::map_get(&parent_index, "std.types".to_string()) {
+                Some(typed_std) => vec![typed_std.type_env.clone()],
+                None => vec![],
+            }
+        } else {
+            vec![]
+        };
+        let imported_parent_envs = {
             let mut __result = Vec::new();
             for imp in module.resolved_imports.clone().iter().cloned() {
                 __result.extend(
@@ -3800,6 +3825,7 @@ pub fn build_type_env(
             }
             __result
         };
+        let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs.clone());
         let import_bindings = parent_envs.clone().iter().cloned().fold(
             <HashMap<String, Rc<TypeBinding>>>::new(),
             |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.bindings).clone()),
@@ -4198,7 +4224,24 @@ pub fn build_type_env_unresolved(
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
             source_index: source_index.clone(),
         });
-        let parent_envs = {
+        let imports_std_types = module
+            .resolved_imports
+            .clone()
+            .iter()
+            .cloned()
+            .any(|imp| imp.module_path.clone() == "std.types".to_string());
+        let std_types_parent_env = if ((module.module.clone().name.clone()
+            != "std.types".to_string())
+            && !imports_std_types)
+        {
+            match v2_rt::map_get(&parent_index, "std.types".to_string()) {
+                Some(typed_std) => vec![typed_std.type_env.clone()],
+                None => vec![],
+            }
+        } else {
+            vec![]
+        };
+        let imported_parent_envs = {
             let mut __result = Vec::new();
             for imp in module.resolved_imports.clone().iter().cloned() {
                 __result.extend(
@@ -4210,6 +4253,7 @@ pub fn build_type_env_unresolved(
             }
             __result
         };
+        let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs.clone());
         let import_bindings = parent_envs.clone().iter().cloned().fold(
             <HashMap<String, Rc<TypeBinding>>>::new(),
             |acc: _, env: Rc<TypeEnv>| v2_rt::map_merge(acc.clone(), (*env.bindings).clone()),

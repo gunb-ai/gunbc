@@ -247,6 +247,20 @@ fn match_pattern_binding_scoped_into_arm_body() {
     assert_no_diagnostics(&result);
 }
 
+#[test]
+fn optional_paren_pattern_matches_string_optional() {
+    let source = "module optional_paren_match\n\nfn present(value: String?) -> Bool {\n  match value {\n    Some(v) => v != \"\"\n    None => false\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn optional_alias_pattern_preserves_optional_cardinality() {
+    let source = "module optional_alias_match\n\nimport std.types { ServiceAccountEmail }\n\nfn present(value: ServiceAccountEmail?) -> Bool {\n  match value {\n    Some { value: sa } => sa != \"\"\n    None => false\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
 // ── Target-specific tests ───────────────────────────────────────────────
 
 #[test]
@@ -3036,6 +3050,25 @@ fn indexed_names(names: List<String>) -> List<String> {
     assert!(
         msgs.is_empty(),
         "enumerate .first/.second should compile without diagnostics, got {}: {:?}",
+        msgs.len(),
+        msgs
+    );
+}
+
+#[test]
+fn enumerate_preserves_tuple_shape_without_follow_on_map() {
+    let source = r#"
+module enumerate_shape
+
+fn indexed(names: List<String>) -> List<Tuple<Int, String>> {
+  names |> enumerate
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "enumerate alone should compile without diagnostics, got {}: {:?}",
         msgs.len(),
         msgs
     );

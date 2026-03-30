@@ -10,9 +10,9 @@
 module v2.compiler.infer_lookup
 
 import v2.std.core {
-  Node, param_node_type_expr,
+  Node, make_param_node, param_node_type_expr, param_node_default_value,
   InferredNode, Resolved, TypeVariable,
-  NodeType, Typed, InferError, InferVariable, Untyped,
+  NodeType, Typed, InferError, InferVariable, Untyped, CompilerError,
   Cardinality, Required,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   FieldAccessStyle, OptionalUnwrap,
@@ -20,7 +20,7 @@ import v2.std.core {
   FieldSummary,
   with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-
+  is_container_type,
   CardOptional
 }
 import v2.compiler.infer_types {
@@ -29,8 +29,7 @@ import v2.compiler.infer_types {
   normalize_access_type_node, node_is_keyed_collection,
   method_receiver_element_node,
   rt_type, rt_node,
-  emit_map_has,
-  enrich_kernel_type
+  emit_map_has
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
@@ -82,30 +81,31 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? 
 // Field lookup
 // =========================================================================
 
-fn lookup_field_type_node(n: Node, field_name: String) -> Node? {
+fn lookup_field_type_node(env: TypeEnv, n: Node, field_name: String) -> Node? {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
     let inner = with_required_cardinality(n: n)
     if field_name == "value" {
       Some { value: inner }
     } else {
-      match lookup_field_type_node(n: inner, field_name: field_name) {
+      match lookup_field_type_node(env: env, n: inner, field_name: field_name) {
         Some { value: inner_result } => Some { value: with_optional_cardinality(n: inner_result) }
         None => none
       }
     }
   } else {
-    let has_structure = n.connective != NoConnective
+    let surface = resolve_type_surface_node(env: env, n: n, expand_containers: false)
+    let has_structure = surface.connective != NoConnective
     if has_structure {
-      let is_product = n.connective == Conj
+      let is_product = surface.connective == Conj
       if is_product {
-        match n.children |> filter(c => c.name == field_name) |> first {
+        match surface.children |> filter(c => c.name == field_name) |> first {
           Some { value: field_child } =>
             Some { value: child_inferred_or_name(ch: field_child) }
           None => none
         }
       } else {
-        lookup_coproduct_common_field_node(variants: n.children, field_name: field_name)
+        lookup_coproduct_common_field_node(variants: surface.children, field_name: field_name)
       }
     } else { none }
   }
@@ -137,6 +137,12 @@ fn resolve_scrutinee_type_node(env: TypeEnv, n: Node) -> Node {
   resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
 }
 
+fn preserve_optional_cardinality(reference: Node, target: Node) -> Node {
+  let is_optional = reference.return_cardinality == CardOptional
+  let wrapped = with_optional_cardinality(target)
+  if is_optional { wrapped } else { target }
+}
+
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
   // TypeVariable nodes are unresolved placeholders -- return as-is.
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
@@ -151,7 +157,9 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if target.name == normed.name && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
-            resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
+            let result = resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
+            let preserved_result = preserve_optional_cardinality(reference: normed, target: result)
+            preserved_result
           }
         InferError { message: _, span: _ } => normed
         InferVariable { id: _ } => normed
@@ -169,13 +177,179 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
             let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
             // Preserve Optional scrutinee shape during alias/type-env lookup
             // until Optional itself becomes fully structural in the lookup path.
-            let is_optional = normed.return_cardinality == CardOptional
-            if is_optional { with_optional_cardinality(n: result) } else { result }
+            let preserved_result = preserve_optional_cardinality(reference: normed, target: result)
+            preserved_result
           }
         None => normed
       }
     }
   } else { normed }
+}
+
+fn lookup_surface_slot(slot_names: List<String>, actuals: List<Node>, slot_name: String) -> Node? {
+  match slot_names |> enumerate |> filter(pair => pair.second == slot_name) |> first {
+    Some { value: pair } =>
+      actuals |> skip(pair.first) |> first
+    None => none
+  }
+}
+
+fn substitute_surface_slot_value(n: Node, slot_names: List<String>, actuals: List<Node>) -> Node {
+  let slot_value = match lookup_surface_slot(slot_names: slot_names, actuals: actuals, slot_name: n.name) {
+    Some { value: concrete } => concrete
+    None => n
+  }
+  let preserved_slot = preserve_optional_cardinality(reference: n, target: slot_value)
+  preserved_slot
+}
+
+fn substitute_surface_child(child: Node, slot_names: List<String>, actuals: List<Node>, decl_name: String) -> Node {
+  let is_self_child = child.name == decl_name && child.connective == NoConnective
+  match is_self_child {
+    true =>
+      Node {
+        name: child.name, span: child.span, ident_span: child.ident_span,
+        children: child.children |> map(arg => substitute_surface_slots(n: arg, slot_names: slot_names, actuals: actuals, decl_name: decl_name)),
+        connective: child.connective, params: child.params, inferred: child.inferred,
+        return_cardinality: child.return_cardinality, uses: child.uses, body: child.body,
+        transport: child.transport, properties: child.properties, type_annotation: child.type_annotation,
+        is_self_recursive: child.is_self_recursive, has_non_tail_self_call: child.has_non_tail_self_call,
+        match_pattern: child.match_pattern, expr_data: child.expr_data
+      }
+    false =>
+      substitute_surface_slots(n: child, slot_names: slot_names, actuals: actuals, decl_name: decl_name)
+  }
+}
+
+fn substitute_surface_slots(n: Node, slot_names: List<String>, actuals: List<Node>, decl_name: String) -> Node {
+  let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
+  if is_slot {
+    let substituted_slot = substitute_surface_slot_value(n: n, slot_names: slot_names, actuals: actuals)
+    substituted_slot
+  } else {
+    let substituted_children = n.children |> map(child =>
+      substitute_surface_child(child: child, slot_names: slot_names, actuals: actuals, decl_name: decl_name)
+    )
+    let substituted_params = n.params |> map(p =>
+      make_param_node(
+        name: p.name,
+        type_expr: substitute_surface_slots(n: param_node_type_expr(n: p), slot_names: slot_names, actuals: actuals, decl_name: decl_name),
+        default_value: match param_node_default_value(n: p) {
+          Some { value: dv } => Some { value: substitute_surface_slots(n: dv, slot_names: slot_names, actuals: actuals, decl_name: decl_name) }
+          None => none
+        },
+        span: p.span
+      )
+    )
+    let substituted_inferred = match n.inferred {
+      Some { value: Resolved { node: rt } } =>
+        Some { value: Resolved { node: substitute_surface_slots(n: rt, slot_names: slot_names, actuals: actuals, decl_name: decl_name) } }
+      Some { value: CompilerError { message: m, span: s } } =>
+        Some { value: CompilerError { message: m, span: s } }
+      Some { value: TypeVariable { id: id } } =>
+        Some { value: TypeVariable { id: id } }
+      None => none
+    }
+    Node {
+      name: n.name, span: n.span, ident_span: n.ident_span, children: substituted_children,
+      connective: n.connective, params: substituted_params, inferred: substituted_inferred,
+      return_cardinality: n.return_cardinality, uses: n.uses, body: n.body,
+      transport: n.transport, properties: n.properties, type_annotation: n.type_annotation,
+      is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
+      match_pattern: n.match_pattern, expr_data: n.expr_data
+    }
+  }
+}
+
+fn should_expand_surface_type(n: Node, expand_containers: Bool) -> Bool {
+  let nominal = n.connective == NoConnective && n.name != ""
+  if nominal == false { false }
+  else if expand_containers { true }
+  else { is_container_type(name: n.name) == false }
+}
+
+fn resolve_alias_surface(declaration: Node, resolved: Node, slot_names: List<String>, actuals: List<Node>, next_seen: Map<String, Bool>, env: TypeEnv, expand_containers: Bool) -> Node {
+  let alias_target = match rt_node(n: declaration) {
+    Typed { node: target } => substitute_surface_slots(n: target, slot_names: slot_names, actuals: actuals, decl_name: declaration.name)
+    InferError { message: _, span: _ } => resolved
+    InferVariable { id: _ } => resolved
+    Untyped => resolved
+  }
+  let surface = resolve_type_surface_node_seen(env: env, n: alias_target, seen: next_seen, expand_containers: expand_containers)
+  let preserved_surface = preserve_optional_cardinality(reference: resolved, target: surface)
+  preserved_surface
+}
+
+fn materialize_decl_surface(declaration: Node, resolved: Node, slot_names: List<String>, actuals: List<Node>) -> Node {
+  let surface = Node {
+    name: resolved.name, span: resolved.span, ident_span: resolved.ident_span,
+    children: declaration.children |> map(child => substitute_surface_slots(n: child, slot_names: slot_names, actuals: actuals, decl_name: declaration.name)),
+    connective: declaration.connective, params: [], inferred: declaration.inferred,
+    return_cardinality: declaration.return_cardinality, uses: declaration.uses, body: declaration.body,
+    transport: declaration.transport, properties: declaration.properties, type_annotation: declaration.type_annotation,
+    is_self_recursive: declaration.is_self_recursive, has_non_tail_self_call: declaration.has_non_tail_self_call,
+    match_pattern: declaration.match_pattern, expr_data: declaration.expr_data
+  }
+  let preserved_surface = preserve_optional_cardinality(reference: resolved, target: surface)
+  preserved_surface
+}
+
+fn resolve_type_surface_node(env: TypeEnv, n: Node, expand_containers: Bool) -> Node {
+  resolve_type_surface_node_seen(env: env, n: n, seen: empty_map(), expand_containers: expand_containers)
+}
+
+fn resolve_type_surface_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>, expand_containers: Bool) -> Node {
+  let resolved = resolve_scrutinee_type_node_seen(env: env, n: n, seen: seen)
+  let canonical = resolved.name
+  let already_seen = canonical != "" && emit_map_has(m: seen, key: canonical)
+  let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      if should_expand_surface_type(n: resolved, expand_containers: expand_containers) == false || already_seen {
+    resolved
+  } else {
+    match lookup_type(env: env, name: canonical) {
+      Some { value: declaration } =>
+        let expected_arity = declaration.params |> count
+        let actual_arity = resolved.children |> count
+        if expected_arity > 0 && expected_arity != actual_arity {
+          resolved
+        } else {
+          let slot_names = declaration.params |> map(p => p.name)
+          let actuals = resolved.children |> map(arg =>
+            resolve_scrutinee_type_node_seen(env: env, n: arg, seen: next_seen)
+          )
+          let is_alias_decl = declaration.inferred != none && declaration.children |> count == 0 && declaration.connective == NoConnective
+          if is_alias_decl {
+            let alias_target = match rt_node(n: declaration) {
+              Typed { node: target } => substitute_surface_slots(n: target, slot_names: slot_names, actuals: actuals, decl_name: declaration.name)
+              InferError { message: _, span: _ } => resolved
+              InferVariable { id: _ } => resolved
+              Untyped => resolved
+            }
+            let surface = resolve_type_surface_node_seen(env: env, n: alias_target, seen: next_seen, expand_containers: expand_containers)
+            let preserved_surface = preserve_optional_cardinality(reference: resolved, target: surface)
+            preserved_surface
+          } else {
+            let decl_has_structure = declaration.connective != NoConnective
+            if decl_has_structure {
+              let surface = Node {
+                name: resolved.name, span: resolved.span, ident_span: resolved.ident_span,
+                children: declaration.children |> map(child => substitute_surface_slots(n: child, slot_names: slot_names, actuals: actuals, decl_name: declaration.name)),
+                connective: declaration.connective, params: [], inferred: declaration.inferred,
+                return_cardinality: declaration.return_cardinality, uses: declaration.uses, body: declaration.body,
+                transport: declaration.transport, properties: declaration.properties, type_annotation: declaration.type_annotation,
+                is_self_recursive: declaration.is_self_recursive, has_non_tail_self_call: declaration.has_non_tail_self_call,
+                match_pattern: declaration.match_pattern, expr_data: declaration.expr_data
+              }
+              let preserved_surface = preserve_optional_cardinality(reference: resolved, target: surface)
+              preserved_surface
+            } else {
+              resolved
+            }
+          }
+        }
+      None => resolved
+    }
+  }
 }
 
 fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
@@ -193,7 +367,7 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
 }
 
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
-  let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
+  let resolved = resolve_type_surface_node(env: env, n: base_type, expand_containers: false)
   let normed = normalize_access_type_node(n: resolved)
   let normed_opt = normed.return_cardinality == CardOptional
   if field == "value" && normed_opt {
@@ -255,27 +429,18 @@ fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldRes
   }
 }
 
-fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodFieldResult? {
+fn lookup_structural_method(type_env: TypeEnv, receiver_type: Node, method_name: String) -> MethodFieldResult? {
+  let surface = resolve_type_surface_node(env: type_env, n: receiver_type, expand_containers: true)
   // First: check the receiver's own structural fields (Conj product).
-  let is_product = receiver_type.connective == Conj
+  let is_product = surface.connective == Conj
   if is_product {
-    let direct = lookup_field_in_product(product: receiver_type, method_name: method_name)
+    let direct = lookup_field_in_product(product: surface, method_name: method_name)
     match direct {
       Some { value: _ } => direct
       None => none
     }
   } else {
-    // Second: check the algebra registry for kernel type methods.
-    // enrich_kernel_type builds a Conj product with algebraic fields
-    // (add, mul, compare, concat, etc.) for Int/Float/Bool/String.
-    // The enriched node is NOT the type binding — it's a side table
-    // so that type nodes in the graph stay as bare leaves.
-    let enriched = enrich_kernel_type(name: receiver_type.name, base: receiver_type)
-    if enriched.connective == Conj && enriched.children |> count > 0 {
-      lookup_field_in_product(product: enriched, method_name: method_name)
-    } else {
-      none
-    }
+    none
   }
 }
 
@@ -300,7 +465,7 @@ fn method_name_is_fold(result_type: Node, fold_accumulator_type: Node?) -> Bool 
   fold_accumulator_type != none
 }
 
-fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
+fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: String, fold_accumulator_type: Node?, type_env: TypeEnv, service_registry: Map<String, List<OpEntry>>) -> KnownMethodResolution {
   // Tier 0: Structural field lookup for ALL types (including collections).
   // The algebra registry (enrich_kernel_type) provides fields for kernel
   // types; user-defined types have their own structural children.
@@ -309,7 +474,7 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   // intrinsic/bridge indexes to tag with the correct MethodSemantics
   // for emit. Return types from the algebra field are substituted with
   // concrete types from the receiver (e.g., bare "List" → List<Int>).
-  let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
+  let tier0_result = lookup_structural_method(type_env: type_env, receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
     Some { value: mfr } =>
       // Method found structurally — carry the method definition node.

@@ -80,8 +80,7 @@ import v2.compiler.infer_types {
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
   rt_type,
-  emit_map_has,
-  enrich_kernel_type
+  emit_map_has
 }
 import v2.compiler.infer_method {
   infer_builtin_call_type, resolve_builtin_call_type
@@ -1074,7 +1073,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           diagnostics: base_diags
         }
       } else {
-      match lookup_field_type_node(n: resolved_base, field_name: field_name) {
+      match lookup_field_type_node(env: scope.type_env, n: resolved_base, field_name: field_name) {
         Some { value: field_type } =>
           let field_summary = field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name)
           let fa_texpr = make_named_expr_node(
@@ -1167,6 +1166,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               receiver_type: first_type,
               method_name: func_name,
               fold_accumulator_type: none,
+              type_env: scope.type_env,
               service_registry: scope.service_registry
             )
             if provisional_method_resolution.result_type != none && call_args |> count >= 2 {
@@ -1240,6 +1240,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           receiver_type: first_arg_type,
           method_name: func_name,
           fold_accumulator_type: if call_fold_info != none { Some { value: call_fold_acc_type } } else { none },
+          type_env: scope.type_env,
           service_registry: scope.service_registry
         )
         let is_known_method = method_resolution.result_type != none
@@ -1374,6 +1375,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         receiver_type: recv_rt,
         method_name: method_name,
         fold_accumulator_type: none,
+        type_env: scope.type_env,
         service_registry: scope.service_registry
       )
       // Use method name string directly for dispatch.
@@ -1391,6 +1393,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         receiver_type: recv_rt,
         method_name: method_name,
         fold_accumulator_type: if fold_info != none { Some { value: fold_acc_type } } else { none },
+        type_env: scope.type_env,
         service_registry: scope.service_registry
       )
       let base_result_type = match method_resolution.result_type {
@@ -2186,7 +2189,17 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Separate folds for each map/list field so the accumulator is a bare
   // map/list (not a struct field). Rc::try_unwrap succeeds on bare
   // accumulators -- avoids O(N^2) full-map cloning per import.
-  let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
+  let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
+  let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
+    match map_get(parent_index, "std.types") {
+      Some { value: typed_std } => [typed_std.type_env]
+      None => []
+    }
+  } else {
+    []
+  }
+  let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
+  let parent_envs = concat(std_types_parent_env, imported_parent_envs)
   let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
@@ -2301,7 +2314,17 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_optional = Node { name: "Optional", span: zero_span, ident_span: none, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), source_index: source_index }
-  let parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
+  let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
+  let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
+    match map_get(parent_index, "std.types") {
+      Some { value: typed_std } => [typed_std.type_env]
+      None => []
+    }
+  } else {
+    []
+  }
+  let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
+  let parent_envs = concat(std_types_parent_env, imported_parent_envs)
   let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))

@@ -30,7 +30,7 @@
 
 module std.types
 
-import std.algebra { FreeMonoid, PartialFunction }
+import std.algebra { Ordering }
 
 // --- Primitives (Level 0: Atoms) --------------------------------------
 // Each is a single-node Identity DAG -- no validation, just a base carrier.
@@ -51,18 +51,18 @@ import std.algebra { FreeMonoid, PartialFunction }
 // bindings for isolated tests. These declarations override the seed via
 // the normal merge order (kernel < imports < local).
 //
-// COMPOSITIONAL TARGET (Part B of P5.13):
-// These types will compose from algebraic structures in std/algebra.dag:
-//   Int    = OrderedRing<Word64>      — arithmetic emerges from Ring
-//   Float  = Field<Word64>            — division emerges from Field
-//   String = FreeMonoid<Char>         — concat/length emerge from Monoid
-//   Bool   = BooleanAlgebra<{T,F}>    — and/or/not emerge from Lattice
-// Until Part B lands (inference resolves methods from type fields),
-// the compiler still uses kernel_types/is_kernel_type for these.
+// COMPOSITIONAL TARGET:
+// These types still denote the same algebraic inhabitants described in
+// std/algebra.dag, but v2 now reads their method surface directly from
+// std declarations instead of rebuilding that surface inside the compiler.
 
-// Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
-// Target: Bool = BooleanAlgebra over {True, False}.
-type Bool = True | False
+type Bool {
+  meet: fn(Bool, Bool) -> Bool
+  join: fn(Bool, Bool) -> Bool
+  complement: fn(Bool) -> Bool
+  top: Bool
+  bottom: Bool
+}
 
 // Unit: terminal object (zero-field product, single inhabitant).
 type Unit
@@ -72,9 +72,24 @@ type Unit
 type Json
 type Bytes
 
-// Int, Float, String declared in std/integer.dag, std/float.dag,
-// std/string_type.dag respectively. Currently use v1-era where syntax;
-// will be rewritten as algebra.dag compositions in Part B.
+type Int {
+  add: fn(Int, Int) -> Int
+  zero: Int
+  negate: fn(Int) -> Int
+  mul: fn(Int, Int) -> Int
+  one: Int
+  compare: fn(Int, Int) -> Ordering
+}
+
+type Float {
+  add: fn(Float, Float) -> Float
+  zero: Float
+  negate: fn(Float) -> Float
+  mul: fn(Float, Float) -> Float
+  one: Float
+  reciprocal: fn(Float) -> Float
+  compare: fn(Float, Float) -> Ordering
+}
 
 // --- Char type (structural primitive) ----------------------------------
 // Unicode scalar value (U+0000 to U+10FFFF, excluding surrogates).
@@ -86,6 +101,35 @@ type Bytes
 // v2-compatible alias. The `where` constraints (brand, range) are future
 // work — the v2 parser does not support field-level where syntax yet.
 type Char = Int
+
+type String {
+  concat: fn(String, String) -> String
+  empty: String
+  length: fn(String) -> Int
+  chars: fn(String) -> List<Char>
+  split: fn(String, String) -> List<String>
+  contains: fn(String, String) -> Bool
+  starts_with: fn(String, String) -> Bool
+  ends_with: fn(String, String) -> Bool
+  trim: fn(String) -> String
+  to_lower: fn(String) -> String
+  to_upper: fn(String) -> String
+  replace: fn(String, String, String) -> String
+  substring: fn(String, Int, Int) -> String
+  to_int: fn(String) -> Int
+  to_string: fn(String) -> String
+  reverse: fn(String) -> String
+}
+
+type Tuple<first, second> {
+  first: first
+  second: second
+}
+
+// Declaration-owned placeholders for higher-order collection methods.
+// Inference substitutes these structurally from the typed callback/init args.
+type MappedElement
+type FoldAccumulator
 
 // --- Container types (parameterized) -----------------------------------
 // Each container inhabits a specific algebraic structure from which its
@@ -100,9 +144,116 @@ type Char = Int
 //   List<T>  inhabits FreeMonoid<T>     → append, empty, length, map, fold, filter
 //   Set<A>   inhabits BooleanAlgebra<A> → union, intersect, diff, member
 //   Map<K,V> inhabits PartialFunction<K,V> → lookup, insert, delete, merge
-type List<element> = FreeMonoid<element>
-type Set<element>
-type Map<key, value> = PartialFunction<key, value>
+type List<element> {
+  map: fn(List<element>, fn(element) -> MappedElement) -> List<MappedElement>
+  filter: fn(List<element>, fn(element) -> Bool) -> List<element>
+  flat_map: fn(List<element>, fn(element) -> List<MappedElement>) -> List<MappedElement>
+  fold: fn(List<element>, FoldAccumulator, fn(FoldAccumulator, element) -> FoldAccumulator) -> FoldAccumulator
+  any: fn(List<element>, fn(element) -> Bool) -> Bool
+  all: fn(List<element>, fn(element) -> Bool) -> Bool
+  count: fn(List<element>) -> Int
+  first: fn(List<element>) -> element?
+  last: fn(List<element>) -> element?
+  skip: fn(List<element>, Int) -> List<element>
+  take: fn(List<element>, Int) -> List<element>
+  sort_by: fn(List<element>, fn(element) -> Ordering) -> List<element>
+  append: fn(List<element>, element) -> List<element>
+  contains: fn(List<element>, element) -> Bool
+  enumerate: fn(List<element>) -> List<Tuple<Int, element>>
+  reverse: fn(List<element>) -> List<element>
+  concat: fn(List<element>, List<element>) -> List<element>
+  join: fn(List<element>, String) -> String
+  list_push: fn(List<element>, element) -> List<element>
+  length: fn(List<element>) -> Int
+}
+
+type Set<element> {
+  map: fn(Set<element>, fn(element) -> MappedElement) -> Set<MappedElement>
+  filter: fn(Set<element>, fn(element) -> Bool) -> Set<element>
+  flat_map: fn(Set<element>, fn(element) -> Set<MappedElement>) -> Set<MappedElement>
+  fold: fn(Set<element>, FoldAccumulator, fn(FoldAccumulator, element) -> FoldAccumulator) -> FoldAccumulator
+  any: fn(Set<element>, fn(element) -> Bool) -> Bool
+  all: fn(Set<element>, fn(element) -> Bool) -> Bool
+  count: fn(Set<element>) -> Int
+  first: fn(Set<element>) -> element?
+  last: fn(Set<element>) -> element?
+  skip: fn(Set<element>, Int) -> Set<element>
+  take: fn(Set<element>, Int) -> Set<element>
+  sort_by: fn(Set<element>, fn(element) -> Ordering) -> Set<element>
+  append: fn(Set<element>, element) -> Set<element>
+  contains: fn(Set<element>, element) -> Bool
+  enumerate: fn(Set<element>) -> Set<Tuple<Int, element>>
+  reverse: fn(Set<element>) -> Set<element>
+  concat: fn(Set<element>, Set<element>) -> Set<element>
+  join: fn(Set<element>, String) -> String
+  list_push: fn(Set<element>, element) -> Set<element>
+  length: fn(Set<element>) -> Int
+}
+
+type NonEmptyList<element> {
+  map: fn(NonEmptyList<element>, fn(element) -> MappedElement) -> NonEmptyList<MappedElement>
+  filter: fn(NonEmptyList<element>, fn(element) -> Bool) -> NonEmptyList<element>
+  flat_map: fn(NonEmptyList<element>, fn(element) -> NonEmptyList<MappedElement>) -> NonEmptyList<MappedElement>
+  fold: fn(NonEmptyList<element>, FoldAccumulator, fn(FoldAccumulator, element) -> FoldAccumulator) -> FoldAccumulator
+  any: fn(NonEmptyList<element>, fn(element) -> Bool) -> Bool
+  all: fn(NonEmptyList<element>, fn(element) -> Bool) -> Bool
+  count: fn(NonEmptyList<element>) -> Int
+  first: fn(NonEmptyList<element>) -> element?
+  last: fn(NonEmptyList<element>) -> element?
+  skip: fn(NonEmptyList<element>, Int) -> NonEmptyList<element>
+  take: fn(NonEmptyList<element>, Int) -> NonEmptyList<element>
+  sort_by: fn(NonEmptyList<element>, fn(element) -> Ordering) -> NonEmptyList<element>
+  append: fn(NonEmptyList<element>, element) -> NonEmptyList<element>
+  contains: fn(NonEmptyList<element>, element) -> Bool
+  enumerate: fn(NonEmptyList<element>) -> NonEmptyList<Tuple<Int, element>>
+  reverse: fn(NonEmptyList<element>) -> NonEmptyList<element>
+  concat: fn(NonEmptyList<element>, NonEmptyList<element>) -> NonEmptyList<element>
+  join: fn(NonEmptyList<element>, String) -> String
+  list_push: fn(NonEmptyList<element>, element) -> NonEmptyList<element>
+  length: fn(NonEmptyList<element>) -> Int
+}
+
+type NonEmptySet<element> {
+  map: fn(NonEmptySet<element>, fn(element) -> MappedElement) -> NonEmptySet<MappedElement>
+  filter: fn(NonEmptySet<element>, fn(element) -> Bool) -> NonEmptySet<element>
+  flat_map: fn(NonEmptySet<element>, fn(element) -> NonEmptySet<MappedElement>) -> NonEmptySet<MappedElement>
+  fold: fn(NonEmptySet<element>, FoldAccumulator, fn(FoldAccumulator, element) -> FoldAccumulator) -> FoldAccumulator
+  any: fn(NonEmptySet<element>, fn(element) -> Bool) -> Bool
+  all: fn(NonEmptySet<element>, fn(element) -> Bool) -> Bool
+  count: fn(NonEmptySet<element>) -> Int
+  first: fn(NonEmptySet<element>) -> element?
+  last: fn(NonEmptySet<element>) -> element?
+  skip: fn(NonEmptySet<element>, Int) -> NonEmptySet<element>
+  take: fn(NonEmptySet<element>, Int) -> NonEmptySet<element>
+  sort_by: fn(NonEmptySet<element>, fn(element) -> Ordering) -> NonEmptySet<element>
+  append: fn(NonEmptySet<element>, element) -> NonEmptySet<element>
+  contains: fn(NonEmptySet<element>, element) -> Bool
+  enumerate: fn(NonEmptySet<element>) -> NonEmptySet<Tuple<Int, element>>
+  reverse: fn(NonEmptySet<element>) -> NonEmptySet<element>
+  concat: fn(NonEmptySet<element>, NonEmptySet<element>) -> NonEmptySet<element>
+  join: fn(NonEmptySet<element>, String) -> String
+  list_push: fn(NonEmptySet<element>, element) -> NonEmptySet<element>
+  length: fn(NonEmptySet<element>) -> Int
+}
+
+type Map<key, value> {
+  get: fn(Map<key, value>, key) -> value?
+  map_get: fn(Map<key, value>, key) -> value?
+  lookup: fn(Map<key, value>, key) -> value?
+  map_insert: fn(Map<key, value>, key, value) -> Map<key, value>
+  map_merge: fn(Map<key, value>, Map<key, value>) -> Map<key, value>
+  has: fn(Map<key, value>, key) -> Bool
+  map_has: fn(Map<key, value>, key) -> Bool
+  emit_map_has: fn(Map<key, value>, key) -> Bool
+  map_contains_key: fn(Map<key, value>, key) -> Bool
+  keys: fn(Map<key, value>) -> List<key>
+  map_keys: fn(Map<key, value>) -> List<key>
+  values: fn(Map<key, value>) -> List<value>
+  map_values: fn(Map<key, value>) -> List<value>
+  with: fn(Map<key, value>, key, value) -> Map<key, value>
+  contains: fn(Map<key, value>, key) -> Bool
+  length: fn(Map<key, value>) -> Int
+}
 
 // --- Refinement types (Level 1: Subset Comprehension) -----------------
 // Each adds a Validate node to the base type's DAG:

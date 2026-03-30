@@ -716,7 +716,11 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   if has_parse_errors {
     FrontendResult { graph: none, diagnostics: parse_diagnostics }
   } else {
-    let modules = map(parse_results, p => p.module.value)
+    let parsed_modules = map(parse_results, p => p.module.value)
+    let modules = concat(
+      parsed_modules |> filter(m => m.name == "std.types"),
+      parsed_modules |> filter(m => m.name != "std.types")
+    )
     let graph = resolve_modules(modules: modules)
     FrontendResult {
       graph: Some { value: graph },

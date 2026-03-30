@@ -164,7 +164,25 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: variant_node } =>
-      match variant_node.children |> filter(c => c.name == field_name) |> first {
+      let direct_field = variant_node.children |> filter(c => c.name == field_name) |> first
+      let matched_field = match direct_field {
+        Some { value: direct } => Some { value: direct }
+        None =>
+          if field_name == "0" {
+            match variant_node.children |> first {
+              Some { value: only_child } =>
+                if variant_node.children |> count == 1 && only_child.name == "value" {
+                  Some { value: only_child }
+                } else {
+                  none
+                }
+              None => none
+            }
+          } else {
+            none
+          }
+      }
+      match matched_field {
         Some { value: field_child } =>
           let resolved = child_inferred_or_name(ch: field_child)
           node_lookup_resolved(node: resolved)

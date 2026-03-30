@@ -293,18 +293,40 @@ pub fn lookup_field_in_variant(
         )]),
         PatternSubject::PatternResolved {
             node: variant_node, ..
-        } => match {
-            let mut __result = Vec::new();
-            for c in variant_node.children.iter().cloned() {
-                if (c.name.clone() == field_name.clone()) {
-                    __result.push(c);
+        } => {
+            let direct_field = {
+                let mut __result = Vec::new();
+                for c in variant_node.children.iter().cloned() {
+                    if (c.name.clone() == field_name.clone()) {
+                        __result.push(c);
+                    }
                 }
+                __result
             }
-            __result
-        }
-        .first()
-        .cloned()
-        {
+            .first()
+            .cloned();
+            let matched_field = match direct_field.clone() {
+                Some(field_child) => Some(field_child),
+                None => {
+                    if (field_name.clone() == "0".to_string()) {
+                        match variant_node.children.first().cloned() {
+                            Some(only_child) => {
+                                if (((variant_node.children.len() as i64) == 1)
+                                    && (only_child.name.clone() == "value".to_string()))
+                                {
+                                    Some(only_child)
+                                } else {
+                                    None
+                                }
+                            }
+                            None => None,
+                        }
+                    } else {
+                        None
+                    }
+                }
+            };
+            match matched_field {
             Some(field_child) => {
                 let resolved = child_inferred_or_name(field_child.clone());
                 node_lookup_resolved(resolved.clone())
@@ -317,7 +339,8 @@ pub fn lookup_field_in_variant(
                 }),
                 module_name.clone(),
             )]),
-        },
+        }
+        }
     }
 }
 
