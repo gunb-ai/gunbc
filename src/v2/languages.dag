@@ -332,7 +332,7 @@ fn go_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
-      wrap_template: "*{0}"
+      wrap_template: "{0}"
     }
   }
 }

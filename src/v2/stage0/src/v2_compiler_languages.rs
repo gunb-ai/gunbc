@@ -240,7 +240,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
-        wrap_template: "*{0}".to_string(),
+        wrap_template: "{0}".to_string(),
     }),
 })
 }
