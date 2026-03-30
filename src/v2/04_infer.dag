@@ -170,6 +170,13 @@ type InferResult {
   diagnostics: List<ErrorNode>
 }
 
+type CallBridgeContext {
+  receiver_arg: Node
+  receiver_result: InferResult
+  receiver_type: Node
+  method_resolution: KnownMethodResolution
+}
+
 type BlockInferState {
   scope: InferScope
   diag_chunks: List<List<ErrorNode>>
@@ -1154,39 +1161,43 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
       }
-      let arg_infer_results = if call_args |> count >= 1 && sig == none {
-        // Bridge unknown calls through structural method lookup so higher-order
-        // collection methods type named callables as well as inline lambdas.
+      let call_bridge = if sig == none && call_args |> count >= 1 {
         match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = rt_type(n: first_result.typed)
-            let provisional_method_resolution = resolve_known_method_node(
+            let method_resolution = resolve_known_method_node(
               receiver: first_result.typed,
               receiver_type: first_type,
               method_name: func_name,
-              fold_accumulator_type: none,
+              fold_accumulator_type: if call_fold_info != none { Some { value: call_fold_acc_type } } else { none },
               type_env: scope.type_env,
               service_registry: scope.service_registry
             )
-            if provisional_method_resolution.result_type != none && call_args |> count >= 2 {
-              let elem_type = for_each_element_type_node(n: first_type)
-              let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, semantics: provisional_method_resolution.semantics, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
+            Some { value: CallBridgeContext { receiver_arg: first_arg, receiver_result: first_result, receiver_type: first_type, method_resolution: method_resolution } }
+          None => none
+        }
+      } else { none }
+      let arg_infer_results = if call_bridge != none {
+        match call_bridge {
+          Some { value: bridge } =>
+            if bridge.method_resolution.result_type != none && call_args |> count >= 2 {
+              let elem_type = for_each_element_type_node(n: bridge.receiver_type)
+              let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, semantics: bridge.method_resolution.semantics, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
               concat(
-                [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: first_arg), value: first_result.typed, span: first_arg.span), diagnostics: first_result.diagnostics }],
+                [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: bridge.receiver_arg), value: bridge.receiver_result.typed, span: bridge.receiver_arg.span), diagnostics: bridge.receiver_result.diagnostics }],
                 remaining_results
               )
             } else {
               concat(
-                [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: first_arg), value: first_result.typed, span: first_arg.span), diagnostics: first_result.diagnostics }],
+                [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: bridge.receiver_arg), value: bridge.receiver_result.typed, span: bridge.receiver_arg.span), diagnostics: bridge.receiver_result.diagnostics }],
                 call_method_args |> map(a =>
                   let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
                   ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
                 )
               )
             }
-          None =>
-            []
+          None => []
         }
       } else {
         // Infer each arg; for lambdas where the formal param is Callable,
@@ -1227,22 +1238,31 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         }
       } else {
         // Tier 2: try bridging to method call on first argument
-        let first_arg_type = match typed_args |> first {
-          Some { value: ta } => rt_type(n: arg_value(n: ta))
-          None => unit_type
+        let first_arg_type = match call_bridge {
+          Some { value: bridge } => bridge.receiver_type
+          None => match typed_args |> first {
+            Some { value: ta } => rt_type(n: arg_value(n: ta))
+            None => unit_type
+          }
         }
-        let method_receiver = match typed_args |> first {
-          Some { value: ta } => arg_value(n: ta)
-          None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
+        let method_receiver = match call_bridge {
+          Some { value: bridge } => bridge.receiver_result.typed
+          None => match typed_args |> first {
+            Some { value: ta } => arg_value(n: ta)
+            None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
+          }
         }
-        let method_resolution = resolve_known_method_node(
-          receiver: method_receiver,
-          receiver_type: first_arg_type,
-          method_name: func_name,
-          fold_accumulator_type: if call_fold_info != none { Some { value: call_fold_acc_type } } else { none },
-          type_env: scope.type_env,
-          service_registry: scope.service_registry
-        )
+        let method_resolution = match call_bridge {
+          Some { value: bridge } => bridge.method_resolution
+          None => resolve_known_method_node(
+            receiver: method_receiver,
+            receiver_type: first_arg_type,
+            method_name: func_name,
+            fold_accumulator_type: if call_fold_info != none { Some { value: call_fold_acc_type } } else { none },
+            type_env: scope.type_env,
+            service_registry: scope.service_registry
+          )
+        }
         let is_known_method = method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           // Known collection method -- bridge Call to MethodCall
@@ -1370,14 +1390,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // For fold: also infer init arg to type accumulator param.
       let recv_rt = rt_type(n: recv_typed)
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
-      let provisional_method_resolution = resolve_known_method_node(
-        receiver: recv_typed,
-        receiver_type: recv_rt,
-        method_name: method_name,
-        fold_accumulator_type: none,
-        type_env: scope.type_env,
-        service_registry: scope.service_registry
-      )
       // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope)
@@ -1385,9 +1397,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
       }
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, semantics: provisional_method_resolution.semantics, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
-      let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
-      let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let method_resolution = resolve_known_method_node(
         receiver: recv_typed,
         receiver_type: recv_rt,
@@ -1396,6 +1405,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         type_env: scope.type_env,
         service_registry: scope.service_registry
       )
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, semantics: method_resolution.semantics, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
+      let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
+      let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let base_result_type = match method_resolution.result_type {
         Some { value: rt } => rt
         None => recv_rt

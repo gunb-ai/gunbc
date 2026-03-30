@@ -47,7 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{source_text_at, NewlineIndex, Node};
+pub use crate::v2_std_core::{authored_name_at, source_text_at, NewlineIndex, Node};
 
 // BOOTSTRAP PERF: Fields wrapped in Rc so cloning TypeEnv is O(1).
 // The generated code clones env 173 times across 9 files; without Rc
@@ -84,17 +84,7 @@ pub fn lookup_type(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    match (node.ident_span.clone(), env.source_index.clone()) {
-        (Some(span), Some(index)) if span.file == index.file => {
-            let text = source_text_at(index.clone(), span.clone());
-            if text.is_empty() {
-                node.name.clone()
-            } else {
-                text
-            }
-        }
-        _ => node.name.clone(),
-    }
+    authored_name_at(env.source_index.clone(), node.clone())
 }
 
 pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {

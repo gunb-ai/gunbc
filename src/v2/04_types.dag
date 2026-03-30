@@ -264,7 +264,7 @@ data free_monoid_collection_templates: List<AlgebraFieldTemplate> = [
       ReceiverSelf,
       CallableOf {
         param_types: [ReceiverElement],
-        return_type: NamedTemplate { name: "Ordering" }
+        return_type: NamedTemplate { name: "MappedElement" }
       }
     ], return_type: ReceiverSelf },
   { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf },
@@ -330,7 +330,7 @@ fn nominal_type_ref(name: String) -> Node {
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
   match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
     Some { value: child } => child
-    None => placeholder_type_node(name: placeholder)
+    None => error_type
   }
 }
 
