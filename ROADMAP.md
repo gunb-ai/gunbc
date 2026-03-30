@@ -1,202 +1,15 @@
 # gunbc Roadmap
 
-## Thesis
+## Architecture (summary)
 
-### Compiler Substrate: Node and Edge
+Two substrate primitives: **Node** and **Edge**. Everything else —
+types, truth values, cardinality, product/coproduct — is compositional
+modeling in `.dag`. Languages are coercion targets. Testing is
+compilation.
 
-The compiler has two substrate primitives. Everything above them —
-including truth values, type structure, and cardinality — is
-compositional modeling in `.dag`.
-
-| Primitive | What it is |
-|-----------|-----------|
-| **Node** | The universal carrier. Identity, structure, composition. |
-| **Edge** | A directed relationship from one node to another. Edges are outgoing only — a node knows what it points to (children), never what points at it (parents). An edge either connects to a target node, or it doesn't exist. There is no "edge to nothing." |
-
-Edges are directed: parent → child. A node sees its outgoing edges
-(children) but not its incoming edges (who references it). This is the
-D in DAG. Derived properties like fan-out (how many things reference a
-binding) are computed by graph traversal, not stored on nodes. The
-pipeline walks forward — parse, resolve, infer, emit all follow edges
-in the outgoing direction.
-
-### Why Two Substrate Primitives Are Sufficient
-
-All possible states of a slot on a node:
-
-| Edge exists? | Target node exists? | Valid? | What it is |
-|---|---|---|---|
-| Yes | Yes | Valid | Slot filled — relationship holds |
-| Yes | No | **Invalid** | An edge must connect to something. Edge-to-nothing = no edge. |
-| No | (N/A) | Valid | Slot empty — no relationship |
-
-No third state. The binary distinction (exists / doesn't exist) is
-inherent in both Node and Edge — no separate truth primitive needed.
-This is why Bit and Classical logic are modeled as `.dag` types at
-Layer 0, not as compiler primitives: node existence already carries
-the binary, and `True | False` is a two-variant coproduct expressed
-as edge connectivity patterns.
-
-From Node and Edge, all structural properties emerge:
-
-**Product (AND)** — a node where all child edges connect. "A Person
-has a name AND an age" means both edges point to nodes.
-
-**Coproduct (OR)** — a node where exactly one child edge connects.
-"A Shape is Circle OR Square" means one edge points to a node.
-
-**Cardinality** — an edge that exists or doesn't. Present = connects
-to a node. Absent = no edge.
-
-**Bit / Classical logic** — modeled in `.dag` as
-`type Classical = True | False` (Layer 0 of the composition stack).
-Users write boolean values and the language has full classical logic.
-The compiler processes these structurally: a two-variant coproduct
-where the truth value is carried by which edge is active.
-
-### How This Looks in Practice
-
-Every `.dag` type is a composition of Node + Edge:
-
-```dag
-// Product: a node where all child edges connect (AND)
-type SourceSpan {
-  file: FilePath        // edge to FilePath node — connected
-  start: Int            // edge to Int node — connected
-  end: Int              // edge to Int node — connected
-}
-
-// Coproduct: a node where exactly one child edge connects (OR)
-// True and False are both nodes that exist — the distinction
-// is WHICH edge is active (edge connectivity, not a truth primitive)
-type Classical = True | False
-type Bool = True | False
-
-// Cardinality: an edge that may or may not connect
-type AccessToken {
-  token: Secret
-  scheme: AuthScheme
-  expires_at: Timestamp?          // edge connects or doesn't
-}
-
-// Recursive coproduct: edges can point back into the structure
-type Stack<T>
-  = Empty                         // terminal — no child edges
-  | Push { top: T, rest: Stack<T> }  // product inside a coproduct variant
-
-// Collection algebras: named compositions
-type List<element> = FreeMonoid<element>
-type Map<key, value> = PartialFunction<key, value>
-```
-
-The compiler sees nodes and edges — not names, not truth values, not
-product/coproduct categories. `SourceSpan` and `AccessToken` are both
-"node with three child edges" to the compiler. The structural
-difference (all-connected vs one-connected) is an edge connectivity
-pattern, not a compiler-known enum.
-
-### Current Reality: Substrate + Bridges
-
-Today the compiler has two substrate primitives and three bridges that
-should dissolve into the modeled layers:
-
-| What | Role | Status |
-|------|------|--------|
-| Node | Substrate | Keep |
-| Edge (DAG) | Substrate | Keep |
-| Conj / Disj | Bridge — `connective` enum on Node | Dissolve: 81 dispatch sites, 114 construction sites. Product/coproduct are edge connectivity patterns, not a compiler enum. |
-| Cardinality | Bridge — `return_cardinality` enum on Node | Dissolve: 38 dispatch sites, 142 construction sites. An edge connects or it doesn't. |
-| Bit / Bool | Modeled type (Layer 0) | Already correct — not a compiler primitive. Detected structurally as 2-variant coproduct (1 site). |
-
-The bridges exist because the compiler was built incrementally. The
-direction is to dissolve them: product/coproduct become edge
-connectivity patterns the compiler reads from the graph.
-Cardinality becomes edge existence. Bit is already modeled, not
-compiler-known.
-
-### Structural Principles
-
-**1. Names are opaque namespaces.**
-
-Type names (`Int`, `Map`, `List`) are human-readable labels for
-structural compositions, not compiler-meaningful identifiers. The
-compiler must not branch on node names for structural decisions.
-
-**2. Compiler errors are orthogonal to the node graph.**
-
-When inference fails, the result is not a node — it is a structurally
-distinct failure. `InferredNode = Resolved { node } | CompilerError
-{ message, span }`. Emit never sees error nodes.
-
-**3. Syntactically distinct forms for the same operation normalize
-before inference.**
-
-The pipeline has a normalization boundary between resolve and infer.
-After normalization: `Call`/`MethodCall` bridging is complete, nodes
-carry declared structural properties, and parameterized types carry
-their declared arity of children.
-
-### Decidability
-
-Every `.dag` program is decidable. Recursion, loops, and cyclic-looking
-patterns are surface syntax sugar that decomposes into bounded iteration
-over finite structure.
-
-The language provides:
-- `fold`, `map`, `filter`, `flat_map` — bounded by collection size
-- `descend` — bounded by tree depth (structural descent)
-- `repeat(bound: N)` — bounded by explicit count
-
-The language does not provide `while(true)`, unbounded `loop`, or
-unrestricted recursion. Undecidable programs are structurally
-unrepresentable, not detected and rejected.
-
-### Composition Stack
-
-| Layer | What | Built from | Location |
-|-------|------|-----------|----------|
-| 0 | Classical logic, Bit | First modeled layer above substrate | `std/logic.dag`, `std/bit.dag` |
-| 1 | Machine words (`Word32`, `Word64`) | Bit compositions | `std/bit.dag` |
-| 2 | Named types (`Int`, `String`, `Char`) | Algebraic structures over machine words | `std/integer.dag`, `std/types.dag` |
-| 3 | Collections (`List<A>`, `Set<A>`, `Map<K,V>`) | Algebraic structures with laws | `std/types.dag` |
-| 4 | Structural compositions + bounded iteration | Nodes + edges + collection algebras | `std/iteration.dag` |
-| 5 | Domain types | Compositions of Layers 0-4 | Compiler, user programs |
-
-Every layer is built from Node + Edge. Product/coproduct are not a
-layer — they are the composition mechanism itself: how nodes at any
-layer combine through edges. Layer 0 (Bit, Classical logic) is the
-first modeled composition above the substrate — the point where the
-binary distinction inherent in node/edge existence gets a name.
-
-See `docs/algebraic-type-spec.md` for the collection algebra and
-denotational model.
-
-### Guarantee Tiers
-
-| Tier | Property | How enforced | Example |
-|------|----------|-------------|---------|
-| 1 | Structurally enforced | Violations don't compile | `ExpectedToken` enum — missing match arm = Rust error |
-| 2 | Tested and gated | CI/test catches regressions | Scrambled-name tests — renamed types produce identical graph |
-| 3 | Machinery exists, not gated | Report-only, dangerous | L1 ratchet script — runs but not in CI |
-| 4 | Design exists, no machinery | Future | Parse-emit round-trip test |
-| 5 | Fundamentally limited | Can't fully prove | Semantic correctness of emitted code |
-
-All invariants should aspire to Tier 1 (unrepresentable violations).
-Tier 3 items are the most dangerous — they give the illusion of coverage
-without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
-
-### End Goal
-
-- Two substrate primitives: Node and Edge. Product/coproduct,
-  cardinality, and truth are compositional modeling above the
-  substrate, not compiler-known categories.
-- Names are opaque. Inference processes graph structure only.
-- Emit reads `LanguageSpec` + structural declarations, no hardcoded
-  target-language knowledge.
-- One shared emit walker drives all target languages.
-- All `.dag` programs are decidable by construction.
-- Ownership and complexity proofs wired into the pipeline.
-- At least one real program compiles and runs end to end.
+Full thesis: [docs/architecture.md](docs/architecture.md)
+Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
+Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
 
 ---
 
@@ -208,12 +21,12 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 |--------|-------|--------|-------|
 | .dag files | 87 | — | `dsl/` |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 0 | 0 | Green |
+| Self-compile diagnostics | 0 | 0 | Green (pipeline reports 0; bootstrap ratchet allows 3) |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | FAILS (1 diag) | 0 | `stack.dag` generic fn syntax |
-| Bootstrap ratchet | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
+| Bootstrap ratchet (`DIAG_RATCHET`) | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
 | L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
-| Complexity violations | 0 | 0 | Green |
+| Complexity violations (`COMPLEXITY_RATCHET`) | 2 | 0 | 2 DivideAndConquer functions |
 
 ### Known Invariant Violations
 
@@ -241,6 +54,88 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 
 ---
 
+## Governance
+
+### Invariant Ownership Matrix
+
+Every sustainability invariant has an owning milestone, a current
+escape hatch, and a gate. If an invariant is not in this table, it
+is not owned.
+
+| Invariant | Current escape hatch | Owning milestone | Gate |
+|---|---|---|---|
+| No duplicate representations | `node.name`, `List<String>` fact lists, stage0 hand-edits | M4 (name deletion), M5 (edge-only facts) | L1 ratchet = 0, language mentions = 0 |
+| No case enumeration for open sets | `if method == "fold"`, `if type_name == "Int"` | M2 (data-driven dispatch), M4 (name deletion) | Method dispatch sites = 0 |
+| No fallbacks that fabricate | `Dynamic` compat, `LitNull` sentinels, warning-permissive gate, `try_unwrap` clone fallback | **M2 (new sub-track)** | Zero error sentinels reaching emit, zero warning-gated semantic gaps |
+| Heuristics indicate lost structure | `concat()` in emitter, string-based type identity | M5 (coercion engine) | Zero `concat()` in emitter, zero string return types |
+| No parallel implementations | 4 source-discovery paths, stage0 hand-editable | M1 (single discovery), M2 (regen CI) | ONE discovery implementation |
+| Boundary sufficiency | `node.name` as proxy for structural facts | M4 (name deletion) | Scrambled-name tests pass, then deleted |
+| Single-authority metadata | Ratchet values in roadmap AND code | M3 (guarantee receipt) | Receipt is single authority; dashboard derived |
+
+### No-Fabrication Sub-Track (owned by M2)
+
+The "no fallbacks that fabricate" invariant has the most scattered
+debt. These are concentrated work items, not spread across other
+milestones:
+
+- [ ] Remove `Dynamic` as universal compatibility in `node_type_equals`
+- [ ] Remove `LitNull` sentinel nodes from inference (23 parser sites
+  are OK — error recovery. 14 inference/emit sites are not.)
+- [ ] Promote `access_error` / `inference_error` from Warning to Error
+  so `compile_sources` gates correctly (currently emit runs on known
+  inference gaps)
+- [ ] Remove callable-to-value fabrication in `lookup_in_scope`
+- [ ] Delete `try_unwrap` clone fallback — ownership proof or fail
+
+### Stage Boundary Contract Table
+
+Each stage boundary carries exactly the facts the next stage needs.
+If a fact is missing, the downstream stage compensates with a
+heuristic — which is an invariant violation.
+
+| Boundary | Producer → Consumer | Guarantee | Forbidden escape | Test |
+|---|---|---|---|---|
+| **Tokenize → Parse** | `List<Token>` | Every token has text + span + shape | Reading raw source in parser | Token coverage tests |
+| **Parse → Resolve** | `Node` tree with spans | Structure faithful to source, identifiers as child nodes | — | Parse smoke tests |
+| **Resolve → Infer** | `Node` tree + structural edges | Names consumed, edges produced. Scope dies here. | Reading `node.name` after resolve | Scrambled-name tests |
+| **Infer → Emit** | Typed graph (`.inferred` on every node) | No error sentinels in typed graph. Types are structural. | `Dynamic` compat, `<error:*>` strings, `LitNull` in emit input | Zero error sentinels test |
+| **Emit → Renderer** | Target-basis graph (coerced) | All patterns in target basis. No source-language concepts. | `concat()` producing target syntax, `if target == ...` | Zero language mentions in `05_emit.dag` |
+| **Renderer → Output** | `TextFile` | Valid target-language text | — | `cargo check` / `python3 -m py_compile` / `go vet` |
+
+### Forbidden Moves
+
+These are never acceptable, regardless of milestone pressure:
+
+- **No new `Map<String, X>` after resolve.** Resolver-local scope maps
+  die at the boundary. New string-keyed metadata crossing a boundary
+  is a new duplicate representation.
+- **No new fact table without a same-change consumer.** A boundary
+  fact table that no downstream stage reads in the same PR is
+  speculative metadata — delete it until the consumer exists.
+- **No new validation pass where a type change can enforce the
+  contract.** If you're writing `assert(x.is_valid())`, refactor the
+  upstream type so invalid states are unrepresentable.
+- **No new stringly metadata after resolve.** Anything that changes
+  behavior must be an edge, a closed enum, or a typed boundary fact.
+
+### Temporary Bridge Rules
+
+Every compatibility bridge names its owner, delete trigger, and latest
+milestone. "Temporary without a ratchet means permanent later."
+
+| Bridge | Owner | Delete trigger | Latest milestone |
+|---|---|---|---|
+| `connective: Conj/Disj` enum | M7 | Edge connectivity model replaces enum | M7 |
+| `return_cardinality` enum | M7 | Edge existence replaces enum | M7 |
+| `node.name: String` | M4 | `source_text_at(span)` + edges replace all reads | M4 |
+| `kernel_types: List<String>` | M4 | `List<Node>` edges to type definitions | M4 |
+| `container_types: List<String>` | M4 | `List<Node>` edges to type definitions | M4 |
+| `05_emit_rust/python/go.dag` in `src/v2/` | M5 | Moved to `dsl/extdeps/languages/` plugins | M5 |
+| `COMPLEXITY_RATCHET = 2` | M2 | Fail-closed compilation → 0 violations | M2 |
+| `DIAG_RATCHET = 3` | M2 | `dag/syntax.dag` OOM fix → 0 diagnostics | M2 |
+
+---
+
 ## Milestones
 
 ### M1: Every .dag File Compiles
@@ -248,21 +143,31 @@ without enforcement. Promoting Tier 3 to Tier 2 is always high-priority.
 **What:** Every `.dag` file in the repo compiles as a unit with zero
 diagnostics. No hardcoded file lists, no exceptions.
 
-**Gate:** `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored`
-passes.
+**Gate:** `full_dsl_compiles` scans ALL `.dag` files in the repo
+(`dsl/` AND `src/v2/`) and compiles them as a unit with 0 diagnostics.
+Currently only scans `dsl/`.
 
-**Status:** 1 diagnostic remaining.
+**Status:** 1 diagnostic remaining (`stack.dag` generic fn syntax).
 
-**Acceptance condition:** CLI, bootstrap, regeneration script, and all
-tests use the same `--source-root` / transitive-import resolution path.
-No parallel file list implementations.
+**Acceptance condition:** ONE source-discovery implementation used
+everywhere. CLI (`--source-root`), `full_dsl_compiles`, bootstrap,
+and complexity tests all use the same transitive-import resolution.
+Remove legacy `--source-dir` flag. Delete `prepare_sources` curated
+assembly. Delete manifest-based approaches (BOOTSTRAP.md still
+mentions converging on a manifest — contradicts "scan, not manifest").
 
 **Work items:**
 - [ ] Parser: support `fn foo<T>(...)` generic function syntax
   (`stack.dag` uses this; parser expects `(` but gets `<`)
 - [ ] Verify no other .dag files break once stack.dag parses
-- [ ] All test harnesses use `--source-root` discovery (no hardcoded
-  file lists in test code)
+- [ ] Unify source discovery: `full_dsl_compiles`, bootstrap
+  `prepare_sources`, and `strict_complexity_violation_count` all use
+  `--source-root` discovery. Currently 4 parallel file-list
+  implementations (CLI, full_dsl_compiles, bootstrap, complexity).
+- [ ] Add regression tests BEFORE M4/M5 work:
+  - Generic fn: `fn foo<T>(x: T) -> T` parses and compiles
+  - Single-variant enum: `type X = Y` defines coproduct, not alias
+  - `uses` binding: body can reference `fs.read()` from `uses fs`
 
 ---
 
@@ -271,16 +176,24 @@ No parallel file list implementations.
 **What:** A user can write `.dag` files and get `cargo check`-clean Rust
 output. The compiler produces correct, buildable code — not stubs.
 
-**Gate:** `gunbc compile project/ --target rust && cargo check` passes
-on regenerated stage0 and on a non-trivial user project.
+**Gate:** `gunbc compile dsl/examples/weather/ --target rust && cargo check`
+passes on the committed example project (not a subjective "non-trivial"
+claim — one specific fixture).
 
 **Depends on:** M1
 
 **Work items:**
 
+*Fail-closed decidability:*
+- [ ] Reject non-descending recursion as hard compile error (currently
+  produces `DivideAndConquer` classification, soft). `fn spin(n: n)`
+  must not compile.
+- [ ] Diagnostic: "recursive function X has no structural descent —
+  use `fold`, `descend`, or `repeat` instead"
+- [ ] CI gate: `complexity_violation_count == 0` (currently 2)
+
+
 *Container sharing (FF-8):*
-- [ ] Define `ContainerOps` type in `languages.dag` — rendering patterns
-  derived from container templates, not hardcoded
 - [ ] Change Rust container templates to shared representations
   (`Rc<Vec<{0}>>`, `Rc<HashMap<{0}, {1}>>`)
 - [ ] Update `05_emit_rust.dag` and `runtime_rust.dag` for coherence
@@ -295,13 +208,16 @@ on regenerated stage0 and on a non-trivial user project.
 
 *Bootstrap:*
 - [ ] Regenerate stage0 with `regenerate-stage0.sh`
-- [ ] Committed binary approach: stage0 source committed, CI verifies
-  regenerate + diff = empty
+- [ ] Stage0 regeneration is automated and CI-verified (regenerate +
+  diff = empty). Stage0 .rs files are derived artifacts, never
+  hand-edited — the `.dag` source is the single authority.
 - [ ] `dag/syntax.dag` inclusion without OOM
 
 *User experience:*
-- [ ] CLI: `gunbc compile --source-root ... --target rust` works for
-  arbitrary user projects (CLI exists but untested on external input)
+- [ ] Committed example project: `dsl/examples/weather/` (the
+  aspiration target from this roadmap). Gate is one exact command:
+  `gunbc compile --source-root dsl/examples/weather --target rust &&
+  cargo check`
 - [ ] Error messages: file:line:col with source context (infrastructure
   landed, needs polish for non-compiler-developer audience)
 
@@ -321,89 +237,23 @@ with mock data has a generated test.
 
 **Depends on:** M2 (working codegen baseline)
 
-#### Guarantee receipt
+Full design: [docs/testing-strategy.md](docs/testing-strategy.md)
 
-The compiler emits a JSON receipt on every run — the single authority
-for what the compilation proved, tested, and left uncertain. Markdown
-dashboards are generated FROM the receipt; they are never the source
-of truth. If a guarantee is not in the receipt, it does not exist.
-
-```json
-{
-  "source_digest": "...",
-  "compiler_digest": "...",
-  "target": "rust",
-  "discovered": {
-    "dag_files": 87, "services": 42,
-    "workflows": 9, "pure_functions": 149
-  },
-  "structural": {
-    "decidability": "proven",
-    "name_opacity": "ratcheting:70",
-    "parse_item_keyword_arms": 0
-  },
-  "gated": {
-    "all_dsl_files_parse": "pass",
-    "full_dsl_compiles": "fail:1",
-    "generated_rust_tests": "pass",
-    "edge_contract_coverage": { "covered": 812, "uncovered": 4 }
-  },
-  "report_only": {
-    "ownership_coverage": "61/149",
-    "emitted_rust_errors": 880
-  }
-}
-```
-
-#### Test generation tracks
-
-**Track 1 — Discovery gates:**
-- `all_dsl_files_parse`, `full_dsl_compiles`
-- Emitted Rust/Go/Python syntax or compile checks
-- Test freshness: regenerate → diff → empty
-
-**Track 2 — Behavioral tests by construct:**
-
-| .dag construct | Generated test | How it works | Status |
-|---|---|---|---|
-| **Service + `mock_response`** | Mock invocation test | DryRunMode, call operation, assert ok | Working — 6 syntax tests pass |
-| **Type (product/coproduct)** | Roundtrip test | Construct → serialize → deserialize → assert equal | Not yet |
-| **Pure function (`fn`)** | Property test | Type-driven input gen, assert no panics | Not yet |
-| **Workflow (`func`)** | Dry-run test | All services mocked, assert completes | Partial |
-
-**Track 3 — Edge-contract coverage:**
-For every edge in every compiled DAG, generate a producer→consumer
-harness that executes with synthesized witness values and asserts port
-cardinality, coercion, shape compatibility, and error behavior. For
-joins/splits/guards, generate cross-products across adjacent ports and
-branch outcomes. This is a natural extension of DryRun — wiring,
-cardinality, coercion, guards, branching, topological ordering.
-
-**Track 4 — Execution tiers:**
-- Tier 1 DryRun: graph wiring, cardinality, coercion, ordering
-- Tier 2 Selective Real: hermetic value correctness
-- Tier 3 Full Real: controlled integration only
-
-**Track 5 — Differential/parity:**
-Same `.dag`, same mocks, same assertion shape across Rust/Go/Python.
-
-#### Obligation-driven test selection
-
-The generator collects proof obligations per construct, discharges
-obligations the compiler already proves structurally (type
-compatibility, cardinality, acyclicity), and generates tests only for
-undischarged obligations. This avoids tautological testing — don't
-re-test what the compiler already guarantees by construction.
-
-#### What exists today
-
+**What exists today:**
 - `extract_test_projections` + `emit_operation_test` + `DryRunMode`:
   working pipeline for service mock tests, 6 syntax tests pass
+- Name invariance: 9 scrambled-name tests (6 inference + 3 emit)
+  covering Rust/Python/Go — all pass in CI
+- Parse/emit round-trip smoke test
+- Python/Go syntax validation (ast.parse, go vet structure check)
+- Ownership analysis wired into pipeline, verified by tests
+- Artifact planning wired into pipeline, verified by tests
 - `compiler_tests.rs`: reads .dag from disk (no embedded source),
   16 test functions covering tokenize/parse/compile/profile
 - `full_dsl_compiles`: discovers all .dag files by scanning `dsl/`
+- 184 tests pass, 9 ignored (expensive bootstrap/performance tests)
 
-#### Work items
+**Work items:**
 
 *Guarantee receipt:*
 - [ ] Define receipt schema as `.dag` type
@@ -420,10 +270,12 @@ re-test what the compiler already guarantees by construction.
 - [ ] Workflow dry-run tests
 - [ ] Edge-contract coverage harnesses
 
-*Ratchet promotion (Tier 3 → Tier 2):*
+*Ratchet promotion (Tier 3 → Tier 2 — ALL live ratchets):*
 - [ ] Complexity violations in CI (currently 2, target 0)
 - [ ] Emitted Rust errors in CI (currently 880, target 0)
 - [ ] Ownership coverage in CI (currently not tracked)
+- [ ] Bootstrap fixed-point in CI (currently manual)
+- [ ] Performance ratchet in CI (currently manual, 30s)
 
 *Cross-language:*
 - [ ] Python tests pass `python3 -m py_compile`
@@ -472,19 +324,35 @@ internals)
 
 ---
 
-### M5: Emitted Code Correct by Construction
+### M5: Coercion Engine + Language Plugin Extraction
 
-**What:** `LintModel` enforces emission correctness. `LanguageSpec`
-carries all target-language facts. The emitter has zero hardcoded target
-syntax.
+**What:** The compiler stops producing target syntax. `05_emit.dag`
+becomes the coercion engine. Language-specific code moves out of
+`src/v2/` into `dsl/extdeps/languages/` as coercion rule sets +
+renderers. LintModel enforces emission correctness. Zero language
+mentions in compiler core.
 
-**Gate:** No `match render_target` branches in emitter source. LintModel
-validates every emitted file.
+**Gate:** Zero `match render_target` branches. Zero language mentions
+in `src/v2/*.dag`. `05_emit_rust/python/go.dag` deleted from compiler
+core. LintModel validates every emitted file.
 
 **Depends on:** M2 (working codegen baseline), M3 (generated tests
-verify correctness)
+verify correctness), M4 (name-opaque compiler)
+
+Execution lanes: [docs/compiler-laws.md](docs/compiler-laws.md#execution-lanes)
 
 **Work items:**
+
+*Coercion engine (Lane C):*
+- [ ] `05_emit.dag` walks typed graph, matches structural patterns,
+  invokes language-declared coercion + renderer
+- [ ] Delete `05_emit_rust.dag` (4,121 lines) → `rust/coerce.dag` +
+  `rust/render.dag` in `dsl/extdeps/languages/`
+- [ ] Delete `05_emit_python.dag` (1,349 lines) → `python/coerce.dag`
+- [ ] Delete `05_emit_go.dag` (1,387 lines) → `go/coerce.dag`
+- [ ] Delete `runtime_rust.dag` → `rust/runtime.dag` extdep
+- [ ] Reconcile→emit boundary cleanup (INVARIANTS.md Root Cause A
+  debt: field access style, Rc wrapping, variant→enum mapping)
 
 *LanguageSpec completion (~11 missing fields):*
 - [ ] `statement_terminator`, `variable_declaration_keyword`
@@ -495,23 +363,19 @@ verify correctness)
 - [ ] `indentation_width`
 
 *LintModel wiring:*
-- [ ] Wire import rules into emission (rules exist in
-  `dsl/extdeps/languages/rust/lint.dag`)
-- [ ] Wire naming conventions into emission (rules exist in
-  `dsl/extdeps/languages/rust/naming.dag`)
-- [ ] Wire formatting model into emission
+- [ ] Wire import rules, naming conventions, formatting model
 
-*Backend parity:*
-- [ ] Python backend: match syntax, statement/expression, async
-- [ ] Go backend: implicit interfaces, error handling patterns
-- [ ] Cross-language test generation (Go/Python emit stub assertions
-  today)
+*Edge-only fact references (Lane D):*
+- [ ] 14 `Map<String, X>` metadata maps → structural edges
 
 *Compiler bug fixes:*
-- [ ] Optional exhaustiveness: recognize inner type variants, not just
-  `Some`/`None`
-- [ ] Single-variant enum parsing: `type X = Y` defines a coproduct,
-  not an alias
+- [ ] Optional exhaustiveness: structural, not `Some`/`None` hardcoded
+- [ ] Single-variant enum parsing
+
+*Challenge targets (design validation):*
+- [ ] Verilog `coerce.dag` + `render.dag`
+- [ ] SPICE `coerce.dag` + `render.dag`
+- [ ] English/Markdown `coerce.dag` + `render.dag`
 
 ---
 
@@ -538,7 +402,7 @@ identical graph for all `.dag` files.
 **What:** The compiler's remaining bridges (Conj/Disj, Cardinality)
 dissolve into the substrate. The compiler reads edge connectivity
 patterns from the graph instead of dispatching on enums.
-`Int = Interpret<Signed, Word64>` — named types are compositions
+`Int = OrderedRing<Word64>` — named types are compositions
 over the substrate, not compiler-known concepts.
 
 **Gate:** `connective` field removed from Node (81 dispatch + 114
@@ -561,10 +425,11 @@ remain — the compiler reads the graph.
 
 ### Committed
 
-**Decidability (LANDED).** Bounded primitives (`fold`, `descend`,
-`repeat`) in `std/iteration.dag`. Complexity analyzer: 149 functions,
-0 violations. `CostLog` for O(n log n). Structural descent detection
-for catamorphisms.
+**Decidability (primitives LANDED, fail-closed NOT YET WIRED).**
+Bounded primitives (`fold`, `descend`, `repeat`) in `std/iteration.dag`.
+Complexity analyzer: structural descent detection, `CostLog` for
+O(n log n). Known gap: `fn spin(n: n)` still compiles — fail-closed
+compilation is designed but not wired as a hard error. Owned by M2.
 
 **Compositional parser (LANDED).** `SyntaxSpec` in `languages.dag`.
 `parse_item` has 0 keyword match arms. Operator precedence, item forms,
@@ -575,13 +440,15 @@ in `syntax.dag`.
 derived from `source_text_at(span)`. Eliminates ~553 `.name` read
 sites, the name registry concept, and scrambled-name tests. See M4.
 
-**ContainerOps (DESIGNED).** Container rendering patterns derived from
-templates, not hardcoded. `ContainerOps` type with fields for every
-rendering pattern (`list_empty`, `list_iterate`, `map_wrap`, etc.).
-Each emission site calls `container_empty_list(cops)` instead of
-`concat("Rc::new(Vec::new())")`. See M2.
-
 ### Exploratory
+
+**Everything is coercion.** The unifying concept across the compiler:
+finding the minimal complete representation of a graph segment in a
+target domain. Applies at every level: stage boundaries (parse →
+resolve is coercing unresolved graph into resolved one), type
+compatibility (`Url` → `String` is coercion along the refinement
+chain), language rendering (graph → Rust/SPICE/English). See
+[docs/compiler-laws.md](docs/compiler-laws.md#backend-model-graph-coercion).
 
 **Unified Sequence (Seq\<T>).** Ordered collections (List, Stack, Queue,
 Deque) share the same algebra (FreeMonoid). The access pattern
@@ -595,18 +462,6 @@ expression walk with different composition operators (sequential:
 `add` vs `max`, parallel: `max` vs `add`). Currently `output_size`
 is an unpopulated map. Promote to `space: CostExpr` peer to `work`
 and `span`.
-
-**Fail-closed compilation.** When descent analysis cannot lower a
-recursive function to a bounded primitive, compilation should hard-fail.
-Currently produces `DivideAndConquer` classification (soft). The
-structural prevention (bounded primitives only) is the real guarantee;
-fail-closed is the safety net during transition.
-
-**Bridge dissolution.** Conj/Disj (81 dispatch sites) dissolve into
-edge connectivity patterns. Product = all edges connect. Coproduct =
-one edge connects. Cardinality (38 dispatch sites) dissolves — an edge
-connects or it doesn't. The substrate already carries all structural
-information; the bridge enums are redundant. See M7.
 
 ---
 
@@ -640,7 +495,9 @@ run on every compilation — they are not separate analysis passes.
   consumer count, not sum)
 - Produces `OwnershipDecision` per binding: `SoleOwner` (can
   `into_inner`), `SharedError` (compile error), `Unclassified` (bug)
-- **Status: fully implemented, NOT wired into pipeline or tests**
+- **Status: wired into pipeline** (`compile.dag` runs `analyze_ownership`
+  on every function, emits `SharedError` diagnostics). Verified by
+  pipeline tests. Not yet ratcheted — no coverage gate in CI.
 
 **Name invariance** (9 scrambled-name tests):
 - Compile two structurally identical programs with different names
@@ -657,19 +514,10 @@ run on every compilation — they are not separate analysis passes.
 | Name invariance | 9 scrambled-name tests | Tested (CI) | None |
 | Complexity bounds | CostExpr per function | Ratcheted (2 violations of 1169) | Want 0; need exponential cost algebra |
 | Decidability | Bounded primitives | Structural (language design) | Fail-closed not wired (general recursion still accepted) |
-| Ownership | Full analysis exists | **Not wired** | Integrate into pipeline, add tests |
+| Ownership | Full analysis in pipeline, verified by tests | Wired, not ratcheted | Add coverage ratchet, promote to CI |
 | Bootstrap stability | Fixed-point test | Tested (manual) | Promote to CI |
 | Emitted Rust quality | cargo check + ratchet | Ratcheted (880 errors) | Want 0 (M2 work) |
 | Performance | Wall-clock ratchet | Tested (manual, 30s) | Promote to CI |
-
-### Ratchet Direction
-
-Ratchets are checkpoints on the path to structural guarantees. Each
-ratchet should trend toward its target value and eventually become
-either a Tier 1 guarantee (structurally unrepresentable) or a Tier 2
-guarantee (tested and gated in CI). A ratchet that stops moving is a
-design signal — it means the current approach can't reach the target
-and the machinery needs to change.
 
 ---
 
@@ -684,7 +532,7 @@ and the machinery needs to change.
 | L1 type knowledge | 70 | 0 | `scripts/l1-ratchet.sh --check` |
 | Complexity violations | 2 | 0 | `strict_complexity_violation_count -- --ignored` |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
-| Bootstrap fixed point | PASSES | PASSES | `v2_bootstrap_fixed_point -- --ignored` |
+| Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
 
 ### CI Gates
@@ -694,7 +542,7 @@ and the machinery needs to change.
 | Unit tests | `cargo test --workspace --exclude v2-compiler-tests` | Every change |
 | Clippy | `cargo clippy --all-targets -- -D warnings` | Every change |
 | V2 compiler tests | `cargo test -p v2-compiler-tests` | Every change |
-| Scrambled-name | `cargo test -p v2-compiler-tests v2_scrambled_name_inference` | Inference changes |
+| Scrambled-name | `cargo test -p v2-compiler-tests scrambled_name` | Inference changes |
 
 ### Required Before Merge
 
@@ -703,8 +551,8 @@ Tier 3 ratchets that must pass before merging, until promoted to CI:
 ```
 scripts/l1-ratchet.sh --check                                              # L1 ≤ ratchet value
 cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored              # 0 diagnostics
-cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored # 0 diagnostics
-cargo test -p v2-compiler-tests v2_bootstrap_fixed_point -- --ignored       # stage0=stage1
+cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored # ≤ DIAG_RATCHET
+cargo test -p v2-compiler-tests bootstrap_fixed_point -- --ignored          # stage0=stage1
 ```
 
 ### Non-Consensual Testing
@@ -713,4 +561,5 @@ If a `.dag` file exists in this repo, it is tested. No opt-in, no
 hardcoded file lists, no exceptions. The test system discovers files by
 scanning the filesystem, not by reading a manifest. `full_dsl_compiles`
 is the gate: no PR merges if any `.dag` file fails to compile. See M3
-for the full test generation milestone.
+and [docs/testing-strategy.md](docs/testing-strategy.md) for the full
+test generation strategy.
