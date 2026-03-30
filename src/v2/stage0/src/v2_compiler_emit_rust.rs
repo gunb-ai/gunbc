@@ -593,7 +593,7 @@ if (kind.clone() == TypedItemKind::TypedItemTypeDef) {
                             emit_data_def(item_text.clone(), item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone(), 0, vtoe.clone(), rc_types.clone(), emit_info.clone())
 } else {
                             if (kind.clone() == TypedItemKind::TypedItemServiceDef) {
-                                emit_service_def(item.clone(), registry.clone(), env.clone())
+                                emit_service_def(item.clone(), registry.clone(), rc_types.clone(), env.clone())
 } else {
                                 if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
                                     emit_resource_def(item.clone(), env.clone())
@@ -744,23 +744,23 @@ if (accessor_impl.clone() == "".to_string()) {
 }
 }
 
-pub fn find_shared_enum_fields(children: Vec<Rc<Node>>) -> Vec<String> {
+pub fn find_shared_enum_fields(children: Vec<Rc<Node>>, env: Rc<TypeEnv>) -> Vec<String> {
     {
         let fielded = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { if ((child.children.clone().len() as i64) > 0) { __result.push(child); } } __result };
 if ((fielded.clone().len() as i64) == 0) {
             return vec![]
 }
 let first_fields = match fielded.clone().first().cloned() {
-    Some(v) => { let mut __result = Vec::new(); for f in v.children.clone().iter().cloned() { __result.push(field_init_node_name(f.clone())); } __result },
+    Some(v) => { let mut __result = Vec::new(); for f in v.children.clone().iter().cloned() { __result.push(authored_name(env.clone(), f.clone())); } __result },
     None => vec![],
 };
-{ let mut __result = Vec::new(); for fname in first_fields.clone().iter().cloned() { if { let mut __all = true; for variant in fielded.clone().iter().cloned() { if !({ let mut __found = false; for f in variant.children.clone().iter().cloned() { if (field_init_node_name(f.clone()) == fname.clone()) { __found = true; break; } } __found }) { __all = false; break; } } __all } { __result.push(fname); } } __result }
+{ let mut __result = Vec::new(); for fname in first_fields.clone().iter().cloned() { if { let mut __all = true; for variant in fielded.clone().iter().cloned() { if !({ let mut __found = false; for f in variant.children.clone().iter().cloned() { if (authored_name(env.clone(), f.clone()) == fname.clone()) { __found = true; break; } } __found }) { __all = false; break; } } __all } { __result.push(fname); } } __result }
 }
 }
 
 pub fn emit_enum_shared_accessors(name: String, children: Vec<Rc<Node>>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>, env: Rc<TypeEnv>) -> String {
     {
-        let all_shared = find_shared_enum_fields(children.clone());
+        let all_shared = find_shared_enum_fields(children.clone(), env.clone());
 if ((all_shared.clone().len() as i64) == 0) {
             return "".to_string()
 }
@@ -770,7 +770,7 @@ if ((fielded.clone().len() as i64) == 0) {
 }
 let first_fielded = fielded.clone().first().cloned().clone().unwrap();
 let shared = { let mut __result = Vec::new(); for fname in all_shared.clone().iter().cloned() { if {
-            let types = { let mut __result = Vec::new(); for variant in fielded.clone().iter().cloned() { __result.push(match { let mut __result = Vec::new(); for f in variant.children.clone().iter().cloned() { if (field_init_node_name(f.clone()) == fname.clone()) { __result.push(f); } } __result }.first().cloned() {
+            let types = { let mut __result = Vec::new(); for variant in fielded.clone().iter().cloned() { __result.push(match { let mut __result = Vec::new(); for f in variant.children.clone().iter().cloned() { if (authored_name(env.clone(), f.clone()) == fname.clone()) { __result.push(f); } } __result }.first().cloned() {
     Some(f) => emit_node_type_rc(rt_type(f.clone()), RenderTarget::Rust, rc_types.clone()),
     None => "".to_string(),
 }); } __result };
@@ -784,7 +784,7 @@ if ((shared.clone().len() as i64) == 0) {
             return "".to_string()
 }
 let accessor_fns = { let mut __result = Vec::new(); for fname in shared.clone().iter().cloned() { __result.push({
-            let ty = match { let mut __result = Vec::new(); for f in first_fielded.children.clone().iter().cloned() { if (field_init_node_name(f.clone()) == fname.clone()) { __result.push(f); } } __result }.first().cloned() {
+            let ty = match { let mut __result = Vec::new(); for f in first_fielded.children.clone().iter().cloned() { if (authored_name(env.clone(), f.clone()) == fname.clone()) { __result.push(f); } } __result }.first().cloned() {
     Some(f) => emit_node_type_rc(rt_type(f.clone()), RenderTarget::Rust, rc_types.clone()),
     None => "compile_error!(\"enum shared accessor missing field metadata\")".to_string(),
 };
@@ -3427,13 +3427,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("{
 }
 }
 
-pub fn emit_service_def(item: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, env: Rc<TypeEnv>) -> String {
+pub fn emit_service_def(item: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, rc_types: HashMap<String, bool>, env: Rc<TypeEnv>) -> String {
     {
         let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let fallback_transport = service_fallback_transport(item.clone());
 let op_children = item.children.clone();
 let struct_def = emit_service_struct(safe_name.clone(), fallback_transport.clone(), op_children.clone());
-let impl_block = emit_service_impl(safe_name.clone(), fallback_transport.clone(), op_children.clone(), registry.clone(), env.clone());
+let impl_block = emit_service_impl(safe_name.clone(), fallback_transport.clone(), op_children.clone(), registry.clone(), rc_types.clone(), env.clone());
 v2_rt::concat(v2_rt::concat(struct_def.clone(), "
 
 ".to_string()), impl_block.clone())
@@ -3493,11 +3493,11 @@ if (fields.clone() == "".to_string()) {
 }
 }
 
-pub fn emit_service_impl(name: String, transport: Rc<Node>, op_children: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, env: Rc<TypeEnv>) -> String {
+pub fn emit_service_impl(name: String, transport: Rc<Node>, op_children: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, rc_types: HashMap<String, bool>, env: Rc<TypeEnv>) -> String {
     {
         let depth = 0;
 let new_method = emit_service_new_method(name.clone(), transport.clone(), op_children.clone());
-let method_strs = { let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_operation_method(name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), env.clone())); } __result };
+let method_strs = { let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_operation_method(name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), rc_types.clone(), env.clone())); } __result };
 let all_methods = v2_rt::concat(vec![new_method.clone()], method_strs.clone());
 let methods_str = all_methods.clone().join(&"
 
@@ -3580,7 +3580,7 @@ if ((names.clone().len() as i64) == 0) {
 }
 }
 
-pub fn emit_operation_method(service_name: String, transport: Rc<Node>, op_node: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, depth: i64, env: Rc<TypeEnv>) -> String {
+pub fn emit_operation_method(service_name: String, transport: Rc<Node>, op_node: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, depth: i64, rc_types: HashMap<String, bool>, env: Rc<TypeEnv>) -> String {
     {
         let op_text = authored_name(env.clone(), op_node.clone());
 let input_params = { let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(p.name.clone(), RenderTarget::Rust), ": ".to_string()), emit_rust_param_type(param_node_type_expr(p.clone()), <HashMap<_, _>>::new()))); } __result };

@@ -808,25 +808,25 @@ fn emit_enum_from_children(name: String, type_params: String, children: List<Nod
   else { concat(enum_def, "\n", accessor_impl) }
 }
 
-fn find_shared_enum_fields(children: List<Node>) -> List<String> {
+fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
   // Only consider variants with fields (skip unit variants).
   let fielded = children |> filter(child => child.children |> count > 0)
   if fielded |> count == 0 { return [] }
   // Get field names from first fielded variant.
   let first_fields = match fielded |> first {
-    Some { value: v } => v.children |> map(f => f.name)
+    Some { value: v } => v.children |> map(f => authored_name(env: env, node: f))
     None => []
   }
   // Keep only fields that appear in ALL fielded variants.
   first_fields |> filter(fname =>
     fielded |> all(variant =>
-      variant.children |> any(f => f.name == fname)
+      variant.children |> any(f => authored_name(env: env, node: f) == fname)
     )
   )
 }
 
 fn emit_enum_shared_accessors(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
-  let all_shared = find_shared_enum_fields(children: children)
+  let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
   // Only keep fields whose type is consistent across all fielded variants.
   let fielded = children |> filter(child => child.children |> count > 0)
@@ -834,7 +834,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   let first_fielded = (fielded |> first).value
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
-      match variant.children |> filter(f => f.name == fname) |> first {
+      match variant.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
         Some { value: f } => emit_node_type_rc(n: rt_type(n: f), target: Rust, rc_types: rc_types)
         None => ""
       }
@@ -848,7 +848,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   if shared |> count == 0 { return "" }
   // For each shared field, generate an accessor method.
   let accessor_fns = shared |> map(fname =>
-    let ty = match first_fielded.children |> filter(f => f.name == fname) |> first {
+    let ty = match first_fielded.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
       Some { value: f } => emit_node_type_rc(n: rt_type(n: f), target: Rust, rc_types: rc_types)
       None => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
