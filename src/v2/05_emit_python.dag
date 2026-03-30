@@ -99,7 +99,14 @@ import v2.compiler.emit {
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
-  service_fallback_transport, effective_operation_transport
+  service_fallback_transport, effective_operation_transport,
+  AlgebraMethodTag,
+  MethodFold, MethodSortBy, MethodMap, MethodFilter,
+  MethodAny, MethodAll, MethodFlatMap, MethodGet, MethodWith,
+  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
+  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
+  MethodSkip, MethodTake, MethodAppend,
+  lookup_algebra_method
 }
 
 // =========================================================================
@@ -784,33 +791,42 @@ fn py_bridge_method_name(method_name: String) -> String {
 }
 
 fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-  let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
-  if method_name == "count" { concat("len(", recv_str, ")") }
-  else if method_name == "join" { concat(first_arg_str, ".join(", recv_str, ")") }
-  else if method_name == "split" { concat(recv_str, ".split(", first_arg_str, ")") }
-  else if method_name == "last" { concat(recv_str, "[-1] if ", recv_str, " else None") }
-  else if method_name == "first" { concat(recv_str, "[0] if ", recv_str, " else None") }
-  else if method_name == "enumerate" { concat("list(enumerate(", recv_str, "))") }
-  else if method_name == "chars" { concat("list(", recv_str, ")") }
-  else if method_name == "string_contains" { concat(first_arg_str, " in ", recv_str) }
-  else if method_name == "concat" { concat(recv_str, " + ", first_arg_str) }
-  else if method_name == "map" { concat("[", first_arg_str, "(x) for x in ", recv_str, "]") }
-  else if method_name == "filter" { concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]") }
-  else if method_name == "any" { concat("any(", first_arg_str, "(x) for x in ", recv_str, ")") }
-  else if method_name == "all" { concat("all(", first_arg_str, "(x) for x in ", recv_str, ")") }
-  else if method_name == "flat_map" { concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]") }
-  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
-  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
-  else if method_name == "fold" { concat("functools.reduce(", first_arg_str, ", ", recv_str, ")") }
-  else if method_name == "sort_by" { concat("sorted(", recv_str, ", key=", first_arg_str, ")") }
-  else if method_name == "append" { concat(recv_str, " + [", first_arg_str, "]") }
-  else {
-    // Generic bridge method: function_name(receiver, args...)
-    let function_name = py_bridge_method_name(method_name: method_name)
-    let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
-    let all_args = concat([recv_str], arg_strs)
-    concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
+  let tag = lookup_algebra_method(method_name: method_name)
+  match tag {
+    Some { value: t } => {
+      let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+      let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
+      match t {
+        MethodCount => concat("len(", recv_str, ")")
+        MethodJoin => concat(first_arg_str, ".join(", recv_str, ")")
+        MethodSplit => concat(recv_str, ".split(", first_arg_str, ")")
+        MethodLast => concat(recv_str, "[-1] if ", recv_str, " else None")
+        MethodFirst => concat(recv_str, "[0] if ", recv_str, " else None")
+        MethodEnumerate => concat("list(enumerate(", recv_str, "))")
+        MethodChars => concat("list(", recv_str, ")")
+        MethodStringContains => concat(first_arg_str, " in ", recv_str)
+        MethodConcat => concat(recv_str, " + ", first_arg_str)
+        MethodMap => concat("[", first_arg_str, "(x) for x in ", recv_str, "]")
+        MethodFilter => concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]")
+        MethodAny => concat("any(", first_arg_str, "(x) for x in ", recv_str, ")")
+        MethodAll => concat("all(", first_arg_str, "(x) for x in ", recv_str, ")")
+        MethodFlatMap => concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]")
+        MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
+        MethodTake => concat(recv_str, "[:", first_arg_str, "]")
+        MethodFold => concat("functools.reduce(", first_arg_str, ", ", recv_str, ")")
+        MethodSortBy => concat("sorted(", recv_str, ", key=", first_arg_str, ")")
+        MethodAppend => concat(recv_str, " + [", first_arg_str, "]")
+        MethodGet => concat(recv_str, ".get(", first_arg_str, ")")
+        MethodWith => concat("{**", recv_str, ", ", first_arg_str, "}")
+      }
+    }
+    None => {
+      let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+      let function_name = py_bridge_method_name(method_name: method_name)
+      let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
+      let all_args = concat([recv_str], arg_strs)
+      concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
+    }
   }
 }
 
