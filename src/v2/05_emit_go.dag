@@ -351,26 +351,27 @@ fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bo
 
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let kind = classify_typed_item(item: item)
+  let item_text = source_text_at(source: scope.source_text, span: item.span)
   if (kind == TypedItemTypeDef) {
-    emit_go_type_def_from_connective(item: item)
+    emit_go_type_def_from_connective(item: item, source: scope.source_text)
   } else if (kind == TypedItemTypeAlias) {
-    emit_go_type_alias(name: item.name, base: rt_type(n: item))
+    emit_go_type_alias(name: item_text, base: rt_type(n: item))
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_go_func_def(name: item.name, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_go_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_go_fn_def(name: item.name, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
+      emit_go_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
   } else if (kind == TypedItemDataDef) {
-    emit_go_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
+    emit_go_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   } else if (kind == TypedItemServiceDef) {
     emit_go_service_def(item: item, registry: registry)
   } else if (kind == TypedItemResourceDef) {
     emit_go_resource_def(item: item)
   } else {
-    concat("func init() { panic(\"EMIT BUG: unhandled item: ", item.name, "\") }")
+    concat("func init() { panic(\"EMIT BUG: unhandled item: ", item_text, "\") }")
   }
 }
 
@@ -378,56 +379,53 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 // Type definitions
 // =========================================================================
 
-fn emit_go_type_def_from_connective(item: Node) -> String {
+fn emit_go_type_def_from_connective(item: Node, source: String) -> String {
+  let item_text = source_text_at(source: source, span: item.span)
   let is_product = item.connective == Conj
   if is_product {
-    emit_go_struct_from_children(name: item.name, children: item.children)
+    emit_go_struct_from_children(name: item_text, children: item.children, source: source)
   } else {
-    emit_go_sum_from_children(name: item.name, children: item.children)
+    emit_go_sum_from_children(name: item_text, children: item.children, source: source)
   }
 }
 
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
 // Go struct from Conj children
-fn emit_go_struct_from_children(name: String, children: List<Node>) -> String {
+fn emit_go_struct_from_children(name: String, children: List<Node>, source: String) -> String {
   if children |> count == 0 {
     concat("type ", name, " struct{}")
   } else {
-    let field_lines = children |> map(child => emit_go_struct_field_from_child(child: child))
+    let field_lines = children |> map(child => emit_go_struct_field_from_child(child: child, source: source))
     let fields_str = field_lines |> join(separator: "\n")
     concat("type ", name, " struct {\n", fields_str, "\n}")
   }
 }
 
-fn emit_go_struct_field_from_child(child: Node) -> String {
+fn emit_go_struct_field_from_child(child: Node, source: String) -> String {
+  let child_text = source_text_at(source: source, span: child.span)
   let ty = emit_node_type(n: rt_type(n: child), target: Go)
-  let json_tag = concat(" `json:\"", to_snake(name: child.name), "\"`")
-  concat("\t", go_export_ident(name: child.name), " ", ty, json_tag)
+  let json_tag = concat(" `json:\"", to_snake(name: child_text), "\"`")
+  concat("\t", go_export_ident(name: child_text), " ", ty, json_tag)
 }
 
 // Go sum types -- interface + concrete types + type switch
-// Go has no native sum types. We model them as:
-//   - An interface with a marker method
-//   - One struct per variant
-//   - Type switch for pattern matching
-fn emit_go_sum_from_children(name: String, children: List<Node>) -> String {
+fn emit_go_sum_from_children(name: String, children: List<Node>, source: String) -> String {
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
-    // Tagged union: interface + struct per variant
     let iface = concat("type ", name, " interface {\n\tis", name, "()\n}")
-    let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, child: child))
+    let variant_structs = children |> map(child => emit_go_variant_struct(parent_name: name, child: child, source: source))
     let structs_str = variant_structs |> join(separator: "\n\n")
     concat(iface, "\n\n", structs_str)
   } else {
-    // Simple enum: iota constants
     let type_decl = concat("type ", name, " int")
     let variant_consts = children |> enumerate |> map(pair =>
       let child = pair.second
+      let child_text = source_text_at(source: source, span: child.span)
       if pair.first == 0 {
-        concat("\t", name, child.name, " ", name, " = iota")
+        concat("\t", name, child_text, " ", name, " = iota")
       } else {
-        concat("\t", name, child.name)
+        concat("\t", name, child_text)
       }
     )
     let consts_str = variant_consts |> join(separator: "\n")
@@ -435,13 +433,14 @@ fn emit_go_sum_from_children(name: String, children: List<Node>) -> String {
   }
 }
 
-fn emit_go_variant_struct(parent_name: String, child: Node) -> String {
-  let struct_name = concat(parent_name, child.name)
+fn emit_go_variant_struct(parent_name: String, child: Node, source: String) -> String {
+  let child_text = source_text_at(source: source, span: child.span)
+  let struct_name = concat(parent_name, child_text)
   let marker_method = concat("func (", struct_name, ") is", parent_name, "() {}")
   if child.children |> count == 0 {
     concat("type ", struct_name, " struct{}\n\n", marker_method)
   } else {
-    let field_lines = child.children |> map(f => emit_go_struct_field_from_child(child: f))
+    let field_lines = child.children |> map(f => emit_go_struct_field_from_child(child: f, source: source))
     let fields_str = field_lines |> join(separator: "\n")
     concat("type ", struct_name, " struct {\n", fields_str, "\n}\n\n", marker_method)
   }

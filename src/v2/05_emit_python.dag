@@ -342,26 +342,27 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 
 fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let kind = classify_typed_item(item: item)
+  let item_text = source_text_at(source: scope.source_text, span: item.span)
   if (kind == TypedItemTypeDef) {
-    emit_py_type_def_from_connective(item: item)
+    emit_py_type_def_from_connective(item: item, source: scope.source_text)
   } else if (kind == TypedItemTypeAlias) {
-    concat(item.name, " = ", emit_node_type(n: rt_type(n: item), target: Python))
+    concat(item_text, " = ", emit_node_type(n: rt_type(n: item), target: Python))
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_py_func_def(name: item.name, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_py_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_py_fn_def(name: item.name, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
+      emit_py_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
   } else if (kind == TypedItemDataDef) {
-    emit_py_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
+    emit_py_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   } else if (kind == TypedItemServiceDef) {
     emit_py_service_def(item: item, registry: registry)
   } else if (kind == TypedItemResourceDef) {
     emit_py_resource_def(item: item)
   } else {
-    concat("# unhandled node: ", item.name)
+    concat("# unhandled node: ", item_text)
   }
 }
 
@@ -374,28 +375,29 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 //   Aliases: connective=none, inferred carries the aliased type
 // =========================================================================
 
-fn emit_py_type_def_from_connective(item: Node) -> String {
+fn emit_py_type_def_from_connective(item: Node, source: String) -> String {
+  let item_text = source_text_at(source: source, span: item.span)
   let is_product = item.connective == Conj
   if is_product {
-    emit_py_dataclass_from_children(name: item.name, children: item.children)
+    emit_py_dataclass_from_children(name: item_text, children: item.children, source: source)
   } else {
-    emit_py_enum_from_children(name: item.name, children: item.children)
+    emit_py_enum_from_children(name: item_text, children: item.children, source: source)
   }
 }
 
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
-fn emit_py_dataclass_from_children(name: String, children: List<Node>) -> String {
+fn emit_py_dataclass_from_children(name: String, children: List<Node>, source: String) -> String {
   if children |> count == 0 {
     concat(py_derive_attribute(), "\nclass ", name, ":\n    pass")
   } else {
-    let field_lines = children |> map(child => emit_py_dataclass_field_from_child(child: child))
+    let field_lines = children |> map(child => emit_py_dataclass_field_from_child(child: child, source: source))
     let fields_str = field_lines |> join(separator: "\n")
     concat(py_derive_attribute(), "\nclass ", name, ":\n", fields_str)
   }
 }
 
-fn emit_py_dataclass_field_from_child(child: Node) -> String {
+fn emit_py_dataclass_field_from_child(child: Node, source: String) -> String {
   let ty = emit_node_type(n: rt_type(n: child), target: Python)
   let is_optional = rt_type(n: child).return_cardinality == CardOptional
   let default_str = if is_optional {
@@ -403,34 +405,32 @@ fn emit_py_dataclass_field_from_child(child: Node) -> String {
   } else {
     ""
   }
-  concat("    ", emit_ident(name: child.name, target: Python), ": ", ty, default_str)
+  concat("    ", emit_ident(name: source_text_at(source: source, span: child.span), target: Python), ": ", ty, default_str)
 }
 
-fn emit_py_enum_from_children(name: String, children: List<Node>) -> String {
+fn emit_py_enum_from_children(name: String, children: List<Node>, source: String) -> String {
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
-    // Tagged union: emit as a set of dataclasses + a Union type alias
-    let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child))
-    let variant_names = children |> map(child => concat(name, child.name))
+    let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child, source: source))
+    let variant_names = children |> map(child => concat(name, source_text_at(source: source, span: child.span)))
     let union_str = variant_names |> join(separator: ", ")
     let classes_str = variant_classes |> join(separator: "\n\n\n")
     concat(classes_str, "\n\n\n", name, " = Union[", union_str, "]")
   } else {
-    // Simple enum: all unit variants
     let variant_lines = children |> map(child =>
-      concat("    ", child.name, " = auto()")
+      concat("    ", source_text_at(source: source, span: child.span), " = auto()")
     )
     let variants_str = variant_lines |> join(separator: "\n")
     concat("class ", name, "(Enum):\n", variants_str)
   }
 }
 
-fn emit_py_variant_class_from_child(parent_name: String, child: Node) -> String {
-  let class_name = concat(parent_name, child.name)
+fn emit_py_variant_class_from_child(parent_name: String, child: Node, source: String) -> String {
+  let class_name = concat(parent_name, source_text_at(source: source, span: child.span))
   if child.children |> count == 0 {
     concat(py_derive_attribute(), "\nclass ", class_name, ":\n    pass")
   } else {
-    let field_lines = child.children |> map(f => emit_py_dataclass_field_from_child(child: f))
+    let field_lines = child.children |> map(f => emit_py_dataclass_field_from_child(child: f, source: source))
     let fields_str = field_lines |> join(separator: "\n")
     concat(py_derive_attribute(), "\nclass ", class_name, ":\n", fields_str)
   }
