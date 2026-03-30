@@ -47,8 +47,7 @@ import v2.std.core {
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
   CardOptional,
-  TransportKind, TransportLocal, TransportRest, TransportShell, TransportFile,
-  transport_kind
+  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport
 }
 
 import v2.compiler.artifact { RenderTarget, Python }
@@ -99,14 +98,7 @@ import v2.compiler.emit {
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
-  service_fallback_transport, effective_operation_transport,
-  AlgebraMethodTag,
-  MethodFold, MethodSortBy, MethodMap, MethodFilter,
-  MethodAny, MethodAll, MethodFlatMap, MethodGet, MethodWith,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodSkip, MethodTake, MethodAppend,
-  lookup_algebra_method
+  service_fallback_transport, effective_operation_transport
 }
 
 // =========================================================================
@@ -791,42 +783,32 @@ fn py_bridge_method_name(method_name: String) -> String {
 }
 
 fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let tag = lookup_algebra_method(method_name: method_name)
-  match tag {
-    Some { value: t } => {
-      let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-      let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
-      match t {
-        MethodCount => concat("len(", recv_str, ")")
-        MethodJoin => concat(first_arg_str, ".join(", recv_str, ")")
-        MethodSplit => concat(recv_str, ".split(", first_arg_str, ")")
-        MethodLast => concat(recv_str, "[-1] if ", recv_str, " else None")
-        MethodFirst => concat(recv_str, "[0] if ", recv_str, " else None")
-        MethodEnumerate => concat("list(enumerate(", recv_str, "))")
-        MethodChars => concat("list(", recv_str, ")")
-        MethodStringContains => concat(first_arg_str, " in ", recv_str)
-        MethodConcat => concat(recv_str, " + ", first_arg_str)
-        MethodMap => concat("[", first_arg_str, "(x) for x in ", recv_str, "]")
-        MethodFilter => concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]")
-        MethodAny => concat("any(", first_arg_str, "(x) for x in ", recv_str, ")")
-        MethodAll => concat("all(", first_arg_str, "(x) for x in ", recv_str, ")")
-        MethodFlatMap => concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]")
-        MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
-        MethodTake => concat(recv_str, "[:", first_arg_str, "]")
-        MethodFold => concat("functools.reduce(", first_arg_str, ", ", recv_str, ")")
-        MethodSortBy => concat("sorted(", recv_str, ", key=", first_arg_str, ")")
-        MethodAppend => concat(recv_str, " + [", first_arg_str, "]")
-        MethodGet => concat(recv_str, ".get(", first_arg_str, ")")
-        MethodWith => concat("{**", recv_str, ", ", first_arg_str, "}")
-      }
-    }
-    None => {
-      let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
-      let function_name = py_bridge_method_name(method_name: method_name)
-      let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
-      let all_args = concat([recv_str], arg_strs)
-      concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
-    }
+  let recv_str = emit_py_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth)
+  let first_arg_str = emit_py_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth)
+  if method_name == "count" { concat("len(", recv_str, ")") }
+  else if method_name == "join" { concat(first_arg_str, ".join(", recv_str, ")") }
+  else if method_name == "split" { concat(recv_str, ".split(", first_arg_str, ")") }
+  else if method_name == "last" { concat(recv_str, "[-1] if ", recv_str, " else None") }
+  else if method_name == "first" { concat(recv_str, "[0] if ", recv_str, " else None") }
+  else if method_name == "enumerate" { concat("list(enumerate(", recv_str, "))") }
+  else if method_name == "chars" { concat("list(", recv_str, ")") }
+  else if method_name == "string_contains" { concat(first_arg_str, " in ", recv_str) }
+  else if method_name == "concat" { concat(recv_str, " + ", first_arg_str) }
+  else if method_name == "map" { concat("[", first_arg_str, "(x) for x in ", recv_str, "]") }
+  else if method_name == "filter" { concat("[x for x in ", recv_str, " if ", first_arg_str, "(x)]") }
+  else if method_name == "any" { concat("any(", first_arg_str, "(x) for x in ", recv_str, ")") }
+  else if method_name == "all" { concat("all(", first_arg_str, "(x) for x in ", recv_str, ")") }
+  else if method_name == "flat_map" { concat("[y for x in ", recv_str, " for y in ", first_arg_str, "(x)]") }
+  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
+  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
+  else if method_name == "fold" { concat("functools.reduce(", first_arg_str, ", ", recv_str, ")") }
+  else if method_name == "sort_by" { concat("sorted(", recv_str, ", key=", first_arg_str, ")") }
+  else if method_name == "append" { concat(recv_str, " + [", first_arg_str, "]") }
+  else {
+    let function_name = py_bridge_method_name(method_name: method_name)
+    let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
+    let all_args = concat([recv_str], arg_strs)
+    concat(emit_ident(name: function_name, target: Python), "(", all_args |> join(separator: ", "), ")")
   }
 }
 
@@ -845,8 +827,9 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
-    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
-      emit_py_algebra_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
+      let mn = match method_def { Some { value: md } => md.name  None => method }
+      emit_py_algebra_method_call(method_name: mn, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     PlainMethodSemantics =>
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }
@@ -1186,18 +1169,19 @@ fn emit_py_service_def(
 }
 
 fn emit_py_service_init(transport: Node) -> String {
-  match transport_kind(t: transport) {
-    TransportRest => {
-      let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
-      let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
-      concat("def __init__(self, base_url: str", auth_param, "):\n",
-        "    self.base_url = base_url", auth_assign)
-    }
-    TransportShell => concat("def __init__(self, working_dir: str | None = None):\n",
+  if is_rest_transport(t: transport) {
+    let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
+    let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
+    concat("def __init__(self, base_url: str", auth_param, "):\n",
+      "    self.base_url = base_url", auth_assign)
+  } else if is_shell_transport(t: transport) {
+    concat("def __init__(self, working_dir: str | None = None):\n",
       "    self.working_dir = working_dir")
-    TransportFile => concat("def __init__(self, base_path: str):\n",
+  } else if is_file_transport(t: transport) {
+    concat("def __init__(self, base_path: str):\n",
       "    self.base_path = base_path")
-    TransportLocal => "def __init__(self):\n    pass"
+  } else {
+    "def __init__(self):\n    pass"
   }
 }
 
@@ -1220,12 +1204,10 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  match transport_kind(t: transport) {
-    TransportRest => emit_py_rest_call(op_name: op_name, transport: transport)
-    TransportShell => emit_py_shell_call(op_name: op_name, transport: transport)
-    TransportFile => emit_py_file_call(op_name: op_name)
-    TransportLocal => emit_py_local_call(op_name: op_name)
-  }
+  if is_rest_transport(t: transport) { emit_py_rest_call(op_name: op_name, transport: transport) }
+  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport) }
+  else if is_file_transport(t: transport) { emit_py_file_call(op_name: op_name) }
+  else { emit_py_local_call(op_name: op_name) }
 }
 
 fn emit_py_rest_call(op_name: String, transport: Node) -> String {

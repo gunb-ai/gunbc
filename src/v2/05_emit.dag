@@ -44,8 +44,7 @@ import v2.std.core {
   slice_start, slice_end,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
-  TransportKind, TransportLocal, TransportRest, TransportShell, TransportFile,
-  transport_kind,
+  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -95,37 +94,6 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 type EmitResult {
   files: List<TextFile>
   diagnostics: List<ErrorNode>
-}
-
-// =========================================================================
-// Algebra method dispatch -- shared tag enum + data table.
-//
-// Each language's renderer dispatches on AlgebraMethodTag (enum match)
-// instead of comparing method_name strings. The string-to-tag conversion
-// is centralized here: one data table, not repeated per language.
-// =========================================================================
-
-type AlgebraMethodTag
-  = MethodFold | MethodSortBy | MethodMap | MethodFilter
-  | MethodAny | MethodAll | MethodFlatMap | MethodGet | MethodWith
-  | MethodCount | MethodJoin | MethodSplit | MethodLast | MethodFirst
-  | MethodEnumerate | MethodChars | MethodStringContains | MethodConcat
-  | MethodSkip | MethodTake | MethodAppend
-
-data algebra_method_tags: Map<String, AlgebraMethodTag> = {
-  "fold": MethodFold, "sort_by": MethodSortBy,
-  "map": MethodMap, "filter": MethodFilter,
-  "any": MethodAny, "all": MethodAll,
-  "flat_map": MethodFlatMap, "get": MethodGet, "with": MethodWith,
-  "count": MethodCount, "join": MethodJoin, "split": MethodSplit,
-  "last": MethodLast, "first": MethodFirst,
-  "enumerate": MethodEnumerate, "chars": MethodChars,
-  "string_contains": MethodStringContains, "concat": MethodConcat,
-  "skip": MethodSkip, "take": MethodTake, "append": MethodAppend
-}
-
-fn lookup_algebra_method(method_name: String) -> AlgebraMethodTag? {
-  lookup(algebra_method_tags, key: method_name)
 }
 
 type BlockEmitState {
@@ -1086,27 +1054,42 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
   }
 }
 
-// Check if any operation in the service (or the service-level fallback)
-// uses a given transport kind.
-fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind: TransportKind) -> Bool {
-  let from_fallback = transport_kind(t: fallback_transport) == kind
+// Structural transport queries: check if any operation in the service
+// uses a specific transport by detecting its structural signature.
+fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_rest_transport(t: fallback_transport)
   let from_ops = op_children |> any(op =>
-    if op.transport != none { transport_kind(t: op.transport.value) == kind } else { false }
+    if op.transport != none { is_rest_transport(t: op.transport.value) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_shell_transport(t: fallback_transport)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_shell_transport(t: op.transport.value) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_file_transport(t: fallback_transport)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_file_transport(t: op.transport.value) } else { false }
   )
   from_fallback || from_ops
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.
 fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let fallback_is_rest = transport_kind(t: fallback_transport) == TransportRest
+  let fallback_is_rest = is_rest_transport(t: fallback_transport)
   let from_fallback = if fallback_is_rest {
     transport_has_auth(t: fallback_transport)
   } else { false }
   let from_ops = op_children |> any(op =>
     if op.transport != none {
       let t = op.transport.value
-      let is_rest = transport_kind(t: t) == TransportRest
-      if is_rest { transport_has_auth(t: t) } else { false }
+      if is_rest_transport(t: t) { transport_has_auth(t: t) } else { false }
     } else { false }
   )
   from_fallback || from_ops
