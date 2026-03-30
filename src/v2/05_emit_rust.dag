@@ -2787,6 +2787,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
   match field_value.expr_data {
     ExprRecordLit { parent_enum: pe } =>
       let inner_fields = field_value.children
+      let tn = record_lit_type_name(texpr: field_value)
       match tn {
         Some { value: variant_name } =>
           // Try node-based lookup first, then fall back to type_summaries
@@ -3411,7 +3412,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   let headers = transport_headers(t: transport)
   let header_lines = headers |> map(h =>
     concat("let request = request.header(\"", h.name, "\", ",
-      emit_simple_expr(expr: h.value, target: Rust), ");")
+      emit_simple_expr(expr: field_init_node_value(n: h), target: Rust), ");")
   )
   let send_line = "let response = request.send().await?;"
   let parse_line = "let result = response.json().await?;"
@@ -3426,7 +3427,7 @@ fn emit_shell_call(op_name: String, transport: Node, registry: Map<String, ItemI
     emit_ident(name: op_name, target: Rust), "\")")
   let env_entries = transport_env(t: transport)
   let env_lines = env_entries |> map(e =>
-    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: e.value, target: Rust), ")")
+    concat("    .env(\"", e.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: e), target: Rust), ")")
   )
   let wd_line = "    .current_dir(self.working_dir.as_deref().unwrap_or(\".\"))"
   let output_line = "    .output()?;"
