@@ -34,7 +34,7 @@ import v2.std.core {
   expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, make_resource_use_node, resource_use_name, resource_use_resource, make_text_part_node, make_interp_part_node,
   make_transport_node, local_transport_node,
-  TransportKind, TransportLocal, transport_kind,
+  is_local_transport,
   is_kernel_type, is_container_type,
   leaf_node, with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
@@ -637,23 +637,22 @@ fn resolve_string_part(part: StringPart, env: TypeEnv, module_name: String) -> S
 // resolved by the generic resolve_field_init loop in resolve_item_types.
 
 fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String) -> TransportResolveResult {
-  match transport_kind(t: transport) {
-    TransportLocal => TransportResolveResult { transport: transport, diagnostics: [] }
-    _ => {
-      // Generic resolution: resolve all property values and children
-      let prop_results = map(transport.properties, p =>
-        let val_result = resolve_expr_types(texpr: field_init_node_value(n: p), env: env, module_name: module_name)
-        FieldInitResolveResult { field_init: make_field_init_node(name: field_init_node_name(n: p), value: val_result.expr, span: p.span), diagnostics: val_result.diagnostics }
-      )
-      let resolved_props = map(prop_results, pr => pr.field_init)
-      let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
-      let child_results = map(transport.children, c => resolve_expr_types(texpr: c, env: env, module_name: module_name))
-      let resolved_children = map(child_results, cr => cr.expr)
-      let child_diags = flat_map(child_results, cr => cr.diagnostics)
-      TransportResolveResult {
-        transport: make_transport_node(name: transport.name, properties: resolved_props, children: resolved_children, span: transport.span),
-        diagnostics: concat(prop_diags, child_diags)
-      }
+  if is_local_transport(t: transport) {
+    TransportResolveResult { transport: transport, diagnostics: [] }
+  } else {
+    // Generic resolution: resolve all property values and children
+    let prop_results = map(transport.properties, p =>
+      let val_result = resolve_expr_types(texpr: field_init_node_value(n: p), env: env, module_name: module_name)
+      FieldInitResolveResult { field_init: make_field_init_node(name: field_init_node_name(n: p), value: val_result.expr, span: p.span), diagnostics: val_result.diagnostics }
+    )
+    let resolved_props = map(prop_results, pr => pr.field_init)
+    let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
+    let child_results = map(transport.children, c => resolve_expr_types(texpr: c, env: env, module_name: module_name))
+    let resolved_children = map(child_results, cr => cr.expr)
+    let child_diags = flat_map(child_results, cr => cr.diagnostics)
+    TransportResolveResult {
+      transport: make_transport_node(name: transport.name, properties: resolved_props, children: resolved_children, span: transport.span),
+      diagnostics: concat(prop_diags, child_diags)
     }
   }
 }

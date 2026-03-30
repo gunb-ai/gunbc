@@ -1,0 +1,28 @@
+// extdeps/transports/rest.dag -- HTTP REST transport definition
+//
+// Spec: RFC 9110 (HTTP Semantics)
+//       https://www.rfc-editor.org/rfc/rfc9110
+// Auth: RFC 7235 (HTTP/1.1 Authentication)
+//       https://www.rfc-editor.org/rfc/rfc7235
+// URI:  RFC 3986 (Uniform Resource Identifier)
+//       https://www.rfc-editor.org/rfc/rfc3986
+//
+// Configuration schema for service operations bound to REST endpoints.
+// A service operation with `transport rest { ... }` executes via
+// HTTP request to the configured endpoint.
+
+module extdeps.transports.rest
+
+// RFC 9110 Section 9: request methods.
+type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
+
+// Configuration type for REST transport bindings.
+// The parser validates transport blocks labeled "rest" against this schema.
+// Fields match HTTP semantics from RFC 9110 and RFC 7235.
+type RestTransportConfig {
+  base_url: String              // RFC 3986 absolute-URI
+  auth_token: String?           // RFC 7235 Section 4.2: credentials
+  auth_header: String?          // Header field name; default "Authorization" per RFC 7235
+  headers: Map<String, String>  // Custom request headers (RFC 9110 Section 6.3)
+  content_type: String?         // RFC 9110 Section 8.3; default "application/json"
+}

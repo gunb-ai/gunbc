@@ -47,8 +47,7 @@ import v2.std.core {
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
   CardOptional,
-  TransportKind, TransportLocal, TransportRest, TransportShell, TransportFile,
-  transport_kind
+  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport
 }
 
 import v2.compiler.artifact { RenderTarget, Python }
@@ -1186,18 +1185,19 @@ fn emit_py_service_def(
 }
 
 fn emit_py_service_init(transport: Node) -> String {
-  match transport_kind(t: transport) {
-    TransportRest => {
-      let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
-      let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
-      concat("def __init__(self, base_url: str", auth_param, "):\n",
-        "    self.base_url = base_url", auth_assign)
-    }
-    TransportShell => concat("def __init__(self, working_dir: str | None = None):\n",
+  if is_rest_transport(t: transport) {
+    let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
+    let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
+    concat("def __init__(self, base_url: str", auth_param, "):\n",
+      "    self.base_url = base_url", auth_assign)
+  } else if is_shell_transport(t: transport) {
+    concat("def __init__(self, working_dir: str | None = None):\n",
       "    self.working_dir = working_dir")
-    TransportFile => concat("def __init__(self, base_path: str):\n",
+  } else if is_file_transport(t: transport) {
+    concat("def __init__(self, base_path: str):\n",
       "    self.base_path = base_path")
-    TransportLocal => "def __init__(self):\n    pass"
+  } else {
+    "def __init__(self):\n    pass"
   }
 }
 
@@ -1220,12 +1220,10 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  match transport_kind(t: transport) {
-    TransportRest => emit_py_rest_call(op_name: op_name, transport: transport)
-    TransportShell => emit_py_shell_call(op_name: op_name, transport: transport)
-    TransportFile => emit_py_file_call(op_name: op_name)
-    TransportLocal => emit_py_local_call(op_name: op_name)
-  }
+  if is_rest_transport(t: transport) { emit_py_rest_call(op_name: op_name, transport: transport) }
+  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport) }
+  else if is_file_transport(t: transport) { emit_py_file_call(op_name: op_name) }
+  else { emit_py_local_call(op_name: op_name) }
 }
 
 fn emit_py_rest_call(op_name: String, transport: Node) -> String {
