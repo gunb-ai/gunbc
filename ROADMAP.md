@@ -23,7 +23,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
-| Bootstrap ratchet (`DIAG_RATCHET`) | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
+| Bootstrap ratchet (`DIAG_RATCHET`) | 65 | 0 | OOM resolved; 65 inference false-positives remain |
 | L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
 | Complexity violations | 0 | 0 | Green |
 
@@ -67,59 +67,64 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 
 ### M2: Users Can Compile .dag to Working Rust
 
-**Status:** Pre-work. M1 complete.
+**Status:** In progress. Decidability gate, sharing bridge-reduction, inference context done.
 **Gate:** `gunbc compile dsl/examples/weather/ --target rust && cargo check`
 
 *Fail-closed decidability:*
-- [ ] Reject non-descending recursion as hard compile error
-  (`fn spin(n: n)` must not compile)
-- [ ] Wire complexity ratchet into fail-closed gate
+- [x] Reject unchanged-argument recursion (`fn spin(n: n)` → error)
+- [x] Reject ascending-argument recursion (`fn spin(n: n+1)` → error)
+- [x] Allow proven descent (`n-1`, `n/2`, structural catamorphism)
+- [x] Wire complexity ratchet into fail-closed gate
+- [ ] Mutual recursion detection (SCC-based, not yet implemented)
 
 *Container sharing (FF-8):*
-- [ ] Add sharing strategy to LanguageSpec (wrap template, construct
-  template, which types need sharing). Rust: Rc-wrap, Go: pointer,
-  Python: reference semantics.
-- [ ] Shared emitter reads LanguageSpec sharing fields; per-language
-  emitters stop hardcoding wrap decisions
+- [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
+  (Rust: `Rc<{0}>`, Python/Go: identity — bridge-reduction, not
+  full authority dissolution)
+- [x] Shared emitter reads `wrap_shared_type()` instead of
+  hardcoding `Rc<...>` (rendering moved to spec; which-types-wrap
+  decision still name-based via `rc_types`)
+- [ ] Dissolve `rc_types` name-based wrapping authority
 - [ ] Land atomically with stage0 regeneration
 
+*Inference context (new):*
+- [x] Add `expected: Node?` parameter to `infer_expr` (41 call sites)
+- [x] ExprLambda uses `expected` for param typing (replaces
+  `infer_lambda_with_element_type` bypass for `infer_arg_with_element_type`)
+- [ ] Dissolve remaining bypass functions (`infer_lambda_with_callable_type`,
+  `infer_fold_lambda_arg`)
+
 *No-fabrication cleanup:*
-- [ ] Remove `Dynamic` as universal compatibility in `node_type_equals`
+- [x] Remove `Dynamic` as universal compatibility in `node_type_equals`
 - [ ] Remove `LitNull` sentinel from inference (14 sites; 23 parser
   sites are OK — error recovery)
-- [ ] Promote `access_error` / `inference_error` from Warning to Error
 - [ ] Remove callable-to-value fabrication in `lookup_in_scope`
 - [ ] Delete `try_unwrap` clone fallback
 
-*Codegen correctness:*
-- [ ] Primitive type lowering (`Bool` → `bool`, `Unit` → `()`)
-- [ ] Algebraic types → stdlib (`FreeMonoid<T>` → `Vec<T>`)
-- [ ] `Callable` type → `Rc<dyn Fn(...) -> T>`
-- [ ] `async fn` emission for service operations
-- [ ] Fix `uses` variable scoping (bug: parsed but never added to scope)
+*Codegen correctness (pre-existing, not new in this PR):*
+- Primitive type lowering, algebraic types, callable type, async fn
+  emission all work (confirmed, not changed by this PR)
+- [x] Fix `uses` variable scoping in emission (emit side — infer
+  side was already correct)
 - [ ] Variadic arguments (currently strict arity; should be free from
   modeling)
 
 *Bootstrap:*
-- [ ] Regenerate stage0 with `regenerate-stage0.sh`
+- [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
+- [ ] Regenerate stage0 with `regenerate-stage0.sh` (blocked by 65
+  inference false-positives: pipe-to-bare-function element type loss)
 - [ ] CI-verified regeneration (regenerate + diff = empty)
-- [ ] `dag/syntax.dag` inclusion without OOM
-- [ ] Move `compiler_tests.rs` out of stage0 into
-  `v2-compiler-tests` — stage0 becomes 100% generated, zero
-  hand-maintained files
-- [ ] `.gitattributes`: mark `src/v2/stage0/src/v2_*.rs` as
-  `linguist-generated` (collapses stage0 diffs in PRs)
 
 *User experience:*
-- [ ] `dsl/examples/weather/` committed example project
-- [ ] Error messages: file:line:col with source context
+- [x] `dsl/examples/weather/` committed example project
+- Error messages already have file:line:col (pre-existing in main.rs)
 
 **Bridges owned by M2:**
 
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
-| `COMPLEXITY_RATCHET = 2` | Fail-closed compilation → 0 violations | M2 |
-| `DIAG_RATCHET = 3` | `dag/syntax.dag` OOM fix → 0 diagnostics | M2 |
+| `COMPLEXITY_RATCHET = 0` | Fail-closed compilation → 0 violations | M2 (done — wired into pipeline) |
+| `DIAG_RATCHET = 65` | OOM resolved (FF-8); 65 inference false-positives | M2 |
 
 ---
 
@@ -152,19 +157,69 @@ works. 9 scrambled-name tests in CI. Parse/emit round-trip smoke test.
 
 ### M4: Compiler Knows Zero Type Names (L1 = 0)
 
-**Status:** L1 = 70. Depends on M2.
+**Status:** L1 = 70. Depends on M2. Two exclusive lanes.
 **Gate:** `scripts/l1-ratchet.sh --check` reports 0. Scrambled-name
 tests pass (then deleted).
 
-*D6: Delete Node.name (~553 sites):*
+**Boundary rule:** `source_text_at` answers "what text was written
+here?" for rendering and diagnostics. It must not become the
+compiler's general answer to "what does this node mean?" —
+`authored_name` is emit/diagnostic only, not semantic authority.
+
+#### Lane 1: L1 → 0 (type knowledge dissolution + FF-9)
+
+Goal: compiler reads type/algebra facts from `.dag` declarations
+instead of hardcoding them. Includes FF-9 as prerequisite.
+
+*Tier 1 — data tables → `.dag` declarations (no new infra):*
+- [ ] Move `kernel_algebra_profile` to `dsl/std/algebra.dag` data
+- [ ] Move `is_kernel_type` / `is_container_type` predicate lists
+  to `dsl/std/types.dag` data
+- [ ] Convert per-profile field builders to `.dag` functions
+
+*Tier 2 — factor `enrich_kernel_type` (modest compiler change):*
+- [ ] `enrich_kernel_type` calls `.dag` function in `std/algebra.dag`
+- [ ] Delete `intrinsic_method_index()` /
+  `runtime_bridge_method_index()`
+- [ ] ~60 string branches → structural algebra queries
+
+*Tier 3 — full structural algebra (requires FF-9):*
+- [ ] FF-9: import-driven source resolution (compiler discovers
+  modules transitively from source roots)
+- [ ] Compiler reads type declarations + algebra edges from `.dag`
+  at resolve time
+- [ ] Kernel types as algebraic compositions loaded from `std/`
+- [ ] 69 type constructor sites → 0
+- [ ] 1 type-name comparison → 0
+- [ ] CollectionKind bridge dissolves when method algebras land
+
+Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,
+`dsl/std/algebra.dag`, `dsl/std/types.dag`, `compile.dag`
+
+#### Lane 2: D6 + emit + resolve (Node.name deletion)
+
+Goal: delete `Node.name` field. Rendering uses `source_text_at`,
+resolve uses structural identity.
+
+*Emit rendering (B3 — done):*
+- [x] `authored_name` replaces `.name` in all 3 emit backends
+  (Rust/Python/Go item, type-def, service, resource, operation)
+- [x] `find_shared_enum_fields` aligned with `authored_name`
+- [ ] Narrow `TypeEnv` → `source_index: NewlineIndex?` in emit
+  helpers (reviewer: TypeEnv is too wide for rendering)
+- [ ] Migrate `param_node_name` → `authored_name` in emit
+
+*Resolve structural identity:*
+- [ ] Replace 5 pre-existing `authored_name` semantic lookups in
+  `04_resolve.dag` with structural identity (B4 scope — text
+  recovery is not semantic authority)
+- [ ] Design structural identity model for resolve phase
+
+*Node.name surface area:*
 - [x] `source_text_at` infrastructure (B0)
 - [x] Source text threaded through pipeline (B2)
 - [x] Synthetic name dissolution: tuple constants, module markers (B1)
 - [x] `extern fn` syntax deleted
-- [ ] Emit rendering reads → `source_text_at` (B3 — REVERTED: parser
-  item spans point to keyword, not identifier. Needs identifier span.)
-- [ ] Resolve type lookups → `source_text_at` (B4 — REVERTED: same
-  span issue)
 - [ ] Update 17 `make_*` helpers + 11 accessor functions
 - [ ] Update ~256 Node constructions to drop `name:`
 - [ ] Migrate synthetic node identity to structural
@@ -174,26 +229,24 @@ tests pass (then deleted).
 
 | Family | Count | Deletion point |
 |--------|-------|---------------|
-| Kernel type constants | 6 | `std/types.dag` declarations |
-| `leaf_node(name: ...)` | 68 L1 | Declaration edges |
-| Algebra method fields | ~50 | `std/algebra.dag` declarations |
+| Kernel type constants | 6 | `std/types.dag` declarations (Lane 1) |
+| `leaf_node(name: ...)` | 68 L1 | Declaration edges (Lane 1) |
+| Algebra method fields | ~50 | `std/algebra.dag` declarations (Lane 1) |
 | Tuple children | 2 | `.dag` type definition |
 | Optional skeleton | 3 | `.dag` type definition |
 | Module/import markers | 3 | Property values (B1c done) |
 | `error_type` / `none_type` | 2 | Permanent (compiler infra) |
-| Container/callable/map nodes | ~15 L1 | `.dag` declarations |
+| Container/callable/map nodes | ~15 L1 | `.dag` declarations (Lane 1) |
 
-*Method dispatch from .dag algebra:*
-- [ ] Compiler reads methods from `std/algebra.dag` Nodes
-- [ ] Delete `intrinsic_method_index()` /
-  `runtime_bridge_method_index()`
-- [ ] Kernel types as algebraic compositions
-- [ ] ~60 string branches → structural algebra queries
+Files: `05_emit*.dag`, `04_resolve.dag`, `04_env.dag`,
+`02_parse.dag`, `04_infer.dag`, `00_core.dag` (make_* helpers only —
+kernel type defs are Lane 1)
 
-*Type constructor dissolution:*
-- [ ] 69 type constructor sites → 0
-- [ ] 1 type-name comparison → 0
-- [ ] CollectionKind bridge dissolves when method algebras land
+#### Lane exclusivity
+
+Only shared file: `00_core.dag`. Lane 1 edits kernel type
+definitions/predicates. Lane 2 edits Node construction helpers.
+Different functions, no conflict.
 
 *Structural complexity facts (moved from M2 / PR #249):*
 - [ ] Replace `ComplexityClassInfo` string bags with structural
@@ -211,7 +264,7 @@ tests pass (then deleted).
 
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
-| `node.name: String` | `source_text_at` + edges replace all reads | M4 |
+| `node.name: String` | `source_text_at` + edges replace all reads | M4 (Lane 2) |
 | `kernel_types: List<String>` | `List<Node>` edges to type defs | M4 |
 | `container_types: List<String>` | `List<Node>` edges to type defs | M4 |
 | `builtin_function_registry()` | ~260 calls → method syntax | M4 |

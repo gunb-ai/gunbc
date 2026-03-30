@@ -527,6 +527,9 @@ pub fn emit_go_func_def(name: String, params: Vec<Rc<Node>>, inferred: Rc<Node>,
 let params_str = emit_go_func_params(params.clone(), uses.clone(), service_names.clone());
 let ret_type = emit_node_type(inferred.clone(), RenderTarget::Go);
 let body_scope = build_params_scope(scope.clone(), params.clone());
+let body_scope = uses.iter().fold(body_scope, |s, u| {
+    extend_scope(s, resource_use_name(u.clone()), resource_use_resource(u.clone()))
+});
 let body_str = emit_go_typed_func_body(body.clone(), registry.clone(), body_scope.clone(), 1);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func ".to_string(), go_export_ident(name.clone())), "(".to_string()), params_str.clone()), ") (".to_string()), ret_type.clone()), ", error) {
 ".to_string()), body_str.clone()), "

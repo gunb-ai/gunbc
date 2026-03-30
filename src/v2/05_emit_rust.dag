@@ -961,6 +961,9 @@ fn emit_func_def(
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, rc_types: rc_types)
   let ret_str = emit_func_inferred(inferred: inferred, rc_types: rc_types)
   let body_scope = build_params_scope(scope: scope, params: params)
+  let body_scope = fold(uses, init: body_scope, f: (s, u) =>
+    extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
+  )
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   concat(rust_visibility_prefix(), "async fn ", emit_ident(name: name, target: Rust),
     "(", params_str, ")", ret_str, " {\n",

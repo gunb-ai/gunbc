@@ -14,11 +14,12 @@
 
 module v2.compiler.complexity
 
+import std.types { SourceSpan }
 import v2.std.core {
   Node,
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprBinOp, ExprUnaryOp,
+  ExprBinOp, ExprUnaryOp, BinOpKind, Sub, Div,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach, ExprReturn,
   arg_value, arm_body, arm_guard,
   MethodSemantics, AlgebraMethodSemantics,
@@ -498,17 +499,58 @@ fn self_calls_use_non_computed_args(body: Node, func_name: String) -> Bool {
   }
 }
 
+// Check if an expression is provably descending: variable minus/divided by something.
+fn is_descending_expr(expr: Node) -> Bool {
+  match expr.expr_data {
+    ExprBinOp { op: op } =>
+      match op {
+        Sub => match binop_left(texpr: expr).expr_data { ExprVar { binding_kind: _ } => true  _ => false }
+        Div => match binop_left(texpr: expr).expr_data { ExprVar { binding_kind: _ } => true  _ => false }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Check if ANY self-call in the body has at least one arg that is
+// provably descending (param - expr or param / expr).
+fn has_arithmetic_descent(body: Node, func_name: String) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let own_ok = if expr_call_func(texpr: body) == func_name {
+        body.children |> any(arg_node => is_descending_expr(expr: arg_value(n: arg_node)))
+      } else { false }
+      if own_ok { true }
+      else { body.children |> any(c => has_arithmetic_descent(body: c, func_name: func_name)) }
+    _ => body.children |> any(c => has_arithmetic_descent(body: c, func_name: func_name))
+  }
+}
+
 fn classify_recursion_pattern(func_name: String, body: Node) -> RecursionPattern {
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
-  if path_calls <= 1 {
+  if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if is_structural_descent(body: body, func_name: func_name) {
     // Structural descent: body is match/if over input, self-calls are
     // in arms on destructured children. Total work = |tree| × per-node,
     // not k^depth. Classify as LinearRecursion (catamorphism).
     LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else {
+  } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
+  } else if self_calls_use_non_computed_args(body: body, func_name: func_name) {
+    // path_calls == 1, not structural descent, but self-call args are
+    // non-computed (plain variables like n, not n-1). This is the
+    // fn spin(n: n) pattern — non-descending. Fail-closed.
+    // Reuses the existing is_non_computed_recursive_arg walk (no new walker).
+    UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
+  } else if has_arithmetic_descent(body: body, func_name: func_name) {
+    // path_calls == 1, not structural descent, but at least one
+    // self-call arg is param - expr or param / expr. Proven descent.
+    LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else {
+    // path_calls == 1, not structural descent, no proven descent
+    // (e.g., n + 1, abs(n)). Fail-closed: non-descending.
+    UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
   }
 }
 
@@ -769,6 +811,7 @@ type ComplexityViolation {
   func_name: String
   reason: String
   summary: ComplexitySummary?
+  span: SourceSpan
 }
 
 type ComplexityReport {
@@ -1008,6 +1051,7 @@ type FuncEntry {
   name: String
   body: Node
   params: List<Node>
+  span: SourceSpan
 }
 
 // Result of get_or_compute_summary: updated table + the summary.
@@ -1493,13 +1537,15 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         ComplexityViolation {
           func_name: entry.name,
           reason: reason,
-          summary: Some { value: summary }
+          summary: Some { value: summary },
+          span: entry.span
         }
       None =>
         ComplexityViolation {
           func_name: entry.name,
           reason: "no summary computed",
-          summary: none
+          summary: none,
+          span: entry.span
         }
     }
   )

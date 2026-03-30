@@ -511,6 +511,9 @@ fn emit_go_func_def(
   let params_str = emit_go_func_params(params: params, uses: uses, service_names: service_names)
   let ret_type = emit_node_type(n: inferred, target: Go)
   let body_scope = build_params_scope(scope: scope, params: params)
+  let body_scope = fold(uses, init: body_scope, f: (s, u) =>
+    extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
+  )
   let body_str = emit_go_typed_func_body(body: body, registry: registry, scope: body_scope, depth: 1)
   concat("func ", go_export_ident(name: name), "(", params_str, ") (", ret_type, ", error) {\n",
     body_str, "\n}")
