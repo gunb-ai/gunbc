@@ -323,9 +323,29 @@ internals)
 - [x] `extern fn` syntax deleted (dead code, wrong model)
 - [ ] Update 17 `make_*` helpers + 11 accessor functions
 - [ ] Update remaining ~256 Node constructions to drop `name:`
-- [ ] Migrate synthetic node identity to structural (blocked by M4
-  type constructor dissolution — kernel types need .dag declarations)
+- [ ] Migrate synthetic node identity to structural (see audit below)
 - [ ] Delete `Node.name` field, delete scrambled-name tests
+
+*D6 blocker: Synthetic node audit.*
+Synthetic nodes = compiler-fabricated with `no_span()` / `zero_span`.
+`source_text_at` cannot recover text for them. Each family needs
+either a deletion point (becomes real .dag declaration) or a reason
+it is truly compiler-owned. Dangerous = permanent semantic authority.
+
+| Synthetic family | Count | Status | Deletion point |
+|---|---|---|---|
+| Kernel type constants (`int_type`, `string_type`, etc.) | 6 | Bridge | M4: kernel types become .dag declarations loaded from `std/types.dag` |
+| `leaf_node(name: ...)` | 68 L1 sites | Bridge | M4: type identity from declaration edges, not fabricated leaves |
+| Algebra method fields (`algebra_method_field`) | ~50 | Bridge | M4: methods read from `std/algebra.dag` declaration nodes |
+| Tuple children (`"first"`, `"second"`) | 2 | Bridge | M4: Tuple becomes .dag type definition |
+| Optional skeleton (`Some`, `None`, `value`) | 3 | Bridge | M4: Optional becomes .dag type definition |
+| Module/import markers | 3 | Bridge (B1c) | Moved to property values; structural markers deferred |
+| `error_type` / `none_type` | 2 | Compiler-owned | Permanent: error sentinels are compiler infrastructure |
+| `container_node` / `callable_node` / `map_node` | ~15 L1 | Bridge | M4: type constructors → .dag declarations |
+
+Rule: **synthetic node with zero span = red flag** that the compiler
+still needs `.name` for semantics. Acceptable only as bridge with
+clear M4 deletion point.
 
 *Method dispatch from .dag algebra:*
 - [ ] Compiler reads methods from type algebra Nodes in `std/algebra.dag`
