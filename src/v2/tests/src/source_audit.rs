@@ -367,7 +367,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn analyze_simplified_complexity(",
         "fn classify_simplified_complexity(",
         "fn complexity_dominates(",
-        "data large_complexity_report_limit: Int = 400",
+        "fn format_complexity_class(",
+        "fn format_complexity_class_inner(",
+        "fn is_class_constant(",
+        "type ComplexityClass",
         "log_factor: Bool",
         "is_unknown: Bool",
         "ExprReturn",
@@ -389,7 +392,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn analyze_simplified_complexity(",
         "pub fn classify_simplified_complexity(",
         "pub fn complexity_dominates(",
-        "pub const LARGE_COMPLEXITY_REPORT_LIMIT: usize = 400;",
+        "pub fn format_complexity_class(",
+        "pub fn format_complexity_class_inner(",
+        "pub fn is_class_constant(",
+        "pub enum ComplexityClass",
         "pub log_factor: bool,",
         "pub is_unknown: bool,",
         "ExprData::ExprReturn",
@@ -402,12 +408,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     }
 
     assert!(
-        source.contains("func_entries |> count > large_complexity_report_limit"),
-        "source complexity report should use the named large-report cutoff"
+        source.contains("func_entries |> count > report_limit"),
+        "source complexity report should use the report_limit parameter"
     );
     assert!(
-        stage0.contains("func_entries.len() > LARGE_COMPLEXITY_REPORT_LIMIT"),
-        "stage0 complexity report should use the named large-report cutoff"
+        stage0.contains("func_entries.len() > report_limit"),
+        "stage0 complexity report should use the report_limit parameter"
     );
 }
 
