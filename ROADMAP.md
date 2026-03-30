@@ -104,6 +104,11 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [ ] Regenerate stage0 with `regenerate-stage0.sh`
 - [ ] CI-verified regeneration (regenerate + diff = empty)
 - [ ] `dag/syntax.dag` inclusion without OOM
+- [ ] Move `compiler_tests.rs` out of stage0 into
+  `v2-compiler-tests` — stage0 becomes 100% generated, zero
+  hand-maintained files
+- [ ] `.gitattributes`: mark `src/v2/stage0/src/v2_*.rs` as
+  `linguist-generated` (collapses stage0 diffs in PRs)
 
 *User experience:*
 - [ ] `dsl/examples/weather/` committed example project

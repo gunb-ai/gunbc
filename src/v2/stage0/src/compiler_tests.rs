@@ -747,6 +747,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
+                use std::collections::HashMap;
                 use std::time::Instant;
 
                 let sources = self_compile_sources();
