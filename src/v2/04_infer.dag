@@ -88,7 +88,7 @@ import v2.compiler.infer_method {
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
-  is_recursive_type, lookup_type, merge_envs
+  is_recursive_type, lookup_type, lookup_type_for, merge_envs
 }
 import v2.compiler.infer_resolve {
   resolve_node, resolve_item_types,
@@ -436,7 +436,7 @@ fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
   match map_get(scope.locals, name) {
     Some { value: binding } =>
-      match lookup_type(env: scope.type_env, name: binding.resolved.name) {
+      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
         Some { value: parent } =>
           let is_coproduct = parent.connective == Disj
           if is_coproduct {
@@ -1865,8 +1865,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         let local_lookup = lookup_in_scope(locals: scope.locals, name: type_name.value)
         match local_lookup {
           Some { value: local_node } =>
-            // local_node.name is the parent type name (e.g. "Optional")
-            lookup_type(env: scope.type_env, name: local_node.name)
+            lookup_type_for(env: scope.type_env, node: local_node)
           None => None
         }
     }

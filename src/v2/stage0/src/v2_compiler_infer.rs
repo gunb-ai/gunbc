@@ -111,7 +111,7 @@ pub use crate::v2_compiler_infer_emit_info::{
     TypeSummary,
 };
 pub use crate::v2_compiler_infer_env::{
-    is_recursive_type, lookup_type, merge_envs, TypeBinding, TypeEnv,
+    is_recursive_type, lookup_type, lookup_type_for, merge_envs, TypeBinding, TypeEnv,
 };
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -537,9 +537,9 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
     match v2_rt::map_get(&scope.locals.clone(), name.clone()) {
-        Some(binding) => match lookup_type(
+        Some(binding) => match lookup_type_for(
             scope.type_env.clone(),
-            binding.resolved.clone().name.clone(),
+            binding.resolved.clone(),
         ) {
             Some(parent) => {
                 if node_is_coproduct(parent.clone()) {
@@ -3106,7 +3106,7 @@ pub fn infer_record_lit(
                             lookup_in_scope(scope.locals.clone(), type_name.clone().unwrap());
                         match local_lookup.clone() {
                             Some(local_node) => {
-                                lookup_type(scope.type_env.clone(), local_node.name.clone())
+                                lookup_type_for(scope.type_env.clone(), local_node.clone())
                             }
                             None => None,
                         }
