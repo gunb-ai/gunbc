@@ -77,7 +77,8 @@ echo "  CollectionKind:                $collection_kind_count"
 # are loaded from .dag declarations via FF-9)
 # 2026-03-29: 64→66 (D3 ExprData String dissolution + D1 dissolution)
 # 2026-03-29: 66→69 (merge from main: LintModel + FF-9 additions)
-L1_RATCHET=70
+# 2026-03-30: 70→71 (enumerate refinement uses int_type leaf)
+L1_RATCHET=71
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then

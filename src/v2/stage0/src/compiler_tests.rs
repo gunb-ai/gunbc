@@ -1103,4 +1103,47 @@ mod compiler_tests {
             .join();
         result.expect("profile_reconcile_per_module panicked");
     }
+
+    /// Memory ratchet: self-compile pipeline must not exceed peak RSS threshold.
+    /// Catches OOM regression classes (unbounded allocations, missing sharing).
+    ///
+    /// The ratchet is generous (6 GB) to avoid flaky failures from system load.
+    /// The actual peak RSS is ~2-4 GB. If this test fails, an allocation
+    /// regression has been introduced. Use profile_self_compile or
+    /// profile_reconcile_per_module to isolate which stage/module grew.
+    #[test]
+    #[ignore]
+    fn memory_ratchet() {
+        const MEMORY_RATCHET_BYTES: u64 = 6 * 1024 * 1024 * 1024; // 6 GB
+
+        let result = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let sources = self_compile_sources();
+                let rss_before = get_rss_bytes();
+
+                let _result = crate::v2_compiler_compile::compile_sources(
+                    sources,
+                    crate::v2_compiler_artifact::RenderTarget::Rust,
+                );
+
+                let rss_after = get_rss_bytes();
+
+                eprintln!("memory_ratchet: RSS before={}, after={}, delta={}",
+                    format_bytes(rss_before),
+                    format_bytes(rss_after),
+                    format_bytes(rss_after.saturating_sub(rss_before)));
+
+                assert!(
+                    rss_after < MEMORY_RATCHET_BYTES,
+                    "memory regression: peak RSS {} exceeds ratchet {}. \
+                     Run profile_self_compile or profile_reconcile_per_module to isolate.",
+                    format_bytes(rss_after),
+                    format_bytes(MEMORY_RATCHET_BYTES)
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("memory_ratchet panicked");
+    }
 }
