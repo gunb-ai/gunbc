@@ -300,23 +300,25 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget) -> S
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), source_text: "" },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
     service_registry: empty_map(),
-    item_registry: empty_map()
+    item_registry: empty_map(),
+    source_text: ""
   }
 }
 
 fn module_emit_scope(typed_module: TypedModule) -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map() },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), source_text: "" },
     func_env: typed_module.func_env,
     locals: empty_map(),
     module_name: typed_module.module.name,
     service_registry: empty_map(),
-    item_registry: typed_module.item_registry
+    item_registry: typed_module.item_registry,
+    source_text: ""
   }
 }
 
