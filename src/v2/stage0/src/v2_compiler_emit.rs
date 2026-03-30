@@ -63,7 +63,7 @@ pub use crate::v2_std_core::{
     lambda_body, lambda_param_names, leaf_node, let_binding_name, let_body, let_value,
     local_transport_node, match_arm_nodes, match_scrutinee, module_imports, module_items,
     node_has_structure, node_is_coproduct, node_is_product, operation_modifier_name,
-    param_node_default_value, param_node_type_expr, record_lit_type_name,
+    param_node_default_value, param_node_name, param_node_type_expr, record_lit_type_name,
     return_value, transport_has_auth, unaryop_operand, with_required_cardinality, BinOpKind,
     authored_name_at, Connective, DeclaredFuncSig, ErrorNode, ExprData, InferredNode, LiteralValue,
     NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
@@ -582,7 +582,6 @@ pub fn order_typed_call_args(
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
                 None => args.clone(),
                 Some(sig) => {
-                    let si = scope.type_env.source_index.clone();
                     let arg_map = args.clone().iter().cloned().fold(
                         <HashMap<String, Rc<Node>>>::new(),
                         |acc: _, arg: Rc<Node>| {
@@ -600,14 +599,14 @@ pub fn order_typed_call_args(
                     let param_name_set = sig.params.clone().iter().cloned().fold(
                         <HashMap<String, bool>>::new(),
                         |acc: _, param: Rc<Node>| {
-                            v2_rt::map_insert(acc.clone(), authored_name_at(si.clone(), param.clone()), true)
+                            v2_rt::map_insert(acc.clone(), param_node_name(param.clone()), true)
                         },
                     );
                     let ordered = {
                         let mut __result = Vec::new();
                         for param in sig.params.clone().iter().cloned() {
                             __result.extend(
-                                match v2_rt::map_get(&arg_map, authored_name_at(si.clone(), param.clone())) {
+                                match v2_rt::map_get(&arg_map, param_node_name(param.clone())) {
                                     Some(arg) => vec![arg.clone()],
                                     None => vec![],
                                 },
