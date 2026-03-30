@@ -358,6 +358,30 @@ fn map_index_emits_lookup_style_rust() {
 }
 
 #[test]
+fn rust_container_ops_emit_rc_sharing_bridges() {
+    let source = "module test_ff8\nfn empty_registry() -> Map<String, Int> { empty_map() }\nfn keys(m: Map<String, Int>) -> List<String> { map_keys(m) }\nfn values(m: Map<String, Int>) -> List<Int> { map_values(m) }\nfn prefix(xs: List<Int>) -> List<Int> { xs |> take(3) }\nfn append_one(xs: List<Int>) -> List<Int> { xs |> append(42) }\n";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_ff8.rs");
+    assert!(
+        content.contains("v2_rt::rc_empty_map::<"),
+        "empty_map should lower through the Rc runtime bridge: {content}"
+    );
+    assert!(
+        content.contains("Rc::new(v2_rt::map_keys("),
+        "map_keys should wrap its list result in Rc: {content}"
+    );
+    assert!(
+        content.contains("Rc::new(v2_rt::map_values("),
+        "map_values should wrap its list result in Rc: {content}"
+    );
+    assert!(
+        content.contains("v2_rt::rc_list_push("),
+        "append/list_push should lower through the Rc runtime bridge: {content}"
+    );
+}
+
+#[test]
 fn optional_alias_field_access() {
     let source = "module test\ndata USER: String? = \"admin\"\nfn get_user() -> String {\n  USER\n}\n";
     let result = compile_dag(source);
@@ -2059,26 +2083,26 @@ fn rust_primitive_float_lowers_to_f64() {
 }
 
 #[test]
-fn rust_list_type_lowers_to_vec() {
+fn rust_list_type_lowers_to_rc_vec() {
     let source = "module test_list_lower\n\ntype Batch {\n  items: List<Int>\n  names: List<String>\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_list_lower.rs");
-    assert!(content.contains("Vec<"), "List should lower to Vec in Rust, got: {}", content);
+    assert!(content.contains("Rc<Vec<"), "List should lower to Rc<Vec<...>> in Rust, got: {}", content);
     assert!(!content.contains("List<"), "Raw List<> should not appear in Rust output, got: {}", content);
 }
 
 #[test]
-fn rust_map_type_lowers_to_btreemap_or_hashmap() {
+fn rust_map_type_lowers_to_rc_hashmap() {
     let source = "module test_map_lower\n\ntype Registry {\n  entries: Map<String, Int>\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_map_lower.rs");
     assert!(
-        content.contains("BTreeMap<") || content.contains("HashMap<"),
-        "Map should lower to BTreeMap or HashMap in Rust, got: {}", content
+        content.contains("Rc<HashMap<"),
+        "Map should lower to Rc<HashMap<...>> in Rust, got: {}", content
     );
-    // "Map<" without a leading letter (to exclude "HashMap<" and "BTreeMap<")
+    // "Map<" without a leading letter (to exclude "HashMap<" and "Rc<HashMap<")
     let has_raw_map = content.lines().any(|line| {
         if let Some(pos) = line.find("Map<") {
             pos == 0 || !line.as_bytes()[pos - 1].is_ascii_alphabetic()

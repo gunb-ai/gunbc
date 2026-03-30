@@ -1666,8 +1666,69 @@ pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> bool
     v2_rt::map_contains_key(&RT_REF_MAP_FUNCTIONS, function_name.clone())
 }
 
-pub fn rust_runtime_bridge_wraps_result_in_rc(function_name: String, receiver: Rc<Node>, scope: Rc<InferScope>) -> bool {
+pub fn rust_runtime_bridge_name(function_name: String) -> String {
+    match function_name.as_str() {
+        "empty_map" => "rc_empty_map".to_string(),
+        "index_by" => "rc_index_by".to_string(),
+        "list_concat" => "rc_list_concat".to_string(),
+        "list_push" => "rc_list_push".to_string(),
+        "map_insert" => "rc_map_insert".to_string(),
+        "map_merge" => "rc_map_merge".to_string(),
+        _ => function_name,
+    }
+}
+
+pub fn rust_empty_map_value_type_str(map_type: Rc<Node>, rc_types: HashMap<String, bool>) -> String {
+    match map_type
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(1)
+        .collect::<Vec<_>>()
+        .first()
+        .cloned()
+    {
+        Some(value_type) => {
+            let rendered = emit_node_type_rc(value_type.clone(), RenderTarget::Rust, rc_types.clone());
+            if rendered.is_empty() { "_".to_string() } else { rendered }
+        }
+        None => "_".to_string(),
+    }
+}
+
+pub fn rust_runtime_bridge_wraps_optional_result_in_rc(function_name: String, receiver: Rc<Node>, scope: Rc<InferScope>) -> bool {
     (((function_name.clone() == "map_get".to_string()) || (function_name.clone() == "lookup".to_string())) && rust_lookup_receiver_needs_rc_wrap(receiver.clone(), scope.clone()))
+}
+
+pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> bool {
+    function_name == "map_keys".to_string() || function_name == "map_values".to_string()
+}
+
+pub fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: Option<Rc<InferredNode>>) -> bool {
+    if function_name != "map_values".to_string() {
+        return false;
+    }
+    match result_type.as_deref().cloned() {
+        Some(InferredNode::Resolved { node: ret_type, .. }) => {
+            let resolved_ret = with_required_cardinality(ret_type.clone());
+            let elem_type = for_each_element_type_node(resolved_ret.clone());
+            type_needs_rc(elem_type.clone())
+        }
+        _ => false,
+    }
+}
+
+pub fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, result_type: Option<Rc<InferredNode>>) -> String {
+    if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
+        if rust_runtime_bridge_collection_result_needs_rc_elements(function_name.clone(), result_type.clone()) {
+            format!("Rc::new(({}).into_iter().map(Rc::new).collect::<Vec<_>>())", call_str)
+        } else {
+            format!("Rc::new({})", call_str)
+        }
+    } else {
+        call_str
+    }
 }
 
 pub fn emit_rust_expr_var(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
@@ -1871,54 +1932,51 @@ pub fn is_map_typed_expr(texpr: Rc<Node>) -> bool {
 }
 
 pub fn emit_typed_call_expr(func: String, args: Vec<Rc<Node>>, inferred: Option<Rc<InferredNode>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
-    {
-        let call_str = if (func.clone() == "empty_map".to_string()) {
-            match inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: ret_type, .. }) => {
-                let resolved_ret = ret_type.clone();
-let type_str = emit_node_type_rc(resolved_ret.clone(), RenderTarget::Rust, rc_types.clone());
-if ((type_str.clone() != "".to_string()) && (type_str.clone() != "Dynamic".to_string())) {
-                    v2_rt::concat(v2_rt::concat("<".to_string(), type_str.clone()), ">::new()".to_string())
-} else {
+    let call_str = if func == "empty_map".to_string() {
+        match inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: ret_type, .. }) => {
+                let value_type_str = rust_empty_map_value_type_str(ret_type.clone(), rc_types.clone());
+                if value_type_str.is_empty() {
                     "compile_error!(\"empty_map requires a concrete result type\")".to_string()
-}
-},
-    _ => "compile_error!(\"empty_map missing resolved return type\")".to_string(),
-}
-} else {
-            emit_typed_call(func.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
-};
-let fallback_lookup_wrap = if (func.clone() == "lookup".to_string()) {
-            {
-                let base_check = match args.clone().first().cloned() {
-    Some(receiver_arg) => rust_lookup_receiver_needs_rc_wrap(arg_value(receiver_arg.clone()), scope.clone()),
-    None => false,
-};
-if base_check.clone() {
-                    true
-} else {
-                    match inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: ret_type, .. }) => {
-                        let resolved_ret = ret_type.clone();
-if node_is_optional(resolved_ret.clone()) {
-                            type_needs_rc(with_required_cardinality(resolved_ret.clone()))
-} else {
-                            false
-}
-},
-    _ => false,
-}
-}
-}
-} else {
-            false
-};
-if fallback_lookup_wrap.clone() {
-            v2_rt::concat(call_str.clone(), ".map(Rc::new)".to_string())
-} else {
-            call_str.clone()
-}
-}
+                } else {
+                    format!("v2_rt::rc_empty_map::<{}>()", value_type_str)
+                }
+            }
+            _ => "compile_error!(\"empty_map missing resolved return type\")".to_string(),
+        }
+    } else {
+        emit_typed_call(func.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
+    };
+
+    let fallback_lookup_wrap = if func == "lookup".to_string() {
+        let base_check = match args.clone().first().cloned() {
+            Some(receiver_arg) => rust_lookup_receiver_needs_rc_wrap(arg_value(receiver_arg.clone()), scope.clone()),
+            None => false,
+        };
+        if base_check {
+            true
+        } else {
+            match inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: ret_type, .. }) => {
+                    if node_is_optional(ret_type.clone()) {
+                        type_needs_rc(with_required_cardinality(ret_type.clone()))
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            }
+        }
+    } else {
+        false
+    };
+
+    let wrapped_call = rust_wrap_runtime_collection_result(call_str.clone(), func.clone(), inferred.clone());
+    if fallback_lookup_wrap {
+        format!("{}.map(Rc::new)", wrapped_call)
+    } else {
+        wrapped_call
+    }
 }
 
 pub fn emit_typed_call(func: String, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
@@ -2036,8 +2094,9 @@ v2_rt::concat(resource_args.clone(), service_args.clone())
 };
 let all_args = v2_rt::concat(arg_strs.clone(), extra_args.clone());
 let args_str = all_args.clone().join(&", ".to_string());
+let runtime_name = rust_runtime_bridge_name(func.clone());
 let func_name = if is_rt.clone() {
-            v2_rt::concat("v2_rt::".to_string(), emit_ident(func.clone(), RenderTarget::Rust))
+            v2_rt::concat("v2_rt::".to_string(), emit_ident(runtime_name.clone(), RenderTarget::Rust))
 } else {
             emit_ident(func.clone(), RenderTarget::Rust)
 };
@@ -2124,22 +2183,25 @@ continue;
 }
 
 pub fn emit_typed_for_each(variable: String, collection: Rc<Node>, body: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
-    {
-        let coll_str = emit_typed_expr(collection.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
-let elem_type = for_each_element_type_node(rt_type(collection.clone()));
-let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type.clone());
-let body_str = emit_typed_expr(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 2), vtoe.clone(), rc_types.clone(), emit_info.clone());
-let ind1 = make_indent((depth.clone() + 1));
-let ind2 = make_indent((depth.clone() + 2));
-let ind0 = make_indent(depth.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{
-".to_string(), ind1.clone()), "let mut __collect = Vec::new();
-".to_string()), ind1.clone()), "for ".to_string()), emit_ident(variable.clone(), RenderTarget::Rust)), " in ".to_string()), coll_str.clone()), ".iter().cloned() {
-".to_string()), ind2.clone()), "__collect.push(".to_string()), body_str.clone()), ");
-".to_string()), ind1.clone()), "}
-".to_string()), ind1.clone()), "__collect
-".to_string()), ind0.clone()), "}".to_string())
-}
+    let coll_str = emit_typed_expr(collection.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
+    let elem_type = for_each_element_type_node(rt_type(collection.clone()));
+    let body_scope = extend_scope(scope.clone(), variable.clone(), elem_type.clone());
+    let body_str = emit_typed_expr(body.clone(), registry.clone(), body_scope.clone(), depth.clone() + 2, vtoe.clone(), rc_types.clone(), emit_info.clone());
+    let ind1 = make_indent(depth.clone() + 1);
+    let ind2 = make_indent(depth.clone() + 2);
+    let ind0 = make_indent(depth.clone());
+    format!(
+        "{{\n{}let mut __collect = Vec::new();\n{}for {} in {}.iter().cloned() {{\n{}__collect.push({});\n{}}}\n{}Rc::new(__collect)\n{}}}",
+        ind1,
+        ind1,
+        emit_ident(variable.clone(), RenderTarget::Rust),
+        coll_str,
+        ind2,
+        body_str,
+        ind1,
+        ind1,
+        ind0
+    )
 }
 
 pub fn emit_typed_index(base: Rc<Node>, index: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
@@ -2300,10 +2362,10 @@ let acc_has_unit_child = ({ let mut __found = false; for c in acc_type_node.chil
 let init_str = match args.clone().first().cloned() {
     Some(init_arg) => match (*arg_value(init_arg.clone()).expr_data.clone()).clone() {
     ExprData::ExprCall { .. } => { let init_func = expr_call_func(arg_value(init_arg.clone())); if ((((init_func.clone() == "empty_map".to_string()) && (acc_type_str.clone() != "_".to_string())) && (acc_type_str.clone() != "Dynamic".to_string())) && !acc_has_unit_child.clone()) {
-                v2_rt::concat(v2_rt::concat("<".to_string(), acc_type_str.clone()), ">::new()".to_string())
+                format!("v2_rt::rc_empty_map::<{}>()", rust_empty_map_value_type_str(acc_type_node.clone(), rc_types.clone()))
 } else {
                 if (init_func.clone() == "empty_map".to_string()) {
-                    "<HashMap<String, _>>::new()".to_string()
+                    "v2_rt::rc_empty_map::<_>()".to_string()
 } else {
                     emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
 }
@@ -2448,7 +2510,7 @@ if needs_rc.clone() {
 }
 }
 
-pub fn emit_rust_generic_method_call(method_name: String, receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
+pub fn emit_rust_generic_method_call(method_name: String, receiver: Rc<Node>, args: Vec<Rc<Node>>, result_type: Option<Rc<InferredNode>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     let function_name = method_name.clone();
     let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
         v2_rt::concat("&".to_string(), emit_typed_expr_base(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone()))
@@ -2457,16 +2519,13 @@ pub fn emit_rust_generic_method_call(method_name: String, receiver: Rc<Node>, ar
     };
     let arg_strs = { let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_cloned_arg(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())); } __result };
     let all_strs = v2_rt::concat(vec![recv_str.clone()], arg_strs.clone());
-    let rc_bridged = if ((function_name.clone() == "list_push".to_string()) || (function_name.clone() == "list_concat".to_string()) || (function_name.clone() == "map_insert".to_string()) || (function_name.clone() == "map_merge".to_string()) || (function_name.clone() == "index_by".to_string())) {
-        v2_rt::concat("rc_".to_string(), emit_ident(function_name.clone(), RenderTarget::Rust))
+    let runtime_name = rust_runtime_bridge_name(function_name.clone());
+    let lowered = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::".to_string(), emit_ident(runtime_name.clone(), RenderTarget::Rust)), "(".to_string()), all_strs.clone().join(&", ".to_string())), ")".to_string());
+    let wrapped = rust_wrap_runtime_collection_result(lowered.clone(), function_name.clone(), result_type.clone());
+    if rust_runtime_bridge_wraps_optional_result_in_rc(function_name.clone(), receiver.clone(), scope.clone()) {
+        v2_rt::concat(wrapped.clone(), ".map(Rc::new)".to_string())
     } else {
-        emit_ident(function_name.clone(), RenderTarget::Rust)
-    };
-    let lowered = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::".to_string(), rc_bridged.clone()), "(".to_string()), all_strs.clone().join(&", ".to_string())), ")".to_string());
-    if rust_runtime_bridge_wraps_result_in_rc(function_name.clone(), receiver.clone(), scope.clone()) {
-        v2_rt::concat(lowered.clone(), ".map(Rc::new)".to_string())
-    } else {
-        lowered.clone()
+        wrapped.clone()
     }
 }
 
@@ -2545,7 +2604,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(var_name.c
         let first_arg_str = emit_typed_first_arg(args.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone());
         v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("v2_rt::rc_list_push(".to_string(), recv_str.clone()), ", ".to_string()), first_arg_str.clone()), ")".to_string())
     } else {
-        emit_rust_generic_method_call(method_name.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
+        emit_rust_generic_method_call(method_name.clone(), receiver.clone(), args.clone(), result_type.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
     }
 },
     MethodSemantics::PlainMethodSemantics => {
@@ -3752,7 +3811,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 ".to_string(), "    ".to_string()), rust_visibility_prefix()), "static ref ".to_string()), upper_name.clone()), ": ".to_string()), ty_str.clone()), " = {
 ".to_string()), "        let mut __m = HashMap::new();
 ".to_string()), inserts_str.clone()), "
-".to_string()), "        __m
+".to_string()), "        Rc::new(__m)
 ".to_string()), "    };
 ".to_string()), "}".to_string())
 },

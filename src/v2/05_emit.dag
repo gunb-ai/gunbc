@@ -44,6 +44,7 @@ import v2.std.core {
   slice_start, slice_end,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
+  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -120,7 +121,6 @@ type TypedItemKind
   | TypedItemDataDef
   | TypedItemServiceDef
   | TypedItemResourceDef
-  | TypedItemExternFunc
   | TypedItemUnhandled
 
 
@@ -1053,25 +1053,42 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
   }
 }
 
-// Check if any operation in the service (or the service-level fallback)
-// uses a given transport kind by name.
-fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind_name: String) -> Bool {
-  let from_fallback = fallback_transport.name == kind_name
+// Structural transport queries: check if any operation in the service
+// uses a specific transport by detecting its structural signature.
+fn service_has_rest(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_rest_transport(t: fallback_transport)
   let from_ops = op_children |> any(op =>
-    if op.transport != none { op.transport.value.name == kind_name } else { false }
+    if op.transport != none { is_rest_transport(t: op.transport.value) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+fn service_has_shell(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_shell_transport(t: fallback_transport)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_shell_transport(t: op.transport.value) } else { false }
+  )
+  from_fallback || from_ops
+}
+
+fn service_has_file(fallback_transport: Node, op_children: List<Node>) -> Bool {
+  let from_fallback = is_file_transport(t: fallback_transport)
+  let from_ops = op_children |> any(op =>
+    if op.transport != none { is_file_transport(t: op.transport.value) } else { false }
   )
   from_fallback || from_ops
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.
 fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = if fallback_transport.name == "rest" {
+  let fallback_is_rest = is_rest_transport(t: fallback_transport)
+  let from_fallback = if fallback_is_rest {
     transport_has_auth(t: fallback_transport)
   } else { false }
   let from_ops = op_children |> any(op =>
     if op.transport != none {
       let t = op.transport.value
-      if t.name == "rest" { transport_has_auth(t: t) } else { false }
+      if is_rest_transport(t: t) { transport_has_auth(t: t) } else { false }
     } else { false }
   )
   from_fallback || from_ops
@@ -1126,8 +1143,6 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     // Bare parameterized type declaration (e.g., type List<element>).
     // These are type-system declarations and intentionally emit no runtime code.
     TypedItemTypeDecl
-  } else if item.params |> count > 0 {
-    TypedItemExternFunc
   } else {
     TypedItemUnhandled
   }

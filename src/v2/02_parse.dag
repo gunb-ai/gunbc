@@ -3048,45 +3048,6 @@ fn parse_data_after_kw(tokens: List<Token>, state: ParserState, start_span: Sour
 }
 
 // =========================================================================
-// Extern declaration: extern fn name(params) -> Type
-// =========================================================================
-
-fn parse_extern_decl(tokens: List<Token>, state: ParserState) -> ItemResult {
-  let start_span = current_span(tokens: tokens, state: state)
-  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let r = expect(tokens: tokens, state: state, expected: ExpectKeyword { text: "extern" })
-  if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
-  parse_extern_after_kw(tokens: tokens, state: r.state, start_span: start_span)
-}
-
-fn parse_extern_after_kw(tokens: List<Token>, state: ParserState, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-
-  // Expect "fn" or "func" after extern
-  let extern_kw = peek_keyword_text(tokens: tokens, state: state)
-  if extern_kw == "fn" || extern_kw == "func" {
-    let adv = advance(tokens: tokens, state: state)
-    let r2 = expect_ident(tokens: tokens, state: adv.state)
-    if has_err(err: r2.err) { return ItemResult { item: dummy, state: r2.state, err: r2.err } }
-    let name = r2.name
-    let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    let r3 = parse_params(tokens: tokens, state: r2.state)
-    if has_err(err: r3.err) { return ItemResult { item: named_dummy, state: r3.state, err: r3.err } }
-    let ret = parse_optional_inferred(tokens: tokens, state: r3.state)
-    if has_err(err: ret.err) { return ItemResult { item: named_dummy, state: ret.state, err: ret.err } }
-    let inferred = if ret.inferred != none { ret.inferred } else { Some { value: Resolved { node: leaf_type_node(name: "Unit", span: start_span) } } }
-    let item = Node { name: name, span: start_span, children: [], params: r3.params,
-      inferred: inferred, return_cardinality: Required, uses: [],
-      body: none, connective: NoConnective, transport: none,
-      properties: [], type_annotation: none,
-      is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    ItemResult { item: item, state: skip_newlines(tokens: tokens, state: ret.state), err: none }
-  } else {
-    ItemResult { item: dummy, state: state, err: Some { value: parse_error(msg: "expected fn or func after extern", span: current_span(tokens: tokens, state: state)) } }
-  }
-}
-
-// =========================================================================
 // 13. parse_params: (name: Type, name2: Type)
 // =========================================================================
 
