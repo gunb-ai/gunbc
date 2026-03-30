@@ -96,37 +96,6 @@ type EmitResult {
   diagnostics: List<ErrorNode>
 }
 
-// =========================================================================
-// Algebra method dispatch -- shared tag enum + data table.
-//
-// Each language's renderer dispatches on AlgebraMethodTag (enum match)
-// instead of comparing method_name strings. The string-to-tag conversion
-// is centralized here: one data table, not repeated per language.
-// =========================================================================
-
-type AlgebraMethodTag
-  = MethodFold | MethodSortBy | MethodMap | MethodFilter
-  | MethodAny | MethodAll | MethodFlatMap | MethodGet | MethodWith
-  | MethodCount | MethodJoin | MethodSplit | MethodLast | MethodFirst
-  | MethodEnumerate | MethodChars | MethodStringContains | MethodConcat
-  | MethodSkip | MethodTake | MethodAppend
-
-data algebra_method_tags: Map<String, AlgebraMethodTag> = {
-  "fold": MethodFold, "sort_by": MethodSortBy,
-  "map": MethodMap, "filter": MethodFilter,
-  "any": MethodAny, "all": MethodAll,
-  "flat_map": MethodFlatMap, "get": MethodGet, "with": MethodWith,
-  "count": MethodCount, "join": MethodJoin, "split": MethodSplit,
-  "last": MethodLast, "first": MethodFirst,
-  "enumerate": MethodEnumerate, "chars": MethodChars,
-  "string_contains": MethodStringContains, "concat": MethodConcat,
-  "skip": MethodSkip, "take": MethodTake, "append": MethodAppend
-}
-
-fn lookup_algebra_method(method_name: String) -> AlgebraMethodTag? {
-  lookup(algebra_method_tags, key: method_name)
-}
-
 type BlockEmitState {
   text: List<String>
   scope: InferScope

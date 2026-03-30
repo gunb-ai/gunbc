@@ -250,6 +250,26 @@ fn lookup_field_in_product(product: Node, method_name: String) -> Node? {
   }
 }
 
+// Return the method field NODE itself (not just its return type).
+// This is the method definition — carries name, type signature, and
+// structural properties. Used as method_def in AlgebraMethodSemantics.
+fn lookup_method_field_in_product(product: Node, method_name: String) -> Node? {
+  let matching = product.children |> filter(c => c.name == method_name)
+  matching |> first
+}
+
+fn lookup_method_def(receiver_type: Node, method_name: String) -> Node? {
+  let is_product = receiver_type.connective == Conj
+  if is_product {
+    lookup_method_field_in_product(product: receiver_type, method_name: method_name)
+  } else {
+    let enriched = enrich_kernel_type(name: receiver_type.name, base: receiver_type)
+    if enriched.connective == Conj && enriched.children |> count > 0 {
+      lookup_method_field_in_product(product: enriched, method_name: method_name)
+    } else { none }
+  }
+}
+
 fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
   // First: check the receiver's own structural fields (Conj product).
   let is_product = receiver_type.connective == Conj
@@ -367,9 +387,11 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
     Some { value: result_type } =>
-      // Method found structurally — carry the method name for emit lookup.
-      // No enum reclassification. Emit uses per-language rendering tables.
-      let semantics = AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type }
+      // Method found structurally — carry the method definition node.
+      // The method_def is the algebra field node (from the enriched type).
+      // It carries the method's name, type signature, and structural properties.
+      let method_field = lookup_method_def(receiver_type: receiver_type, method_name: method_name)
+      let semantics = AlgebraMethodSemantics { method_def: method_field, fold_accumulator_type: fold_accumulator_type }
       // Substitute algebra field return types with concrete receiver types.
       // refine_collection_result_type further specializes map/flat_map/fold
       // at the call site using typed callback args.

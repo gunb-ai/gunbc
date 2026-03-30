@@ -119,14 +119,7 @@ import v2.compiler.emit {
   service_fallback_transport, effective_operation_transport,
   service_has_rest, service_has_shell, service_has_file,
   service_has_rest_auth,
-  extract_modifier_names,
-  AlgebraMethodTag,
-  MethodFold, MethodSortBy, MethodMap, MethodFilter,
-  MethodAny, MethodAll, MethodFlatMap, MethodGet, MethodWith,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodSkip, MethodTake, MethodAppend,
-  lookup_algebra_method
+  extract_modifier_names
 }
 
 fn type_variable_node(id: String) -> Node {
@@ -2471,41 +2464,75 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", emit_ident(name: method, target: Rust), "(", args_str, ").await?")
     }
-    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type } => {
-      let tag = lookup_algebra_method(method_name: method_name)
-      match tag {
-        Some { value: t } => {
-          let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          match t {
-            MethodFold => emit_rust_fold_method_call(fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodSortBy => emit_rust_sort_by_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodMap => emit_rust_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodFilter => emit_rust_filter_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodAny => emit_rust_any_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodAll => emit_rust_all_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodFlatMap => emit_rust_flat_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodGet => emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodWith => emit_rust_with_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            MethodCount => concat("(", recv_str, ".len() as i64)")
-            MethodJoin => concat(recv_str, ".join(&", first_arg_str, ")")
-            MethodSplit => concat(recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
-            MethodLast => concat(recv_str, ".last().cloned()")
-            MethodFirst => concat(recv_str, ".first().cloned()")
-            MethodEnumerate => concat(recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
-            MethodChars => concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
-            MethodStringContains => concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
-            MethodConcat => {
-              let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-              let all_arg_strs = concat([recv_str], arg_strs)
-              emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
-            }
-            MethodSkip => concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
-            MethodTake => concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
-            MethodAppend => concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
-          }
-        }
-        None => emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type } => {
+      // Read method identity from the definition node.
+      // BRIDGE: reads method_def.name until Lane C provides per-method
+      // rendering from language extdeps keyed by the definition node.
+      let method_name = match method_def { Some { value: md } => md.name  None => method }
+      if method_name == "fold" {
+        emit_rust_fold_method_call(fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "sort_by" {
+        emit_rust_sort_by_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "map" {
+        emit_rust_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "filter" {
+        emit_rust_filter_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "any" {
+        emit_rust_any_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "all" {
+        emit_rust_all_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "flat_map" {
+        emit_rust_flat_map_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "get" {
+        emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "with" {
+        emit_rust_with_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      } else if method_name == "count" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat("(", recv_str, ".len() as i64)")
+      } else if method_name == "join" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".join(&", first_arg_str, ")")
+      } else if method_name == "split" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
+      } else if method_name == "last" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".last().cloned()")
+      } else if method_name == "first" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".first().cloned()")
+      } else if method_name == "enumerate" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
+      } else if method_name == "chars" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
+      } else if method_name == "string_contains" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat("v2_rt::string_contains(", recv_str, ", ", first_arg_str, ")")
+      } else if method_name == "concat" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
+        let all_arg_strs = concat([recv_str], arg_strs)
+        emit_nested_rt_concat(remaining: all_arg_strs, acc: "", rc_types: rc_types)
+      } else if method_name == "skip" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
+      } else if method_name == "take" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
+      } else if method_name == "append" {
+        let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+        concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
+      } else {
+        emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       }
     }
     PlainMethodSemantics =>

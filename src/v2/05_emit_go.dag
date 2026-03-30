@@ -109,14 +109,7 @@ import v2.compiler.emit {
   extract_test_projections,
   is_tco_eligible, emit_shared_tco_expr,
   tco_reassign_core,
-  service_fallback_transport, effective_operation_transport,
-  AlgebraMethodTag,
-  MethodFold, MethodSortBy, MethodMap, MethodFilter,
-  MethodAny, MethodAll, MethodFlatMap, MethodGet, MethodWith,
-  MethodCount, MethodJoin, MethodSplit, MethodLast, MethodFirst,
-  MethodEnumerate, MethodChars, MethodStringContains, MethodConcat,
-  MethodSkip, MethodTake, MethodAppend,
-  lookup_algebra_method
+  service_fallback_transport, effective_operation_transport
 }
 // =========================================================================
 // Go language facts -- from std.languages spec (go_language, go_literals)
@@ -813,43 +806,33 @@ fn go_bridge_method_name(method_name: String) -> String {
 }
 
 fn emit_go_algebra_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let tag = lookup_algebra_method(method_name: method_name)
-  match tag {
-    Some { value: t } => {
-      let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
-      let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
-      match t {
-        MethodCount => concat("len(", recv_str, ")")
-        MethodJoin => concat("strings.Join(", recv_str, ", ", first_arg_str, ")")
-        MethodSplit => concat("strings.Split(", recv_str, ", ", first_arg_str, ")")
-        MethodLast => concat(recv_str, "[len(", recv_str, ")-1]")
-        MethodFirst => concat(recv_str, "[0]")
-        MethodEnumerate => recv_str
-        MethodChars => concat("strings.Split(", recv_str, ", \"\")")
-        MethodStringContains => concat("strings.Contains(", recv_str, ", ", first_arg_str, ")")
-        MethodConcat => concat("append(", recv_str, ", ", first_arg_str, "...)")
-        MethodMap => concat("v2rt.Map(", recv_str, ", ", first_arg_str, ")")
-        MethodFilter => concat("v2rt.Filter(", recv_str, ", ", first_arg_str, ")")
-        MethodAny => concat("v2rt.Any(", recv_str, ", ", first_arg_str, ")")
-        MethodAll => concat("v2rt.All(", recv_str, ", ", first_arg_str, ")")
-        MethodFlatMap => concat("v2rt.FlatMap(", recv_str, ", ", first_arg_str, ")")
-        MethodSkip => concat(recv_str, "[", first_arg_str, ":]")
-        MethodTake => concat(recv_str, "[:", first_arg_str, "]")
-        MethodFold => concat("v2rt.Fold(", recv_str, ", ", first_arg_str, ")")
-        MethodSortBy => concat("v2rt.SortBy(", recv_str, ", ", first_arg_str, ")")
-        MethodAppend => concat("append(", recv_str, ", ", first_arg_str, ")")
-        MethodGet => concat(recv_str, "[", first_arg_str, "]")
-        MethodWith => concat("v2rt.MapWith(", recv_str, ", ", first_arg_str, ")")
-      }
-    }
-    None => {
-      let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
-      let go_name = go_bridge_method_name(method_name: method_name)
-      let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0))
-      let all_args = concat([recv_str], arg_strs)
-      let args_str = all_args |> join(separator: ", ")
-      concat("v2rt.", go_name, "(", args_str, ")")
-    }
+  let recv_str = emit_go_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: 0)
+  let first_arg_str = emit_go_typed_first_arg(args: args, registry: registry, scope: scope)
+  if method_name == "count" { concat("len(", recv_str, ")") }
+  else if method_name == "join" { concat("strings.Join(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "split" { concat("strings.Split(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "last" { concat(recv_str, "[len(", recv_str, ")-1]") }
+  else if method_name == "first" { concat(recv_str, "[0]") }
+  else if method_name == "enumerate" { recv_str }
+  else if method_name == "chars" { concat("strings.Split(", recv_str, ", \"\")") }
+  else if method_name == "string_contains" { concat("strings.Contains(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "concat" { concat("append(", recv_str, ", ", first_arg_str, "...)") }
+  else if method_name == "map" { concat("v2rt.Map(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "filter" { concat("v2rt.Filter(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "any" { concat("v2rt.Any(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "all" { concat("v2rt.All(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "flat_map" { concat("v2rt.FlatMap(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "skip" { concat(recv_str, "[", first_arg_str, ":]") }
+  else if method_name == "take" { concat(recv_str, "[:", first_arg_str, "]") }
+  else if method_name == "fold" { concat("v2rt.Fold(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "sort_by" { concat("v2rt.SortBy(", recv_str, ", ", first_arg_str, ")") }
+  else if method_name == "append" { concat("append(", recv_str, ", ", first_arg_str, ")") }
+  else {
+    let go_name = go_bridge_method_name(method_name: method_name)
+    let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0))
+    let all_args = concat([recv_str], arg_strs)
+    let args_str = all_args |> join(separator: ", ")
+    concat("v2rt.", go_name, "(", args_str, ")")
   }
 }
 
@@ -868,8 +851,9 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
-    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
-      emit_go_algebra_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope)
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
+      let mn = match method_def { Some { value: md } => md.name  None => method }
+      emit_go_algebra_method_call(method_name: mn, receiver: receiver, args: args, registry: registry, scope: scope)
     PlainMethodSemantics =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
   } }
