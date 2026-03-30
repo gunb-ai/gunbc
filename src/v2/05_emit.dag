@@ -44,6 +44,8 @@ import v2.std.core {
   slice_start, slice_end,
   expr_has_self_call, expr_has_non_tail_self_call,
   local_transport_node,
+  TransportKind, TransportLocal, TransportRest, TransportShell, TransportFile,
+  transport_kind,
   transport_has_auth,
   field_init_operation_modifier, operation_modifier_name,
   leaf_node, with_required_cardinality,
@@ -1054,24 +1056,26 @@ fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
 }
 
 // Check if any operation in the service (or the service-level fallback)
-// uses a given transport kind by name.
-fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind_name: String) -> Bool {
-  let from_fallback = fallback_transport.name == kind_name
+// uses a given transport kind.
+fn service_uses_transport(fallback_transport: Node, op_children: List<Node>, kind: TransportKind) -> Bool {
+  let from_fallback = transport_kind(t: fallback_transport) == kind
   let from_ops = op_children |> any(op =>
-    if op.transport != none { op.transport.value.name == kind_name } else { false }
+    if op.transport != none { transport_kind(t: op.transport.value) == kind } else { false }
   )
   from_fallback || from_ops
 }
 
 // Check if any REST operation (or the service-level fallback) has auth.
 fn service_has_rest_auth(fallback_transport: Node, op_children: List<Node>) -> Bool {
-  let from_fallback = if fallback_transport.name == "rest" {
+  let fallback_is_rest = transport_kind(t: fallback_transport) == TransportRest
+  let from_fallback = if fallback_is_rest {
     transport_has_auth(t: fallback_transport)
   } else { false }
   let from_ops = op_children |> any(op =>
     if op.transport != none {
       let t = op.transport.value
-      if t.name == "rest" { transport_has_auth(t: t) } else { false }
+      let is_rest = transport_kind(t: t) == TransportRest
+      if is_rest { transport_has_auth(t: t) } else { false }
     } else { false }
   )
   from_fallback || from_ops

@@ -56,8 +56,9 @@ import v2.std.core {
   slice_start, slice_end,
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
-
-  CardOptional
+  CardOptional,
+  TransportKind, TransportLocal, TransportRest, TransportShell, TransportFile,
+  transport_kind
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
@@ -1204,16 +1205,15 @@ fn emit_go_service_def(
 }
 
 fn emit_go_service_struct(name: String, transport: Node) -> String {
-  let fields = if transport.name == "rest" {
-    let base = "\tBaseURL string"
-    let auth_field = if transport_has_auth(t: transport) { "\n\tAuthToken string" } else { "" }
-    concat(base, auth_field)
-  } else if transport.name == "shell" {
-    "\tWorkingDir string"
-  } else if transport.name == "file" {
-    "\tBasePath string"
-  } else {
-    ""
+  let fields = match transport_kind(t: transport) {
+    TransportRest => {
+      let base = "\tBaseURL string"
+      let auth_field = if transport_has_auth(t: transport) { "\n\tAuthToken string" } else { "" }
+      concat(base, auth_field)
+    }
+    TransportShell => "\tWorkingDir string"
+    TransportFile => "\tBasePath string"
+    TransportLocal => ""
   }
   if fields == "" {
     concat("type ", name, " struct{}")
@@ -1238,14 +1238,11 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  if transport.name == "rest" {
-    emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
-  } else if transport.name == "shell" {
-    emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
-  } else if transport.name == "file" {
-    emit_go_file_call(op_name: op_name, depth: depth)
-  } else {
-    emit_go_local_call(op_name: op_name, depth: depth)
+  match transport_kind(t: transport) {
+    TransportRest => emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
+    TransportShell => emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
+    TransportFile => emit_go_file_call(op_name: op_name, depth: depth)
+    TransportLocal => emit_go_local_call(op_name: op_name, depth: depth)
   }
 }
 
