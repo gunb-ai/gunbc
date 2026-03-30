@@ -15,6 +15,7 @@ module extdeps.transports.shell
 // argv is the command + arguments (POSIX.1-2017 Section 2.9.2).
 // env is additional environment variables (POSIX.1-2017 Section 8.1).
 type ShellTransportConfig {
+  argv: List<String>            // Command + arguments (POSIX.1-2017 Section 2.9.2)
   working_dir: String?          // POSIX PWD; none = inherit from parent process
-  env: Map<String, String>      // Additional environment variables
+  env: Map<String, String>      // Additional environment variables (POSIX.1-2017 Section 8.1)
 }
