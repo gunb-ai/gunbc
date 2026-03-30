@@ -1,0 +1,56 @@
+// dsl/examples/weather -- a minimal .dag project that compiles to Rust.
+//
+// Demonstrates: types, enums, functions, pattern matching, collections.
+// Gate: `gunbc compile dsl/examples/weather/ --target rust && cargo check`
+
+module examples.weather
+
+// -- Domain types --
+
+type Temperature {
+  celsius: Float
+}
+
+type Condition
+  = Sunny
+  | Cloudy
+  | Rainy { mm_per_hour: Float }
+  | Snowy { cm_per_hour: Float }
+
+type Forecast {
+  location: String
+  high: Temperature
+  low: Temperature
+  condition: Condition
+}
+
+// -- Pure functions --
+
+fn to_fahrenheit(temp: Temperature) -> Float {
+  temp.celsius * 1.8 + 32.0
+}
+
+fn is_freezing(temp: Temperature) -> Bool {
+  temp.celsius <= 0.0
+}
+
+fn describe_condition(cond: Condition) -> String {
+  match cond {
+    Sunny => "clear skies"
+    Cloudy => "overcast"
+    Rainy { mm_per_hour: rate } =>
+      if rate > 10.0 { "heavy rain" }
+      else { "light rain" }
+    Snowy { cm_per_hour: _ } => "snowfall"
+  }
+}
+
+fn daily_summary(forecast: Forecast) -> String {
+  let high_f = to_fahrenheit(temp: forecast.high)
+  let desc = describe_condition(cond: forecast.condition)
+  concat(forecast.location, ": ", desc, ", high ", to_string(value: high_f), "°F")
+}
+
+fn freezing_locations(forecasts: List<Forecast>) -> List<String> {
+  forecasts |> filter(f => is_freezing(temp: f.low)) |> map(f => f.location)
+}

@@ -487,6 +487,9 @@ fn emit_py_func_def(
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names)
   let ret_str = emit_py_inferred(inferred: inferred)
   let body_scope = build_params_scope(scope: scope, params: params)
+  let body_scope = fold(uses, init: body_scope, f: (s, u) =>
+    extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
+  )
   let body_str = emit_py_typed_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("async def ", emit_ident(name: name, target: Python), "(", params_str, ")", ret_str, ":\n",
     make_indent(level: depth + 1), body_str)

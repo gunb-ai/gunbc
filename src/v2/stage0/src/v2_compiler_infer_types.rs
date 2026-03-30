@@ -954,11 +954,6 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
         if (node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone())) {
             break true;
         } else {
-            if (node_is_bridge_dynamic_name(left.clone())
-                || node_is_bridge_dynamic_name(right.clone()))
-            {
-                break true;
-            } else {
                 if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
                     break true;
                 } else {
@@ -1028,7 +1023,6 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
             }
         }
     }
-}
 
 pub fn prefer_specific_type(left: Rc<Node>, right: Rc<Node>) -> Rc<Node> {
     {
@@ -1081,11 +1075,6 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
             {
                 true
             } else {
-                if (node_is_bridge_dynamic_name(left.clone())
-                    || node_is_bridge_dynamic_name(right.clone()))
-                {
-                    false
-                } else {
                     if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
                         true
                     } else {
@@ -1306,7 +1295,6 @@ pub fn node_type_equals(left: Rc<Node>, right: Rc<Node>) -> bool {
                             }
                         }
                     }
-                }
             }
         }
     })

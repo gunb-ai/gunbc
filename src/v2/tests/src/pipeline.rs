@@ -2019,6 +2019,31 @@ fn tco_through_match_arms() {
 }
 
 // =========================================================================
+// Decidability enforcement tests
+// =========================================================================
+
+#[test]
+fn non_descending_recursion_is_rejected() {
+    let source = "module spin_test\n\nfn spin(n: Int) -> Int {\n  spin(n: n)\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| m.contains("non-descending recursion")),
+        "fn spin(n: n) must be rejected as non-descending recursion, got: {:?}",
+        msgs
+    );
+    assert!(result.files.is_empty(), "non-descending recursion should block code emission");
+}
+
+#[test]
+fn descending_recursion_is_allowed() {
+    let source = "module countdown_test\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { countdown(n: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    assert!(!result.files.is_empty(), "descending recursion should compile successfully");
+}
+
+// =========================================================================
 // DAG compiler error detection tests
 //
 // These test the compiler's unique value: structural errors that only a

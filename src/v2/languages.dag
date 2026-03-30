@@ -168,6 +168,11 @@ type LintModel {
   formatting: FormatModel
 }
 
+type SharingStrategy {
+  wrap_template: String
+  construct_template: String
+}
+
 type LanguageSpec {
   target_name: String
   reserved_words: ReservedWords
@@ -175,6 +180,7 @@ type LanguageSpec {
   serialization: SerializationSpec
   test_conventions: TestConventions
   top_level_visibility: String
+  sharing: SharingStrategy
 }
 
 // =========================================================================
@@ -249,7 +255,11 @@ fn rust_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: "#[tokio::test]"
     },
-    top_level_visibility: rust_visibility
+    top_level_visibility: rust_visibility,
+    sharing: SharingStrategy {
+      wrap_template: "Rc<{0}>",
+      construct_template: "Rc::new({0})"
+    }
   }
 }
 
@@ -284,7 +294,11 @@ fn python_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: ""
+    top_level_visibility: "",
+    sharing: SharingStrategy {
+      wrap_template: "{0}",
+      construct_template: "{0}"
+    }
   }
 }
 
@@ -319,7 +333,11 @@ fn go_spec() -> LanguageSpec {
       name_style: PascalCaseTestNames,
       async_decorator: null
     },
-    top_level_visibility: ""
+    top_level_visibility: "",
+    sharing: SharingStrategy {
+      wrap_template: "{0}",
+      construct_template: "{0}"
+    }
   }
 }
 
@@ -390,4 +408,22 @@ fn test_conventions_for_target(target: RenderTarget) -> TestConventions {
 
 fn top_level_visibility_for_target(target: RenderTarget) -> String {
   language_spec_for_target(target: target).top_level_visibility
+}
+
+fn sharing_for_target(target: RenderTarget) -> SharingStrategy {
+  language_spec_for_target(target: target).sharing
+}
+
+// Apply sharing wrap template to a type string.
+// Rust: "Rc<{0}>" → "Rc<MyType>", Python/Go: "{0}" → "MyType"
+fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
+  let tmpl = sharing_for_target(target: target).wrap_template
+  replace(tmpl, "{0}", inner)
+}
+
+// Apply sharing construct template to a value string.
+// Rust: "Rc::new({0})" → "Rc::new(val)", Python/Go: "{0}" → "val"
+fn construct_shared(target: RenderTarget, inner: String) -> String {
+  let tmpl = sharing_for_target(target: target).construct_template
+  replace(tmpl, "{0}", inner)
 }
