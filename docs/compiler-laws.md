@@ -324,41 +324,37 @@ A temperature report is one of:
 
 ## Execution lanes
 
-### Lane A: Data-driven method/transport dispatch (M2)
+### Lane A: Definition-edge dispatch (M2/M4) — LANDED
 
-Close 73 escape hatches in emit + 22 in complexity + transport in
-resolve. Same pattern as SyntaxSpec — data tables, not match arms.
+**Status:** Merged to main (PR #242). Transport dispatch uses structural
+property detection (no enum). Method dispatch carries the algebra
+definition node through `AlgebraMethodSemantics.method_def: Node`.
+Cost shape table reformatted as data declaration. Builtin registry is
+an acknowledged bridge (deletion point: method-syntax conversion PR).
+`extern fn` syntax deleted.
 
-| File | Change | Sites closed |
+| Change | What was done |
+|---|---|
+| Transport dispatch | Structural predicates (`is_rest_transport` etc.) based on config properties. Transport extdep .dag files added (RFC 9110, POSIX). |
+| Method dispatch | `AlgebraMethodSemantics` carries `method_def: Node` (the algebra field definition). `MethodFieldResult` returns both field node + result type from single lookup. |
+| Cost shapes | `method_cost_shape_table` reformatted as data declaration. |
+| Builtin registry | Acknowledged bridge. Extern fn syntax deleted. Deletion point: convert ~260 standalone calls to method syntax. |
+| **Remaining** | Emit still reads `method_def.name` for per-language rendering (Lane C). Builtin registry still exists (cleanup PR). |
+
+### Lane B: Node.name deletion (M4/D6) — IN PROGRESS
+
+**Status:** PR #244. Infrastructure complete, rendering reads migrated.
+Node.name field deletion blocked by synthetic node identity (M4).
+
+| Phase | Status | What was done |
 |---|---|---|
-| `04_method.dag` | `builtin_function_registry()` reads from `std/algebra.dag` nodes instead of string map | ~30 string registrations |
-| `complexity.dag` | `method_cost_shape()` reads cost from algebra type field, not `if method == "..."` | 22 if/else branches |
-| `05_emit_rust.dag` | Method rendering reads from `runtime.dag` templates | 21 method name comparisons |
-| `05_emit_python.dag` | Same | 20 method name comparisons |
-| `05_emit_go.dag` | Same | 19 method name comparisons |
-| `03_resolve.dag` | Transport node gets enum field, not string name | 1 comparison |
-| `05_emit_rust.dag` | Transport dispatch on enum | 3 comparisons |
-| `05_emit_python.dag` | Same | 3 comparisons |
-| `05_emit_go.dag` | Same | 3 comparisons |
-| `05_emit.dag` | Same | 3 comparisons |
-| **Total** | | **~145 sites** |
-
-### Lane B: Node.name deletion (M4/D6)
-
-Close the universal escape hatch. Every `.name` read becomes a
-structural property read or `source_text_at(span)` call.
-
-| File | Change | Sites closed |
-|---|---|---|
-| `00_core.dag` | Delete `name: String` from Node type | Field definition |
-| `02_parse.dag` | ~54 Node constructions: remove `name:` field | 54 construction sites |
-| `04_infer.dag` | Scope lookups use structural edges, not name strings | ~17 name reads |
-| `04_method.dag` | Method identity is algebra node, not name string | ~56 name reads |
-| `04_types.dag` | Type identity is structural, not `name ==` | ~22 name reads |
-| `05_emit_rust.dag` | Identifiers from `source_text_at(span)` | ~51 name reads |
-| `05_emit.dag` | Same | ~18 name reads |
-| Other 13 files | Various name reads -> structural property reads | ~957 name reads |
-| **Total** | | **~1,175 sites across 20 files** |
+| B0 | DONE | `source_text_at(source, span)` + test proving span→text recovery |
+| B1 | DONE | Tuple field constants centralized, module/import markers moved to property values |
+| B2 | DONE | `source_text` threaded through InferScope + TypeEnv + ResolvedModule + TypedModule |
+| B3 | DONE | Emit rendering reads migrated to `source_text_at` across Rust/Python/Go (54 reads) |
+| B4 | DONE | Resolve type lookups migrated to `source_text_at` (7 reads) |
+| B5 | BLOCKED | Delete Node.name field. Blocked by ~70 synthetic nodes with zero spans (kernel types, algebra methods). Needs M4 type constructor dissolution. |
+| **Remaining** | | ~463 `.name` refs: 256 constructions (B5), 131 accessor calls (B5), ~76 synthetic/coupled reads (M4) |
 
 ### Lane C: Coercion engine + language plugin extraction (M5)
 

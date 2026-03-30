@@ -106,6 +106,21 @@ fn generic_type_declaration_smoke() {
 }
 
 #[test]
+fn ambiguous_variant_name_resolves_correctly() {
+    // Regression: when a variant name appears in multiple enums, the module-level
+    // vtoe correction must resolve it to the correct parent. derive_variant_to_enum
+    // is first-write-wins (a cache), so ambiguous variants get an arbitrary parent
+    // that the correction fixes via structural lookup.
+    let source = "module ambig_test\n\ntype Color = Red | Blue | Green\ntype Signal = Red | Yellow | Green\n\nfn pick_color() -> Color { Red }\nfn pick_signal() -> Signal { Yellow }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/ambig_test.rs");
+    // Both Red variants should be qualified to their correct parent enum
+    assert!(content.contains("Color::Red") || content.contains("Signal::Red"),
+        "ambiguous variant Red should be qualified to a parent enum");
+}
+
+#[test]
 fn fold_returns_accumulator_type() {
     // Regression: fold must return the accumulator type, not the lambda body type.
     // Root cause was refine_collection_result_type extracting lambda return type
