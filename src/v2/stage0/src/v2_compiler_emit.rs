@@ -88,8 +88,9 @@ pub use crate::v2_compiler_infer_types::{
 use crate::v2_compiler_languages::ReservedWordStrategy::{NoEscape, PrefixEscape, SuffixEscape};
 use crate::v2_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 pub use crate::v2_compiler_languages::{
-    language_spec_for_target, target_container_template, target_keyword, target_primitive_type,
-    test_conventions_for_target, LanguageSpec, ReservedWordStrategy, TestNameStyle,
+    language_spec_for_target, target_container_template, target_keyword,
+    target_primitive_type, test_conventions_for_target, wrap_shared_type, LanguageSpec,
+    ReservedWordStrategy, SharingStrategy, TestNameStyle,
 };
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
@@ -1416,10 +1417,7 @@ pub fn emit_node_type_leaf_rc(
                 }
             };
             if emit_map_has(rc_types.clone(), n.name.clone()) {
-                v2_rt::concat(
-                    v2_rt::concat("Rc<".to_string(), base.clone()),
-                    ">".to_string(),
-                )
+                wrap_shared_type(target.clone(), base.clone())
             } else {
                 base.clone()
             }
@@ -1467,10 +1465,7 @@ pub fn emit_node_type_leaf_rc(
                             ">".to_string(),
                         );
                         if emit_map_has(rc_types.clone(), n.name.clone()) {
-                            v2_rt::concat(
-                                v2_rt::concat("Rc<".to_string(), wrapped),
-                                ">".to_string(),
-                            )
+                            wrap_shared_type(target.clone(), wrapped.clone())
                         } else {
                             wrapped
                         }
@@ -1562,10 +1557,7 @@ pub fn emit_node_type_conj_rc(
             if (n.name.clone() != "".to_string()) {
                 let mapped = emit_primitive_type(n.name.clone(), target.clone());
                 if emit_map_has(rc_types.clone(), n.name.clone()) {
-                    v2_rt::concat(
-                        v2_rt::concat("Rc<".to_string(), mapped.clone()),
-                        ">".to_string(),
-                    )
+                    wrap_shared_type(target.clone(), mapped.clone())
                 } else {
                     mapped.clone()
                 }
@@ -1634,10 +1626,7 @@ pub fn emit_node_type_disj_rc(
     if (n.name.clone() != "".to_string()) {
         let mapped = emit_primitive_type(n.name.clone(), target.clone());
         if emit_map_has(rc_types.clone(), n.name.clone()) {
-            v2_rt::concat(
-                v2_rt::concat("Rc<".to_string(), mapped.clone()),
-                ">".to_string(),
-            )
+            wrap_shared_type(target.clone(), mapped.clone())
         } else {
             mapped.clone()
         }

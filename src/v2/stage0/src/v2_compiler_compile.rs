@@ -143,6 +143,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
                         name: item.name.clone(),
                         body: item.body.clone().clone().unwrap(),
                         params: item.params.clone(),
+                        span: item.span.clone(),
                     }));
                 }
                 __result
@@ -213,6 +214,18 @@ pub fn ownership_diagnostics(proofs: Vec<Rc<OwnershipProof>>) -> Vec<Rc<ErrorNod
         }
         __result
     }
+}
+
+pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Vec<Rc<ErrorNode>> {
+    { let mut __result = Vec::new(); for v in complexity.violations.clone().iter().cloned() {
+        __result.push(make_error_node(
+            Rc::new(CompilerDiagnostic::InternalError {
+                message: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity violation: `".to_string(), v.func_name.clone()), "` has unresolvable cost (".to_string()), v.reason.clone()), ")".to_string()),
+                span: v.span.clone(),
+            }),
+            "".to_string(),
+        ));
+    } __result }
 }
 
 pub fn empty_artifact_plan() -> Rc<ArtifactPlan> {
@@ -1706,9 +1719,11 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 let typed_diags = typed.diagnostics.clone();
                 let func_entries = extract_func_entries(typed.clone());
                 let complexity = build_complexity_report(func_entries.clone());
+                let complexity_diags = complexity_diagnostics(complexity.clone());
+                let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let typecheck_errors = {
                     let mut __result = Vec::new();
-                    for d in typed_diags.clone().iter().cloned() {
+                    for d in all_infer_diags.clone().iter().cloned() {
                         if is_error_diagnostic(d.diagnostic.clone()) {
                             __result.push(d);
                         }
@@ -1720,7 +1735,7 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                         files: vec![],
                         diagnostics: v2_rt::concat(
                             v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                            typed_diags.clone(),
+                            all_infer_diags.clone(),
                         ),
                         complexity: complexity.clone(),
                         ownership: vec![],
@@ -1763,7 +1778,7 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                         v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
-                                typed_diags.clone(),
+                                all_infer_diags.clone(),
                             ),
                             ownership_diags.clone(),
                         ),

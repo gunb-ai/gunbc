@@ -110,6 +110,11 @@ pub struct TestConventions {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SharingStrategy {
+    pub wrap_template: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct LanguageSpec {
     pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
@@ -117,6 +122,7 @@ pub struct LanguageSpec {
     pub serialization: Rc<SerializationSpec>,
     pub test_conventions: Rc<TestConventions>,
     pub top_level_visibility: String,
+    pub sharing: Rc<SharingStrategy>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -153,6 +159,9 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     async_decorator: Some("#[tokio::test]".to_string()),
 }),
     top_level_visibility: RUST_VISIBILITY.clone(),
+    sharing: Rc::new(SharingStrategy {
+        wrap_template: "Rc<{0}>".to_string(),
+    }),
 })
 }
 
@@ -190,6 +199,9 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     async_decorator: None,
 }),
     top_level_visibility: "".to_string(),
+    sharing: Rc::new(SharingStrategy {
+        wrap_template: "{0}".to_string(),
+    }),
 })
 }
 
@@ -227,6 +239,9 @@ pub fn go_spec() -> Rc<LanguageSpec> {
     async_decorator: None,
 }),
     top_level_visibility: "".to_string(),
+    sharing: Rc::new(SharingStrategy {
+        wrap_template: "{0}".to_string(),
+    }),
 })
 }
 
@@ -299,3 +314,14 @@ pub fn test_conventions_for_target(target: RenderTarget) -> Rc<TestConventions> 
 pub fn top_level_visibility_for_target(target: RenderTarget) -> String {
     language_spec_for_target(target.clone()).top_level_visibility.clone()
 }
+
+pub fn sharing_for_target(target: RenderTarget) -> Rc<SharingStrategy> {
+    language_spec_for_target(target.clone()).sharing.clone()
+}
+
+pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
+    let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
+    tmpl.replace("{0}", &inner)
+}
+
+

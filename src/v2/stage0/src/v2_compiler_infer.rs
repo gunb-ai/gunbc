@@ -216,7 +216,7 @@ pub fn infer_block_stmts(
                 });
             }
             Some(stmt) => {
-                let stmt_result = infer_expr(stmt.clone(), scope.clone());
+                let stmt_result = infer_expr(stmt.clone(), scope.clone(), None);
                 let stmt_typed = stmt_result.typed.clone();
                 let stmt_diags = stmt_result.diagnostics.clone();
                 let stmt_rt = rt_type(stmt_typed.clone());
@@ -979,7 +979,7 @@ pub fn extract_fold_init_info(
             };
             match init_arg.clone() {
                 Some(ia) => {
-                    let init_result = infer_expr(arg_value(ia.clone()), scope.clone());
+                    let init_result = infer_expr(arg_value(ia.clone()), scope.clone(), None);
                     Some(Rc::new(ArgInferResult {
                         typed_arg: make_arg_node(
                             arg_name(ia.clone()),
@@ -1139,7 +1139,7 @@ pub fn infer_fold_lambda_arg(
                 service_registry: scope.service_registry.clone(),
                 item_registry: scope.item_registry.clone(),
             });
-            let body_result = infer_expr(lam_body.clone(), typed_lam_scope.clone());
+            let body_result = infer_expr(lam_body.clone(), typed_lam_scope.clone(), None);
             let typed_lam = make_expr_node(
                 Rc::new(ExprData::ExprLambda {
                     semantics: Some(lambda_semantics_from_param_types(param_types.clone())),
@@ -1166,7 +1166,7 @@ pub fn infer_fold_lambda_arg(
             })
         }
         _ => {
-            let ar = infer_expr(arg_val.clone(), scope.clone());
+            let ar = infer_expr(arg_val.clone(), scope.clone(), None);
             Rc::new(ArgInferResult {
                 typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone()),
                 diagnostics: ar.diagnostics.clone(),
@@ -1238,7 +1238,7 @@ pub fn infer_lambda_with_element_type(
                         }
                     })
             };
-            let body_result = infer_expr(lam_body.clone(), typed_scope.clone());
+            let body_result = infer_expr(lam_body.clone(), typed_scope.clone(), None);
             let body_typed = body_result.typed.clone();
             Rc::new(InferResult {
                 typed: make_expr_node(
@@ -1260,7 +1260,7 @@ pub fn infer_lambda_with_element_type(
                 diagnostics: body_result.diagnostics.clone(),
             })
         }
-        _ => infer_expr(lambda_expr.clone(), scope.clone()),
+        _ => infer_expr(lambda_expr.clone(), scope.clone(), None),
     }
 }
 
@@ -1336,7 +1336,7 @@ pub fn infer_lambda_with_callable_type(
                     };
                     extend_scope(acc.clone(), pair.1.clone(), pt.clone())
                 });
-            let body_result = infer_expr(lam_body.clone(), typed_scope.clone());
+            let body_result = infer_expr(lam_body.clone(), typed_scope.clone(), None);
             let body_typed = body_result.typed.clone();
             let typed_lam = make_expr_node(
                 Rc::new(ExprData::ExprLambda {
@@ -1360,7 +1360,7 @@ pub fn infer_lambda_with_callable_type(
             })
         }
         _ => {
-            let ar = infer_expr(lambda_expr.clone(), scope.clone());
+            let ar = infer_expr(lambda_expr.clone(), scope.clone(), None);
             Rc::new(ArgInferResult {
                 typed_arg: make_arg_node(arg_name.clone(), ar.typed.clone(), no_span()),
                 diagnostics: ar.diagnostics.clone(),
@@ -1557,34 +1557,14 @@ pub fn infer_arg_with_element_type(
     element_type: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> Rc<ArgInferResult> {
-    if is_lambda_expr(arg_value(arg.clone())) {
-        {
-            let result = infer_lambda_with_element_type(
-                arg_value(arg.clone()),
-                element_type.clone(),
-                scope.clone(),
-            );
-            Rc::new(ArgInferResult {
-                typed_arg: make_arg_node(
-                    arg_name(arg.clone()),
-                    result.typed.clone(),
-                    arg.span.clone(),
-                ),
-                diagnostics: result.diagnostics.clone(),
-            })
-        }
-    } else {
-        {
-            let ar = infer_expr(arg_value(arg.clone()), scope.clone());
-            Rc::new(ArgInferResult {
-                typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone()),
-                diagnostics: ar.diagnostics.clone(),
-            })
-        }
-    }
+    let ar = infer_expr(arg_value(arg.clone()), scope.clone(), Some(element_type.clone()));
+    Rc::new(ArgInferResult {
+        typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone()),
+        diagnostics: ar.diagnostics.clone(),
+    })
 }
 
-pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
+pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<Node>>) -> Rc<InferResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => {
@@ -1671,7 +1651,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let field_name = field_access_field(texpr.clone());
                 let span = texpr.span.clone();
                 let base_expr = field_access_base(texpr.clone());
-                let base_result = infer_expr(base_expr.clone(), scope.clone());
+                let base_result = infer_expr(base_expr.clone(), scope.clone(), None);
                 let base_typed = base_result.typed.clone();
                 let base_diags = base_result.diagnostics.clone();
                 let base_rt = match (*rt_node(base_typed.clone())).clone() {
@@ -1846,7 +1826,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                     match call_args.clone().first().cloned() {
                         Some(first_arg) => {
                             let first_result =
-                                infer_expr(arg_value(first_arg.clone()), scope.clone());
+                                infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
                             let first_type = rt_type(first_result.typed.clone());
                             let elem_type = for_each_element_type_node(first_type.clone());
                             let remaining_results = infer_method_args_with_fold(
@@ -1911,7 +1891,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                                     )
                                 } else {
                                     {
-                                        let ar = infer_expr(arg_value(a.clone()), scope.clone());
+                                        let ar = infer_expr(arg_value(a.clone()), scope.clone(), None);
                                         Rc::new(ArgInferResult {
                                             typed_arg: make_arg_node(
                                                 arg_name(a.clone()),
@@ -2201,7 +2181,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let span = texpr.span.clone();
                 let recv = method_receiver(texpr.clone());
                 let mc_args = method_arg_nodes(texpr.clone());
-                let recv_result = infer_expr(recv.clone(), scope.clone());
+                let recv_result = infer_expr(recv.clone(), scope.clone(), None);
                 let recv_typed = recv_result.typed.clone();
                 let recv_diags = recv_result.diagnostics.clone();
                 let recv_rt = rt_type(recv_typed.clone());
@@ -2290,7 +2270,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let span = texpr.span.clone();
                 let scrut = match_scrutinee(texpr.clone());
                 let arm_nodes = match_arm_nodes(texpr.clone());
-                let scrut_result = infer_expr(scrut.clone(), scope.clone());
+                let scrut_result = infer_expr(scrut.clone(), scope.clone(), None);
                 let scrut_typed = scrut_result.typed.clone();
                 let scrut_diags = scrut_result.diagnostics.clone();
                 let scrut_rt = rt_type(scrut_typed.clone());
@@ -2318,11 +2298,12 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                                 Some(infer_expr(
                                     arm_g.clone().clone().unwrap(),
                                     arm_scope.clone(),
+                                    None,
                                 ))
                             } else {
                                 None
                             };
-                            let body_result = infer_expr(arm_b.clone(), arm_scope.clone());
+                            let body_result = infer_expr(arm_b.clone(), arm_scope.clone(), None);
                             let body_typed = body_result.typed.clone();
                             let body_diags = body_result.diagnostics.clone();
                             let guard_unwrapped = match guard_result.clone() {
@@ -2428,15 +2409,15 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let cond = if_condition(texpr.clone());
                 let then_expr = if_then_branch(texpr.clone());
                 let else_expr = if_else_branch(texpr.clone());
-                let cond_result = infer_expr(cond.clone(), scope.clone());
+                let cond_result = infer_expr(cond.clone(), scope.clone(), None);
                 let cond_typed = cond_result.typed.clone();
                 let cond_diags = cond_result.diagnostics.clone();
-                let then_result = infer_expr(then_expr.clone(), scope.clone());
+                let then_result = infer_expr(then_expr.clone(), scope.clone(), None);
                 let then_typed = then_result.typed.clone();
                 let then_diags = then_result.diagnostics.clone();
                 match else_expr.clone() {
                     Some(else_branch) => {
-                        let else_result = infer_expr(else_branch.clone(), scope.clone());
+                        let else_result = infer_expr(else_branch.clone(), scope.clone(), None);
                         let else_typed = else_result.typed.clone();
                         let else_diags = else_result.diagnostics.clone();
                         let then_rt = rt_type(then_typed.clone());
@@ -2502,7 +2483,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let span = texpr.span.clone();
                 let let_value = let_value(texpr.clone());
                 let let_body = let_body(texpr.clone());
-                let val_result = infer_expr(let_value.clone(), scope.clone());
+                let val_result = infer_expr(let_value.clone(), scope.clone(), None);
                 let val_typed = val_result.typed.clone();
                 let val_diags = val_result.diagnostics.clone();
                 let val_type = rt_type(val_typed.clone());
@@ -2526,7 +2507,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                     {
                         let extended =
                             extend_scope(scope.clone(), let_name.clone(), val_type.clone());
-                        let body_result = infer_expr(let_body.clone().unwrap(), extended.clone());
+                        let body_result = infer_expr(let_body.clone().unwrap(), extended.clone(), None);
                         let body_typed = body_result.typed.clone();
                         let body_diags = body_result.diagnostics.clone();
                         let let_texpr2 = make_named_expr_node(
@@ -2557,7 +2538,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let elem_results = {
                     let mut __result = Vec::new();
                     for e in elements.clone().iter().cloned() {
-                        __result.push(infer_expr(e.clone(), scope.clone()));
+                        __result.push(infer_expr(e.clone(), scope.clone(), None));
                     }
                     __result
                 };
@@ -2600,10 +2581,10 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let span = texpr.span.clone();
                 let left_expr = binop_left(texpr.clone());
                 let right_expr = binop_right(texpr.clone());
-                let left_result = infer_expr(left_expr.clone(), scope.clone());
+                let left_result = infer_expr(left_expr.clone(), scope.clone(), None);
                 let left_typed = left_result.typed.clone();
                 let left_diags = left_result.diagnostics.clone();
-                let right_result = infer_expr(right_expr.clone(), scope.clone());
+                let right_result = infer_expr(right_expr.clone(), scope.clone(), None);
                 let right_typed = right_result.typed.clone();
                 let right_diags = right_result.diagnostics.clone();
                 let result_type = infer_binop_type_node(op.clone(), rt_type(left_typed.clone()));
@@ -2623,7 +2604,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
             ExprData::ExprUnaryOp { op: op, .. } => {
                 let span = texpr.span.clone();
                 let operand_expr = unaryop_operand(texpr.clone());
-                let operand_result = infer_expr(operand_expr.clone(), scope.clone());
+                let operand_result = infer_expr(operand_expr.clone(), scope.clone(), None);
                 let operand_typed = operand_result.typed.clone();
                 let operand_diags = operand_result.diagnostics.clone();
                 let result_type = match op.clone() {
@@ -2649,8 +2630,28 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let lam_body = lambda_body(texpr.clone());
                 let lam_param_nodes: Vec<Rc<Node>> =
                     texpr.children.iter().skip(1).cloned().collect();
-                let lam_scope = extend_scope_with_params(scope.clone(), lam_params.clone());
-                let body_result = infer_expr(lam_body.clone(), lam_scope.clone());
+                // If expected carries an element type, use it for lambda params.
+                let lam_scope = if expected.is_some() {
+                    let elem = expected.clone().unwrap();
+                    if (lam_params.clone().len() as i64) == 1 {
+                        match lam_params.clone().first().cloned() {
+                            Some(p) => extend_scope(scope.clone(), p, elem),
+                            None => scope.clone(),
+                        }
+                    } else {
+                        let param_count = lam_params.clone().len() as i64;
+                        lam_params.iter().cloned().enumerate().fold(scope.clone(), |acc, (i, p)| {
+                            if (i as i64) == param_count - 1 {
+                                extend_scope(acc, p, elem.clone())
+                            } else {
+                                extend_scope(acc, p, leaf_node("Dynamic".to_string()))
+                            }
+                        })
+                    }
+                } else {
+                    extend_scope_with_params(scope.clone(), lam_params.clone())
+                };
+                let body_result = infer_expr(lam_body.clone(), lam_scope.clone(), None);
                 let body_typed = body_result.typed.clone();
                 let body_diags = body_result.diagnostics.clone();
                 let lam_texpr = make_expr_node(
@@ -2685,7 +2686,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                             ExprData::ExprLiteral { .. } => part_node.clone(),
                             _ => match part_node.children.clone().first().cloned() {
                                 Some(inner) => {
-                                    let r = infer_expr(inner.clone(), scope.clone());
+                                    let r = infer_expr(inner.clone(), scope.clone(), None);
                                     make_interp_part_node(r.typed.clone(), part_node.span.clone())
                                 }
                                 None => part_node.clone(),
@@ -2701,7 +2702,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                             ExprData::ExprLiteral { .. } => vec![],
                             _ => match part_node.children.clone().first().cloned() {
                                 Some(inner) => {
-                                    let r = infer_expr(inner.clone(), scope.clone());
+                                    let r = infer_expr(inner.clone(), scope.clone(), None);
                                     r.diagnostics.clone()
                                 }
                                 None => vec![],
@@ -2769,7 +2770,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let span = texpr.span.clone();
                 let cast_inner = cast_expr(texpr.clone());
                 let target_type = cast_target(texpr.clone());
-                let inner_result = infer_expr(cast_inner.clone(), scope.clone());
+                let inner_result = infer_expr(cast_inner.clone(), scope.clone(), None);
                 let inner_typed = inner_result.typed.clone();
                 let inner_diags = inner_result.diagnostics.clone();
                 let cast_texpr = make_expr_node(
@@ -2790,13 +2791,13 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let span = texpr.span.clone();
                 let coll = foreach_collection(texpr.clone());
                 let body_expr = foreach_body(texpr.clone());
-                let coll_result = infer_expr(coll.clone(), scope.clone());
+                let coll_result = infer_expr(coll.clone(), scope.clone(), None);
                 let coll_typed = coll_result.typed.clone();
                 let coll_diags = coll_result.diagnostics.clone();
                 let elem_type_node = for_each_element_type_node(rt_type(coll_typed.clone()));
                 let body_scope =
                     extend_scope(scope.clone(), variable.clone(), elem_type_node.clone());
-                let body_result = infer_expr(body_expr.clone(), body_scope.clone());
+                let body_result = infer_expr(body_expr.clone(), body_scope.clone(), None);
                 let body_typed = body_result.typed.clone();
                 let body_diags = body_result.diagnostics.clone();
                 let fe_texpr = make_named_expr_node(
@@ -2817,10 +2818,10 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let span = texpr.span.clone();
                 let base_expr = index_base(texpr.clone());
                 let idx_key = index_expr(texpr.clone());
-                let base_result = infer_expr(base_expr.clone(), scope.clone());
+                let base_result = infer_expr(base_expr.clone(), scope.clone(), None);
                 let base_typed = base_result.typed.clone();
                 let base_diags = base_result.diagnostics.clone();
-                let index_result = infer_expr(idx_key.clone(), scope.clone());
+                let index_result = infer_expr(idx_key.clone(), scope.clone(), None);
                 let index_typed = index_result.typed.clone();
                 let index_diags = index_result.diagnostics.clone();
                 let base_type_result = rt_node(base_typed.clone());
@@ -2879,13 +2880,13 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
                 let base_expr = slice_base(texpr.clone());
                 let start_expr = slice_start(texpr.clone());
                 let end_expr = slice_end(texpr.clone());
-                let base_result = infer_expr(base_expr.clone(), scope.clone());
+                let base_result = infer_expr(base_expr.clone(), scope.clone(), None);
                 let base_typed = base_result.typed.clone();
                 let base_diags = base_result.diagnostics.clone();
-                let start_result = infer_expr(start_expr.clone(), scope.clone());
+                let start_result = infer_expr(start_expr.clone(), scope.clone(), None);
                 let start_typed = start_result.typed.clone();
                 let start_diags = start_result.diagnostics.clone();
-                let end_result = infer_expr(end_expr.clone(), scope.clone());
+                let end_result = infer_expr(end_expr.clone(), scope.clone(), None);
                 let end_typed = end_result.typed.clone();
                 let end_diags = end_result.diagnostics.clone();
                 let base_type_result = rt_node(base_typed.clone());
@@ -2957,7 +2958,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferResult> {
             ExprData::ExprReturn => {
                 let span = texpr.span.clone();
                 let inner_expr = return_value(texpr.clone());
-                let inner_result = infer_expr(inner_expr.clone(), scope.clone());
+                let inner_result = infer_expr(inner_expr.clone(), scope.clone(), None);
                 let ret_texpr = make_expr_node(
                     Rc::new(ExprData::ExprReturn),
                     vec![inner_result.typed.clone()],
@@ -3001,7 +3002,7 @@ pub fn infer_record_lit(
             let mut __result = Vec::new();
             for fi in field_inits.clone().iter().cloned() {
                 __result.push({
-                    let ar = infer_expr(field_init_node_value(fi.clone()), scope.clone());
+                    let ar = infer_expr(field_init_node_value(fi.clone()), scope.clone(), None);
                     let ar_typed = ar.typed.clone();
                     let ar_diags = ar.diagnostics.clone();
                     Rc::new(FieldInferResult {
@@ -3224,7 +3225,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             },
                         );
                         let body_result =
-                            infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone());
+                            infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone(), None);
                         let body_typed = body_result.typed.clone();
                         let body_diags = body_result.diagnostics.clone();
                         let resolved_ret = if (item.inferred.clone() == None) {
@@ -3279,7 +3280,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         {
                             let fn_scope = scope.clone();
                             let body_result =
-                                infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone());
+                                infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone(), None);
                             let body_typed = body_result.typed.clone();
                             let body_diags = body_result.diagnostics.clone();
                             let resolved_ret = rt_type(item.clone());
@@ -3314,7 +3315,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         {
                             {
                                 let val_result =
-                                    infer_expr(item.body.clone().clone().unwrap(), scope.clone());
+                                    infer_expr(item.body.clone().clone().unwrap(), scope.clone(), None);
                                 let val_typed = val_result.typed.clone();
                                 let val_diags = val_result.diagnostics.clone();
                                 let resolved_ret = if (item.type_annotation.clone() == None) {

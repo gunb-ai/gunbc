@@ -23,7 +23,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
-| Bootstrap ratchet (`DIAG_RATCHET`) | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
+| Bootstrap ratchet (`DIAG_RATCHET`) | 65 | 0 | OOM resolved; 65 inference false-positives remain |
 | L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
 | Complexity violations | 0 | 0 | Green |
 
@@ -67,54 +67,64 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 
 ### M2: Users Can Compile .dag to Working Rust
 
-**Status:** Pre-work. M1 complete.
+**Status:** In progress. Decidability gate, sharing bridge-reduction, inference context done.
 **Gate:** `gunbc compile dsl/examples/weather/ --target rust && cargo check`
 
 *Fail-closed decidability:*
-- [ ] Reject non-descending recursion as hard compile error
-  (`fn spin(n: n)` must not compile)
-- [ ] Wire complexity ratchet into fail-closed gate
+- [x] Reject unchanged-argument recursion (`fn spin(n: n)` → error)
+- [x] Reject ascending-argument recursion (`fn spin(n: n+1)` → error)
+- [x] Allow proven descent (`n-1`, `n/2`, structural catamorphism)
+- [x] Wire complexity ratchet into fail-closed gate
+- [ ] Mutual recursion detection (SCC-based, not yet implemented)
 
 *Container sharing (FF-8):*
-- [ ] Add sharing strategy to LanguageSpec (wrap template, construct
-  template, which types need sharing). Rust: Rc-wrap, Go: pointer,
-  Python: reference semantics.
-- [ ] Shared emitter reads LanguageSpec sharing fields; per-language
-  emitters stop hardcoding wrap decisions
+- [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
+  (Rust: `Rc<{0}>`, Python/Go: identity — bridge-reduction, not
+  full authority dissolution)
+- [x] Shared emitter reads `wrap_shared_type()` instead of
+  hardcoding `Rc<...>` (rendering moved to spec; which-types-wrap
+  decision still name-based via `rc_types`)
+- [ ] Dissolve `rc_types` name-based wrapping authority
 - [ ] Land atomically with stage0 regeneration
 
+*Inference context (new):*
+- [x] Add `expected: Node?` parameter to `infer_expr` (41 call sites)
+- [x] ExprLambda uses `expected` for param typing (replaces
+  `infer_lambda_with_element_type` bypass for `infer_arg_with_element_type`)
+- [ ] Dissolve remaining bypass functions (`infer_lambda_with_callable_type`,
+  `infer_fold_lambda_arg`)
+
 *No-fabrication cleanup:*
-- [ ] Remove `Dynamic` as universal compatibility in `node_type_equals`
+- [x] Remove `Dynamic` as universal compatibility in `node_type_equals`
 - [ ] Remove `LitNull` sentinel from inference (14 sites; 23 parser
   sites are OK — error recovery)
-- [ ] Promote `access_error` / `inference_error` from Warning to Error
 - [ ] Remove callable-to-value fabrication in `lookup_in_scope`
 - [ ] Delete `try_unwrap` clone fallback
 
-*Codegen correctness:*
-- [ ] Primitive type lowering (`Bool` → `bool`, `Unit` → `()`)
-- [ ] Algebraic types → stdlib (`FreeMonoid<T>` → `Vec<T>`)
-- [ ] `Callable` type → `Rc<dyn Fn(...) -> T>`
-- [ ] `async fn` emission for service operations
-- [ ] Fix `uses` variable scoping (bug: parsed but never added to scope)
+*Codegen correctness (pre-existing, not new in this PR):*
+- Primitive type lowering, algebraic types, callable type, async fn
+  emission all work (confirmed, not changed by this PR)
+- [x] Fix `uses` variable scoping in emission (emit side — infer
+  side was already correct)
 - [ ] Variadic arguments (currently strict arity; should be free from
   modeling)
 
 *Bootstrap:*
-- [ ] Regenerate stage0 with `regenerate-stage0.sh`
+- [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
+- [ ] Regenerate stage0 with `regenerate-stage0.sh` (blocked by 65
+  inference false-positives: pipe-to-bare-function element type loss)
 - [ ] CI-verified regeneration (regenerate + diff = empty)
-- [ ] `dag/syntax.dag` inclusion without OOM
 
 *User experience:*
-- [ ] `dsl/examples/weather/` committed example project
-- [ ] Error messages: file:line:col with source context
+- [x] `dsl/examples/weather/` committed example project
+- Error messages already have file:line:col (pre-existing in main.rs)
 
 **Bridges owned by M2:**
 
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
-| `COMPLEXITY_RATCHET = 2` | Fail-closed compilation → 0 violations | M2 |
-| `DIAG_RATCHET = 3` | `dag/syntax.dag` OOM fix → 0 diagnostics | M2 |
+| `COMPLEXITY_RATCHET = 0` | Fail-closed compilation → 0 violations | M2 (done — wired into pipeline) |
+| `DIAG_RATCHET = 65` | OOM resolved (FF-8); 65 inference false-positives | M2 |
 
 ---
 

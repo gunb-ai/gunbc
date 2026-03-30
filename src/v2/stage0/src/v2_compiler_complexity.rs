@@ -48,9 +48,10 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, arm_guard, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, SourceSpan, arg_value, arm_body, arm_guard, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
+use crate::v2_std_core::BinOpKind;
 use SizeExpr::*;
 use CostExpr::*;
 use Certainty::*;
@@ -432,9 +433,43 @@ pub fn self_calls_use_non_computed_args(body: Rc<Node>, func_name: String) -> bo
     }
 }
 
+pub fn is_descending_expr(expr: Rc<Node>) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprBinOp { op, .. } => {
+            match op.clone() {
+                BinOpKind::Sub => match (*binop_left(expr.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprVar { .. } => true,
+                    _ => false,
+                },
+                BinOpKind::Div => match (*binop_left(expr.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprVar { .. } => true,
+                    _ => false,
+                },
+                _ => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+pub fn has_arithmetic_descent(body: Rc<Node>, func_name: String) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let own_ok = if (expr_call_func(body.clone()) == func_name.clone()) {
+                body.children.clone().iter().any(|arg_node| is_descending_expr(arg_value(arg_node.clone())))
+            } else { false };
+            if own_ok { true }
+            else { body.children.clone().iter().any(|c| has_arithmetic_descent(c.clone(), func_name.clone())) }
+        },
+        _ => body.children.clone().iter().any(|c| has_arithmetic_descent(c.clone(), func_name.clone())),
+    }
+    })
+}
+
 pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<RecursionPattern> {
     let path_calls = max_path_self_calls(body.clone(), func_name.clone());
-    if (path_calls.clone() <= 1) {
+    if (path_calls.clone() == 0) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
@@ -442,9 +477,21 @@ pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<Recur
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
-    } else {
+    } else if (path_calls.clone() > 1) {
         Rc::new(RecursionPattern::DivideAndConquer {
             split_factor: path_calls.clone(),
+        })
+    } else if self_calls_use_non_computed_args(body.clone(), func_name.clone()) {
+        Rc::new(RecursionPattern::UnresolvableRecursion {
+            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
+        })
+    } else if has_arithmetic_descent(body.clone(), func_name.clone()) {
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else {
+        Rc::new(RecursionPattern::UnresolvableRecursion {
+            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
         })
     }
 }
@@ -730,6 +777,7 @@ pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
     pub summary: Option<Rc<ComplexitySummary>>,
+    pub span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1000,6 +1048,7 @@ pub struct FuncEntry {
     pub name: String,
     pub body: Rc<Node>,
     pub params: Vec<Rc<Node>>,
+    pub span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1514,12 +1563,14 @@ Rc::new(ComplexityViolation {
     func_name: entry.name.clone(),
     reason: reason.clone(),
     summary: Some(summary.clone()),
+    span: entry.span.clone(),
 })
 },
     None => Rc::new(ComplexityViolation {
     func_name: entry.name.clone(),
     reason: "no summary computed".to_string(),
     summary: None,
+    span: entry.span.clone(),
 }),
 }); } __result };
 Rc::new(ComplexityReport {

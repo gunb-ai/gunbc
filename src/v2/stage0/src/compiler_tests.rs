@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod compiler_tests {
+    use std::collections::HashMap;
     use crate::v2_compiler_tokenize::tokenize;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dsl/
@@ -1103,4 +1104,5 @@ mod compiler_tests {
             .join();
         result.expect("profile_reconcile_per_module panicked");
     }
+
 }

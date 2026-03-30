@@ -882,6 +882,9 @@ let service_names = match lookup_item(registry.clone(), name.clone()) {
 let params_str = emit_func_params(params.clone(), uses.clone(), service_names.clone(), rc_types.clone());
 let ret_str = emit_func_inferred(inferred.clone(), rc_types.clone());
 let body_scope = build_params_scope(scope.clone(), params.clone());
+let body_scope = uses.iter().fold(body_scope, |s, u| {
+    extend_scope(s, resource_use_name(u.clone()), resource_use_resource(u.clone()))
+});
 let body_str = emit_func_body(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1), vtoe.clone(), rc_types.clone(), emit_info.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "async fn ".to_string()), emit_ident(name.clone(), RenderTarget::Rust)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {
 ".to_string()), make_indent((depth.clone() + 1))), body_str.clone()), "

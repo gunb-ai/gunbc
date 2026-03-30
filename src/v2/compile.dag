@@ -41,7 +41,7 @@ import v2.compiler.emit { EmitResult, escape_json_string }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
-import v2.compiler.complexity { ComplexityReport, FuncEntry, build_complexity_report, empty_complexity_report }
+import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, build_complexity_report, empty_complexity_report }
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
@@ -80,7 +80,7 @@ type FrontendResult {
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
   typed.modules |> flat_map(m =>
     m.items |> filter(item => item.body != None) |> map(item =>
-      FuncEntry { name: item.name, body: item.body.value, params: item.params }
+      FuncEntry { name: item.name, body: item.body.value, params: item.params, span: item.span }
     )
   )
 }
@@ -104,6 +104,28 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
           [make_error_node(diagnostic: OwnershipWarning { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
         _ => []
       }
+    )
+  )
+}
+
+// =========================================================================
+// Complexity fail-closed gate
+//
+// Decidability enforcement flows through the complexity classifier:
+// classify_recursion_pattern produces UnresolvableRecursion for non-
+// descending self-calls (fn spin(n: n)), which becomes CostUnknown,
+// which complexity_diagnostics surfaces as a hard compile error.
+// No separate walker needed — the complexity stage IS the gate.
+// =========================================================================
+
+fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
+  complexity.violations |> map(v =>
+    make_error_node(
+      diagnostic: InternalError {
+        message: concat("complexity violation: `", v.func_name, "` has unresolvable cost (", v.reason, ")"),
+        span: v.span
+      },
+      module_name: ""
     )
   )
 }
@@ -775,18 +797,21 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let typed = reconcile(graph: norm.graph, source_indices: source_indices)
       let typed_diags = typed.diagnostics
 
-      // Stage 5: Complexity analysis.
-      // Runs before the typecheck error gate so that complexity data is
-      // always available — even when inference has false positives.
+      // Stage 5: Complexity analysis (includes decidability enforcement).
+      // classify_recursion_pattern detects non-descending recursion and
+      // produces CostUnknown, which complexity_diagnostics surfaces as
+      // a hard compile error. No separate decidability walker needed.
       let func_entries = extract_func_entries(typed: typed)
       let complexity = build_complexity_report(func_entries: func_entries)
+      let complexity_diags = complexity_diagnostics(complexity: complexity)
 
-      // Gate: if typecheck produced errors, do not proceed to emit.
-      let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      // Gate: if typecheck or complexity produced errors, do not proceed to emit.
+      let all_infer_diags = concat(typed_diags, complexity_diags)
+      let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
-          diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags),
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags),
           complexity: complexity,
           ownership: [],
           artifact_plan: empty_artifact_plan(),
@@ -815,7 +840,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let final_files = if emit_errors |> count > 0 { [] } else { emit_files }
       PipelineResult {
         files: final_files,
-        diagnostics: concat(frontend.diagnostics, norm_diags, typed_diags, ownership_diags, emit_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags, ownership_diags, emit_diags),
         complexity: complexity,
         ownership: ownership,
         artifact_plan: artifact_plan,
