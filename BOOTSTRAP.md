@@ -163,7 +163,7 @@ git diff --exit-code src/v2/stage0/           # no drift
 ## Current state (2026-03-30)
 
 - **Regeneration works:** 40 files emitted, 0 diagnostics, ~112MB, ~2 min.
-- **Emitted Rust errors:** 1397 (emitter codegen bugs, not pipeline failures).
+- **Emitted Rust errors:** 880 (emitter codegen bugs, not pipeline failures).
   These must reach 0 before the CI freshness gate can be activated.
 - **Complexity self-compile ratchet:** passes with 0 violations over 1274
   function summaries under the existing container memory limit.

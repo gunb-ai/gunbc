@@ -6,6 +6,10 @@
 #![allow(clippy::disallowed_macros)]
 
 // ── Helper: copy .dag sources into a temp directory ─────────────────────
+//
+// M2 bridge: curated file list. The stage0 binary OOMs on the full dsl/
+// tree (FF-8, pre-Rc container sharing). Once FF-8 lands and stage0 is
+// regenerated, replace with: scan dsl/ + src/v2/, exclude nothing.
 
 fn prepare_sources(sources_dir: &std::path::Path) {
     let ws = crate::helpers::workspace_root();

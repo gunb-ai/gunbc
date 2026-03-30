@@ -508,22 +508,24 @@ mod compiler_tests {
     #[test]
     fn type_size_regression_check() {
         // Prevent silent type size regressions in generated v2 types.
-        // These bounds assume Node.transport and Node.config are boxed (R2).
+        // Update limits only when the size increase is justified.
+        // Ratchet history:
+        //   2026-03-28: Node 176, ExprData 800 (R2 boxing)
+        //   2026-03-30: Node 184 (post-Lane-A definition-edge dispatch)
         let node_size = std::mem::size_of::<crate::v2_std_core::Node>();
         let expr_size = std::mem::size_of::<crate::v2_std_core::ExprData>();
+        eprintln!("  Node: {} bytes", node_size);
+        eprintln!("  Expr: {} bytes", expr_size);
         assert!(
-            node_size <= 176,
-            "Node size regression: {} bytes (limit: 176). Check for unboxed rare fields.",
+            node_size <= 184,
+            "Node size regression: {} bytes (limit: 184). Check for unboxed rare fields.",
             node_size
         );
         assert!(
             expr_size <= 800,
-            "Expr size regression: {} bytes (limit: 800). Node size likely regressed.",
+            "ExprData size regression: {} bytes (limit: 800). Node size likely regressed.",
             expr_size
         );
-        // Print sizes for audit trail
-        eprintln!("  Node: {} bytes", node_size);
-        eprintln!("  Expr: {} bytes", expr_size);
     }
 
     /// Profile the gist pipeline by stage: tokenize, parse, resolve.
