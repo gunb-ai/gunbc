@@ -21,6 +21,7 @@ import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
   param_node_name, param_node_type_expr, param_node_default_value,
+  authored_name_at, NewlineIndex,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -154,6 +155,7 @@ type TestProjection {
   inferred: Node
   params: List<Node>
   mock_field_inits: List<Node>
+  source_index: NewlineIndex?
 }
 
 fn has_mock_prefix(name: String) -> Bool {
@@ -174,7 +176,8 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
             operation_name: c.name,
             inferred: rt_type(n: c),
             params: c.params,
-            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name))
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name)),
+            source_index: tm.type_env.source_index
           })
       )
   )
@@ -364,6 +367,10 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
     match lookup_func_sig_in_scope(scope: scope, name: func) {
       None => args
       Some { value: sig } => {
+        // Boundary: sig.params come from the declaring module's source file,
+        // but scope.type_env.source_index is the caller's file. Cross-module
+        // ident_span recovery fails the file check and falls back to node.name.
+        // Use param_node_name until names are precomputed at resolve time.
         let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
           let n = arg_name(n: arg)
           if n != none { map_insert(acc, n.value, arg) } else { acc }

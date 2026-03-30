@@ -962,6 +962,20 @@ pub fn param_node_name(n: Rc<Node>) -> String {
     n.name.clone()
 }
 
+pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) -> String {
+    match (node.ident_span.clone(), source_index) {
+        (Some(span), Some(index)) if span.file == index.file => {
+            let text = source_text_at(index.clone(), span.clone());
+            if text.is_empty() {
+                node.name.clone()
+            } else {
+                text
+            }
+        }
+        _ => node.name.clone(),
+    }
+}
+
 pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),

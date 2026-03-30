@@ -157,22 +157,80 @@ works. 9 scrambled-name tests in CI. Parse/emit round-trip smoke test.
 
 ### M4: Compiler Knows Zero Type Names (L1 = 0)
 
-**Status:** L1 = 21. Depends on M2. Current lane direction: finish
-declaration-driven structural algebra, then remove the remaining
-bootstrap/stage0 bridge work so `scripts/l1-ratchet.sh --check` can hit
-0 instead of just enforcing a lower ceiling.
+**Status:** L1 = 21. Depends on M2. Two exclusive lanes. Current Lane 1
+direction: finish declaration-driven structural algebra, then remove
+the remaining bootstrap/stage0 bridge work so
+`scripts/l1-ratchet.sh --check` can hit 0 instead of just enforcing a
+lower ceiling.
 **Gate:** `scripts/l1-ratchet.sh --check` reports 0. Scrambled-name
 tests pass (then deleted).
 
-*D6: Delete Node.name (~553 sites):*
+**Boundary rule:** `source_text_at` answers "what text was written
+here?" for rendering and diagnostics. It must not become the
+compiler's general answer to "what does this node mean?" —
+`authored_name` is emit/diagnostic only, not semantic authority.
+
+#### Lane 1: L1 → 0 (type knowledge dissolution + FF-9)
+
+Goal: compiler reads type/algebra facts from `.dag` declarations
+instead of hardcoding them. Includes FF-9 as prerequisite.
+
+*Tier 1 — data tables → `.dag` declarations (no new infra):*
+- [ ] Move `kernel_algebra_profile` to `dsl/std/algebra.dag` data
+- [ ] Move `is_kernel_type` / `is_container_type` predicate lists
+  to `dsl/std/types.dag` data
+- [ ] Convert per-profile field builders to `.dag` functions
+
+*Tier 2 — factor `enrich_kernel_type` (modest compiler change):*
+- [ ] `enrich_kernel_type` calls `.dag` function in `std/algebra.dag`
+- [ ] Delete `intrinsic_method_index()` /
+  `runtime_bridge_method_index()`
+- [ ] ~60 string branches → structural algebra queries
+
+*Tier 3 — full structural algebra (requires FF-9):*
+- [ ] FF-9: import-driven source resolution (compiler discovers
+  modules transitively from source roots)
+- [ ] Compiler reads type declarations + algebra edges from `.dag`
+  at resolve time
+- [ ] Replace template-era higher-order collection placeholders with
+  function-typed algebra witnesses from `std/algebra.dag`
+- [ ] Kernel types as algebraic compositions loaded from `std/`
+- [ ] 21 type constructor sites → 0
+- [x] Type-name comparisons → 0
+- [ ] CollectionKind bridge dissolves when method algebras land
+
+Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,
+`dsl/std/algebra.dag`, `dsl/std/types.dag`, `compile.dag`
+
+#### Lane 2: D6 + emit + resolve (Node.name deletion)
+
+Goal: delete `Node.name` field. Rendering uses `source_text_at`,
+resolve uses structural identity.
+
+*Emit rendering (B3 — done):*
+- [x] `authored_name` replaces `.name` in all 3 emit backends
+  (Rust/Python/Go item, type-def, service, resource, operation)
+- [x] `find_shared_enum_fields` aligned with `authored_name`
+- [x] Narrow `TypeEnv` → `source_index: NewlineIndex?` in emit
+  helpers (reviewer: TypeEnv is too wide for rendering)
+- [x] Migrate `param_node_name` → `authored_name_at` in emit
+  (same-module render sites done; cross-module boundary sites
+  `order_typed_call_args` and `fill_default_args` remain on
+  `param_node_name` — caller `source_index` can't recover callee
+  param names across module boundaries; needs precomputed names
+  at resolve time)
+
+*Resolve structural identity:*
+- [ ] Replace 5 pre-existing `authored_name` semantic lookups in
+  `04_resolve.dag` with structural identity (B4 scope — text
+  recovery is not semantic authority)
+- [ ] Design structural identity model for resolve phase
+
+*Node.name surface area:*
 - [x] `source_text_at` infrastructure (B0)
 - [x] Source text threaded through pipeline (B2)
 - [x] Synthetic name dissolution: tuple constants, module markers (B1)
 - [x] `extern fn` syntax deleted
-- [ ] Emit rendering reads → `source_text_at` (B3 — REVERTED: parser
-  item spans point to keyword, not identifier. Needs identifier span.)
-- [ ] Resolve type lookups → `source_text_at` (B4 — REVERTED: same
-  span issue)
 - [ ] Update 17 `make_*` helpers + 11 accessor functions
 - [ ] Update ~256 Node constructions to drop `name:`
 - [ ] Migrate synthetic node identity to structural
@@ -182,28 +240,24 @@ tests pass (then deleted).
 
 | Family | Count | Deletion point |
 |--------|-------|---------------|
-| Kernel type constants | 6 | `std/types.dag` declarations |
-| `leaf_node(name: ...)` | 68 L1 | Declaration edges |
-| Algebra method fields | ~50 | `std/algebra.dag` declarations |
+| Kernel type constants | 6 | `std/types.dag` declarations (Lane 1) |
+| `leaf_node(name: ...)` | 68 L1 | Declaration edges (Lane 1) |
+| Algebra method fields | ~50 | `std/algebra.dag` declarations (Lane 1) |
 | Tuple children | 2 | `.dag` type definition |
 | Optional skeleton | 3 | `.dag` type definition |
 | Module/import markers | 3 | Property values (B1c done) |
 | `error_type` / `none_type` | 2 | Permanent (compiler infra) |
-| Container/callable/map nodes | ~15 L1 | `.dag` declarations |
+| Container/callable/map nodes | ~15 L1 | `.dag` declarations (Lane 1) |
 
-*Method dispatch from .dag algebra:*
-- [ ] Compiler reads methods from `std/algebra.dag` Nodes
-- [ ] Replace template-era higher-order collection placeholders with
-  function-typed algebra witnesses from `std/algebra.dag`
-- [ ] Delete `intrinsic_method_index()` /
-  `runtime_bridge_method_index()`
-- [ ] Kernel types as algebraic compositions
-- [ ] ~60 string branches → structural algebra queries
+Files: `05_emit*.dag`, `04_resolve.dag`, `04_env.dag`,
+`02_parse.dag`, `04_infer.dag`, `00_core.dag` (make_* helpers only —
+kernel type defs are Lane 1)
 
-*Type constructor dissolution:*
-- [ ] 21 type constructor sites → 0
-- [x] Type-name comparisons → 0
-- [ ] CollectionKind bridge dissolves when method algebras land
+#### Lane exclusivity
+
+Only shared file: `00_core.dag`. Lane 1 edits kernel type
+definitions/predicates. Lane 2 edits Node construction helpers.
+Different functions, no conflict.
 
 *Structural complexity facts (moved from M2 / PR #249):*
 - [ ] Replace `ComplexityClassInfo` string bags with structural
@@ -221,7 +275,7 @@ tests pass (then deleted).
 
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
-| `node.name: String` | `source_text_at` + edges replace all reads | M4 |
+| `node.name: String` | `source_text_at` + edges replace all reads | M4 (Lane 2) |
 | `kernel_types: List<String>` | `List<Node>` edges to type defs | M4 |
 | `container_types: List<String>` | `List<Node>` edges to type defs | M4 |
 | `builtin_function_registry()` | ~260 calls → method syntax | M4 |

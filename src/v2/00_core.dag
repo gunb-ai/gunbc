@@ -640,6 +640,21 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
 
 fn param_node_name(n: Node) -> String { n.name }
 
+fn authored_name_at(source_index: NewlineIndex?, node: Node) -> String {
+  match node.ident_span {
+    Some { value: span } =>
+      match source_index {
+        Some { value: index } =>
+          if span.file == index.file {
+            let text = source_text_at(index: index, span: span)
+            if text == "" { node.name } else { text }
+          } else { node.name }
+        None => node.name
+      }
+    None => node.name
+  }
+}
+
 fn param_node_type_expr(n: Node) -> Node {
   match n.children |> first {
     Some { value: v } => v
