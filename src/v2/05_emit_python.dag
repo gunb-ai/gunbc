@@ -342,27 +342,26 @@ fn emit_py_prelude(typed_module: TypedModule) -> String {
 
 fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let kind = classify_typed_item(item: item)
-  let item_text = source_text_at(source: scope.source_text, span: item.span)
   if (kind == TypedItemTypeDef) {
-    emit_py_type_def_from_connective(item: item, source: scope.source_text)
+    emit_py_type_def_from_connective(item: item)
   } else if (kind == TypedItemTypeAlias) {
-    concat(item_text, " = ", emit_node_type(n: rt_type(n: item), target: Python))
+    concat(item.name, " = ", emit_node_type(n: rt_type(n: item), target: Python))
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_py_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
+      emit_py_func_def(name: item.name, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope)
     } else {
-      emit_py_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
+      emit_py_fn_def(name: item.name, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope)
     }
   } else if (kind == TypedItemDataDef) {
-    emit_py_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
+    emit_py_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope)
   } else if (kind == TypedItemServiceDef) {
-    emit_py_service_def(item: item, registry: registry, source: scope.source_text)
+    emit_py_service_def(item: item, registry: registry)
   } else if (kind == TypedItemResourceDef) {
-    emit_py_resource_def(item: item, source: scope.source_text)
+    emit_py_resource_def(item: item)
   } else {
-    concat("# unhandled node: ", item_text)
+    concat("# unhandled node: ", item.name)
   }
 }
 
@@ -375,29 +374,28 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
 //   Aliases: connective=none, inferred carries the aliased type
 // =========================================================================
 
-fn emit_py_type_def_from_connective(item: Node, source: String) -> String {
-  let item_text = source_text_at(source: source, span: item.span)
+fn emit_py_type_def_from_connective(item: Node) -> String {
   let is_product = item.connective == Conj
   if is_product {
-    emit_py_dataclass_from_children(name: item_text, children: item.children, source: source)
+    emit_py_dataclass_from_children(name: item.name, children: item.children)
   } else {
-    emit_py_enum_from_children(name: item_text, children: item.children, source: source)
+    emit_py_enum_from_children(name: item.name, children: item.children)
   }
 }
 
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
-fn emit_py_dataclass_from_children(name: String, children: List<Node>, source: String) -> String {
+fn emit_py_dataclass_from_children(name: String, children: List<Node>) -> String {
   if children |> count == 0 {
     concat(py_derive_attribute(), "\nclass ", name, ":\n    pass")
   } else {
-    let field_lines = children |> map(child => emit_py_dataclass_field_from_child(child: child, source: source))
+    let field_lines = children |> map(child => emit_py_dataclass_field_from_child(child: child))
     let fields_str = field_lines |> join(separator: "\n")
     concat(py_derive_attribute(), "\nclass ", name, ":\n", fields_str)
   }
 }
 
-fn emit_py_dataclass_field_from_child(child: Node, source: String) -> String {
+fn emit_py_dataclass_field_from_child(child: Node) -> String {
   let ty = emit_node_type(n: rt_type(n: child), target: Python)
   let is_optional = rt_type(n: child).return_cardinality == CardOptional
   let default_str = if is_optional {
@@ -405,32 +403,34 @@ fn emit_py_dataclass_field_from_child(child: Node, source: String) -> String {
   } else {
     ""
   }
-  concat("    ", emit_ident(name: source_text_at(source: source, span: child.span), target: Python), ": ", ty, default_str)
+  concat("    ", emit_ident(name: child.name, target: Python), ": ", ty, default_str)
 }
 
-fn emit_py_enum_from_children(name: String, children: List<Node>, source: String) -> String {
+fn emit_py_enum_from_children(name: String, children: List<Node>) -> String {
   let has_data = children |> any(child => child.children |> count > 0)
   if has_data {
-    let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child, source: source))
-    let variant_names = children |> map(child => concat(name, source_text_at(source: source, span: child.span)))
+    // Tagged union: emit as a set of dataclasses + a Union type alias
+    let variant_classes = children |> map(child => emit_py_variant_class_from_child(parent_name: name, child: child))
+    let variant_names = children |> map(child => concat(name, child.name))
     let union_str = variant_names |> join(separator: ", ")
     let classes_str = variant_classes |> join(separator: "\n\n\n")
     concat(classes_str, "\n\n\n", name, " = Union[", union_str, "]")
   } else {
+    // Simple enum: all unit variants
     let variant_lines = children |> map(child =>
-      concat("    ", source_text_at(source: source, span: child.span), " = auto()")
+      concat("    ", child.name, " = auto()")
     )
     let variants_str = variant_lines |> join(separator: "\n")
     concat("class ", name, "(Enum):\n", variants_str)
   }
 }
 
-fn emit_py_variant_class_from_child(parent_name: String, child: Node, source: String) -> String {
-  let class_name = concat(parent_name, source_text_at(source: source, span: child.span))
+fn emit_py_variant_class_from_child(parent_name: String, child: Node) -> String {
+  let class_name = concat(parent_name, child.name)
   if child.children |> count == 0 {
     concat(py_derive_attribute(), "\nclass ", class_name, ":\n    pass")
   } else {
-    let field_lines = child.children |> map(f => emit_py_dataclass_field_from_child(child: f, source: source))
+    let field_lines = child.children |> map(f => emit_py_dataclass_field_from_child(child: f))
     let fields_str = field_lines |> join(separator: "\n")
     concat(py_derive_attribute(), "\nclass ", class_name, ":\n", fields_str)
   }
@@ -1147,16 +1147,15 @@ fn emit_py_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Ma
 
 fn emit_py_service_def(
   item: Node,
-  registry: Map<String, ItemInfo>,
-  source: String
+  registry: Map<String, ItemInfo>
 ) -> String {
   let depth = 0
-  let safe_name = sanitize_service_name(name: source_text_at(source: source, span: item.span))
+  let safe_name = sanitize_service_name(name: item.name)
   let transport = service_fallback_transport(item: item)
   let init_method = emit_py_service_init(transport: transport)
   let op_children = item.children
   let methods = op_children |> map(op_node =>
-    emit_py_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1, source: source)
+    emit_py_operation_method(service_name: safe_name, transport: transport, op_node: op_node, registry: registry, depth: depth + 1)
   )
   let methods_str = methods |> join(separator: "\n\n")
   concat("class ", safe_name, ":\n",
@@ -1181,8 +1180,7 @@ fn emit_py_service_init(transport: Node) -> String {
   }
 }
 
-fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, source: String) -> String {
-  let op_text = source_text_at(source: source, span: op_node.span)
+fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int) -> String {
   let input_params = op_node.params |> map(p =>
     concat(emit_ident(name: param_node_name(n: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
   )
@@ -1194,8 +1192,8 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
   }
   let ret_type = emit_node_type(n: rt_type(n: op_node), target: Python)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
-  let body = emit_py_transport_call(transport: eff_transport, op_name: op_text, registry: registry)
-  concat("async def ", emit_ident(name: op_text, target: Python),
+  let body = emit_py_transport_call(transport: eff_transport, op_name: op_node.name, registry: registry)
+  concat("async def ", emit_ident(name: op_node.name, target: Python),
     "(", all_params, ") -> ", ret_type, ":\n",
     make_indent(level: depth + 1), body)
 }
@@ -1277,18 +1275,17 @@ fn emit_py_local_call(op_name: String) -> String {
 // Resources become abstract base classes with abstract methods.
 // =========================================================================
 
-fn emit_py_resource_def(item: Node, source: String) -> String {
-  let item_text = source_text_at(source: source, span: item.span)
+fn emit_py_resource_def(item: Node) -> String {
   let depth = 0
   let cap_children = item.children
-  let methods = cap_children |> map(c => emit_py_capability_method(cap_node: c, source: source))
+  let methods = cap_children |> map(c => emit_py_capability_method(cap_node: c))
   let methods_str = methods |> join(separator: "\n\n")
   concat("from abc import ABC, abstractmethod\n\n",
-    "class ", item_text, "(ABC):\n",
+    "class ", item.name, "(ABC):\n",
     make_indent(level: depth + 1), methods_str)
 }
 
-fn emit_py_capability_method(cap_node: Node, source: String) -> String {
+fn emit_py_capability_method(cap_node: Node) -> String {
   let input_params = cap_node.params |> map(p =>
     concat(emit_ident(name: param_node_name(n: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
   )
@@ -1300,7 +1297,7 @@ fn emit_py_capability_method(cap_node: Node, source: String) -> String {
   }
   let ret = emit_node_type(n: rt_type(n: cap_node), target: Python)
   concat("@abstractmethod\n",
-    "async def ", emit_ident(name: source_text_at(source: source, span: cap_node.span), target: Python), "(", all_params, ") -> ", ret, ":\n",
+    "async def ", emit_ident(name: cap_node.name, target: Python), "(", all_params, ") -> ", ret, ":\n",
     "    ...")
 }
 
