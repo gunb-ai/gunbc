@@ -13,13 +13,13 @@ Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
 
 ---
 
-## Current State (2026-03-29)
+## Current State (2026-03-30)
 
 ### Dashboard
 
 | Metric | Value | Target | Notes |
 |--------|-------|--------|-------|
-| .dag files | 87 | — | `dsl/` |
+| .dag files | 90 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
 | Self-compile diagnostics | 0 | 0 | Green (pipeline reports 0; bootstrap ratchet allows 3) |
 | Files emitted | 40 | — | Rust target |
@@ -39,6 +39,14 @@ Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
   rendering should be a `LanguageSpec` declaration.
 - **General recursion accepted.** `fn spin(n: n)` compiles. Fail-closed
   compilation (reject non-descending recursion) not yet implemented.
+- **Variadic arguments not supported.** Arguments are children (nodes),
+  so N args is structurally natural. But `04_resolve.dag:336` enforces
+  strict arity (`expected == actual`). Should be free from the modeling.
+  Blocks concat consolidation as regular variadic function.
+- **Builtin function registry is a parallel authority.** 24 standalone
+  functions in `builtin_function_registry()` duplicate algebra method
+  signatures. Fix: convert to method syntax, delete registry. (Lane A
+  acknowledged bridge with deletion point.)
 
 ### Known Compiler Bugs
 
@@ -127,10 +135,11 @@ milestone. "Temporary without a ratchet means permanent later."
 |---|---|---|---|
 | `connective: Conj/Disj` enum | M7 | Edge connectivity model replaces enum | M7 |
 | `return_cardinality` enum | M7 | Edge existence replaces enum | M7 |
-| `node.name: String` | M4 | `source_text_at(span)` + edges replace all reads | M4 |
+| `node.name: String` | M4 | `source_text_at(span)` + edges replace all reads. Infrastructure landed (B0-B4), rendering reads migrated. Blocked: synthetic node identity needs M4 type dissolution. | M4 |
 | `kernel_types: List<String>` | M4 | `List<Node>` edges to type definitions | M4 |
 | `container_types: List<String>` | M4 | `List<Node>` edges to type definitions | M4 |
 | `05_emit_rust/python/go.dag` in `src/v2/` | M5 | Moved to `dsl/extdeps/languages/` plugins | M5 |
+| `builtin_function_registry()` | M4 | Convert ~260 standalone calls to method syntax, delete registry | M4 |
 | `COMPLEXITY_RATCHET = 2` | M2 | Fail-closed compilation → 0 violations | M2 |
 | `DIAG_RATCHET = 3` | M2 | `dag/syntax.dag` OOM fix → 0 diagnostics | M2 |
 
@@ -302,11 +311,20 @@ internals)
 **Work items:**
 
 *D6: Delete Node.name (~553 sites across 20 files):*
-- [ ] Decide name source: span derivation vs dedicated accessor
-- [ ] Update 16 `make_*` helpers + 11 accessor functions
-- [ ] Audit 60+ direct Node constructions in `02_parse.dag`
-- [ ] Update 92 identity checks + 62 scope map operations
-- [ ] Update emit + diagnostic layers to use `source_text_at(span)`
+- [x] Decide name source: span derivation via `source_text_at(source, span)`
+- [x] `source_text_at` infrastructure (B0) + test proving span→text recovery
+- [x] Thread source_text through pipeline: SourceFile → ResolvedModule →
+  TypeEnv → InferScope → TypedModule → emit (B2/B2.5)
+- [x] Migrate emit rendering reads (item/field/variant/service/operation
+  names) to `source_text_at` across Rust/Python/Go backends (B3)
+- [x] Migrate resolve type lookups to `source_text_at` (B4a)
+- [x] Synthetic name dissolution: tuple field constants centralized,
+  module/import markers moved to property values (B1b/B1c)
+- [x] `extern fn` syntax deleted (dead code, wrong model)
+- [ ] Update 17 `make_*` helpers + 11 accessor functions
+- [ ] Update remaining ~256 Node constructions to drop `name:`
+- [ ] Migrate synthetic node identity to structural (blocked by M4
+  type constructor dissolution — kernel types need .dag declarations)
 - [ ] Delete `Node.name` field, delete scrambled-name tests
 
 *Method dispatch from .dag algebra:*
