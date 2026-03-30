@@ -192,19 +192,31 @@ pub struct FieldSummary {
 }
 
 lazy_static::lazy_static! {
-    pub static ref KERNEL_TYPES: Vec<String> = vec!["String".to_string(), "Int".to_string(), "Bool".to_string(), "Float".to_string(), "Secret".to_string(), "Json".to_string(), "Unit".to_string(), "Bytes".to_string()];
+    pub static ref KERNEL_TYPE_SET: HashMap<String, bool> = {
+        let mut m = HashMap::new();
+        for name in &["String", "Int", "Bool", "Float", "Secret", "Json", "Unit", "Bytes"] {
+            m.insert(name.to_string(), true);
+        }
+        m
+    };
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    { let mut __found = false; for t in KERNEL_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
+    KERNEL_TYPE_SET.contains_key(&name)
 }
 
 lazy_static::lazy_static! {
-    pub static ref CONTAINER_TYPES: Vec<String> = vec!["List".to_string(), "Set".to_string(), "NonEmptyList".to_string(), "NonEmptySet".to_string(), "Map".to_string()];
+    pub static ref CONTAINER_TYPE_SET: HashMap<String, bool> = {
+        let mut m = HashMap::new();
+        for name in &["List", "Set", "NonEmptyList", "NonEmptySet", "Map"] {
+            m.insert(name.to_string(), true);
+        }
+        m
+    };
 }
 
 pub fn is_container_type(name: String) -> bool {
-    { let mut __found = false; for t in CONTAINER_TYPES.clone().iter().cloned() { if (t.clone() == name.clone()) { __found = true; break; } } __found }
+    CONTAINER_TYPE_SET.contains_key(&name)
 }
 
 pub fn is_kernel_numeric(name: String) -> bool {

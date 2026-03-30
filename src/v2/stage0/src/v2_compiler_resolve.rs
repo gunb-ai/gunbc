@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, Connective, SourceSpan, no_span, KERNEL_TYPES, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node, CompilerDiagnostic, ErrorNode, make_error_node};
+pub use crate::v2_std_core::{Node, Connective, SourceSpan, no_span, KERNEL_TYPE_SET, module_node, import_node, is_import_node, import_is_all, import_specific_names, module_imports, module_items, is_module_node, CompilerDiagnostic, ErrorNode, make_error_node};
 use crate::v2_std_core::Connective::{Conj, Disj};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -205,7 +205,7 @@ let imported_names = { let mut __result = Vec::new(); for imp in module_imports(
 } else {
             import_specific_names(imp.clone())
 }); } __result };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(item_names.clone(), variant_names.clone()), imported_names.clone()), KERNEL_TYPES.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(item_names.clone(), variant_names.clone()), imported_names.clone()), KERNEL_TYPE_SET.keys().cloned().collect::<Vec<_>>())
 }
 }
 

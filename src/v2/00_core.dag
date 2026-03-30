@@ -106,26 +106,32 @@ type FieldSummary {
   value_shape: FieldValueShape
 }
 
-// Canonical list of kernel-provided primitive types.
-// Any stage that needs to recognize kernel names imports this list
-// instead of redefining its own copy.
-data kernel_types: List<String> = [
-  "String", "Int", "Bool", "Float",
-  "Secret", "Json", "Unit", "Bytes"
-]
+// Canonical set of kernel-provided primitive types.
+// Any stage that needs to recognize kernel names imports this set
+// instead of redefining its own copy. O(1) membership via Map.
+data kernel_type_set: Map<String, Bool> = {
+  "String": true, "Int": true, "Bool": true, "Float": true,
+  "Secret": true, "Json": true, "Unit": true, "Bytes": true
+}
 
 fn is_kernel_type(name: String) -> Bool {
-  kernel_types |> any(t => t == name)
+  match map_get(kernel_type_set, name) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // Container types: parameterized types that stay unexpanded at resolve time.
 // Used by parse and resolve to distinguish container generics from aliases.
-data container_types: List<String> = [
-  "List", "Set", "NonEmptyList", "NonEmptySet", "Map"
-]
+data container_type_set: Map<String, Bool> = {
+  "List": true, "Set": true, "NonEmptyList": true, "NonEmptySet": true, "Map": true
+}
 
 fn is_container_type(name: String) -> Bool {
-  container_types |> any(t => t == name)
+  match map_get(container_type_set, name) {
+    Some { value: _ } => true
+    None => false
+  }
 }
 
 // Arity bridge DELETED (P3.7). The compiler no longer hardcodes which

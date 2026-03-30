@@ -3919,6 +3919,9 @@ if has_err(r.err.clone()) {
 })
 }
 let name = r.name.clone();
+// Parse optional type params: fn foo<T, U>(...)
+let tp_result = parse_optional_type_params(tokens.clone(), r.state.clone());
+let type_params = tp_result.params.clone();
 let named_dummy = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -3937,7 +3940,7 @@ let named_dummy = Rc::new(Node {
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
 });
-let r = parse_params(tokens.clone(), r.state.clone());
+let r = parse_params(tokens.clone(), tp_result.state.clone());
 if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
     item: named_dummy.clone(),
@@ -3970,7 +3973,7 @@ let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
     children: vec![],
-    params: params.clone(),
+    params: { let mut all = type_params.clone(); all.extend(params.clone()); all },
     inferred: inferred.clone(),
     return_cardinality: Cardinality::Required,
     uses: vec![],
@@ -7622,7 +7625,7 @@ pub fn parse_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
     // If colon form was used (node x: Type), the expression IS the type annotation.
     let type_ann = if e_colon.consumed.clone() { Some(r3.expr.clone()) } else { None };
     Rc::new(ExprResult { expr: Rc::new(Node {
-        name: "".to_string(), span: span.clone(), children: vec![r3.expr.clone()],
+        name: name.clone(), span: span.clone(), children: vec![r3.expr.clone()],
         connective: None, params: vec![], inferred: ret.inferred.clone(),
         return_cardinality: Cardinality::Required, uses: vec![], body: None, transport: None,
         properties: cr.constraints.clone(), type_annotation: type_ann, is_self_recursive: false,

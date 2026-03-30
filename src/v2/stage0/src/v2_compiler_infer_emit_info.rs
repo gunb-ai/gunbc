@@ -76,31 +76,24 @@ pub struct TypeSummary {
     pub name: String,
     pub repr: Rc<TypeRepr>,
     pub field_summaries: HashMap<String, Rc<FieldSummary>>,
+    pub field_type_map: HashMap<String, String>,
+    pub variant_name_set: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitGraphInfo {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
-    pub variant_to_enum: HashMap<String, String>,
-    pub enum_variant_membership: HashMap<String, bool>,
-    pub field_type_names: HashMap<String, String>,
     pub recursive_type_set: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitInfoBuildState {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
-    pub variant_to_enum: HashMap<String, String>,
-    pub enum_variant_membership: HashMap<String, bool>,
-    pub field_type_names: HashMap<String, String>,
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
     type_summaries: <HashMap<_, _>>::new(),
-    variant_to_enum: <HashMap<_, _>>::new(),
-    enum_variant_membership: <HashMap<_, _>>::new(),
-    field_type_names: <HashMap<_, _>>::new(),
     recursive_type_set: <HashMap<_, _>>::new(),
 })
 }
@@ -205,6 +198,22 @@ consistent.iter().cloned().fold(<HashMap<String, Rc<FieldSummary>>>::new(), |acc
 }
 }
 
+pub fn build_field_type_map(children: Vec<Rc<Node>>) -> HashMap<String, String> {
+    children.iter().cloned().fold(<HashMap<_, _>>::new(), |acc: HashMap<String, String>, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: ft, .. }) => {
+            let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
+            // stage0: TypeVariable variant does not exist; ft_is_type_var is always false.
+            // Fail-closed: exclude Dynamic placeholder from authority surface.
+            if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dynamic".to_string())) {
+                v2_rt::map_insert(acc.clone(), child.name.clone(), resolved_name.clone())
+            } else {
+                acc.clone()
+            }
+        },
+        _ => acc.clone(),
+    })
+}
+
 pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
     {
         if ((node_has_structure(item.clone()) == false) || (item.transport.clone() != None)) {
@@ -215,6 +224,8 @@ if node_is_product(item.clone()) {
     name: item.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(item.children.clone()),
+    field_type_map: build_field_type_map(item.children.clone()),
+    variant_name_set: <HashMap<_, _>>::new(),
 }))
 } else {
             {
@@ -225,6 +236,8 @@ Some(Rc::new(TypeSummary {
     unit_only: unit_only.clone(),
 }),
     field_summaries: build_enum_field_summaries(item.children.clone()),
+    field_type_map: <HashMap<_, _>>::new(),
+    variant_name_set: item.children.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, child| v2_rt::map_insert(acc, child.name.clone(), true)),
 }))
 }
 }
@@ -240,6 +253,8 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     name: variant.name.clone(),
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(variant.children.clone()),
+    field_type_map: build_field_type_map(variant.children.clone()),
+    variant_name_set: <HashMap<_, _>>::new(),
 }))
 } else {
             acc.clone()
@@ -247,52 +262,34 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     _ => state.type_summaries.clone(),
 };
 let next_summaries = v2_rt::map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
-let next_variants = match (*summary.repr.clone()).clone() {
-    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.variant_to_enum.clone(), |acc: _, child: Rc<Node>| match v2_rt::map_get(&acc, child.name.clone()) {
-    Some(existing) => if (existing.clone() == summary.name.clone()) {
-            acc.clone()
-} else {
-            v2_rt::map_insert(acc.clone(), child.name.clone(), "__ambiguous__".to_string())
-},
-    None => v2_rt::map_insert(acc.clone(), child.name.clone(), summary.name.clone()),
-}),
-    _ => state.variant_to_enum.clone(),
-};
-let next_evm = match (*summary.repr.clone()).clone() {
-    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.enum_variant_membership.clone(), |acc: _, child: Rc<Node>| v2_rt::map_insert(acc.clone(), v2_rt::concat(v2_rt::concat(summary.name.clone(), "|".to_string()), child.name.clone()), true)),
-    _ => state.enum_variant_membership.clone(),
-};
-let next_ftn = match (*summary.repr.clone()).clone() {
-    TypeRepr::StructRepr => item.children.iter().cloned().fold(state.field_type_names.clone(), |acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: ft, .. }) => {
-            let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
-if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dynamic".to_string())) {
-                v2_rt::map_insert(acc.clone(), v2_rt::concat(v2_rt::concat(summary.name.clone(), "|".to_string()), child.name.clone()), resolved_name.clone())
-} else {
-                acc.clone()
-}
-},
-    _ => acc.clone(),
-}),
-    TypeRepr::EnumRepr { .. } => item.children.iter().cloned().fold(state.field_type_names.clone(), |acc: _, variant: Rc<Node>| variant.children.iter().cloned().fold(acc.clone(), |inner_acc: _, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: ft, .. }) => {
-            let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
-if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dynamic".to_string())) {
-                v2_rt::map_insert(inner_acc.clone(), v2_rt::concat(v2_rt::concat(variant.name.clone(), "|".to_string()), child.name.clone()), resolved_name.clone())
-} else {
-                inner_acc.clone()
-}
-},
-    _ => inner_acc.clone(),
-})),
-};
 Rc::new(EmitInfoBuildState {
     type_summaries: next_summaries.clone(),
-    variant_to_enum: next_variants.clone(),
-    enum_variant_membership: next_evm.clone(),
-    field_type_names: next_ftn.clone(),
 })
 },
     None => state.clone(),
 }
+}
+
+pub fn variant_belongs_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>, variant_name: String, enum_name: String) -> bool {
+    match v2_rt::map_get(&type_summaries, enum_name.clone()) {
+        Some(summary) => match (*summary.repr.clone()).clone() {
+            TypeRepr::EnumRepr { .. } => summary.variant_name_set.contains_key(&variant_name),
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+pub fn derive_variant_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, String> {
+    v2_rt::map_values(&type_summaries).iter().cloned().fold(<HashMap<String, String>>::new(), |acc: HashMap<String, String>, summary: Rc<TypeSummary>| {
+        match (*summary.repr.clone()).clone() {
+            TypeRepr::EnumRepr { .. } => v2_rt::map_keys(&summary.variant_name_set).iter().cloned().fold(acc.clone(), |inner: HashMap<String, String>, vn: String| {
+                match v2_rt::map_get(&inner, vn.clone()) {
+                    Some(_) => inner.clone(),
+                    None => v2_rt::map_insert(inner.clone(), vn.clone(), summary.name.clone()),
+                }
+            }),
+            _ => acc.clone(),
+        }
+    })
 }

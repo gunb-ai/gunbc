@@ -52,7 +52,7 @@ pub use crate::v2_std_core::{Node, leaf_node, with_optional_cardinality};
 pub use crate::v2_compiler_infer_types::{container_node, tuple_node, error_type_node, bare_map_node, method_receiver_element_node};
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
-    if (((name.clone() == "string_length".to_string()) || (name.clone() == "code_point".to_string())) || (name.clone() == "to_int".to_string())) {
+    if ((((name.clone() == "count".to_string()) || (name.clone() == "string_length".to_string())) || (name.clone() == "code_point".to_string())) || (name.clone() == "to_int".to_string())) {
         Some(leaf_node("Int".to_string()))
 } else {
         if (name.clone() == "parse_int".to_string()) {

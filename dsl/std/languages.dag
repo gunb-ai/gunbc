@@ -55,6 +55,35 @@ type NamingConvention {
   module_case: NamingCase
 }
 
+// "How is source formatted?" -- indentation and import organization.
+type IndentStyle
+  = SpaceIndent { width: Int }
+  | TabIndent
+
+type ImportGrouping
+  = StdExternalLocal
+  | NoGrouping
+
+type FormatModel {
+  indent: IndentStyle
+  max_line_width: Int
+  import_grouping: ImportGrouping
+  trailing_newline: Bool
+}
+
+// "What triggers an import?" -- import derivation rules.
+type ImportTrigger
+  = TypeUsageTrigger { type_name: String }
+  | TraitImplTrigger { trait_name: String }
+  | DeriveMacroTrigger { macro_name: String }
+  | ContainerUsageTrigger { container: String }
+  | AsyncUsageTrigger
+
+type ImportRule {
+  trigger: ImportTrigger
+  import_path: String
+}
+
 // "What is a type system mapping?" -- abstract -> concrete types.
 type TypeMapping {
   string: String

@@ -40,8 +40,8 @@ import v2.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError,
-  resource_use_name,
-  kernel_types, is_kernel_type,
+  resource_use_name, resource_use_resource,
+  kernel_type_set, is_kernel_type,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
@@ -841,9 +841,19 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
       Some { value: lambda_arg } => match rt_node(n: arg_value(n: lambda_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
+  } else if method_name_is(opt: method_name, expected: "filter") || method_name_is(opt: method_name, expected: "sort_by") || method_name_is(opt: method_name, expected: "unique") || method_name_is(opt: method_name, expected: "reverse") {
+    // filter/sort_by/unique/reverse preserve the collection type exactly
+    receiver_type
   } else if method_name_is(opt: method_name, expected: "fold") {
-    match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-      Some { value: lambda_arg } => match rt_node(n: arg_value(n: lambda_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
+    // fold returns the accumulator type, not the lambda body type.
+    let fold_acc = if semantics == none { none } else {
+      match semantics.value {
+        AlgebraMethodSemantics { method_name: _, fold_accumulator_type: fat } => fat
+        _ => none
+      }
+    }
+    match fold_acc {
+      Some { value: acc_type } => acc_type
       None => fallback
     }
   } else if method_name_is(opt: method_name, expected: "list_push") && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
@@ -1874,6 +1884,10 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   // Function with body: infer body, resolve return type
   else if item.body != none && item.params |> count > 0 {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
+    // Add uses bindings (e.g., uses net: Network) to scope
+    let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
+      extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
+    )
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope)
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
@@ -2002,7 +2016,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // Build kernel type bindings. Unit is the terminal object — empty product
   // (Conj + 0 children), structurally unique among kernel types.
   let kernel_bindings_base = fold(
-    kernel_types,
+    map_keys(kernel_type_set),
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding {
       name: name,
@@ -2145,7 +2159,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>) -> BuildTypeEnvResult {
   let zero_span = make_span(start: 0, end: 0)
   let kernel_bindings = fold(
-    kernel_types,
+    map_keys(kernel_type_set),
     init: empty_map(),
     f: (acc, name) => map_insert(acc, name, TypeBinding { name: name, resolved: Node { name: name, span: no_span(), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, config: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } })
   )
@@ -2598,10 +2612,7 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
-    type_summaries: empty_map(),
-    variant_to_enum: empty_map(),
-    enum_variant_membership: empty_map(),
-    field_type_names: empty_map()
+    type_summaries: empty_map()
   }
   let built = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
@@ -2613,9 +2624,6 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   )
   EmitGraphInfo {
     type_summaries: built.type_summaries,
-    variant_to_enum: built.variant_to_enum,
-    enum_variant_membership: built.enum_variant_membership,
-    field_type_names: built.field_type_names,
     recursive_type_set: all_recursive
   }
 }

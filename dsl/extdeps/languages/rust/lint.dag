@@ -12,7 +12,7 @@
 
 module extdeps.languages.rust.lint
 
-import v2.compiler.languages {
+import std.languages {
   ImportRule, ImportTrigger,
   TraitImplTrigger, DeriveMacroTrigger,
   ContainerUsageTrigger, AsyncUsageTrigger

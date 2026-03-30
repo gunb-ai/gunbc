@@ -49,7 +49,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 }
 
 pub use crate::std_types::{SourceSpan};
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, resource_use_name, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, is_error_diagnostic, rt_node, has_inferred, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, KERNEL_TYPES, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOpKind, UnaryOpKind, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names, Connective, ExprData, make_expr_node, make_expr_error_node, make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node, field_init_node_name, field_init_node_value, resource_use_name, resource_use_resource, map_children, arg_value, arg_name, arm_body, arm_pattern, arm_guard, if_condition, if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base, lambda_body, method_receiver, method_arg_nodes, binop_left, binop_right, foreach_collection, foreach_body, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, unaryop_operand, is_error_diagnostic, rt_node, has_inferred, InferredNode, NodeType, Cardinality, CompilerDiagnostic, ErrorNode, make_error_node, KERNEL_TYPE_SET, is_kernel_type, expr_has_self_call, expr_has_non_tail_self_call, DeclaredFuncSig, DeclaredFuncEnv, LiteralValue, FieldAccessStyle, FieldValueShape, FieldSummary, VarBindingKind, CallSemantics, MethodSemantics, LambdaSemantics, ExprErrorKind, BinOpKind, UnaryOpKind, MatchPattern, make_field_binding_node, field_binding_name, field_binding_pattern, StringPart, make_transport_node, local_transport_node, leaf_node, with_optional_cardinality, with_required_cardinality, node_is_product, node_is_coproduct, node_has_structure, no_span, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::ExprData::{NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
@@ -832,15 +832,23 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
     None => fallback.clone(),
 }
 } else {
+                if (method_name_is(method_name.clone(), "filter".to_string()) || method_name_is(method_name.clone(), "sort_by".to_string()) || method_name_is(method_name.clone(), "unique".to_string()) || method_name_is(method_name.clone(), "reverse".to_string())) {
+                    // filter/sort_by/unique/reverse preserve the collection type exactly
+                    receiver_type.clone()
+                } else {
                 if method_name_is(method_name.clone(), "fold".to_string()) {
-                    match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }.first().cloned() {
-    Some(lambda_arg) => match (*rt_node(arg_value(lambda_arg.clone()))).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => fallback.clone(),
-    NodeType::Untyped => fallback.clone(),
-},
-    None => fallback.clone(),
-}
+                    // fold returns the accumulator type, not the lambda body type.
+                    let fold_acc = match semantics.clone() {
+                        Some(s) => match (*s).clone() {
+                            MethodSemantics::AlgebraMethodSemantics { fold_accumulator_type: fat, .. } => fat,
+                            _ => None,
+                        },
+                        None => None,
+                    };
+                    match fold_acc {
+                        Some(acc_type) => acc_type.clone(),
+                        None => fallback.clone(),
+                    }
 } else {
                     if ((method_name_is(method_name.clone(), "list_push".to_string()) && ((typed_args.clone().len() as i64) >= 1)) && ((receiver_type.children.clone().len() as i64) == 0)) {
                         match typed_args.clone().first().cloned() {
@@ -894,6 +902,7 @@ if (((receiver_type.children.clone().len() as i64) == 0) && ((overlay_type.child
 }
 } else {
                                 fallback.clone()
+}
 }
 }
 }
@@ -1893,6 +1902,10 @@ if (node_has_structure(item.clone()) && (item.transport.clone() == None)) {
                 if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0)) {
                     {
                         let fn_scope = build_params_scope(scope.clone(), item.params.clone());
+// Add uses bindings to scope
+let fn_scope = item.uses.iter().cloned().fold(fn_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| {
+    extend_scope(s.clone(), resource_use_name(u.clone()), resource_use_resource(u.clone()))
+});
 let body_result = infer_expr(item.body.clone().clone().unwrap(), fn_scope.clone());
 let body_typed = body_result.typed.clone();
 let body_diags = body_result.diagnostics.clone();
@@ -2071,7 +2084,7 @@ pub fn infer_items(items: Vec<Rc<Node>>, scope: Rc<InferScope>) -> Vec<Rc<TypedI
 pub fn build_type_env(module: Rc<ResolvedModule>, parent_index: HashMap<String, Rc<TypedModule>>) -> Rc<BuildTypeEnvResult> {
     {
         let zero_span = SourceSpan::new(0, 0);
-let kernel_bindings = KERNEL_TYPES.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
+let kernel_bindings = KERNEL_TYPE_SET.keys().cloned().collect::<Vec<_>>().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
     name: name.clone(),
@@ -2337,7 +2350,7 @@ Rc::new(BuildTypeEnvResult {
 pub fn build_type_env_unresolved(module: Rc<ResolvedModule>, parent_index: HashMap<String, Rc<TypedModule>>) -> Rc<BuildTypeEnvResult> {
     {
         let zero_span = SourceSpan::new(0, 0);
-let kernel_bindings = KERNEL_TYPES.clone().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
+let kernel_bindings = KERNEL_TYPE_SET.keys().cloned().collect::<Vec<_>>().iter().cloned().fold(<HashMap<String, Rc<TypeBinding>>>::new(), |acc: _, name: String| v2_rt::map_insert(acc.clone(), name.clone(), Rc::new(TypeBinding {
     name: name.clone(),
     resolved: Rc::new(Node {
     name: name.clone(),
@@ -2905,17 +2918,11 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
     {
         let init = Rc::new(EmitInfoBuildState {
     type_summaries: <HashMap<_, _>>::new(),
-    variant_to_enum: <HashMap<_, _>>::new(),
-    enum_variant_membership: <HashMap<_, _>>::new(),
-    field_type_names: <HashMap<_, _>>::new(),
 });
 let built = modules.clone().iter().cloned().fold(init.clone(), |state: _, typed_module: Rc<TypedModule>| typed_module.items.clone().iter().cloned().fold(state.clone(), |inner_state: _, item: Rc<Node>| add_emit_item_summary(inner_state.clone(), item.clone())));
 let all_recursive = modules.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, m: Rc<TypedModule>| v2_rt::map_merge(acc.clone(), (*m.type_env.clone().recursive_type_set).clone()));
 Rc::new(EmitGraphInfo {
     type_summaries: built.type_summaries.clone(),
-    variant_to_enum: built.variant_to_enum.clone(),
-    enum_variant_membership: built.enum_variant_membership.clone(),
-    field_type_names: built.field_type_names.clone(),
     recursive_type_set: all_recursive.clone(),
 })
 }

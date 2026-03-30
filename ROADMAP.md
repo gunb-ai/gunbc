@@ -23,10 +23,10 @@ Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
 | Self-compile diagnostics | 0 | 0 | Green (pipeline reports 0; bootstrap ratchet allows 3) |
 | Files emitted | 40 | — | Rust target |
-| `full_dsl_compiles` | FAILS (1 diag) | 0 | `stack.dag` generic fn syntax |
+| `full_dsl_compiles` | PASSES (0 diag) | 0 | Fixed: generic fn, fold, node scoping, filter, pattern uses |
 | Bootstrap ratchet (`DIAG_RATCHET`) | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
 | L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
-| Complexity violations (`COMPLEXITY_RATCHET`) | 2 | 0 | 2 DivideAndConquer functions |
+| Complexity violations (`COMPLEXITY_RATCHET`) | 2 | 0 | **BLOCKED: test OOMs (SIGKILL).** Cannot identify violations or wire fail-closed gate until fixed. |
 
 ### Known Invariant Violations
 
@@ -191,6 +191,9 @@ claim — one specific fixture).
 - [ ] Diagnostic: "recursive function X has no structural descent —
   use `fold`, `descend`, or `repeat` instead"
 - [ ] CI gate: `complexity_violation_count == 0` (currently 2)
+- **BLOCKER:** `strict_complexity_violation_count` test OOMs (SIGKILL
+  in container). Cannot identify the 2 violations or wire fail-closed
+  gate. Fix OOM before proceeding.
 
 
 *Container sharing (FF-8):*

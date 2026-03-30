@@ -42,7 +42,7 @@ data dag_item_forms: List<ItemForm> = [
     has_uses: false, body_kind: ValueBody },
   ItemForm { keyword: "pattern", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
-    has_uses: false, body_kind: BlockBody },
+    has_uses: true, body_kind: BlockBody },
   ItemForm { keyword: "interface", has_type_params: false, has_params: true,
     has_return_type: true, return_required: false,
     has_uses: false, body_kind: BlockBody }
