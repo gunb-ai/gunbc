@@ -56,8 +56,8 @@ import v2.std.core {
   slice_start, slice_end,
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
-
-  CardOptional
+  CardOptional,
+  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport
 }
 
 import v2.compiler.artifact { RenderTarget, Go }
@@ -86,7 +86,7 @@ import v2.compiler.infer {
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
-  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
+  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
@@ -369,11 +369,6 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     emit_go_service_def(item: item, registry: registry)
   } else if (kind == TypedItemResourceDef) {
     emit_go_resource_def(item: item)
-  } else if (kind == TypedItemExternFunc) {
-    let params_str = emit_go_params(params: item.params)
-    let ret_str = emit_go_inferred(inferred: rt_type(n: item))
-    concat("func ", go_export_ident(name: item.name), "(", params_str, ")", ret_str, " {\n",
-      "\tpanic(\"extern func not implemented\")\n}")
   } else {
     concat("func init() { panic(\"EMIT BUG: unhandled item: ", item.name, "\") }")
   }
@@ -828,7 +823,6 @@ fn emit_go_algebra_method_call(method_name: String, receiver: Node, args: List<N
   else if method_name == "sort_by" { concat("v2rt.SortBy(", recv_str, ", ", first_arg_str, ")") }
   else if method_name == "append" { concat("append(", recv_str, ", ", first_arg_str, ")") }
   else {
-    // Generic bridge method: v2rt.PascalCaseName(receiver, args...)
     let go_name = go_bridge_method_name(method_name: method_name)
     let arg_strs = args |> map(a => emit_go_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: 0))
     let all_args = concat([recv_str], arg_strs)
@@ -852,8 +846,9 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
-    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
-      emit_go_algebra_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope)
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
+      let mn = method_def.name
+      emit_go_algebra_method_call(method_name: mn, receiver: receiver, args: args, registry: registry, scope: scope)
     PlainMethodSemantics =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)
   } }
@@ -1204,13 +1199,13 @@ fn emit_go_service_def(
 }
 
 fn emit_go_service_struct(name: String, transport: Node) -> String {
-  let fields = if transport.name == "rest" {
+  let fields = if is_rest_transport(t: transport) {
     let base = "\tBaseURL string"
     let auth_field = if transport_has_auth(t: transport) { "\n\tAuthToken string" } else { "" }
     concat(base, auth_field)
-  } else if transport.name == "shell" {
+  } else if is_shell_transport(t: transport) {
     "\tWorkingDir string"
-  } else if transport.name == "file" {
+  } else if is_file_transport(t: transport) {
     "\tBasePath string"
   } else {
     ""
@@ -1238,11 +1233,11 @@ fn emit_go_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_go_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int) -> String {
-  if transport.name == "rest" {
+  if is_rest_transport(t: transport) {
     emit_go_rest_call(op_name: op_name, transport: transport, depth: depth)
-  } else if transport.name == "shell" {
+  } else if is_shell_transport(t: transport) {
     emit_go_shell_call(op_name: op_name, transport: transport, depth: depth)
-  } else if transport.name == "file" {
+  } else if is_file_transport(t: transport) {
     emit_go_file_call(op_name: op_name, depth: depth)
   } else {
     emit_go_local_call(op_name: op_name, depth: depth)

@@ -1,0 +1,16 @@
+// extdeps/transports/file.dag -- Filesystem transport definition
+//
+// Spec: POSIX.1-2017 File I/O
+//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/read.html
+//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/write.html
+//
+// Configuration schema for service operations bound to filesystem access.
+// A service operation with `transport file { ... }` executes via
+// filesystem read/write at the configured path.
+
+module extdeps.transports.file
+
+// Configuration type for file transport bindings.
+type FileTransportConfig {
+  base_path: String             // POSIX pathname prefix for operation paths
+}

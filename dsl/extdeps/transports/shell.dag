@@ -1,0 +1,20 @@
+// extdeps/transports/shell.dag -- Subprocess transport definition
+//
+// Spec: POSIX.1-2017 Shell Command Language
+//       https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
+// Exec: POSIX.1-2017 exec family
+//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
+//
+// Configuration schema for service operations bound to subprocess execution.
+// A service operation with `transport shell { ... }` executes via
+// subprocess invocation with captured stdout/stderr.
+
+module extdeps.transports.shell
+
+// Configuration type for shell transport bindings.
+// argv is the command + arguments (POSIX.1-2017 Section 2.9.2).
+// env is additional environment variables (POSIX.1-2017 Section 8.1).
+type ShellTransportConfig {
+  working_dir: String?          // POSIX PWD; none = inherit from parent process
+  env: Map<String, String>      // Additional environment variables
+}

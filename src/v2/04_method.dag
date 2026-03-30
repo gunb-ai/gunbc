@@ -56,11 +56,14 @@ fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// Builtin function return type registry — data table, not if/else branches.
+// Builtin function return type registry.
 //
-// Each entry maps a function name to its return type Node. The compiler
-// reads this table during inference instead of branching on names.
-// Adding a builtin function = adding a row to this table.
+// BRIDGE: This map_insert chain is a duplicate authority over facts that
+// should come from .dag function declarations (extern fn signatures).
+// Deletion point: when builtins are actual .dag definitions that the
+// compiler loads and resolves, this registry is deleted. See review
+// feedback on BuiltinReturnKind — the proper model is definition nodes,
+// not a return-type proxy enum.
 fn builtin_function_registry() -> Map<String, Node> {
   let m = empty_map()
   // Int-returning functions
@@ -101,8 +104,6 @@ fn builtin_function_registry() -> Map<String, Node> {
 
 // NOTE: builtin_function_registry() constructs the map on each call in .dag
 // source. The stage0 Rust caches it via thread_local! to avoid O(N×M) rebuild.
-// Long-term: the registry should be a module-level data declaration or threaded
-// through the inference context as a pre-computed table.
 fn infer_builtin_call_type(name: String) -> Node? {
   map_get(builtin_function_registry(), name)
 }
