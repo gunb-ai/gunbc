@@ -2281,7 +2281,7 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
       emit_typed_collection_lambda(lambda_expr: arg_value(n: a), elem_type_str: elem_type_str, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     None => "compile_error!(\"missing sort_by key function argument\")"
   }
-  concat("{ let mut __sorted = ", recv_str, ".clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }")
+  concat("Rc::new({ let mut __sorted: Vec<_> = (*", recv_str, ").clone(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(a.clone()); let __kb = (", sort_key_fn, ")(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })")
 }
 
 fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
@@ -2316,10 +2316,10 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
             let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-            concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result }")
-          _ => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+            concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.push(", body_str, "); } __result })")
+          _ => concat("Rc::new(", recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>())")
         }
-      None => concat(recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>()")
+      None => concat("Rc::new(", recv_str, ".iter().cloned().map(", first_arg_str, ").collect::<Vec<_>>())")
     }
   }
 }
@@ -2336,10 +2336,10 @@ fn emit_rust_filter_method_call(receiver: Node, args: List<Node>, registry: Map<
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __result.push(", p, "); } } __result }")
-        _ => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { if ", body_str, " { __result.push(", p, "); } } __result })")
+        _ => concat("Rc::new(", recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>())")
       }
-    None => concat(recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>()")
+    None => concat("Rc::new(", recv_str, ".iter().cloned().filter(", first_arg_str, ").collect::<Vec<_>>())")
   }
 }
 
@@ -2393,10 +2393,10 @@ fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Ma
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
           let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-          concat("{ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend(", body_str, "); } __result }")
-        _ => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+          concat("Rc::new({ let mut __result = Vec::new(); for ", p, " in ", recv_str, ".iter().cloned() { __result.extend(", body_str, "); } __result })")
+        _ => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
       }
-    None => concat(recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>()")
+    None => concat("Rc::new(", recv_str, ".iter().cloned().flat_map(", first_arg_str, ").collect::<Vec<_>>())")
   }
 }
 
@@ -2433,8 +2433,20 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   if needs_rc { concat("Rc::new(", raw, ")") } else { raw }
 }
 
+// Route collection-producing runtime functions to their Rc-aware variants.
+// Containers are Rc-wrapped (Rc<Vec<T>>, Rc<HashMap<K,V>>), so operations
+// that return collections must return Rc-wrapped types via rc_* functions.
+fn rc_runtime_name(name: String) -> String {
+  if name == "list_push" { "rc_list_push" }
+  else if name == "list_concat" { "rc_list_concat" }
+  else if name == "map_insert" { "rc_map_insert" }
+  else if name == "map_merge" { "rc_map_merge" }
+  else if name == "index_by" { "rc_index_by" }
+  else { name }
+}
+
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let function_name = method_name
+  let function_name = rc_runtime_name(name: method_name)
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
     concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
   } else {
@@ -2488,7 +2500,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       } else if method_name == "split" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat(recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".split(&", first_arg_str, ").map(|s| s.to_string()).collect::<Vec<_>>()")
       } else if method_name == "last" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         concat(recv_str, ".last().cloned()")
@@ -2497,10 +2509,10 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
         concat(recv_str, ".first().cloned()")
       } else if method_name == "enumerate" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat(recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()")
       } else if method_name == "chars" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat(recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".chars().map(|c| c.to_string()).collect::<Vec<_>>()")
       } else if method_name == "string_contains" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2513,15 +2525,15 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       } else if method_name == "skip" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat(recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".iter().cloned().skip(", first_arg_str, " as usize).collect::<Vec<_>>()")
       } else if method_name == "take" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat(recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
+        concat("Rc::new(", recv_str, ".iter().cloned().take(", first_arg_str, " as usize).collect::<Vec<_>>()")
       } else if method_name == "append" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-        concat("v2_rt::list_push(", recv_str, ", ", first_arg_str, ")")
+        concat("v2_rt::rc_list_push(", recv_str, ", ", first_arg_str, ")")
       } else {
         // Generic bridge method: v2_rt::method_name(receiver, args...)
         emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
