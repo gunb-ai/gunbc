@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{authored_name_at, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, NewlineIndex, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{authored_name_at, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, NewlineIndex, TextFile, SourceSpan, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, FieldAccessStyle, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -510,7 +510,7 @@ let params_str = emit_py_func_params(params.clone(), uses.clone(), service_names
 let ret_str = emit_py_inferred(inferred.clone());
 let body_scope = build_params_scope(scope.clone(), params.clone());
 let body_scope = uses.iter().fold(body_scope, |s, u| {
-    extend_scope(s, resource_use_name(u.clone()), resource_use_resource(u.clone()))
+    extend_scope(s, authored_name_at(scope.type_env.source_index.clone(), u.clone()), resource_use_resource(u.clone()))
 });
 let body_str = emit_py_typed_func_body(body.clone(), registry.clone(), body_scope.clone(), (depth.clone() + 1));
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(name.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":
@@ -521,7 +521,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_py_func_params(params: Vec<Rc<Node>>, uses: Vec<Rc<Node>>, service_names: Vec<String>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let param_strs = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_py_param(p.clone(), source_index.clone())); } __result };
-let resource_strs = { let mut __result = Vec::new(); for u in uses.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(resource_use_name(u.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(resource_use_resource(u.clone()), RenderTarget::Python))); } __result };
+let resource_strs = { let mut __result = Vec::new(); for u in uses.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(authored_name_at(source_index.clone(), u.clone()), RenderTarget::Python), ": ".to_string()), emit_node_type(resource_use_resource(u.clone()), RenderTarget::Python))); } __result };
 let service_strs = { let mut __result = Vec::new(); for sn in service_names.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(service_var_name(sn.clone()), ": ".to_string()), sanitize_service_name(sn.clone()))); } __result };
 let all_params = v2_rt::concat(v2_rt::concat(param_strs.clone(), resource_strs.clone()), service_strs.clone());
 all_params.clone().join(&", ".to_string())

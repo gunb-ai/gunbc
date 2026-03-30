@@ -36,7 +36,7 @@ import v2.std.core {
   ServiceMethodSemantics,
   MatchPattern, field_binding_name, field_binding_pattern,
   TextFile, ErrorNode, make_error_node, InternalError, SourceSpan,
-  resource_use_name, resource_use_resource,
+  resource_use_resource,
   BinOpKind,
   UnaryOpKind, StringPart, Text, Interpolation,
   transport_base_url,
@@ -963,8 +963,9 @@ fn emit_func_def(
   let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, rc_types: rc_types, source_index: scope.type_env.source_index)
   let ret_str = emit_func_inferred(inferred: inferred, rc_types: rc_types)
   let body_scope = build_params_scope(scope: scope, params: params)
+  let si = scope.type_env.source_index
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
-    extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
+    extend_scope(scope: s, name: authored_name_at(source_index: si, node: u), resolved: resource_use_resource(n: u))
   )
   let body_str = emit_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   concat(rust_visibility_prefix(), "async fn ", emit_ident(name: name, target: Rust),
@@ -1049,7 +1050,7 @@ fn emit_tco_param(param: Node, rc_types: Map<String, Bool>, source_index: Newlin
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   let param_strs = params |> map(p => emit_param(param: p, rc_types: rc_types, source_index: source_index))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: resource_use_name(n: u), target: Rust), ": &", emit_node_type_rc(n: resource_use_resource(n: u), target: Rust, rc_types: rc_types))
+    concat(emit_ident(name: authored_name_at(source_index: source_index, node: u), target: Rust), ": &", emit_node_type_rc(n: resource_use_resource(n: u), target: Rust, rc_types: rc_types))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": &", sanitize_service_name(name: sn))
