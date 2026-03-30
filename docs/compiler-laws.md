@@ -351,8 +351,8 @@ Node.name field deletion blocked by synthetic node identity (M4).
 | B0 | DONE | `source_text_at(source, span)` + test proving span→text recovery |
 | B1 | DONE | Tuple field constants centralized, module/import markers moved to property values |
 | B2 | DONE | `source_text` threaded through InferScope + TypeEnv + ResolvedModule + TypedModule |
-| B3 | DONE | Emit rendering reads migrated to `source_text_at` across Rust/Python/Go (54 reads) |
-| B4 | DONE | Resolve type lookups migrated to `source_text_at` (7 reads) |
+| B3 | REVERTED | Emit rendering reads migrated then reverted: parser item spans point to keyword tokens, not identifiers. Needs identifier span stored separately. |
+| B4 | REVERTED | Resolve type lookups migrated then reverted: same span issue as B3. |
 | B5 | BLOCKED | Delete Node.name field. Blocked by ~70 synthetic nodes with zero spans (kernel types, algebra methods). Needs M4 type constructor dissolution. |
 | **Remaining** | | ~463 `.name` refs: 256 constructions (B5), 131 accessor calls (B5), ~76 synthetic/coupled reads (M4) |
 
