@@ -57,8 +57,6 @@ use Certainty::*;
 use CostShape::*;
 use RecursionPattern::*;
 
-pub const LARGE_COMPLEXITY_REPORT_LIMIT: usize = 400;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum SizeExpr {
     SizeConst {
@@ -752,8 +750,24 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ComplexityClass {
+    ClassConstant,
+    ClassUnknown,
+    ClassSize {
+        size: Rc<SizeExpr>,
+    },
+    ClassProduct {
+        left: Rc<ComplexityClass>,
+        right: Rc<ComplexityClass>,
+    },
+    ClassLog {
+        size: Rc<SizeExpr>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ComplexityClassInfo {
-    pub class: String,
+    pub class: Rc<ComplexityClass>,
     pub has_sum: bool,
     pub sum_depth: i64,
     pub log_factor: bool,
@@ -874,26 +888,18 @@ pub fn format_size(size: Rc<SizeExpr>) -> String {
     })
 }
 
-pub fn strip_big_o(s: String) -> String {
-    if ((v2_rt::string_length(s.clone()) > 3) && (v2_rt::substring(s.clone(), 0, 2) == "O(".to_string())) {
-        v2_rt::substring(s.clone(), 2, (v2_rt::string_length(s.clone()) - 1))
-} else {
-        s.clone()
-}
-}
-
 pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match &*expr {
             CostExpr::CostConst { .. } => ComplexityClassInfo {
-                class: "O(1)".to_string(),
+                class: Rc::new(ComplexityClass::ClassConstant),
                 has_sum: false,
                 sum_depth: 0,
                 log_factor: false,
                 is_unknown: false,
             },
             CostExpr::CostUnknown { .. } => ComplexityClassInfo {
-                class: "O(?)".to_string(),
+                class: Rc::new(ComplexityClass::ClassUnknown),
                 has_sum: false,
                 sum_depth: 0,
                 log_factor: false,
@@ -902,20 +908,14 @@ pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo 
             CostExpr::CostSum { upper: u, body: bd, .. } => {
                 let inner = analyze_simplified_complexity(bd.clone());
                 let class = if inner.is_unknown {
-                    "O(?)".to_string()
+                    Rc::new(ComplexityClass::ClassUnknown)
                 } else if inner.has_sum {
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat("O(".to_string(), format_size(u.clone())),
-                                " * ".to_string(),
-                            ),
-                            strip_big_o(inner.class.clone()),
-                        ),
-                        ")".to_string(),
-                    )
+                    Rc::new(ComplexityClass::ClassProduct {
+                        left: Rc::new(ComplexityClass::ClassSize { size: u.clone() }),
+                        right: inner.class.clone(),
+                    })
                 } else {
-                    v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), ")".to_string())
+                    Rc::new(ComplexityClass::ClassSize { size: u.clone() })
                 };
                 ComplexityClassInfo {
                     class,
@@ -945,16 +945,16 @@ pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo 
                 let left_info = analyze_simplified_complexity(l.clone());
                 let right_info = analyze_simplified_complexity(r.clone());
                 let combined = if left_info.is_unknown || right_info.is_unknown {
-                    "O(?)".to_string()
-                } else if left_info.class == "O(1)" {
+                    Rc::new(ComplexityClass::ClassUnknown)
+                } else if is_class_constant(left_info.class.clone()) {
                     right_info.class.clone()
-                } else if right_info.class == "O(1)" {
+                } else if is_class_constant(right_info.class.clone()) {
                     left_info.class.clone()
                 } else {
-                    v2_rt::concat(
-                        v2_rt::concat(left_info.class.clone(), " * ".to_string()),
-                        right_info.class.clone(),
-                    )
+                    Rc::new(ComplexityClass::ClassProduct {
+                        left: left_info.class.clone(),
+                        right: right_info.class.clone(),
+                    })
                 };
                 ComplexityClassInfo {
                     class: combined,
@@ -981,7 +981,7 @@ pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo 
                 }
             }
             CostExpr::CostLog { argument: a, .. } => ComplexityClassInfo {
-                class: format!("O(log({}))", format_size(a.clone())),
+                class: Rc::new(ComplexityClass::ClassLog { size: a.clone() }),
                 has_sum: false,
                 sum_depth: 0,
                 log_factor: true,
@@ -991,8 +991,49 @@ pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo 
     })
 }
 
+pub fn is_class_constant(c: Rc<ComplexityClass>) -> bool {
+    matches!(&*c, ComplexityClass::ClassConstant)
+}
+
+pub fn format_complexity_class(c: Rc<ComplexityClass>) -> String {
+    match &*c {
+        ComplexityClass::ClassConstant => "O(1)".to_string(),
+        ComplexityClass::ClassUnknown => "O(?)".to_string(),
+        ComplexityClass::ClassSize { size: s } =>
+            v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(s.clone())), ")".to_string()),
+        ComplexityClass::ClassProduct { left: l, right: r } =>
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat("O(".to_string(), format_complexity_class_inner(l.clone())),
+                        " * ".to_string(),
+                    ),
+                    format_complexity_class_inner(r.clone()),
+                ),
+                ")".to_string(),
+            ),
+        ComplexityClass::ClassLog { size: s } =>
+            v2_rt::concat(v2_rt::concat("O(log ".to_string(), format_size(s.clone())), ")".to_string()),
+    }
+}
+
+pub fn format_complexity_class_inner(c: Rc<ComplexityClass>) -> String {
+    match &*c {
+        ComplexityClass::ClassConstant => "1".to_string(),
+        ComplexityClass::ClassUnknown => "?".to_string(),
+        ComplexityClass::ClassSize { size: s } => format_size(s.clone()),
+        ComplexityClass::ClassProduct { left: l, right: r } =>
+            v2_rt::concat(
+                v2_rt::concat(format_complexity_class_inner(l.clone()), " * ".to_string()),
+                format_complexity_class_inner(r.clone()),
+            ),
+        ComplexityClass::ClassLog { size: s } =>
+            v2_rt::concat("log ".to_string(), format_size(s.clone())),
+    }
+}
+
 pub fn classify_simplified_complexity(expr: Rc<CostExpr>) -> String {
-    analyze_simplified_complexity(expr.clone()).class
+    format_complexity_class(analyze_simplified_complexity(expr.clone()).class)
 }
 
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
@@ -1569,7 +1610,7 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 }
 }
 
-pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<ComplexityReport> {
+pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>, report_limit: i64) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
 let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
@@ -1613,7 +1654,7 @@ Rc::new(ComplexityViolation {
     summary: None,
 }),
 }); } __result };
-let formatted = if (func_entries.len() > LARGE_COMPLEXITY_REPORT_LIMIT) {
+let formatted = if (func_entries.len() > report_limit as usize) {
     v2_rt::concat("complexity report elided for ".to_string(), v2_rt::concat(func_entries.len().to_string(), " functions".to_string()))
 } else {
     format_complexity_report(func_entries.clone(), summaries_map.clone())
