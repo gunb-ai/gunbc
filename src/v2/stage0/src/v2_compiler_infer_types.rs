@@ -360,6 +360,10 @@ pub enum AlgebraTypeTemplate {
     ReceiverKey,
     ReceiverValue,
     NamedTemplate { name: String },
+    CallableOf {
+        param_types: Vec<AlgebraTypeTemplate>,
+        return_type: Box<AlgebraTypeTemplate>,
+    },
     ReceiverCollectionOf { element: Box<AlgebraTypeTemplate> },
     ListOf { element: Box<AlgebraTypeTemplate> },
     OptionalOf { inner: Box<AlgebraTypeTemplate> },
@@ -651,34 +655,102 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
         AlgebraFieldTemplate {
             name: "map".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "MappedElement".to_string(),
+                    }),
+                },
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
+                element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "MappedElement".to_string(),
+                }),
+            },
         },
         AlgebraFieldTemplate {
             name: "filter".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverSelf,
         },
         AlgebraFieldTemplate {
             name: "flat_map".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::ReceiverCollectionOf {
+                        element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                            name: "MappedElement".to_string(),
+                        }),
+                    }),
+                },
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
+                element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "MappedElement".to_string(),
+                }),
+            },
         },
         AlgebraFieldTemplate {
             name: "fold".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "FoldAccumulator".to_string(),
+                },
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![
+                        AlgebraTypeTemplate::NamedTemplate {
+                            name: "FoldAccumulator".to_string(),
+                        },
+                        AlgebraTypeTemplate::ReceiverElement,
+                    ],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "FoldAccumulator".to_string(),
+                    }),
+                },
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "FoldAccumulator".to_string(),
+            },
         },
         AlgebraFieldTemplate {
             name: "any".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             },
         },
         AlgebraFieldTemplate {
             name: "all".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Bool".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::NamedTemplate {
                 name: "Bool".to_string(),
             },
@@ -726,7 +798,15 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "sort_by".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::CallableOf {
+                    param_types: vec![AlgebraTypeTemplate::ReceiverElement],
+                    return_type: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Ordering".to_string(),
+                    }),
+                },
+            ],
             return_type: AlgebraTypeTemplate::ReceiverSelf,
         },
         AlgebraFieldTemplate {
@@ -952,6 +1032,15 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
     nominal_type_ref(name.clone())
 }
 
+pub fn callable_type_from_param_types(param_types: Vec<Rc<Node>>, return_type: Rc<Node>) -> Rc<Node> {
+    let params: Vec<Rc<Node>> = param_types
+        .iter()
+        .cloned()
+        .map(|t| make_param_node("_".to_string(), t.clone(), None, no_span()))
+        .collect();
+    callable_node(params, return_type)
+}
+
 pub fn algebra_child_or_placeholder(
     base: Rc<Node>,
     child_index: i64,
@@ -973,6 +1062,17 @@ pub fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Rc<Node>) -
         AlgebraTypeTemplate::ReceiverKey => key_node.clone(),
         AlgebraTypeTemplate::ReceiverValue => val_node.clone(),
         AlgebraTypeTemplate::NamedTemplate { name } => placeholder_type_node(name.clone()),
+        AlgebraTypeTemplate::CallableOf {
+            param_types,
+            return_type,
+        } => {
+            let instantiated_param_types: Vec<Rc<Node>> = param_types
+                .into_iter()
+                .map(|tp| instantiate_algebra_type(tp, base.clone()))
+                .collect();
+            let instantiated_return = instantiate_algebra_type((*return_type).clone(), base.clone());
+            callable_type_from_param_types(instantiated_param_types, instantiated_return)
+        }
         AlgebraTypeTemplate::ReceiverCollectionOf { element } => container_node(
             base.name.clone(),
             instantiate_algebra_type((*element).clone(), base.clone()),

@@ -78,6 +78,12 @@ pub struct KnownMethodResolution {
     pub result_type: Option<Rc<Node>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodFieldResult {
+    pub field_node: Rc<Node>,
+    pub result_type: Rc<Node>,
+}
+
 pub fn lookup_in_scope(locals: HashMap<String, Rc<TypeBinding>>, name: String) -> Option<Rc<Node>> {
     match v2_rt::map_get(&locals, name.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
@@ -341,7 +347,10 @@ pub fn field_summary_for_type(
     })
 }
 
-pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option<Rc<Node>> {
+pub fn lookup_field_in_product(
+    product: Rc<Node>,
+    method_name: String,
+) -> Option<Rc<MethodFieldResult>> {
     let matching: Vec<Rc<Node>> = product
         .children
         .iter()
@@ -354,12 +363,21 @@ pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option
                 if (rt.params.clone().len() as i64) > 0 {
                     match rt.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: return_type }) => {
-                            Some(return_type.clone())
+                            Some(Rc::new(MethodFieldResult {
+                                field_node: field.clone(),
+                                result_type: return_type.clone(),
+                            }))
                         }
-                        _ => Some(rt.clone()),
+                        _ => Some(Rc::new(MethodFieldResult {
+                            field_node: field.clone(),
+                            result_type: rt.clone(),
+                        })),
                     }
                 } else {
-                    Some(rt.clone())
+                    Some(Rc::new(MethodFieldResult {
+                        field_node: field.clone(),
+                        result_type: rt.clone(),
+                    }))
                 }
             }
             _ => None,
@@ -368,7 +386,10 @@ pub fn lookup_field_in_product(product: Rc<Node>, method_name: String) -> Option
     }
 }
 
-pub fn lookup_structural_method(receiver_type: Rc<Node>, method_name: String) -> Option<Rc<Node>> {
+pub fn lookup_structural_method(
+    receiver_type: Rc<Node>,
+    method_name: String,
+) -> Option<Rc<MethodFieldResult>> {
     let is_product = node_is_product(receiver_type.clone());
     if is_product {
         let direct = lookup_field_in_product(receiver_type.clone(), method_name.clone());
@@ -410,13 +431,13 @@ pub fn resolve_known_method_node(
 ) -> Rc<KnownMethodResolution> {
     let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
     match tier0_result {
-        Some(result_type) => {
+        Some(mfr) => {
             let semantics: Rc<MethodSemantics> = Rc::new(MethodSemantics::AlgebraMethodSemantics {
-                method_name: method_name.clone(),
+                method_def: mfr.field_node.clone(),
                 fold_accumulator_type: fold_accumulator_type.clone(),
             });
             let resolved_type = substitute_algebra_result(
-                result_type.clone(),
+                mfr.result_type.clone(),
                 receiver_type.clone(),
                 fold_accumulator_type.clone(),
             );

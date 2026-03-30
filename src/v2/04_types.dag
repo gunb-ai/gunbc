@@ -138,6 +138,7 @@ type AlgebraTypeTemplate
   | ReceiverKey
   | ReceiverValue
   | NamedTemplate { name: String }
+  | CallableOf { param_types: List<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
   | ReceiverCollectionOf { element: AlgebraTypeTemplate }
   | ListOf { element: AlgebraTypeTemplate }
   | OptionalOf { inner: AlgebraTypeTemplate }
@@ -211,18 +212,61 @@ data free_monoid_scalar_templates: List<AlgebraFieldTemplate> = [
 ]
 
 data free_monoid_collection_templates: List<AlgebraFieldTemplate> = [
-  { name: "map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "flat_map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "fold", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "any", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-  { name: "all", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
+  { name: "map", param_types: [
+      ReceiverSelf,
+      CallableOf {
+        param_types: [ReceiverElement],
+        return_type: NamedTemplate { name: "MappedElement" }
+      }
+    ], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
+  { name: "filter", param_types: [
+      ReceiverSelf,
+      CallableOf {
+        param_types: [ReceiverElement],
+        return_type: NamedTemplate { name: "Bool" }
+      }
+    ], return_type: ReceiverSelf },
+  { name: "flat_map", param_types: [
+      ReceiverSelf,
+      CallableOf {
+        param_types: [ReceiverElement],
+        return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } }
+      }
+    ], return_type: ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } } },
+  { name: "fold", param_types: [
+      ReceiverSelf,
+      NamedTemplate { name: "FoldAccumulator" },
+      CallableOf {
+        param_types: [NamedTemplate { name: "FoldAccumulator" }, ReceiverElement],
+        return_type: NamedTemplate { name: "FoldAccumulator" }
+      }
+    ], return_type: NamedTemplate { name: "FoldAccumulator" } },
+  { name: "any", param_types: [
+      ReceiverSelf,
+      CallableOf {
+        param_types: [ReceiverElement],
+        return_type: NamedTemplate { name: "Bool" }
+      }
+    ], return_type: NamedTemplate { name: "Bool" } },
+  { name: "all", param_types: [
+      ReceiverSelf,
+      CallableOf {
+        param_types: [ReceiverElement],
+        return_type: NamedTemplate { name: "Bool" }
+      }
+    ], return_type: NamedTemplate { name: "Bool" } },
   { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
   { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement } },
   { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement } },
   { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf },
   { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf },
-  { name: "sort_by", param_types: [ReceiverSelf], return_type: ReceiverSelf },
+  { name: "sort_by", param_types: [
+      ReceiverSelf,
+      CallableOf {
+        param_types: [ReceiverElement],
+        return_type: NamedTemplate { name: "Ordering" }
+      }
+    ], return_type: ReceiverSelf },
   { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf },
   { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" } },
   { name: "enumerate", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } } },
@@ -261,9 +305,13 @@ fn algebra_value_field(name: String, type_node: Node) -> Node {
 // The field's inferred type is a callable signature node with params and return type.
 // lookup_structural_method checks params.count > 0 to distinguish callable
 // from value fields, so we need real Param entries.
-fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
+fn callable_type_from_param_types(param_types: List<Node>, return_type: Node) -> Node {
   let params = param_types |> map(t => make_param_node(name: "_", type_expr: t, default_value: none, span: no_span()))
-  Node { name: name, span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable_node(func_params: params, ret: return_type) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  callable_node(func_params: params, ret: return_type)
+}
+
+fn algebra_method_field(name: String, param_types: List<Node>, return_type: Node) -> Node {
+  Node { name: name, span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: callable_type_from_param_types(param_types: param_types, return_type: return_type) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 // Apply algebra fields to a base node, producing a Conj product.
@@ -296,6 +344,10 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node) -> Node {
     ReceiverKey => key_node
     ReceiverValue => val_node
     NamedTemplate { name: n } => placeholder_type_node(name: n)
+    CallableOf { param_types: call_params, return_type: call_return } =>
+      let instantiated_param_types = call_params |> map(tp => instantiate_algebra_type(template: tp, base: base))
+      let instantiated_return = instantiate_algebra_type(template: call_return, base: base)
+      callable_type_from_param_types(param_types: instantiated_param_types, return_type: instantiated_return)
     ReceiverCollectionOf { element: inner } => container_node(kind_name: base.name, element: instantiate_algebra_type(template: inner, base: base))
     ListOf { element: inner } => container_node(kind_name: "List", element: instantiate_algebra_type(template: inner, base: base))
     OptionalOf { inner: inner } => with_optional_cardinality(n: instantiate_algebra_type(template: inner, base: base))

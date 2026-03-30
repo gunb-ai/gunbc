@@ -320,7 +320,7 @@ pub struct LambdaSemantics {
 pub enum MethodSemantics {
     PlainMethodSemantics,
     AlgebraMethodSemantics {
-        method_name: String,
+        method_def: Rc<Node>,
         fold_accumulator_type: Option<Rc<Node>>,
     },
     ServiceMethodSemantics {

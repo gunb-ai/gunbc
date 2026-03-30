@@ -911,8 +911,8 @@ let arg_strs = { let mut __result = Vec::new(); for a in args.clone().iter().clo
 let args_str = arg_strs.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("await ".to_string(), var_name.clone()), ".".to_string()), emit_ident(method.clone(), RenderTarget::Python)), "(".to_string()), args_str.clone()), ")".to_string())
 },
-    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } =>
-        emit_py_algebra_method_call(method_name.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
+    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } =>
+        emit_py_algebra_method_call(method_def.name.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
     MethodSemantics::PlainMethodSemantics => emit_py_plain_method_call(receiver.clone(), method.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone()),
 }
 } else {

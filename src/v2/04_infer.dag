@@ -669,9 +669,28 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
   } else { none }
 }
 
+fn method_arg_formal_type(semantics: MethodSemantics?, arg_index: Int) -> Node? {
+  if semantics == none { none } else {
+    match semantics.value {
+      AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } =>
+        let method_type = rt_type(n: md)
+        match method_type.params |> skip(arg_index + 1) |> first {
+          Some { value: p } => Some { value: param_node_type_expr(n: p) }
+          None => none
+        }
+      ServiceMethodSemantics { service_name: _, op_params: op_params } =>
+        match op_params |> skip(arg_index) |> first {
+          Some { value: p } => Some { value: param_node_type_expr(n: p) }
+          None => none
+        }
+      _ => none
+    }
+  }
+}
+
 // Infer method args with element type context and fold special-casing.
 // Shared between ExprCall bridge and ExprMethodCall paths.
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, semantics: MethodSemantics?, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -685,7 +704,19 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
     } else if is_fold && fold_info != none {
       infer_fold_lambda_arg(arg: a, scope: scope, acc_type: fold_acc_type, elem_type: element_type)
     } else {
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
+      match method_arg_formal_type(semantics: semantics, arg_index: idx) {
+        Some { value: formal_type } =>
+          if is_lambda_expr(e: arg_value(n: a)) && formal_type.params |> count > 0 {
+            infer_lambda_with_callable_type(lambda_expr: arg_value(n: a), callable_type: formal_type, arg_name: arg_name(n: a), scope: scope)
+          } else if is_lambda_expr(e: arg_value(n: a)) {
+            infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
+          } else {
+            let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: formal_type })
+            ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
+          }
+        None =>
+          infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
+      }
     }
   )
 }
@@ -1093,8 +1124,15 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
             let first_type = rt_type(n: first_result.typed)
+            let provisional_method_resolution = resolve_known_method_node(
+              receiver: first_result.typed,
+              receiver_type: first_type,
+              method_name: func_name,
+              fold_accumulator_type: none,
+              service_registry: scope.service_registry
+            )
             let elem_type = for_each_element_type_node(n: first_type)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
+            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, semantics: provisional_method_resolution.semantics, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: first_arg), value: first_result.typed, span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
@@ -1283,6 +1321,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // For fold: also infer init arg to type accumulator param.
       let recv_rt = rt_type(n: recv_typed)
       let recv_elem_type = for_each_element_type_node(n: recv_rt)
+      let provisional_method_resolution = resolve_known_method_node(
+        receiver: recv_typed,
+        receiver_type: recv_rt,
+        method_name: method_name,
+        fold_accumulator_type: none,
+        service_registry: scope.service_registry
+      )
       // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope)
@@ -1290,7 +1335,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
       }
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, semantics: provisional_method_resolution.semantics, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let method_resolution = resolve_known_method_node(

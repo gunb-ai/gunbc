@@ -997,9 +997,47 @@ pub fn extract_fold_init_info(
     }
 }
 
+pub fn method_arg_formal_type(
+    semantics: Option<Rc<MethodSemantics>>,
+    arg_index: i64,
+) -> Option<Rc<Node>> {
+    match semantics.clone().as_deref().cloned() {
+        Some(MethodSemantics::AlgebraMethodSemantics {
+            method_def: method_def,
+            fold_accumulator_type: _,
+        }) => {
+            let method_type = rt_type(method_def.clone());
+            method_type
+                .params
+                .clone()
+                .iter()
+                .cloned()
+                .skip((arg_index + 1) as usize)
+                .collect::<Vec<_>>()
+                .first()
+                .cloned()
+                .map(|p| param_node_type_expr(p.clone()))
+        }
+        Some(MethodSemantics::ServiceMethodSemantics {
+            service_name: _,
+            op_params: op_params,
+        }) => op_params
+            .clone()
+            .iter()
+            .cloned()
+            .skip(arg_index as usize)
+            .collect::<Vec<_>>()
+            .first()
+            .cloned()
+            .map(|p| param_node_type_expr(p.clone())),
+        _ => None,
+    }
+}
+
 pub fn infer_method_args_with_fold(
     method_name: Option<String>,
     method_args: Vec<Rc<Node>>,
+    semantics: Option<Rc<MethodSemantics>>,
     fold_info: Option<Rc<ArgInferResult>>,
     fold_acc_type: Rc<Node>,
     element_type: Rc<Node>,
@@ -1041,7 +1079,49 @@ pub fn infer_method_args_with_fold(
                             element_type.clone(),
                         )
                     } else {
-                        infer_arg_with_element_type(a.clone(), element_type.clone(), scope.clone())
+                        match method_arg_formal_type(semantics.clone(), idx.clone()) {
+                            Some(formal_type) => {
+                                if (is_lambda_expr(arg_value(a.clone()))
+                                    && ((formal_type.params.clone().len() as i64) > 0))
+                                {
+                                    infer_lambda_with_callable_type(
+                                        arg_value(a.clone()),
+                                        formal_type.clone(),
+                                        arg_name(a.clone()),
+                                        scope.clone(),
+                                    )
+                                } else {
+                                    if is_lambda_expr(arg_value(a.clone())) {
+                                        infer_arg_with_element_type(
+                                            a.clone(),
+                                            element_type.clone(),
+                                            scope.clone(),
+                                        )
+                                    } else {
+                                        let ar = infer_expr(
+                                            arg_value(a.clone()),
+                                            scope.clone(),
+                                            Some(formal_type.clone()),
+                                        );
+                                        Rc::new(ArgInferResult {
+                                            typed_arg: make_arg_node(
+                                                arg_name(a.clone()),
+                                                ar.typed.clone(),
+                                                a.span.clone(),
+                                            ),
+                                            diagnostics: ar.diagnostics.clone(),
+                                        })
+                                    }
+                                }
+                            }
+                            None => {
+                                infer_arg_with_element_type(
+                                    a.clone(),
+                                    element_type.clone(),
+                                    scope.clone(),
+                                )
+                            }
+                        }
                     }
                 }
             });
@@ -1378,16 +1458,16 @@ pub fn refine_collection_result_type(
     {
         let receiver_type_name = receiver_type.name.clone();
         let receiver_is_map = node_is_map(receiver_type.clone());
-        let method_name = if (semantics.clone() == None) {
-            None
-        } else {
-            match (*semantics.clone().unwrap()).clone() {
-                MethodSemantics::AlgebraMethodSemantics {
-                    method_name: mn, ..
-                } => Some(mn),
-                _ => None,
-            }
-        };
+                let method_name = if (semantics.clone() == None) {
+                    None
+                } else {
+                    match (*semantics.clone().unwrap()).clone() {
+                        MethodSemantics::AlgebraMethodSemantics {
+                    method_def: md, ..
+                } => Some(md.name.clone()),
+                        _ => None,
+                    }
+                };
         if method_name_is(method_name.clone(), "map".to_string()) {
             match {
                 let mut __result = Vec::new();
@@ -1828,10 +1908,18 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                             let first_result =
                                 infer_expr(arg_value(first_arg.clone()), scope.clone(), None);
                             let first_type = rt_type(first_result.typed.clone());
+                            let provisional_method_resolution = resolve_known_method_node(
+                                first_result.typed.clone(),
+                                first_type.clone(),
+                                func_name.clone(),
+                                None,
+                                scope.service_registry.clone(),
+                            );
                             let elem_type = for_each_element_type_node(first_type.clone());
                             let remaining_results = infer_method_args_with_fold(
                                 call_method_name.clone(),
                                 call_method_args.clone(),
+                                provisional_method_resolution.semantics.clone(),
                                 call_fold_info.clone(),
                                 call_fold_acc_type.clone(),
                                 elem_type.clone(),
@@ -2186,6 +2274,13 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let recv_diags = recv_result.diagnostics.clone();
                 let recv_rt = rt_type(recv_typed.clone());
                 let recv_elem_type = for_each_element_type_node(recv_rt.clone());
+                let provisional_method_resolution = resolve_known_method_node(
+                    recv_typed.clone(),
+                    recv_rt.clone(),
+                    method_name.clone(),
+                    None,
+                    scope.service_registry.clone(),
+                );
                 let mc_method_name: Option<String> = Some(method_name.clone());
                 let fold_info = extract_fold_init_info(
                     mc_method_name.clone(),
@@ -2204,6 +2299,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let mc_arg_infer_results = infer_method_args_with_fold(
                     mc_method_name.clone(),
                     mc_args.clone(),
+                    provisional_method_resolution.semantics.clone(),
                     fold_info.clone(),
                     fold_acc_type.clone(),
                     recv_elem_type.clone(),
