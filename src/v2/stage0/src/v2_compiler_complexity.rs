@@ -981,8 +981,8 @@ pub fn format_complexity_class_inner(c: Rc<ComplexityClass>) -> String {
         ComplexityClass::ClassSize { size: s } => format_size(s.clone()),
         ComplexityClass::ClassProduct { left: l, right: r } =>
             v2_rt::concat(v2_rt::concat(
-                format_complexity_class_inner(l.clone()), " * ".to_string()),
-                format_complexity_class_inner(r.clone())),
+                parenthesize_additive(l.clone()), " * ".to_string()),
+                parenthesize_additive(r.clone())),
         ComplexityClass::ClassAdd { left: l, right: r } =>
             v2_rt::concat(v2_rt::concat(
                 format_complexity_class_inner(l.clone()), " + ".to_string()),
@@ -993,6 +993,14 @@ pub fn format_complexity_class_inner(c: Rc<ComplexityClass>) -> String {
                 ", ".to_string()), v2_rt::concat(format_complexity_class_inner(r.clone()), ")".to_string())),
         ComplexityClass::ClassLog { size: s } =>
             v2_rt::concat("log ".to_string(), format_size(s.clone())),
+    }
+}
+
+pub fn parenthesize_additive(c: Rc<ComplexityClass>) -> String {
+    match &*c {
+        ComplexityClass::ClassAdd { .. } =>
+            v2_rt::concat(v2_rt::concat("(".to_string(), format_complexity_class_inner(c.clone())), ")".to_string()),
+        _ => format_complexity_class_inner(c),
     }
 }
 

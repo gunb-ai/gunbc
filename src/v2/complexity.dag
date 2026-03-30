@@ -976,12 +976,21 @@ fn format_complexity_class_inner(c: ComplexityClass) -> String {
     ClassUnknown => "?"
     ClassSize { size: s } => format_size(size: s)
     ClassProduct { left: l, right: r } =>
-      concat(format_complexity_class_inner(c: l), " * ", format_complexity_class_inner(c: r))
+      concat(parenthesize_additive(c: l), " * ", parenthesize_additive(c: r))
     ClassAdd { left: l, right: r } =>
       concat(format_complexity_class_inner(c: l), " + ", format_complexity_class_inner(c: r))
     ClassMax { left: l, right: r } =>
       concat("max(", format_complexity_class_inner(c: l), ", ", format_complexity_class_inner(c: r), ")")
     ClassLog { size: s } => concat("log ", format_size(size: s))
+  }
+}
+
+// Wrap additive children in parens when they appear inside a product.
+fn parenthesize_additive(c: ComplexityClass) -> String {
+  match c {
+    ClassAdd { left: _, right: _ } =>
+      concat("(", format_complexity_class_inner(c: c), ")")
+    _ => format_complexity_class_inner(c: c)
   }
 }
 

@@ -411,12 +411,14 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         );
     }
 
-    assert!(
-        !source.contains("formatted: String"),
+    assert_live_not_contains(
+        &source,
+        "formatted: String",
         "ComplexityReport should not carry a formatted string field"
     );
-    assert!(
-        !stage0.contains("pub formatted: String"),
+    assert_live_not_contains(
+        &stage0,
+        "pub formatted: String",
         "stage0 ComplexityReport should not carry a formatted string field"
     );
 }
