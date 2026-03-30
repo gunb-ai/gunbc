@@ -747,29 +747,6 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
 })
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ComplexityClass {
-    ClassConstant,
-    ClassUnknown,
-    ClassSize {
-        size: Rc<SizeExpr>,
-    },
-    ClassProduct {
-        left: Rc<ComplexityClass>,
-        right: Rc<ComplexityClass>,
-    },
-    ClassAdd {
-        left: Rc<ComplexityClass>,
-        right: Rc<ComplexityClass>,
-    },
-    ClassMax {
-        left: Rc<ComplexityClass>,
-        right: Rc<ComplexityClass>,
-    },
-    ClassLog {
-        size: Rc<SizeExpr>,
-    },
-}
 
 pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -827,12 +804,14 @@ simplified.clone()
 let sr = simplify_cost(r.clone());
 let simplified = match (*sl.clone()).clone() {
     CostExpr::CostConst { value: 0, .. } => sr.clone(),
+    CostExpr::CostConst { value: a, .. } => match (*sr.clone()).clone() {
+    CostExpr::CostConst { value: 0, .. } => sl.clone(),
+    CostExpr::CostConst { value: b, .. } => if a > b { sl.clone() } else { sr.clone() },
+    _ => Rc::new(CostExpr::CostMax { left: sl.clone(), right: sr.clone() }),
+},
     _ => match (*sr.clone()).clone() {
     CostExpr::CostConst { value: 0, .. } => sl.clone(),
-    _ => Rc::new(CostExpr::CostMax {
-    left: sl.clone(),
-    right: sr.clone(),
-}),
+    _ => Rc::new(CostExpr::CostMax { left: sl.clone(), right: sr.clone() }),
 },
 };
 simplified.clone()
@@ -867,149 +846,104 @@ pub fn format_size(size: Rc<SizeExpr>) -> String {
     })
 }
 
-pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> Rc<ComplexityClass> {
+pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
+    simplify_cost(normalize_constants(expr))
+}
+
+pub fn normalize_constants(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match &*expr {
-            CostExpr::CostConst { .. } => Rc::new(ComplexityClass::ClassConstant),
-            CostExpr::CostUnknown { .. } => Rc::new(ComplexityClass::ClassUnknown),
-            CostExpr::CostSum { upper: u, body: bd, .. } => {
-                let inner = analyze_simplified_complexity(bd.clone());
-                if is_class_unknown(inner.clone()) {
-                    Rc::new(ComplexityClass::ClassUnknown)
-                } else if is_class_constant(inner.clone()) {
-                    Rc::new(ComplexityClass::ClassSize { size: u.clone() })
-                } else {
-                    Rc::new(ComplexityClass::ClassProduct {
-                        left: Rc::new(ComplexityClass::ClassSize { size: u.clone() }),
-                        right: inner,
-                    })
-                }
-            }
-            CostExpr::CostAdd { left: l, right: r, .. } => {
-                simplify_class_add(
-                    analyze_simplified_complexity(l.clone()),
-                    analyze_simplified_complexity(r.clone()),
-                )
-            }
-            CostExpr::CostMul { left: l, right: r, .. } => {
-                let lc = analyze_simplified_complexity(l.clone());
-                let rc = analyze_simplified_complexity(r.clone());
-                if is_class_unknown(lc.clone()) || is_class_unknown(rc.clone()) {
-                    Rc::new(ComplexityClass::ClassUnknown)
-                } else if is_class_constant(lc.clone()) {
-                    rc
-                } else if is_class_constant(rc.clone()) {
-                    lc
-                } else {
-                    Rc::new(ComplexityClass::ClassProduct { left: lc, right: rc })
-                }
-            }
-            CostExpr::CostMax { left: l, right: r, .. } => {
-                simplify_class_max(
-                    analyze_simplified_complexity(l.clone()),
-                    analyze_simplified_complexity(r.clone()),
-                )
-            }
-            CostExpr::CostLog { argument: a, .. } =>
-                Rc::new(ComplexityClass::ClassLog { size: a.clone() }),
+            CostExpr::CostConst { value: v } =>
+                if *v <= 0 { Rc::new(CostExpr::CostConst { value: 0 }) }
+                else { Rc::new(CostExpr::CostConst { value: 1 }) },
+            CostExpr::CostUnknown { .. } => expr.clone(),
+            CostExpr::CostAdd { left: l, right: r } =>
+                Rc::new(CostExpr::CostAdd { left: normalize_constants(l.clone()), right: normalize_constants(r.clone()) }),
+            CostExpr::CostMul { left: l, right: r } =>
+                Rc::new(CostExpr::CostMul { left: normalize_constants(l.clone()), right: normalize_constants(r.clone()) }),
+            CostExpr::CostMax { left: l, right: r } =>
+                Rc::new(CostExpr::CostMax { left: normalize_constants(l.clone()), right: normalize_constants(r.clone()) }),
+            CostExpr::CostSum { binder: b, upper: u, body: bd } =>
+                Rc::new(CostExpr::CostSum { binder: b.clone(), upper: u.clone(), body: normalize_constants(bd.clone()) }),
+            CostExpr::CostLog { base: b, argument: a } =>
+                Rc::new(CostExpr::CostLog { base: *b, argument: a.clone() }),
         }
     })
 }
 
-pub fn is_class_constant(c: Rc<ComplexityClass>) -> bool {
-    matches!(&*c, ComplexityClass::ClassConstant)
+pub fn format_cost_class(expr: Rc<CostExpr>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match &*expr {
+            CostExpr::CostConst { .. } => "O(1)".to_string(),
+            CostExpr::CostUnknown { .. } => "O(?)".to_string(),
+            CostExpr::CostSum { upper: u, body: bd, .. } =>
+                match &**bd {
+                    CostExpr::CostConst { .. } =>
+                        v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), ")".to_string()),
+                    _ =>
+                        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+                            "O(".to_string(), format_size(u.clone())),
+                            " * ".to_string()), format_cost_inner(bd.clone())),
+                            ")".to_string()),
+                },
+            CostExpr::CostAdd { left: l, right: r } =>
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+                    "O(".to_string(), format_cost_inner(l.clone())),
+                    " + ".to_string()), format_cost_inner(r.clone())),
+                    ")".to_string()),
+            CostExpr::CostMul { left: l, right: r } =>
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+                    "O(".to_string(), parenthesize_additive_cost(l.clone())),
+                    " * ".to_string()), parenthesize_additive_cost(r.clone())),
+                    ")".to_string()),
+            CostExpr::CostMax { left: l, right: r } =>
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
+                    "O(max(".to_string(), format_cost_inner(l.clone())),
+                    ", ".to_string()), format_cost_inner(r.clone())),
+                    "))".to_string()),
+            CostExpr::CostLog { argument: a, .. } =>
+                v2_rt::concat(v2_rt::concat("O(log ".to_string(), format_size(a.clone())), ")".to_string()),
+        }
+    })
 }
 
-pub fn is_class_unknown(c: Rc<ComplexityClass>) -> bool {
-    matches!(&*c, ComplexityClass::ClassUnknown)
+pub fn format_cost_inner(expr: Rc<CostExpr>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match &*expr {
+            CostExpr::CostConst { .. } => "1".to_string(),
+            CostExpr::CostUnknown { .. } => "?".to_string(),
+            CostExpr::CostSum { upper: u, body: bd, .. } =>
+                match &**bd {
+                    CostExpr::CostConst { .. } => format_size(u.clone()),
+                    _ => v2_rt::concat(v2_rt::concat(
+                        format_size(u.clone()), " * ".to_string()), format_cost_inner(bd.clone())),
+                },
+            CostExpr::CostAdd { left: l, right: r } =>
+                v2_rt::concat(v2_rt::concat(
+                    format_cost_inner(l.clone()), " + ".to_string()), format_cost_inner(r.clone())),
+            CostExpr::CostMul { left: l, right: r } =>
+                v2_rt::concat(v2_rt::concat(
+                    parenthesize_additive_cost(l.clone()), " * ".to_string()), parenthesize_additive_cost(r.clone())),
+            CostExpr::CostMax { left: l, right: r } =>
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(
+                    "max(".to_string(), format_cost_inner(l.clone())),
+                    ", ".to_string()), v2_rt::concat(format_cost_inner(r.clone()), ")".to_string())),
+            CostExpr::CostLog { argument: a, .. } =>
+                v2_rt::concat("log ".to_string(), format_size(a.clone())),
+        }
+    })
 }
 
-pub fn simplify_class_add(left: Rc<ComplexityClass>, right: Rc<ComplexityClass>) -> Rc<ComplexityClass> {
-    if is_class_unknown(left.clone()) || is_class_unknown(right.clone()) {
-        Rc::new(ComplexityClass::ClassUnknown)
-    } else if is_class_constant(left.clone()) {
-        right
-    } else if is_class_constant(right.clone()) {
-        left
-    } else {
-        Rc::new(ComplexityClass::ClassAdd { left, right })
+pub fn parenthesize_additive_cost(expr: Rc<CostExpr>) -> String {
+    match &*expr {
+        CostExpr::CostAdd { .. } =>
+            v2_rt::concat(v2_rt::concat("(".to_string(), format_cost_inner(expr.clone())), ")".to_string()),
+        _ => format_cost_inner(expr),
     }
-}
-
-pub fn simplify_class_max(left: Rc<ComplexityClass>, right: Rc<ComplexityClass>) -> Rc<ComplexityClass> {
-    if is_class_unknown(left.clone()) || is_class_unknown(right.clone()) {
-        Rc::new(ComplexityClass::ClassUnknown)
-    } else if is_class_constant(left.clone()) {
-        right
-    } else if is_class_constant(right.clone()) {
-        left
-    } else {
-        Rc::new(ComplexityClass::ClassMax { left, right })
-    }
-}
-
-pub fn format_complexity_class(c: Rc<ComplexityClass>) -> String {
-    match &*c {
-        ComplexityClass::ClassConstant => "O(1)".to_string(),
-        ComplexityClass::ClassUnknown => "O(?)".to_string(),
-        ComplexityClass::ClassSize { size: s } =>
-            v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(s.clone())), ")".to_string()),
-        ComplexityClass::ClassProduct { left: l, right: r } =>
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
-                "O(".to_string(), format_complexity_class_inner(l.clone())),
-                " * ".to_string()), format_complexity_class_inner(r.clone())),
-                ")".to_string()),
-        ComplexityClass::ClassAdd { left: l, right: r } =>
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
-                "O(".to_string(), format_complexity_class_inner(l.clone())),
-                " + ".to_string()), format_complexity_class_inner(r.clone())),
-                ")".to_string()),
-        ComplexityClass::ClassMax { left: l, right: r } =>
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(
-                "O(max(".to_string(), format_complexity_class_inner(l.clone())),
-                ", ".to_string()), format_complexity_class_inner(r.clone())),
-                "))".to_string()),
-        ComplexityClass::ClassLog { size: s } =>
-            v2_rt::concat(v2_rt::concat("O(log ".to_string(), format_size(s.clone())), ")".to_string()),
-    }
-}
-
-pub fn format_complexity_class_inner(c: Rc<ComplexityClass>) -> String {
-    match &*c {
-        ComplexityClass::ClassConstant => "1".to_string(),
-        ComplexityClass::ClassUnknown => "?".to_string(),
-        ComplexityClass::ClassSize { size: s } => format_size(s.clone()),
-        ComplexityClass::ClassProduct { left: l, right: r } =>
-            v2_rt::concat(v2_rt::concat(
-                parenthesize_additive(l.clone()), " * ".to_string()),
-                parenthesize_additive(r.clone())),
-        ComplexityClass::ClassAdd { left: l, right: r } =>
-            v2_rt::concat(v2_rt::concat(
-                format_complexity_class_inner(l.clone()), " + ".to_string()),
-                format_complexity_class_inner(r.clone())),
-        ComplexityClass::ClassMax { left: l, right: r } =>
-            v2_rt::concat(v2_rt::concat(v2_rt::concat(
-                "max(".to_string(), format_complexity_class_inner(l.clone())),
-                ", ".to_string()), v2_rt::concat(format_complexity_class_inner(r.clone()), ")".to_string())),
-        ComplexityClass::ClassLog { size: s } =>
-            v2_rt::concat("log ".to_string(), format_size(s.clone())),
-    }
-}
-
-pub fn parenthesize_additive(c: Rc<ComplexityClass>) -> String {
-    match &*c {
-        ComplexityClass::ClassAdd { .. } =>
-            v2_rt::concat(v2_rt::concat("(".to_string(), format_complexity_class_inner(c.clone())), ")".to_string()),
-        _ => format_complexity_class_inner(c),
-    }
-}
-
-pub fn classify_simplified_complexity(expr: Rc<CostExpr>) -> String {
-    format_complexity_class(analyze_simplified_complexity(expr.clone()))
 }
 
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
-    classify_simplified_complexity(simplify_cost(expr.clone()))
+    format_cost_class(normalize_asymptotic(simplify_cost(expr.clone())))
 }
 
 pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Vec<String> {

@@ -364,17 +364,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn is_non_computed_recursive_arg(",
         "fn self_calls_use_non_computed_args(",
         "fn is_structural_descent(",
-        "fn analyze_simplified_complexity(",
-        "fn classify_simplified_complexity(",
-        "fn format_complexity_class(",
-        "fn format_complexity_class_inner(",
-        "fn is_class_constant(",
-        "fn is_class_unknown(",
-        "fn simplify_class_add(",
-        "fn simplify_class_max(",
-        "type ComplexityClass",
-        "ClassAdd",
-        "ClassMax",
+        "fn normalize_asymptotic(",
+        "fn normalize_constants(",
+        "fn format_cost_class(",
+        "fn format_cost_inner(",
+        "fn parenthesize_additive_cost(",
+        "fn classify_complexity(",
         "ExprReturn",
     ] {
         assert_live_contains(
@@ -391,17 +386,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn is_non_computed_recursive_arg(",
         "pub fn self_calls_use_non_computed_args(",
         "pub fn is_structural_descent(",
-        "pub fn analyze_simplified_complexity(",
-        "pub fn classify_simplified_complexity(",
-        "pub fn format_complexity_class(",
-        "pub fn format_complexity_class_inner(",
-        "pub fn is_class_constant(",
-        "pub fn is_class_unknown(",
-        "pub fn simplify_class_add(",
-        "pub fn simplify_class_max(",
-        "pub enum ComplexityClass",
-        "ClassAdd",
-        "ClassMax",
+        "pub fn normalize_asymptotic(",
+        "pub fn normalize_constants(",
+        "pub fn format_cost_class(",
+        "pub fn format_cost_inner(",
+        "pub fn parenthesize_additive_cost(",
+        "pub fn classify_complexity(",
         "ExprData::ExprReturn",
     ] {
         assert_live_contains(
@@ -411,6 +401,11 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         );
     }
 
+    assert_live_not_contains(
+        &source,
+        "type ComplexityClass",
+        "ComplexityClass should not exist — CostExpr is the single authority"
+    );
     assert_live_not_contains(
         &source,
         "formatted: String",

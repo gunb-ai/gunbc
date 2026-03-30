@@ -786,31 +786,6 @@ fn empty_complexity_report() -> ComplexityReport {
 }
 
 // =========================================================================
-// Structural complexity class
-//
-// Compositional representation of asymptotic complexity, derived from
-// CostExpr without string intermediaries. The O(...) string is produced
-// only at the formatting boundary (format_complexity_class).
-//
-// ClassConstant          — O(1)
-// ClassUnknown           — O(?) — system could not derive a bound
-// ClassSize { size }     — O(n), O(|items|), etc.
-// ClassProduct { l, r }  — O(l * r) — multiplicative composition
-// ClassAdd { l, r }      — O(l + r) — additive composition
-// ClassMax { l, r }      — O(max(l, r)) — conditional/parallel bound
-// ClassLog { size }      — O(log n)
-// =========================================================================
-
-type ComplexityClass
-  = ClassConstant
-  | ClassUnknown
-  | ClassSize { size: SizeExpr }
-  | ClassProduct { left: ComplexityClass, right: ComplexityClass }
-  | ClassAdd { left: ComplexityClass, right: ComplexityClass }
-  | ClassMax { left: ComplexityClass, right: ComplexityClass }
-  | ClassLog { size: SizeExpr }
-
-// =========================================================================
 // Cost simplification
 //
 // Constant folding and zero/one elimination. Applied to summaries before
@@ -855,6 +830,11 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
       let sr = simplify_cost(expr: r)
       let simplified = match sl {
         CostConst { value: 0 } => sr
+        CostConst { value: a } => match sr {
+          CostConst { value: 0 } => sl
+          CostConst { value: b } => if a > b { sl } else { sr }
+          _ => CostMax { left: sl, right: sr }
+        }
         _ => match sr {
           CostConst { value: 0 } => sl
           _ => CostMax { left: sl, right: sr }
@@ -872,9 +852,12 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
 }
 
 // =========================================================================
-// Complexity classification and formatting
+// Asymptotic normalization and formatting
 //
-// Walks a simplified CostExpr and produces a human-readable O() string.
+// CostExpr is the single authority for complexity. Classification is
+// asymptotic normalization: collapse all positive constants to 1 and
+// re-simplify so identity elements absorb. The normalized CostExpr IS
+// the complexity class. Formatting reads CostExpr directly.
 // =========================================================================
 
 fn format_size(size: SizeExpr) -> String {
@@ -887,119 +870,77 @@ fn format_size(size: SizeExpr) -> String {
   }
 }
 
-// Classify a simplified CostExpr into a structural ComplexityClass.
-// Every CostExpr variant maps to a ComplexityClass variant; no information
-// is discarded. Additive (CostAdd) and conditional (CostMax) structure is
-// preserved in ClassAdd/ClassMax so the formatted output is tight.
-fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClass {
+// Collapse all positive constants to 1 so re-simplification absorbs them.
+fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
+  simplify_cost(expr: normalize_constants(expr: expr))
+}
+
+fn normalize_constants(expr: CostExpr) -> CostExpr {
   match expr {
-    CostConst { value: _ } => ClassConstant
-    CostUnknown { reason: _ } => ClassUnknown
-    CostSum { binder: _, upper: u, body: bd } =>
-      let inner = analyze_simplified_complexity(expr: bd)
-      if is_class_unknown(c: inner) { ClassUnknown }
-      else if is_class_constant(c: inner) { ClassSize { size: u } }
-      else { ClassProduct { left: ClassSize { size: u }, right: inner } }
+    CostConst { value: v } =>
+      if v <= 0 { CostConst { value: 0 } } else { CostConst { value: 1 } }
+    CostUnknown { reason: _ } => expr
     CostAdd { left: l, right: r } =>
-      simplify_class_add(
-        left: analyze_simplified_complexity(expr: l),
-        right: analyze_simplified_complexity(expr: r)
-      )
+      CostAdd { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
     CostMul { left: l, right: r } =>
-      let lc = analyze_simplified_complexity(expr: l)
-      let rc = analyze_simplified_complexity(expr: r)
-      if is_class_unknown(c: lc) || is_class_unknown(c: rc) { ClassUnknown }
-      else if is_class_constant(c: lc) { rc }
-      else if is_class_constant(c: rc) { lc }
-      else { ClassProduct { left: lc, right: rc } }
+      CostMul { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
     CostMax { left: l, right: r } =>
-      simplify_class_max(
-        left: analyze_simplified_complexity(expr: l),
-        right: analyze_simplified_complexity(expr: r)
-      )
-    CostLog { base: _, argument: a } => ClassLog { size: a }
+      CostMax { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+    CostSum { binder: b, upper: u, body: bd } =>
+      CostSum { binder: b, upper: u, body: normalize_constants(expr: bd) }
+    CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
   }
 }
 
-fn is_class_constant(c: ComplexityClass) -> Bool {
-  match c {
-    ClassConstant => true
-    _ => false
+// Format a normalized CostExpr as an O(...) string.
+fn format_cost_class(expr: CostExpr) -> String {
+  match expr {
+    CostConst { value: _ } => "O(1)"
+    CostUnknown { reason: _ } => "O(?)"
+    CostSum { binder: _, upper: u, body: bd } =>
+      match bd {
+        CostConst { value: _ } => concat("O(", format_size(size: u), ")")
+        _ => concat("O(", format_size(size: u), " * ", format_cost_inner(expr: bd), ")")
+      }
+    CostAdd { left: l, right: r } =>
+      concat("O(", format_cost_inner(expr: l), " + ", format_cost_inner(expr: r), ")")
+    CostMul { left: l, right: r } =>
+      concat("O(", parenthesize_additive_cost(expr: l), " * ", parenthesize_additive_cost(expr: r), ")")
+    CostMax { left: l, right: r } =>
+      concat("O(max(", format_cost_inner(expr: l), ", ", format_cost_inner(expr: r), "))")
+    CostLog { base: _, argument: a } => concat("O(log ", format_size(size: a), ")")
   }
 }
 
-fn is_class_unknown(c: ComplexityClass) -> Bool {
-  match c {
-    ClassUnknown => true
-    _ => false
+fn format_cost_inner(expr: CostExpr) -> String {
+  match expr {
+    CostConst { value: _ } => "1"
+    CostUnknown { reason: _ } => "?"
+    CostSum { binder: _, upper: u, body: bd } =>
+      match bd {
+        CostConst { value: _ } => format_size(size: u)
+        _ => concat(format_size(size: u), " * ", format_cost_inner(expr: bd))
+      }
+    CostAdd { left: l, right: r } =>
+      concat(format_cost_inner(expr: l), " + ", format_cost_inner(expr: r))
+    CostMul { left: l, right: r } =>
+      concat(parenthesize_additive_cost(expr: l), " * ", parenthesize_additive_cost(expr: r))
+    CostMax { left: l, right: r } =>
+      concat("max(", format_cost_inner(expr: l), ", ", format_cost_inner(expr: r), ")")
+    CostLog { base: _, argument: a } => concat("log ", format_size(size: a))
   }
 }
 
-// Simplify ClassAdd: absorb O(1) identity, propagate unknown.
-fn simplify_class_add(left: ComplexityClass, right: ComplexityClass) -> ComplexityClass {
-  if is_class_unknown(c: left) || is_class_unknown(c: right) { ClassUnknown }
-  else if is_class_constant(c: left) { right }
-  else if is_class_constant(c: right) { left }
-  else { ClassAdd { left: left, right: right } }
-}
-
-// Simplify ClassMax: absorb O(1) identity, propagate unknown.
-fn simplify_class_max(left: ComplexityClass, right: ComplexityClass) -> ComplexityClass {
-  if is_class_unknown(c: left) || is_class_unknown(c: right) { ClassUnknown }
-  else if is_class_constant(c: left) { right }
-  else if is_class_constant(c: right) { left }
-  else { ClassMax { left: left, right: right } }
-}
-
-// Format a structural ComplexityClass as an O(...) string.
-// This is the sole formatting boundary — all composition
-// decisions happen structurally above; only rendering produces strings.
-fn format_complexity_class(c: ComplexityClass) -> String {
-  match c {
-    ClassConstant => "O(1)"
-    ClassUnknown => "O(?)"
-    ClassSize { size: s } => concat("O(", format_size(size: s), ")")
-    ClassProduct { left: l, right: r } =>
-      concat("O(", format_complexity_class_inner(c: l), " * ", format_complexity_class_inner(c: r), ")")
-    ClassAdd { left: l, right: r } =>
-      concat("O(", format_complexity_class_inner(c: l), " + ", format_complexity_class_inner(c: r), ")")
-    ClassMax { left: l, right: r } =>
-      concat("O(max(", format_complexity_class_inner(c: l), ", ", format_complexity_class_inner(c: r), "))")
-    ClassLog { size: s } => concat("O(log ", format_size(size: s), ")")
+fn parenthesize_additive_cost(expr: CostExpr) -> String {
+  match expr {
+    CostAdd { left: _, right: _ } =>
+      concat("(", format_cost_inner(expr: expr), ")")
+    _ => format_cost_inner(expr: expr)
   }
-}
-
-// Inner formatter: strips the O() wrapper for use inside compositions.
-fn format_complexity_class_inner(c: ComplexityClass) -> String {
-  match c {
-    ClassConstant => "1"
-    ClassUnknown => "?"
-    ClassSize { size: s } => format_size(size: s)
-    ClassProduct { left: l, right: r } =>
-      concat(parenthesize_additive(c: l), " * ", parenthesize_additive(c: r))
-    ClassAdd { left: l, right: r } =>
-      concat(format_complexity_class_inner(c: l), " + ", format_complexity_class_inner(c: r))
-    ClassMax { left: l, right: r } =>
-      concat("max(", format_complexity_class_inner(c: l), ", ", format_complexity_class_inner(c: r), ")")
-    ClassLog { size: s } => concat("log ", format_size(size: s))
-  }
-}
-
-// Wrap additive children in parens when they appear inside a product.
-fn parenthesize_additive(c: ComplexityClass) -> String {
-  match c {
-    ClassAdd { left: _, right: _ } =>
-      concat("(", format_complexity_class_inner(c: c), ")")
-    _ => format_complexity_class_inner(c: c)
-  }
-}
-
-fn classify_simplified_complexity(expr: CostExpr) -> String {
-  format_complexity_class(c: analyze_simplified_complexity(expr: expr))
 }
 
 fn classify_complexity(expr: CostExpr) -> String {
-  classify_simplified_complexity(expr: simplify_cost(expr: expr))
+  format_cost_class(expr: normalize_asymptotic(expr: simplify_cost(expr: expr)))
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
