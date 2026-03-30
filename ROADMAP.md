@@ -224,6 +224,18 @@ claim — one specific fixture).
   hand-edited — the `.dag` source is the single authority.
 - [ ] `dag/syntax.dag` inclusion without OOM
 
+*Complexity-modeling hardening (non-critical path while M2 gate work lands):*
+- [ ] Replace `ComplexityClassInfo { class: String, has_sum, sum_depth,
+  log_factor, is_unknown }` with a structural complexity-class value
+  derived compositionally from `CostExpr`
+- [ ] Render `O(...)` strings only at the formatting boundary; keep
+  dominance/max/add decisions structural until the edge
+- [ ] Move `large_complexity_report_limit` out of module-global
+  analysis state and into formatting/report-budget policy
+- [ ] Land this only after current fail-closed/bootstrap work is
+  settled; it is important modeling debt, but not the critical path
+  for wiring the current decidability gate
+
 *User experience:*
 - [ ] Committed example project: `dsl/examples/weather/` (the
   aspiration target from this roadmap). Gate is one exact command:
