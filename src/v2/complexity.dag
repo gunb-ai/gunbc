@@ -259,6 +259,7 @@ fn replace_computing_ref(expr: CostExpr, func_name: String, replacement: CostExp
 fn count_self_calls(body: Node, func_name: String) -> Int {
   let own = match body.expr_data {
     ExprCall { call_semantics: _ } =>
+      let f = expr_call_func(texpr: body)
       if f == func_name { 1 } else { 0 }
     _ => 0
   }
@@ -714,6 +715,12 @@ fn empty_complexity_report() -> ComplexityReport {
   }
 }
 
+type ComplexityClassInfo {
+  class: String
+  has_sum: Bool
+  sum_depth: Int
+}
+
 // =========================================================================
 // Cost simplification
 //
@@ -801,81 +808,81 @@ fn strip_big_o(s: String) -> String {
   }
 }
 
-fn has_cost_sum(expr: CostExpr) -> Bool {
+fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
   match expr {
-    CostSum { binder: _, upper: _, body: _ } => true
-    CostAdd { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
-    CostMul { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
-    CostMax { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
-    _ => false
-  }
-}
-
-// Count maximum CostSum nesting depth (loop nesting).
-fn cost_sum_depth(expr: CostExpr) -> Int {
-  match expr {
-    CostSum { binder: _, upper: _, body: b } => 1 + cost_sum_depth(expr: b)
-    CostAdd { left: l, right: r } =>
-      let ld = cost_sum_depth(expr: l)
-      let rd = cost_sum_depth(expr: r)
-      if rd > ld { rd } else { ld }
-    CostMul { left: l, right: r } =>
-      let ld = cost_sum_depth(expr: l)
-      let rd = cost_sum_depth(expr: r)
-      if rd > ld { rd } else { ld }
-    CostMax { left: l, right: r } =>
-      let ld = cost_sum_depth(expr: l)
-      let rd = cost_sum_depth(expr: r)
-      if rd > ld { rd } else { ld }
-    _ => 0
-  }
-}
-
-fn classify_complexity(expr: CostExpr) -> String {
-  let s = simplify_cost(expr: expr)
-  match s {
-    CostConst { value: _ } => "O(1)"
-    CostUnknown { reason: _ } => "O(?)"
+    CostConst { value: _ } =>
+      ComplexityClassInfo { class: "O(1)", has_sum: false, sum_depth: 0 }
+    CostUnknown { reason: _ } =>
+      ComplexityClassInfo { class: "O(?)", has_sum: false, sum_depth: 0 }
     CostSum { binder: _, upper: u, body: bd } =>
-      if has_cost_sum(expr: bd) {
-        let inner_class = classify_complexity(expr: bd)
-        let inner_bare = strip_big_o(s: inner_class)
-        concat("O(", format_size(size: u), " * ", inner_bare, ")")
+      let inner = analyze_simplified_complexity(expr: bd)
+      let class = if inner.has_sum {
+        concat("O(", format_size(size: u), " * ", strip_big_o(s: inner.class), ")")
       } else {
         concat("O(", format_size(size: u), ")")
       }
+      ComplexityClassInfo {
+        class: class,
+        has_sum: true,
+        sum_depth: 1 + inner.sum_depth
+      }
     CostAdd { left: l, right: r } =>
-      let lc = classify_complexity(expr: l)
-      let rc = classify_complexity(expr: r)
-      // Sequential composition: dominant cost is the higher-cost operand.
-      // When both have loops, pick the deeper-nested one structurally.
-      let dominant = if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
-        if cost_sum_depth(expr: r) > cost_sum_depth(expr: l) { rc } else { lc }
-      } else if has_cost_sum(expr: l) {
-        lc
-      } else if has_cost_sum(expr: r) {
-        rc
+      let left_info = analyze_simplified_complexity(expr: l)
+      let right_info = analyze_simplified_complexity(expr: r)
+      let dominant = if left_info.has_sum && right_info.has_sum {
+        if right_info.sum_depth > left_info.sum_depth { right_info.class } else { left_info.class }
+      } else if left_info.has_sum {
+        left_info.class
+      } else if right_info.has_sum {
+        right_info.class
       } else {
         "O(1)"
       }
-      dominant
+      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
+      ComplexityClassInfo {
+        class: dominant,
+        has_sum: left_info.has_sum || right_info.has_sum,
+        sum_depth: sum_depth
+      }
     CostMul { left: l, right: r } =>
-      let lc = classify_complexity(expr: l)
-      let rc = classify_complexity(expr: r)
-      let combined = if lc == "O(1)" { rc }
-        else if rc == "O(1)" { lc }
-        else { concat(lc, " * ", rc) }
-      combined
+      let left_info = analyze_simplified_complexity(expr: l)
+      let right_info = analyze_simplified_complexity(expr: r)
+      let combined = if left_info.class == "O(1)" { right_info.class }
+        else if right_info.class == "O(1)" { left_info.class }
+        else { concat(left_info.class, " * ", right_info.class) }
+      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
+      ComplexityClassInfo {
+        class: combined,
+        has_sum: left_info.has_sum || right_info.has_sum,
+        sum_depth: sum_depth
+      }
     CostMax { left: l, right: r } =>
-      let lc = classify_complexity(expr: l)
-      let rc = classify_complexity(expr: r)
-      let dominant = if has_cost_sum(expr: l) { lc }
-        else if has_cost_sum(expr: r) { rc }
-        else { lc }
-      dominant
+      let left_info = analyze_simplified_complexity(expr: l)
+      let right_info = analyze_simplified_complexity(expr: r)
+      let dominant = if left_info.has_sum { left_info.class }
+        else if right_info.has_sum { right_info.class }
+        else { left_info.class }
+      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
+      ComplexityClassInfo {
+        class: dominant,
+        has_sum: left_info.has_sum || right_info.has_sum,
+        sum_depth: sum_depth
+      }
     CostLog { base: _, argument: a } =>
-      concat("O(log ", format_size(size: a), ")")
+      ComplexityClassInfo {
+        class: concat("O(log ", format_size(size: a), ")"),
+        has_sum: false,
+        sum_depth: 0
+      }
   }
+}
+
+fn classify_simplified_complexity(expr: CostExpr) -> String {
+  analyze_simplified_complexity(expr: expr).class
+}
+
+fn classify_complexity(expr: CostExpr) -> String {
+  classify_simplified_complexity(expr: simplify_cost(expr: expr))
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -933,7 +940,7 @@ fn format_space_class(expr: CostExpr) -> String {
 }
 
 fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
-  let class = classify_complexity(expr: summary.work)
+  let class = classify_simplified_complexity(expr: summary.work)
   // Certainty marker: ~ means lower-bound only (e.g. sort is O(n log n) but
   // the cost algebra lacks log), ? means the system could not derive a bound.
   let marker = match summary.certainty {
@@ -1470,7 +1477,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }
     }
   )
-  let formatted = format_complexity_report(entries: func_entries, summaries: summaries_map)
+  let formatted = if func_entries |> count > 400 {
+    concat("complexity report elided for ", concat(to_string(func_entries |> count), " functions"))
+  } else {
+    format_complexity_report(entries: func_entries, summaries: summaries_map)
+  }
   ComplexityReport {
     function_summaries: summaries_map,
     violations: violations,
