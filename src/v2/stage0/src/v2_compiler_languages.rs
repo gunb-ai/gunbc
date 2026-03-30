@@ -112,7 +112,6 @@ pub struct TestConventions {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SharingStrategy {
     pub wrap_template: String,
-    pub construct_template: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,7 +161,6 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
     top_level_visibility: RUST_VISIBILITY.clone(),
     sharing: Rc::new(SharingStrategy {
         wrap_template: "Rc<{0}>".to_string(),
-        construct_template: "Rc::new({0})".to_string(),
     }),
 })
 }
@@ -203,7 +201,6 @@ pub fn python_spec() -> Rc<LanguageSpec> {
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
         wrap_template: "{0}".to_string(),
-        construct_template: "{0}".to_string(),
     }),
 })
 }
@@ -243,8 +240,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
 }),
     top_level_visibility: "".to_string(),
     sharing: Rc::new(SharingStrategy {
-        wrap_template: "{0}".to_string(),
-        construct_template: "{0}".to_string(),
+        wrap_template: "*{0}".to_string(),
     }),
 })
 }
@@ -328,7 +324,4 @@ pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     tmpl.replace("{0}", &inner)
 }
 
-pub fn construct_shared(target: RenderTarget, inner: String) -> String {
-    let tmpl = sharing_for_target(target.clone()).construct_template.clone();
-    tmpl.replace("{0}", &inner)
-}
+

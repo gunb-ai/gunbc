@@ -170,7 +170,6 @@ type LintModel {
 
 type SharingStrategy {
   wrap_template: String
-  construct_template: String
 }
 
 type LanguageSpec {
@@ -257,8 +256,7 @@ fn rust_spec() -> LanguageSpec {
     },
     top_level_visibility: rust_visibility,
     sharing: SharingStrategy {
-      wrap_template: "Rc<{0}>",
-      construct_template: "Rc::new({0})"
+      wrap_template: "Rc<{0}>"
     }
   }
 }
@@ -296,8 +294,7 @@ fn python_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
-      wrap_template: "{0}",
-      construct_template: "{0}"
+      wrap_template: "{0}"
     }
   }
 }
@@ -335,8 +332,7 @@ fn go_spec() -> LanguageSpec {
     },
     top_level_visibility: "",
     sharing: SharingStrategy {
-      wrap_template: "{0}",
-      construct_template: "{0}"
+      wrap_template: "*{0}"
     }
   }
 }
@@ -421,9 +417,4 @@ fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
   replace(tmpl, "{0}", inner)
 }
 
-// Apply sharing construct template to a value string.
-// Rust: "Rc::new({0})" → "Rc::new(val)", Python/Go: "{0}" → "val"
-fn construct_shared(target: RenderTarget, inner: String) -> String {
-  let tmpl = sharing_for_target(target: target).construct_template
-  replace(tmpl, "{0}", inner)
-}
+

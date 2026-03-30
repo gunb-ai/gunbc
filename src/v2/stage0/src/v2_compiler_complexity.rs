@@ -432,9 +432,32 @@ pub fn self_calls_use_non_computed_args(body: Rc<Node>, func_name: String) -> bo
     }
 }
 
+pub fn self_call_all_args_unchanged(call: Rc<Node>, func_name: String) -> bool {
+    if (expr_call_func(call.clone()) != func_name.clone()) { false }
+    else {
+        let args: Vec<Rc<Node>> = { let mut __result = Vec::new(); for arg_node in call.children.clone().iter().cloned() { __result.push(arg_value(arg_node.clone())); } __result };
+        args.iter().all(|a| match (*a.expr_data.clone()).clone() {
+            ExprData::ExprVar { .. } => true,
+            _ => false,
+        })
+    }
+}
+
+pub fn has_non_descending_self_call(body: Rc<Node>, func_name: String) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            if self_call_all_args_unchanged(body.clone(), func_name.clone()) { true }
+            else { body.children.clone().iter().any(|c| has_non_descending_self_call(c.clone(), func_name.clone())) }
+        },
+        _ => body.children.clone().iter().any(|c| has_non_descending_self_call(c.clone(), func_name.clone())),
+    }
+    })
+}
+
 pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<RecursionPattern> {
     let path_calls = max_path_self_calls(body.clone(), func_name.clone());
-    if (path_calls.clone() <= 1) {
+    if (path_calls.clone() == 0) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
@@ -442,9 +465,17 @@ pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<Recur
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
-    } else {
+    } else if (path_calls.clone() > 1) {
         Rc::new(RecursionPattern::DivideAndConquer {
             split_factor: path_calls.clone(),
+        })
+    } else if has_non_descending_self_call(body.clone(), func_name.clone()) {
+        Rc::new(RecursionPattern::UnresolvableRecursion {
+            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
+        })
+    } else {
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     }
 }

@@ -215,53 +215,6 @@ pub fn ownership_diagnostics(proofs: Vec<Rc<OwnershipProof>>) -> Vec<Rc<ErrorNod
     }
 }
 
-pub fn find_non_descending_call(body: Rc<Node>, fn_name: String, param_names: Vec<String>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-    match (*body.expr_data.clone()).clone() {
-        ExprData::ExprCall { call_semantics: _, .. } => {
-            if (expr_call_func(body.clone()) == fn_name.clone()) {
-                let all_unchanged = body.children.clone().iter().all(|arg_node| {
-                    let val = arg_value(arg_node.clone());
-                    match (*val.expr_data.clone()).clone() {
-                        ExprData::ExprVar { binding_kind: _, .. } => param_names.clone().iter().any(|p| p.clone() == val.name.clone()),
-                        _ => false,
-                    }
-                });
-                if all_unchanged {
-                    true
-                } else {
-                    body.children.clone().iter().any(|child| find_non_descending_call(child.clone(), fn_name.clone(), param_names.clone()))
-                }
-            } else {
-                body.children.clone().iter().any(|child| find_non_descending_call(child.clone(), fn_name.clone(), param_names.clone()))
-            }
-        },
-        _ => body.children.clone().iter().any(|child| find_non_descending_call(child.clone(), fn_name.clone(), param_names.clone())),
-    }
-    })
-}
-
-pub fn check_decidability(typed: Rc<ResolvedGraph>) -> Vec<Rc<ErrorNode>> {
-    { let mut __result = Vec::new(); for m in typed.modules.clone().iter().cloned() {
-        __result.extend({ let mut __result = Vec::new(); for item in {
-            let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() {
-                if (item.is_self_recursive.clone() && item.body.clone() != None) { __result.push(item); }
-            } __result
-        }.iter().cloned() {
-            let param_names: Vec<String> = { let mut __result = Vec::new(); for p in item.params.clone().iter().cloned() { __result.push(param_node_name(p.clone())); } __result };
-            if find_non_descending_call(item.body.clone().clone().unwrap(), item.name.clone(), param_names.clone()) {
-                __result.push(make_error_node(
-                    Rc::new(CompilerDiagnostic::InternalError {
-                        message: v2_rt::concat(v2_rt::concat("non-descending recursion: `".to_string(), item.name.clone()), "` calls itself without reducing any argument".to_string()),
-                        span: item.span.clone(),
-                    }),
-                    m.module.clone().name.clone(),
-                ));
-            }
-        } __result });
-    } __result }
-}
-
 pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Vec<Rc<ErrorNode>> {
     { let mut __result = Vec::new(); for v in complexity.violations.clone().iter().cloned() {
         __result.push(make_error_node(
@@ -1763,11 +1716,10 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 );
                 let typed = reconcile(norm.graph.clone(), source_indices.clone());
                 let typed_diags = typed.diagnostics.clone();
-                let decidability_diags = check_decidability(typed.clone());
                 let func_entries = extract_func_entries(typed.clone());
                 let complexity = build_complexity_report(func_entries.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
-                let all_infer_diags = v2_rt::concat(v2_rt::concat(typed_diags.clone(), decidability_diags.clone()), complexity_diags.clone());
+                let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let typecheck_errors = {
                     let mut __result = Vec::new();
                     for d in all_infer_diags.clone().iter().cloned() {

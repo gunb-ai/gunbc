@@ -498,17 +498,49 @@ fn self_calls_use_non_computed_args(body: Node, func_name: String) -> Bool {
   }
 }
 
+// Check if a self-call passes ALL arguments as plain variable references
+// (i.e., no modification — fn spin(n: n) returns true).
+// A single modified argument (n - 1, node.left) means the call descends.
+fn self_call_all_args_unchanged(call: Node, func_name: String) -> Bool {
+  if expr_call_func(texpr: call) != func_name { false }
+  else {
+    let args = call.children |> map(arg_node => arg_value(n: arg_node))
+    args |> all(a => match a.expr_data {
+      ExprVar { binding_kind: _ } => true
+      _ => false
+    })
+  }
+}
+
+// Check if ANY self-call in the body passes all arguments unchanged.
+fn has_non_descending_self_call(body: Node, func_name: String) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      if self_call_all_args_unchanged(call: body, func_name: func_name) { true }
+      else { body.children |> any(c => has_non_descending_self_call(body: c, func_name: func_name)) }
+    _ => body.children |> any(c => has_non_descending_self_call(body: c, func_name: func_name))
+  }
+}
+
 fn classify_recursion_pattern(func_name: String, body: Node) -> RecursionPattern {
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
-  if path_calls <= 1 {
+  if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if is_structural_descent(body: body, func_name: func_name) {
     // Structural descent: body is match/if over input, self-calls are
     // in arms on destructured children. Total work = |tree| × per-node,
     // not k^depth. Classify as LinearRecursion (catamorphism).
     LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else {
+  } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
+  } else if has_non_descending_self_call(body: body, func_name: func_name) {
+    // path_calls == 1 and at least one self-call passes all arguments
+    // unchanged (e.g., fn spin(n: n)). Fail-closed: non-descending.
+    UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
+  } else {
+    // path_calls == 1, not structural descent, but arguments are
+    // modified (e.g., n - 1). Arithmetic descent — assumed linear.
+    LinearRecursion { iteration_var: concat("n_", func_name) }
   }
 }
 

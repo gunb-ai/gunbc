@@ -88,7 +88,7 @@ pub use crate::v2_compiler_infer_types::{
 use crate::v2_compiler_languages::ReservedWordStrategy::{NoEscape, PrefixEscape, SuffixEscape};
 use crate::v2_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 pub use crate::v2_compiler_languages::{
-    construct_shared, language_spec_for_target, target_container_template, target_keyword,
+    language_spec_for_target, target_container_template, target_keyword,
     target_primitive_type, test_conventions_for_target, wrap_shared_type, LanguageSpec,
     ReservedWordStrategy, SharingStrategy, TestNameStyle,
 };

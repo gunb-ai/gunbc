@@ -136,22 +136,6 @@ fn strict_compile_diagnostic_count() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     eprintln!("stage0 compile stderr:\n{}", stderr);
 
-    // Check for OOM kill (signal 9) — the test runner + stage0 binary
-    // may exceed available memory even though stage0 completes standalone.
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(sig) = output.status.signal() {
-            if sig == 9 {
-                eprintln!("stage0 binary was OOM-killed (signal 9). \
-                    Run standalone: cargo run -p v2-compiler --release -- compile --source-dir <dir> --output-dir <dir>");
-                // Treat OOM-kill as ratchet pass — the binary completes
-                // standalone; the test runner pushes memory over the edge.
-                return;
-            }
-        }
-    }
-
     // Parse diagnostic count from stderr: "compiled: N files emitted, M diagnostics"
     let diag_count = stderr
         .lines()
