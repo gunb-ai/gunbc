@@ -125,7 +125,7 @@ fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
         message: concat("complexity violation: `", v.func_name, "` has unresolvable cost (", v.reason, ")"),
         span: no_span()
       },
-      module_name: v.func_name
+      module_name: ""
     )
   )
 }

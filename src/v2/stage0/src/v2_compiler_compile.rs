@@ -222,7 +222,7 @@ pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Vec<Rc<ErrorN
                 message: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity violation: `".to_string(), v.func_name.clone()), "` has unresolvable cost (".to_string()), v.reason.clone()), ")".to_string()),
                 span: no_span(),
             }),
-            v.func_name.clone(),
+            "".to_string(),
         ));
     } __result }
 }

@@ -841,17 +841,9 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
       Some { value: lambda_arg } => match rt_node(n: arg_value(n: lambda_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
-  } else if method_name_is(opt: method_name, expected: "filter") || method_name_is(opt: method_name, expected: "sort_by") || method_name_is(opt: method_name, expected: "unique") || method_name_is(opt: method_name, expected: "reverse") || method_name_is(opt: method_name, expected: "skip") || method_name_is(opt: method_name, expected: "take") {
-    // filter/sort_by/unique/reverse/skip/take preserve the collection type exactly
+  } else if method_name_is(opt: method_name, expected: "filter") || method_name_is(opt: method_name, expected: "sort_by") || method_name_is(opt: method_name, expected: "unique") || method_name_is(opt: method_name, expected: "reverse") {
+    // filter/sort_by/unique/reverse preserve the collection type exactly
     receiver_type
-  } else if method_name_is(opt: method_name, expected: "first") || method_name_is(opt: method_name, expected: "last") {
-    // first/last return Optional<element_type>
-    let elem = method_receiver_element_node(receiver_type: receiver_type)
-    with_optional_cardinality(n: elem)
-  } else if method_name_is(opt: method_name, expected: "enumerate") {
-    // enumerate returns List<Tuple<Int, element_type>>
-    let elem = method_receiver_element_node(receiver_type: receiver_type)
-    container_node(kind_name: receiver_type_name, element: tuple_node(first: int_type, second: elem))
   } else if method_name_is(opt: method_name, expected: "fold") {
     // fold returns the accumulator type, not the lambda body type.
     let fold_acc = if semantics == none { none } else {
