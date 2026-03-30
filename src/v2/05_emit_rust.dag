@@ -1817,6 +1817,7 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
   emit_shared_expr(
     texpr: texpr,
     target: Rust,
+    source_index: scope.type_env.source_index,
     wrap_result: result => result,
     recurse: child => emit_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info),
     emit_var: expr => emit_rust_expr_var(expr: expr, registry: registry, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, source_index: scope.type_env.source_index),
@@ -2163,7 +2164,7 @@ fn lambda_param_type_strs(params: List<String>, semantics: LambdaSemantics?, fal
 fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda { semantics: semantics } =>
-      let ps = lambda_param_names(texpr: lambda_expr)
+      let ps = lambda_param_names_at(texpr: lambda_expr, source_index: scope.type_env.source_index)
       let bd = lambda_body(texpr: lambda_expr)
       let param_strs = lambda_param_type_strs(params: ps, semantics: semantics, fallback_types: [elem_type_str], rc_types: rc_types)
       let params_str = param_strs |> join(separator: ", ")
@@ -2181,7 +2182,7 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
 fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda { semantics: semantics } =>
-      let ps = lambda_param_names(texpr: lambda_expr)
+      let ps = lambda_param_names_at(texpr: lambda_expr, source_index: scope.type_env.source_index)
       let bd = lambda_body(texpr: lambda_expr)
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { "_" } else { elem_type_str }
@@ -2283,7 +2284,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
         match arg_value(n: a).expr_data {
           ExprLambda { semantics: semantics } =>
             let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-            let ps = lambda_param_names(texpr: arg_value(n: a))
+            let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
             let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2299,7 +2300,7 @@ fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<Str
         match arg_value(n: a).expr_data {
           ExprLambda { semantics: semantics } =>
             let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-            let ps = lambda_param_names(texpr: arg_value(n: a))
+            let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
             let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
             let p = emit_ident(name: dag_name, target: Rust)
             let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2320,7 +2321,7 @@ fn emit_rust_filter_method_call(receiver: Node, args: List<Node>, registry: Map<
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-          let ps = lambda_param_names(texpr: arg_value(n: a))
+          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2340,7 +2341,7 @@ fn emit_rust_any_method_call(receiver: Node, args: List<Node>, registry: Map<Str
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-          let ps = lambda_param_names(texpr: arg_value(n: a))
+          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2360,7 +2361,7 @@ fn emit_rust_all_method_call(receiver: Node, args: List<Node>, registry: Map<Str
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-          let ps = lambda_param_names(texpr: arg_value(n: a))
+          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)
@@ -2380,7 +2381,7 @@ fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Ma
       match arg_value(n: a).expr_data {
         ExprLambda { semantics: semantics } =>
           let bd = match arg_value(n: a).children |> first { Some { value: v } => v  None => arg_value(n: a) }
-          let ps = lambda_param_names(texpr: arg_value(n: a))
+          let ps = lambda_param_names_at(texpr: arg_value(n: a), source_index: scope.type_env.source_index)
           let dag_name = match ps |> first { Some { value: n } => n  None => "__x" }
           let p = emit_ident(name: dag_name, target: Rust)
           let lambda_scope = lambda_scope_from_semantics(scope: scope, params: ps, semantics: semantics)

@@ -590,6 +590,14 @@ pub fn lambda_param_names(texpr: Rc<Node>) -> Vec<String> {
         .map(|n| n.name.clone())
         .collect()
 }
+pub fn lambda_param_names_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Vec<String> {
+    texpr
+        .children
+        .iter()
+        .skip(1)
+        .map(|n| authored_name_at(source_index.clone(), n.clone()))
+        .collect()
+}
 pub fn record_lit_type_name(texpr: Rc<Node>) -> Option<String> {
     if texpr.name.is_empty() {
         None

@@ -838,6 +838,7 @@ fn expr_method_name(texpr: Node) -> String { texpr.name }
 // -- ExprLambda (D3: params dissolved into child Nodes after body) --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
 fn lambda_param_names(texpr: Node) -> List<String> { texpr.children |> skip(1) |> map(n => n.name) }
+fn lambda_param_names_at(texpr: Node, source_index: NewlineIndex?) -> List<String> { texpr.children |> skip(1) |> map(n => authored_name_at(source_index: source_index, node: n)) }
 
 // -- ExprLet (D3: name dissolved into Node.name) --
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }

@@ -60,7 +60,7 @@ pub use crate::v2_std_core::{
     expr_has_non_tail_self_call, expr_has_self_call,
     field_access_base, field_init_node_name, field_init_node_value,
     field_init_operation_modifier, if_condition, if_else_branch, if_then_branch,
-    lambda_body, lambda_param_names, leaf_node, let_body, let_value,
+    lambda_body, lambda_param_names_at, leaf_node, let_body, let_value,
     local_transport_node, match_arm_nodes, match_scrutinee, module_imports, module_items,
     node_has_structure, node_is_coproduct, node_is_product, operation_modifier_name,
     param_node_default_value, param_node_name, param_node_type_expr, record_lit_type_name,
@@ -2536,6 +2536,7 @@ pub fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) ->
 pub fn emit_shared_expr(
     texpr: Rc<Node>,
     target: RenderTarget,
+    source_index: Option<Rc<NewlineIndex>>,
     wrap_result: impl Fn(String) -> String,
     recurse: impl Fn(Rc<Node>) -> String,
     emit_var: impl Fn(Rc<Node>) -> String,
@@ -2610,7 +2611,7 @@ pub fn emit_shared_expr(
             ))
         }
         ExprData::ExprLambda { .. } => {
-            let params = lambda_param_names(texpr.clone());
+            let params = lambda_param_names_at(texpr.clone(), source_index.clone());
             let body = lambda_body(texpr.clone());
             wrap_result(emit_lambda(
                 emit_lambda_params(params.clone(), target.clone()),

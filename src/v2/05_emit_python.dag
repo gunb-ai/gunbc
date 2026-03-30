@@ -718,6 +718,7 @@ fn emit_py_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
   emit_shared_expr(
     texpr: texpr,
     target: Python,
+    source_index: scope.type_env.source_index,
     wrap_result: result => result,
     recurse: child => emit_py_typed_expr(texpr: child, registry: registry, scope: scope, depth: depth),
     emit_var: expr => emit_py_expr_var(expr: expr, source_index: scope.type_env.source_index),

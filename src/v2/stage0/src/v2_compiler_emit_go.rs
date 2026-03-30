@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{authored_name_at, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_pattern, LiteralValue, NewlineIndex, TextFile, SourceSpan, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{authored_name_at, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_pattern, LiteralValue, NewlineIndex, TextFile, SourceSpan, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -845,7 +845,7 @@ pub fn emit_go_typed_expr(texpr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         {
             let prefix = make_indent(depth.clone());
-emit_shared_expr(texpr.clone(), RenderTarget::Go, |result| if (result.clone() == "".to_string()) {
+emit_shared_expr(texpr.clone(), RenderTarget::Go, scope.type_env.source_index.clone(), |result| if (result.clone() == "".to_string()) {
                 "".to_string()
 } else {
                 v2_rt::concat(prefix.clone(), result.clone())

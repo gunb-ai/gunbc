@@ -747,6 +747,7 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
   emit_shared_expr(
     texpr: texpr,
     target: Go,
+    source_index: scope.type_env.source_index,
     wrap_result: result => if result == "" { "" } else { concat(prefix, result) },
     recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: 0),
     emit_var: expr => emit_go_expr_var(expr: expr, depth: depth, source_index: scope.type_env.source_index),

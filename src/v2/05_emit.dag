@@ -33,7 +33,7 @@ import v2.std.core {
   TextFile, SourceSpan,
   BinOpKind, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
-  lambda_param_names, record_lit_type_name,
+  lambda_param_names_at, record_lit_type_name,
   arm_body, arm_pattern, arm_guard,
   arg_name, arg_value,
   field_init_node_name, field_init_node_value,
@@ -1518,6 +1518,7 @@ fn emit_null_coalesce(l_str: String, r_str: String, target: RenderTarget) -> Str
 fn emit_shared_expr(
   texpr: Node,
   target: RenderTarget,
+  source_index: NewlineIndex?,
   wrap_result: fn(String) -> String,
   recurse: fn(Node) -> String,
   emit_var: fn(Node) -> String,
@@ -1572,7 +1573,7 @@ fn emit_shared_expr(
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
     ExprLambda { semantics: _ } =>
       let body = lambda_body(texpr: texpr)
-      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names(texpr: texpr), target: target), body_str: recurse(body), target: target))
+      wrap_result(emit_lambda(params_str: emit_lambda_params(param_names: lambda_param_names_at(texpr: texpr, source_index: source_index), target: target), body_str: recurse(body), target: target))
     ExprStringInterp =>
       emit_string_interp(texpr)
     ExprBlock =>
