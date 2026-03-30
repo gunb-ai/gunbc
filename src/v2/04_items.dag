@@ -15,11 +15,10 @@ import v2.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required,
   expr_has_self_call, expr_has_non_tail_self_call,
-  leaf_node,
   Connective, Conj, Disj, NoConnective
 }
 import v2.compiler.infer_types {
-  rt_type
+  child_inferred_or_name, rt_type
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding
@@ -94,7 +93,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan) -> List<Node> 
             if rt.name == "" {
               // Anonymous product -- expand children as fields
               map(rt.children, child =>
-                let child_type = if child.inferred == none { leaf_node(name: child.name) } else { rt_type(n: child) }
+                let child_type = child_inferred_or_name(ch: child)
                 make_field_node(name: child.name, type_expr: child_type, cardinality: Required, default_value: none, from_key: none, span: span)
               )
             } else {
@@ -131,7 +130,7 @@ fn item_kind(item: Node) -> ItemKind {
   kind
 }
 
-// C2.1: variant locals carry the structural parent node, not leaf_node(name).
+// C2.1: variant locals carry the structural parent node, not a bare nominal leaf.
 fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
   fold(items, init: init, f: (acc, item) =>
     let is_coproduct = item.connective == Disj

@@ -58,18 +58,23 @@ use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::NodeType::{InferError, Typed, Untyped};
 pub use crate::v2_std_core::{
-    has_inferred, is_kernel_numeric, is_kernel_textual, is_kernel_type, leaf_node, make_expr_node,
-    make_param_node, no_span, node_has_structure, node_is_coproduct, node_is_product,
-    param_node_type_expr, rt_node, with_optional_cardinality, with_required_cardinality, BinOpKind,
-    Cardinality, Connective, ExprData, InferredNode, LiteralValue, Node, NodeType,
+    has_inferred, is_kernel_numeric, is_kernel_textual, is_kernel_type, leaf_node,
+    leaf_node_with_span, make_expr_node, make_param_node, no_span, node_has_structure,
+    node_is_coproduct, node_is_product, param_node_type_expr, rt_node,
+    with_optional_cardinality, with_required_cardinality, BinOpKind, Cardinality, Connective,
+    ExprData, InferredNode, LiteralValue, Node, NodeType,
 };
 
 pub fn child_inferred_or_name(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() == None) {
-        leaf_node(ch.name.clone())
+        nominal_type_ref(ch.name.clone())
     } else {
         rt_type(ch.clone())
     }
+}
+
+pub fn nominal_type_ref(name: String) -> Rc<Node> {
+    leaf_node_with_span(name.clone(), SourceSpan::new(0, 0))
 }
 
 pub fn rt_type(n: Rc<Node>) -> Rc<Node> {
@@ -348,424 +353,681 @@ pub fn enrich_base_with_fields(name: String, base: Rc<Node>, fields: Vec<Rc<Node
     })
 }
 
-pub fn ordered_ring_fields(self_type: Rc<Node>) -> Vec<Rc<Node>> {
-    let ordering_type = leaf_node("Ordering".to_string());
+#[derive(Debug, Clone, PartialEq)]
+pub enum AlgebraTypeTemplate {
+    ReceiverSelf,
+    ReceiverElement,
+    ReceiverKey,
+    ReceiverValue,
+    NamedTemplate { name: String },
+    ReceiverCollectionOf { element: Box<AlgebraTypeTemplate> },
+    ListOf { element: Box<AlgebraTypeTemplate> },
+    OptionalOf { inner: Box<AlgebraTypeTemplate> },
+    TupleOf {
+        first: Box<AlgebraTypeTemplate>,
+        second: Box<AlgebraTypeTemplate>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AlgebraFieldTemplate {
+    pub name: String,
+    pub param_types: Vec<AlgebraTypeTemplate>,
+    pub return_type: AlgebraTypeTemplate,
+}
+
+pub fn ordered_ring_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
-        algebra_method_field(
-            "add".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_value_field("zero".to_string(), self_type.clone()),
-        algebra_method_field(
-            "negate".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "mul".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_value_field("one".to_string(), self_type.clone()),
-        algebra_method_field(
-            "compare".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            ordering_type.clone(),
-        ),
+        AlgebraFieldTemplate {
+            name: "add".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "zero".to_string(),
+            param_types: vec![],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "negate".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "mul".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "one".to_string(),
+            param_types: vec![],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "compare".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Ordering".to_string(),
+            },
+        },
     ]
 }
 
-pub fn approximate_field_fields(self_type: Rc<Node>) -> Vec<Rc<Node>> {
-    let ordering_type = leaf_node("Ordering".to_string());
+pub fn approximate_field_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
-        algebra_method_field(
-            "add".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_value_field("zero".to_string(), self_type.clone()),
-        algebra_method_field(
-            "negate".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "mul".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_value_field("one".to_string(), self_type.clone()),
-        algebra_method_field(
-            "reciprocal".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "compare".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            ordering_type.clone(),
-        ),
+        AlgebraFieldTemplate {
+            name: "add".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "zero".to_string(),
+            param_types: vec![],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "negate".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "mul".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "one".to_string(),
+            param_types: vec![],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "reciprocal".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "compare".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Ordering".to_string(),
+            },
+        },
     ]
 }
 
-pub fn boolean_algebra_fields(self_type: Rc<Node>) -> Vec<Rc<Node>> {
+pub fn boolean_algebra_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
-        algebra_method_field(
-            "meet".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "join".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "complement".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_value_field("top".to_string(), self_type.clone()),
-        algebra_value_field("bottom".to_string(), self_type.clone()),
+        AlgebraFieldTemplate {
+            name: "meet".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "join".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "complement".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "top".to_string(),
+            param_types: vec![],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "bottom".to_string(),
+            param_types: vec![],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
     ]
 }
 
-pub fn free_monoid_scalar_fields(self_type: Rc<Node>) -> Vec<Rc<Node>> {
-    let int_type = leaf_node("Int".to_string());
-    let bool_type = leaf_node("Bool".to_string());
-    let char_type = leaf_node("Char".to_string());
-    let list_of_string = container_node("List".to_string(), self_type.clone());
-    let list_of_char = container_node("List".to_string(), char_type.clone());
+pub fn free_monoid_scalar_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
-        algebra_method_field(
-            "concat".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_value_field("empty".to_string(), self_type.clone()),
-        algebra_method_field(
-            "length".to_string(),
-            vec![self_type.clone()],
-            int_type.clone(),
-        ),
-        algebra_method_field(
-            "chars".to_string(),
-            vec![self_type.clone()],
-            list_of_char.clone(),
-        ),
-        algebra_method_field(
-            "split".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            list_of_string.clone(),
-        ),
-        algebra_method_field(
-            "join".to_string(),
-            vec![list_of_string.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "contains".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "starts_with".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "ends_with".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "trim".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "to_lower".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "to_upper".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "replace".to_string(),
-            vec![self_type.clone(), self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "substring".to_string(),
-            vec![self_type.clone(), int_type.clone(), int_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "to_int".to_string(),
-            vec![self_type.clone()],
-            int_type.clone(),
-        ),
-        algebra_method_field(
-            "to_string".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "reverse".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
+        AlgebraFieldTemplate {
+            name: "concat".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "empty".to_string(),
+            param_types: vec![],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "length".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "chars".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ListOf {
+                element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "Char".to_string(),
+                }),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "split".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ListOf {
+                element: Box::new(AlgebraTypeTemplate::ReceiverSelf),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "join".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ListOf {
+                    element: Box::new(AlgebraTypeTemplate::ReceiverSelf),
+                },
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "contains".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "starts_with".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "ends_with".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "trim".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "to_lower".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "to_upper".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "replace".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "substring".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "Int".to_string(),
+                },
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "Int".to_string(),
+                },
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "to_int".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "to_string".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "reverse".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
     ]
 }
 
-pub fn free_monoid_collection_fields(self_type: Rc<Node>, elem: Rc<Node>) -> Vec<Rc<Node>> {
-    let int_type = leaf_node("Int".to_string());
-    let bool_type = leaf_node("Bool".to_string());
-    let string_type = leaf_node("String".to_string());
+pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
-        algebra_method_field(
-            "map".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "filter".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "flat_map".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "fold".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "any".to_string(),
-            vec![self_type.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "all".to_string(),
-            vec![self_type.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "count".to_string(),
-            vec![self_type.clone()],
-            int_type.clone(),
-        ),
-        algebra_method_field(
-            "first".to_string(),
-            vec![self_type.clone()],
-            with_optional_cardinality(elem.clone()),
-        ),
-        algebra_method_field(
-            "last".to_string(),
-            vec![self_type.clone()],
-            with_optional_cardinality(elem.clone()),
-        ),
-        algebra_method_field(
-            "skip".to_string(),
-            vec![self_type.clone(), int_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "take".to_string(),
-            vec![self_type.clone(), int_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "sort_by".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "append".to_string(),
-            vec![self_type.clone(), elem.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "contains".to_string(),
-            vec![self_type.clone(), elem.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "enumerate".to_string(),
-            vec![self_type.clone()],
-            container_node(
-                self_type.name.clone(),
-                tuple_node(int_type.clone(), elem.clone()),
-            ),
-        ),
-        algebra_method_field(
-            "reverse".to_string(),
-            vec![self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "join".to_string(),
-            vec![self_type.clone(), string_type.clone()],
-            string_type.clone(),
-        ),
-        algebra_method_field(
-            "concat".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "list_push".to_string(),
-            vec![self_type.clone(), elem.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "length".to_string(),
-            vec![self_type.clone()],
-            int_type.clone(),
-        ),
+        AlgebraFieldTemplate {
+            name: "map".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "filter".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "flat_map".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "fold".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "any".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "all".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "count".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "first".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::OptionalOf {
+                inner: Box::new(AlgebraTypeTemplate::ReceiverElement),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "last".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::OptionalOf {
+                inner: Box::new(AlgebraTypeTemplate::ReceiverElement),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "skip".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "Int".to_string(),
+                },
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "take".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "Int".to_string(),
+                },
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "sort_by".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "append".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverElement,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "contains".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverElement,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "enumerate".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
+                element: Box::new(AlgebraTypeTemplate::TupleOf {
+                    first: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                        name: "Int".to_string(),
+                    }),
+                    second: Box::new(AlgebraTypeTemplate::ReceiverElement),
+                }),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "reverse".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "join".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::NamedTemplate {
+                    name: "String".to_string(),
+                },
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "String".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "concat".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "list_push".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverElement,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "length".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            },
+        },
     ]
 }
 
-pub fn partial_function_fields(
-    self_type: Rc<Node>,
-    key_node: Rc<Node>,
-    val_node: Rc<Node>,
-) -> Vec<Rc<Node>> {
-    let int_type = leaf_node("Int".to_string());
-    let bool_type = leaf_node("Bool".to_string());
-    let list_of_keys = container_node("List".to_string(), key_node.clone());
-    let list_of_vals = container_node("List".to_string(), val_node.clone());
+pub fn partial_function_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
-        algebra_method_field(
-            "get".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            with_optional_cardinality(val_node.clone()),
-        ),
-        algebra_method_field(
-            "map_get".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            with_optional_cardinality(val_node.clone()),
-        ),
-        algebra_method_field(
-            "lookup".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            with_optional_cardinality(val_node.clone()),
-        ),
-        algebra_method_field(
-            "map_insert".to_string(),
-            vec![self_type.clone(), key_node.clone(), val_node.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "map_merge".to_string(),
-            vec![self_type.clone(), self_type.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "has".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "map_has".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "emit_map_has".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "map_contains_key".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "keys".to_string(),
-            vec![self_type.clone()],
-            list_of_keys.clone(),
-        ),
-        algebra_method_field(
-            "map_keys".to_string(),
-            vec![self_type.clone()],
-            list_of_keys.clone(),
-        ),
-        algebra_method_field(
-            "values".to_string(),
-            vec![self_type.clone()],
-            list_of_vals.clone(),
-        ),
-        algebra_method_field(
-            "map_values".to_string(),
-            vec![self_type.clone()],
-            list_of_vals.clone(),
-        ),
-        algebra_method_field(
-            "with".to_string(),
-            vec![self_type.clone(), key_node.clone(), val_node.clone()],
-            self_type.clone(),
-        ),
-        algebra_method_field(
-            "contains".to_string(),
-            vec![self_type.clone(), key_node.clone()],
-            bool_type.clone(),
-        ),
-        algebra_method_field(
-            "length".to_string(),
-            vec![self_type.clone()],
-            int_type.clone(),
-        ),
+        AlgebraFieldTemplate {
+            name: "get".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::OptionalOf {
+                inner: Box::new(AlgebraTypeTemplate::ReceiverValue),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "map_get".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::OptionalOf {
+                inner: Box::new(AlgebraTypeTemplate::ReceiverValue),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "lookup".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::OptionalOf {
+                inner: Box::new(AlgebraTypeTemplate::ReceiverValue),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "map_insert".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+                AlgebraTypeTemplate::ReceiverValue,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "map_merge".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "has".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "map_has".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "emit_map_has".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "map_contains_key".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "keys".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ListOf {
+                element: Box::new(AlgebraTypeTemplate::ReceiverKey),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "map_keys".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ListOf {
+                element: Box::new(AlgebraTypeTemplate::ReceiverKey),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "values".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ListOf {
+                element: Box::new(AlgebraTypeTemplate::ReceiverValue),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "map_values".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ListOf {
+                element: Box::new(AlgebraTypeTemplate::ReceiverValue),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "with".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+                AlgebraTypeTemplate::ReceiverValue,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "contains".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverKey,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "length".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            },
+        },
     ]
+}
+
+pub fn placeholder_type_node(name: String) -> Rc<Node> {
+    nominal_type_ref(name.clone())
+}
+
+pub fn algebra_child_or_placeholder(
+    base: Rc<Node>,
+    child_index: i64,
+    placeholder: String,
+) -> Rc<Node> {
+    let _ = placeholder;
+    base.children
+        .get(child_index as usize)
+        .cloned()
+        .unwrap_or_else(|| error_type_node())
+}
+
+pub fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Rc<Node>) -> Rc<Node> {
+    let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
+    let key_node = algebra_child_or_placeholder(base.clone(), 0, "K".to_string());
+    let val_node = algebra_child_or_placeholder(base.clone(), 1, "V".to_string());
+    match template {
+        AlgebraTypeTemplate::ReceiverSelf => base.clone(),
+        AlgebraTypeTemplate::ReceiverElement => elem.clone(),
+        AlgebraTypeTemplate::ReceiverKey => key_node.clone(),
+        AlgebraTypeTemplate::ReceiverValue => val_node.clone(),
+        AlgebraTypeTemplate::NamedTemplate { name } => placeholder_type_node(name.clone()),
+        AlgebraTypeTemplate::ReceiverCollectionOf { element } => container_node(
+            base.name.clone(),
+            instantiate_algebra_type((*element).clone(), base.clone()),
+        ),
+        AlgebraTypeTemplate::ListOf { element } => container_node(
+            "List".to_string(),
+            instantiate_algebra_type((*element).clone(), base.clone()),
+        ),
+        AlgebraTypeTemplate::OptionalOf { inner } => {
+            with_optional_cardinality(instantiate_algebra_type((*inner).clone(), base.clone()))
+        }
+        AlgebraTypeTemplate::TupleOf { first, second } => tuple_node(
+            instantiate_algebra_type((*first).clone(), base.clone()),
+            instantiate_algebra_type((*second).clone(), base.clone()),
+        ),
+    }
+}
+
+pub fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Rc<Node>) -> Rc<Node> {
+    let AlgebraFieldTemplate {
+        name,
+        param_types,
+        return_type,
+    } = template;
+    let param_types: Vec<Rc<Node>> = param_types
+        .into_iter()
+        .map(|tp| instantiate_algebra_type(tp, base.clone()))
+        .collect();
+    let return_type = instantiate_algebra_type(return_type, base.clone());
+    if !param_types.is_empty() {
+        algebra_method_field(name, param_types, return_type)
+    } else {
+        algebra_value_field(name, return_type)
+    }
+}
+
+pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Vec<AlgebraFieldTemplate> {
+    match profile {
+        AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
+        AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
+        AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_templates(),
+        AlgebraProfile::FreeMonoidScalarProfile => free_monoid_scalar_templates(),
+        AlgebraProfile::FreeMonoidCollectionProfile => free_monoid_collection_templates(),
+        AlgebraProfile::PartialFunctionProfile => partial_function_templates(),
+    }
 }
 
 pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
-    let profile = KERNEL_ALGEBRA_PROFILE.get(&name);
-    match profile {
+    match KERNEL_ALGEBRA_PROFILE.get(&name) {
         Some(p) => {
-            let self_type = leaf_node(name.clone());
-            let fields = match p {
-                AlgebraProfile::OrderedRingProfile => ordered_ring_fields(self_type.clone()),
-                AlgebraProfile::ApproximateFieldProfile => {
-                    approximate_field_fields(self_type.clone())
-                }
-                AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_fields(self_type.clone()),
-                AlgebraProfile::FreeMonoidScalarProfile => {
-                    free_monoid_scalar_fields(self_type.clone())
-                }
-                AlgebraProfile::FreeMonoidCollectionProfile => {
-                    let elem = base
-                        .children
-                        .clone()
-                        .first()
-                        .cloned()
-                        .unwrap_or_else(|| leaf_node("T".to_string()));
-                    free_monoid_collection_fields(self_type.clone(), elem)
-                }
-                AlgebraProfile::PartialFunctionProfile => {
-                    let key_node = base
-                        .children
-                        .clone()
-                        .first()
-                        .cloned()
-                        .unwrap_or_else(|| leaf_node("K".to_string()));
-                    let val_node = base
-                        .children
-                        .iter()
-                        .cloned()
-                        .skip(1)
-                        .next()
-                        .unwrap_or_else(|| leaf_node("V".to_string()));
-                    partial_function_fields(self_type.clone(), key_node, val_node)
-                }
-            };
+            let fields: Vec<Rc<Node>> = algebra_templates_for_profile(p.clone())
+                .into_iter()
+                .map(|template| instantiate_algebra_field(template, base.clone()))
+                .collect();
             enrich_base_with_fields(name, base, fields)
         }
         None => base.clone(),
@@ -1407,30 +1669,25 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
 pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
-        if ((node_has_structure(normed.clone()) == false)
+        let maybe_element = if node_is_map(normed.clone()) {
+            normed
+                .children
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>()
+                .first()
+                .cloned()
+        } else if ((node_has_structure(normed.clone()) == false)
             && ((normed.children.clone().len() as i64) == 1))
         {
-            match normed.children.clone().first().cloned() {
-                Some(el) => el.clone(),
-                None => receiver_type.clone(),
-            }
+            normed.children.clone().first().cloned()
         } else {
-            if node_is_map(normed.clone()) {
-                match normed
-                    .children
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>()
-                    .first()
-                    .cloned()
-                {
-                    Some(val_type) => val_type.clone(),
-                    None => receiver_type.clone(),
-                }
-            } else {
-                receiver_type.clone()
-            }
+            None
+        };
+        match maybe_element {
+            Some(el) => el.clone(),
+            None => receiver_type.clone(),
         }
     }
 }

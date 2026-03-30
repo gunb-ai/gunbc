@@ -160,7 +160,11 @@ works. 9 scrambled-name tests in CI. Parse/emit round-trip smoke test.
 
 ### M4: Compiler Knows Zero Type Names (L1 = 0)
 
-**Status:** L1 = 70. Depends on M2. Two exclusive lanes.
+**Status:** L1 = 21. Depends on M2. Two exclusive lanes. Current Lane 1
+direction: finish declaration-driven structural algebra, then remove
+the remaining bootstrap/stage0 bridge work so
+`scripts/l1-ratchet.sh --check` can hit 0 instead of just enforcing a
+lower ceiling.
 **Gate:** `scripts/l1-ratchet.sh --check` reports 0. Scrambled-name
 tests pass (then deleted).
 
@@ -191,9 +195,11 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
   modules transitively from source roots)
 - [ ] Compiler reads type declarations + algebra edges from `.dag`
   at resolve time
+- [ ] Replace template-era higher-order collection placeholders with
+  function-typed algebra witnesses from `std/algebra.dag`
 - [ ] Kernel types as algebraic compositions loaded from `std/`
-- [ ] 69 type constructor sites → 0
-- [ ] 1 type-name comparison → 0
+- [ ] 21 type constructor sites → 0
+- [x] Type-name comparisons → 0
 - [ ] CollectionKind bridge dissolves when method algebras land
 
 Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,

@@ -18,13 +18,14 @@ import v2.std.core {
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
-  leaf_node, with_optional_cardinality, with_required_cardinality,
+  with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
 
   CardOptional
 }
 import v2.compiler.infer_types {
   child_inferred_or_name,
+  nominal_type_ref,
   normalize_access_type_node, node_is_keyed_collection,
   method_receiver_element_node,
   rt_type, rt_node,
@@ -157,7 +158,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
         Untyped => normed
       }
     } else if canonical != "" && emit_map_has(m: seen, key: canonical) {
-      leaf_node(name: normed.name)
+      nominal_type_ref(name: normed.name)
     } else {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
       match lookup_type(env: env, name: normed.name) {
@@ -278,76 +279,16 @@ fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodF
   }
 }
 
-// Substitute algebra field return types with concrete types from the
-// receiver. The algebra registry uses bare leaf references (self_type,
-// elem) which need to become the actual receiver type and element type
-// at the call site.
-//
-// Rules:
-//   - Return type name matches receiver name → use receiver_type (preserves children)
-//   - Return type is Optional and inner matches element → use Optional(elem)
-//   - Otherwise → return as-is (already concrete: int_type, bool_type, etc.)
+// Algebra field templates are instantiated against the concrete receiver
+// before lookup, so most result types are already final at this point.
+// fold remains special because its output type is driven by the accumulator,
+// not the receiver's algebra witness.
 fn substitute_algebra_result(result_type: Node, receiver_type: Node, fold_accumulator_type: Node?) -> Node {
-  // fold is special: return type comes from the accumulator, not the algebra field
-  let is_fold = method_name_is_fold(result_type: result_type, fold_accumulator_type: fold_accumulator_type)
-  // Same collection AND same element structure (not just same collection name).
-  // enumerate returns List<Tuple<Int, T>> — same name "List" but different element.
-  let same_child_count = result_type.children |> count == receiver_type.children |> count
-  let same_first_child = match result_type.children |> first {
-    Some { value: rc } =>
-      match receiver_type.children |> first {
-        Some { value: rvc } => rc.name == rvc.name
-        None => true
-      }
-    None => true
-  }
-  let has_same_elements = same_child_count && (result_type.children |> count == 0 || same_first_child)
-  let is_same_collection = result_type.name == receiver_type.name && has_same_elements
-  let is_optional = result_type.return_cardinality == CardOptional
-  // Algebra return type is a collection (FreeMonoid<...>) — substitute element type
-  // and re-wrap as the receiver's collection type.
-  let is_algebra_collection = result_type.children |> count > 0 && (result_type.name == "FreeMonoid" || result_type.name == "PartialFunction")
-  if is_fold {
+  if method_name_is_fold(result_type: result_type, fold_accumulator_type: fold_accumulator_type) {
     match fold_accumulator_type {
       Some { value: fat } => fat
       None => result_type
     }
-  } else if is_same_collection {
-    receiver_type
-  } else if is_algebra_collection {
-    // Return type is e.g. FreeMonoid<Tuple<Int, T>> — substitute T with receiver element,
-    // then re-wrap as receiver collection type (e.g. List<Tuple<Int, String>>).
-    let elem = method_receiver_element_node(receiver_type: receiver_type)
-    let substituted_children = result_type.children |> map(child =>
-      if child.name == elem.name || child.name == "" { elem }
-      else { substitute_generic_param(child: child, elem: elem) }
-    )
-    Node { name: receiver_type.name, span: result_type.span, ident_span: receiver_type.ident_span, children: substituted_children, connective: receiver_type.connective, params: receiver_type.params, inferred: none, return_cardinality: result_type.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  } else if is_optional {
-    substitute_optional_result(result_type: result_type, receiver_type: receiver_type)
-  } else {
-    result_type
-  }
-}
-
-// Recursively substitute generic type parameters in a child node.
-// Replaces leaf nodes (no children, empty name) with the concrete element type.
-fn substitute_generic_param(child: Node, elem: Node) -> Node {
-  if child.children |> count == 0 && (child.name == "" || child.name == elem.name) {
-    elem
-  } else {
-    let subst_children = child.children |> map(c => substitute_generic_param(child: c, elem: elem))
-    Node { name: child.name, span: child.span, ident_span: child.ident_span, children: subst_children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, is_self_recursive: child.is_self_recursive, has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, expr_data: child.expr_data }
-  }
-}
-
-// Optional wrapping: substitute the inner type of an optional result
-// with the concrete element type from the receiver.
-fn substitute_optional_result(result_type: Node, receiver_type: Node) -> Node {
-  let inner = with_required_cardinality(n: result_type)
-  let elem = method_receiver_element_node(receiver_type: receiver_type)
-  if inner.name == elem.name || inner.name == "" || inner.children |> count == 0 {
-    with_optional_cardinality(n: elem)
   } else {
     result_type
   }

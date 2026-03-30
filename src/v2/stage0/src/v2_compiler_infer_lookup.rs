@@ -391,106 +391,13 @@ pub fn substitute_algebra_result(
     receiver_type: Rc<Node>,
     fold_accumulator_type: Option<Rc<Node>>,
 ) -> Rc<Node> {
-    let is_algebra_collection = !result_type.children.is_empty()
-        && (result_type.name == "FreeMonoid" || result_type.name == "PartialFunction");
     if fold_accumulator_type.is_some() {
         match fold_accumulator_type {
             Some(fat) => fat.clone(),
             None => result_type.clone(),
         }
-    } else if result_type.name == receiver_type.name && {
-        // Same collection AND same element structure. enumerate returns
-        // List<Tuple<Int, T>> — same name "List" but different element.
-        let same_child_count = result_type.children.len() == receiver_type.children.len();
-        let same_first_child = match (result_type.children.first(), receiver_type.children.first())
-        {
-            (Some(rc), Some(rvc)) => rc.name == rvc.name,
-            _ => true,
-        };
-        same_child_count && (result_type.children.is_empty() || same_first_child)
-    } {
-        receiver_type.clone()
-    } else if is_algebra_collection
-        || (result_type.name == receiver_type.name && !result_type.children.is_empty())
-    {
-        let elem = method_receiver_element_node(receiver_type.clone());
-        let substituted_children: Vec<Rc<Node>> = result_type
-            .children
-            .iter()
-            .map(|child| {
-                if child.name == elem.name || child.name.is_empty() {
-                    elem.clone()
-                } else {
-                    substitute_generic_param(child.clone(), elem.clone())
-                }
-            })
-            .collect();
-        Rc::new(Node {
-            name: receiver_type.name.clone(),
-            span: result_type.span.clone(),
-            ident_span: None,
-            children: substituted_children,
-            connective: receiver_type.connective.clone(),
-            params: receiver_type.params.clone(),
-            inferred: None,
-            return_cardinality: result_type.return_cardinality.clone(),
-            uses: vec![],
-            body: None,
-            transport: None,
-            properties: vec![],
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(crate::v2_std_core::ExprData::NoExprData),
-        })
-    } else if (matches!(
-        result_type.return_cardinality.clone(),
-        Cardinality::CardOptional
-    )) {
-        let inner = with_required_cardinality(result_type.clone());
-        let elem = method_receiver_element_node(receiver_type.clone());
-        if (inner.name.clone() == elem.name.clone()
-            || inner.name.clone() == "".to_string()
-            || (inner.children.clone().len() as i64) == 0)
-        {
-            with_optional_cardinality(elem.clone())
-        } else {
-            result_type.clone()
-        }
     } else {
         result_type.clone()
-    }
-}
-
-fn substitute_generic_param(child: Rc<Node>, elem: Rc<Node>) -> Rc<Node> {
-    if child.children.is_empty() && (child.name.is_empty() || child.name == elem.name) {
-        elem.clone()
-    } else {
-        let subst_children: Vec<Rc<Node>> = child
-            .children
-            .iter()
-            .map(|c| substitute_generic_param(c.clone(), elem.clone()))
-            .collect();
-        Rc::new(Node {
-            name: child.name.clone(),
-            span: child.span.clone(),
-            ident_span: None,
-            children: subst_children,
-            connective: child.connective.clone(),
-            params: child.params.clone(),
-            inferred: child.inferred.clone(),
-            return_cardinality: child.return_cardinality.clone(),
-            uses: child.uses.clone(),
-            body: child.body.clone(),
-            transport: child.transport.clone(),
-            properties: child.properties.clone(),
-            type_annotation: child.type_annotation.clone(),
-            is_self_recursive: child.is_self_recursive,
-            has_non_tail_self_call: child.has_non_tail_self_call,
-            match_pattern: child.match_pattern.clone(),
-            expr_data: child.expr_data.clone(),
-        })
     }
 }
 
