@@ -63,7 +63,9 @@ fn type_variable_node(id: String) -> Node {
 // Adding a builtin function = adding a row to this table.
 fn builtin_function_registry() -> Map<String, Node> {
   let m = empty_map()
-  // Int-returning functions
+  // Int-returning functions (count is also an algebra method on collections;
+  // registered here as bridge so count(x) function syntax works alongside x |> count)
+  let m = map_insert(m, "count", int_type)
   let m = map_insert(m, "string_length", int_type)
   let m = map_insert(m, "code_point", int_type)
   let m = map_insert(m, "to_int", int_type)

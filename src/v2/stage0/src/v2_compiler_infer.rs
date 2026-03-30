@@ -832,15 +832,23 @@ container_node(receiver_type_name.clone(), lambda_ret.clone())
     None => fallback.clone(),
 }
 } else {
+                if (method_name_is(method_name.clone(), "filter".to_string()) || method_name_is(method_name.clone(), "sort_by".to_string()) || method_name_is(method_name.clone(), "unique".to_string()) || method_name_is(method_name.clone(), "reverse".to_string())) {
+                    // filter/sort_by/unique/reverse preserve the collection type exactly
+                    receiver_type.clone()
+                } else {
                 if method_name_is(method_name.clone(), "fold".to_string()) {
-                    match { let mut __result = Vec::new(); for a in typed_args.clone().iter().cloned() { if is_lambda_expr(arg_value(a.clone())) { __result.push(a); } } __result }.first().cloned() {
-    Some(lambda_arg) => match (*rt_node(arg_value(lambda_arg.clone()))).clone() {
-    NodeType::Typed { node: rt, .. } => rt.clone(),
-    NodeType::InferError { .. } => fallback.clone(),
-    NodeType::Untyped => fallback.clone(),
-},
-    None => fallback.clone(),
-}
+                    // fold returns the accumulator type, not the lambda body type.
+                    let fold_acc = match semantics.clone() {
+                        Some(s) => match (*s).clone() {
+                            MethodSemantics::AlgebraMethodSemantics { fold_accumulator_type: fat, .. } => fat,
+                            _ => None,
+                        },
+                        None => None,
+                    };
+                    match fold_acc {
+                        Some(acc_type) => acc_type.clone(),
+                        None => fallback.clone(),
+                    }
 } else {
                     if ((method_name_is(method_name.clone(), "list_push".to_string()) && ((typed_args.clone().len() as i64) >= 1)) && ((receiver_type.children.clone().len() as i64) == 0)) {
                         match typed_args.clone().first().cloned() {
@@ -894,6 +902,7 @@ if (((receiver_type.children.clone().len() as i64) == 0) && ((overlay_type.child
 }
 } else {
                                 fallback.clone()
+}
 }
 }
 }

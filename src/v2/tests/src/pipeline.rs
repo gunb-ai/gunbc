@@ -106,6 +106,25 @@ fn generic_type_declaration_smoke() {
 }
 
 #[test]
+fn fold_returns_accumulator_type() {
+    // Regression: fold must return the accumulator type, not the lambda body type.
+    // Root cause was refine_collection_result_type extracting lambda return type
+    // instead of fold_accumulator_type from AlgebraMethodSemantics.
+    let source = "module fold_acc_test\n\ntype Entry { label: String }\n\nfn pick(items: List<Entry>) -> String {\n  let found = fold(items, init: { label: \"default\" }, f: (acc, e) => e)\n  found.label\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn node_binding_scoped_in_func_body() {
+    // Regression: node bindings must be in scope for subsequent statements.
+    // Root cause was stage0 parse_node_decl setting name: "" instead of the binding name.
+    let source = "module node_scope_test\n\nfunc do_node(x: Int) -> Int {\n  node y = x\n  y\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn generic_recursive_type() {
     let source = "module recursive_gen\n\ntype MyList<T> = Nil | Cons { head: T, tail: MyList<T> }\n\nfn empty() -> MyList<Int> { Nil }\n";
     let result = compile_dag(source);

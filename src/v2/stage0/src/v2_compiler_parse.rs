@@ -7625,7 +7625,7 @@ pub fn parse_node_decl(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc
     // If colon form was used (node x: Type), the expression IS the type annotation.
     let type_ann = if e_colon.consumed.clone() { Some(r3.expr.clone()) } else { None };
     Rc::new(ExprResult { expr: Rc::new(Node {
-        name: "".to_string(), span: span.clone(), children: vec![r3.expr.clone()],
+        name: name.clone(), span: span.clone(), children: vec![r3.expr.clone()],
         connective: None, params: vec![], inferred: ret.inferred.clone(),
         return_cardinality: Cardinality::Required, uses: vec![], body: None, transport: None,
         properties: cr.constraints.clone(), type_annotation: type_ann, is_self_recursive: false,

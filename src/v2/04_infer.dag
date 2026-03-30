@@ -841,9 +841,19 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
       Some { value: lambda_arg } => match rt_node(n: arg_value(n: lambda_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
       None => fallback
     }
+  } else if method_name_is(opt: method_name, expected: "filter") || method_name_is(opt: method_name, expected: "sort_by") || method_name_is(opt: method_name, expected: "unique") || method_name_is(opt: method_name, expected: "reverse") {
+    // filter/sort_by/unique/reverse preserve the collection type exactly
+    receiver_type
   } else if method_name_is(opt: method_name, expected: "fold") {
-    match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
-      Some { value: lambda_arg } => match rt_node(n: arg_value(n: lambda_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => fallback  InferVariable { id: _ } => fallback  Untyped => fallback }
+    // fold returns the accumulator type, not the lambda body type.
+    let fold_acc = if semantics == none { none } else {
+      match semantics.value {
+        AlgebraMethodSemantics { method_name: _, fold_accumulator_type: fat } => fat
+        _ => none
+      }
+    }
+    match fold_acc {
+      Some { value: acc_type } => acc_type
       None => fallback
     }
   } else if method_name_is(opt: method_name, expected: "list_push") && typed_args |> count >= 1 && receiver_type.children |> count == 0 {
