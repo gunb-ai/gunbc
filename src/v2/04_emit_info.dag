@@ -41,6 +41,8 @@ type TypeSummary {
   name: String
   repr: TypeRepr
   field_summaries: Map<String, FieldSummary>
+  field_type_map: Map<String, String>
+  variant_names: List<String>
 }
 
 // EmitGraphInfo: the reconcile→emit boundary contract.
@@ -53,29 +55,19 @@ type TypeSummary {
 //   type_summaries    — one entry per named type definition (Conj or Disj)
 //                       in the typed module graph. Keyed by type name.
 //                       Guaranteed non-empty for modules with type definitions.
-//   variant_to_enum   — maps each variant name to its parent enum name.
-//                       Populated for all Disj types. Used by emit to qualify
-//                       variant constructors (e.g., LitStr → LiteralValue::LitStr).
-//   enum_variant_membership — quick lookup: is this name a variant of any enum?
-//                       Keyed by variant name, value always true.
-//   field_type_names  — maps "TypeName.field_name" to the field's type name string.
-//                       Used by emit for field-level type disambiguation.
+//                       For enums, variant_names lists the variant names.
+//                       variant_to_enum and enum_variant_membership are derived
+//                       from type_summaries at the point of use (not stored).
 //   recursive_type_set — maps type names that participate in recursive cycles
 //                       (detected by 04_cycle.dag) to true. Used by emit to decide
 //                       Rc wrapping (Rust) or pointer indirection (Go/C).
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
-  variant_to_enum: Map<String, String>
-  enum_variant_membership: Map<String, Bool>
-  field_type_names: Map<String, String>
   recursive_type_set: Map<String, Bool>
 }
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
-  variant_to_enum: Map<String, String>
-  enum_variant_membership: Map<String, Bool>
-  field_type_names: Map<String, String>
 }
 
 // =========================================================================
@@ -85,15 +77,44 @@ type EmitInfoBuildState {
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
-    variant_to_enum: empty_map(),
-    enum_variant_membership: empty_map(),
-    field_type_names: empty_map(),
     recursive_type_set: empty_map()
   }
 }
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
   map_get(emit_info.type_summaries, type_name)
+}
+
+// Derive variant_to_enum from type_summaries: iterate all enum summaries,
+// invert the variant_names lists. First-write-wins for ambiguous variants.
+fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
+  map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
+    match summary.repr {
+      EnumRepr { unit_only: _ } =>
+        fold(summary.variant_names, init: acc, f: (inner, vn) =>
+          match map_get(inner, vn) {
+            Some { value: existing } =>
+              if existing == summary.name { inner }
+              else { map_insert(inner, vn, "__ambiguous__") }
+            None => map_insert(inner, vn, summary.name)
+          }
+        )
+      _ => acc
+    }
+  )
+}
+
+// Structural check: is variant_name a member of enum_name?
+fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_name: String, enum_name: String) -> Bool {
+  match map_get(type_summaries, enum_name) {
+    Some { value: summary } =>
+      match summary.repr {
+        EnumRepr { unit_only: _ } =>
+          summary.variant_names |> any(n => n == variant_name)
+        _ => false
+      }
+    None => false
+  }
 }
 
 // =========================================================================
@@ -202,6 +223,20 @@ fn build_enum_field_summaries(variants: List<Node>) -> Map<String, FieldSummary>
 // Type summary builders
 // =========================================================================
 
+fn build_field_type_map(children: List<Node>) -> Map<String, String> {
+  fold(children, init: empty_map(), f: (acc, child) =>
+    match child.inferred {
+      Some { value: Resolved { node: ft } } =>
+        let resolved_name = normalize_access_type_node(n: ft).name
+        let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
+        if resolved_name != "" && !ft_is_type_var {
+          map_insert(acc, child.name, resolved_name)
+        } else { acc }
+      _ => acc
+    }
+  )
+}
+
 fn build_type_summary(item: Node) -> TypeSummary? {
   if item.connective == NoConnective || item.transport != none {
     return none
@@ -211,14 +246,18 @@ fn build_type_summary(item: Node) -> TypeSummary? {
     Some { value: TypeSummary {
       name: item.name,
       repr: StructRepr,
-      field_summaries: build_struct_field_summaries(children: item.children)
+      field_summaries: build_struct_field_summaries(children: item.children),
+      field_type_map: build_field_type_map(children: item.children),
+      variant_names: []
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
     Some { value: TypeSummary {
       name: item.name,
       repr: EnumRepr { unit_only: unit_only },
-      field_summaries: build_enum_field_summaries(variants: item.children)
+      field_summaries: build_enum_field_summaries(variants: item.children),
+      field_type_map: empty_map(),
+      variant_names: item.children |> map(child => child.name)
     } }
   }
 }
@@ -228,6 +267,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
     Some { value: summary } =>
       // Add per-variant summaries for enums so is_optional_struct_field can look up
       // individual variant field types (e.g. VariantPattern.parent_enum).
+      // Add per-variant summaries for enums so is_optional_struct_field can look up
+      // individual variant field types (e.g. VariantPattern.parent_enum).
       let with_variants = match summary.repr {
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
@@ -235,74 +276,17 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
               map_insert(acc, variant.name, TypeSummary {
                 name: variant.name,
                 repr: StructRepr,
-                field_summaries: build_struct_field_summaries(children: variant.children)
+                field_summaries: build_struct_field_summaries(children: variant.children),
+                field_type_map: build_field_type_map(children: variant.children),
+                variant_names: []
               })
             } else { acc }
           )
         _ => state.type_summaries
       }
       let next_summaries = map_insert(with_variants, summary.name, summary)
-      // First-write-wins for variant_to_enum: if a variant name exists in
-      // multiple enums, keep the first registration. The module-level vtoe
-      // override corrects per-module based on imports. This makes vtoe
-      // construction deterministic regardless of Map iteration order.
-      let next_variants = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.variant_to_enum, f: (acc, child) =>
-            match map_get(acc, child.name) {
-              Some { value: existing } =>
-                // Ambiguous: variant exists in multiple enums. Mark as
-                // ambiguous so the module-level override is the sole authority.
-                if existing == summary.name { acc }
-                else { map_insert(acc, child.name, "__ambiguous__") }
-              None => map_insert(acc, child.name, summary.name)
-            }
-          )
-        _ => state.variant_to_enum
-      }
-      // Build enum_variant_membership: "EnumName|VariantName" -> true
-      let next_evm = match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.enum_variant_membership, f: (acc, child) =>
-            map_insert(acc, concat(summary.name, "|", child.name), true)
-          )
-        _ => state.enum_variant_membership
-      }
-      // Build field_type_names: "TypeName|field_name" -> "FieldTypeName"
-      // For structs: direct field type names. For enums: per-variant field type names.
-      let next_ftn = match summary.repr {
-        StructRepr =>
-          fold(item.children, init: state.field_type_names, f: (acc, child) =>
-            match child.inferred {
-              Some { value: Resolved { node: ft } } =>
-                let resolved_name = normalize_access_type_node(n: ft).name
-                let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
-                if resolved_name != "" && !ft_is_type_var {
-                  map_insert(acc, concat(summary.name, "|", child.name), resolved_name)
-                } else { acc }
-              _ => acc
-            }
-          )
-        EnumRepr { unit_only: _ } =>
-          fold(item.children, init: state.field_type_names, f: (acc, variant) =>
-            fold(variant.children, init: acc, f: (inner_acc, child) =>
-              match child.inferred {
-                Some { value: Resolved { node: ft } } =>
-                  let resolved_name = normalize_access_type_node(n: ft).name
-                  let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
-                if resolved_name != "" && !ft_is_type_var {
-                    map_insert(inner_acc, concat(variant.name, "|", child.name), resolved_name)
-                  } else { inner_acc }
-                _ => inner_acc
-              }
-            )
-          )
-      }
       EmitInfoBuildState {
-        type_summaries: next_summaries,
-        variant_to_enum: next_variants,
-        enum_variant_membership: next_evm,
-        field_type_names: next_ftn
+        type_summaries: next_summaries
       }
     None => state
   }

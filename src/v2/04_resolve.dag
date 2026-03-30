@@ -147,7 +147,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
           if decl.inferred != none { true }
           // Bare parameterized stub (no alias): only treat as generic use site
           // if NOT a known container (containers have their own resolution path).
-          // Uses container_types data list — resolve is name-aware per ROADMAP.
+          // Uses container_type_set — resolve is name-aware per ROADMAP.
           else {
             if is_container_type(name: n.name) { false }
             else { true }

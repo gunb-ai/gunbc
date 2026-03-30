@@ -53,7 +53,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem, DataItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, TypeRepr};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, lookup_emit_type_summary, TypeRepr, derive_variant_to_enum};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
 pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, service_uses_transport, service_has_rest_auth, extract_modifier_names};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc};
@@ -234,7 +234,7 @@ pub fn is_simple_disj(item: Rc<Node>) -> bool {
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let emit_info = typed.emit_graph_info.clone();
-let vtoe = emit_info.variant_to_enum.clone();
+let vtoe = derive_variant_to_enum(emit_info.type_summaries.clone());
 let rc_types = v2_rt::map_values(&emit_info.type_summaries.clone()).iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, summary: Rc<TypeSummary>| if type_summary_needs_rc(summary.clone()) {
             v2_rt::map_insert(acc.clone(), summary.name.clone(), true)
 } else {
@@ -322,7 +322,7 @@ let rc_types = v2_rt::map_values(&emit_info.type_summaries.clone()).iter().clone
 } else {
             acc.clone()
 });
-emit_module_full(typed_module.clone(), registry.clone(), emit_info.clone(), emit_info.variant_to_enum.clone(), rc_types.clone(), <HashMap<_, _>>::new())
+emit_module_full(typed_module.clone(), registry.clone(), emit_info.clone(), derive_variant_to_enum(emit_info.type_summaries.clone()), rc_types.clone(), <HashMap<_, _>>::new())
 }
 }
 
@@ -351,7 +351,7 @@ if parent_ok.clone() {
                 vtoe_acc.clone()
 } else {
                 {
-                    let correct = { let mut __result = Vec::new(); for enum_name in __module_enums.clone().iter().cloned() { if emit_map_has(emit_info.enum_variant_membership.clone(), v2_rt::concat(v2_rt::concat(enum_name.clone(), "|".to_string()), name.clone())) { __result.push(enum_name); } } __result }.first().cloned();
+                    let correct = { let mut __result = Vec::new(); for enum_name in __module_enums.clone().iter().cloned() { if variant_belongs_to_enum(name.clone(), enum_name.clone(), emit_info.clone()) { __result.push(enum_name); } } __result }.first().cloned();
 match correct.clone() {
     Some(p) => v2_rt::map_insert(vtoe_acc.clone(), name.clone(), p.clone()),
     None => vtoe_acc.clone(),
@@ -1849,7 +1849,10 @@ pub fn is_enum_type_name(type_name: String, vtoe: HashMap<String, String>) -> bo
 }
 
 pub fn variant_belongs_to_enum(variant_name: String, enum_name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
-    emit_map_has(emit_info.enum_variant_membership.clone(), v2_rt::concat(v2_rt::concat(enum_name.clone(), "|".to_string()), variant_name.clone()))
+    match v2_rt::map_get(&emit_info.type_summaries, enum_name.clone()) {
+    Some(summary) => { let mut __found = false; for vn in summary.variant_names.iter().cloned() { if (vn.clone() == variant_name.clone()) { __found = true; break; } } __found },
+    None => false,
+}
 }
 
 pub fn contextual_variant_parent(variant_name: String, parent_enum: Option<String>, resolved_type: Rc<Node>, emit_info: Rc<EmitGraphInfo>) -> Option<String> {
@@ -2824,18 +2827,17 @@ match tn.clone() {
 let expected_type = match node_lookup.clone() {
     Some(_) => node_lookup.clone(),
     None => if (struct_node.name.clone() != "".to_string()) {
-                {
-                    let ftn_key = v2_rt::concat(v2_rt::concat(struct_node.name.clone(), "|".to_string()), field_name.clone());
-v2_rt::map_get(&emit_info.field_type_names.clone(), ftn_key.clone())
-}
+                match lookup_emit_type_summary(emit_info.clone(), struct_node.name.clone()) {
+                    Some(summary) => v2_rt::map_get(&summary.field_type_map.clone(), field_name.clone()),
+                    None => None,
+                }
 } else {
                 None
 },
 };
 let corrected_parent = match expected_type.clone() {
     Some(et) => {
-                let key = v2_rt::concat(v2_rt::concat(et.clone(), "|".to_string()), variant_name.clone());
-if emit_map_has(emit_info.enum_variant_membership.clone(), key.clone()) {
+                if variant_belongs_to_enum(variant_name.clone(), et.clone(), emit_info.clone()) {
                     Some(et.clone())
 } else {
                     pe.clone()
