@@ -260,7 +260,7 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
                 emit_ident(n.clone(), target.clone())
             }
             ExprData::ExprFieldAccess { .. } => {
-                let f = expr.name.clone();
+                let f = authored_name_at(source_index.clone(), expr.clone());
                 let b = field_access_base(expr.clone());
                 if is_typed_service_call_receiver(expr.clone()) {
                     match extract_typed_service_name(expr.clone()) {

@@ -577,7 +577,7 @@ fn emit_py_expr_var(expr: Node, source_index: NewlineIndex?) -> String {
 fn emit_py_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprFieldAccess { summary: summary } =>
-      let f = expr.name
+      let f = authored_name_at(source_index: scope.type_env.source_index, node: expr)
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {

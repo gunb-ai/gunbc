@@ -9431,13 +9431,12 @@ pub fn parse_expr_loop(
                                             err: r.err.clone(),
                                         });
                                     }
-                                    let span = current_span(tokens.clone(), state.clone());
                                     let new_lhs = make_named_expr_node(
                                         r.name.clone(),
                                         Rc::new(ExprData::ExprFieldAccess { summary: None }),
                                         vec![lhs.clone()],
                                         None,
-                                        span.clone(),
+                                        r.span.clone(),
                                     );
                                     {
                                         let __tco_0 = tokens.clone();
@@ -10695,13 +10694,12 @@ pub fn parse_expr_loop_no_brace(
                                             err: r.err.clone(),
                                         });
                                     }
-                                    let span = current_span(tokens.clone(), s.clone());
                                     let new_lhs = make_named_expr_node(
                                         r.name.clone(),
                                         Rc::new(ExprData::ExprFieldAccess { summary: None }),
                                         vec![lhs.clone()],
                                         None,
-                                        span.clone(),
+                                        r.span.clone(),
                                     );
                                     {
                                         let __tco_0 = tokens.clone();
