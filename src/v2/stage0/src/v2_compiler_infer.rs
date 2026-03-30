@@ -148,7 +148,7 @@ pub use crate::v2_compiler_infer_types::{
     emit_map_has, enrich_kernel_type, error_type_node, extract_optional_inner_node,
     for_each_element_type_node, infer_binop_type_node, infer_literal_node, is_bool_type_node,
     is_float_type_node, is_int_type_node, is_string_type_node, map_node,
-    method_receiver_element_node, node_is_container, node_is_leaf, node_is_map, node_is_named_ref,
+    method_receiver_element_node, node_is_bridge_placeholder_name, node_is_container, node_is_leaf, node_is_map, node_is_named_ref,
     node_is_optional, node_type_compatible, node_type_deps, node_type_equals, node_type_shape,
     normalize_access_type_node, prefer_specific_type, rt_type, tuple_node,
 };
@@ -1016,7 +1016,15 @@ pub fn method_arg_formal_type(
                 .collect::<Vec<_>>()
                 .first()
                 .cloned()
-                .map(|p| param_node_type_expr(p.clone()))
+                .map(|p| {
+                    let param_type = param_node_type_expr(p.clone());
+                    let resolved_param_type = rt_type(param_type.clone());
+                    if ((resolved_param_type.params.clone().len() as i64) > 0) {
+                        resolved_param_type.clone()
+                    } else {
+                        param_type.clone()
+                    }
+                })
         }
         Some(MethodSemantics::ServiceMethodSemantics {
             service_name: _,
@@ -1103,13 +1111,48 @@ pub fn infer_method_args_with_fold(
                                             scope.clone(),
                                             Some(formal_type.clone()),
                                         );
+                                        let inferred_type = rt_type(ar.typed.clone());
+                                        let callable_diags = if (((formal_type
+                                            .params
+                                            .clone()
+                                            .len() as i64)
+                                            > 0)
+                                            && (!node_type_compatible(
+                                                inferred_type.clone(),
+                                                formal_type.clone(),
+                                            )))
+                                        {
+                                            vec![inference_error(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        v2_rt::concat(
+                                                            v2_rt::concat(
+                                                                "callable argument type mismatch: expected '"
+                                                                    .to_string(),
+                                                                node_type_shape(formal_type.clone()),
+                                                            ),
+                                                            "', got '".to_string(),
+                                                        ),
+                                                        node_type_shape(inferred_type.clone()),
+                                                    ),
+                                                    "'".to_string(),
+                                                ),
+                                                a.span.clone(),
+                                                scope.module_name.clone(),
+                                            )]
+                                        } else {
+                                            vec![]
+                                        };
                                         Rc::new(ArgInferResult {
                                             typed_arg: make_arg_node(
                                                 arg_name(a.clone()),
                                                 ar.typed.clone(),
                                                 a.span.clone(),
                                             ),
-                                            diagnostics: ar.diagnostics.clone(),
+                                            diagnostics: v2_rt::concat(
+                                                ar.diagnostics.clone(),
+                                                callable_diags.clone(),
+                                            ),
                                         })
                                     }
                                 }
@@ -1363,6 +1406,9 @@ pub fn infer_lambda_with_callable_type(
             let lam_body = lambda_body(lambda_expr.clone());
             let span = lambda_expr.span.clone();
             let callable_params = callable_type.params.clone();
+            let callable_return = callable_inferred(callable_type.clone());
+            let callable_return_is_placeholder =
+                node_is_bridge_placeholder_name(callable_return.clone());
             let param_types = {
                 let mut __result = Vec::new();
                 for pair in lam_params
@@ -1416,8 +1462,51 @@ pub fn infer_lambda_with_callable_type(
                     };
                     extend_scope(acc.clone(), pair.1.clone(), pt.clone())
                 });
-            let body_result = infer_expr(lam_body.clone(), typed_scope.clone(), None);
+            let body_result = infer_expr(
+                lam_body.clone(),
+                typed_scope.clone(),
+                if callable_return_is_placeholder.clone() {
+                    None
+                } else {
+                    Some(callable_return.clone())
+                },
+            );
             let body_typed = body_result.typed.clone();
+            let arity_diags = if ((lam_params.clone().len() as i64)
+                == (callable_params.clone().len() as i64))
+            {
+                vec![]
+            } else {
+                vec![inference_error(
+                    "callable argument arity mismatch".to_string(),
+                    span.clone(),
+                    scope.module_name.clone(),
+                )]
+            };
+            let body_type = rt_type(body_typed.clone());
+            let return_diags = if (callable_return_is_placeholder.clone()
+                || node_type_compatible(body_type.clone(), callable_return.clone()))
+            {
+                vec![]
+            } else {
+                vec![inference_error(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    "callable return type mismatch: expected '".to_string(),
+                                    node_type_shape(callable_return.clone()),
+                                ),
+                                "', got '".to_string(),
+                            ),
+                            node_type_shape(body_type.clone()),
+                        ),
+                        "'".to_string(),
+                    ),
+                    lam_body.span.clone(),
+                    scope.module_name.clone(),
+                )]
+            };
             let typed_lam = make_expr_node(
                 Rc::new(ExprData::ExprLambda {
                     semantics: Some(lambda_semantics_from_param_types(param_types.clone())),
@@ -1436,7 +1525,10 @@ pub fn infer_lambda_with_callable_type(
             );
             Rc::new(ArgInferResult {
                 typed_arg: make_arg_node(arg_name.clone(), typed_lam.clone(), no_span()),
-                diagnostics: body_result.diagnostics.clone(),
+                diagnostics: v2_rt::concat(
+                    arity_diags.clone(),
+                    v2_rt::concat(body_result.diagnostics.clone(), return_diags.clone()),
+                ),
             })
         }
         _ => {
@@ -1868,16 +1960,6 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     Some(s) => s.params.clone(),
                     None => vec![],
                 };
-                let has_lambda = {
-                    let mut __found = false;
-                    for a in call_args.clone().iter().cloned() {
-                        if is_lambda_expr(arg_value(a.clone())) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                };
                 let call_method_args = call_args
                     .clone()
                     .iter()
@@ -1899,8 +1981,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     },
                     None => error_type_node(),
                 };
-                let arg_infer_results = if ((has_lambda.clone()
-                    && ((call_args.clone().len() as i64) >= 2))
+                let arg_infer_results = if (((call_args.clone().len() as i64) >= 1)
                     && (sig.clone() == None))
                 {
                     match call_args.clone().first().cloned() {
@@ -1915,27 +1996,63 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                 None,
                                 scope.service_registry.clone(),
                             );
-                            let elem_type = for_each_element_type_node(first_type.clone());
-                            let remaining_results = infer_method_args_with_fold(
-                                call_method_name.clone(),
-                                call_method_args.clone(),
-                                provisional_method_resolution.semantics.clone(),
-                                call_fold_info.clone(),
-                                call_fold_acc_type.clone(),
-                                elem_type.clone(),
-                                scope.clone(),
-                            );
-                            v2_rt::concat(
-                                vec![Rc::new(ArgInferResult {
-                                    typed_arg: make_arg_node(
-                                        arg_name(first_arg.clone()),
-                                        first_result.typed.clone(),
-                                        first_arg.span.clone(),
-                                    ),
-                                    diagnostics: first_result.diagnostics.clone(),
-                                })],
-                                remaining_results.clone(),
-                            )
+                            if ((provisional_method_resolution.result_type.clone() != None)
+                                && ((call_args.clone().len() as i64) >= 2))
+                            {
+                                let elem_type = for_each_element_type_node(first_type.clone());
+                                let remaining_results = infer_method_args_with_fold(
+                                    call_method_name.clone(),
+                                    call_method_args.clone(),
+                                    provisional_method_resolution.semantics.clone(),
+                                    call_fold_info.clone(),
+                                    call_fold_acc_type.clone(),
+                                    elem_type.clone(),
+                                    scope.clone(),
+                                );
+                                v2_rt::concat(
+                                    vec![Rc::new(ArgInferResult {
+                                        typed_arg: make_arg_node(
+                                            arg_name(first_arg.clone()),
+                                            first_result.typed.clone(),
+                                            first_arg.span.clone(),
+                                        ),
+                                        diagnostics: first_result.diagnostics.clone(),
+                                    })],
+                                    remaining_results.clone(),
+                                )
+                            } else {
+                                v2_rt::concat(
+                                    vec![Rc::new(ArgInferResult {
+                                        typed_arg: make_arg_node(
+                                            arg_name(first_arg.clone()),
+                                            first_result.typed.clone(),
+                                            first_arg.span.clone(),
+                                        ),
+                                        diagnostics: first_result.diagnostics.clone(),
+                                    })],
+                                    {
+                                        let mut __result = Vec::new();
+                                        for a in call_method_args.clone().iter().cloned() {
+                                            __result.push({
+                                                let ar = infer_expr(
+                                                    arg_value(a.clone()),
+                                                    scope.clone(),
+                                                    None,
+                                                );
+                                                Rc::new(ArgInferResult {
+                                                    typed_arg: make_arg_node(
+                                                        arg_name(a.clone()),
+                                                        ar.typed.clone(),
+                                                        a.span.clone(),
+                                                    ),
+                                                    diagnostics: ar.diagnostics.clone(),
+                                                })
+                                            });
+                                        }
+                                        __result
+                                    },
+                                )
+                            }
                         }
                         None => vec![],
                     }
@@ -1967,7 +2084,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                     None => leaf_node("Dynamic".to_string()),
                                 };
                                 let is_callable_formal =
-                                    (formal_param_type.name.clone() == "Callable".to_string());
+                                    (formal_param_type.params.clone().len() as i64) > 0;
                                 if (is_lambda_expr(arg_value(a.clone()))
                                     && is_callable_formal.clone())
                                 {

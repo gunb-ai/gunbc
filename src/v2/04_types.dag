@@ -480,6 +480,12 @@ fn node_type_shape(n: Node) -> String {
   }
 }
 
+fn node_is_bridge_placeholder_name(n: Node) -> Bool {
+  n.children == [] && n.params == [] && (
+    n.name == "T" || n.name == "K" || n.name == "V" || n.name == "MappedElement" || n.name == "FoldAccumulator"
+  )
+}
+
 fn node_type_compatible(left: Node, right: Node) -> Bool {
   // CompilerError and TypeVariable nodes are compatible with anything — prevents
   // cascade comparisons on failed inference or unresolved type variables.
@@ -487,15 +493,35 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
   let right_err = if right.inferred != none { is_compiler_error(inferred: right.inferred.value) } else { false }
   let left_tv = if left.inferred != none { is_type_variable(inferred: left.inferred.value) } else { false }
   let right_tv = if right.inferred != none { is_type_variable(inferred: right.inferred.value) } else { false }
+  let left_placeholder = node_is_bridge_placeholder_name(n: left)
+  let right_placeholder = node_is_bridge_placeholder_name(n: right)
   let left_opt = left.return_cardinality == CardOptional
   let right_opt = right.return_cardinality == CardOptional
   let right_is_unit = right.connective == Conj && right.children |> count == 0
   let left_is_unit = left.connective == Conj && left.children |> count == 0
   if left_err || right_err { true }
   else if left_tv || right_tv { true }
+  else if left_placeholder || right_placeholder { true }
   else if left_opt && right_is_unit { true }
   else if left_is_unit && right_opt { true }
   else {
+    let left_is_callable = left.params |> count > 0
+    let right_is_callable = right.params |> count > 0
+    if left_is_callable || right_is_callable {
+      if left_is_callable == false || right_is_callable == false { false }
+      else if left.params |> count != right.params |> count { false }
+      else {
+        let params_compatible = left.params |> enumerate |> all(pair =>
+          match right.params |> skip(pair.first) |> first {
+            Some { value: right_param } =>
+              node_type_compatible(left: param_node_type_expr(n: pair.second), right: param_node_type_expr(n: right_param))
+            None => false
+          }
+        )
+        if params_compatible == false { false }
+        else { node_type_compatible(left: callable_inferred(n: left), right: callable_inferred(n: right)) }
+      }
+    } else {
     let left_is_container = node_is_element_collection(n: left)
     let right_is_container = node_is_element_collection(n: right)
     if left_is_container && right_is_container {
@@ -525,6 +551,7 @@ fn node_type_compatible(left: Node, right: Node) -> Bool {
     }
     else if left_opt || right_opt { false }
     else { left.name == right.name }
+    }
   }
 }
 

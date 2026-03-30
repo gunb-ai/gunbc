@@ -73,6 +73,7 @@ import v2.compiler.infer_types {
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
+  node_is_bridge_placeholder_name,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
   method_receiver_element_node,
@@ -675,7 +676,11 @@ fn method_arg_formal_type(semantics: MethodSemantics?, arg_index: Int) -> Node? 
       AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } =>
         let method_type = rt_type(n: md)
         match method_type.params |> skip(arg_index + 1) |> first {
-          Some { value: p } => Some { value: param_node_type_expr(n: p) }
+          Some { value: p } =>
+            let param_type = param_node_type_expr(n: p)
+            let resolved_param_type = rt_type(n: param_type)
+            if resolved_param_type.params |> count > 0 { Some { value: resolved_param_type } }
+            else { Some { value: param_type } }
           None => none
         }
       ServiceMethodSemantics { service_name: _, op_params: op_params } =>
@@ -712,7 +717,17 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, se
             infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
           } else {
             let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: formal_type })
-            ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
+            let inferred_type = rt_type(n: ar.typed)
+            let callable_diags = if formal_type.params |> count > 0 && node_type_compatible(left: inferred_type, right: formal_type) == false {
+              [inference_error(
+                message: concat("callable argument type mismatch: expected '", node_type_shape(n: formal_type), "', got '", node_type_shape(n: inferred_type), "'"),
+                span: a.span,
+                module_name: scope.module_name
+              )]
+            } else {
+              []
+            }
+            ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: concat(ar.diagnostics, callable_diags) }
           }
         None =>
           infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
@@ -846,6 +861,10 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
       let lam_body = lambda_body(texpr: lambda_expr)
       let lam_params = lambda_param_names(texpr: lambda_expr)
       let callable_params = callable_type.params
+      let callable_return = callable_inferred(n: callable_type)
+      // Bridge-era placeholders like MappedElement are instantiated later by
+      // refine_collection_result_type; do not reject valid callbacks early.
+      let callable_return_is_placeholder = node_is_bridge_placeholder_name(n: callable_return)
       let param_types = lam_params |> enumerate |> map(pair =>
         match callable_params |> skip(pair.first) |> first {
           Some { value: cp } => param_node_type_expr(n: cp)
@@ -859,8 +878,27 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
         }
         extend_scope(scope: acc, name: pair.second, resolved: pt)
       )
-      let body_result = infer_expr(texpr: lam_body, scope: typed_scope, expected: none)
+      let body_result = infer_expr(texpr: lam_body, scope: typed_scope, expected: if callable_return_is_placeholder { none } else { Some { value: callable_return } })
       let body_typed = body_result.typed
+      let arity_diags = if lam_params |> count == callable_params |> count {
+        []
+      } else {
+        [inference_error(
+          message: "callable argument arity mismatch",
+          span: span,
+          module_name: scope.module_name
+        )]
+      }
+      let body_type = rt_type(n: body_typed)
+      let return_diags = if callable_return_is_placeholder || node_type_compatible(left: body_type, right: callable_return) {
+        []
+      } else {
+        [inference_error(
+          message: concat("callable return type mismatch: expected '", node_type_shape(n: callable_return), "', got '", node_type_shape(n: body_type), "'"),
+          span: lam_body.span,
+          module_name: scope.module_name
+        )]
+      }
       let lam_param_nodes = lambda_expr.children |> skip(1)
       let typed_lam = make_expr_node(
         expr_data: ExprLambda {
@@ -870,7 +908,7 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
         inferred: Some { value: Resolved { node: rt_type(n: body_typed) } },
         span: span
       )
-      ArgInferResult { typed_arg: make_arg_node(name: arg_name, value: typed_lam, span: no_span()), diagnostics: body_result.diagnostics }
+      ArgInferResult { typed_arg: make_arg_node(name: arg_name, value: typed_lam, span: no_span()), diagnostics: concat(arity_diags, concat(body_result.diagnostics, return_diags)) }
     _ =>
       let ar = infer_expr(texpr: lambda_expr, scope: scope, expected: none)
       ArgInferResult { typed_arg: make_arg_node(name: arg_name, value: ar.typed, span: no_span()), diagnostics: ar.diagnostics }
@@ -1108,7 +1146,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // For bridge-eligible calls (e.g. map(list, fn)), infer the first arg
       // first so lambda params can be typed from the collection's element type.
       // For fold: also infer init arg to type accumulator param.
-      let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
       // For Call form, args after the first are the "method args" (first is the collection).
       let call_method_args = call_args |> skip(1)
       // Use method name string directly for dispatch.
@@ -1118,8 +1155,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: fi } => match rt_node(n: arg_value(n: fi.typed_arg)) { Typed { node: rt } => rt  InferError { message: _, span: _ } => error_type  InferVariable { id: _ } => error_type  Untyped => error_type }
         None => error_type
       }
-      let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
-        // Collection method bridge path (no known sig -- bridge to method call)
+      let arg_infer_results = if call_args |> count >= 1 && sig == none {
+        // Bridge unknown calls through structural method lookup so higher-order
+        // collection methods type named callables as well as inline lambdas.
         match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
@@ -1131,12 +1169,22 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               fold_accumulator_type: none,
               service_registry: scope.service_registry
             )
-            let elem_type = for_each_element_type_node(n: first_type)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, semantics: provisional_method_resolution.semantics, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
-            concat(
-              [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: first_arg), value: first_result.typed, span: first_arg.span), diagnostics: first_result.diagnostics }],
-              remaining_results
-            )
+            if provisional_method_resolution.result_type != none && call_args |> count >= 2 {
+              let elem_type = for_each_element_type_node(n: first_type)
+              let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, semantics: provisional_method_resolution.semantics, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, scope: scope)
+              concat(
+                [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: first_arg), value: first_result.typed, span: first_arg.span), diagnostics: first_result.diagnostics }],
+                remaining_results
+              )
+            } else {
+              concat(
+                [ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: first_arg), value: first_result.typed, span: first_arg.span), diagnostics: first_result.diagnostics }],
+                call_method_args |> map(a =>
+                  let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
+                  ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
+                )
+              )
+            }
           None =>
             []
         }
@@ -1149,7 +1197,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let is_callable_formal = formal_param_type.children |> count > 0
+          let is_callable_formal = formal_param_type.params |> count > 0
           if is_lambda_expr(e: arg_value(n: a)) && is_callable_formal {
             infer_lambda_with_callable_type(lambda_expr: arg_value(n: a), callable_type: formal_param_type, arg_name: arg_name(n: a), scope: scope)
           } else {

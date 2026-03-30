@@ -1157,6 +1157,15 @@ pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
     (n.name.clone() == "Dynamic".to_string())
 }
 
+pub fn node_is_bridge_placeholder_name(n: Rc<Node>) -> bool {
+    (n.children.clone().is_empty() && n.params.clone().is_empty())
+        && ((n.name.clone() == "T".to_string())
+            || (n.name.clone() == "K".to_string())
+            || (n.name.clone() == "V".to_string())
+            || (n.name.clone() == "MappedElement".to_string())
+            || (n.name.clone() == "FoldAccumulator".to_string()))
+}
+
 pub fn node_is_collection(n: Rc<Node>) -> bool {
     ((n.children.clone().len() as i64) > 0) && (n.connective.clone() == None)
 }
@@ -1314,6 +1323,10 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
         let right_opt = node_is_optional(right.clone());
         if (node_is_bridge_error_name(left.clone()) || node_is_bridge_error_name(right.clone())) {
             break true;
+        } else if (node_is_bridge_placeholder_name(left.clone())
+            || node_is_bridge_placeholder_name(right.clone()))
+        {
+            break true;
         } else {
                 if (left_opt.clone() && (right.name.clone() == "Unit".to_string())) {
                     break true;
@@ -1321,7 +1334,60 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
                     if ((left.name.clone() == "Unit".to_string()) && right_opt.clone()) {
                         break true;
                     } else {
-                        if (node_is_container(left.clone()) && node_is_container(right.clone())) {
+                        let left_is_callable = (left.params.clone().len() as i64) > 0;
+                        let right_is_callable = (right.params.clone().len() as i64) > 0;
+                        if (left_is_callable || right_is_callable) {
+                            if ((!left_is_callable) || (!right_is_callable)) {
+                                break false;
+                            } else {
+                                if ((left.params.clone().len() as i64)
+                                    != (right.params.clone().len() as i64))
+                                {
+                                    break false;
+                                } else {
+                                    let params_compatible = left
+                                        .params
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .enumerate()
+                                        .map(|(i, v)| (i as i64, v))
+                                        .collect::<Vec<_>>()
+                                        .iter()
+                                        .cloned()
+                                        .all(|pair| {
+                                            match right
+                                                .params
+                                                .clone()
+                                                .iter()
+                                                .cloned()
+                                                .skip(pair.0.clone() as usize)
+                                                .collect::<Vec<_>>()
+                                                .first()
+                                                .cloned()
+                                            {
+                                                Some(right_param) => node_type_compatible(
+                                                    param_node_type_expr(pair.1.clone()),
+                                                    param_node_type_expr(right_param.clone()),
+                                                ),
+                                                None => false,
+                                            }
+                                        });
+                                    if !params_compatible {
+                                        break false;
+                                    } else {
+                                        {
+                                            let __tco_0 = callable_inferred(left.clone());
+                                            let __tco_1 = callable_inferred(right.clone());
+                                            left = __tco_0;
+                                            right = __tco_1;
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            if (node_is_container(left.clone()) && node_is_container(right.clone())) {
                             if (left.name.clone() != right.name.clone()) {
                                 break false;
                             } else {
@@ -1354,28 +1420,29 @@ pub fn node_type_compatible(mut left: Rc<Node>, mut right: Rc<Node>) -> bool {
                                     }
                                 }
                             }
-                        } else {
-                            if (left_opt.clone() && right_opt.clone()) {
-                                let left_inner = with_required_cardinality(left.clone());
-                                let right_inner = with_required_cardinality(right.clone());
-                                if ((left_inner.name.clone() == "Unit".to_string())
-                                    || (right_inner.name.clone() == "Unit".to_string()))
-                                {
-                                    break true;
-                                } else {
-                                    {
-                                        let __tco_0 = left_inner.clone();
-                                        let __tco_1 = right_inner.clone();
-                                        left = __tco_0;
-                                        right = __tco_1;
-                                        continue;
-                                    }
-                                }
                             } else {
-                                if (left_opt.clone() || right_opt.clone()) {
-                                    break false;
+                                if (left_opt.clone() && right_opt.clone()) {
+                                    let left_inner = with_required_cardinality(left.clone());
+                                    let right_inner = with_required_cardinality(right.clone());
+                                    if ((left_inner.name.clone() == "Unit".to_string())
+                                        || (right_inner.name.clone() == "Unit".to_string()))
+                                    {
+                                        break true;
+                                    } else {
+                                        {
+                                            let __tco_0 = left_inner.clone();
+                                            let __tco_1 = right_inner.clone();
+                                            left = __tco_0;
+                                            right = __tco_1;
+                                            continue;
+                                        }
+                                    }
                                 } else {
-                                    break (left.name.clone() == right.name.clone());
+                                    if (left_opt.clone() || right_opt.clone()) {
+                                        break false;
+                                    } else {
+                                        break (left.name.clone() == right.name.clone());
+                                    }
                                 }
                             }
                         }
