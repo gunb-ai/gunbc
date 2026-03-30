@@ -736,6 +736,52 @@ fn split(n: Int) -> Int {
     );
 }
 
+#[test]
+fn complexity_if_guarded_branching_recursion_remains_violation() {
+    let source = r#"module fib_branch
+fn fib_like(n: Int) -> Int {
+  if n <= 1 { 1 } else { fib_like(n: n - 1) + fib_like(n: n - 2) }
+}
+"#;
+    let result = compile_dag(source);
+    let fib_violations: Vec<_> = result.complexity.violations.iter()
+        .filter(|v| v.func_name == "fib_like")
+        .collect();
+    assert_eq!(fib_violations.len(), 1,
+        "expected one guarded branching-recursion violation, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+    assert!(
+        fib_violations[0].reason.contains("branching recursion"),
+        "expected branching recursion reason, got: {}",
+        fib_violations[0].reason
+    );
+}
+
+#[test]
+fn complexity_structural_descent_allows_bookkeeping_args() {
+    let source = r#"module depth_walk
+type Tree
+  = Leaf { value: Int }
+  | Pair { left: Tree, right: Tree }
+
+fn walk(t: Tree, depth: Int) -> Int {
+  match t {
+    Leaf { value: v } => v + depth
+    Pair { left: l, right: r } => walk(t: l, depth: depth + 1) + walk(t: r, depth: depth + 1)
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let walk_violations: Vec<_> = result.complexity.violations.iter()
+        .filter(|v| v.func_name == "walk")
+        .collect();
+    assert!(
+        walk_violations.is_empty(),
+        "structural-descent recursion should allow extra bookkeeping args, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
 /// for-each loops should be bounded by collection size.
 #[test]
 fn complexity_foreach_bounded() {

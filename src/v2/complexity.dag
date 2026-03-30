@@ -18,8 +18,9 @@ import v2.std.core {
   Node,
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprBinOp, ExprUnaryOp,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach, ExprReturn,
-  arg_value, arm_body,
+  arg_value, arm_body, arm_guard,
   MethodSemantics, AlgebraMethodSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
   binop_left, binop_right,
@@ -394,7 +395,7 @@ fn max_path_self_calls_block(stmts: List<Node>, func_name: String, continue_call
 //
 // Total work = |tree| × max(per-arm cost). Not 2^depth.
 fn is_structural_descent(body: Node, func_name: String) -> Bool {
-  // The body must be a match or if (branching on the input).
+  // The body must branch on the input.
   // All self-calls must be inside the branch arms, not at the top level.
   match body.expr_data {
     ExprMatch =>
@@ -402,11 +403,27 @@ fn is_structural_descent(body: Node, func_name: String) -> Bool {
       // that's not structural descent.
       let scrut_calls = count_self_calls(body: match_scrutinee(texpr: body), func_name: func_name)
       scrut_calls == 0
+      && (match_arm_nodes(texpr: body) |> all(arm_node =>
+        let guard_ok = match arm_guard(n: arm_node) {
+          Some { value: g } => count_self_calls(body: g, func_name: func_name) == 0
+          None => true
+        }
+        guard_ok
+        && self_calls_use_non_computed_args(body: arm_body(n: arm_node), func_name: func_name)
+      ))
 
     ExprIf =>
-      // Same: no self-calls in the condition.
+      // Same: no self-calls in the condition, and recursive args in the
+      // branches must be justified by a structurally descended witness.
+      // This rejects fib(n - 1) style branching recursion while keeping
+      // loops that recurse on advanced state variables linear.
       let cond_calls = count_self_calls(body: if_condition(texpr: body), func_name: func_name)
       cond_calls == 0
+      && self_calls_use_non_computed_args(body: if_then_branch(texpr: body), func_name: func_name)
+      && match if_else_branch(texpr: body) {
+        Some { value: eb } => self_calls_use_non_computed_args(body: eb, func_name: func_name)
+        None => true
+      }
 
     ExprLet { name: _ } =>
       // let x = ... in <body>: descent if the body is a descent
@@ -437,6 +454,47 @@ fn is_structural_descent(body: Node, func_name: String) -> Bool {
       }
 
     _ => false
+  }
+}
+
+fn is_non_computed_recursive_arg(expr: Node, func_name: String) -> Bool {
+  if count_self_calls(body: expr, func_name: func_name) > 0 { false }
+  else {
+    match expr.expr_data {
+      ExprBinOp { op: _ } => false
+      ExprUnaryOp { op: _ } => false
+      _ => expr.children |> all(child =>
+        is_non_computed_recursive_arg(expr: child, func_name: func_name)
+      )
+    }
+  }
+}
+
+fn self_calls_use_non_computed_args(body: Node, func_name: String) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let own_ok = if expr_call_func(texpr: body) == func_name {
+        let args = body.children |> map(arg_node => arg_value(n: arg_node))
+        let arg_shape_ok = args |> all(arg_expr =>
+          count_self_calls(body: arg_expr, func_name: func_name) == 0
+        )
+        let witness_ok = args |> any(arg_expr =>
+          is_non_computed_recursive_arg(expr: arg_expr, func_name: func_name)
+        )
+        arg_shape_ok && witness_ok
+      } else { true }
+      own_ok
+      && (body.children |> all(child =>
+        self_calls_use_non_computed_args(
+          body: child,
+          func_name: func_name
+        )
+      ))
+
+    _ =>
+      body.children |> all(child =>
+        self_calls_use_non_computed_args(body: child, func_name: func_name)
+      )
   }
 }
 

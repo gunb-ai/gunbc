@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, arm_guard, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use SizeExpr::*;
@@ -339,10 +339,23 @@ pub fn is_structural_descent(body: Rc<Node>, func_name: String) -> bool {
         ExprData::ExprMatch { .. } => {
             let scrut_calls = count_self_calls(match_scrutinee(body.clone()), func_name.clone());
             scrut_calls == 0
+                && match_arm_nodes(body.clone()).iter().cloned().all(|arm_node| {
+                    let guard_ok = match arm_guard(arm_node.clone()) {
+                        Some(g) => count_self_calls(g, func_name.clone()) == 0,
+                        None => true,
+                    };
+                    guard_ok
+                        && self_calls_use_non_computed_args(arm_body(arm_node), func_name.clone())
+                })
         }
         ExprData::ExprIf { .. } => {
             let cond_calls = count_self_calls(if_condition(body.clone()), func_name.clone());
             cond_calls == 0
+                && self_calls_use_non_computed_args(if_then_branch(body.clone()), func_name.clone())
+                && match if_else_branch(body.clone()) {
+                    Some(else_branch) => self_calls_use_non_computed_args(else_branch, func_name.clone()),
+                    None => true,
+                }
         }
         ExprData::ExprLet { .. } => {
             let val_calls = count_self_calls(let_value(body.clone()), func_name.clone());
@@ -376,6 +389,48 @@ pub fn is_structural_descent(body: Rc<Node>, func_name: String) -> bool {
             }
         }
         _ => false,
+    }
+}
+
+pub fn is_non_computed_recursive_arg(expr: Rc<Node>, func_name: String) -> bool {
+    if count_self_calls(expr.clone(), func_name.clone()) > 0 {
+        false
+    } else {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprBinOp { .. } => false,
+            ExprData::ExprUnaryOp { .. } => false,
+            _ => expr.children.clone().iter().cloned().all(|child| {
+                is_non_computed_recursive_arg(child, func_name.clone())
+            }),
+        }
+    }
+}
+
+pub fn self_calls_use_non_computed_args(body: Rc<Node>, func_name: String) -> bool {
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let own_ok = if expr_call_func(body.clone()) == func_name {
+                let args: Vec<Rc<Node>> = body.children.clone().iter().cloned()
+                    .map(|arg_node| arg_value(arg_node))
+                    .collect();
+                let arg_shape_ok = args.iter().cloned().all(|arg_expr| {
+                    count_self_calls(arg_expr, func_name.clone()) == 0
+                });
+                let witness_ok = args.iter().cloned().any(|arg_expr| {
+                    is_non_computed_recursive_arg(arg_expr, func_name.clone())
+                });
+                arg_shape_ok && witness_ok
+            } else {
+                true
+            };
+            own_ok
+                && body.children.clone().iter().cloned().all(|child| {
+                    self_calls_use_non_computed_args(child, func_name.clone())
+                })
+        }
+        _ => body.children.clone().iter().cloned().all(|child| {
+            self_calls_use_non_computed_args(child, func_name.clone())
+        }),
     }
 }
 

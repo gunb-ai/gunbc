@@ -361,6 +361,8 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn max_path_self_calls(",
         "fn max_path_self_calls_with_cont(",
         "fn max_path_self_calls_block(",
+        "fn is_non_computed_recursive_arg(",
+        "fn self_calls_use_non_computed_args(",
         "fn is_structural_descent(",
         "fn analyze_simplified_complexity(",
         "fn classify_simplified_complexity(",
@@ -370,9 +372,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "is_unknown: Bool",
         "ExprReturn",
     ] {
-        assert!(
-            source.contains(needle),
-            "src/v2/complexity.dag should contain {needle}"
+        assert_live_contains(
+            &source,
+            needle,
+            &format!("src/v2/complexity.dag should contain {needle}")
         );
     }
 
@@ -380,6 +383,8 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn max_path_self_calls(",
         "pub fn max_path_self_calls_with_cont(",
         "pub fn max_path_self_calls_block(",
+        "pub fn is_non_computed_recursive_arg(",
+        "pub fn self_calls_use_non_computed_args(",
         "pub fn is_structural_descent(",
         "pub fn analyze_simplified_complexity(",
         "pub fn classify_simplified_complexity(",
@@ -389,9 +394,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub is_unknown: bool,",
         "ExprData::ExprReturn",
     ] {
-        assert!(
-            stage0.contains(needle),
-            "stage0 complexity mirror should contain {needle}"
+        assert_live_contains(
+            &stage0,
+            needle,
+            &format!("stage0 complexity mirror should contain {needle}")
         );
     }
 
