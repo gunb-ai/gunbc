@@ -1232,6 +1232,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
     let r = expect_ident(tokens: tokens, state: state)
     if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
     let first_name = r.name
+    let first_name_span = r.span
     let s = skip_newlines(tokens: tokens, state: r.state)
 
     // If followed by { or |, it's a sum type
@@ -1247,7 +1248,7 @@ fn parse_type_body_after_eq(tokens: List<Token>, state: ParserState, name: Strin
       ItemResult { item: item, state: skip_newlines(tokens: tokens, state: rest.state), err: none }
     } else {
       // It's an alias: type Name = SomeType
-      let r = finish_type_expr_from_name(tokens: tokens, state: s, type_name: first_name, start_span: start_span)
+      let r = finish_type_expr_from_name(tokens: tokens, state: s, type_name: first_name, start_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, state: r.state, err: r.err } }
       // Check for where clause: type Name = BaseType where predicate(...)
       let wr = try_where_clause(tokens: tokens, state: r.state, base_te: r.type_expr, start_span: start_span)
@@ -1617,7 +1618,7 @@ fn parse_optional_type_params(tokens: List<Token>, state: ParserState) -> TypePa
 fn collect_type_param_names(tokens: List<Token>, state: ParserState, params: List<Node>) -> TypeParamsResult {
   if is_ident(tokens: tokens, state: state) {
     let r = expect_ident(tokens: tokens, state: state)
-    let span = current_span(tokens: tokens, state: r.state)
+    let span = r.span
     let param = make_param_node(name: r.name, type_expr: leaf_type_node(name: r.name, span: span), default_value: none, span: span)
     let next_params = list_push(params, param)
     let e = eat(tokens: tokens, state: r.state, expected: ExpectComma)

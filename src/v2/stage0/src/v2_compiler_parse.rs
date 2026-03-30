@@ -2819,7 +2819,7 @@ pub fn parse_type_def(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> Rc<
                             connective: None,
                             params: type_params.clone(),
                             inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: leaf_type_node(name.clone(), start_span.clone()),
+                                node: leaf_type_node(name.clone(), name_span.clone()),
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: vec![],
@@ -2948,7 +2948,7 @@ pub fn parse_type_body_after_eq(
                             tokens.clone(),
                             s.clone(),
                             first_name.clone(),
-                            start_span.clone(),
+                            r.span.clone(),
                         );
                         if has_err(r.err.clone()) {
                             return Rc::new(ItemResult {
@@ -4122,7 +4122,7 @@ pub fn collect_type_param_names(
     loop {
         if is_ident(tokens.clone(), state.clone()) {
             let r = expect_ident(tokens.clone(), state.clone());
-            let span = current_span(tokens.clone(), r.state.clone());
+            let span = r.span.clone();
             let param = make_param_node(
                 r.name.clone(),
                 leaf_type_node(r.name.clone(), span.clone()),
