@@ -143,6 +143,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
                         name: item.name.clone(),
                         body: item.body.clone().clone().unwrap(),
                         params: item.params.clone(),
+                        span: item.span.clone(),
                     }));
                 }
                 __result
@@ -220,7 +221,7 @@ pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Vec<Rc<ErrorN
         __result.push(make_error_node(
             Rc::new(CompilerDiagnostic::InternalError {
                 message: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity violation: `".to_string(), v.func_name.clone()), "` has unresolvable cost (".to_string()), v.reason.clone()), ")".to_string()),
-                span: no_span(),
+                span: v.span.clone(),
             }),
             "".to_string(),
         ));

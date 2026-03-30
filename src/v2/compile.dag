@@ -80,7 +80,7 @@ type FrontendResult {
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
   typed.modules |> flat_map(m =>
     m.items |> filter(item => item.body != None) |> map(item =>
-      FuncEntry { name: item.name, body: item.body.value, params: item.params }
+      FuncEntry { name: item.name, body: item.body.value, params: item.params, span: item.span }
     )
   )
 }
@@ -123,7 +123,7 @@ fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
     make_error_node(
       diagnostic: InternalError {
         message: concat("complexity violation: `", v.func_name, "` has unresolvable cost (", v.reason, ")"),
-        span: no_span()
+        span: v.span
       },
       module_name: ""
     )
