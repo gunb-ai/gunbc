@@ -227,10 +227,14 @@ fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> Field
 // =========================================================================
 
 // Structural field lookup: check if the receiver type's declaration has
-// a child with the requested method name (e.g., OrderedRing<T>.add).
-// Returns the RETURN TYPE of calling that method, not the method's
-// signature. For add: fn(T,T)->T, returns T (the call result type).
-fn lookup_field_in_product(product: Node, method_name: String) -> Node? {
+// Look up a method field in a product type and return both the field
+// node (definition) and its return type. Single lookup, no duplication.
+type MethodFieldResult {
+  field_node: Node
+  result_type: Node
+}
+
+fn lookup_field_in_product(product: Node, method_name: String) -> MethodFieldResult? {
   let matching = product.children |> filter(c => c.name == method_name)
   match matching |> first {
     Some { value: field } =>
@@ -238,11 +242,11 @@ fn lookup_field_in_product(product: Node, method_name: String) -> Node? {
         Some { value: Resolved { node: rt } } =>
           if rt.params |> count > 0 {
             match rt.inferred {
-              Some { value: Resolved { node: return_type } } => Some { value: return_type }
-              _ => Some { value: rt }
+              Some { value: Resolved { node: return_type } } => Some { value: MethodFieldResult { field_node: field, result_type: return_type } }
+              _ => Some { value: MethodFieldResult { field_node: field, result_type: rt } }
             }
           } else {
-            Some { value: rt }
+            Some { value: MethodFieldResult { field_node: field, result_type: rt } }
           }
         _ => none
       }
@@ -250,27 +254,7 @@ fn lookup_field_in_product(product: Node, method_name: String) -> Node? {
   }
 }
 
-// Return the method field NODE itself (not just its return type).
-// This is the method definition — carries name, type signature, and
-// structural properties. Used as method_def in AlgebraMethodSemantics.
-fn lookup_method_field_in_product(product: Node, method_name: String) -> Node? {
-  let matching = product.children |> filter(c => c.name == method_name)
-  matching |> first
-}
-
-fn lookup_method_def(receiver_type: Node, method_name: String) -> Node? {
-  let is_product = receiver_type.connective == Conj
-  if is_product {
-    lookup_method_field_in_product(product: receiver_type, method_name: method_name)
-  } else {
-    let enriched = enrich_kernel_type(name: receiver_type.name, base: receiver_type)
-    if enriched.connective == Conj && enriched.children |> count > 0 {
-      lookup_method_field_in_product(product: enriched, method_name: method_name)
-    } else { none }
-  }
-}
-
-fn lookup_structural_method(receiver_type: Node, method_name: String) -> Node? {
+fn lookup_structural_method(receiver_type: Node, method_name: String) -> MethodFieldResult? {
   // First: check the receiver's own structural fields (Conj product).
   let is_product = receiver_type.connective == Conj
   if is_product {
@@ -386,17 +370,13 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   // concrete types from the receiver (e.g., bare "List" → List<Int>).
   let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
-    Some { value: result_type } =>
+    Some { value: mfr } =>
       // Method found structurally — carry the method definition node.
-      // The method_def is the algebra field node (from the enriched type).
+      // mfr.field_node is the algebra field node (from the enriched type).
       // It carries the method's name, type signature, and structural properties.
-      let method_field = lookup_method_def(receiver_type: receiver_type, method_name: method_name)
-      let semantics = AlgebraMethodSemantics { method_def: method_field, fold_accumulator_type: fold_accumulator_type }
-      // Substitute algebra field return types with concrete receiver types.
-      // refine_collection_result_type further specializes map/flat_map/fold
-      // at the call site using typed callback args.
+      let semantics = AlgebraMethodSemantics { method_def: mfr.field_node, fold_accumulator_type: fold_accumulator_type }
       let resolved_type = substitute_algebra_result(
-        result_type: result_type,
+        result_type: mfr.result_type,
         receiver_type: receiver_type,
         fold_accumulator_type: fold_accumulator_type
       )

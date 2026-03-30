@@ -825,7 +825,7 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
   // Extract method_name from AlgebraMethodSemantics for direct string dispatch.
   let method_name = if semantics == none { none } else {
     match semantics.value {
-      AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } => match md { Some { value: m } => Some { value: m.name }  None => none }
+      AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } => Some { value: md.name }
       _ => none
     }
   }

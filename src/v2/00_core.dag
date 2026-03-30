@@ -210,7 +210,7 @@ type LambdaSemantics {
 
 type MethodSemantics
   = PlainMethodSemantics
-  | AlgebraMethodSemantics { method_def: Node?, fold_accumulator_type: Node? }
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
