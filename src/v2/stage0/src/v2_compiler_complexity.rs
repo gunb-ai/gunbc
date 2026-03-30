@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use SizeExpr::*;
@@ -56,6 +56,8 @@ use CostExpr::*;
 use Certainty::*;
 use CostShape::*;
 use RecursionPattern::*;
+
+pub const LARGE_COMPLEXITY_REPORT_LIMIT: usize = 400;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SizeExpr {
@@ -267,6 +269,10 @@ pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
 }
 
 pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
+    max_path_self_calls_with_cont(body.clone(), func_name.clone(), 0)
+}
+
+pub fn max_path_self_calls_with_cont(body: Rc<Node>, func_name: String, continue_calls: i64) -> i64 {
     match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { call_semantics: _ } => {
             let f = expr_call_func(body.clone());
@@ -274,38 +280,36 @@ pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
             let arg_calls = body.children.clone().iter().cloned().fold(0i64, |acc, child| {
                 acc + max_path_self_calls(arg_value(child.clone()), func_name.clone())
             });
-            own + arg_calls
+            own + arg_calls + continue_calls
         }
         ExprData::ExprMatch { .. } => {
             let scrut_calls = max_path_self_calls(match_scrutinee(body.clone()), func_name.clone());
-            let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arm_node| {
-                let arm_calls = max_path_self_calls(arm_body(arm_node.clone()), func_name.clone());
+            let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(continue_calls, |acc, arm_node| {
+                let arm_calls = max_path_self_calls_with_cont(arm_body(arm_node.clone()), func_name.clone(), continue_calls);
                 if arm_calls > acc { arm_calls } else { acc }
             });
             scrut_calls + max_arm
         }
         ExprData::ExprIf { .. } => {
             let cond_calls = max_path_self_calls(if_condition(body.clone()), func_name.clone());
-            let then_calls = max_path_self_calls(if_then_branch(body.clone()), func_name.clone());
+            let then_calls = max_path_self_calls_with_cont(if_then_branch(body.clone()), func_name.clone(), continue_calls);
             let else_calls = match if_else_branch(body.clone()) {
-                Some(else_branch) => max_path_self_calls(else_branch.clone(), func_name.clone()),
-                None => 0,
+                Some(else_branch) => max_path_self_calls_with_cont(else_branch.clone(), func_name.clone(), continue_calls),
+                None => continue_calls,
             };
             let branch_max = if then_calls > else_calls { then_calls } else { else_calls };
             cond_calls + branch_max
         }
-        ExprData::ExprForEach { .. } => max_path_self_calls(foreach_collection(body.clone()), func_name.clone()),
+        ExprData::ExprForEach { .. } => max_path_self_calls(foreach_collection(body.clone()), func_name.clone()) + continue_calls,
         ExprData::ExprLet { .. } => {
             let val_calls = max_path_self_calls(let_value(body.clone()), func_name.clone());
             let body_calls = match let_body(body.clone()) {
-                Some(let_tail) => max_path_self_calls(let_tail.clone(), func_name.clone()),
-                None => 0,
+                Some(let_tail) => max_path_self_calls_with_cont(let_tail.clone(), func_name.clone(), continue_calls),
+                None => continue_calls,
             };
             val_calls + body_calls
         }
-        ExprData::ExprBlock { .. } => body.children.clone().iter().cloned().fold(0i64, |acc, child| {
-            acc + max_path_self_calls(child.clone(), func_name.clone())
-        }),
+        ExprData::ExprBlock { .. } => max_path_self_calls_block(body.children.clone(), func_name.clone(), continue_calls),
         ExprData::ExprMethodCall { .. } => {
             let recv_calls = max_path_self_calls(method_receiver(body.clone()), func_name.clone());
             let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arg_node| {
@@ -315,11 +319,22 @@ pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
                     _ => acc + max_path_self_calls(val.clone(), func_name.clone()),
                 }
             });
-            recv_calls + arg_calls
+            recv_calls + arg_calls + continue_calls
         }
+        ExprData::ExprReturn { .. } => max_path_self_calls_with_cont(return_value(body.clone()), func_name.clone(), 0),
         _ => body.children.clone().iter().cloned().fold(0i64, |acc, child| {
             acc + max_path_self_calls(child.clone(), func_name.clone())
-        }),
+        }) + continue_calls,
+    }
+}
+
+pub fn max_path_self_calls_block(stmts: Vec<Rc<Node>>, func_name: String, continue_calls: i64) -> i64 {
+    match stmts.first().cloned() {
+        Some(stmt) => {
+            let rest_calls = max_path_self_calls_block(stmts.into_iter().skip(1).collect(), func_name.clone(), continue_calls);
+            max_path_self_calls_with_cont(stmt.clone(), func_name.clone(), rest_calls)
+        }
+        None => continue_calls,
     }
 }
 
@@ -1519,7 +1534,7 @@ Rc::new(ComplexityViolation {
     summary: None,
 }),
 }); } __result };
-let formatted = if (func_entries.len() > 400) {
+let formatted = if (func_entries.len() > LARGE_COMPLEXITY_REPORT_LIMIT) {
     v2_rt::concat("complexity report elided for ".to_string(), v2_rt::concat(func_entries.len().to_string(), " functions".to_string()))
 } else {
     format_complexity_report(func_entries.clone(), summaries_map.clone())

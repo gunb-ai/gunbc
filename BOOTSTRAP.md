@@ -100,6 +100,20 @@ Seed bumps are maintenance operations, not ordinary development. Every
 seed bump commit message must state: what representation changed, why
 a bridge was not feasible, and how many sites were patched.
 
+## Complexity-specific bootstrap guardrails
+
+When regeneration is blocked and a complexity fix must touch stage0:
+
+1. Patch `src/v2/complexity.dag` first.
+2. Mirror the same algorithm change into `src/v2/stage0/src/v2_compiler_complexity.rs`.
+3. Update the complexity parity audit in `src/v2/tests/src/source_audit.rs`.
+4. Add or update a focused regression test in `src/v2/tests/src/pipeline.rs`.
+5. Run `cargo test -p v2-compiler-tests pipeline::strict_complexity_violation_count -- --ignored --nocapture`.
+
+The recent self-compile OOM root cause was not raw memory budget. It was:
+- repeated complexity classification/report traversal on large compiles
+- stale stage0 recursion classification relative to the source DAG logic
+
 ## PR classification
 
 Every PR that touches `.dag` compiler source should state which kind
@@ -146,13 +160,16 @@ After regeneration (once emitted Rust errors reach 0):
 git diff --exit-code src/v2/stage0/           # no drift
 ```
 
-## Current state (2026-03-29)
+## Current state (2026-03-30)
 
 - **Regeneration works:** 40 files emitted, 0 diagnostics, ~112MB, ~2 min.
 - **Emitted Rust errors:** 1397 (emitter codegen bugs, not pipeline failures).
   These must reach 0 before the CI freshness gate can be activated.
+- **Complexity self-compile ratchet:** passes with 0 violations over 1274
+  function summaries under the existing container memory limit.
 - **Blockers removed this session:**
   - `trace.dag` generic function import (parser limitation)
   - 689 redundant O(n) Vec clones in stage0
-  - O(n^2) complexity report (skipped for >100 functions)
+  - repeated complexity report/classification traversal in self-compile
+  - stale stage0 recursion classifier drift vs source DAG
   - 22 D1 dissolution field access errors in `.dag` source

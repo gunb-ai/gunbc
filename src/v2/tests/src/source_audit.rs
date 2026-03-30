@@ -353,6 +353,53 @@ fn service_calls_under_return_inject_service_params() {
 }
 
 #[test]
+fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
+    let source = read_v2_file("src/v2/complexity.dag");
+    let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_complexity.rs");
+
+    for needle in [
+        "fn max_path_self_calls(",
+        "fn max_path_self_calls_with_cont(",
+        "fn max_path_self_calls_block(",
+        "fn is_structural_descent(",
+        "fn analyze_simplified_complexity(",
+        "fn classify_simplified_complexity(",
+        "data large_complexity_report_limit: Int = 400",
+        "ExprReturn",
+    ] {
+        assert!(
+            source.contains(needle),
+            "src/v2/complexity.dag should contain {needle}"
+        );
+    }
+
+    for needle in [
+        "pub fn max_path_self_calls(",
+        "pub fn max_path_self_calls_with_cont(",
+        "pub fn max_path_self_calls_block(",
+        "pub fn is_structural_descent(",
+        "pub fn analyze_simplified_complexity(",
+        "pub fn classify_simplified_complexity(",
+        "pub const LARGE_COMPLEXITY_REPORT_LIMIT: usize = 400;",
+        "ExprData::ExprReturn",
+    ] {
+        assert!(
+            stage0.contains(needle),
+            "stage0 complexity mirror should contain {needle}"
+        );
+    }
+
+    assert!(
+        source.contains("func_entries |> count > large_complexity_report_limit"),
+        "source complexity report should use the named large-report cutoff"
+    );
+    assert!(
+        stage0.contains("func_entries.len() > LARGE_COMPLEXITY_REPORT_LIMIT"),
+        "stage0 complexity report should use the named large-report cutoff"
+    );
+}
+
+#[test]
 fn testgen_emits_valid_rust() {
     let source = read_v2_file("src/v2/05_emit_rust.dag");
     let shared_source = read_v2_file("src/v2/05_emit.dag");
