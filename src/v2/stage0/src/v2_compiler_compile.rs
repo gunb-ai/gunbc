@@ -578,7 +578,7 @@ if ((norm_errors.clone().len() as i64) > 0) {
 let typed = reconcile(norm.graph.clone());
 let typed_diags = typed.diagnostics.clone();
 let func_entries = extract_func_entries(typed.clone());
-let complexity = build_complexity_report(func_entries.clone(), 400);
+let complexity = build_complexity_report(func_entries.clone());
 let typecheck_errors = { let mut __result = Vec::new(); for d in typed_diags.clone().iter().cloned() { if is_error_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result };
 if ((typecheck_errors.clone().len() as i64) > 0) {
                 return Rc::new(PipelineResult {

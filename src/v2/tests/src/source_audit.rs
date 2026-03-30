@@ -408,12 +408,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     }
 
     assert!(
-        source.contains("func_entries |> count > report_limit"),
-        "source complexity report should use the report_limit parameter"
+        !source.contains("formatted: String"),
+        "ComplexityReport should not carry a formatted string field"
     );
     assert!(
-        stage0.contains("func_entries.len() > report_limit"),
-        "stage0 complexity report should use the report_limit parameter"
+        !stage0.contains("pub formatted: String"),
+        "stage0 ComplexityReport should not carry a formatted string field"
     );
 }
 

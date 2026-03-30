@@ -775,15 +775,13 @@ type ComplexityReport {
   function_summaries: Map<String, ComplexitySummary>
   violations: List<ComplexityViolation>
   intern_table: CostInternTable
-  formatted: String
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_summaries: empty_map(),
     violations: [],
-    intern_table: empty_intern_table(),
-    formatted: ""
+    intern_table: empty_intern_table()
   }
 }
 
@@ -1069,38 +1067,6 @@ fn deduplicate(items: List<String>) -> List<String> {
   result.out
 }
 
-fn format_space_class(expr: CostExpr) -> String {
-  let space_class = classify_complexity(expr: expr)
-  if space_class == "O(1)" { "" }
-  else { concat(", space ", space_class) }
-}
-
-fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
-  let class = classify_simplified_complexity(expr: summary.work)
-  // Certainty marker: ~ means lower-bound only (e.g. sort is O(n log n) but
-  // the cost algebra lacks log), ? means the system could not derive a bound.
-  let marker = match summary.certainty {
-    Proven => ""
-    Conservative => "~"
-    Unknown => "?"
-  }
-  // Space: classify the "result" output size if present
-  let space_str = match map_get(summary.output_size, "result") {
-    Some { value: size_expr } => format_space_class(expr: size_expr)
-    _ => ""
-  }
-  concat(name, ": ", marker, class, space_str)
-}
-
-fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, ComplexitySummary>) -> String {
-  let lines = entries |> flat_map(entry =>
-    match map_get(summaries, entry.name) {
-      Some { value: summary } => [format_func_complexity(name: entry.name, summary: summary)]
-      None => []
-    }
-  )
-  lines |> join(separator: "\n")
-}
 
 // =========================================================================
 // D2: Lazy cached summary computation
@@ -1568,11 +1534,7 @@ fn is_unknown_cost(expr: CostExpr) -> Bool {
   }
 }
 
-// report_limit: maximum number of functions before eliding the formatted
-// report to a one-line summary. Keeps large self-compiles from producing
-// multi-megabyte report strings. Callers pass the limit as policy; the
-// analysis module has no opinion on report size.
-fn build_complexity_report(func_entries: List<FuncEntry>, report_limit: Int) -> ComplexityReport {
+fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
   // Build function index for callee lookups
   let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     map_insert(acc, entry.name, entry)
@@ -1617,15 +1579,9 @@ fn build_complexity_report(func_entries: List<FuncEntry>, report_limit: Int) -> 
         }
     }
   )
-  let formatted = if func_entries |> count > report_limit {
-    concat("complexity report elided for ", concat(to_string(func_entries |> count), " functions"))
-  } else {
-    format_complexity_report(entries: func_entries, summaries: summaries_map)
-  }
   ComplexityReport {
     function_summaries: summaries_map,
     violations: violations,
-    intern_table: result.table,
-    formatted: formatted
+    intern_table: result.table
   }
 }

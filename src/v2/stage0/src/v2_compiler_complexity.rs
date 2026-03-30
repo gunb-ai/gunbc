@@ -737,7 +737,6 @@ pub struct ComplexityReport {
     pub function_summaries: HashMap<String, Rc<ComplexitySummary>>,
     pub violations: Vec<Rc<ComplexityViolation>>,
     pub intern_table: Rc<CostInternTable>,
-    pub formatted: String,
 }
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
@@ -745,7 +744,6 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     function_summaries: <HashMap<_, _>>::new(),
     violations: vec![],
     intern_table: empty_intern_table(),
-    formatted: "".to_string(),
 })
 }
 
@@ -1086,44 +1084,6 @@ pub fn deduplicate(items: Vec<String>) -> Vec<String> {
 }),
 });
 result.out.clone()
-}
-}
-
-pub fn format_space_class(expr: Rc<CostExpr>) -> String {
-    {
-        let space_class = classify_complexity(expr.clone());
-if (space_class.clone() == "O(1)".to_string()) {
-            "".to_string()
-} else {
-            v2_rt::concat(", space ".to_string(), space_class.clone())
-}
-}
-}
-
-pub fn format_func_complexity(name: String, summary: Rc<ComplexitySummary>) -> String {
-    {
-        let class = classify_simplified_complexity(summary.work.clone());
-let marker = match summary.certainty.clone() {
-    Certainty::Proven => "".to_string(),
-    Certainty::Conservative => "~".to_string(),
-    Certainty::Unknown => "?".to_string(),
-};
-let space_str = match v2_rt::map_get(&summary.output_size.clone(), "result".to_string()) {
-    Some(size_expr) => format_space_class(size_expr.clone()),
-    _ => "".to_string(),
-};
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(name.clone(), ": ".to_string()), marker.clone()), class.clone()), space_str.clone())
-}
-}
-
-pub fn format_complexity_report(entries: Vec<Rc<FuncEntry>>, summaries: HashMap<String, Rc<ComplexitySummary>>) -> String {
-    {
-        let lines = { let mut __result = Vec::new(); for entry in entries.clone().iter().cloned() { __result.extend(match v2_rt::map_get(&summaries, entry.name.clone()) {
-    Some(summary) => vec![format_func_complexity(entry.name.clone(), summary.clone())],
-    None => vec![],
-}); } __result };
-lines.clone().join(&"
-".to_string())
 }
 }
 
@@ -1610,7 +1570,7 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
 }
 }
 
-pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>, report_limit: i64) -> Rc<ComplexityReport> {
+pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
 let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
@@ -1654,16 +1614,10 @@ Rc::new(ComplexityViolation {
     summary: None,
 }),
 }); } __result };
-let formatted = if (func_entries.len() > report_limit as usize) {
-    v2_rt::concat("complexity report elided for ".to_string(), v2_rt::concat(func_entries.len().to_string(), " functions".to_string()))
-} else {
-    format_complexity_report(func_entries.clone(), summaries_map.clone())
-};
 Rc::new(ComplexityReport {
     function_summaries: summaries_map.clone(),
     violations: violations.clone(),
     intern_table: result.table.clone(),
-    formatted: formatted.clone(),
 })
 }
 }

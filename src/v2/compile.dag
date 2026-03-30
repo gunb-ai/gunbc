@@ -777,7 +777,7 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // Runs before the typecheck error gate so that complexity data is
       // always available — even when inference has false positives.
       let func_entries = extract_func_entries(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries, report_limit: 400)
+      let complexity = build_complexity_report(func_entries: func_entries)
 
       // Gate: if typecheck produced errors, do not proceed to emit.
       let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
