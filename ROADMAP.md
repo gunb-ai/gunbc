@@ -25,6 +25,9 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
 | Bootstrap ratchet (`DIAG_RATCHET`) | 65 | 0 | OOM resolved; 65 inference false-positives remain |
 | L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
+| L2 emit `.name` reads | 0 | 0 | `param_node_name`/`resource_use_name`/`field_binding_name` eliminated from emit |
+| L2 resolve `.name` reads | 5 | 0 | `authored_name` semantic lookups in `04_resolve.dag` (B4) |
+| L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
 | Complexity violations | 0 | 0 | Green |
 
 ---
@@ -197,6 +200,13 @@ Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,
 `dsl/std/algebra.dag`, `dsl/std/types.dag`, `compile.dag`
 
 #### Lane 2: D6 + emit + resolve (Node.name deletion)
+
+**Status:** B3 (emit rendering) complete. B4 (resolve structural
+identity) is next critical work — until resolve stops using authored
+text semantically, `Node.name` remains a live dependency. D6
+(constructor/accessor cleanup) becomes mechanical after B4.
+Note: final `Node.name` deletion depends on Lane 1 landing
+declarations for kernel/algebra/container synthetic nodes.
 
 Goal: delete `Node.name` field. Rendering uses `source_text_at`,
 resolve uses structural identity.

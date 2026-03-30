@@ -51,8 +51,8 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   match_scrutinee, match_arm_nodes,
   let_value, let_body,
-  field_access_base, field_access_field, method_receiver,
-  expr_var_name, expr_call_func, expr_method_name, let_binding_name, record_lit_type_name,
+  field_access_base, method_receiver,
+  record_lit_type_name,
   lambda_body, cast_expr, return_value,
   slice_start, slice_end,
   leaf_node, with_required_cardinality,
@@ -209,7 +209,7 @@ fn go_test_name(projection: TestProjection) -> String {
 }
 
 fn go_mock_expr_uses_fmt(expr: Node) -> Bool {
-  let rendered = emit_simple_expr(expr: expr, target: Go)
+  let rendered = emit_simple_expr(expr: expr, target: Go, source_index: none)
   rendered |> split(delimiter: "fmt.Sprintf(") |> count > 1
 }
 
@@ -276,7 +276,7 @@ fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int) -> String {
   concat(
     emit_ident(name: field_init_node_name(n: mock_prop), target: Go),
     " := ",
-    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go))
+    emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go, source_index: none))
 }
 
 // =========================================================================
@@ -584,11 +584,11 @@ fn emit_go_field_access(base: Node, field: String, summary: FieldSummary?, regis
   }
 }
 
-fn emit_go_expr_var(expr: Node, depth: Int) -> String {
+fn emit_go_expr_var(expr: Node, depth: Int, source_index: NewlineIndex?) -> String {
   let prefix = make_indent(level: depth)
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
-      let n = expr_var_name(texpr: expr)
+      let n = authored_name_at(source_index: source_index, node: expr)
       concat(prefix, emit_ident(name: n, target: Go))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_var expected ExprVar", target: Go))
   }
@@ -598,7 +598,7 @@ fn emit_go_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scope:
   let prefix = make_indent(level: depth)
   match expr.expr_data {
     ExprFieldAccess { summary: summary } =>
-      let f = field_access_field(texpr: expr)
+      let f = expr.name
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {
         match extract_typed_service_name(receiver: expr) {
@@ -616,7 +616,7 @@ fn emit_go_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
   let prefix = make_indent(level: depth)
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      let f = expr_call_func(texpr: expr)
+      let f = authored_name_at(source_index: scope.type_env.source_index, node: expr)
       concat(prefix, emit_go_typed_call(func: f, args: expr.children, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_call expected ExprCall", target: Go))
   }
@@ -628,7 +628,7 @@ fn emit_go_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope: 
     ExprMethodCall { method_semantics: method_semantics } =>
       let r = method_receiver(texpr: expr)
       let a = method_arg_nodes(texpr: expr)
-      let m = expr_method_name(texpr: expr)
+      let m = authored_name_at(source_index: scope.type_env.source_index, node: expr)
       concat(prefix, emit_go_typed_method_call(receiver: r, method: m, args: a, method_semantics: method_semantics, registry: registry, scope: scope))
     _ => concat(prefix, emit_error_expr(message: "emit_go_expr_method_call expected ExprMethodCall", target: Go))
   }
@@ -658,7 +658,7 @@ fn emit_go_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferScop
 fn emit_go_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   match expr.expr_data {
     ExprLet =>
-      let n = let_binding_name(texpr: expr)
+      let n = authored_name_at(source_index: scope.type_env.source_index, node: expr)
       let v = let_value(texpr: expr)
       let bd = let_body(texpr: expr)
       emit_go_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth)
@@ -747,9 +747,10 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
   emit_shared_expr(
     texpr: texpr,
     target: Go,
+    source_index: scope.type_env.source_index,
     wrap_result: result => if result == "" { "" } else { concat(prefix, result) },
     recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: 0),
-    emit_var: expr => emit_go_expr_var(expr: expr, depth: depth),
+    emit_var: expr => emit_go_expr_var(expr: expr, depth: depth, source_index: scope.type_env.source_index),
     emit_field_access: expr => emit_go_expr_field_access(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_call: expr => emit_go_expr_call(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_method_call: expr => emit_go_expr_method_call(expr: expr, registry: registry, scope: scope, depth: depth),
@@ -1011,9 +1012,10 @@ fn emit_go_typed_cast(expr: Node, target: Node, registry: Map<String, ItemInfo>,
 
 fn emit_go_typed_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let prefix = make_indent(level: depth)
+  let si = scope.type_env.source_index
   match body.expr_data {
     ExprLet => {
-      let n = let_binding_name(texpr: body)
+      let n = authored_name_at(source_index: si, node: body)
       let ch = body.children
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
@@ -1061,7 +1063,7 @@ fn emit_go_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>) -
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      let f = expr_call_func(texpr: frame.expr)
+      let f = authored_name_at(source_index: frame.scope.type_env.source_index, node: frame.expr)
       let call_str = emit_go_typed_call(func: f, args: frame.expr.children, registry: registry, scope: frame.scope)
       concat(prefix, "return ", call_str)
     _ => concat(prefix, emit_error_expr(message: "emit_go_tco_non_self_call expected ExprCall", target: Go))
@@ -1110,7 +1112,7 @@ fn emit_go_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registr
   let prefix = make_indent(level: frame.depth)
   match frame.expr.expr_data {
     ExprLet =>
-      let n = let_binding_name(texpr: frame.expr)
+      let n = authored_name_at(source_index: frame.scope.type_env.source_index, node: frame.expr)
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_go_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: 0)
@@ -1273,7 +1275,7 @@ fn emit_go_rest_call(op_name: String, transport: Node, depth: Int) -> String {
   } else { "" }
   let hdrs = transport_headers(t: transport)
   let header_lines = hdrs |> map(h =>
-    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go), ")")
+    concat(prefix, "req.Header.Set(\"", h.name, "\", ", emit_simple_expr(expr: field_init_node_value(n: h), target: Go, source_index: none), ")")
   )
   let send_lines = concat(
     prefix, "resp, err := http.DefaultClient.Do(req)\n",
@@ -1298,7 +1300,7 @@ fn emit_go_shell_call(op_name: String, transport: Node, depth: Int) -> String {
   let dir_line = concat(prefix, "cmd.Dir = c.WorkingDir")
   let envs = transport_env(t: transport)
   let env_lines = envs |> map(e =>
-    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go), ")")
+    concat(prefix, "cmd.Env = append(cmd.Env, \"", e.name, "=\" + ", emit_simple_expr(expr: field_init_node_value(n: e), target: Go, source_index: none), ")")
   )
   let run_lines = concat(
     prefix, "output, err := cmd.Output()\n",
