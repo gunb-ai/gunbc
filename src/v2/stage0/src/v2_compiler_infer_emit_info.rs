@@ -77,7 +77,7 @@ pub struct TypeSummary {
     pub repr: Rc<TypeRepr>,
     pub field_summaries: HashMap<String, Rc<FieldSummary>>,
     pub field_type_map: HashMap<String, String>,
-    pub variant_names: Vec<String>,
+    pub variant_name_set: HashMap<String, bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -225,7 +225,7 @@ if node_is_product(item.clone()) {
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(item.children.clone()),
     field_type_map: build_field_type_map(item.children.clone()),
-    variant_names: vec![],
+    variant_name_set: <HashMap<_, _>>::new(),
 }))
 } else {
             {
@@ -237,7 +237,7 @@ Some(Rc::new(TypeSummary {
 }),
     field_summaries: build_enum_field_summaries(item.children.clone()),
     field_type_map: <HashMap<_, _>>::new(),
-    variant_names: item.children.iter().cloned().map(|child| child.name.clone()).collect(),
+    variant_name_set: item.children.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, child| v2_rt::map_insert(acc, child.name.clone(), true)),
 }))
 }
 }
@@ -254,7 +254,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     repr: Rc::new(TypeRepr::StructRepr),
     field_summaries: build_struct_field_summaries(variant.children.clone()),
     field_type_map: build_field_type_map(variant.children.clone()),
-    variant_names: vec![],
+    variant_name_set: <HashMap<_, _>>::new(),
 }))
 } else {
             acc.clone()
@@ -273,7 +273,7 @@ Rc::new(EmitInfoBuildState {
 pub fn variant_belongs_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>, variant_name: String, enum_name: String) -> bool {
     match v2_rt::map_get(&type_summaries, enum_name.clone()) {
         Some(summary) => match (*summary.repr.clone()).clone() {
-            TypeRepr::EnumRepr { .. } => { let mut __found = false; for vn in summary.variant_names.iter().cloned() { if (vn.clone() == variant_name.clone()) { __found = true; break; } } __found },
+            TypeRepr::EnumRepr { .. } => summary.variant_name_set.contains_key(&variant_name),
             _ => false,
         },
         None => false,
@@ -283,7 +283,7 @@ pub fn variant_belongs_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>,
 pub fn derive_variant_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, String> {
     v2_rt::map_values(&type_summaries).iter().cloned().fold(<HashMap<String, String>>::new(), |acc: HashMap<String, String>, summary: Rc<TypeSummary>| {
         match (*summary.repr.clone()).clone() {
-            TypeRepr::EnumRepr { .. } => summary.variant_names.iter().cloned().fold(acc.clone(), |inner: HashMap<String, String>, vn: String| {
+            TypeRepr::EnumRepr { .. } => v2_rt::map_keys(&summary.variant_name_set).iter().cloned().fold(acc.clone(), |inner: HashMap<String, String>, vn: String| {
                 match v2_rt::map_get(&inner, vn.clone()) {
                     Some(_) => inner.clone(),
                     None => v2_rt::map_insert(inner.clone(), vn.clone(), summary.name.clone()),

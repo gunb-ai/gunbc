@@ -1803,21 +1803,21 @@ fn parse_fn_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, star
   let type_params = prefix.type_params
   let params = prefix.params
   let inferred = prefix.inferred
-  // Store type params in properties so the resolver can register them as TypeVariables
-  let tp_props = if type_params |> count > 0 {
-    [Node { name: "__type_params", span: start_span, children: type_params, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }]
-  } else { [] }
-  let named_dummy = Node { name: name, span: start_span, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: tp_props, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  // Type params prepend to params (same slot as type definitions).
+  // Type params are structurally distinguishable: param_node_name == param_node_type_expr.name
+  // (self-referential), while function params have name != type_expr.name.
+  let all_params = concat(type_params, params)
+  let named_dummy = Node { name: name, span: start_span, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   // Body: { exprs }
   let r = parse_block(tokens: tokens, state: skip_newlines(tokens: tokens, state: prefix.state))
   if has_err(err: r.err) { return ItemResult { item: named_dummy, state: r.state, err: r.err } }
   let body = r.expr
 
-  let item = Node { name: name, span: start_span, children: [], params: params,
+  let item = Node { name: name, span: start_span, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Some { value: body }, connective: NoConnective, transport: none,
-    properties: tp_props, type_annotation: none,
+    properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
 }

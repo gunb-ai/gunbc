@@ -3922,28 +3922,6 @@ let name = r.name.clone();
 // Parse optional type params: fn foo<T, U>(...)
 let tp_result = parse_optional_type_params(tokens.clone(), r.state.clone());
 let type_params = tp_result.params.clone();
-let tp_props: Vec<Rc<Node>> = if !type_params.is_empty() {
-    vec![Rc::new(Node {
-        name: "__type_params".to_string(),
-        span: start_span.clone(),
-        children: type_params.clone(),
-        connective: None,
-        params: vec![],
-        inferred: None,
-        return_cardinality: Cardinality::Required,
-        uses: vec![],
-        body: None,
-        transport: None,
-        properties: vec![],
-        type_annotation: None,
-        is_self_recursive: false,
-        has_non_tail_self_call: false,
-        match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
-    })]
-} else {
-    vec![]
-};
 let named_dummy = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
@@ -3955,7 +3933,7 @@ let named_dummy = Rc::new(Node {
     body: None,
     connective: None,
     transport: None,
-    properties: tp_props.clone(),
+    properties: vec![],
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
@@ -3995,14 +3973,14 @@ let item = Rc::new(Node {
     name: name.clone(),
     span: start_span.clone(),
     children: vec![],
-    params: params.clone(),
+    params: { let mut all = type_params.clone(); all.extend(params.clone()); all },
     inferred: inferred.clone(),
     return_cardinality: Cardinality::Required,
     uses: vec![],
     body: Some(body.clone()),
     connective: None,
     transport: None,
-    properties: tp_props.clone(),
+    properties: vec![],
     type_annotation: None,
     is_self_recursive: false,
     has_non_tail_self_call: false,

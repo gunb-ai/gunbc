@@ -878,13 +878,13 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
 // field types, etc.) and resolves each one against the environment.
 // =========================================================================
 
-// Extract function type parameter names from the __type_params property node.
+// Extract function type parameter names from params. Type params are
+// structurally distinguishable: param_node_name == param_node_type_expr.name
+// (self-referential), while function params have name != type_expr.name.
 fn fn_type_param_names(item: Node) -> List<String> {
-  item.properties |> flat_map(p =>
-    if p.name == "__type_params" {
-      p.children |> map(c => param_node_name(n: c))
-    } else { [] }
-  )
+  item.params |> filter(p =>
+    param_node_name(n: p) == param_node_type_expr(n: p).name
+  ) |> map(p => param_node_name(n: p))
 }
 
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {

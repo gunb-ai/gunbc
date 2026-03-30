@@ -1304,11 +1304,11 @@ Rc::new(ExprResolveResult {
 
 pub fn fn_type_param_names(item: Rc<Node>) -> Vec<String> {
     let mut result = Vec::new();
-    for p in item.properties.iter().cloned() {
-        if p.name == "__type_params" {
-            for c in p.children.iter().cloned() {
-                result.push(param_node_name(c.clone()));
-            }
+    for p in item.params.iter().cloned() {
+        let pname = param_node_name(p.clone());
+        let tname = param_node_type_expr(p.clone()).name.clone();
+        if pname == tname {
+            result.push(pname);
         }
     }
     result
