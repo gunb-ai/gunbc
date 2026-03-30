@@ -18,8 +18,9 @@ import v2.std.core {
   Node,
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach,
-  arg_value, arm_body,
+  ExprBinOp, ExprUnaryOp,
+  ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach, ExprReturn,
+  arg_value, arm_body, arm_guard,
   MethodSemantics, AlgebraMethodSemantics,
   PlainMethodSemantics, ServiceMethodSemantics,
   binop_left, binop_right,
@@ -27,7 +28,7 @@ import v2.std.core {
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes,
+  method_receiver, method_arg_nodes, return_value,
   expr_call_func
 }
 
@@ -259,6 +260,7 @@ fn replace_computing_ref(expr: CostExpr, func_name: String, replacement: CostExp
 fn count_self_calls(body: Node, func_name: String) -> Int {
   let own = match body.expr_data {
     ExprCall { call_semantics: _ } =>
+      let f = expr_call_func(texpr: body)
       if f == func_name { 1 } else { 0 }
     _ => 0
   }
@@ -277,6 +279,14 @@ fn count_self_calls(body: Node, func_name: String) -> Int {
 // (O(2^n)). A function with 15 self-call sites across 10 match arms
 // has max_path_calls = max(arm calls), not sum(arm calls).
 fn max_path_self_calls(body: Node, func_name: String) -> Int {
+  max_path_self_calls_with_cont(body: body, func_name: func_name, continue_calls: 0)
+}
+
+// Count maximum self-calls on any single execution path through an
+// expression, threading the self-calls from code that runs afterward.
+// This keeps mutually exclusive early-return branches from being summed
+// together by a surrounding block.
+fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: Int) -> Int {
   match body.expr_data {
     ExprCall { call_semantics: _ } =>
       let f = expr_call_func(texpr: body)
@@ -285,13 +295,13 @@ fn max_path_self_calls(body: Node, func_name: String) -> Int {
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
         acc + max_path_self_calls(body: arg_value(n: child), func_name: func_name)
       )
-      own + arg_calls
+      own + arg_calls + continue_calls
 
     ExprMatch =>
       // Match arms are mutually exclusive: take MAX across arms.
       let scrut_calls = max_path_self_calls(body: match_scrutinee(texpr: body), func_name: func_name)
-      let max_arm = match_arm_nodes(texpr: body) |> fold(init: 0, f: (acc, arm_node) =>
-        let arm_calls = max_path_self_calls(body: arm_body(n: arm_node), func_name: func_name)
+      let max_arm = match_arm_nodes(texpr: body) |> fold(init: continue_calls, f: (acc, arm_node) =>
+        let arm_calls = max_path_self_calls_with_cont(body: arm_body(n: arm_node), func_name: func_name, continue_calls: continue_calls)
         if arm_calls > acc { arm_calls } else { acc }
       )
       scrut_calls + max_arm
@@ -299,10 +309,10 @@ fn max_path_self_calls(body: Node, func_name: String) -> Int {
     ExprIf =>
       // If/else branches are mutually exclusive: take MAX.
       let cond_calls = max_path_self_calls(body: if_condition(texpr: body), func_name: func_name)
-      let then_calls = max_path_self_calls(body: if_then_branch(texpr: body), func_name: func_name)
+      let then_calls = max_path_self_calls_with_cont(body: if_then_branch(texpr: body), func_name: func_name, continue_calls: continue_calls)
       let else_calls = match if_else_branch(texpr: body) {
-        Some { value: eb } => max_path_self_calls(body: eb, func_name: func_name)
-        None => 0
+        Some { value: eb } => max_path_self_calls_with_cont(body: eb, func_name: func_name, continue_calls: continue_calls)
+        None => continue_calls
       }
       let branch_max = if then_calls > else_calls { then_calls } else { else_calls }
       cond_calls + branch_max
@@ -311,21 +321,18 @@ fn max_path_self_calls(body: Node, func_name: String) -> Int {
       // Self-calls inside a forEach body are bounded by the iteration.
       // They do NOT contribute to the recursion branching factor.
       // Only count calls in the collection expression (not the body).
-      max_path_self_calls(body: foreach_collection(texpr: body), func_name: func_name)
+      max_path_self_calls(body: foreach_collection(texpr: body), func_name: func_name) + continue_calls
 
     ExprLet { name: _ } =>
       let val_calls = max_path_self_calls(body: let_value(texpr: body), func_name: func_name)
       let body_calls = match let_body(texpr: body) {
-        Some { value: b } => max_path_self_calls(body: b, func_name: func_name)
-        None => 0
+        Some { value: b } => max_path_self_calls_with_cont(body: b, func_name: func_name, continue_calls: continue_calls)
+        None => continue_calls
       }
       val_calls + body_calls
 
     ExprBlock =>
-      // Sequential: sum across statements (all execute).
-      body.children |> fold(init: 0, f: (acc, child) =>
-        acc + max_path_self_calls(body: child, func_name: func_name)
-      )
+      max_path_self_calls_block(stmts: body.children, func_name: func_name, continue_calls: continue_calls)
 
     ExprMethodCall { method: _, method_semantics: _ } =>
       // Receiver + non-lambda args contribute to path calls.
@@ -340,14 +347,23 @@ fn max_path_self_calls(body: Node, func_name: String) -> Int {
           _ => acc + max_path_self_calls(body: val, func_name: func_name)
         }
       )
-      recv_calls + arg_calls
+      recv_calls + arg_calls + continue_calls
+
+    ExprReturn =>
+      max_path_self_calls_with_cont(body: return_value(texpr: body), func_name: func_name, continue_calls: 0)
 
     _ =>
       // Default: sum across children (conservative).
       body.children |> fold(init: 0, f: (acc, child) =>
         acc + max_path_self_calls(body: child, func_name: func_name)
-      )
+      ) + continue_calls
   }
+}
+
+fn max_path_self_calls_block(stmts: List<Node>, func_name: String, continue_calls: Int) -> Int {
+  stmts |> reverse |> fold(init: continue_calls, f: (acc, stmt) =>
+    max_path_self_calls_with_cont(body: stmt, func_name: func_name, continue_calls: acc)
+  )
 }
 
 // Classify the recursion pattern of a self-recursive function.
@@ -379,7 +395,7 @@ fn max_path_self_calls(body: Node, func_name: String) -> Int {
 //
 // Total work = |tree| × max(per-arm cost). Not 2^depth.
 fn is_structural_descent(body: Node, func_name: String) -> Bool {
-  // The body must be a match or if (branching on the input).
+  // The body must branch on the input.
   // All self-calls must be inside the branch arms, not at the top level.
   match body.expr_data {
     ExprMatch =>
@@ -387,11 +403,27 @@ fn is_structural_descent(body: Node, func_name: String) -> Bool {
       // that's not structural descent.
       let scrut_calls = count_self_calls(body: match_scrutinee(texpr: body), func_name: func_name)
       scrut_calls == 0
+      && (match_arm_nodes(texpr: body) |> all(arm_node =>
+        let guard_ok = match arm_guard(n: arm_node) {
+          Some { value: g } => count_self_calls(body: g, func_name: func_name) == 0
+          None => true
+        }
+        guard_ok
+        && self_calls_use_non_computed_args(body: arm_body(n: arm_node), func_name: func_name)
+      ))
 
     ExprIf =>
-      // Same: no self-calls in the condition.
+      // Same: no self-calls in the condition, and recursive args in the
+      // branches must be justified by a structurally descended witness.
+      // This rejects fib(n - 1) style branching recursion while keeping
+      // loops that recurse on advanced state variables linear.
       let cond_calls = count_self_calls(body: if_condition(texpr: body), func_name: func_name)
       cond_calls == 0
+      && self_calls_use_non_computed_args(body: if_then_branch(texpr: body), func_name: func_name)
+      && match if_else_branch(texpr: body) {
+        Some { value: eb } => self_calls_use_non_computed_args(body: eb, func_name: func_name)
+        None => true
+      }
 
     ExprLet { name: _ } =>
       // let x = ... in <body>: descent if the body is a descent
@@ -422,6 +454,47 @@ fn is_structural_descent(body: Node, func_name: String) -> Bool {
       }
 
     _ => false
+  }
+}
+
+fn is_non_computed_recursive_arg(expr: Node, func_name: String) -> Bool {
+  if count_self_calls(body: expr, func_name: func_name) > 0 { false }
+  else {
+    match expr.expr_data {
+      ExprBinOp { op: _ } => false
+      ExprUnaryOp { op: _ } => false
+      _ => expr.children |> all(child =>
+        is_non_computed_recursive_arg(expr: child, func_name: func_name)
+      )
+    }
+  }
+}
+
+fn self_calls_use_non_computed_args(body: Node, func_name: String) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let own_ok = if expr_call_func(texpr: body) == func_name {
+        let args = body.children |> map(arg_node => arg_value(n: arg_node))
+        let arg_shape_ok = args |> all(arg_expr =>
+          count_self_calls(body: arg_expr, func_name: func_name) == 0
+        )
+        let witness_ok = args |> any(arg_expr =>
+          is_non_computed_recursive_arg(expr: arg_expr, func_name: func_name)
+        )
+        arg_shape_ok && witness_ok
+      } else { true }
+      own_ok
+      && (body.children |> all(child =>
+        self_calls_use_non_computed_args(
+          body: child,
+          func_name: func_name
+        )
+      ))
+
+    _ =>
+      body.children |> all(child =>
+        self_calls_use_non_computed_args(body: child, func_name: func_name)
+      )
   }
 }
 
@@ -714,6 +787,14 @@ fn empty_complexity_report() -> ComplexityReport {
   }
 }
 
+type ComplexityClassInfo {
+  class: String
+  has_sum: Bool
+  sum_depth: Int
+  log_factor: Bool
+  is_unknown: Bool
+}
+
 // =========================================================================
 // Cost simplification
 //
@@ -781,6 +862,8 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
 // Walks a simplified CostExpr and produces a human-readable O() string.
 // =========================================================================
 
+data large_complexity_report_limit: Int = 400
+
 fn format_size(size: SizeExpr) -> String {
   match size {
     SizeLen { collection: c } => concat("|", c, "|")
@@ -801,81 +884,99 @@ fn strip_big_o(s: String) -> String {
   }
 }
 
-fn has_cost_sum(expr: CostExpr) -> Bool {
-  match expr {
-    CostSum { binder: _, upper: _, body: _ } => true
-    CostAdd { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
-    CostMul { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
-    CostMax { left: l, right: r } => has_cost_sum(expr: l) || has_cost_sum(expr: r)
-    _ => false
-  }
+fn complexity_dominates(left: ComplexityClassInfo, right: ComplexityClassInfo) -> Bool {
+  if left.is_unknown && !right.is_unknown { true }
+  else if !left.is_unknown && right.is_unknown { false }
+  else if left.sum_depth > right.sum_depth { true }
+  else if left.sum_depth < right.sum_depth { false }
+  else if left.log_factor && !right.log_factor { true }
+  else if !left.log_factor && right.log_factor { false }
+  else { true }
 }
 
-// Count maximum CostSum nesting depth (loop nesting).
-fn cost_sum_depth(expr: CostExpr) -> Int {
+fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
   match expr {
-    CostSum { binder: _, upper: _, body: b } => 1 + cost_sum_depth(expr: b)
-    CostAdd { left: l, right: r } =>
-      let ld = cost_sum_depth(expr: l)
-      let rd = cost_sum_depth(expr: r)
-      if rd > ld { rd } else { ld }
-    CostMul { left: l, right: r } =>
-      let ld = cost_sum_depth(expr: l)
-      let rd = cost_sum_depth(expr: r)
-      if rd > ld { rd } else { ld }
-    CostMax { left: l, right: r } =>
-      let ld = cost_sum_depth(expr: l)
-      let rd = cost_sum_depth(expr: r)
-      if rd > ld { rd } else { ld }
-    _ => 0
-  }
-}
-
-fn classify_complexity(expr: CostExpr) -> String {
-  let s = simplify_cost(expr: expr)
-  match s {
-    CostConst { value: _ } => "O(1)"
-    CostUnknown { reason: _ } => "O(?)"
+    CostConst { value: _ } =>
+      ComplexityClassInfo { class: "O(1)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: false }
+    CostUnknown { reason: _ } =>
+      ComplexityClassInfo { class: "O(?)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: true }
     CostSum { binder: _, upper: u, body: bd } =>
-      if has_cost_sum(expr: bd) {
-        let inner_class = classify_complexity(expr: bd)
-        let inner_bare = strip_big_o(s: inner_class)
-        concat("O(", format_size(size: u), " * ", inner_bare, ")")
+      let inner = analyze_simplified_complexity(expr: bd)
+      let class = if inner.is_unknown {
+        "O(?)"
+      } else if inner.has_sum {
+        concat("O(", format_size(size: u), " * ", strip_big_o(s: inner.class), ")")
       } else {
         concat("O(", format_size(size: u), ")")
       }
-    CostAdd { left: l, right: r } =>
-      let lc = classify_complexity(expr: l)
-      let rc = classify_complexity(expr: r)
-      // Sequential composition: dominant cost is the higher-cost operand.
-      // When both have loops, pick the deeper-nested one structurally.
-      let dominant = if has_cost_sum(expr: l) && has_cost_sum(expr: r) {
-        if cost_sum_depth(expr: r) > cost_sum_depth(expr: l) { rc } else { lc }
-      } else if has_cost_sum(expr: l) {
-        lc
-      } else if has_cost_sum(expr: r) {
-        rc
-      } else {
-        "O(1)"
+      ComplexityClassInfo {
+        class: class,
+        has_sum: true,
+        sum_depth: 1 + inner.sum_depth,
+        log_factor: inner.log_factor,
+        is_unknown: inner.is_unknown
       }
-      dominant
+    CostAdd { left: l, right: r } =>
+      let left_info = analyze_simplified_complexity(expr: l)
+      let right_info = analyze_simplified_complexity(expr: r)
+      let dominant = if complexity_dominates(left: left_info, right: right_info) {
+        left_info.class
+      } else {
+        right_info.class
+      }
+      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
+      ComplexityClassInfo {
+        class: dominant,
+        has_sum: left_info.has_sum || right_info.has_sum,
+        sum_depth: sum_depth,
+        log_factor: left_info.log_factor || right_info.log_factor,
+        is_unknown: left_info.is_unknown || right_info.is_unknown
+      }
     CostMul { left: l, right: r } =>
-      let lc = classify_complexity(expr: l)
-      let rc = classify_complexity(expr: r)
-      let combined = if lc == "O(1)" { rc }
-        else if rc == "O(1)" { lc }
-        else { concat(lc, " * ", rc) }
-      combined
+      let left_info = analyze_simplified_complexity(expr: l)
+      let right_info = analyze_simplified_complexity(expr: r)
+      let combined = if left_info.is_unknown || right_info.is_unknown { "O(?)" }
+        else if left_info.class == "O(1)" { right_info.class }
+        else if right_info.class == "O(1)" { left_info.class }
+        else { concat(left_info.class, " * ", right_info.class) }
+      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
+      ComplexityClassInfo {
+        class: combined,
+        has_sum: left_info.has_sum || right_info.has_sum,
+        sum_depth: sum_depth,
+        log_factor: left_info.log_factor || right_info.log_factor,
+        is_unknown: left_info.is_unknown || right_info.is_unknown
+      }
     CostMax { left: l, right: r } =>
-      let lc = classify_complexity(expr: l)
-      let rc = classify_complexity(expr: r)
-      let dominant = if has_cost_sum(expr: l) { lc }
-        else if has_cost_sum(expr: r) { rc }
-        else { lc }
-      dominant
+      let left_info = analyze_simplified_complexity(expr: l)
+      let right_info = analyze_simplified_complexity(expr: r)
+      let dominant = if complexity_dominates(left: left_info, right: right_info) { left_info.class }
+        else { right_info.class }
+      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
+      ComplexityClassInfo {
+        class: dominant,
+        has_sum: left_info.has_sum || right_info.has_sum,
+        sum_depth: sum_depth,
+        log_factor: left_info.log_factor || right_info.log_factor,
+        is_unknown: left_info.is_unknown || right_info.is_unknown
+      }
     CostLog { base: _, argument: a } =>
-      concat("O(log ", format_size(size: a), ")")
+      ComplexityClassInfo {
+        class: concat("O(log ", format_size(size: a), ")"),
+        has_sum: false,
+        sum_depth: 0,
+        log_factor: true,
+        is_unknown: false
+      }
   }
+}
+
+fn classify_simplified_complexity(expr: CostExpr) -> String {
+  analyze_simplified_complexity(expr: expr).class
+}
+
+fn classify_complexity(expr: CostExpr) -> String {
+  classify_simplified_complexity(expr: simplify_cost(expr: expr))
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -933,7 +1034,7 @@ fn format_space_class(expr: CostExpr) -> String {
 }
 
 fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
-  let class = classify_complexity(expr: summary.work)
+  let class = classify_simplified_complexity(expr: summary.work)
   // Certainty marker: ~ means lower-bound only (e.g. sort is O(n log n) but
   // the cost algebra lacks log), ? means the system could not derive a bound.
   let marker = match summary.certainty {
@@ -1470,7 +1571,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }
     }
   )
-  let formatted = format_complexity_report(entries: func_entries, summaries: summaries_map)
+  let formatted = if func_entries |> count > large_complexity_report_limit {
+    concat("complexity report elided for ", concat(to_string(func_entries |> count), " functions"))
+  } else {
+    format_complexity_report(entries: func_entries, summaries: summaries_map)
+  }
   ComplexityReport {
     function_summaries: summaries_map,
     violations: violations,

@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, arg_value, arm_body, arm_guard, MethodSemantics, binop_left, binop_right, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprBlock, ExprForEach};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use SizeExpr::*;
@@ -56,6 +56,8 @@ use CostExpr::*;
 use Certainty::*;
 use CostShape::*;
 use RecursionPattern::*;
+
+pub const LARGE_COMPLEXITY_REPORT_LIMIT: usize = 400;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SizeExpr {
@@ -266,15 +268,185 @@ pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     own.clone() + from_children.clone()
 }
 
+pub fn max_path_self_calls(body: Rc<Node>, func_name: String) -> i64 {
+    max_path_self_calls_with_cont(body.clone(), func_name.clone(), 0)
+}
+
+pub fn max_path_self_calls_with_cont(body: Rc<Node>, func_name: String, continue_calls: i64) -> i64 {
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprCall { call_semantics: _ } => {
+            let f = expr_call_func(body.clone());
+            let own = if (f.clone() == func_name.clone()) { 1 } else { 0 };
+            let arg_calls = body.children.clone().iter().cloned().fold(0i64, |acc, child| {
+                acc + max_path_self_calls(arg_value(child.clone()), func_name.clone())
+            });
+            own + arg_calls + continue_calls
+        }
+        ExprData::ExprMatch { .. } => {
+            let scrut_calls = max_path_self_calls(match_scrutinee(body.clone()), func_name.clone());
+            let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(continue_calls, |acc, arm_node| {
+                let arm_calls = max_path_self_calls_with_cont(arm_body(arm_node.clone()), func_name.clone(), continue_calls);
+                if arm_calls > acc { arm_calls } else { acc }
+            });
+            scrut_calls + max_arm
+        }
+        ExprData::ExprIf { .. } => {
+            let cond_calls = max_path_self_calls(if_condition(body.clone()), func_name.clone());
+            let then_calls = max_path_self_calls_with_cont(if_then_branch(body.clone()), func_name.clone(), continue_calls);
+            let else_calls = match if_else_branch(body.clone()) {
+                Some(else_branch) => max_path_self_calls_with_cont(else_branch.clone(), func_name.clone(), continue_calls),
+                None => continue_calls,
+            };
+            let branch_max = if then_calls > else_calls { then_calls } else { else_calls };
+            cond_calls + branch_max
+        }
+        ExprData::ExprForEach { .. } => max_path_self_calls(foreach_collection(body.clone()), func_name.clone()) + continue_calls,
+        ExprData::ExprLet { .. } => {
+            let val_calls = max_path_self_calls(let_value(body.clone()), func_name.clone());
+            let body_calls = match let_body(body.clone()) {
+                Some(let_tail) => max_path_self_calls_with_cont(let_tail.clone(), func_name.clone(), continue_calls),
+                None => continue_calls,
+            };
+            val_calls + body_calls
+        }
+        ExprData::ExprBlock { .. } => max_path_self_calls_block(body.children.clone(), func_name.clone(), continue_calls),
+        ExprData::ExprMethodCall { .. } => {
+            let recv_calls = max_path_self_calls(method_receiver(body.clone()), func_name.clone());
+            let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(0i64, |acc, arg_node| {
+                let val = arg_value(arg_node.clone());
+                match (*val.clone().expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => acc,
+                    _ => acc + max_path_self_calls(val.clone(), func_name.clone()),
+                }
+            });
+            recv_calls + arg_calls + continue_calls
+        }
+        ExprData::ExprReturn { .. } => max_path_self_calls_with_cont(return_value(body.clone()), func_name.clone(), 0),
+        _ => body.children.clone().iter().cloned().fold(0i64, |acc, child| {
+            acc + max_path_self_calls(child.clone(), func_name.clone())
+        }) + continue_calls,
+    }
+}
+
+pub fn max_path_self_calls_block(stmts: Vec<Rc<Node>>, func_name: String, continue_calls: i64) -> i64 {
+    stmts.into_iter().rev().fold(continue_calls, |acc, stmt| {
+        max_path_self_calls_with_cont(stmt, func_name.clone(), acc)
+    })
+}
+
+pub fn is_structural_descent(body: Rc<Node>, func_name: String) -> bool {
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprMatch { .. } => {
+            let scrut_calls = count_self_calls(match_scrutinee(body.clone()), func_name.clone());
+            scrut_calls == 0
+                && match_arm_nodes(body.clone()).iter().cloned().all(|arm_node| {
+                    let guard_ok = match arm_guard(arm_node.clone()) {
+                        Some(g) => count_self_calls(g, func_name.clone()) == 0,
+                        None => true,
+                    };
+                    guard_ok
+                        && self_calls_use_non_computed_args(arm_body(arm_node), func_name.clone())
+                })
+        }
+        ExprData::ExprIf { .. } => {
+            let cond_calls = count_self_calls(if_condition(body.clone()), func_name.clone());
+            cond_calls == 0
+                && self_calls_use_non_computed_args(if_then_branch(body.clone()), func_name.clone())
+                && match if_else_branch(body.clone()) {
+                    Some(else_branch) => self_calls_use_non_computed_args(else_branch, func_name.clone()),
+                    None => true,
+                }
+        }
+        ExprData::ExprLet { .. } => {
+            let val_calls = count_self_calls(let_value(body.clone()), func_name.clone());
+            if val_calls > 0 {
+                false
+            } else {
+                match let_body(body.clone()) {
+                    Some(let_tail) => is_structural_descent(let_tail.clone(), func_name.clone()),
+                    None => false,
+                }
+            }
+        }
+        ExprData::ExprBlock { .. } => {
+            let stmts = body.children.clone();
+            if stmts.is_empty() {
+                false
+            } else {
+                let prefix_calls = stmts
+                    .iter()
+                    .take(stmts.len().saturating_sub(1))
+                    .cloned()
+                    .fold(0i64, |acc, stmt| acc + count_self_calls(stmt.clone(), func_name.clone()));
+                if prefix_calls > 0 {
+                    false
+                } else {
+                    match stmts.last().cloned() {
+                        Some(last_stmt) => is_structural_descent(last_stmt.clone(), func_name.clone()),
+                        None => false,
+                    }
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
+pub fn is_non_computed_recursive_arg(expr: Rc<Node>, func_name: String) -> bool {
+    if count_self_calls(expr.clone(), func_name.clone()) > 0 {
+        false
+    } else {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprBinOp { .. } => false,
+            ExprData::ExprUnaryOp { .. } => false,
+            _ => expr.children.clone().iter().cloned().all(|child| {
+                is_non_computed_recursive_arg(child, func_name.clone())
+            }),
+        }
+    }
+}
+
+pub fn self_calls_use_non_computed_args(body: Rc<Node>, func_name: String) -> bool {
+    match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let own_ok = if expr_call_func(body.clone()) == func_name {
+                let args: Vec<Rc<Node>> = body.children.clone().iter().cloned()
+                    .map(|arg_node| arg_value(arg_node))
+                    .collect();
+                let arg_shape_ok = args.iter().cloned().all(|arg_expr| {
+                    count_self_calls(arg_expr, func_name.clone()) == 0
+                });
+                let witness_ok = args.iter().cloned().any(|arg_expr| {
+                    is_non_computed_recursive_arg(arg_expr, func_name.clone())
+                });
+                arg_shape_ok && witness_ok
+            } else {
+                true
+            };
+            own_ok
+                && body.children.clone().iter().cloned().all(|child| {
+                    self_calls_use_non_computed_args(child, func_name.clone())
+                })
+        }
+        _ => body.children.clone().iter().cloned().all(|child| {
+            self_calls_use_non_computed_args(child, func_name.clone())
+        }),
+    }
+}
+
 pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<RecursionPattern> {
-    let calls = count_self_calls(body.clone(), func_name.clone());
-    if (calls.clone() <= 1) {
+    let path_calls = max_path_self_calls(body.clone(), func_name.clone());
+    if (path_calls.clone() <= 1) {
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if is_structural_descent(body.clone(), func_name.clone()) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     } else {
         Rc::new(RecursionPattern::DivideAndConquer {
-            split_factor: calls.clone(),
+            split_factor: path_calls.clone(),
         })
     }
 }
@@ -579,6 +751,33 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
 })
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComplexityClassInfo {
+    pub class: String,
+    pub has_sum: bool,
+    pub sum_depth: i64,
+    pub log_factor: bool,
+    pub is_unknown: bool,
+}
+
+pub fn complexity_dominates(left: ComplexityClassInfo, right: ComplexityClassInfo) -> bool {
+    if left.is_unknown && !right.is_unknown {
+        true
+    } else if !left.is_unknown && right.is_unknown {
+        false
+    } else if left.sum_depth > right.sum_depth {
+        true
+    } else if left.sum_depth < right.sum_depth {
+        false
+    } else if left.log_factor && !right.log_factor {
+        true
+    } else if !left.log_factor && right.log_factor {
+        false
+    } else {
+        true
+    }
+}
+
 pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
@@ -683,124 +882,121 @@ pub fn strip_big_o(s: String) -> String {
 }
 }
 
-pub fn has_cost_sum(expr: Rc<CostExpr>) -> bool {
+pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*expr.clone()).clone() {
-    CostExpr::CostSum { .. } => true,
-    CostExpr::CostAdd { left: l, right: r, .. } => (has_cost_sum(l.clone()) || has_cost_sum(r.clone())),
-    CostExpr::CostMul { left: l, right: r, .. } => (has_cost_sum(l.clone()) || has_cost_sum(r.clone())),
-    CostExpr::CostMax { left: l, right: r, .. } => (has_cost_sum(l.clone()) || has_cost_sum(r.clone())),
-    _ => false,
-}
+        match &*expr {
+            CostExpr::CostConst { .. } => ComplexityClassInfo {
+                class: "O(1)".to_string(),
+                has_sum: false,
+                sum_depth: 0,
+                log_factor: false,
+                is_unknown: false,
+            },
+            CostExpr::CostUnknown { .. } => ComplexityClassInfo {
+                class: "O(?)".to_string(),
+                has_sum: false,
+                sum_depth: 0,
+                log_factor: false,
+                is_unknown: true,
+            },
+            CostExpr::CostSum { upper: u, body: bd, .. } => {
+                let inner = analyze_simplified_complexity(bd.clone());
+                let class = if inner.is_unknown {
+                    "O(?)".to_string()
+                } else if inner.has_sum {
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat("O(".to_string(), format_size(u.clone())),
+                                " * ".to_string(),
+                            ),
+                            strip_big_o(inner.class.clone()),
+                        ),
+                        ")".to_string(),
+                    )
+                } else {
+                    v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), ")".to_string())
+                };
+                ComplexityClassInfo {
+                    class,
+                    has_sum: true,
+                    sum_depth: (1 + inner.sum_depth),
+                    log_factor: inner.log_factor,
+                    is_unknown: inner.is_unknown,
+                }
+            }
+            CostExpr::CostAdd { left: l, right: r, .. } => {
+                let left_info = analyze_simplified_complexity(l.clone());
+                let right_info = analyze_simplified_complexity(r.clone());
+                let dominant = if complexity_dominates(left_info.clone(), right_info.clone()) {
+                    left_info.class.clone()
+                } else {
+                    right_info.class.clone()
+                };
+                ComplexityClassInfo {
+                    class: dominant,
+                    has_sum: (left_info.has_sum || right_info.has_sum),
+                    sum_depth: std::cmp::max(left_info.sum_depth, right_info.sum_depth),
+                    log_factor: (left_info.log_factor || right_info.log_factor),
+                    is_unknown: (left_info.is_unknown || right_info.is_unknown),
+                }
+            }
+            CostExpr::CostMul { left: l, right: r, .. } => {
+                let left_info = analyze_simplified_complexity(l.clone());
+                let right_info = analyze_simplified_complexity(r.clone());
+                let combined = if left_info.is_unknown || right_info.is_unknown {
+                    "O(?)".to_string()
+                } else if left_info.class == "O(1)" {
+                    right_info.class.clone()
+                } else if right_info.class == "O(1)" {
+                    left_info.class.clone()
+                } else {
+                    v2_rt::concat(
+                        v2_rt::concat(left_info.class.clone(), " * ".to_string()),
+                        right_info.class.clone(),
+                    )
+                };
+                ComplexityClassInfo {
+                    class: combined,
+                    has_sum: (left_info.has_sum || right_info.has_sum),
+                    sum_depth: std::cmp::max(left_info.sum_depth, right_info.sum_depth),
+                    log_factor: (left_info.log_factor || right_info.log_factor),
+                    is_unknown: (left_info.is_unknown || right_info.is_unknown),
+                }
+            }
+            CostExpr::CostMax { left: l, right: r, .. } => {
+                let left_info = analyze_simplified_complexity(l.clone());
+                let right_info = analyze_simplified_complexity(r.clone());
+                let dominant = if complexity_dominates(left_info.clone(), right_info.clone()) {
+                    left_info.class.clone()
+                } else {
+                    right_info.class.clone()
+                };
+                ComplexityClassInfo {
+                    class: dominant,
+                    has_sum: (left_info.has_sum || right_info.has_sum),
+                    sum_depth: std::cmp::max(left_info.sum_depth, right_info.sum_depth),
+                    log_factor: (left_info.log_factor || right_info.log_factor),
+                    is_unknown: (left_info.is_unknown || right_info.is_unknown),
+                }
+            }
+            CostExpr::CostLog { argument: a, .. } => ComplexityClassInfo {
+                class: format!("O(log({}))", format_size(a.clone())),
+                has_sum: false,
+                sum_depth: 0,
+                log_factor: true,
+                is_unknown: false,
+            },
+        }
     })
 }
 
-pub fn cost_sum_depth(expr: Rc<CostExpr>) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*expr.clone()).clone() {
-    CostExpr::CostSum { body: b, .. } => (1 + cost_sum_depth(b.clone())),
-    CostExpr::CostAdd { left: l, right: r, .. } => {
-            let ld = cost_sum_depth(l.clone());
-let rd = cost_sum_depth(r.clone());
-if (rd.clone() > ld.clone()) {
-                rd.clone()
-} else {
-                ld.clone()
-}
-},
-    CostExpr::CostMul { left: l, right: r, .. } => {
-            let ld = cost_sum_depth(l.clone());
-let rd = cost_sum_depth(r.clone());
-if (rd.clone() > ld.clone()) {
-                rd.clone()
-} else {
-                ld.clone()
-}
-},
-    CostExpr::CostMax { left: l, right: r, .. } => {
-            let ld = cost_sum_depth(l.clone());
-let rd = cost_sum_depth(r.clone());
-if (rd.clone() > ld.clone()) {
-                rd.clone()
-} else {
-                ld.clone()
-}
-},
-    _ => 0,
-}
-    })
+pub fn classify_simplified_complexity(expr: Rc<CostExpr>) -> String {
+    analyze_simplified_complexity(expr.clone()).class
 }
 
 pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        {
-            let s = simplify_cost(expr.clone());
-match (*s.clone()).clone() {
-    CostExpr::CostConst { .. } => "O(1)".to_string(),
-    CostExpr::CostUnknown { .. } => "O(?)".to_string(),
-    CostExpr::CostSum { upper: u, body: bd, .. } => if has_cost_sum(bd.clone()) {
-                {
-                    let inner_class = classify_complexity(bd.clone());
-let inner_bare = strip_big_o(inner_class.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), " * ".to_string()), inner_bare.clone()), ")".to_string())
-}
-} else {
-                v2_rt::concat(v2_rt::concat("O(".to_string(), format_size(u.clone())), ")".to_string())
-},
-    CostExpr::CostAdd { left: l, right: r, .. } => {
-                let lc = classify_complexity(l.clone());
-let rc = classify_complexity(r.clone());
-let dominant = if (has_cost_sum(l.clone()) && has_cost_sum(r.clone())) {
-                    if (cost_sum_depth(r.clone()) > cost_sum_depth(l.clone())) {
-                        rc.clone()
-} else {
-                        lc.clone()
-}
-} else {
-                    if has_cost_sum(l.clone()) {
-                        lc.clone()
-} else {
-                        if has_cost_sum(r.clone()) {
-                            rc.clone()
-} else {
-                            "O(1)".to_string()
-}
-}
-};
-dominant.clone()
-},
-    CostExpr::CostMul { left: l, right: r, .. } => {
-                let lc = classify_complexity(l.clone());
-let rc = classify_complexity(r.clone());
-let combined = if (lc.clone() == "O(1)".to_string()) {
-                    rc.clone()
-} else {
-                    if (rc.clone() == "O(1)".to_string()) {
-                        lc.clone()
-} else {
-                        v2_rt::concat(v2_rt::concat(lc.clone(), " * ".to_string()), rc.clone())
-}
-};
-combined.clone()
-},
-    CostExpr::CostMax { left: l, right: r, .. } => {
-                let lc = classify_complexity(l.clone());
-let rc = classify_complexity(r.clone());
-let dominant = if has_cost_sum(l.clone()) {
-                    lc.clone()
-} else {
-                    if has_cost_sum(r.clone()) {
-                        rc.clone()
-} else {
-                        lc.clone()
-}
-};
-dominant.clone()
-},
-    CostExpr::CostLog { argument: a, .. } => format!("O(log({}))", format_size(a.clone())),
-}
-}
-    })
+    classify_simplified_complexity(simplify_cost(expr.clone()))
 }
 
 pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Vec<String> {
@@ -865,7 +1061,7 @@ if (space_class.clone() == "O(1)".to_string()) {
 
 pub fn format_func_complexity(name: String, summary: Rc<ComplexitySummary>) -> String {
     {
-        let class = classify_complexity(summary.work.clone());
+        let class = classify_simplified_complexity(summary.work.clone());
 let marker = match summary.certainty.clone() {
     Certainty::Proven => "".to_string(),
     Certainty::Conservative => "~".to_string(),
@@ -1417,7 +1613,11 @@ Rc::new(ComplexityViolation {
     summary: None,
 }),
 }); } __result };
-let formatted = format_complexity_report(func_entries.clone(), summaries_map.clone());
+let formatted = if (func_entries.len() > LARGE_COMPLEXITY_REPORT_LIMIT) {
+    v2_rt::concat("complexity report elided for ".to_string(), v2_rt::concat(func_entries.len().to_string(), " functions".to_string()))
+} else {
+    format_complexity_report(func_entries.clone(), summaries_map.clone())
+};
 Rc::new(ComplexityReport {
     function_summaries: summaries_map.clone(),
     violations: violations.clone(),

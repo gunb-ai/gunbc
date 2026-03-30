@@ -26,7 +26,7 @@ Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | Fixed: generic fn, fold, node scoping, filter, pattern uses |
 | Bootstrap ratchet (`DIAG_RATCHET`) | 3 | 0 | `dag/syntax.dag` excluded (OOM) |
 | L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
-| Complexity violations (`COMPLEXITY_RATCHET`) | 2 | 0 | **BLOCKED: test OOMs (SIGKILL).** Cannot identify violations or wire fail-closed gate until fixed. |
+| Complexity violations (`COMPLEXITY_RATCHET`) | 0 | 0 | Self-compile ratchet green after continuation-aware path counting and large-report elision. |
 
 ### Known Invariant Violations
 
@@ -208,10 +208,9 @@ claim — one specific fixture).
   must not compile.
 - [ ] Diagnostic: "recursive function X has no structural descent —
   use `fold`, `descend`, or `repeat` instead"
-- [ ] CI gate: `complexity_violation_count == 0` (currently 2)
-- **BLOCKER:** `strict_complexity_violation_count` test OOMs (SIGKILL
-  in container). Cannot identify the 2 violations or wire fail-closed
-  gate. Fix OOM before proceeding.
+- [ ] CI gate: `complexity_violation_count == 0` (currently 0)
+- [ ] Wire the passing complexity ratchet into a hard fail-closed gate
+  for non-descending recursion.
 
 
 *Container sharing (FF-8):*
@@ -233,6 +232,18 @@ claim — one specific fixture).
   diff = empty). Stage0 .rs files are derived artifacts, never
   hand-edited — the `.dag` source is the single authority.
 - [ ] `dag/syntax.dag` inclusion without OOM
+
+*Complexity-modeling hardening (non-critical path while M2 gate work lands):*
+- [ ] Replace `ComplexityClassInfo { class: String, has_sum, sum_depth,
+  log_factor, is_unknown }` with a structural complexity-class value
+  derived compositionally from `CostExpr`
+- [ ] Render `O(...)` strings only at the formatting boundary; keep
+  dominance/max/add decisions structural until the edge
+- [ ] Move `large_complexity_report_limit` out of module-global
+  analysis state and into formatting/report-budget policy
+- [ ] Land this only after current fail-closed/bootstrap work is
+  settled; it is important modeling debt, but not the critical path
+  for wiring the current decidability gate
 
 *User experience:*
 - [ ] Committed example project: `dsl/examples/weather/` (the
@@ -582,7 +593,7 @@ run on every compilation — they are not separate analysis passes.
 | Self-compile diagnostics | 0 | 0 | `strict_compile_diagnostic_count -- --ignored` |
 | full_dsl_compiles | 1 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 70 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 2 | 0 | `strict_complexity_violation_count -- --ignored` |
+| Complexity violations | 0 | 0 | `strict_complexity_violation_count -- --ignored` |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |

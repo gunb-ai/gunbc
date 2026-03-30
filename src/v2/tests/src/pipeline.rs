@@ -666,12 +666,6 @@ fn sum_list(items: List<Int>) -> Int {
 /// recursion. This is the key test for max_path_self_calls.
 #[test]
 fn complexity_match_arms_are_mutually_exclusive() {
-    // This program has 3 match arms, each with 0-2 self-calls on children.
-    // count_self_calls would sum to 3, but max_path_self_calls should see
-    // max(1, 2, 0) = 2 across arms. The ExprBinOp-like arm (left + right)
-    // has 2 path calls, which is DivideAndConquer. But critically, it's
-    // NOT classified as "15 self-calls" like the old counter would say
-    // for a function with many match arms.
     let source = r#"module tree
 type Expr
   = Lit { value: Int }
@@ -687,17 +681,104 @@ fn eval(e: Expr) -> Int {
 }
 "#;
     let result = compile_dag(source);
-    // eval has max 2 path calls (Add arm: left + right).
-    // This may be DivideAndConquer (violation) until structural descent
-    // detection proves it's tree traversal. The test documents current
-    // behavior — when descent detection lands, update to assert 0.
     let eval_violations: Vec<_> = result.complexity.violations.iter()
         .filter(|v| v.func_name == "eval")
         .collect();
-    // Document violation count for regression tracking.
-    eprintln!(
-        "eval violations: {} (expected: <=1 with path analysis, was >1 with sum analysis)",
-        eval_violations.len()
+    assert!(
+        eval_violations.is_empty(),
+        "structural-descent tree walk should not violate complexity analysis, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
+/// Sequential if-return branches should be treated as mutually exclusive
+/// paths through the block, not summed as if they all execute.
+#[test]
+fn complexity_early_return_tail_recursion_is_single_path() {
+    let source = r#"module tail_paths
+fn walk(n: Int) -> Int {
+  if n <= 0 { return 0 }
+  if n == 1 { return walk(n: n - 1) }
+  walk(n: n - 1)
+}
+"#;
+    let result = compile_dag(source);
+    let walk_violations: Vec<_> = result.complexity.violations.iter()
+        .filter(|v| v.func_name == "walk")
+        .collect();
+    assert!(
+        walk_violations.is_empty(),
+        "mutually exclusive tail-return branches should not be summed into branching recursion, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
+/// Multiple self-calls on the same execution path must remain a hard
+/// complexity violation.
+#[test]
+fn complexity_branching_recursion_remains_violation() {
+    let source = r#"module branching
+fn split(n: Int) -> Int {
+  split(n: n - 1) + split(n: n - 2)
+}
+"#;
+    let result = compile_dag(source);
+    let split_violations: Vec<_> = result.complexity.violations.iter()
+        .filter(|v| v.func_name == "split")
+        .collect();
+    assert_eq!(split_violations.len(), 1,
+        "expected one branching-recursion violation, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+    assert!(
+        split_violations[0].reason.contains("branching recursion"),
+        "expected branching recursion reason, got: {}",
+        split_violations[0].reason
+    );
+}
+
+#[test]
+fn complexity_if_guarded_branching_recursion_remains_violation() {
+    let source = r#"module fib_branch
+fn fib_like(n: Int) -> Int {
+  if n <= 1 { 1 } else { fib_like(n: n - 1) + fib_like(n: n - 2) }
+}
+"#;
+    let result = compile_dag(source);
+    let fib_violations: Vec<_> = result.complexity.violations.iter()
+        .filter(|v| v.func_name == "fib_like")
+        .collect();
+    assert_eq!(fib_violations.len(), 1,
+        "expected one guarded branching-recursion violation, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+    assert!(
+        fib_violations[0].reason.contains("branching recursion"),
+        "expected branching recursion reason, got: {}",
+        fib_violations[0].reason
+    );
+}
+
+#[test]
+fn complexity_structural_descent_allows_bookkeeping_args() {
+    let source = r#"module depth_walk
+type Tree
+  = Leaf { value: Int }
+  | Pair { left: Tree, right: Tree }
+
+fn walk(t: Tree, depth: Int) -> Int {
+  match t {
+    Leaf { value: v } => v + depth
+    Pair { left: l, right: r } => walk(t: l, depth: depth + 1) + walk(t: r, depth: depth + 1)
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let walk_violations: Vec<_> = result.complexity.violations.iter()
+        .filter(|v| v.func_name == "walk")
+        .collect();
+    assert!(
+        walk_violations.is_empty(),
+        "structural-descent recursion should allow extra bookkeeping args, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
     );
 }
 
@@ -742,7 +823,7 @@ fn process_items(items: List<Int>) -> Int {
 //   O(2^n)   — decidability prevents unbounded branching
 //   O(n!)    — not constructible from bounded iteration
 
-use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty};
+use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty, CostExpr, SizeExpr};
 
 /// Helper: get the complexity class string for a function in a compile result.
 fn complexity_class_of(result: &v2_compiler::v2_compiler_compile::PipelineResult, func: &str) -> Option<String> {
@@ -867,6 +948,38 @@ fn sort_ascending(items: List<Int>) -> List<Int> {
         "sort_by should produce Proven certainty (CostLog expresses n log n), got {:?}", cert);
 }
 
+#[test]
+fn complexity_class_add_keeps_log_terms() {
+    let expr = Rc::new(CostExpr::CostAdd {
+        left: Rc::new(CostExpr::CostLog {
+            base: 2,
+            argument: Rc::new(SizeExpr::SizeVar { name: "n".to_string() }),
+        }),
+        right: Rc::new(CostExpr::CostConst { value: 1 }),
+    });
+    let class = classify_complexity(expr);
+    assert!(
+        class.contains("log"),
+        "CostAdd should preserve log-dominant terms, got {class}"
+    );
+}
+
+#[test]
+fn complexity_class_max_keeps_log_terms() {
+    let expr = Rc::new(CostExpr::CostMax {
+        left: Rc::new(CostExpr::CostConst { value: 1 }),
+        right: Rc::new(CostExpr::CostLog {
+            base: 2,
+            argument: Rc::new(SizeExpr::SizeVar { name: "n".to_string() }),
+        }),
+    });
+    let class = classify_complexity(expr);
+    assert!(
+        class.contains("log"),
+        "CostMax should preserve log-dominant terms, got {class}"
+    );
+}
+
 /// Chained operations: map then fold — should be O(n), not O(n²).
 #[test]
 fn complexity_class_chain_is_linear() {
@@ -925,6 +1038,22 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
     // Verify the formatted report is non-empty and contains function names
     assert!(!result.complexity.formatted.is_empty(),
         "formatted complexity report should not be empty");
+}
+
+#[test]
+fn complexity_report_elides_large_self_compile_style_reports() {
+    let mut source = String::from("module huge\n");
+    for idx in 0..401 {
+        source.push_str(&format!("fn f{idx}(x: Int) -> Int {{ x + 1 }}\n"));
+    }
+    let result = compile_dag(&source);
+    assert!(
+        result.complexity.formatted.contains("complexity report elided for 401 functions"),
+        "large complexity reports should be elided, got:\n{}",
+        result.complexity.formatted
+    );
+    assert_eq!(result.complexity.function_summaries.len(), 401,
+        "large-report elision should preserve function summaries");
 }
 
 #[test]
@@ -1374,15 +1503,11 @@ fn strict_complexity_violation_count() {
         eprintln!("  {}: {}", v.func_name, v.reason);
     }
 
-    // Ratchet: track the violation count. Lower this as violations are fixed.
+    // Ratchet history:
     // 2026-03-25: 2 violations out of 1169 function summaries.
-    // 2026-03-28: Budget guard removed; RecursionPattern wired in.
-    // LinearRecursion (1 self-call) gets bounded cost. DivideAndConquer
-    // (>1 self-calls) reports CostUnknown (CostExpr can't express k^depth).
-    // In practice, .dag multi-self-calls occur in fold bodies (tree walks)
-    // which are already bounded by the fold's CostSum. May need calibration
-    // if any functions have >1 direct (non-fold) self-calls.
-    const COMPLEXITY_RATCHET: usize = 2;
+    // 2026-03-30: 0 violations out of 1275 function summaries after
+    // continuation-aware path counting and large-report elision.
+    const COMPLEXITY_RATCHET: usize = 0;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
         "complexity violation count {} exceeds ratchet {}",
