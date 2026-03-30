@@ -1132,47 +1132,59 @@ fn service_config_retry(n: Node) -> Node? {
 // --- Module as Node ---
 // A Module dissolves into a Node where:
 //   name = module name, children = import nodes ++ item nodes,
-//   property "__is_module" = true, span = module span.
-// Import nodes have property "__is_import" = true, name = module_path.
-// ImportAll: property "__import_all" = true. ImportSpecific: children named per import.
+//   marker property with value "__is_module", span = module span.
+// Import nodes have marker property with value "__is_import", name = module_path.
+// ImportAll: marker property with value "__import_all". ImportSpecific: children named per import.
+//
+// Markers are stored in property VALUE (ExprData literal), not property NAME.
+// This survives Node.name deletion — detection reads ExprData, not .name.
+
+fn make_marker_property(marker: String) -> Node {
+  make_field_init_node(name: "", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: marker } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
+}
+
+fn has_marker_property(n: Node, marker: String) -> Bool {
+  n.properties |> any(p =>
+    match field_init_node_value(n: p).expr_data {
+      ExprLiteral { value: LitStr { value: s } } => s == marker
+      _ => false
+    }
+  )
+}
 
 fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
-  let marker = make_field_init_node(name: "__is_module", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
   Node {
     name: name, span: span, children: concat(imports, items), connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: [marker],
+    uses: [], body: none, transport: none, properties: [make_marker_property(marker: "__is_module")],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
 fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan) -> Node {
-  let import_prop = make_field_init_node(name: "__is_import", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))
-  let all_prop = if is_all {
-    [make_field_init_node(name: "__import_all", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "true" } }, children: [], inferred: none, span: make_span(start: 0, end: 0)), span: make_span(start: 0, end: 0))]
-  } else { [] }
+  let all_prop = if is_all { [make_marker_property(marker: "__import_all")] } else { [] }
   Node {
     name: module_path, span: span, children: specific_names, connective: NoConnective,
-   
+
     params: [], inferred: none, return_cardinality: Required,
-    uses: [], body: none, transport: none, properties: concat([import_prop], all_prop),
+    uses: [], body: none, transport: none, properties: concat([make_marker_property(marker: "__is_import")], all_prop),
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
 }
 
 fn is_module_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "__is_module")
+  has_marker_property(n: n, marker: "__is_module")
 }
 
 fn is_import_node(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "__is_import")
+  has_marker_property(n: n, marker: "__is_import")
 }
 
 fn import_is_all(n: Node) -> Bool {
-  n.properties |> any(p => p.name == "__import_all")
+  has_marker_property(n: n, marker: "__import_all")
 }
 
 fn import_specific_names(n: Node) -> List<String> {
