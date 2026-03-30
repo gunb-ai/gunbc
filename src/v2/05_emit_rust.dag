@@ -659,27 +659,26 @@ fn emit_non_empty_wrappers() -> String {
 
 fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let kind = classify_typed_item(item: item)
-  let item_text = source_text_at(source: scope.source_text, span: item.span)
   if (kind == TypedItemTypeDef) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, rc_types: rc_types)
   } else if (kind == TypedItemTypeAlias) {
-    concat(rust_visibility_prefix(), "type ", item_text, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
+    concat(rust_visibility_prefix(), "type ", item.name, " = ", emit_node_type_rc(n: rt_type(n: item), target: Rust, rc_types: rc_types), ";")
   } else if (kind == TypedItemTypeDecl) {
     ""
   } else if (kind == TypedItemFunction) {
     if item.uses |> count > 0 {
-      emit_func_def(name: item_text, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_func_def(name: item.name, params: item.params, inferred: rt_type(n: item), uses: item.uses, body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     } else {
-      emit_fn_def(name: item_text, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+      emit_fn_def(name: item.name, params: item.params, inferred: rt_type(n: item), body: item.body.value, registry: registry, scope: scope, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     }
   } else if (kind == TypedItemDataDef) {
-    emit_data_def(name: item_text, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
+    emit_data_def(name: item.name, type_node: item.type_annotation.value, value: item.body.value, registry: registry, scope: scope, depth: 0, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   } else if (kind == TypedItemServiceDef) {
     emit_service_def(item: item, registry: registry)
   } else if (kind == TypedItemResourceDef) {
     emit_resource_def(item: item)
   } else {
-    concat("compile_error!(\"unhandled item: ", item_text, "\");")
+    concat("compile_error!(\"unhandled item: ", item.name, "\");")
   }
 }
 
