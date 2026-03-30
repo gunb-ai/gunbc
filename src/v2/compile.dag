@@ -395,12 +395,6 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
 fn serialize_expr_data(expr_node: Node) -> String {
   let ch = expr_node.children
   let name = expr_node.name
-  let field = field_access_field(texpr: expr_node)
-  let func = expr_call_func(texpr: expr_node)
-  let params = lambda_param_names(texpr: expr_node)
-  let type_name = record_lit_type_name(texpr: expr_node)
-  let variable = foreach_variable(texpr: expr_node)
-  let method = expr_method_name(texpr: expr_node)
   match expr_node.expr_data {
     NoExprData => "{\"kind\": \"NoExprData\"}"
     ExprLiteral { value: value } =>
@@ -427,6 +421,7 @@ fn serialize_expr_data(expr_node: Node) -> String {
         },
         "}")
     ExprFieldAccess { summary: summary } =>
+      let field = field_access_field(texpr: expr_node)
       concat(
         "{\"kind\": \"ExprFieldAccess\", \"field\": ", json_quote(s: field),
         ", \"summary\": ",
@@ -437,12 +432,14 @@ fn serialize_expr_data(expr_node: Node) -> String {
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprCall { call_semantics: call_semantics } =>
+      let func = expr_call_func(texpr: expr_node)
       concat(
         "{\"kind\": \"ExprCall\", \"func\": ", json_quote(s: func),
         ", \"call_semantics\": ", serialize_call_semantics(value: call_semantics),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprMethodCall { method_semantics: method_semantics } =>
+      let method = expr_method_name(texpr: expr_node)
       concat(
         "{\"kind\": \"ExprMethodCall\", \"method\": ", json_quote(s: method),
         ", \"method_semantics\": ", serialize_method_semantics(value: method_semantics),
@@ -459,6 +456,7 @@ fn serialize_expr_data(expr_node: Node) -> String {
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprLambda { semantics: semantics } =>
+      let params = lambda_param_names(texpr: expr_node)
       concat(
         "{\"kind\": \"ExprLambda\", \"params\": ", json_list(items: params |> map(p => json_quote(s: p))),
         ", \"semantics\": ", serialize_lambda_semantics(value: semantics),
@@ -470,12 +468,14 @@ fn serialize_expr_data(expr_node: Node) -> String {
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprRecordLit { parent_enum: parent_enum } =>
+      let type_name = record_lit_type_name(texpr: expr_node)
       concat(
         "{\"kind\": \"ExprRecordLit\", \"type_name\": ", json_optional_string(value: type_name),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
         "}")
     ExprForEach =>
+      let variable = foreach_variable(texpr: expr_node)
       concat(
         "{\"kind\": \"ExprForEach\", \"variable\": ", json_quote(s: variable),
         ", \"children\": ", json_list(items: ch |> map(c => serialize_node(node: c))),
