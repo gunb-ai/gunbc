@@ -364,7 +364,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn is_structural_descent(",
         "fn analyze_simplified_complexity(",
         "fn classify_simplified_complexity(",
+        "fn complexity_dominates(",
         "data large_complexity_report_limit: Int = 400",
+        "log_factor: Bool",
+        "is_unknown: Bool",
         "ExprReturn",
     ] {
         assert!(
@@ -380,7 +383,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn is_structural_descent(",
         "pub fn analyze_simplified_complexity(",
         "pub fn classify_simplified_complexity(",
+        "pub fn complexity_dominates(",
         "pub const LARGE_COMPLEXITY_REPORT_LIMIT: usize = 400;",
+        "pub log_factor: bool,",
+        "pub is_unknown: bool,",
         "ExprData::ExprReturn",
     ] {
         assert!(

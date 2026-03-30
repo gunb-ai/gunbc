@@ -360,12 +360,9 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
 }
 
 fn max_path_self_calls_block(stmts: List<Node>, func_name: String, continue_calls: Int) -> Int {
-  match stmts |> first {
-    Some { value: stmt } =>
-      let rest_calls = max_path_self_calls_block(stmts: stmts |> skip(1), func_name: func_name, continue_calls: continue_calls)
-      max_path_self_calls_with_cont(body: stmt, func_name: func_name, continue_calls: rest_calls)
-    None => continue_calls
-  }
+  stmts |> reverse |> fold(init: continue_calls, f: (acc, stmt) =>
+    max_path_self_calls_with_cont(body: stmt, func_name: func_name, continue_calls: acc)
+  )
 }
 
 // Classify the recursion pattern of a self-recursive function.
@@ -736,6 +733,8 @@ type ComplexityClassInfo {
   class: String
   has_sum: Bool
   sum_depth: Int
+  log_factor: Bool
+  is_unknown: Bool
 }
 
 // =========================================================================
@@ -827,15 +826,27 @@ fn strip_big_o(s: String) -> String {
   }
 }
 
+fn complexity_dominates(left: ComplexityClassInfo, right: ComplexityClassInfo) -> Bool {
+  if left.is_unknown && !right.is_unknown { true }
+  else if !left.is_unknown && right.is_unknown { false }
+  else if left.sum_depth > right.sum_depth { true }
+  else if left.sum_depth < right.sum_depth { false }
+  else if left.log_factor && !right.log_factor { true }
+  else if !left.log_factor && right.log_factor { false }
+  else { true }
+}
+
 fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
   match expr {
     CostConst { value: _ } =>
-      ComplexityClassInfo { class: "O(1)", has_sum: false, sum_depth: 0 }
+      ComplexityClassInfo { class: "O(1)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: false }
     CostUnknown { reason: _ } =>
-      ComplexityClassInfo { class: "O(?)", has_sum: false, sum_depth: 0 }
+      ComplexityClassInfo { class: "O(?)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: true }
     CostSum { binder: _, upper: u, body: bd } =>
       let inner = analyze_simplified_complexity(expr: bd)
-      let class = if inner.has_sum {
+      let class = if inner.is_unknown {
+        "O(?)"
+      } else if inner.has_sum {
         concat("O(", format_size(size: u), " * ", strip_big_o(s: inner.class), ")")
       } else {
         concat("O(", format_size(size: u), ")")
@@ -843,55 +854,61 @@ fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
       ComplexityClassInfo {
         class: class,
         has_sum: true,
-        sum_depth: 1 + inner.sum_depth
+        sum_depth: 1 + inner.sum_depth,
+        log_factor: inner.log_factor,
+        is_unknown: inner.is_unknown
       }
     CostAdd { left: l, right: r } =>
       let left_info = analyze_simplified_complexity(expr: l)
       let right_info = analyze_simplified_complexity(expr: r)
-      let dominant = if left_info.has_sum && right_info.has_sum {
-        if right_info.sum_depth > left_info.sum_depth { right_info.class } else { left_info.class }
-      } else if left_info.has_sum {
+      let dominant = if complexity_dominates(left: left_info, right: right_info) {
         left_info.class
-      } else if right_info.has_sum {
-        right_info.class
       } else {
-        "O(1)"
+        right_info.class
       }
       let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
       ComplexityClassInfo {
         class: dominant,
         has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth
+        sum_depth: sum_depth,
+        log_factor: left_info.log_factor || right_info.log_factor,
+        is_unknown: left_info.is_unknown || right_info.is_unknown
       }
     CostMul { left: l, right: r } =>
       let left_info = analyze_simplified_complexity(expr: l)
       let right_info = analyze_simplified_complexity(expr: r)
-      let combined = if left_info.class == "O(1)" { right_info.class }
+      let combined = if left_info.is_unknown || right_info.is_unknown { "O(?)" }
+        else if left_info.class == "O(1)" { right_info.class }
         else if right_info.class == "O(1)" { left_info.class }
         else { concat(left_info.class, " * ", right_info.class) }
       let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
       ComplexityClassInfo {
         class: combined,
         has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth
+        sum_depth: sum_depth,
+        log_factor: left_info.log_factor || right_info.log_factor,
+        is_unknown: left_info.is_unknown || right_info.is_unknown
       }
     CostMax { left: l, right: r } =>
       let left_info = analyze_simplified_complexity(expr: l)
       let right_info = analyze_simplified_complexity(expr: r)
-      let dominant = if left_info.has_sum { left_info.class }
-        else if right_info.has_sum { right_info.class }
-        else { left_info.class }
+      let dominant = if complexity_dominates(left: left_info, right: right_info) { left_info.class }
+        else { right_info.class }
       let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
       ComplexityClassInfo {
         class: dominant,
         has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth
+        sum_depth: sum_depth,
+        log_factor: left_info.log_factor || right_info.log_factor,
+        is_unknown: left_info.is_unknown || right_info.is_unknown
       }
     CostLog { base: _, argument: a } =>
       ComplexityClassInfo {
         class: concat("O(log ", format_size(size: a), ")"),
         has_sum: false,
-        sum_depth: 0
+        sum_depth: 0,
+        log_factor: true,
+        is_unknown: false
       }
   }
 }

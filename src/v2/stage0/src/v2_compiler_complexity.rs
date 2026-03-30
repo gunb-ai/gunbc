@@ -329,13 +329,9 @@ pub fn max_path_self_calls_with_cont(body: Rc<Node>, func_name: String, continue
 }
 
 pub fn max_path_self_calls_block(stmts: Vec<Rc<Node>>, func_name: String, continue_calls: i64) -> i64 {
-    match stmts.first().cloned() {
-        Some(stmt) => {
-            let rest_calls = max_path_self_calls_block(stmts.into_iter().skip(1).collect(), func_name.clone(), continue_calls);
-            max_path_self_calls_with_cont(stmt.clone(), func_name.clone(), rest_calls)
-        }
-        None => continue_calls,
-    }
+    stmts.into_iter().rev().fold(continue_calls, |acc, stmt| {
+        max_path_self_calls_with_cont(stmt, func_name.clone(), acc)
+    })
 }
 
 pub fn is_structural_descent(body: Rc<Node>, func_name: String) -> bool {
@@ -705,6 +701,26 @@ pub struct ComplexityClassInfo {
     pub class: String,
     pub has_sum: bool,
     pub sum_depth: i64,
+    pub log_factor: bool,
+    pub is_unknown: bool,
+}
+
+pub fn complexity_dominates(left: ComplexityClassInfo, right: ComplexityClassInfo) -> bool {
+    if left.is_unknown && !right.is_unknown {
+        true
+    } else if !left.is_unknown && right.is_unknown {
+        false
+    } else if left.sum_depth > right.sum_depth {
+        true
+    } else if left.sum_depth < right.sum_depth {
+        false
+    } else if left.log_factor && !right.log_factor {
+        true
+    } else if !left.log_factor && right.log_factor {
+        false
+    } else {
+        true
+    }
 }
 
 pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
@@ -818,15 +834,21 @@ pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo 
                 class: "O(1)".to_string(),
                 has_sum: false,
                 sum_depth: 0,
+                log_factor: false,
+                is_unknown: false,
             },
             CostExpr::CostUnknown { .. } => ComplexityClassInfo {
                 class: "O(?)".to_string(),
                 has_sum: false,
                 sum_depth: 0,
+                log_factor: false,
+                is_unknown: true,
             },
             CostExpr::CostSum { upper: u, body: bd, .. } => {
                 let inner = analyze_simplified_complexity(bd.clone());
-                let class = if inner.has_sum {
+                let class = if inner.is_unknown {
+                    "O(?)".to_string()
+                } else if inner.has_sum {
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
@@ -844,34 +866,32 @@ pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo 
                     class,
                     has_sum: true,
                     sum_depth: (1 + inner.sum_depth),
+                    log_factor: inner.log_factor,
+                    is_unknown: inner.is_unknown,
                 }
             }
             CostExpr::CostAdd { left: l, right: r, .. } => {
                 let left_info = analyze_simplified_complexity(l.clone());
                 let right_info = analyze_simplified_complexity(r.clone());
-                let dominant = if left_info.has_sum && right_info.has_sum {
-                    if right_info.sum_depth > left_info.sum_depth {
-                        right_info.class.clone()
-                    } else {
-                        left_info.class.clone()
-                    }
-                } else if left_info.has_sum {
+                let dominant = if complexity_dominates(left_info.clone(), right_info.clone()) {
                     left_info.class.clone()
-                } else if right_info.has_sum {
-                    right_info.class.clone()
                 } else {
-                    "O(1)".to_string()
+                    right_info.class.clone()
                 };
                 ComplexityClassInfo {
                     class: dominant,
                     has_sum: (left_info.has_sum || right_info.has_sum),
                     sum_depth: std::cmp::max(left_info.sum_depth, right_info.sum_depth),
+                    log_factor: (left_info.log_factor || right_info.log_factor),
+                    is_unknown: (left_info.is_unknown || right_info.is_unknown),
                 }
             }
             CostExpr::CostMul { left: l, right: r, .. } => {
                 let left_info = analyze_simplified_complexity(l.clone());
                 let right_info = analyze_simplified_complexity(r.clone());
-                let combined = if left_info.class == "O(1)" {
+                let combined = if left_info.is_unknown || right_info.is_unknown {
+                    "O(?)".to_string()
+                } else if left_info.class == "O(1)" {
                     right_info.class.clone()
                 } else if right_info.class == "O(1)" {
                     left_info.class.clone()
@@ -885,28 +905,32 @@ pub fn analyze_simplified_complexity(expr: Rc<CostExpr>) -> ComplexityClassInfo 
                     class: combined,
                     has_sum: (left_info.has_sum || right_info.has_sum),
                     sum_depth: std::cmp::max(left_info.sum_depth, right_info.sum_depth),
+                    log_factor: (left_info.log_factor || right_info.log_factor),
+                    is_unknown: (left_info.is_unknown || right_info.is_unknown),
                 }
             }
             CostExpr::CostMax { left: l, right: r, .. } => {
                 let left_info = analyze_simplified_complexity(l.clone());
                 let right_info = analyze_simplified_complexity(r.clone());
-                let dominant = if left_info.has_sum {
+                let dominant = if complexity_dominates(left_info.clone(), right_info.clone()) {
                     left_info.class.clone()
-                } else if right_info.has_sum {
-                    right_info.class.clone()
                 } else {
-                    left_info.class.clone()
+                    right_info.class.clone()
                 };
                 ComplexityClassInfo {
                     class: dominant,
                     has_sum: (left_info.has_sum || right_info.has_sum),
                     sum_depth: std::cmp::max(left_info.sum_depth, right_info.sum_depth),
+                    log_factor: (left_info.log_factor || right_info.log_factor),
+                    is_unknown: (left_info.is_unknown || right_info.is_unknown),
                 }
             }
             CostExpr::CostLog { argument: a, .. } => ComplexityClassInfo {
                 class: format!("O(log({}))", format_size(a.clone())),
                 has_sum: false,
                 sum_depth: 0,
+                log_factor: true,
+                is_unknown: false,
             },
         }
     })

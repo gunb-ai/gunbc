@@ -762,7 +762,7 @@ fn process_items(items: List<Int>) -> Int {
 //   O(2^n)   — decidability prevents unbounded branching
 //   O(n!)    — not constructible from bounded iteration
 
-use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty};
+use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty, CostExpr, SizeExpr};
 
 /// Helper: get the complexity class string for a function in a compile result.
 fn complexity_class_of(result: &v2_compiler::v2_compiler_compile::PipelineResult, func: &str) -> Option<String> {
@@ -885,6 +885,38 @@ fn sort_ascending(items: List<Int>) -> List<Int> {
     let cert = certainty_of(&result, "sort_ascending");
     assert_eq!(cert, Some(Certainty::Proven),
         "sort_by should produce Proven certainty (CostLog expresses n log n), got {:?}", cert);
+}
+
+#[test]
+fn complexity_class_add_keeps_log_terms() {
+    let expr = Rc::new(CostExpr::CostAdd {
+        left: Rc::new(CostExpr::CostLog {
+            base: 2,
+            argument: Rc::new(SizeExpr::SizeVar { name: "n".to_string() }),
+        }),
+        right: Rc::new(CostExpr::CostConst { value: 1 }),
+    });
+    let class = classify_complexity(expr);
+    assert!(
+        class.contains("log"),
+        "CostAdd should preserve log-dominant terms, got {class}"
+    );
+}
+
+#[test]
+fn complexity_class_max_keeps_log_terms() {
+    let expr = Rc::new(CostExpr::CostMax {
+        left: Rc::new(CostExpr::CostConst { value: 1 }),
+        right: Rc::new(CostExpr::CostLog {
+            base: 2,
+            argument: Rc::new(SizeExpr::SizeVar { name: "n".to_string() }),
+        }),
+    });
+    let class = classify_complexity(expr);
+    assert!(
+        class.contains("log"),
+        "CostMax should preserve log-dominant terms, got {class}"
+    );
 }
 
 /// Chained operations: map then fold — should be O(n), not O(n²).
@@ -1412,7 +1444,7 @@ fn strict_complexity_violation_count() {
 
     // Ratchet history:
     // 2026-03-25: 2 violations out of 1169 function summaries.
-    // 2026-03-30: 0 violations out of 1274 function summaries after
+    // 2026-03-30: 0 violations out of 1275 function summaries after
     // continuation-aware path counting and large-report elision.
     const COMPLEXITY_RATCHET: usize = 0;
     assert!(
