@@ -491,6 +491,35 @@ fn node_is_bridge_placeholder_name(n: Node) -> Bool {
   n.children == [] && n.params == [] && is_bridge_placeholder_type_name(name: n.name)
 }
 
+fn node_contains_bridge_placeholder_type_required(n: Node) -> Bool {
+  if node_is_bridge_placeholder_name(n) {
+    true
+  } else if n.params |> count > 0 {
+    let param_has_placeholder = n.params |> any(p => node_contains_bridge_placeholder_type(param_node_type_expr(n: p)))
+    if param_has_placeholder {
+      true
+    } else {
+      node_contains_bridge_placeholder_type(callable_inferred(n: n))
+    }
+  } else if n.children |> count > 0 {
+    n.children |> any(child => node_contains_bridge_placeholder_type(child))
+  } else {
+    false
+  }
+}
+
+fn node_contains_bridge_placeholder_type_optional(n: Node) -> Bool {
+  let required = with_required_cardinality(n)
+  node_contains_bridge_placeholder_type_required(required)
+}
+
+fn node_contains_bridge_placeholder_type(n: Node) -> Bool {
+  match n.return_cardinality {
+    CardOptional => node_contains_bridge_placeholder_type_optional(n)
+    Required => node_contains_bridge_placeholder_type_required(n)
+  }
+}
+
 fn node_type_compatible(left: Node, right: Node) -> Bool {
   // CompilerError and TypeVariable nodes are compatible with anything — prevents
   // cascade comparisons on failed inference or unresolved type variables.

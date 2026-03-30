@@ -147,9 +147,9 @@ pub use crate::v2_compiler_infer_types::{
     bare_map_node, callable_inferred, callable_node, child_inferred_or_name, container_node,
     emit_map_has, error_type_node, extract_optional_inner_node,
     for_each_element_type_node, infer_binop_type_node, infer_literal_node, is_bool_type_node,
-    is_bridge_placeholder_type_name,
+    is_bridge_placeholder_type_name, node_contains_bridge_placeholder_type,
     is_float_type_node, is_int_type_node, is_string_type_node, map_node,
-    method_receiver_element_node, node_is_bridge_placeholder_name, node_is_container, node_is_leaf, node_is_map, node_is_named_ref,
+    method_receiver_element_node, node_is_container, node_is_leaf, node_is_map, node_is_named_ref,
     node_is_optional, node_type_compatible, node_type_compatible_with_formal_placeholders, node_type_deps, node_type_equals, node_type_shape,
     normalize_access_type_node, prefer_specific_type, rt_type, tuple_node,
 };
@@ -1416,8 +1416,8 @@ pub fn infer_lambda_with_callable_type(
             let span = lambda_expr.span.clone();
             let callable_params = callable_type.params.clone();
             let callable_return = callable_inferred(callable_type.clone());
-            let callable_return_is_placeholder =
-                node_is_bridge_placeholder_name(callable_return.clone());
+            let callable_return_has_placeholder =
+                node_contains_bridge_placeholder_type(callable_return.clone());
             let param_types = {
                 let mut __result = Vec::new();
                 for pair in lam_params
@@ -1474,7 +1474,7 @@ pub fn infer_lambda_with_callable_type(
             let body_result = infer_expr(
                 lam_body.clone(),
                 typed_scope.clone(),
-                if callable_return_is_placeholder.clone() {
+                if callable_return_has_placeholder.clone() {
                     None
                 } else {
                     Some(callable_return.clone())
@@ -1493,9 +1493,10 @@ pub fn infer_lambda_with_callable_type(
                 )]
             };
             let body_type = rt_type(body_typed.clone());
-            let return_diags = if (callable_return_is_placeholder.clone()
-                || node_type_compatible(body_type.clone(), callable_return.clone()))
-            {
+            let return_diags = if node_type_compatible_with_formal_placeholders(
+                body_type.clone(),
+                callable_return.clone(),
+            ) {
                 vec![]
             } else {
                 vec![inference_error(
@@ -3862,7 +3863,7 @@ pub fn build_type_env(
             __result
         };
         let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs.clone());
-        let import_bindings = parent_envs.clone().iter().cloned().fold(
+        let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(
             <HashMap<String, Rc<TypeBinding>>>::new(),
             |acc: _, env: Rc<TypeEnv>| {
                 env.bindings
@@ -3882,6 +3883,44 @@ pub fn build_type_env(
                     })
             },
         );
+        let import_bindings = module
+            .resolved_imports
+            .clone()
+            .iter()
+            .cloned()
+            .fold(std_import_bindings.clone(), |acc: _, imp: Rc<ResolvedImport>| {
+                match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    Some(typed_parent) => {
+                        if (imp.module_path.clone() == "std.types".to_string()) {
+                            typed_parent
+                                .type_env
+                                .bindings
+                                .keys()
+                                .cloned()
+                                .fold(acc.clone(), |bacc: _, name: String| {
+                                    if is_bridge_placeholder_type_name(name.clone()) {
+                                        bacc.clone()
+                                    } else {
+                                        match v2_rt::map_get(
+                                            &typed_parent.type_env.bindings,
+                                            name.clone(),
+                                        ) {
+                                            Some(binding) => v2_rt::map_insert(
+                                                bacc.clone(),
+                                                name.clone(),
+                                                binding.clone(),
+                                            ),
+                                            None => bacc.clone(),
+                                        }
+                                    }
+                                })
+                        } else {
+                            v2_rt::map_merge(acc.clone(), (*typed_parent.type_env.bindings).clone())
+                        }
+                    }
+                    None => acc.clone(),
+                }
+            });
         let import_recursive = parent_envs
             .clone()
             .iter()
@@ -4306,7 +4345,7 @@ pub fn build_type_env_unresolved(
             __result
         };
         let parent_envs = v2_rt::concat(std_types_parent_env.clone(), imported_parent_envs.clone());
-        let import_bindings = parent_envs.clone().iter().cloned().fold(
+        let std_import_bindings = std_types_parent_env.clone().iter().cloned().fold(
             <HashMap<String, Rc<TypeBinding>>>::new(),
             |acc: _, env: Rc<TypeEnv>| {
                 env.bindings
@@ -4326,6 +4365,44 @@ pub fn build_type_env_unresolved(
                     })
             },
         );
+        let import_bindings = module
+            .resolved_imports
+            .clone()
+            .iter()
+            .cloned()
+            .fold(std_import_bindings.clone(), |acc: _, imp: Rc<ResolvedImport>| {
+                match v2_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    Some(typed_parent) => {
+                        if (imp.module_path.clone() == "std.types".to_string()) {
+                            typed_parent
+                                .type_env
+                                .bindings
+                                .keys()
+                                .cloned()
+                                .fold(acc.clone(), |bacc: _, name: String| {
+                                    if is_bridge_placeholder_type_name(name.clone()) {
+                                        bacc.clone()
+                                    } else {
+                                        match v2_rt::map_get(
+                                            &typed_parent.type_env.bindings,
+                                            name.clone(),
+                                        ) {
+                                            Some(binding) => v2_rt::map_insert(
+                                                bacc.clone(),
+                                                name.clone(),
+                                                binding.clone(),
+                                            ),
+                                            None => bacc.clone(),
+                                        }
+                                    }
+                                })
+                        } else {
+                            v2_rt::map_merge(acc.clone(), (*typed_parent.type_env.bindings).clone())
+                        }
+                    }
+                    None => acc.clone(),
+                }
+            });
         let import_recursive = parent_envs
             .clone()
             .iter()

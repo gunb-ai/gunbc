@@ -2563,6 +2563,18 @@ fn labels(xs: List<Int>) -> List<String> {
 }
 
 #[test]
+fn flat_map_inline_lambda_propagates_result_type() {
+    let source = r#"module flat_map_inline_lambda
+
+fn labels(xs: List<Int>) -> List<String> {
+  flat_map(xs, x => [x |> to_string])
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn sort_by_named_callable_accepts_key_extractor_result_type() {
     let source = r#"module sort_by_named_callable
 
@@ -2698,6 +2710,33 @@ fn leak(x: MappedElement, acc: FoldAccumulator) -> MappedElement {
         "bridge placeholder types should not be available in user signatures, got {:?}",
         msgs
     );
+}
+
+#[test]
+fn imported_user_type_named_like_bridge_placeholder_remains_visible() {
+    let result = compile_multi(&[
+        (
+            "provider.dag",
+            r#"module provider
+
+type MappedElement {
+  label: String
+}
+"#,
+        ),
+        (
+            "consumer.dag",
+            r#"module consumer
+
+import provider { MappedElement }
+
+fn label_of(value: MappedElement) -> String {
+  value.label
+}
+"#,
+        ),
+    ]);
+    assert_no_diagnostics(&result);
 }
 
 // ── Parse-emit round-trip smoke test ────────────────────────────────────

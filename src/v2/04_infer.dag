@@ -73,7 +73,7 @@ import v2.compiler.infer_types {
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
-  is_bridge_placeholder_type_name, node_is_bridge_placeholder_name,
+  is_bridge_placeholder_type_name, node_contains_bridge_placeholder_type,
   node_type_shape, node_type_compatible, node_type_compatible_with_formal_placeholders, node_type_equals, prefer_specific_type,
   node_type_deps,
   method_receiver_element_node,
@@ -870,7 +870,7 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
       let callable_return = callable_inferred(n: callable_type)
       // Bridge-era placeholders like MappedElement are instantiated later by
       // refine_collection_result_type; do not reject valid callbacks early.
-      let callable_return_is_placeholder = node_is_bridge_placeholder_name(n: callable_return)
+      let callable_return_has_placeholder = node_contains_bridge_placeholder_type(n: callable_return)
       let param_types = lam_params |> enumerate |> map(pair =>
         match callable_params |> skip(pair.first) |> first {
           Some { value: cp } => param_node_type_expr(n: cp)
@@ -884,7 +884,7 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
         }
         extend_scope(scope: acc, name: pair.second, resolved: pt)
       )
-      let body_result = infer_expr(texpr: lam_body, scope: typed_scope, expected: if callable_return_is_placeholder { none } else { Some { value: callable_return } })
+      let body_result = infer_expr(texpr: lam_body, scope: typed_scope, expected: if callable_return_has_placeholder { none } else { Some { value: callable_return } })
       let body_typed = body_result.typed
       let arity_diags = if lam_params |> count == callable_params |> count {
         []
@@ -896,7 +896,7 @@ fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_n
         )]
       }
       let body_type = rt_type(n: body_typed)
-      let return_diags = if callable_return_is_placeholder || node_type_compatible(left: body_type, right: callable_return) {
+      let return_diags = if node_type_compatible_with_formal_placeholders(actual: body_type, formal: callable_return) {
         []
       } else {
         [inference_error(
@@ -2214,7 +2214,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
   // Bridge placeholder slots remain available inside std.types declarations,
   // but importing modules must not see them as ambient user-facing types.
-  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) =>
+  let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
     fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
       if is_bridge_placeholder_type_name(name: name) {
         bacc
@@ -2225,6 +2225,26 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
         }
       }
     )
+  )
+  let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
+    match map_get(parent_index, imp.module_path) {
+      Some { value: typed_parent } =>
+        if imp.module_path == "std.types" {
+          fold(typed_parent.type_env.bindings |> map_keys, init: acc, f: (bacc, name) =>
+            if is_bridge_placeholder_type_name(name: name) {
+              bacc
+            } else {
+              match map_get(typed_parent.type_env.bindings, name) {
+                Some { value: binding } => map_insert(bacc, name, binding)
+                None => bacc
+              }
+            }
+          )
+        } else {
+          map_merge(acc, typed_parent.type_env.bindings)
+        }
+      None => acc
+    }
   )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
@@ -2350,8 +2370,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   }
   let imported_parent_envs = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: typed_parent } => [typed_parent.type_env] None => [] })
   let parent_envs = concat(std_types_parent_env, imported_parent_envs)
-  // Mirror the same placeholder filtering in the unresolved environment path.
-  let import_bindings = fold(parent_envs, init: empty_map(), f: (acc, env) =>
+  // Mirror the same std.types-only placeholder filtering in the unresolved path.
+  let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
     fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
       if is_bridge_placeholder_type_name(name: name) {
         bacc
@@ -2362,6 +2382,26 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
         }
       }
     )
+  )
+  let import_bindings = fold(module.resolved_imports, init: std_import_bindings, f: (acc, imp) =>
+    match map_get(parent_index, imp.module_path) {
+      Some { value: typed_parent } =>
+        if imp.module_path == "std.types" {
+          fold(typed_parent.type_env.bindings |> map_keys, init: acc, f: (bacc, name) =>
+            if is_bridge_placeholder_type_name(name: name) {
+              bacc
+            } else {
+              match map_get(typed_parent.type_env.bindings, name) {
+                Some { value: binding } => map_insert(bacc, name, binding)
+                None => bacc
+              }
+            }
+          )
+        } else {
+          map_merge(acc, typed_parent.type_env.bindings)
+        }
+      None => acc
+    }
   )
   let import_recursive = fold(parent_envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let import_recursive_set = fold(parent_envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))

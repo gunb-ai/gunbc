@@ -1171,6 +1171,34 @@ pub fn node_is_bridge_placeholder_name(n: Rc<Node>) -> bool {
         && is_bridge_placeholder_type_name(n.name.clone())
 }
 
+pub fn node_contains_bridge_placeholder_type(n: Rc<Node>) -> bool {
+    if node_is_bridge_placeholder_name(n.clone()) {
+        true
+    } else if ((n.params.clone().len() as i64) > 0) {
+        let param_has_placeholder = n
+            .params
+            .clone()
+            .iter()
+            .cloned()
+            .any(|p| node_contains_bridge_placeholder_type(param_node_type_expr(p.clone())));
+        if param_has_placeholder {
+            true
+        } else {
+            node_contains_bridge_placeholder_type(callable_inferred(n.clone()))
+        }
+    } else if ((n.children.clone().len() as i64) > 0) {
+        n.children
+            .clone()
+            .iter()
+            .cloned()
+            .any(|child| node_contains_bridge_placeholder_type(child.clone()))
+    } else if node_is_optional(n.clone()) {
+        node_contains_bridge_placeholder_type(with_required_cardinality(n.clone()))
+    } else {
+        false
+    }
+}
+
 pub fn node_is_collection(n: Rc<Node>) -> bool {
     ((n.children.clone().len() as i64) > 0) && (n.connective.clone() == None)
 }
