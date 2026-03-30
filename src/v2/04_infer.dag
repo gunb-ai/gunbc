@@ -40,7 +40,7 @@ import v2.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
   InternalError,
-  resource_use_name,
+  resource_use_name, resource_use_resource,
   kernel_type_set, is_kernel_type,
   expr_has_self_call, expr_has_non_tail_self_call,
   DeclaredFuncSig, DeclaredFuncEnv,
@@ -1884,6 +1884,10 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   // Function with body: infer body, resolve return type
   else if item.body != none && item.params |> count > 0 {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
+    // Add uses bindings (e.g., uses net: Network) to scope
+    let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
+      extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
+    )
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope)
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
