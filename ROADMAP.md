@@ -208,9 +208,11 @@ resolve uses structural identity.
 - [x] Narrow `TypeEnv` → `source_index: NewlineIndex?` in emit
   helpers (reviewer: TypeEnv is too wide for rendering)
 - [x] Migrate `param_node_name` → `authored_name_at` in emit
-  (28 sites across 4 emit files; `authored_name_at` in `00_core.dag`
-  takes `source_index: NewlineIndex?` directly; `authored_name`
-  delegates; `WorkflowFunc`/`TestProjection` carry `source_index`)
+  (same-module render sites done; cross-module boundary sites
+  `order_typed_call_args` and `fill_default_args` remain on
+  `param_node_name` — caller `source_index` can't recover callee
+  param names across module boundaries; needs precomputed names
+  at resolve time)
 
 *Resolve structural identity:*
 - [ ] Replace 5 pre-existing `authored_name` semantic lookups in

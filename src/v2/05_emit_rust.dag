@@ -2021,6 +2021,10 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
 }
 
 fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<Node> {
+  // op_params come from ServiceMethodSemantics (04_lookup.dag) — currently
+  // always same-module (services are defined in the func's module). If
+  // cross-module services are added, this has the same boundary shape as
+  // fill_default_args and needs the same param_node_name fallback.
   let si = scope.type_env.source_index
   let provided_names = ordered |> map(a => match arg_name(n: a) { Some { value: n } => n  None => "" })
   let missing_with_defaults = op_params |> filter(p =>
