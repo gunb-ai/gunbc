@@ -86,20 +86,33 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
 }
 
 // Derive variant_to_enum from type_summaries: iterate all enum summaries,
-// invert the variant_names lists. First-write-wins for ambiguous variants.
+// invert the variant_names lists. First-write-wins: if a variant name
+// appears in multiple enums, the first registration stands. The module-level
+// vtoe correction (emit_module_full) checks parent_ok and searches for the
+// correct parent via structural lookup when the registered parent is wrong.
+// No sentinel values — ambiguity is handled by the correction pass, not by
+// smuggling error state through the map.
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
   map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
     match summary.repr {
       EnumRepr { unit_only: _ } =>
         fold(summary.variant_names, init: acc, f: (inner, vn) =>
           match map_get(inner, vn) {
-            Some { value: existing } =>
-              if existing == summary.name { inner }
-              else { map_insert(inner, vn, "__ambiguous__") }
+            Some { value: _ } => inner
             None => map_insert(inner, vn, summary.name)
           }
         )
       _ => acc
+    }
+  )
+}
+
+// Structural check: is this name a variant of any enum in type_summaries?
+fn is_known_variant(type_summaries: Map<String, TypeSummary>, name: String) -> Bool {
+  map_values(type_summaries) |> any(summary =>
+    match summary.repr {
+      EnumRepr { unit_only: _ } => summary.variant_names |> any(vn => vn == name)
+      _ => false
     }
   )
 }
@@ -229,7 +242,9 @@ fn build_field_type_map(children: List<Node>) -> Map<String, String> {
       Some { value: Resolved { node: ft } } =>
         let resolved_name = normalize_access_type_node(n: ft).name
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
-        if resolved_name != "" && !ft_is_type_var {
+        // Fail-closed: exclude empty names, type variables, and placeholder types.
+        // Dynamic is a compatibility placeholder that must not enter the authority surface.
+        if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
           map_insert(acc, child.name, resolved_name)
         } else { acc }
       _ => acc

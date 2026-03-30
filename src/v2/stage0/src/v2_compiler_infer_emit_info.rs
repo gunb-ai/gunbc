@@ -202,8 +202,9 @@ pub fn build_field_type_map(children: Vec<Rc<Node>>) -> HashMap<String, String> 
     children.iter().cloned().fold(<HashMap<_, _>>::new(), |acc: HashMap<String, String>, child: Rc<Node>| match child.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: ft, .. }) => {
             let resolved_name = normalize_access_type_node(ft.clone()).name.clone();
-            // stage0: TypeVariable variant does not exist; ft_is_type_var is always false
-            if (resolved_name.clone() != "".to_string()) {
+            // stage0: TypeVariable variant does not exist; ft_is_type_var is always false.
+            // Fail-closed: exclude Dynamic placeholder from authority surface.
+            if ((resolved_name.clone() != "".to_string()) && (resolved_name.clone() != "Dynamic".to_string())) {
                 v2_rt::map_insert(acc.clone(), child.name.clone(), resolved_name.clone())
             } else {
                 acc.clone()
@@ -269,12 +270,22 @@ Rc::new(EmitInfoBuildState {
 }
 }
 
+pub fn variant_belongs_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>, variant_name: String, enum_name: String) -> bool {
+    match v2_rt::map_get(&type_summaries, enum_name.clone()) {
+        Some(summary) => match (*summary.repr.clone()).clone() {
+            TypeRepr::EnumRepr { .. } => { let mut __found = false; for vn in summary.variant_names.iter().cloned() { if (vn.clone() == variant_name.clone()) { __found = true; break; } } __found },
+            _ => false,
+        },
+        None => false,
+    }
+}
+
 pub fn derive_variant_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, String> {
     v2_rt::map_values(&type_summaries).iter().cloned().fold(<HashMap<String, String>>::new(), |acc: HashMap<String, String>, summary: Rc<TypeSummary>| {
         match (*summary.repr.clone()).clone() {
             TypeRepr::EnumRepr { .. } => summary.variant_names.iter().cloned().fold(acc.clone(), |inner: HashMap<String, String>, vn: String| {
                 match v2_rt::map_get(&inner, vn.clone()) {
-                    Some(existing) => if existing.clone() == summary.name.clone() { inner.clone() } else { v2_rt::map_insert(inner.clone(), vn.clone(), "__ambiguous__".to_string()) },
+                    Some(_) => inner.clone(),
                     None => v2_rt::map_insert(inner.clone(), vn.clone(), summary.name.clone()),
                 }
             }),

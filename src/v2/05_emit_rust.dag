@@ -86,7 +86,8 @@ import v2.compiler.infer {
 }
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
-  lookup_emit_type_summary, derive_variant_to_enum
+  lookup_emit_type_summary, derive_variant_to_enum,
+  variant_belongs_to_enum
 }
 
 import v2.compiler.emit {
@@ -1472,7 +1473,7 @@ fn variant_parent_from_binding_kind(binding_kind: VarBindingKind?) -> String? {
 fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, emit_info: EmitGraphInfo) -> String? {
   match resolved_type {
     Some { value: Resolved { node: rt } } =>
-      if rt.name != "" && rt.name != name && variant_belongs_to_enum(variant_name: name, enum_name: rt.name, emit_info: emit_info) {
+      if rt.name != "" && rt.name != name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: name, enum_name: rt.name) {
         Some { value: rt.name }
       } else {
         variant_parent_from_binding_kind(binding_kind: binding_kind)
@@ -1854,26 +1855,14 @@ fn is_enum_type_name(type_name: String, vtoe: Map<String, String>) -> Bool {
   map_values(vtoe) |> any(v => v == type_name)
 }
 
-fn variant_belongs_to_enum(variant_name: String, enum_name: String, emit_info: EmitGraphInfo) -> Bool {
-  match lookup_emit_type_summary(emit_info: emit_info, type_name: enum_name) {
-    Some { value: summary } =>
-      match summary.repr {
-        EnumRepr { unit_only: _ } =>
-          summary.variant_names |> any(n => n == variant_name)
-        _ => false
-      }
-    None => false
-  }
-}
-
 fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolved_type: Node, emit_info: EmitGraphInfo) -> String? {
   match parent_enum {
     Some { value: explicit_parent } =>
-      if variant_belongs_to_enum(variant_name: variant_name, enum_name: explicit_parent, emit_info: emit_info) {
+      if variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: explicit_parent) {
         Some { value: explicit_parent }
       } else { none }
     None =>
-      if resolved_type.name != "" && resolved_type.name != variant_name && variant_belongs_to_enum(variant_name: variant_name, enum_name: resolved_type.name, emit_info: emit_info) {
+      if resolved_type.name != "" && resolved_type.name != variant_name && variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: resolved_type.name) {
         Some { value: resolved_type.name }
       } else { none }
   }
@@ -2805,7 +2794,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
           }
           let corrected_parent = match expected_type {
             Some { value: et } =>
-              if variant_belongs_to_enum(variant_name: variant_name, enum_name: et, emit_info: emit_info) {
+              if variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: et) {
                 Some { value: et }
               } else { pe }
             None => pe
