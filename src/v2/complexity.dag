@@ -98,31 +98,34 @@ type CostShape
   | ShapeIterateBody { produces_collection: Bool }
   | ShapeSortBody
 
-// Map a method name to its cost shape. This is the single authority
-// on what cost structure each algebra method has. The complexity analyzer
-// dispatches on this via the reconcile-provided MethodSemantics method_name.
-// Returns None for methods not in the known set (bridge methods are O(1)).
+// Data table: method name -> cost shape. Single authority on what cost
+// structure each algebra method has. Adding a method's cost = one line here.
+// Methods not in this table are assumed O(1) (bridge methods).
+data method_cost_shape_table: Map<String, CostShape> = {
+  "map": ShapeIterateBody { produces_collection: true },
+  "flat_map": ShapeIterateBody { produces_collection: true },
+  "filter": ShapeIterateBody { produces_collection: true },
+  "enumerate": ShapeIterateBody { produces_collection: true },
+  "skip": ShapeIterateBody { produces_collection: true },
+  "take": ShapeIterateBody { produces_collection: true },
+  "fold": ShapeIterateBody { produces_collection: false },
+  "any": ShapeIterateBody { produces_collection: false },
+  "all": ShapeIterateBody { produces_collection: false },
+  "sort_by": ShapeSortBody,
+  "count": ShapeLinearScan { produces_collection: false },
+  "first": ShapeLinearScan { produces_collection: false },
+  "last": ShapeLinearScan { produces_collection: false },
+  "join": ShapeLinearScan { produces_collection: false },
+  "string_contains": ShapeLinearScan { produces_collection: false },
+  "concat": ShapeLinearScan { produces_collection: false },
+  "chars": ShapeLinearScan { produces_collection: true },
+  "split": ShapeLinearScan { produces_collection: true },
+  "append": ShapeConstant
+}
+
+// Look up a method's cost shape from the data table.
 fn method_cost_shape(method_name: String) -> CostShape? {
-  if method_name == "map" { Some { value: ShapeIterateBody { produces_collection: true } } }
-  else if method_name == "flat_map" { Some { value: ShapeIterateBody { produces_collection: true } } }
-  else if method_name == "filter" { Some { value: ShapeIterateBody { produces_collection: true } } }
-  else if method_name == "enumerate" { Some { value: ShapeIterateBody { produces_collection: true } } }
-  else if method_name == "skip" { Some { value: ShapeIterateBody { produces_collection: true } } }
-  else if method_name == "take" { Some { value: ShapeIterateBody { produces_collection: true } } }
-  else if method_name == "fold" { Some { value: ShapeIterateBody { produces_collection: false } } }
-  else if method_name == "any" { Some { value: ShapeIterateBody { produces_collection: false } } }
-  else if method_name == "all" { Some { value: ShapeIterateBody { produces_collection: false } } }
-  else if method_name == "sort_by" { Some { value: ShapeSortBody } }
-  else if method_name == "count" { Some { value: ShapeLinearScan { produces_collection: false } } }
-  else if method_name == "first" { Some { value: ShapeLinearScan { produces_collection: false } } }
-  else if method_name == "last" { Some { value: ShapeLinearScan { produces_collection: false } } }
-  else if method_name == "join" { Some { value: ShapeLinearScan { produces_collection: false } } }
-  else if method_name == "string_contains" { Some { value: ShapeLinearScan { produces_collection: false } } }
-  else if method_name == "concat" { Some { value: ShapeLinearScan { produces_collection: false } } }
-  else if method_name == "chars" { Some { value: ShapeLinearScan { produces_collection: true } } }
-  else if method_name == "split" { Some { value: ShapeLinearScan { produces_collection: true } } }
-  else if method_name == "append" { Some { value: ShapeConstant } }
-  else { none }
+  lookup(method_cost_shape_table, key: method_name)
 }
 
 // =========================================================================
