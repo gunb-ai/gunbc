@@ -775,24 +775,14 @@ type ComplexityReport {
   function_summaries: Map<String, ComplexitySummary>
   violations: List<ComplexityViolation>
   intern_table: CostInternTable
-  formatted: String
 }
 
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_summaries: empty_map(),
     violations: [],
-    intern_table: empty_intern_table(),
-    formatted: ""
+    intern_table: empty_intern_table()
   }
-}
-
-type ComplexityClassInfo {
-  class: String
-  has_sum: Bool
-  sum_depth: Int
-  log_factor: Bool
-  is_unknown: Bool
 }
 
 // =========================================================================
@@ -840,6 +830,11 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
       let sr = simplify_cost(expr: r)
       let simplified = match sl {
         CostConst { value: 0 } => sr
+        CostConst { value: a } => match sr {
+          CostConst { value: 0 } => sl
+          CostConst { value: b } => if a > b { sl } else { sr }
+          _ => CostMax { left: sl, right: sr }
+        }
         _ => match sr {
           CostConst { value: 0 } => sl
           _ => CostMax { left: sl, right: sr }
@@ -857,12 +852,13 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
 }
 
 // =========================================================================
-// Complexity classification and formatting
+// Asymptotic normalization and formatting
 //
-// Walks a simplified CostExpr and produces a human-readable O() string.
+// CostExpr is the single authority for complexity. Classification is
+// asymptotic normalization: collapse all positive constants to 1 and
+// re-simplify so identity elements absorb. The normalized CostExpr IS
+// the complexity class. Formatting reads CostExpr directly.
 // =========================================================================
-
-data large_complexity_report_limit: Int = 400
 
 fn format_size(size: SizeExpr) -> String {
   match size {
@@ -874,109 +870,77 @@ fn format_size(size: SizeExpr) -> String {
   }
 }
 
-// Strip "O(" prefix and ")" suffix from a classification string.
-// "O(|items|)" -> "|items|", "O(1)" -> "1"
-fn strip_big_o(s: String) -> String {
-  if string_length(s) > 3 && substring(s, 0, 2) == "O(" {
-    substring(s, 2, string_length(s) - 1)
-  } else {
-    s
+// Collapse all positive constants to 1 so re-simplification absorbs them.
+fn normalize_asymptotic(expr: CostExpr) -> CostExpr {
+  simplify_cost(expr: normalize_constants(expr: expr))
+}
+
+fn normalize_constants(expr: CostExpr) -> CostExpr {
+  match expr {
+    CostConst { value: v } =>
+      if v <= 0 { CostConst { value: 0 } } else { CostConst { value: 1 } }
+    CostUnknown { reason: _ } => expr
+    CostAdd { left: l, right: r } =>
+      CostAdd { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+    CostMul { left: l, right: r } =>
+      CostMul { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+    CostMax { left: l, right: r } =>
+      CostMax { left: normalize_constants(expr: l), right: normalize_constants(expr: r) }
+    CostSum { binder: b, upper: u, body: bd } =>
+      CostSum { binder: b, upper: u, body: normalize_constants(expr: bd) }
+    CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
   }
 }
 
-fn complexity_dominates(left: ComplexityClassInfo, right: ComplexityClassInfo) -> Bool {
-  if left.is_unknown && !right.is_unknown { true }
-  else if !left.is_unknown && right.is_unknown { false }
-  else if left.sum_depth > right.sum_depth { true }
-  else if left.sum_depth < right.sum_depth { false }
-  else if left.log_factor && !right.log_factor { true }
-  else if !left.log_factor && right.log_factor { false }
-  else { true }
-}
-
-fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
+// Format a normalized CostExpr as an O(...) string.
+fn format_cost_class(expr: CostExpr) -> String {
   match expr {
-    CostConst { value: _ } =>
-      ComplexityClassInfo { class: "O(1)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: false }
-    CostUnknown { reason: _ } =>
-      ComplexityClassInfo { class: "O(?)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: true }
+    CostConst { value: _ } => "O(1)"
+    CostUnknown { reason: _ } => "O(?)"
     CostSum { binder: _, upper: u, body: bd } =>
-      let inner = analyze_simplified_complexity(expr: bd)
-      let class = if inner.is_unknown {
-        "O(?)"
-      } else if inner.has_sum {
-        concat("O(", format_size(size: u), " * ", strip_big_o(s: inner.class), ")")
-      } else {
-        concat("O(", format_size(size: u), ")")
-      }
-      ComplexityClassInfo {
-        class: class,
-        has_sum: true,
-        sum_depth: 1 + inner.sum_depth,
-        log_factor: inner.log_factor,
-        is_unknown: inner.is_unknown
+      match bd {
+        CostConst { value: _ } => concat("O(", format_size(size: u), ")")
+        _ => concat("O(", format_size(size: u), " * ", format_cost_inner(expr: bd), ")")
       }
     CostAdd { left: l, right: r } =>
-      let left_info = analyze_simplified_complexity(expr: l)
-      let right_info = analyze_simplified_complexity(expr: r)
-      let dominant = if complexity_dominates(left: left_info, right: right_info) {
-        left_info.class
-      } else {
-        right_info.class
-      }
-      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
-      ComplexityClassInfo {
-        class: dominant,
-        has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth,
-        log_factor: left_info.log_factor || right_info.log_factor,
-        is_unknown: left_info.is_unknown || right_info.is_unknown
-      }
+      concat("O(", format_cost_inner(expr: l), " + ", format_cost_inner(expr: r), ")")
     CostMul { left: l, right: r } =>
-      let left_info = analyze_simplified_complexity(expr: l)
-      let right_info = analyze_simplified_complexity(expr: r)
-      let combined = if left_info.is_unknown || right_info.is_unknown { "O(?)" }
-        else if left_info.class == "O(1)" { right_info.class }
-        else if right_info.class == "O(1)" { left_info.class }
-        else { concat(left_info.class, " * ", right_info.class) }
-      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
-      ComplexityClassInfo {
-        class: combined,
-        has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth,
-        log_factor: left_info.log_factor || right_info.log_factor,
-        is_unknown: left_info.is_unknown || right_info.is_unknown
-      }
+      concat("O(", parenthesize_additive_cost(expr: l), " * ", parenthesize_additive_cost(expr: r), ")")
     CostMax { left: l, right: r } =>
-      let left_info = analyze_simplified_complexity(expr: l)
-      let right_info = analyze_simplified_complexity(expr: r)
-      let dominant = if complexity_dominates(left: left_info, right: right_info) { left_info.class }
-        else { right_info.class }
-      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
-      ComplexityClassInfo {
-        class: dominant,
-        has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth,
-        log_factor: left_info.log_factor || right_info.log_factor,
-        is_unknown: left_info.is_unknown || right_info.is_unknown
-      }
-    CostLog { base: _, argument: a } =>
-      ComplexityClassInfo {
-        class: concat("O(log ", format_size(size: a), ")"),
-        has_sum: false,
-        sum_depth: 0,
-        log_factor: true,
-        is_unknown: false
-      }
+      concat("O(max(", format_cost_inner(expr: l), ", ", format_cost_inner(expr: r), "))")
+    CostLog { base: _, argument: a } => concat("O(log ", format_size(size: a), ")")
   }
 }
 
-fn classify_simplified_complexity(expr: CostExpr) -> String {
-  analyze_simplified_complexity(expr: expr).class
+fn format_cost_inner(expr: CostExpr) -> String {
+  match expr {
+    CostConst { value: _ } => "1"
+    CostUnknown { reason: _ } => "?"
+    CostSum { binder: _, upper: u, body: bd } =>
+      match bd {
+        CostConst { value: _ } => format_size(size: u)
+        _ => concat(format_size(size: u), " * ", format_cost_inner(expr: bd))
+      }
+    CostAdd { left: l, right: r } =>
+      concat(format_cost_inner(expr: l), " + ", format_cost_inner(expr: r))
+    CostMul { left: l, right: r } =>
+      concat(parenthesize_additive_cost(expr: l), " * ", parenthesize_additive_cost(expr: r))
+    CostMax { left: l, right: r } =>
+      concat("max(", format_cost_inner(expr: l), ", ", format_cost_inner(expr: r), ")")
+    CostLog { base: _, argument: a } => concat("log ", format_size(size: a))
+  }
+}
+
+fn parenthesize_additive_cost(expr: CostExpr) -> String {
+  match expr {
+    CostAdd { left: _, right: _ } =>
+      concat("(", format_cost_inner(expr: expr), ")")
+    _ => format_cost_inner(expr: expr)
+  }
 }
 
 fn classify_complexity(expr: CostExpr) -> String {
-  classify_simplified_complexity(expr: simplify_cost(expr: expr))
+  format_cost_class(expr: normalize_asymptotic(expr: simplify_cost(expr: expr)))
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -1027,38 +991,6 @@ fn deduplicate(items: List<String>) -> List<String> {
   result.out
 }
 
-fn format_space_class(expr: CostExpr) -> String {
-  let space_class = classify_complexity(expr: expr)
-  if space_class == "O(1)" { "" }
-  else { concat(", space ", space_class) }
-}
-
-fn format_func_complexity(name: String, summary: ComplexitySummary) -> String {
-  let class = classify_simplified_complexity(expr: summary.work)
-  // Certainty marker: ~ means lower-bound only (e.g. sort is O(n log n) but
-  // the cost algebra lacks log), ? means the system could not derive a bound.
-  let marker = match summary.certainty {
-    Proven => ""
-    Conservative => "~"
-    Unknown => "?"
-  }
-  // Space: classify the "result" output size if present
-  let space_str = match map_get(summary.output_size, "result") {
-    Some { value: size_expr } => format_space_class(expr: size_expr)
-    _ => ""
-  }
-  concat(name, ": ", marker, class, space_str)
-}
-
-fn format_complexity_report(entries: List<FuncEntry>, summaries: Map<String, ComplexitySummary>) -> String {
-  let lines = entries |> flat_map(entry =>
-    match map_get(summaries, entry.name) {
-      Some { value: summary } => [format_func_complexity(name: entry.name, summary: summary)]
-      None => []
-    }
-  )
-  lines |> join(separator: "\n")
-}
 
 // =========================================================================
 // D2: Lazy cached summary computation
@@ -1571,15 +1503,9 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }
     }
   )
-  let formatted = if func_entries |> count > large_complexity_report_limit {
-    concat("complexity report elided for ", concat(to_string(func_entries |> count), " functions"))
-  } else {
-    format_complexity_report(entries: func_entries, summaries: summaries_map)
-  }
   ComplexityReport {
     function_summaries: summaries_map,
     violations: violations,
-    intern_table: result.table,
-    formatted: formatted
+    intern_table: result.table
   }
 }
