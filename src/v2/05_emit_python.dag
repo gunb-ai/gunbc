@@ -17,9 +17,9 @@ import v2.std.core {
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
-  MatchPattern, LiteralValue, field_binding_name, field_binding_pattern,
+  MatchPattern, LiteralValue, field_binding_pattern,
   TextFile, SourceSpan,
-  resource_use_name, resource_use_resource,
+  resource_use_resource,
   BinOpKind, NullCoalesce,
   UnaryOpKind, StringPart,
   DeclaredFuncSig,
@@ -492,8 +492,9 @@ fn emit_py_func_def(
   let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names, source_index: scope.type_env.source_index)
   let ret_str = emit_py_inferred(inferred: inferred)
   let body_scope = build_params_scope(scope: scope, params: params)
+  let si = scope.type_env.source_index
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
-    extend_scope(scope: s, name: resource_use_name(n: u), resolved: resource_use_resource(n: u))
+    extend_scope(scope: s, name: authored_name_at(source_index: si, node: u), resolved: resource_use_resource(n: u))
   )
   let body_str = emit_py_typed_func_body(body: body, registry: registry, scope: body_scope, depth: depth + 1)
   concat("async def ", emit_ident(name: name, target: Python), "(", params_str, ")", ret_str, ":\n",
@@ -503,7 +504,7 @@ fn emit_py_func_def(
 fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, source_index: NewlineIndex?) -> String {
   let param_strs = params |> map(p => emit_py_param(param: p, source_index: source_index))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: resource_use_name(n: u), target: Python), ": ", emit_node_type(n: resource_use_resource(n: u), target: Python))
+    concat(emit_ident(name: authored_name_at(source_index: source_index, node: u), target: Python), ": ", emit_node_type(n: resource_use_resource(n: u), target: Python))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": ", sanitize_service_name(name: sn))
@@ -529,23 +530,23 @@ fn emit_py_param(param: Node, source_index: NewlineIndex?) -> String {
 fn emit_py_inferred(inferred: Node) -> String {
   concat(" -> ", emit_node_type(n: inferred, target: Python))
 }
-fn emit_py_pattern(pattern: MatchPattern) -> String {
+fn emit_py_pattern(pattern: MatchPattern, source_index: NewlineIndex?) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Python)
     LitPattern { value: v } => emit_literal(value: v, target: Python)
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
-      emit_py_variant_pattern(name: n, field_bindings: fbs)
+      emit_py_variant_pattern(name: n, field_bindings: fbs, source_index: source_index)
     Wildcard => "_"
   }
 }
 
-fn emit_py_variant_pattern(name: String, field_bindings: List<Node>) -> String {
+fn emit_py_variant_pattern(name: String, field_bindings: List<Node>, source_index: NewlineIndex?) -> String {
   if field_bindings |> count == 0 {
     concat(name, "()")
   } else {
     let binding_strs = field_bindings |> map(fb =>
-      let pat_str = emit_py_pattern(pattern: field_binding_pattern(n: fb))
-      concat(emit_ident(name: field_binding_name(n: fb), target: Python), "=", pat_str)
+      let pat_str = emit_py_pattern(pattern: field_binding_pattern(n: fb), source_index: source_index)
+      concat(emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Python), "=", pat_str)
     )
     let bindings_str = binding_strs |> join(separator: ", ")
     concat(name, "(", bindings_str, ")")
@@ -867,7 +868,7 @@ fn emit_py_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, 
 }
 
 fn emit_py_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm))
+  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm), source_index: scope.type_env.source_index)
   let guard_str = match arm_guard(n: arm) {
     Some { value: g } => concat(" if ", emit_py_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth))
     None => ""
@@ -1123,7 +1124,7 @@ fn emit_py_typed_tco_expr(texpr: Node, fn_name: String, params: List<Node>, regi
 }
 
 fn emit_py_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm))
+  let pat_str = emit_py_pattern(pattern: arm_pattern(n: arm), source_index: scope.type_env.source_index)
   let guard_str = match arm_guard(n: arm) {
     Some { value: g } => concat(" if ", emit_py_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth))
     None => ""
