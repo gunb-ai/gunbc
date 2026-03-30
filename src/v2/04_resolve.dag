@@ -219,7 +219,7 @@ fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: 
     AliasParameterized =>
       resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
     AliasLeaf =>
-      match lookup_type(env: env, name: target.name) {
+      match lookup_type(env: env, name: authored_name(env: env, node: target)) {
         Some { value: env_target } => env_target
         None => target
       }

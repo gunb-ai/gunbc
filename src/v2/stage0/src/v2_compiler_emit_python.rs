@@ -63,7 +63,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Python};
 pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, test_conventions_for_target};
-pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding};
+pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{for_each_element_type_node, node_is_optional, node_is_map, rt_type};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, ItemKind};
@@ -336,41 +336,43 @@ v2_rt::concat(base_imports.clone(), async_imports.clone())
 
 pub fn emit_py_typed_item(item: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
     {
-        let kind = classify_typed_item(item.clone());
+        let env = scope.type_env.clone();
+let item_text = authored_name(env.clone(), item.clone());
+let kind = classify_typed_item(item.clone());
 if (kind.clone() == TypedItemKind::TypedItemTypeDef) {
-            emit_py_type_def_from_connective(item.clone())
+            emit_py_type_def_from_connective(item.clone(), env.clone())
 } else {
             if (kind.clone() == TypedItemKind::TypedItemTypeAlias) {
-                v2_rt::concat(v2_rt::concat(item.name.clone(), " = ".to_string()), emit_node_type(rt_type(item.clone()), RenderTarget::Python))
+                v2_rt::concat(v2_rt::concat(item_text.clone(), " = ".to_string()), emit_node_type(rt_type(item.clone()), RenderTarget::Python))
 } else {
                 if (kind.clone() == TypedItemKind::TypedItemTypeDecl) {
                     "".to_string()
 } else {
                     if (kind.clone() == TypedItemKind::TypedItemFunction) {
                         if ((item.uses.clone().len() as i64) > 0) {
-                            emit_py_func_def(item.name.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
+                            emit_py_func_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.uses.clone(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
 } else {
-                            emit_py_fn_def(item.name.clone(), item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
+                            emit_py_fn_def(item_text.clone(), item.params.clone(), rt_type(item.clone()), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
 }
 } else {
                         if (kind.clone() == TypedItemKind::TypedItemDataDef) {
-                            emit_py_data_def(item.name.clone(), item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
+                            emit_py_data_def(item_text.clone(), item.type_annotation.clone().clone().unwrap(), item.body.clone().clone().unwrap(), registry.clone(), scope.clone())
 } else {
                             if (kind.clone() == TypedItemKind::TypedItemServiceDef) {
-                                emit_py_service_def(item.clone(), registry.clone())
+                                emit_py_service_def(item.clone(), registry.clone(), env.clone())
 } else {
                                 if (kind.clone() == TypedItemKind::TypedItemResourceDef) {
-                                    emit_py_resource_def(item.clone())
+                                    emit_py_resource_def(item.clone(), env.clone())
 } else {
                                     if (kind.clone() == TypedItemKind::TypedItemExternFunc) {
                                         {
                                             let params_str = emit_py_params(item.params.clone());
 let ret_str = emit_py_inferred(rt_type(item.clone()));
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(item.name.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def ".to_string(), emit_ident(item_text.clone(), RenderTarget::Python)), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), ":
 ".to_string()), "    raise NotImplementedError(\"extern func\")".to_string())
 }
 } else {
-                                        v2_rt::concat("# unhandled node: ".to_string(), item.name.clone())
+                                        v2_rt::concat("# unhandled node: ".to_string(), item_text.clone())
 }
 }
 }
@@ -382,25 +384,26 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 }
 
-pub fn emit_py_type_def_from_connective(item: Rc<Node>) -> String {
+pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
-        let is_product = node_is_product(item.clone());
+        let item_text = authored_name(env.clone(), item.clone());
+let is_product = node_is_product(item.clone());
 if is_product.clone() {
-            emit_py_dataclass_from_children(item.name.clone(), item.children.clone())
+            emit_py_dataclass_from_children(item_text.clone(), item.children.clone(), env.clone())
 } else {
-            emit_py_enum_from_children(item.name.clone(), item.children.clone())
+            emit_py_enum_from_children(item_text.clone(), item.children.clone(), env.clone())
 }
 }
 }
 
-pub fn emit_py_dataclass_from_children(name: String, children: Vec<Rc<Node>>) -> String {
+pub fn emit_py_dataclass_from_children(name: String, children: Vec<Rc<Node>>, env: Rc<TypeEnv>) -> String {
     if ((children.clone().len() as i64) == 0) {
         v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "
 class ".to_string()), name.clone()), ":
     pass".to_string())
 } else {
         {
-            let field_lines = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_py_dataclass_field_from_child(child.clone())); } __result };
+            let field_lines = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_py_dataclass_field_from_child(child.clone(), env.clone())); } __result };
 let fields_str = field_lines.clone().join(&"
 ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "
@@ -410,7 +413,7 @@ class ".to_string()), name.clone()), ":
 }
 }
 
-pub fn emit_py_dataclass_field_from_child(child: Rc<Node>) -> String {
+pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let ty = emit_node_type(rt_type(child.clone()), RenderTarget::Python);
 let is_optional = node_is_optional(rt_type(child.clone()));
@@ -419,17 +422,17 @@ let default_str = if is_optional.clone() {
 } else {
             "".to_string()
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(child.name.clone(), RenderTarget::Python)), ": ".to_string()), ty.clone()), default_str.clone())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(authored_name(env.clone(), child.clone()), RenderTarget::Python)), ": ".to_string()), ty.clone()), default_str.clone())
 }
 }
 
-pub fn emit_py_enum_from_children(name: String, children: Vec<Rc<Node>>) -> String {
+pub fn emit_py_enum_from_children(name: String, children: Vec<Rc<Node>>, env: Rc<TypeEnv>) -> String {
     {
         let has_data = { let mut __found = false; for child in children.clone().iter().cloned() { if ((child.children.clone().len() as i64) > 0) { __found = true; break; } } __found };
 if has_data.clone() {
             {
-                let variant_classes = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_py_variant_class_from_child(name.clone(), child.clone())); } __result };
-let variant_names = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(v2_rt::concat(name.clone(), child.name.clone())); } __result };
+                let variant_classes = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(emit_py_variant_class_from_child(name.clone(), child.clone(), env.clone())); } __result };
+let variant_names = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(v2_rt::concat(name.clone(), authored_name(env.clone(), child.clone()))); } __result };
 let union_str = variant_names.clone().join(&", ".to_string());
 let classes_str = variant_classes.clone().join(&"
 
@@ -442,7 +445,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(classes_st
 }
 } else {
             {
-                let variant_lines = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("    ".to_string(), child.name.clone()), " = auto()".to_string())); } __result };
+                let variant_lines = { let mut __result = Vec::new(); for child in children.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat("    ".to_string(), authored_name(env.clone(), child.clone())), " = auto()".to_string())); } __result };
 let variants_str = variant_lines.clone().join(&"
 ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), name.clone()), "(Enum):
@@ -452,16 +455,16 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat("class ".to_string(), name.clone()), "
 }
 }
 
-pub fn emit_py_variant_class_from_child(parent_name: String, child: Rc<Node>) -> String {
+pub fn emit_py_variant_class_from_child(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
-        let class_name = v2_rt::concat(parent_name.clone(), child.name.clone());
+        let class_name = v2_rt::concat(parent_name.clone(), authored_name(env.clone(), child.clone()));
 if ((child.children.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "
 class ".to_string()), class_name.clone()), ":
     pass".to_string())
 } else {
             {
-                let field_lines = { let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { __result.push(emit_py_dataclass_field_from_child(f.clone())); } __result };
+                let field_lines = { let mut __result = Vec::new(); for f in child.children.clone().iter().cloned() { __result.push(emit_py_dataclass_field_from_child(f.clone(), env.clone())); } __result };
 let fields_str = field_lines.clone().join(&"
 ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(py_derive_attribute(), "
@@ -1265,14 +1268,14 @@ all_lines.clone().join(&"
 }
 }
 
-pub fn emit_py_service_def(item: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>) -> String {
+pub fn emit_py_service_def(item: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, env: Rc<TypeEnv>) -> String {
     {
         let depth = 0;
-let safe_name = sanitize_service_name(item.name.clone());
+let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
 let transport = service_fallback_transport(item.clone());
 let init_method = emit_py_service_init(transport.clone());
 let op_children = item.children.clone();
-let methods = { let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_py_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1))); } __result };
+let methods = { let mut __result = Vec::new(); for op_node in op_children.clone().iter().cloned() { __result.push(emit_py_operation_method(safe_name.clone(), transport.clone(), op_node.clone(), registry.clone(), (depth.clone() + 1), env.clone())); } __result };
 let methods_str = methods.clone().join(&"
 
 ".to_string());
@@ -1316,9 +1319,10 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("def __init__(self, base
 }
 }
 
-pub fn emit_py_operation_method(service_name: String, transport: Rc<Node>, op_node: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, depth: i64) -> String {
+pub fn emit_py_operation_method(service_name: String, transport: Rc<Node>, op_node: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, depth: i64, env: Rc<TypeEnv>) -> String {
     {
-        let input_params = { let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(p.name.clone(), RenderTarget::Python), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result };
+        let op_text = authored_name(env.clone(), op_node.clone());
+let input_params = { let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(p.name.clone(), RenderTarget::Python), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result };
 let params_str = input_params.clone().join(&", ".to_string());
 let all_params = if (params_str.clone() == "".to_string()) {
             "self".to_string()
@@ -1327,8 +1331,8 @@ let all_params = if (params_str.clone() == "".to_string()) {
 };
 let ret_type = emit_node_type(rt_type(op_node.clone()), RenderTarget::Python);
 let eff_transport = effective_operation_transport(op_node.clone(), transport.clone());
-let body = emit_py_transport_call(eff_transport.clone(), op_node.name.clone(), registry.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(op_node.name.clone(), RenderTarget::Python)), "(".to_string()), all_params.clone()), ") -> ".to_string()), ret_type.clone()), ":
+let body = emit_py_transport_call(eff_transport.clone(), op_text.clone(), registry.clone());
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("async def ".to_string(), emit_ident(op_text.clone(), RenderTarget::Python)), "(".to_string()), all_params.clone()), ") -> ".to_string()), ret_type.clone()), ":
 ".to_string()), make_indent((depth.clone() + 1))), body.clone())
 }
 }
@@ -1417,22 +1421,22 @@ pub fn emit_py_local_call(op_name: String) -> String {
 ".to_string(), "return ".to_string()), emit_ident(op_name.clone(), RenderTarget::Python)), "()".to_string())
 }
 
-pub fn emit_py_resource_def(item: Rc<Node>) -> String {
+pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let depth = 0;
 let cap_children = item.children.clone();
-let methods = { let mut __result = Vec::new(); for c in cap_children.clone().iter().cloned() { __result.push(emit_py_capability_method(c.clone())); } __result };
+let methods = { let mut __result = Vec::new(); for c in cap_children.clone().iter().cloned() { __result.push(emit_py_capability_method(c.clone(), env.clone())); } __result };
 let methods_str = methods.clone().join(&"
 
 ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("from abc import ABC, abstractmethod
 
-".to_string(), "class ".to_string()), item.name.clone()), "(ABC):
+".to_string(), "class ".to_string()), authored_name(env.clone(), item.clone())), "(ABC):
 ".to_string()), make_indent((depth.clone() + 1))), methods_str.clone())
 }
 }
 
-pub fn emit_py_capability_method(cap_node: Rc<Node>) -> String {
+pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let input_params = { let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(p.name.clone(), RenderTarget::Python), ": ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Python))); } __result };
 let params_str = input_params.clone().join(&", ".to_string());
@@ -1443,7 +1447,7 @@ let all_params = if (params_str.clone() == "".to_string()) {
 };
 let ret = emit_node_type(rt_type(cap_node.clone()), RenderTarget::Python);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("@abstractmethod
-".to_string(), "async def ".to_string()), emit_ident(cap_node.name.clone(), RenderTarget::Python)), "(".to_string()), all_params.clone()), ") -> ".to_string()), ret.clone()), ":
+".to_string(), "async def ".to_string()), emit_ident(authored_name(env.clone(), cap_node.clone()), RenderTarget::Python)), "(".to_string()), all_params.clone()), ") -> ".to_string()), ret.clone()), ":
 ".to_string()), "    ...".to_string())
 }
 }
