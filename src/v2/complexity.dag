@@ -787,8 +787,29 @@ fn empty_complexity_report() -> ComplexityReport {
   }
 }
 
+// =========================================================================
+// Structural complexity class
+//
+// Compositional representation of asymptotic complexity, derived from
+// CostExpr without string intermediaries. The O(...) string is produced
+// only at the formatting boundary (format_complexity_class).
+//
+// ClassConstant         — O(1)
+// ClassUnknown          — O(?) — system could not derive a bound
+// ClassSize { size }    — O(n), O(|items|), etc.
+// ClassProduct { l, r } — O(l * r) — multiplicative composition
+// ClassLog { size }     — O(log n)
+// =========================================================================
+
+type ComplexityClass
+  = ClassConstant
+  | ClassUnknown
+  | ClassSize { size: SizeExpr }
+  | ClassProduct { left: ComplexityClass, right: ComplexityClass }
+  | ClassLog { size: SizeExpr }
+
 type ComplexityClassInfo {
-  class: String
+  class: ComplexityClass
   has_sum: Bool
   sum_depth: Int
   log_factor: Bool
@@ -862,8 +883,6 @@ fn simplify_cost(expr: CostExpr) -> CostExpr {
 // Walks a simplified CostExpr and produces a human-readable O() string.
 // =========================================================================
 
-data large_complexity_report_limit: Int = 400
-
 fn format_size(size: SizeExpr) -> String {
   match size {
     SizeLen { collection: c } => concat("|", c, "|")
@@ -871,16 +890,6 @@ fn format_size(size: SizeExpr) -> String {
     SizeConst { value: v } => to_string(v)
     SizeAdd { left: l, right: r } => concat(format_size(size: l), " + ", format_size(size: r))
     SizeMax { left: l, right: r } => concat("max(", format_size(size: l), ", ", format_size(size: r), ")")
-  }
-}
-
-// Strip "O(" prefix and ")" suffix from a classification string.
-// "O(|items|)" -> "|items|", "O(1)" -> "1"
-fn strip_big_o(s: String) -> String {
-  if string_length(s) > 3 && substring(s, 0, 2) == "O(" {
-    substring(s, 2, string_length(s) - 1)
-  } else {
-    s
   }
 }
 
@@ -897,17 +906,17 @@ fn complexity_dominates(left: ComplexityClassInfo, right: ComplexityClassInfo) -
 fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
   match expr {
     CostConst { value: _ } =>
-      ComplexityClassInfo { class: "O(1)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: false }
+      ComplexityClassInfo { class: ClassConstant, has_sum: false, sum_depth: 0, log_factor: false, is_unknown: false }
     CostUnknown { reason: _ } =>
-      ComplexityClassInfo { class: "O(?)", has_sum: false, sum_depth: 0, log_factor: false, is_unknown: true }
+      ComplexityClassInfo { class: ClassUnknown, has_sum: false, sum_depth: 0, log_factor: false, is_unknown: true }
     CostSum { binder: _, upper: u, body: bd } =>
       let inner = analyze_simplified_complexity(expr: bd)
       let class = if inner.is_unknown {
-        "O(?)"
+        ClassUnknown
       } else if inner.has_sum {
-        concat("O(", format_size(size: u), " * ", strip_big_o(s: inner.class), ")")
+        ClassProduct { left: ClassSize { size: u }, right: inner.class }
       } else {
-        concat("O(", format_size(size: u), ")")
+        ClassSize { size: u }
       }
       ComplexityClassInfo {
         class: class,
@@ -935,10 +944,10 @@ fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
     CostMul { left: l, right: r } =>
       let left_info = analyze_simplified_complexity(expr: l)
       let right_info = analyze_simplified_complexity(expr: r)
-      let combined = if left_info.is_unknown || right_info.is_unknown { "O(?)" }
-        else if left_info.class == "O(1)" { right_info.class }
-        else if right_info.class == "O(1)" { left_info.class }
-        else { concat(left_info.class, " * ", right_info.class) }
+      let combined = if left_info.is_unknown || right_info.is_unknown { ClassUnknown }
+        else if is_class_constant(c: left_info.class) { right_info.class }
+        else if is_class_constant(c: right_info.class) { left_info.class }
+        else { ClassProduct { left: left_info.class, right: right_info.class } }
       let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
       ComplexityClassInfo {
         class: combined,
@@ -962,7 +971,7 @@ fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
       }
     CostLog { base: _, argument: a } =>
       ComplexityClassInfo {
-        class: concat("O(log ", format_size(size: a), ")"),
+        class: ClassLog { size: a },
         has_sum: false,
         sum_depth: 0,
         log_factor: true,
@@ -971,8 +980,41 @@ fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
   }
 }
 
+fn is_class_constant(c: ComplexityClass) -> Bool {
+  match c {
+    ClassConstant => true
+    _ => false
+  }
+}
+
+// Format a structural ComplexityClass as an O(...) string.
+// This is the sole formatting boundary — all dominance/composition
+// decisions happen structurally above; only rendering produces strings.
+fn format_complexity_class(c: ComplexityClass) -> String {
+  match c {
+    ClassConstant => "O(1)"
+    ClassUnknown => "O(?)"
+    ClassSize { size: s } => concat("O(", format_size(size: s), ")")
+    ClassProduct { left: l, right: r } =>
+      concat("O(", format_complexity_class_inner(c: l), " * ", format_complexity_class_inner(c: r), ")")
+    ClassLog { size: s } => concat("O(log ", format_size(size: s), ")")
+  }
+}
+
+// Inner formatter: strips the O() wrapper for use inside product compositions.
+fn format_complexity_class_inner(c: ComplexityClass) -> String {
+  match c {
+    ClassConstant => "1"
+    ClassUnknown => "?"
+    ClassSize { size: s } => format_size(size: s)
+    ClassProduct { left: l, right: r } =>
+      concat(format_complexity_class_inner(c: l), " * ", format_complexity_class_inner(c: r))
+    ClassLog { size: s } => concat("log ", format_size(size: s))
+  }
+}
+
 fn classify_simplified_complexity(expr: CostExpr) -> String {
-  analyze_simplified_complexity(expr: expr).class
+  format_complexity_class(c: analyze_simplified_complexity(expr: expr).class)
 }
 
 fn classify_complexity(expr: CostExpr) -> String {
@@ -1526,7 +1568,11 @@ fn is_unknown_cost(expr: CostExpr) -> Bool {
   }
 }
 
-fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
+// report_limit: maximum number of functions before eliding the formatted
+// report to a one-line summary. Keeps large self-compiles from producing
+// multi-megabyte report strings. Callers pass the limit as policy; the
+// analysis module has no opinion on report size.
+fn build_complexity_report(func_entries: List<FuncEntry>, report_limit: Int) -> ComplexityReport {
   // Build function index for callee lookups
   let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
     map_insert(acc, entry.name, entry)
@@ -1571,7 +1617,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }
     }
   )
-  let formatted = if func_entries |> count > large_complexity_report_limit {
+  let formatted = if func_entries |> count > report_limit {
     concat("complexity report elided for ", concat(to_string(func_entries |> count), " functions"))
   } else {
     format_complexity_report(entries: func_entries, summaries: summaries_map)
