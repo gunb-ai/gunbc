@@ -26,7 +26,7 @@ import v2.std.core {
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
   param_node_type_expr,
   authored_name_at, NewlineIndex,
-  MatchPattern, LiteralValue, field_binding_name, field_binding_pattern,
+  MatchPattern, LiteralValue, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_resource,
   BinOpKind, NullCoalesce,
