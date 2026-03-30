@@ -792,11 +792,13 @@ fn empty_complexity_report() -> ComplexityReport {
 // CostExpr without string intermediaries. The O(...) string is produced
 // only at the formatting boundary (format_complexity_class).
 //
-// ClassConstant         — O(1)
-// ClassUnknown          — O(?) — system could not derive a bound
-// ClassSize { size }    — O(n), O(|items|), etc.
-// ClassProduct { l, r } — O(l * r) — multiplicative composition
-// ClassLog { size }     — O(log n)
+// ClassConstant          — O(1)
+// ClassUnknown           — O(?) — system could not derive a bound
+// ClassSize { size }     — O(n), O(|items|), etc.
+// ClassProduct { l, r }  — O(l * r) — multiplicative composition
+// ClassAdd { l, r }      — O(l + r) — additive composition
+// ClassMax { l, r }      — O(max(l, r)) — conditional/parallel bound
+// ClassLog { size }      — O(log n)
 // =========================================================================
 
 type ComplexityClass
@@ -804,15 +806,9 @@ type ComplexityClass
   | ClassUnknown
   | ClassSize { size: SizeExpr }
   | ClassProduct { left: ComplexityClass, right: ComplexityClass }
+  | ClassAdd { left: ComplexityClass, right: ComplexityClass }
+  | ClassMax { left: ComplexityClass, right: ComplexityClass }
   | ClassLog { size: SizeExpr }
-
-type ComplexityClassInfo {
-  class: ComplexityClass
-  has_sum: Bool
-  sum_depth: Int
-  log_factor: Bool
-  is_unknown: Bool
-}
 
 // =========================================================================
 // Cost simplification
@@ -891,90 +887,37 @@ fn format_size(size: SizeExpr) -> String {
   }
 }
 
-fn complexity_dominates(left: ComplexityClassInfo, right: ComplexityClassInfo) -> Bool {
-  if left.is_unknown && !right.is_unknown { true }
-  else if !left.is_unknown && right.is_unknown { false }
-  else if left.sum_depth > right.sum_depth { true }
-  else if left.sum_depth < right.sum_depth { false }
-  else if left.log_factor && !right.log_factor { true }
-  else if !left.log_factor && right.log_factor { false }
-  else { true }
-}
-
-fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClassInfo {
+// Classify a simplified CostExpr into a structural ComplexityClass.
+// Every CostExpr variant maps to a ComplexityClass variant; no information
+// is discarded. Additive (CostAdd) and conditional (CostMax) structure is
+// preserved in ClassAdd/ClassMax so the formatted output is tight.
+fn analyze_simplified_complexity(expr: CostExpr) -> ComplexityClass {
   match expr {
-    CostConst { value: _ } =>
-      ComplexityClassInfo { class: ClassConstant, has_sum: false, sum_depth: 0, log_factor: false, is_unknown: false }
-    CostUnknown { reason: _ } =>
-      ComplexityClassInfo { class: ClassUnknown, has_sum: false, sum_depth: 0, log_factor: false, is_unknown: true }
+    CostConst { value: _ } => ClassConstant
+    CostUnknown { reason: _ } => ClassUnknown
     CostSum { binder: _, upper: u, body: bd } =>
       let inner = analyze_simplified_complexity(expr: bd)
-      let class = if inner.is_unknown {
-        ClassUnknown
-      } else if inner.has_sum {
-        ClassProduct { left: ClassSize { size: u }, right: inner.class }
-      } else {
-        ClassSize { size: u }
-      }
-      ComplexityClassInfo {
-        class: class,
-        has_sum: true,
-        sum_depth: 1 + inner.sum_depth,
-        log_factor: inner.log_factor,
-        is_unknown: inner.is_unknown
-      }
+      if is_class_unknown(c: inner) { ClassUnknown }
+      else if is_class_constant(c: inner) { ClassSize { size: u } }
+      else { ClassProduct { left: ClassSize { size: u }, right: inner } }
     CostAdd { left: l, right: r } =>
-      let left_info = analyze_simplified_complexity(expr: l)
-      let right_info = analyze_simplified_complexity(expr: r)
-      let dominant = if complexity_dominates(left: left_info, right: right_info) {
-        left_info.class
-      } else {
-        right_info.class
-      }
-      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
-      ComplexityClassInfo {
-        class: dominant,
-        has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth,
-        log_factor: left_info.log_factor || right_info.log_factor,
-        is_unknown: left_info.is_unknown || right_info.is_unknown
-      }
+      simplify_class_add(
+        left: analyze_simplified_complexity(expr: l),
+        right: analyze_simplified_complexity(expr: r)
+      )
     CostMul { left: l, right: r } =>
-      let left_info = analyze_simplified_complexity(expr: l)
-      let right_info = analyze_simplified_complexity(expr: r)
-      let combined = if left_info.is_unknown || right_info.is_unknown { ClassUnknown }
-        else if is_class_constant(c: left_info.class) { right_info.class }
-        else if is_class_constant(c: right_info.class) { left_info.class }
-        else { ClassProduct { left: left_info.class, right: right_info.class } }
-      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
-      ComplexityClassInfo {
-        class: combined,
-        has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth,
-        log_factor: left_info.log_factor || right_info.log_factor,
-        is_unknown: left_info.is_unknown || right_info.is_unknown
-      }
+      let lc = analyze_simplified_complexity(expr: l)
+      let rc = analyze_simplified_complexity(expr: r)
+      if is_class_unknown(c: lc) || is_class_unknown(c: rc) { ClassUnknown }
+      else if is_class_constant(c: lc) { rc }
+      else if is_class_constant(c: rc) { lc }
+      else { ClassProduct { left: lc, right: rc } }
     CostMax { left: l, right: r } =>
-      let left_info = analyze_simplified_complexity(expr: l)
-      let right_info = analyze_simplified_complexity(expr: r)
-      let dominant = if complexity_dominates(left: left_info, right: right_info) { left_info.class }
-        else { right_info.class }
-      let sum_depth = if right_info.sum_depth > left_info.sum_depth { right_info.sum_depth } else { left_info.sum_depth }
-      ComplexityClassInfo {
-        class: dominant,
-        has_sum: left_info.has_sum || right_info.has_sum,
-        sum_depth: sum_depth,
-        log_factor: left_info.log_factor || right_info.log_factor,
-        is_unknown: left_info.is_unknown || right_info.is_unknown
-      }
-    CostLog { base: _, argument: a } =>
-      ComplexityClassInfo {
-        class: ClassLog { size: a },
-        has_sum: false,
-        sum_depth: 0,
-        log_factor: true,
-        is_unknown: false
-      }
+      simplify_class_max(
+        left: analyze_simplified_complexity(expr: l),
+        right: analyze_simplified_complexity(expr: r)
+      )
+    CostLog { base: _, argument: a } => ClassLog { size: a }
   }
 }
 
@@ -985,8 +928,31 @@ fn is_class_constant(c: ComplexityClass) -> Bool {
   }
 }
 
+fn is_class_unknown(c: ComplexityClass) -> Bool {
+  match c {
+    ClassUnknown => true
+    _ => false
+  }
+}
+
+// Simplify ClassAdd: absorb O(1) identity, propagate unknown.
+fn simplify_class_add(left: ComplexityClass, right: ComplexityClass) -> ComplexityClass {
+  if is_class_unknown(c: left) || is_class_unknown(c: right) { ClassUnknown }
+  else if is_class_constant(c: left) { right }
+  else if is_class_constant(c: right) { left }
+  else { ClassAdd { left: left, right: right } }
+}
+
+// Simplify ClassMax: absorb O(1) identity, propagate unknown.
+fn simplify_class_max(left: ComplexityClass, right: ComplexityClass) -> ComplexityClass {
+  if is_class_unknown(c: left) || is_class_unknown(c: right) { ClassUnknown }
+  else if is_class_constant(c: left) { right }
+  else if is_class_constant(c: right) { left }
+  else { ClassMax { left: left, right: right } }
+}
+
 // Format a structural ComplexityClass as an O(...) string.
-// This is the sole formatting boundary — all dominance/composition
+// This is the sole formatting boundary — all composition
 // decisions happen structurally above; only rendering produces strings.
 fn format_complexity_class(c: ComplexityClass) -> String {
   match c {
@@ -995,11 +961,15 @@ fn format_complexity_class(c: ComplexityClass) -> String {
     ClassSize { size: s } => concat("O(", format_size(size: s), ")")
     ClassProduct { left: l, right: r } =>
       concat("O(", format_complexity_class_inner(c: l), " * ", format_complexity_class_inner(c: r), ")")
+    ClassAdd { left: l, right: r } =>
+      concat("O(", format_complexity_class_inner(c: l), " + ", format_complexity_class_inner(c: r), ")")
+    ClassMax { left: l, right: r } =>
+      concat("O(max(", format_complexity_class_inner(c: l), ", ", format_complexity_class_inner(c: r), "))")
     ClassLog { size: s } => concat("O(log ", format_size(size: s), ")")
   }
 }
 
-// Inner formatter: strips the O() wrapper for use inside product compositions.
+// Inner formatter: strips the O() wrapper for use inside compositions.
 fn format_complexity_class_inner(c: ComplexityClass) -> String {
   match c {
     ClassConstant => "1"
@@ -1007,12 +977,16 @@ fn format_complexity_class_inner(c: ComplexityClass) -> String {
     ClassSize { size: s } => format_size(size: s)
     ClassProduct { left: l, right: r } =>
       concat(format_complexity_class_inner(c: l), " * ", format_complexity_class_inner(c: r))
+    ClassAdd { left: l, right: r } =>
+      concat(format_complexity_class_inner(c: l), " + ", format_complexity_class_inner(c: r))
+    ClassMax { left: l, right: r } =>
+      concat("max(", format_complexity_class_inner(c: l), ", ", format_complexity_class_inner(c: r), ")")
     ClassLog { size: s } => concat("log ", format_size(size: s))
   }
 }
 
 fn classify_simplified_complexity(expr: CostExpr) -> String {
-  format_complexity_class(c: analyze_simplified_complexity(expr: expr).class)
+  format_complexity_class(c: analyze_simplified_complexity(expr: expr))
 }
 
 fn classify_complexity(expr: CostExpr) -> String {
