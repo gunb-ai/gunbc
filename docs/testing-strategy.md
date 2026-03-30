@@ -58,6 +58,38 @@ data. Tests plumbing: serialization, field access, pattern matching.
 | Collection | Empty + one-element with child witness |
 | Leaf (Int, String, Bool) | Zero / empty / false |
 
+### Cardinality coverage falls out of structure
+
+Cardinality = edge exists or doesn't. This is the substrate binary.
+The compiler enumerates all cardinality combinations for any type
+structurally — no hand-writing.
+
+**At the type level:** A type with N optional fields has 2^N
+cardinality combinations. The compiler generates witnesses for all
+of them. For `AccessToken { token: Secret, scheme: AuthScheme,
+expires_at: Timestamp? }` — that's 2 witnesses (expires_at present,
+expires_at absent). For a type with 3 optional fields → 8 witnesses.
+
+**At the function level:** A function taking `T?` is tested with
+BOTH `Some(witness(T))` AND `None`. A function returning `T?` has
+its output checked: did it produce `Some` when expected? `None`
+when expected? Both paths covered.
+
+**At the service level:** An optional response field means the mock
+contract must cover both present and absent. The compiler checks:
+does the `mock_response` include a case where this field is null/
+absent? If not → `under_specified` → compile error.
+
+**Cross-field cardinality:** If field A being present implies field B
+is absent (mutual exclusion), that's a structural constraint. The
+witness generator enumerates only VALID combinations — not all 2^N,
+just the ones that satisfy the declared constraints.
+
+This means cardinality testing is never a separate concern. It
+falls out of the structural witness generation at every level:
+types, functions, services, and cross-field constraints. The
+compiler sees the edges and enumerates the possibilities.
+
 ### Level 2 — Compositional samples (type-authored, domain-specific)
 
 Types carry sample values as part of their definition. These propagate
