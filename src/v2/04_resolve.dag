@@ -139,18 +139,13 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   let has_structure = n.connective != NoConnective
   if has_structure { false }
   else {
-    match lookup_type(env: env, name: n.name) {
+    let n_text = source_text_at(source: env.source_text, span: n.span)
+    match lookup_type(env: env, name: n_text) {
       Some { value: decl } =>
         if decl.params |> count > 0 {
-          // Parameterized alias (e.g., List<T> = FreeMonoid<T>): treat as
-          // generic use site so the alias chain is followed and the structural
-          // Conj definition (with method children) is produced via substitution.
           if decl.inferred != none { true }
-          // Bare parameterized stub (no alias): only treat as generic use site
-          // if NOT a known container (containers have their own resolution path).
-          // Uses container_types data list — resolve is name-aware per ROADMAP.
           else {
-            if is_container_type(name: n.name) { false }
+            if is_container_type(name: n_text) { false }
             else { true }
           }
         } else { false }
@@ -218,7 +213,7 @@ fn resolve_alias_target(target: Node, env: TypeEnv, module_name: String, depth: 
     AliasParameterized =>
       resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1).resolved
     AliasLeaf =>
-      match lookup_type(env: env, name: target.name) {
+      match lookup_type(env: env, name: source_text_at(source: env.source_text, span: target.span)) {
         Some { value: env_target } => env_target
         None => target
       }
@@ -330,7 +325,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     // Generic type use site (e.g., Pair<Int, String>, Box<Int>, MyList<Int>).
     // Look up declaration, validate arity, substitute slot references with concrete arguments.
-    let decl = match lookup_type(env: env, name: n.name) { Some { value: d } => d  None => n }
+    let decl = match lookup_type(env: env, name: source_text_at(source: env.source_text, span: n.span)) { Some { value: d } => d  None => n }
     let expected_arity = decl.params |> count
     let actual_arity = n.children |> count
     let arity_diags = if expected_arity != actual_arity {
@@ -362,14 +357,14 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         Untyped => n
       }
       let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
-      let is_recursive = is_recursive_type(env: env, name: n.name)
+      let is_recursive = is_recursive_type(env: env, name: source_text_at(source: env.source_text, span: n.span))
       let resolved_node = Node { name: n.name, span: n.span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
       NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
     } else {
       let substituted_children = decl.children |> map(child =>
         substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: n.name)
       )
-      let is_recursive = is_recursive_type(env: env, name: n.name)
+      let is_recursive = is_recursive_type(env: env, name: source_text_at(source: env.source_text, span: n.span))
       let result = NodeResolveResult {
         resolved: Node { name: n.name, span: n.span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
         diagnostics: concat(arity_diags, arg_diags)
@@ -413,10 +408,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     }
   } else if n.children |> count == 0 {
     // Leaf node: lookup in env, recurse if found
-    if is_recursive_type(env: env, name: n.name) {
+    if is_recursive_type(env: env, name: source_text_at(source: env.source_text, span: n.span)) {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
-      match lookup_type(env: env, name: n.name) {
+      match lookup_type(env: env, name: source_text_at(source: env.source_text, span: n.span)) {
         Some { value: resolved } =>
           // Topological resolution ensures bindings are fully resolved before
           // any dependent type is processed. Re-resolving the looked-up node
