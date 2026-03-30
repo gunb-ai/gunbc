@@ -16,12 +16,12 @@ import v2.std.core {
   ExprFieldAccess, ExprMethodCall, ExprCall, ExprVar,
   Cardinality, Required,
   InferredNode, Resolved,
-  leaf_node, no_span,
+  no_span,
   unit_type,
   expr_var_name, expr_call_func, field_access_field, field_access_base
 }
 import v2.compiler.infer_types {
-  emit_map_has
+  emit_map_has, nominal_type_ref
 }
 import v2.compiler.infer_items {
   ItemInfo, ItemKind, FuncItem, TypedModule,
@@ -210,7 +210,7 @@ fn check_service_field_access_node(base_type: Node, field: String, service_regis
   if base_type.connective == NoConnective && base_type.children |> count == 0 {
     let path = concat(base_type.name, ".", field)
     match map_get(service_registry, path) {
-      Some { value: _ } => Some { value: leaf_node(name: path) }
+      Some { value: _ } => Some { value: nominal_type_ref(name: path) }
       None => none
     }
   } else { none }

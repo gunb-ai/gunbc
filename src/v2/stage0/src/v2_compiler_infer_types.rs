@@ -730,7 +730,7 @@ pub fn enrich_kernel_type(name: String, base: Rc<Node>) -> Rc<Node> {
     let profile = KERNEL_ALGEBRA_PROFILE.get(&name);
     match profile {
         Some(p) => {
-            let self_type = leaf_node(name.clone());
+            let self_type = base.clone();
             let fields = match p {
                 AlgebraProfile::OrderedRingProfile => ordered_ring_fields(self_type.clone()),
                 AlgebraProfile::ApproximateFieldProfile => {
@@ -1407,30 +1407,25 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
 pub fn method_receiver_element_node(receiver_type: Rc<Node>) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
-        if ((node_has_structure(normed.clone()) == false)
+        let maybe_element = if node_is_map(normed.clone()) {
+            normed
+                .children
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>()
+                .first()
+                .cloned()
+        } else if ((node_has_structure(normed.clone()) == false)
             && ((normed.children.clone().len() as i64) == 1))
         {
-            match normed.children.clone().first().cloned() {
-                Some(el) => el.clone(),
-                None => receiver_type.clone(),
-            }
+            normed.children.clone().first().cloned()
         } else {
-            if node_is_map(normed.clone()) {
-                match normed
-                    .children
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>()
-                    .first()
-                    .cloned()
-                {
-                    Some(val_type) => val_type.clone(),
-                    None => receiver_type.clone(),
-                }
-            } else {
-                receiver_type.clone()
-            }
+            None
+        };
+        match maybe_element {
+            Some(el) => el.clone(),
+            None => receiver_type.clone(),
         }
     }
 }

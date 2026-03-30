@@ -10,11 +10,10 @@ module v2.compiler.infer_access
 import std.types { SourceSpan }
 import v2.std.core {
   Node,
-  InferredNode, Resolved, CompilerError, TypeVariable,
+  InferredNode, Resolved, CompilerError,
   ErrorNode, make_error_node, diagnostic_to_message,
   InternalError,
-  leaf_node, with_optional_cardinality,
-  Connective, NoConnective,
+  with_optional_cardinality,
 
   unit_type, string_type, int_type
 }
@@ -30,6 +29,11 @@ import v2.compiler.infer_types {
 type AccessCheckResultNode {
   inferred: InferredNode?
   diagnostics: List<ErrorNode>
+}
+
+type KeyedCollectionParts {
+  key_type: Node
+  value_type: Node
 }
 
 // =========================================================================
@@ -58,49 +62,58 @@ fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan,
   }
 }
 
+fn keyed_collection_parts(n: Node) -> KeyedCollectionParts? {
+  if node_is_keyed_collection(n: n) && n.children |> count >= 2 {
+    match n.children |> first {
+      Some { value: key_node } =>
+        match n.children |> skip(1) |> first {
+          Some { value: value_node } => Some { value: KeyedCollectionParts { key_type: key_node, value_type: value_node } }
+          None => none
+        }
+      None => none
+    }
+  } else {
+    none
+  }
+}
+
 fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
   let normed = normalize_access_type_node(n: base_type)
-  if normed.connective == NoConnective && normed.children |> count == 0 && normed.name == string_type.name {
-    // TODO P5.13: structural check via algebra
-    let normed_index = normalize_access_type_node(n: index_type)
-    let diags = if normed_index.name == int_type.name { [] }
+  let normed_index = normalize_access_type_node(n: index_type)
+  let base_is_string = node_type_equals(left: normed, right: string_type)
+  let index_is_int = node_type_equals(left: normed_index, right: int_type)
+  if base_is_string {
+    let diags = if index_is_int { [] }
     else { [access_error(message: "string index requires an Int index", span: span, module_name: module_name)] }
     access_result(inferred: string_type, diagnostics: diags, span: span, fallback_message: "invalid string index access")
-  } else if node_is_keyed_collection(n: normed) && normed.children |> count >= 2 {
-    let key_node = match normed.children |> first {
-      Some { value: k } => k
-      None => leaf_node(name: "")
-    }
-    let val_node = match normed.children |> skip(1) |> first {
-      Some { value: v } => v
-      None => leaf_node(name: "")
-    }
-    let key_diags = if node_type_equals(left: key_node, right: index_type) { [] }
-    else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
-    access_result(inferred: with_optional_cardinality(n: val_node), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
   } else {
-    let is_map = node_is_keyed_collection(n: normed)
-    if is_map {
-      let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
-      access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
-    } else {
-      let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
-      access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")
+    match keyed_collection_parts(n: normed) {
+      Some { value: parts } =>
+        let key_diags = if node_type_equals(left: parts.key_type, right: normed_index) { [] }
+        else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
+        access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
+      None =>
+        if node_is_keyed_collection(n: normed) {
+          let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
+          access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
+        } else {
+          let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
+          access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")
+        }
     }
   }
 }
 
 fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: SourceSpan, module_name: String) -> AccessCheckResultNode {
-  // TODO P5.13: structural check via algebra
   let normed_base = normalize_access_type_node(n: base_type)
-  let base_is_string = normed_base.name == string_type.name
+  let base_is_string = node_type_equals(left: normed_base, right: string_type)
   let base_diags = if base_is_string { [] }
   else { [access_error(message: "slice is only supported for String values", span: span, module_name: module_name)] }
   let normed_start = normalize_access_type_node(n: start_type)
-  let start_diags = if normed_start.name == int_type.name { [] }
+  let start_diags = if node_type_equals(left: normed_start, right: int_type) { [] }
   else { [access_error(message: "slice start requires an Int index", span: span, module_name: module_name)] }
   let normed_end = normalize_access_type_node(n: end_type)
-  let end_diags = if normed_end.name == int_type.name { [] }
+  let end_diags = if node_type_equals(left: normed_end, right: int_type) { [] }
   else { [access_error(message: "slice end requires an Int index", span: span, module_name: module_name)] }
   let all_diags = concat(base_diags, start_diags, end_diags)
   access_result(
