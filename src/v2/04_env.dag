@@ -6,7 +6,7 @@
 //
 module v2.compiler.infer_env
 
-import v2.std.core { Node, NewlineIndex, source_text_at }
+import v2.std.core { Node, NewlineIndex, source_text_at, authored_name_at }
 
 // =========================================================================
 // Types
@@ -44,18 +44,7 @@ fn lookup_type(env: TypeEnv, name: String) -> Node? {
 }
 
 fn authored_name(env: TypeEnv, node: Node) -> String {
-  match node.ident_span {
-    Some { value: span } =>
-      match env.source_index {
-        Some { value: index } =>
-          if span.file == index.file {
-            let text = source_text_at(index: index, span: span)
-            if text == "" { node.name } else { text }
-          } else { node.name }
-        None => node.name
-      }
-    None => node.name
-  }
+  authored_name_at(source_index: env.source_index, node: node)
 }
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
