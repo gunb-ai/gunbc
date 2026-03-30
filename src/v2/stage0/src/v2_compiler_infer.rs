@@ -1557,31 +1557,11 @@ pub fn infer_arg_with_element_type(
     element_type: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> Rc<ArgInferResult> {
-    if is_lambda_expr(arg_value(arg.clone())) {
-        {
-            let result = infer_lambda_with_element_type(
-                arg_value(arg.clone()),
-                element_type.clone(),
-                scope.clone(),
-            );
-            Rc::new(ArgInferResult {
-                typed_arg: make_arg_node(
-                    arg_name(arg.clone()),
-                    result.typed.clone(),
-                    arg.span.clone(),
-                ),
-                diagnostics: result.diagnostics.clone(),
-            })
-        }
-    } else {
-        {
-            let ar = infer_expr(arg_value(arg.clone()), scope.clone(), None);
-            Rc::new(ArgInferResult {
-                typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone()),
-                diagnostics: ar.diagnostics.clone(),
-            })
-        }
-    }
+    let ar = infer_expr(arg_value(arg.clone()), scope.clone(), Some(element_type.clone()));
+    Rc::new(ArgInferResult {
+        typed_arg: make_arg_node(arg_name(arg.clone()), ar.typed.clone(), arg.span.clone()),
+        diagnostics: ar.diagnostics.clone(),
+    })
 }
 
 pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<Node>>) -> Rc<InferResult> {
@@ -2650,7 +2630,27 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let lam_body = lambda_body(texpr.clone());
                 let lam_param_nodes: Vec<Rc<Node>> =
                     texpr.children.iter().skip(1).cloned().collect();
-                let lam_scope = extend_scope_with_params(scope.clone(), lam_params.clone());
+                // If expected carries an element type, use it for lambda params.
+                let lam_scope = if expected.is_some() {
+                    let elem = expected.clone().unwrap();
+                    if (lam_params.clone().len() as i64) == 1 {
+                        match lam_params.clone().first().cloned() {
+                            Some(p) => extend_scope(scope.clone(), p, elem),
+                            None => scope.clone(),
+                        }
+                    } else {
+                        let param_count = lam_params.clone().len() as i64;
+                        lam_params.iter().cloned().enumerate().fold(scope.clone(), |acc, (i, p)| {
+                            if (i as i64) == param_count - 1 {
+                                extend_scope(acc, p, elem.clone())
+                            } else {
+                                extend_scope(acc, p, leaf_node("Dynamic".to_string()))
+                            }
+                        })
+                    }
+                } else {
+                    extend_scope_with_params(scope.clone(), lam_params.clone())
+                };
                 let body_result = infer_expr(lam_body.clone(), lam_scope.clone(), None);
                 let body_typed = body_result.typed.clone();
                 let body_diags = body_result.diagnostics.clone();
