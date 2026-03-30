@@ -90,14 +90,14 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
     match keyed_collection_parts(n: normed) {
       Some { value: parts } =>
         let key_diags = if node_type_equals(left: parts.key_type, right: normed_index) { [] }
-        else { [access_error(message: "map index key type does not match the map key type", span: span, module_name: module_name)] }
-        access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid map index access")
+        else { [access_error(message: "keyed collection index key type does not match the collection key type", span: span, module_name: module_name)] }
+        access_result(inferred: with_optional_cardinality(n: parts.value_type), diagnostics: key_diags, span: span, fallback_message: "invalid keyed collection index access")
       None =>
         if node_is_keyed_collection(n: normed) {
-          let malformed_diags = [access_error(message: "malformed Map type in index access", span: span, module_name: module_name)]
-          access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed Map type in index access")
+          let malformed_diags = [access_error(message: "malformed keyed collection type in index access", span: span, module_name: module_name)]
+          access_result(inferred: unit_type, diagnostics: malformed_diags, span: span, fallback_message: "malformed keyed collection type in index access")
         } else {
-          let diags = [access_error(message: "indexing is only supported for String and Map values", span: span, module_name: module_name)]
+          let diags = [access_error(message: "indexing is only supported for String and keyed collection values", span: span, module_name: module_name)]
           access_result(inferred: unit_type, diagnostics: diags, span: span, fallback_message: "invalid index access")
         }
     }

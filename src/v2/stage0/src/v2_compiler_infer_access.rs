@@ -51,7 +51,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::std_types::{SourceSpan};
 pub use crate::v2_std_core::{Node, InferredNode, CompilerDiagnostic, ErrorNode, make_error_node, diagnostic_to_message, leaf_node, with_optional_cardinality, node_has_structure};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
-pub use crate::v2_compiler_infer_types::{node_is_map, normalize_access_type_node, node_type_equals, is_int_type_node, is_string_type_node};
+pub use crate::v2_compiler_infer_types::{node_is_keyed_collection, normalize_access_type_node, node_type_equals, is_int_type_node, is_string_type_node};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccessCheckResultNode {
@@ -104,7 +104,7 @@ pub fn access_result(
 }
 
 pub fn keyed_collection_parts(n: Rc<Node>) -> Option<Rc<KeyedCollectionParts>> {
-    if node_is_map(n.clone()) && n.children.len() >= 2 {
+    if node_is_keyed_collection(n.clone()) && n.children.len() >= 2 {
         match n.children.first().cloned() {
             Some(key_node) => match n.children.iter().cloned().skip(1).next() {
                 Some(value_node) => Some(Rc::new(KeyedCollectionParts {
@@ -151,7 +151,8 @@ pub fn check_index_access_node(
                     vec![]
                 } else {
                     vec![access_error(
-                        "map index key type does not match the map key type".to_string(),
+                        "keyed collection index key type does not match the collection key type"
+                            .to_string(),
                         span.clone(),
                         module_name.clone(),
                     )]
@@ -160,13 +161,13 @@ pub fn check_index_access_node(
                     with_optional_cardinality(parts.value_type.clone()),
                     key_diags.clone(),
                     span.clone(),
-                    "invalid map index access".to_string(),
+                    "invalid keyed collection index access".to_string(),
                 )
             }
             None => {
-                if node_is_map(normed.clone()) {
+                if node_is_keyed_collection(normed.clone()) {
                     let malformed_diags = vec![access_error(
-                        "malformed Map type in index access".to_string(),
+                        "malformed keyed collection type in index access".to_string(),
                         span.clone(),
                         module_name.clone(),
                     )];
@@ -174,11 +175,12 @@ pub fn check_index_access_node(
                         leaf_node("Unit".to_string()),
                         malformed_diags.clone(),
                         span.clone(),
-                        "malformed Map type in index access".to_string(),
+                        "malformed keyed collection type in index access".to_string(),
                     )
                 } else {
                     let diags = vec![access_error(
-                        "indexing is only supported for String and Map values".to_string(),
+                        "indexing is only supported for String and keyed collection values"
+                            .to_string(),
                         span.clone(),
                         module_name.clone(),
                     )];
