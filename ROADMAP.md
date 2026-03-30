@@ -76,9 +76,11 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [ ] Wire complexity ratchet into fail-closed gate
 
 *Container sharing (FF-8):*
-- [ ] Change Rust container templates to `Rc<Vec<{0}>>`,
-  `Rc<HashMap<{0}, {1}>>`
-- [ ] Update `05_emit_rust.dag` and `runtime_rust.dag`
+- [ ] Add sharing strategy to LanguageSpec (wrap template, construct
+  template, which types need sharing). Rust: Rc-wrap, Go: pointer,
+  Python: reference semantics.
+- [ ] Shared emitter reads LanguageSpec sharing fields; per-language
+  emitters stop hardcoding wrap decisions
 - [ ] Land atomically with stage0 regeneration
 
 *No-fabrication cleanup:*
@@ -115,10 +117,10 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 
 **Bridges owned by M2:**
 
-| Bridge | Delete trigger |
-|--------|---------------|
-| `COMPLEXITY_RATCHET = 2` | Fail-closed compilation → 0 violations |
-| `DIAG_RATCHET = 3` | `dag/syntax.dag` OOM fix → 0 diagnostics |
+| Bridge | Delete trigger | Latest milestone |
+|--------|---------------|-----------------|
+| `COMPLEXITY_RATCHET = 2` | Fail-closed compilation → 0 violations | M2 |
+| `DIAG_RATCHET = 3` | `dag/syntax.dag` OOM fix → 0 diagnostics | M2 |
 
 ---
 
@@ -196,12 +198,12 @@ tests pass (then deleted).
 
 **Bridges owned by M4:**
 
-| Bridge | Delete trigger |
-|--------|---------------|
-| `node.name: String` | `source_text_at` + edges replace all reads |
-| `kernel_types: List<String>` | `List<Node>` edges to type defs |
-| `container_types: List<String>` | `List<Node>` edges to type defs |
-| `builtin_function_registry()` | ~260 calls → method syntax |
+| Bridge | Delete trigger | Latest milestone |
+|--------|---------------|-----------------|
+| `node.name: String` | `source_text_at` + edges replace all reads | M4 |
+| `kernel_types: List<String>` | `List<Node>` edges to type defs | M4 |
+| `container_types: List<String>` | `List<Node>` edges to type defs | M4 |
+| `builtin_function_registry()` | ~260 calls → method syntax | M4 |
 
 ---
 
@@ -246,9 +248,9 @@ tests pass (then deleted).
 
 **Bridges owned by M5:**
 
-| Bridge | Delete trigger |
-|--------|---------------|
-| `05_emit_rust/python/go.dag` in `src/v2/` | Moved to plugin dirs |
+| Bridge | Delete trigger | Latest milestone |
+|--------|---------------|-----------------|
+| `05_emit_rust/python/go.dag` in `src/v2/` | Moved to plugin dirs | M5 |
 
 ---
 
@@ -278,10 +280,10 @@ enums — compiler reads the graph.
 
 **Bridges owned by M7:**
 
-| Bridge | Delete trigger |
-|--------|---------------|
-| `connective: Conj/Disj` | Edge connectivity replaces enum |
-| `return_cardinality` | Edge existence replaces enum |
+| Bridge | Delete trigger | Latest milestone |
+|--------|---------------|-----------------|
+| `connective: Conj/Disj` | Edge connectivity replaces enum | M7 |
+| `return_cardinality` | Edge existence replaces enum | M7 |
 
 ---
 
