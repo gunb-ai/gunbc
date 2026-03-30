@@ -20,7 +20,8 @@ module v2.compiler.emit
 import v2.std.core {
   Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items,
-  param_node_name, param_node_type_expr, param_node_default_value,
+  param_node_type_expr, param_node_default_value,
+  authored_name_at, NewlineIndex,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -154,6 +155,7 @@ type TestProjection {
   inferred: Node
   params: List<Node>
   mock_field_inits: List<Node>
+  source_index: NewlineIndex?
 }
 
 fn has_mock_prefix(name: String) -> Bool {
@@ -174,7 +176,8 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
             operation_name: c.name,
             inferred: rt_type(n: c),
             params: c.params,
-            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name))
+            mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: p.name)),
+            source_index: tm.type_env.source_index
           })
       )
   )
@@ -364,15 +367,16 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
     match lookup_func_sig_in_scope(scope: scope, name: func) {
       None => args
       Some { value: sig } => {
+        let si = scope.type_env.source_index
         let arg_map = args |> fold(init: empty_map(), f: (acc, arg) =>
           let n = arg_name(n: arg)
           if n != none { map_insert(acc, n.value, arg) } else { acc }
         )
         let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-          map_insert(acc, param_node_name(n: param), true)
+          map_insert(acc, authored_name_at(source_index: si, node: param), true)
         )
         let ordered = sig.params |> flat_map(param =>
-          match map_get(arg_map, param_node_name(n: param)) {
+          match map_get(arg_map, authored_name_at(source_index: si, node: param)) {
             Some { value: arg } => [arg]
             None => []
           }

@@ -48,7 +48,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{param_node_name, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
+pub use crate::v2_std_core::{authored_name_at, param_node_type_expr, param_node_default_value, Node, InferredNode, is_import_node, import_is_all, import_specific_names, module_imports, module_items, Connective, MatchPattern, field_binding_name, field_binding_pattern, LiteralValue, NewlineIndex, TextFile, SourceSpan, resource_use_name, resource_use_resource, BinOpKind, UnaryOpKind, StringPart, DeclaredFuncSig, transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData, make_expr_node, MethodSemantics, FieldSummary, FieldAccessStyle, arg_name, arg_value, arm_body, arm_pattern, arm_guard, match_arm_nodes, method_arg_nodes, field_init_node_name, field_init_node_value, leaf_node, with_required_cardinality, node_is_product, node_is_coproduct, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name, make_named_expr_node};
 use crate::v2_std_core::InferredNode::{Resolved, CompilerError};
 use crate::v2_std_core::Connective::{Conj, Disj};
 use crate::v2_std_core::BinOpKind::{NullCoalesce};
@@ -212,7 +212,7 @@ if needs_fmt.clone() {
 
 pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
-        let params_str = { let mut __result = Vec::new(); for p in projection.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(p.name.clone(), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result }.join(&", ".to_string());
+        let params_str = { let mut __result = Vec::new(); for p in projection.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(authored_name_at(projection.source_index.clone(), p.clone()), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result }.join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Signature: ".to_string(), sanitize_service_name(projection.service_name.clone())), ".".to_string()), projection.operation_name.clone()), "(".to_string()), params_str.clone()), ") ".to_string()), emit_node_type(projection.inferred.clone(), RenderTarget::Go))
 }
 }
@@ -371,7 +371,7 @@ if (kind.clone() == TypedItemKind::TypedItemTypeDef) {
 } else {
                                     if (kind.clone() == TypedItemKind::TypedItemExternFunc) {
                                         {
-                                            let params_str = emit_go_params(item.params.clone());
+                                            let params_str = emit_go_params(item.params.clone(), env.source_index.clone());
 let ret_str = emit_go_inferred(rt_type(item.clone()));
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("func ".to_string(), go_export_ident(item_text.clone())), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {
 ".to_string()), "	panic(\"extern func not implemented\")
@@ -496,7 +496,8 @@ pub fn emit_go_type_alias(name: String, base: Rc<Node>) -> String {
 
 pub fn emit_go_fn_def(name: String, params: Vec<Rc<Node>>, inferred: Rc<Node>, body: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
     {
-        let params_str = emit_go_params(params.clone());
+        let si = scope.type_env.source_index.clone();
+let params_str = emit_go_params(params.clone(), si.clone());
 let ret_str = emit_go_inferred(inferred.clone());
 let body_scope = build_params_scope(scope.clone(), params.clone());
 let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone());
@@ -524,7 +525,7 @@ pub fn emit_go_func_def(name: String, params: Vec<Rc<Node>>, inferred: Rc<Node>,
     Some(info) => info.service_names.clone(),
     None => vec![],
 };
-let params_str = emit_go_func_params(params.clone(), uses.clone(), service_names.clone());
+let params_str = emit_go_func_params(params.clone(), uses.clone(), service_names.clone(), scope.type_env.source_index.clone());
 let ret_type = emit_node_type(inferred.clone(), RenderTarget::Go);
 let body_scope = build_params_scope(scope.clone(), params.clone());
 let body_scope = uses.iter().fold(body_scope, |s, u| {
@@ -537,9 +538,9 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 }
 }
 
-pub fn emit_go_func_params(params: Vec<Rc<Node>>, uses: Vec<Rc<Node>>, service_names: Vec<String>) -> String {
+pub fn emit_go_func_params(params: Vec<Rc<Node>>, uses: Vec<Rc<Node>>, service_names: Vec<String>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let param_strs = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_go_param(p.clone())); } __result };
+        let param_strs = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_go_param(p.clone(), source_index.clone())); } __result };
 let resource_strs = { let mut __result = Vec::new(); for u in uses.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(resource_use_name(u.clone()), RenderTarget::Go), " ".to_string()), emit_node_type(resource_use_resource(u.clone()), RenderTarget::Go))); } __result };
 let service_strs = { let mut __result = Vec::new(); for sn in service_names.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(service_var_name(sn.clone()), " *".to_string()), sanitize_service_name(sn.clone()))); } __result };
 let all_params = v2_rt::concat(v2_rt::concat(param_strs.clone(), resource_strs.clone()), service_strs.clone());
@@ -547,17 +548,17 @@ all_params.clone().join(&", ".to_string())
 }
 }
 
-pub fn emit_go_params(params: Vec<Rc<Node>>) -> String {
+pub fn emit_go_params(params: Vec<Rc<Node>>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
-        let strs = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_go_param(p.clone())); } __result };
+        let strs = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_go_param(p.clone(), source_index.clone())); } __result };
 strs.clone().join(&", ".to_string())
 }
 }
 
-pub fn emit_go_param(param: Rc<Node>) -> String {
+pub fn emit_go_param(param: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
     {
         let ty = emit_node_type(param_node_type_expr(param.clone()), RenderTarget::Go);
-v2_rt::concat(v2_rt::concat(emit_ident(param_node_name(param.clone()), RenderTarget::Go), " ".to_string()), ty.clone())
+v2_rt::concat(v2_rt::concat(emit_ident(authored_name_at(source_index.clone(), param.clone()), RenderTarget::Go), " ".to_string()), ty.clone())
 }
 }
 
@@ -1351,7 +1352,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone(
 pub fn emit_go_typed_tco_reassign(args: Vec<Rc<Node>>, params: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
         let ordered_args = { let mut __result = Vec::new(); for a in args.clone().iter().cloned() { __result.push(emit_go_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), 0)); } __result };
-let param_names = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_ident(p.name.clone(), RenderTarget::Go)); } __result };
+let si = scope.type_env.source_index.clone();
+let param_names = { let mut __result = Vec::new(); for p in params.clone().iter().cloned() { __result.push(emit_ident(authored_name_at(si.clone(), p.clone()), RenderTarget::Go)); } __result };
 let all_lines = tco_reassign_core(ordered_args.clone(), param_names.clone(), "tco".to_string(), "".to_string(), " := ".to_string(), "".to_string(), "continue".to_string(), make_indent(depth.clone()));
 all_lines.clone().join(&"
 ".to_string())
@@ -1411,7 +1413,7 @@ if (fields.clone() == "".to_string()) {
 pub fn emit_go_operation_method(service_name: String, transport: Rc<Node>, op_node: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, env: Rc<TypeEnv>) -> String {
     {
         let op_text = authored_name(env.clone(), op_node.clone());
-let input_params = { let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(p.name.clone(), RenderTarget::Go), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result };
+let input_params = { let mut __result = Vec::new(); for p in op_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(authored_name_at(env.source_index.clone(), p.clone()), RenderTarget::Go), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result };
 let params_str = input_params.clone().join(&", ".to_string());
 let receiver = v2_rt::concat(v2_rt::concat("(c *".to_string(), service_name.clone()), ")".to_string());
 let ret_type = emit_node_type(rt_type(op_node.clone()), RenderTarget::Go);
@@ -1539,7 +1541,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("type ".to_string(), ite
 pub fn emit_go_capability_method(cap_node: Rc<Node>, depth: i64, env: Rc<TypeEnv>) -> String {
     {
         let cap_text = authored_name(env.clone(), cap_node.clone());
-let input_params = { let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(p.name.clone(), RenderTarget::Go), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result };
+let input_params = { let mut __result = Vec::new(); for p in cap_node.params.clone().iter().cloned() { __result.push(v2_rt::concat(v2_rt::concat(emit_ident(authored_name_at(env.source_index.clone(), p.clone()), RenderTarget::Go), " ".to_string()), emit_node_type(param_node_type_expr(p.clone()), RenderTarget::Go))); } __result };
 let params_str = input_params.clone().join(&", ".to_string());
 let ret = emit_node_type(rt_type(cap_node.clone()), RenderTarget::Go);
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(make_indent(depth.clone()), go_export_ident(cap_text.clone())), "(".to_string()), params_str.clone()), ") (".to_string()), ret.clone()), ", error)".to_string())

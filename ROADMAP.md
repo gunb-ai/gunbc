@@ -205,9 +205,12 @@ resolve uses structural identity.
 - [x] `authored_name` replaces `.name` in all 3 emit backends
   (Rust/Python/Go item, type-def, service, resource, operation)
 - [x] `find_shared_enum_fields` aligned with `authored_name`
-- [ ] Narrow `TypeEnv` → `source_index: NewlineIndex?` in emit
+- [x] Narrow `TypeEnv` → `source_index: NewlineIndex?` in emit
   helpers (reviewer: TypeEnv is too wide for rendering)
-- [ ] Migrate `param_node_name` → `authored_name` in emit
+- [x] Migrate `param_node_name` → `authored_name_at` in emit
+  (28 sites across 4 emit files; `authored_name_at` in `00_core.dag`
+  takes `source_index: NewlineIndex?` directly; `authored_name`
+  delegates; `WorkflowFunc`/`TestProjection` carry `source_index`)
 
 *Resolve structural identity:*
 - [ ] Replace 5 pre-existing `authored_name` semantic lookups in

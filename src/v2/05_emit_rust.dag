@@ -17,7 +17,8 @@ module v2.compiler.emit_rust
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
-  param_node_name, param_node_type_expr, param_node_default_value,
+  param_node_type_expr, param_node_default_value,
+  authored_name_at, NewlineIndex,
   LiteralValue,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
@@ -728,16 +729,16 @@ fn needs_box_wrapping(n: Node, recursive_types: Map<String, Bool>, rc_types: Map
 
 // Emit generic type parameter list from item.params (e.g., "<T>" or "<A, B>").
 // Returns empty string if the item has no type params.
-fn emit_type_params(params: List<Node>) -> String {
+fn emit_type_params(params: List<Node>, source_index: NewlineIndex?) -> String {
   if params |> count == 0 { "" }
   else {
-    let names = params |> map(p => param_node_name(n: p))
+    let names = params |> map(p => authored_name_at(source_index: source_index, node: p))
     concat("<", names |> join(separator: ", "), ">")
   }
 }
 
 fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
-  let type_params = emit_type_params(params: item.params)
+  let type_params = emit_type_params(params: item.params, source_index: env.source_index)
   let item_text = authored_name(env: env, node: item)
   let is_product = item.connective == Conj
   if is_product {
@@ -904,7 +905,8 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, rc_t
 // =========================================================================
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let params_str = emit_params(params: params, rc_types: rc_types)
+  let si = scope.type_env.source_index
+  let params_str = emit_params(params: params, rc_types: rc_types, source_index: si)
   let ret_str = emit_inferred(inferred: inferred, rc_types: rc_types)
   let body_scope = build_params_scope(scope: scope, params: params)
   let depth = 0
@@ -913,7 +915,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   // overflow on large .dag files (e.g., 02_parse.dag at ~4000 lines).
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry) && use_tco == false
   if use_tco {
-    let tco_params_str = emit_tco_params(params: params, rc_types: rc_types)
+    let tco_params_str = emit_tco_params(params: params, rc_types: rc_types, source_index: si)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: params, registry: registry, scope: body_scope, depth: depth + 1, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     concat(rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", tco_params_str, ")", ret_str, " {\n",
       make_indent(level: depth + 1),body_str, "\n}")
@@ -958,7 +960,7 @@ fn emit_func_def(
     Some { value: info } => info.service_names
     None => []
   }
-  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, rc_types: rc_types)
+  let params_str = emit_func_params(params: params, uses: uses, service_names: service_names, rc_types: rc_types, source_index: scope.type_env.source_index)
   let ret_str = emit_func_inferred(inferred: inferred, rc_types: rc_types)
   let body_scope = build_params_scope(scope: scope, params: params)
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
@@ -1033,19 +1035,19 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
 // =========================================================================
 
 // Emit parameters with `mut` prefix for TCO-eligible functions.
-fn emit_tco_params(params: List<Node>, rc_types: Map<String, Bool>) -> String {
-  let strs = params |> map(p => emit_tco_param(param: p, rc_types: rc_types))
+fn emit_tco_params(params: List<Node>, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+  let strs = params |> map(p => emit_tco_param(param: p, rc_types: rc_types, source_index: source_index))
   strs |> join(separator: ", ")
 }
 
-fn emit_tco_param(param: Node, rc_types: Map<String, Bool>) -> String {
+fn emit_tco_param(param: Node, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, rc_types: rc_types)
-  concat("mut ", emit_ident(name: param_node_name(n: param), target: Rust), ": ", ty)
+  concat("mut ", emit_ident(name: authored_name_at(source_index: source_index, node: param), target: Rust), ": ", ty)
 }
 
-fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, rc_types: Map<String, Bool>) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, rc_types: rc_types))
+fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+  let param_strs = params |> map(p => emit_param(param: p, rc_types: rc_types, source_index: source_index))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name(n: u), target: Rust), ": &", emit_node_type_rc(n: resource_use_resource(n: u), target: Rust, rc_types: rc_types))
   )
@@ -1064,8 +1066,8 @@ fn emit_func_inferred(inferred: Node, rc_types: Map<String, Bool>) -> String {
 // Parameter emission
 // =========================================================================
 
-fn emit_params(params: List<Node>, rc_types: Map<String, Bool>) -> String {
-  let strs = params |> map(p => emit_param(param: p, rc_types: rc_types))
+fn emit_params(params: List<Node>, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+  let strs = params |> map(p => emit_param(param: p, rc_types: rc_types, source_index: source_index))
   strs |> join(separator: ", ")
 }
 
@@ -1083,13 +1085,13 @@ fn emit_rust_param_type(n: Node, rc_types: Map<String, Bool>) -> String {
   }
 }
 
-fn emit_param(param: Node, rc_types: Map<String, Bool>) -> String {
+fn emit_param(param: Node, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, rc_types: rc_types)
   // All params are owned -- Rc-wrapped types are cheap to clone, and
   // the .clone() pattern in function bodies produces owned values.
   // Adding & to params creates reference/owned mismatches.
-  concat(emit_ident(name: param_node_name(n: param), target: Rust), ": ", ty)
+  concat(emit_ident(name: authored_name_at(source_index: source_index, node: param), target: Rust), ": ", ty)
 }
 
 fn emit_inferred(inferred: Node, rc_types: Map<String, Bool>) -> String {
@@ -1999,16 +2001,17 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
 }
 
 fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<Node> {
+  let si = scope.type_env.source_index
   match callee {
     Some { value: info } =>
       let provided_names = ordered |> map(a => match arg_name(n: a) { Some { value: n } => n  None => "" })
       let missing_with_defaults = info.params |> filter(p =>
-        let is_provided = provided_names |> any(n => n == param_node_name(n: p))
+        let is_provided = provided_names |> any(n => n == authored_name_at(source_index: si, node: p))
         if is_provided { false }
         else { param_node_default_value(n: p) != none }
       )
       let default_args = missing_with_defaults |> map(p =>
-        make_arg_node(name: Some { value: param_node_name(n: p) }, value: param_node_default_value(n: p).value, span: p.span)
+        make_arg_node(name: Some { value: authored_name_at(source_index: si, node: p) }, value: param_node_default_value(n: p).value, span: p.span)
       )
       concat(ordered, default_args)
     None => ordered
@@ -2016,14 +2019,15 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
 }
 
 fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> List<Node> {
+  let si = scope.type_env.source_index
   let provided_names = ordered |> map(a => match arg_name(n: a) { Some { value: n } => n  None => "" })
   let missing_with_defaults = op_params |> filter(p =>
-    let is_provided = provided_names |> any(n => n == param_node_name(n: p))
+    let is_provided = provided_names |> any(n => n == authored_name_at(source_index: si, node: p))
     if is_provided { false }
     else { param_node_default_value(n: p) != none }
   )
   let default_args = missing_with_defaults |> map(p =>
-    make_arg_node(name: Some { value: param_node_name(n: p) }, value: param_node_default_value(n: p).value, span: p.span)
+    make_arg_node(name: Some { value: authored_name_at(source_index: si, node: p) }, value: param_node_default_value(n: p).value, span: p.span)
   )
   concat(ordered, default_args)
 }
@@ -3038,7 +3042,8 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
       let n = let_binding_name(texpr: stmt)
       let v = let_value(texpr: stmt)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      let is_param = params |> any(p => param_node_name(n: p) == n)
+      let si = scope.type_env.source_index
+      let is_param = params |> any(p => authored_name_at(source_index: si, node: p) == n)
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
       else { emit_let_binding(name: n, value: val_str, target: Rust) }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -3121,7 +3126,8 @@ fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, regis
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
-      let is_param = params |> any(p => param_node_name(n: p) == n)
+      let si = frame.scope.type_env.source_index
+      let is_param = params |> any(p => authored_name_at(source_index: si, node: p) == n)
       let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
       let next_scope = extend_scope(scope: frame.scope, name: n, resolved: rt_type(n: v))
       match bd {
@@ -3205,7 +3211,8 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
 
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   let ordered_args = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info))
-  let param_names = params |> map(p => emit_ident(name: param_node_name(n: p), target: Rust))
+  let si = scope.type_env.source_index
+  let param_names = params |> map(p => emit_ident(name: authored_name_at(source_index: si, node: p), target: Rust))
   let all_lines = tco_reassign_core(
     ordered_args: ordered_args, param_names: param_names,
     temp_var_prefix: "__tco_", temp_decl_prefix: "let ",
@@ -3315,7 +3322,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>) -> String {
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name(n: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: rc_types))
+    concat(emit_ident(name: authored_name_at(source_index: env.source_index, node: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: rc_types))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3492,7 +3499,7 @@ fn emit_resource_def(item: Node, rc_types: Map<String, Bool>, env: TypeEnv) -> S
 
 fn emit_capability_method(cap_node: Node, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name(n: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: rc_types))
+    concat(emit_ident(name: authored_name_at(source_index: env.source_index, node: p), target: Rust), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: rc_types))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -3595,7 +3602,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name(n: p), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: empty_map())))
+    |> map(p => concat(authored_name_at(source_index: projection.source_index, node: p), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), rc_types: empty_map())))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
@@ -3691,9 +3698,10 @@ type WorkflowFunc {
   inferred: Node
   uses: List<Node>
   service_names: List<String>
+  source_index: NewlineIndex?
 }
 
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>) -> WorkflowFunc {
+fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, source_index: NewlineIndex?) -> WorkflowFunc {
   let svc_names = match lookup_item(registry: registry, name: item.name) {
     Some { value: info } => info.service_names
     None => []
@@ -3704,7 +3712,8 @@ fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemI
     params: item.params,
     inferred: rt_type(n: item),
     uses: item.uses,
-    service_names: svc_names
+    service_names: svc_names,
+    source_index: source_index
   }
 }
 
@@ -3712,7 +3721,7 @@ fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, Item
   modules |> flat_map(tm =>
     tm.items
       |> filter(item => item.body != none && item.uses |> count > 0)
-      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry))
+      |> map(item => to_workflow_func(item: item, module_name: tm.module.name, registry: registry, source_index: tm.type_env.source_index))
   )
 }
 
@@ -3737,7 +3746,7 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
           Some { value: _ } => []
           None => [make_error_node(diagnostic: InternalError { message: concat(
               "workflow CLI default for parameter `",
-              param_node_name(n: param),
+              authored_name_at(source_index: wf.source_index, node: param),
               "` must be a string, int, float, or bool literal"
             ), span: param.span }, module_name: wf.module_name)]
         }
@@ -3873,7 +3882,7 @@ fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
   if wf.params |> count == 0 {
     concat(doc_line, "\n", variant_name, ",")
   } else {
-    let fields = wf.params |> map(p => emit_subcommand_field(param: p))
+    let fields = wf.params |> map(p => emit_subcommand_field(param: p, source_index: wf.source_index))
     let fields_str = fields |> join(separator: "\n")
     concat(doc_line, "\n", variant_name, " {\n",
       make_indent(level: depth + 1),fields_str, "\n",
@@ -3882,8 +3891,8 @@ fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
 }
 
 // Emit a struct field inside a subcommand variant, with clap attributes.
-fn emit_subcommand_field(param: Node) -> String {
-  let field_name = emit_ident(name: param_node_name(n: param), target: Rust)
+fn emit_subcommand_field(param: Node, source_index: NewlineIndex?) -> String {
+  let field_name = emit_ident(name: authored_name_at(source_index: source_index, node: param), target: Rust)
   let field_type = emit_cli_param_type_node(n: param_node_type_expr(n: param))
   let default_attr = match param_node_default_value(n: param) {
     // Invalid defaults are rejected before file emission; this path only renders
@@ -4040,7 +4049,7 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
     concat("Commands::", variant_name, " => ",
       mod_name, "::", fn_name, "(", service_args, ")", await_suffix, ",")
   } else {
-    let field_binds = wf.params |> map(p => emit_ident(name: param_node_name(n: p), target: Rust))
+    let field_binds = wf.params |> map(p => emit_ident(name: authored_name_at(source_index: wf.source_index, node: p), target: Rust))
     let binds_str = field_binds |> join(separator: ", ")
     let call_args = emit_main_call_args(wf: wf, has_services: has_services)
     concat("Commands::", variant_name, " { ", binds_str, " } => ",
@@ -4052,7 +4061,7 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 // Includes the function's params, then service instance args.
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
-    let arg_name = emit_ident(name: param_node_name(n: p), target: Rust)
+    let arg_name = emit_ident(name: authored_name_at(source_index: wf.source_index, node: p), target: Rust)
     if needs_reference_node(n: param_node_type_expr(n: p)) {
       concat("&", arg_name)
     } else {

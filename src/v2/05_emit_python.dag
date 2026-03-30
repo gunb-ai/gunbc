@@ -15,7 +15,8 @@ module v2.compiler.emit_python
 import v2.std.core {
   Node, InferredNode, Resolved, CompilerError,
   is_import_node, import_is_all, import_specific_names, module_imports, module_items,
-  param_node_name, param_node_type_expr,
+  param_node_type_expr,
+  authored_name_at, NewlineIndex,
   MatchPattern, LiteralValue, field_binding_name, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_name, resource_use_resource,
@@ -222,7 +223,7 @@ fn emit_init_py(modules: List<TypedModule>) -> TextFile {
 
 fn python_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name(n: p), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python)))
+    |> map(p => concat(authored_name_at(source_index: projection.source_index, node: p), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python)))
     |> join(separator: ", ")
   concat(
     "# Signature: ",
@@ -454,7 +455,8 @@ fn emit_py_variant_class_from_child(parent_name: String, child: Node, env: TypeE
 
 fn emit_py_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let depth = 0
-  let params_str = emit_py_params(params: params)
+  let si = scope.type_env.source_index
+  let params_str = emit_py_params(params: params, source_index: si)
   let ret_str = emit_py_inferred(inferred: inferred)
   let body_scope = build_params_scope(scope: scope, params: params)
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry)
@@ -487,7 +489,7 @@ fn emit_py_func_def(
     Some { value: info } => info.service_names
     None => []
   }
-  let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names)
+  let params_str = emit_py_func_params(params: params, uses: uses, service_names: service_names, source_index: scope.type_env.source_index)
   let ret_str = emit_py_inferred(inferred: inferred)
   let body_scope = build_params_scope(scope: scope, params: params)
   let body_scope = fold(uses, init: body_scope, f: (s, u) =>
@@ -498,8 +500,8 @@ fn emit_py_func_def(
     make_indent(level: depth + 1), body_str)
 }
 
-fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>) -> String {
-  let param_strs = params |> map(p => emit_py_param(param: p))
+fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, source_index: NewlineIndex?) -> String {
+  let param_strs = params |> map(p => emit_py_param(param: p, source_index: source_index))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name(n: u), target: Python), ": ", emit_node_type(n: resource_use_resource(n: u), target: Python))
   )
@@ -514,14 +516,14 @@ fn emit_py_func_params(params: List<Node>, uses: List<Node>, service_names: List
 // Parameter emission
 // =========================================================================
 
-fn emit_py_params(params: List<Node>) -> String {
-  let strs = params |> map(p => emit_py_param(param: p))
+fn emit_py_params(params: List<Node>, source_index: NewlineIndex?) -> String {
+  let strs = params |> map(p => emit_py_param(param: p, source_index: source_index))
   strs |> join(separator: ", ")
 }
 
-fn emit_py_param(param: Node) -> String {
+fn emit_py_param(param: Node, source_index: NewlineIndex?) -> String {
   let ty = emit_node_type(n: param_node_type_expr(n: param), target: Python)
-  concat(emit_ident(name: param_node_name(n: param), target: Python), ": ", ty)
+  concat(emit_ident(name: authored_name_at(source_index: source_index, node: param), target: Python), ": ", ty)
 }
 
 fn emit_py_inferred(inferred: Node) -> String {
@@ -1133,7 +1135,8 @@ fn emit_py_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, r
 
 fn emit_py_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let ordered_args = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
-  let param_names = params |> map(p => emit_ident(name: param_node_name(n: p), target: Python))
+  let si = scope.type_env.source_index
+  let param_names = params |> map(p => emit_ident(name: authored_name_at(source_index: si, node: p), target: Python))
   let all_lines = tco_reassign_core(
     ordered_args: ordered_args, param_names: param_names,
     temp_var_prefix: "__tco_", temp_decl_prefix: "",
@@ -1190,7 +1193,7 @@ fn emit_py_service_init(transport: Node) -> String {
 fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, env: TypeEnv) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name(n: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
+    concat(emit_ident(name: authored_name_at(source_index: env.source_index, node: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -1296,7 +1299,7 @@ fn emit_py_resource_def(item: Node, env: TypeEnv) -> String {
 
 fn emit_py_capability_method(cap_node: Node, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name(n: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
+    concat(emit_ident(name: authored_name_at(source_index: env.source_index, node: p), target: Python), ": ", emit_node_type(n: param_node_type_expr(n: p), target: Python))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
