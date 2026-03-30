@@ -1145,7 +1145,8 @@ fn make_marker_property(marker: String) -> Node {
 
 fn has_marker_property(n: Node, marker: String) -> Bool {
   n.properties |> any(p =>
-    match field_init_node_value(n: p).expr_data {
+    // Markers have empty field name (name: "") to distinguish from user properties.
+    p.name == "" && match field_init_node_value(n: p).expr_data {
       ExprLiteral { value: LitStr { value: s } } => s == marker
       _ => false
     }
