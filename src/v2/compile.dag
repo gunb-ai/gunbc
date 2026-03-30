@@ -370,10 +370,11 @@ fn serialize_method_semantics(value: MethodSemantics?) -> String {
   match value {
     Some { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
-    Some { value: AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type } } =>
+    Some { value: AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type } } =>
+      let mn = method_def.name
       concat(
         "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ",
-        json_quote(s: method_name),
+        json_quote(s: mn),
         ", \"fold_accumulator_type\": ",
         json_optional_node(value: fold_accumulator_type),
         "}")

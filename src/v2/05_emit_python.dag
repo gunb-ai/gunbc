@@ -46,8 +46,8 @@ import v2.std.core {
   slice_start, slice_end,
   leaf_node, with_required_cardinality,
   Connective, Conj, Disj,
-
-  CardOptional
+  CardOptional,
+  is_rest_transport, is_shell_transport, is_file_transport, is_local_transport
 }
 
 import v2.compiler.artifact { RenderTarget, Python }
@@ -75,7 +75,7 @@ import v2.compiler.infer {
 import v2.compiler.emit {
   EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction,
-  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
+  TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
@@ -360,11 +360,6 @@ fn emit_py_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
     emit_py_service_def(item: item, registry: registry)
   } else if (kind == TypedItemResourceDef) {
     emit_py_resource_def(item: item)
-  } else if (kind == TypedItemExternFunc) {
-    let params_str = emit_py_params(params: item.params)
-    let ret_str = emit_py_inferred(inferred: rt_type(n: item))
-    concat("def ", emit_ident(name: item.name, target: Python), "(", params_str, ")", ret_str, ":\n",
-      "    raise NotImplementedError(\"extern func\")")
   } else {
     concat("# unhandled node: ", item.name)
   }
@@ -805,7 +800,6 @@ fn emit_py_algebra_method_call(method_name: String, receiver: Node, args: List<N
   else if method_name == "sort_by" { concat("sorted(", recv_str, ", key=", first_arg_str, ")") }
   else if method_name == "append" { concat(recv_str, " + [", first_arg_str, "]") }
   else {
-    // Generic bridge method: function_name(receiver, args...)
     let function_name = py_bridge_method_name(method_name: method_name)
     let arg_strs = args |> map(a => emit_py_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth))
     let all_args = concat([recv_str], arg_strs)
@@ -828,8 +822,9 @@ fn emit_py_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       let args_str = arg_strs |> join(separator: ", ")
       concat("await ", var_name, ".", emit_ident(name: method, target: Python), "(", args_str, ")")
     }
-    AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: _ } =>
-      emit_py_algebra_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
+    AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
+      let mn = method_def.name
+      emit_py_algebra_method_call(method_name: mn, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth)
     PlainMethodSemantics =>
       emit_py_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope, depth: depth)
   } }
@@ -1169,15 +1164,15 @@ fn emit_py_service_def(
 }
 
 fn emit_py_service_init(transport: Node) -> String {
-  if transport.name == "rest" {
+  if is_rest_transport(t: transport) {
     let auth_param = if transport_has_auth(t: transport) { ", auth_token: str" } else { "" }
     let auth_assign = if transport_has_auth(t: transport) { "\n    self.auth_token = auth_token" } else { "" }
     concat("def __init__(self, base_url: str", auth_param, "):\n",
       "    self.base_url = base_url", auth_assign)
-  } else if transport.name == "shell" {
+  } else if is_shell_transport(t: transport) {
     concat("def __init__(self, working_dir: str | None = None):\n",
       "    self.working_dir = working_dir")
-  } else if transport.name == "file" {
+  } else if is_file_transport(t: transport) {
     concat("def __init__(self, base_path: str):\n",
       "    self.base_path = base_path")
   } else {
@@ -1204,15 +1199,10 @@ fn emit_py_operation_method(service_name: String, transport: Node, op_node: Node
 }
 
 fn emit_py_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>) -> String {
-  if transport.name == "rest" {
-    emit_py_rest_call(op_name: op_name, transport: transport)
-  } else if transport.name == "shell" {
-    emit_py_shell_call(op_name: op_name, transport: transport)
-  } else if transport.name == "file" {
-    emit_py_file_call(op_name: op_name)
-  } else {
-    emit_py_local_call(op_name: op_name)
-  }
+  if is_rest_transport(t: transport) { emit_py_rest_call(op_name: op_name, transport: transport) }
+  else if is_shell_transport(t: transport) { emit_py_shell_call(op_name: op_name, transport: transport) }
+  else if is_file_transport(t: transport) { emit_py_file_call(op_name: op_name) }
+  else { emit_py_local_call(op_name: op_name) }
 }
 
 fn emit_py_rest_call(op_name: String, transport: Node) -> String {

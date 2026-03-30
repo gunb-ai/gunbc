@@ -216,15 +216,14 @@ type LambdaSemantics {
 
 type MethodSemantics
   = PlainMethodSemantics
-  | AlgebraMethodSemantics { method_name: String, fold_accumulator_type: Node? }
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError
 
-// TransportKind dissolved — transport identity is t.name string:
-//   "local", "rest", "shell", "file", or custom name.
-// ConfigPropertyKey dissolved — property identity is the name string:
-//   "base_url", "base_path", "auth_scheme", "auth_header", "auth_token".
+// Transport identity: structural detection from config properties.
+// See is_rest_transport, is_shell_transport, is_file_transport, is_local_transport.
+// Transport definitions: extdeps/transports/{rest,shell,file}.dag.
 
 // =========================================================================
 // Expressions
@@ -915,9 +914,25 @@ fn find_property_string(props: List<Node>, prop_name: String) -> String? {
   }
 }
 
-// config_property_name, config_property_key, transport_kind_name,
-// transport_kind, is_transport_kind — dissolved.
-// Use direct string comparison: t.name == "rest", prop_name == "base_url", etc.
+// Structural transport predicates. Transport identity is determined by
+// the node's structural properties, not a name string or enum tag.
+// REST: has base_url config property (RFC 9110 endpoint).
+// Shell: has children (argv per POSIX.1-2017).
+// File: has base_path config property (POSIX pathname).
+// Local: no config, no children — direct function call.
+// See extdeps/transports/{rest,shell,file}.dag for transport definitions.
+fn is_rest_transport(t: Node) -> Bool {
+  t.children |> count == 0 && find_property(props: t.properties, prop_name: "base_url") != none
+}
+fn is_shell_transport(t: Node) -> Bool {
+  t.children |> count > 0
+}
+fn is_file_transport(t: Node) -> Bool {
+  t.children |> count == 0 && find_property(props: t.properties, prop_name: "base_path") != none
+}
+fn is_local_transport(t: Node) -> Bool {
+  t.properties |> count == 0 && t.children |> count == 0
+}
 
 fn field_init_operation_modifier(field_init: Node) -> OperationModifier? {
   let fi_name = field_init_node_name(n: field_init)
