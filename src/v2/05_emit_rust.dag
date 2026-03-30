@@ -2468,7 +2468,7 @@ fn emit_typed_method_call(receiver: Node, method: String, args: List<Node>, resu
       // Read method identity from the definition node.
       // BRIDGE: reads method_def.name until Lane C provides per-method
       // rendering from language extdeps keyed by the definition node.
-      let method_name = match method_def { Some { value: md } => md.name  None => method }
+      let method_name = method_def.name
       if method_name == "fold" {
         emit_rust_fold_method_call(fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
       } else if method_name == "sort_by" {

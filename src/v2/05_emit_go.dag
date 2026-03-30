@@ -852,7 +852,7 @@ fn emit_go_typed_method_call(receiver: Node, method: String, args: List<Node>, m
       concat(var_name, ".", go_export_ident(name: method), "(", args_str, ")")
     }
     AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
-      let mn = match method_def { Some { value: md } => md.name  None => method }
+      let mn = method_def.name
       emit_go_algebra_method_call(method_name: mn, receiver: receiver, args: args, registry: registry, scope: scope)
     PlainMethodSemantics =>
       emit_go_plain_method_call(receiver: receiver, method: method, args: args, registry: registry, scope: scope)

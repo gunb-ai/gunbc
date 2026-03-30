@@ -521,7 +521,7 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   else {
     match method_semantics.value {
       AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: _ } =>
-        match method_def { Some { value: md } => is_size_preserving_method(method_name: md.name)  None => false }
+        is_size_preserving_method(method_name: method_def.name)
       _ => false
     }
   }
@@ -1098,8 +1098,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
       // Plain/Service/None fall through to default cost.
       let method_cost_result = if ms == none { none } else {
         match ms.value {
-          AlgebraMethodSemantics { method_def: md_opt, fold_accumulator_type: _ } => {
-            let md_name = match md_opt { Some { value: md } => md.name  None => "" }
+          AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } => {
+            let md_name = md.name
             let shape_match = method_cost_shape(method_name: md_name)
             match shape_match {
               Some { value: shape } =>
