@@ -1750,8 +1750,7 @@ pub fn emit_rust_expr_var(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>
 pub fn emit_rust_expr_field_access(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { summary: summary, .. } => {
-    let si = scope.type_env.source_index.clone();
-    let f = authored_name_at(si.clone(), expr.clone());
+    let f = expr.name.clone();
         let b = field_access_base(expr.clone());
 if is_typed_service_call_receiver(expr.clone()) {
             match extract_typed_service_name(expr.clone()) {
@@ -2809,8 +2808,7 @@ pub fn is_already_optional(texpr: Rc<Node>, emit_info: Rc<EmitGraphInfo>, scope:
     None => false,
 } },
     ExprData::ExprFieldAccess { summary: fa_summary, .. } => {
-    let si = scope.type_env.source_index.clone();
-    let f = authored_name_at(si.clone(), texpr.clone());
+    let f = texpr.name.clone();
         let b = field_access_base(texpr.clone());
 let summary_says_optional = match fa_summary.clone() {
     Some(fs) => match fs.value_shape.clone() {

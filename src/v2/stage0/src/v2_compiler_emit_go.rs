@@ -615,8 +615,7 @@ pub fn emit_go_expr_field_access(expr: Rc<Node>, registry: HashMap<String, Rc<It
         let prefix = make_indent(depth.clone());
 match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { summary: summary, .. } => {
-    let si = scope.type_env.source_index.clone();
-    let f = authored_name_at(si.clone(), expr.clone());
+    let f = expr.name.clone();
             let b = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),
