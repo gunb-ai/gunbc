@@ -428,7 +428,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     if import_is_all(n: imp) { [] }
     else { import_specific_names(n: imp) }
   )
-  let __local_type_names = typed_module.items |> map(item => item.name)
+  let src = typed_module.source_text
+  let __local_type_names = typed_module.items |> map(item => source_text_at(source: src, span: item.span))
   let __import_enums = __all_imported |> filter(n =>
     is_enum_type_name(type_name: n, vtoe: vtoe)
   )
@@ -436,8 +437,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     is_enum_type_name(type_name: n, vtoe: vtoe)
   )
   let __local_variant_names = typed_module.items |> flat_map(item =>
-    if __local_enums |> any(enum_name => enum_name == item.name) {
-      item.children |> map(child => child.name)
+    if __local_enums |> any(enum_name => enum_name == source_text_at(source: src, span: item.span)) {
+      item.children |> map(child => source_text_at(source: src, span: child.span))
     } else {
       []
     }
@@ -466,12 +467,12 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // Collect locally-defined type names so imports can skip them.
   let local_type_names = typed_module.items
     |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef)
-    |> map(item => item.name)
+    |> map(item => source_text_at(source: src, span: item.span))
   let imports_str = emit_imports(imports: module_imports(n: m), vtoe: module_vtoe, registry: registry, local_names: local_type_names)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
   let this_mod_filename = module_to_filename(name: m.name)
   let all_svc_names = typed_module.items |> flat_map(item =>
-    match map_get(registry, item.name) {
+    match map_get(registry, source_text_at(source: src, span: item.span)) {
       Some { value: info } =>
         let is_func = info.kind == FuncItem
         if is_func { info.service_names } else { [] }
@@ -492,7 +493,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
     |> filter(item => classify_typed_item(item: item) == TypedItemTypeDef && item.connective == Disj)
-    |> map(item => concat("use ", item.name, "::*;"))
+    |> map(item => concat("use ", source_text_at(source: src, span: item.span), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   let items_str = typed_module.items
