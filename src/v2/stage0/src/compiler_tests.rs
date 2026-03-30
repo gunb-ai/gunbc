@@ -33,14 +33,22 @@ mod compiler_tests {
         results
     }
 
-    fn collect_dag_recursive(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
+    fn collect_dag_recursive(
+        dir: &std::path::Path,
+        root: &std::path::Path,
+        out: &mut Vec<(String, String)>,
+    ) {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
                     collect_dag_recursive(&path, root, out);
                 } else if path.extension().map_or(false, |e| e == "dag") {
-                    let rel = path.strip_prefix(root).unwrap().to_string_lossy().to_string();
+                    let rel = path
+                        .strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string();
                     let content = std::fs::read_to_string(&path)
                         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
                     out.push((rel, content));
@@ -50,13 +58,18 @@ mod compiler_tests {
     }
 
     /// Build SourceFile vec from discovered .dag files.
-    fn source_files_from(pairs: &[(String, String)]) -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
-        pairs.iter().map(|(path, content)| {
-            std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
-                path: path.clone(),
-                content: content.clone(),
+    fn source_files_from(
+        pairs: &[(String, String)],
+    ) -> Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> {
+        pairs
+            .iter()
+            .map(|(path, content)| {
+                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
+                    path: path.clone(),
+                    content: content.clone(),
+                })
             })
-        }).collect()
+            .collect()
     }
 
     /// Build the self-compile source closure: dsl/ dependencies + all src/v2/*.dag.
@@ -74,15 +87,18 @@ mod compiler_tests {
             "dsl/std/types.dag",
         ];
         let root = workspace_root();
-        let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps.iter().map(|p| {
-            let full = root.join(p);
-            let content = std::fs::read_to_string(&full)
-                .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
-            std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
-                path: p.to_string(),
-                content,
+        let mut sources: Vec<std::rc::Rc<crate::v2_compiler_compile::SourceFile>> = dsl_deps
+            .iter()
+            .map(|p| {
+                let full = root.join(p);
+                let content = std::fs::read_to_string(&full)
+                    .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
+                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
+                    path: p.to_string(),
+                    content,
+                })
             })
-        }).collect();
+            .collect();
 
         // All src/v2/*.dag files discovered from disk
         let v2_files = discover_dag_files("src/v2");
@@ -109,21 +125,27 @@ mod compiler_tests {
             "dsl/std/types.dag",
         ];
         let root = workspace_root();
-        gist_deps.iter().map(|p| {
-            let full = root.join(p);
-            let content = std::fs::read_to_string(&full)
-                .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
-            std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
-                path: p.to_string(),
-                content,
+        gist_deps
+            .iter()
+            .map(|p| {
+                let full = root.join(p);
+                let content = std::fs::read_to_string(&full)
+                    .unwrap_or_else(|e| panic!("failed to read {}: {}", full.display(), e));
+                std::rc::Rc::new(crate::v2_compiler_compile::SourceFile {
+                    path: p.to_string(),
+                    content,
+                })
             })
-        }).collect()
+            .collect()
     }
 
     #[test]
     fn tokenize_produces_tokens() {
         let tokens = tokenize("fn foo() -> Int { 42 }".to_string(), "test.dag".to_string());
-        assert!(!tokens.is_empty(), "tokenize should produce at least one token");
+        assert!(
+            !tokens.is_empty(),
+            "tokenize should produce at least one token"
+        );
     }
 
     #[test]
@@ -141,7 +163,11 @@ mod compiler_tests {
     fn tokenize_fn_keyword() {
         let tokens = tokenize("fn".to_string(), "test.dag".to_string());
         // Should have at least KwFn and Eof
-        assert!(tokens.len() >= 2, "expected at least 2 tokens, got {}", tokens.len());
+        assert!(
+            tokens.len() >= 2,
+            "expected at least 2 tokens, got {}",
+            tokens.len()
+        );
         assert!(
             matches!(tokens[0].shape, crate::v2_std_core::TokenShape::ShKwFn),
             "first token should be KwFn, got {:?}",
@@ -151,17 +177,30 @@ mod compiler_tests {
 
     #[test]
     fn tokenize_count_stable() {
-        let tokens = tokenize("module test\ntype Foo { x: Int }".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "module test\ntype Foo { x: Int }".to_string(),
+            "test.dag".to_string(),
+        );
         // Non-trivial input should produce multiple tokens
-        assert!(tokens.len() > 5, "non-trivial input should produce multiple tokens, got {}", tokens.len());
+        assert!(
+            tokens.len() > 5,
+            "non-trivial input should produce multiple tokens, got {}",
+            tokens.len()
+        );
     }
 
     #[test]
     fn parse_trivial_module() {
-        let tokens = tokenize("module test\ntype Foo { x: Int }\n".to_string(), "test.dag".to_string());
+        let tokens = tokenize(
+            "module test\ntype Foo { x: Int }\n".to_string(),
+            "test.dag".to_string(),
+        );
         let result = crate::v2_compiler_parse::parse(tokens);
         // ParseResult should have a module
-        assert!(result.module.is_some(), "valid module should parse successfully");
+        assert!(
+            result.module.is_some(),
+            "valid module should parse successfully"
+        );
     }
 
     /// Self-parse test: the compiled v2 compiler tokenizes and parses its own
@@ -179,7 +218,10 @@ mod compiler_tests {
                 let tokens = tokenize(source, "src/v2/01_tokenize.dag".to_string());
 
                 // Token list should be non-empty
-                assert!(!tokens.is_empty(), "tokenizing 01_tokenize.dag should produce tokens");
+                assert!(
+                    !tokens.is_empty(),
+                    "tokenizing 01_tokenize.dag should produce tokens"
+                );
 
                 // Should end with Eof
                 let last = tokens.last().expect("should have tokens");
@@ -201,8 +243,7 @@ mod compiler_tests {
                 // Module name should be "v2.compiler.tokenize"
                 let module = result.module.as_ref().unwrap();
                 assert_eq!(
-                    module.name,
-                    "v2.compiler.tokenize",
+                    module.name, "v2.compiler.tokenize",
                     "module name should be v2.compiler.tokenize, got {}",
                     module.name
                 );
@@ -273,23 +314,27 @@ mod compiler_tests {
 
                 for (file, source) in &v2_files {
                     let tokens = tokenize(source.to_string(), file.to_string());
+                    assert!(!tokens.is_empty(), "{} should produce tokens", file);
                     assert!(
-                        !tokens.is_empty(),
-                        "{} should produce tokens", file
-                    );
-                    assert!(
-                        matches!(tokens.last().unwrap().shape, crate::v2_std_core::TokenShape::ShEof),
-                        "{} should end with Eof", file
+                        matches!(
+                            tokens.last().unwrap().shape,
+                            crate::v2_std_core::TokenShape::ShEof
+                        ),
+                        "{} should end with Eof",
+                        file
                     );
                     let result = crate::v2_compiler_parse::parse(tokens);
                     assert!(
                         result.module.is_some(),
-                        "{} should parse successfully, error: {:?}", file, result.error
+                        "{} should parse successfully, error: {:?}",
+                        file,
+                        result.error
                     );
                     let module = result.module.as_ref().unwrap();
                     assert!(
                         !module.name.is_empty(),
-                        "{} should have a non-empty module name", file
+                        "{} should have a non-empty module name",
+                        file
                     );
                 }
             })
@@ -314,14 +359,18 @@ mod compiler_tests {
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
-                let errors: Vec<_> = result.diagnostics.iter()
+                let errors: Vec<_> = result
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 let error_count = errors.len();
 
                 eprintln!(
                     "self-compile completed: {} errors, {} files emitted from {} sources",
-                    error_count, result.files.len(), source_count
+                    error_count,
+                    result.files.len(),
+                    source_count
                 );
                 for (i, e) in errors.iter().enumerate() {
                     eprintln!("  error[{}]: {:?}", i, e.diagnostic);
@@ -333,21 +382,28 @@ mod compiler_tests {
                 // which causes unresolved import errors that gate file emission.
 
                 // Source count floor
-                assert!(source_count >= 13,
+                assert!(
+                    source_count >= 13,
                     "self-compile should process at least 13 sources, got {}",
-                    source_count);
+                    source_count
+                );
 
                 // When files are emitted, they must have content
                 if !result.files.is_empty() {
-                    assert!(result.files.iter().all(|f| !f.content.is_empty()),
-                        "all self-compiled output files must have non-empty content");
+                    assert!(
+                        result.files.iter().all(|f| !f.content.is_empty()),
+                        "all self-compiled output files must have non-empty content"
+                    );
                 }
 
                 // Diagnostic error ratchet (tracked, not yet tight)
                 const SELF_COMPILE_ERROR_RATCHET: usize = 2700;
-                assert!(error_count <= SELF_COMPILE_ERROR_RATCHET,
+                assert!(
+                    error_count <= SELF_COMPILE_ERROR_RATCHET,
                     "self-compile error count regression: {} > {} ratchet",
-                    error_count, SELF_COMPILE_ERROR_RATCHET);
+                    error_count,
+                    SELF_COMPILE_ERROR_RATCHET
+                );
             })
             .expect("failed to spawn thread")
             .join();
@@ -435,15 +491,15 @@ mod compiler_tests {
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
                 let sources = gist_sources();
-                let result = crate::v2_compiler_compile::resolve_sources(
-                    sources,
-                );
+                let result = crate::v2_compiler_compile::resolve_sources(sources);
 
                 // Count error-severity diagnostics from tokenize + parse + resolve.
                 // The gist dependency chain exercises DSL constructs (services,
                 // resources, patterns, func) that the v2 compiler's own source
                 // does not cover.
-                let errors: Vec<_> = result.diagnostics.iter()
+                let errors: Vec<_> = result
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 let error_count = errors.len();
@@ -456,7 +512,8 @@ mod compiler_tests {
                 assert!(
                     error_count == 0,
                     "gist resolve errors: {} errors (expected 0): {:?}",
-                    error_count, errors
+                    error_count,
+                    errors
                 );
             })
             .expect("failed to spawn thread")
@@ -478,7 +535,9 @@ mod compiler_tests {
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
 
-                let errors: Vec<_> = result.diagnostics.iter()
+                let errors: Vec<_> = result
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
                 let error_count = errors.len();
@@ -491,7 +550,8 @@ mod compiler_tests {
                 assert!(
                     error_count == 0,
                     "gist compile errors: {} errors (expected 0): {:?}",
-                    error_count, errors
+                    error_count,
+                    errors
                 );
 
                 let has_content = result.files.iter().any(|f| !f.content.is_empty());
@@ -536,21 +596,33 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
+                use std::collections::HashMap;
                 use std::time::Instant;
 
                 let sources = gist_sources();
 
-                eprintln!("\n=== GIST PIPELINE PROFILE ({} sources) ===\n", sources.len());
+                eprintln!(
+                    "\n=== GIST PIPELINE PROFILE ({} sources) ===\n",
+                    sources.len()
+                );
 
                 // Stage 1: Tokenize each source individually
                 let t_stage = Instant::now();
                 let mut token_lists = Vec::new();
                 for source in &sources {
                     let t = Instant::now();
-                    let tokens = crate::v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                    let tokens = crate::v2_compiler_tokenize::tokenize(
+                        source.content.clone(),
+                        source.path.clone(),
+                    );
                     let elapsed = t.elapsed();
-                    eprintln!("  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>5} chars)",
-                        source.path, elapsed, tokens.len(), source.content.len());
+                    eprintln!(
+                        "  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>5} chars)",
+                        source.path,
+                        elapsed,
+                        tokens.len(),
+                        source.content.len()
+                    );
                     token_lists.push(tokens);
                 }
                 let tokenize_total = t_stage.elapsed();
@@ -564,7 +636,10 @@ mod compiler_tests {
                     let result = crate::v2_compiler_parse::parse(tokens.clone());
                     let elapsed = t.elapsed();
                     let ok = result.module.is_some();
-                    eprintln!("  parse   {:>40}: {:>8.2?}  (ok={})", sources[i].path, elapsed, ok);
+                    eprintln!(
+                        "  parse   {:>40}: {:>8.2?}  (ok={})",
+                        sources[i].path, elapsed, ok
+                    );
                     if let Some(m) = result.module.clone() {
                         modules.push(m);
                     }
@@ -576,16 +651,25 @@ mod compiler_tests {
                 let t_stage = Instant::now();
                 let graph = crate::v2_compiler_resolve::resolve_modules(modules);
                 let resolve_total = t_stage.elapsed();
-                let errors: Vec<_> = graph.diagnostics.iter()
+                let errors: Vec<_> = graph
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .collect();
-                eprintln!("  RESOLVE TOTAL:  {:?}  ({} errors)\n", resolve_total, errors.len());
+                eprintln!(
+                    "  RESOLVE TOTAL:  {:?}  ({} errors)\n",
+                    resolve_total,
+                    errors.len()
+                );
 
                 eprintln!("=== SUMMARY ===");
                 eprintln!("  Tokenize: {:?}", tokenize_total);
                 eprintln!("  Parse:    {:?}", parse_total);
                 eprintln!("  Resolve:  {:?}", resolve_total);
-                eprintln!("  Total:    {:?}", tokenize_total + parse_total + resolve_total);
+                eprintln!(
+                    "  Total:    {:?}",
+                    tokenize_total + parse_total + resolve_total
+                );
             })
             .expect("failed to spawn thread")
             .join();
@@ -623,12 +707,23 @@ mod compiler_tests {
             let mut info: mach_task_basic_info = unsafe { std::mem::zeroed() };
             let mut count = MACH_TASK_BASIC_INFO_COUNT;
             let kr = unsafe {
-                task_info(mach_task_self(), MACH_TASK_BASIC_INFO, &mut info, &mut count)
+                task_info(
+                    mach_task_self(),
+                    MACH_TASK_BASIC_INFO,
+                    &mut info,
+                    &mut count,
+                )
             };
-            if kr == 0 { info.resident_size } else { 0 }
+            if kr == 0 {
+                info.resident_size
+            } else {
+                0
+            }
         }
         #[cfg(not(target_os = "macos"))]
-        { 0 }
+        {
+            0
+        }
     }
 
     /// Format a byte count as a human-readable string (KB / MB / GB).
@@ -658,7 +753,10 @@ mod compiler_tests {
 
                 let source_count = sources.len();
                 let rss_start = get_rss_bytes();
-                eprintln!("\n=== SELF-COMPILE PIPELINE PROFILE ({} sources) ===", source_count);
+                eprintln!(
+                    "\n=== SELF-COMPILE PIPELINE PROFILE ({} sources) ===",
+                    source_count
+                );
                 eprintln!("  RSS at start: {}\n", format_bytes(rss_start));
 
                 // Phase 1: Tokenize each source individually
@@ -667,16 +765,28 @@ mod compiler_tests {
                 let phase1_diags = 0usize;
                 for source in &sources {
                     let t = Instant::now();
-                    let tokens = crate::v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                    let tokens = crate::v2_compiler_tokenize::tokenize(
+                        source.content.clone(),
+                        source.path.clone(),
+                    );
                     let elapsed = t.elapsed();
-                    eprintln!("  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>6} chars)",
-                        source.path, elapsed, tokens.len(), source.content.len());
+                    eprintln!(
+                        "  tokenize {:>40}: {:>8.2?}  ({:>5} tokens, {:>6} chars)",
+                        source.path,
+                        elapsed,
+                        tokens.len(),
+                        source.content.len()
+                    );
                     token_lists.push(tokens);
                 }
                 let tokenize_total = t_stage.elapsed();
                 let rss_after_tokenize = get_rss_bytes();
-                eprintln!("  TOKENIZE TOTAL: {:?}  | RSS: {}  | diags: {}\n",
-                    tokenize_total, format_bytes(rss_after_tokenize), phase1_diags);
+                eprintln!(
+                    "  TOKENIZE TOTAL: {:?}  | RSS: {}  | diags: {}\n",
+                    tokenize_total,
+                    format_bytes(rss_after_tokenize),
+                    phase1_diags
+                );
 
                 // Phase 2: Parse each token stream
                 let t_stage = Instant::now();
@@ -690,59 +800,94 @@ mod compiler_tests {
                     if result.error.is_some() {
                         phase2_diags += 1;
                     }
-                    eprintln!("  parse   {:>40}: {:>8.2?}  (ok={})",
-                        sources[i].path, elapsed, ok);
+                    eprintln!(
+                        "  parse   {:>40}: {:>8.2?}  (ok={})",
+                        sources[i].path, elapsed, ok
+                    );
                     if let Some(m) = result.module.clone() {
                         modules.push(m);
                     }
                 }
                 let parse_total = t_stage.elapsed();
                 let rss_after_parse = get_rss_bytes();
-                eprintln!("  PARSE TOTAL:    {:?}  | RSS: {}  | diags: {}\n",
-                    parse_total, format_bytes(rss_after_parse), phase2_diags);
+                eprintln!(
+                    "  PARSE TOTAL:    {:?}  | RSS: {}  | diags: {}\n",
+                    parse_total,
+                    format_bytes(rss_after_parse),
+                    phase2_diags
+                );
 
                 // Phase 3: Resolve module graph
                 let t_stage = Instant::now();
                 let graph = crate::v2_compiler_resolve::resolve_modules(modules);
                 let resolve_total = t_stage.elapsed();
-                let phase3_diags: usize = graph.diagnostics.iter()
+                let phase3_diags: usize = graph
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
                 let rss_after_resolve = get_rss_bytes();
-                eprintln!("  RESOLVE TOTAL:  {:?}  | RSS: {}  | diags: {}\n",
-                    resolve_total, format_bytes(rss_after_resolve), phase3_diags);
+                eprintln!(
+                    "  RESOLVE TOTAL:  {:?}  | RSS: {}  | diags: {}\n",
+                    resolve_total,
+                    format_bytes(rss_after_resolve),
+                    phase3_diags
+                );
 
                 // Phase 4: Reconcile (typecheck)
                 let t_stage = Instant::now();
-                let typed = crate::v2_compiler_infer::reconcile(graph);
+                let source_indices = sources.iter().fold(
+                    HashMap::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>::new(),
+                    |mut acc, source| {
+                        acc.insert(
+                            source.path.clone(),
+                            crate::v2_std_core::build_newline_index(
+                                source.path.clone(),
+                                source.content.clone(),
+                            ),
+                        );
+                        acc
+                    },
+                );
+                let typed = crate::v2_compiler_infer::reconcile(graph, source_indices);
                 let reconcile_total = t_stage.elapsed();
-                let phase4_diags: usize = typed.diagnostics.iter()
+                let phase4_diags: usize = typed
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
                 let rss_after_reconcile = get_rss_bytes();
-                eprintln!("  RECONCILE TOTAL: {:?}  | RSS: {}  | diags: {}\n",
-                    reconcile_total, format_bytes(rss_after_reconcile), phase4_diags);
+                eprintln!(
+                    "  RECONCILE TOTAL: {:?}  | RSS: {}  | diags: {}\n",
+                    reconcile_total,
+                    format_bytes(rss_after_reconcile),
+                    phase4_diags
+                );
 
                 // Phase 5: Emit (Rust target)
                 let t_stage = Instant::now();
                 let emit_result = crate::v2_compiler_emit_rust::emit_rust(typed);
                 let emit_total = t_stage.elapsed();
-                let phase5_diags: usize = emit_result.diagnostics.iter()
+                let phase5_diags: usize = emit_result
+                    .diagnostics
+                    .iter()
                     .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                     .count();
                 let emitted_files = emit_result.files.len();
-                let emitted_bytes: usize = emit_result.files.iter()
-                    .map(|f| f.content.len())
-                    .sum();
+                let emitted_bytes: usize = emit_result.files.iter().map(|f| f.content.len()).sum();
                 let rss_after_emit = get_rss_bytes();
-                eprintln!("  EMIT TOTAL:     {:?}  | RSS: {}  | diags: {}\n",
-                    emit_total, format_bytes(rss_after_emit), phase5_diags);
+                eprintln!(
+                    "  EMIT TOTAL:     {:?}  | RSS: {}  | diags: {}\n",
+                    emit_total,
+                    format_bytes(rss_after_emit),
+                    phase5_diags
+                );
 
                 // Summary
-                let total = tokenize_total + parse_total + resolve_total
-                    + reconcile_total + emit_total;
-                let total_diags = phase1_diags + phase2_diags + phase3_diags
-                    + phase4_diags + phase5_diags;
+                let total =
+                    tokenize_total + parse_total + resolve_total + reconcile_total + emit_total;
+                let total_diags =
+                    phase1_diags + phase2_diags + phase3_diags + phase4_diags + phase5_diags;
                 eprintln!("=== SUMMARY ===");
                 eprintln!("  Tokenize:   {:?}", tokenize_total);
                 eprintln!("  Parse:      {:?}", parse_total);
@@ -751,7 +896,11 @@ mod compiler_tests {
                 eprintln!("  Emit:       {:?}", emit_total);
                 eprintln!("  Total:      {:?}", total);
                 eprintln!("  Diagnostics: {}", total_diags);
-                eprintln!("  Emitted: {} files, {}", emitted_files, format_bytes(emitted_bytes as u64));
+                eprintln!(
+                    "  Emitted: {} files, {}",
+                    emitted_files,
+                    format_bytes(emitted_bytes as u64)
+                );
                 eprintln!("");
                 eprintln!("=== RSS CHECKPOINTS ===");
                 eprintln!("  Start:          {}", format_bytes(rss_start));
@@ -775,18 +924,24 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                use std::time::Instant;
                 use std::collections::HashMap;
+                use std::time::Instant;
 
                 let sources = self_compile_sources();
 
-                eprintln!("\n=== PER-MODULE RECONCILE PROFILE ({} sources) ===", sources.len());
+                eprintln!(
+                    "\n=== PER-MODULE RECONCILE PROFILE ({} sources) ===",
+                    sources.len()
+                );
 
                 // Phases 1-3: tokenize + parse + resolve (known safe, ~28MB)
                 let t0 = Instant::now();
                 let mut modules = Vec::new();
                 for source in &sources {
-                    let tokens = crate::v2_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                    let tokens = crate::v2_compiler_tokenize::tokenize(
+                        source.content.clone(),
+                        source.path.clone(),
+                    );
                     let result = crate::v2_compiler_parse::parse(tokens);
                     if let Some(m) = result.module.clone() {
                         modules.push(m);
@@ -794,20 +949,39 @@ mod compiler_tests {
                         eprintln!("  WARN: parse failed for {}", source.path);
                     }
                 }
-                let graph = crate::v2_compiler_resolve::resolve_modules(
-                    modules
-                );
+                let graph = crate::v2_compiler_resolve::resolve_modules(modules);
                 let setup_time = t0.elapsed();
                 let rss_baseline = get_rss_bytes();
-                eprintln!("  Setup (tok+parse+resolve): {:?}  | RSS: {}", setup_time, format_bytes(rss_baseline));
+                eprintln!(
+                    "  Setup (tok+parse+resolve): {:?}  | RSS: {}",
+                    setup_time,
+                    format_bytes(rss_baseline)
+                );
                 eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 // Phase 4: typecheck each module individually
-                let mut mi_raw = HashMap::<String, std::rc::Rc<crate::v2_compiler_infer_items::TypedModule>>::new();
+                let mut mi_raw = HashMap::<
+                    String,
+                    std::rc::Rc<crate::v2_compiler_infer_items::TypedModule>,
+                >::new();
+                let source_indices = sources.iter().fold(
+                    HashMap::<String, std::rc::Rc<crate::v2_std_core::NewlineIndex>>::new(),
+                    |mut acc, source| {
+                        acc.insert(
+                            source.path.clone(),
+                            crate::v2_std_core::build_newline_index(
+                                source.path.clone(),
+                                source.content.clone(),
+                            ),
+                        );
+                        acc
+                    },
+                );
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
-                    let item_count = crate::v2_std_core::module_items(resolved.module.clone()).len();
+                    let item_count =
+                        crate::v2_std_core::module_items(resolved.module.clone()).len();
                     let rss_before = get_rss_bytes();
 
                     // Print BEFORE typecheck so we know which module crashed on SIGKILL
@@ -819,37 +993,58 @@ mod compiler_tests {
                     let t_unres = Instant::now();
                     let _unres = crate::v2_compiler_infer::build_type_env_unresolved(
                         resolved.clone(),
-                        module_index.clone()
+                        module_index.clone(),
+                        source_indices.clone(),
                     );
                     let unres_elapsed = t_unres.elapsed();
                     let rss_after_unres = get_rss_bytes();
                     let unres_delta = rss_after_unres.saturating_sub(rss_before);
 
-                    eprint!("cycles={:>8.2?}(+{}) ", unres_elapsed, format_bytes(unres_delta));
+                    eprint!(
+                        "cycles={:>8.2?}(+{}) ",
+                        unres_elapsed,
+                        format_bytes(unres_delta)
+                    );
 
                     if unres_delta > 256 * 1024 * 1024 {
                         eprintln!("");
-                        panic!("ABORT: '{}' cycle detection grew RSS by {}", name, format_bytes(unres_delta));
+                        panic!(
+                            "ABORT: '{}' cycle detection grew RSS by {}",
+                            name,
+                            format_bytes(unres_delta)
+                        );
                     }
 
                     // Sub-step 1: build_type_env (includes topo_resolve_types)
                     let t_env = Instant::now();
                     let env_result = crate::v2_compiler_infer::build_type_env(
                         resolved.clone(),
-                        module_index.clone()
+                        module_index.clone(),
+                        source_indices.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
                     let env_delta = rss_after_env.saturating_sub(rss_before);
-                    let env_errs: usize = env_result.diagnostics.iter()
+                    let env_errs: usize = env_result
+                        .diagnostics
+                        .iter()
                         .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                         .count();
 
-                    eprint!("env={:>8.2?}(+{},e={}) ", env_elapsed, format_bytes(env_delta), env_errs);
+                    eprint!(
+                        "env={:>8.2?}(+{},e={}) ",
+                        env_elapsed,
+                        format_bytes(env_delta),
+                        env_errs
+                    );
 
                     if env_delta > 512 * 1024 * 1024 {
                         eprintln!("");
-                        panic!("ABORT: '{}' build_type_env grew RSS by {}", name, format_bytes(env_delta));
+                        panic!(
+                            "ABORT: '{}' build_type_env grew RSS by {}",
+                            name,
+                            format_bytes(env_delta)
+                        );
                     }
                     if env_elapsed.as_secs() > 10 {
                         eprintln!("");
@@ -860,21 +1055,33 @@ mod compiler_tests {
                     let t_full = Instant::now();
                     let tc_result = crate::v2_compiler_infer::typecheck_module(
                         resolved.clone(),
-                        module_index
+                        module_index,
+                        source_indices.clone(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();
                     let delta = rss_after.saturating_sub(rss_before);
-                    let diag_count: usize = tc_result.diagnostics.iter()
+                    let diag_count: usize = tc_result
+                        .diagnostics
+                        .iter()
                         .filter(|d| crate::v2_std_core::is_error_diagnostic(d.diagnostic.clone()))
                         .count();
 
-                    eprintln!("full={:>8.2?}  | RSS: {} (+{})  | errs: {}",
-                        full_elapsed, format_bytes(rss_after), format_bytes(delta), diag_count);
+                    eprintln!(
+                        "full={:>8.2?}  | RSS: {} (+{})  | errs: {}",
+                        full_elapsed,
+                        format_bytes(rss_after),
+                        format_bytes(delta),
+                        diag_count
+                    );
 
                     // Guardrails: abort before OOM kills the system
                     if delta > 512 * 1024 * 1024 {
-                        panic!("ABORT: '{}' grew RSS by {} (>512MB)", name, format_bytes(delta));
+                        panic!(
+                            "ABORT: '{}' grew RSS by {} (>512MB)",
+                            name,
+                            format_bytes(delta)
+                        );
                     }
                     if full_elapsed.as_secs() > 10 {
                         panic!("ABORT: '{}' took {:?} (>10s)", name, full_elapsed);
@@ -885,9 +1092,11 @@ mod compiler_tests {
                 }
 
                 let rss_final = get_rss_bytes();
-                eprintln!("\n  RSS final: {} (from baseline: +{})",
+                eprintln!(
+                    "\n  RSS final: {} (from baseline: +{})",
                     format_bytes(rss_final),
-                    format_bytes(rss_final.saturating_sub(rss_baseline)));
+                    format_bytes(rss_final.saturating_sub(rss_baseline))
+                );
                 eprintln!("=== DONE ===\n");
             })
             .expect("failed to spawn thread")

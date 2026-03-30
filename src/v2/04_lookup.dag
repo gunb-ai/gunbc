@@ -322,7 +322,7 @@ fn substitute_algebra_result(result_type: Node, receiver_type: Node, fold_accumu
       if child.name == elem.name || child.name == "" { elem }
       else { substitute_generic_param(child: child, elem: elem) }
     )
-    Node { name: receiver_type.name, span: result_type.span, children: substituted_children, connective: receiver_type.connective, params: receiver_type.params, inferred: none, return_cardinality: result_type.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Node { name: receiver_type.name, span: result_type.span, ident_span: receiver_type.ident_span, children: substituted_children, connective: receiver_type.connective, params: receiver_type.params, inferred: none, return_cardinality: result_type.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   } else if is_optional {
     substitute_optional_result(result_type: result_type, receiver_type: receiver_type)
   } else {
@@ -337,7 +337,7 @@ fn substitute_generic_param(child: Node, elem: Node) -> Node {
     elem
   } else {
     let subst_children = child.children |> map(c => substitute_generic_param(child: c, elem: elem))
-    Node { name: child.name, span: child.span, children: subst_children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, is_self_recursive: child.is_self_recursive, has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, expr_data: child.expr_data }
+    Node { name: child.name, span: child.span, ident_span: child.ident_span, children: subst_children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: child.properties, type_annotation: child.type_annotation, is_self_recursive: child.is_self_recursive, has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, expr_data: child.expr_data }
   }
 }
 

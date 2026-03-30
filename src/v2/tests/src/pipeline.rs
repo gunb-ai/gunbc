@@ -1,10 +1,10 @@
 #![allow(clippy::disallowed_macros)]
 
 use crate::helpers::*;
-use v2_compiler::v2_compiler_artifact::RenderTarget;
-use v2_compiler::v2_compiler_compile::SourceFile;
 use serde_json::Value;
 use std::rc::Rc;
+use v2_compiler::v2_compiler_artifact::RenderTarget;
+use v2_compiler::v2_compiler_compile::SourceFile;
 
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
@@ -30,10 +30,8 @@ fn full_dsl_compiles() {
         "no .dag files found in dsl/ — something is wrong"
     );
 
-    let dsl_result = v2_compiler::v2_compiler_compile::compile_sources(
-        dsl_sources.clone(),
-        RenderTarget::Rust,
-    );
+    let dsl_result =
+        v2_compiler::v2_compiler_compile::compile_sources(dsl_sources.clone(), RenderTarget::Rust);
 
     let dsl_diag_count = dsl_result.diagnostics.len() as usize;
     if dsl_diag_count > 0 {
@@ -64,12 +62,11 @@ fn full_dsl_compiles() {
         if path.extension().map(|e| e == "dag").unwrap_or(false) {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
-            let result = v2_compiler::v2_compiler_parse::parse(
-                v2_compiler::v2_compiler_tokenize::tokenize(
+            let result =
+                v2_compiler::v2_compiler_parse::parse(v2_compiler::v2_compiler_tokenize::tokenize(
                     content,
                     path.to_string_lossy().to_string(),
-                ),
-            );
+                ));
             if let Some(ref err) = result.error {
                 v2_errors.push(format!(
                     "{}: {}",
@@ -87,7 +84,8 @@ fn full_dsl_compiles() {
         panic!(
             "src/v2/ parse errors ({}):\n{}",
             v2_errors.len(),
-            v2_errors.iter()
+            v2_errors
+                .iter()
                 .map(|e| format!("  {}", e))
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -123,10 +121,7 @@ fn collect_dag_sources(
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .to_string();
-            sources.push(Rc::new(SourceFile {
-                path: rel,
-                content,
-            }));
+            sources.push(Rc::new(SourceFile { path: rel, content }));
         }
     }
 }
@@ -165,8 +160,14 @@ fn strict_pipeline_smoke() {
     assert_no_diagnostics(&result);
     assert!(!result.files.is_empty(), "expected at least 1 emitted file");
     let content = find_file(&result, "src/smoke.rs");
-    assert!(content.contains("struct Point"), "emitted file should contain struct Point");
-    assert!(content.contains("struct Label"), "emitted file should contain struct Label");
+    assert!(
+        content.contains("struct Point"),
+        "emitted file should contain struct Point"
+    );
+    assert!(
+        content.contains("struct Label"),
+        "emitted file should contain struct Label"
+    );
 }
 
 #[test]
@@ -187,8 +188,10 @@ fn ambiguous_variant_name_resolves_correctly() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/ambig_test.rs");
     // Both Red variants should be qualified to their correct parent enum
-    assert!(content.contains("Color::Red") || content.contains("Signal::Red"),
-        "ambiguous variant Red should be qualified to a parent enum");
+    assert!(
+        content.contains("Color::Red") || content.contains("Signal::Red"),
+        "ambiguous variant Red should be qualified to a parent enum"
+    );
 }
 
 #[test]
@@ -251,19 +254,39 @@ fn go_pipeline_smoke() {
     let source = "module smoke\n\ntype Point { x: Int  y: Int }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n";
     let result = compile_dag_target(source, RenderTarget::Go);
     assert_no_diagnostics(&result);
-    assert!(result.files.len() >= 2, "Go target should emit at least 2 files");
+    assert!(
+        result.files.len() >= 2,
+        "Go target should emit at least 2 files"
+    );
 
     let paths = emitted_file_paths(&result);
     let go_mod = result.files.iter().find(|f| f.path.ends_with("go.mod"));
-    assert!(go_mod.is_some(), "Go target should emit go.mod, got: {:?}", paths);
+    assert!(
+        go_mod.is_some(),
+        "Go target should emit go.mod, got: {:?}",
+        paths
+    );
     let go_mod_content = &go_mod.unwrap().content;
-    assert!(go_mod_content.contains("module generated"), "go.mod should contain 'module generated'");
+    assert!(
+        go_mod_content.contains("module generated"),
+        "go.mod should contain 'module generated'"
+    );
 
     let go_file = result.files.iter().find(|f| f.path.ends_with(".go"));
-    assert!(go_file.is_some(), "Go target should emit a .go file, got: {:?}", paths);
+    assert!(
+        go_file.is_some(),
+        "Go target should emit a .go file, got: {:?}",
+        paths
+    );
     let go_content = &go_file.unwrap().content;
-    assert!(go_content.contains("package smoke"), "Go file should contain 'package smoke'");
-    assert!(go_content.contains("type Point struct"), "Go file should contain 'type Point struct'");
+    assert!(
+        go_content.contains("package smoke"),
+        "Go file should contain 'package smoke'"
+    );
+    assert!(
+        go_content.contains("type Point struct"),
+        "Go file should contain 'type Point struct'"
+    );
 }
 
 #[test]
@@ -272,8 +295,14 @@ fn rust_emit_generates_mock_test_file() {
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "tests/mock_smoke_test.rs");
-    assert!(content.contains("test_demo_api_ping"), "Rust test file should contain the generated test function");
-    assert!(content.contains("// Signature:"), "Rust test file should contain the projection signature comment");
+    assert!(
+        content.contains("test_demo_api_ping"),
+        "Rust test file should contain the generated test function"
+    );
+    assert!(
+        content.contains("// Signature:"),
+        "Rust test file should contain the projection signature comment"
+    );
 }
 
 #[test]
@@ -282,8 +311,14 @@ fn python_emit_generates_mock_test_file() {
     let result = compile_dag_target(source, RenderTarget::Python);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "tests/test_mock_smoke.py");
-    assert!(content.contains("def test_demo_api_ping()"), "Python test file should contain the generated test function");
-    assert!(content.contains("# Signature:"), "Python test file should contain the projection signature comment");
+    assert!(
+        content.contains("def test_demo_api_ping()"),
+        "Python test file should contain the generated test function"
+    );
+    assert!(
+        content.contains("# Signature:"),
+        "Python test file should contain the projection signature comment"
+    );
 }
 
 #[test]
@@ -296,7 +331,10 @@ fn python_test_file_syntax_valid() {
     // Validate via python3 ast.parse — checks real Python syntax validity
     let status = std::process::Command::new("python3")
         .arg("-c")
-        .arg(format!("import ast; ast.parse({})", serde_json::to_string(&content).unwrap()))
+        .arg(format!(
+            "import ast; ast.parse({})",
+            serde_json::to_string(&content).unwrap()
+        ))
         .output()
         .expect("failed to invoke python3");
     assert!(
@@ -313,8 +351,14 @@ fn go_emit_generates_mock_test_file() {
     let result = compile_dag_target(source, RenderTarget::Go);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "mock_smoke_test.go");
-    assert!(content.contains("func TestDemoApiPing("), "Go test file should contain a PascalCase generated test function");
-    assert!(content.contains("// Signature:"), "Go test file should contain the projection signature comment");
+    assert!(
+        content.contains("func TestDemoApiPing("),
+        "Go test file should contain a PascalCase generated test function"
+    );
+    assert!(
+        content.contains("// Signature:"),
+        "Go test file should contain the projection signature comment"
+    );
 }
 
 #[test]
@@ -325,15 +369,33 @@ fn go_test_file_syntax_valid() {
     let content = find_file(&result, "mock_smoke_test.go");
 
     // Valid Go test structure
-    assert!(content.contains("package "), "Go test file must declare a package");
+    assert!(
+        content.contains("package "),
+        "Go test file must declare a package"
+    );
     assert!(content.contains("import"), "Go test file must have imports");
-    assert!(content.contains("func Test"), "Go test file must contain a Test function");
-    assert!(content.contains("testing.T"), "Go test file must reference testing.T");
+    assert!(
+        content.contains("func Test"),
+        "Go test file must contain a Test function"
+    );
+    assert!(
+        content.contains("testing.T"),
+        "Go test file must reference testing.T"
+    );
 
     // Must not contain syntax from other targets
-    assert!(!content.contains("fn "), "Go test file must not contain Rust 'fn ' syntax");
-    assert!(!content.contains("def "), "Go test file must not contain Python 'def ' syntax");
-    assert!(!content.contains("compile_error!"), "Go test file must not contain Rust compile_error! macro");
+    assert!(
+        !content.contains("fn "),
+        "Go test file must not contain Rust 'fn ' syntax"
+    );
+    assert!(
+        !content.contains("def "),
+        "Go test file must not contain Python 'def ' syntax"
+    );
+    assert!(
+        !content.contains("compile_error!"),
+        "Go test file must not contain Rust compile_error! macro"
+    );
 }
 
 #[test]
@@ -342,25 +404,62 @@ fn go_emit_mock_test_file_imports_fmt_for_string_interp() {
     let result = compile_dag_target(source, RenderTarget::Go);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "mock_interp_test.go");
-    assert!(content.contains("\"fmt\""), "Go test file should import fmt when mock interpolation renders fmt.Sprintf");
-    assert!(content.contains("fmt.Sprintf("), "Go test file should render fmt.Sprintf for interpolated mock strings");
+    assert!(
+        content.contains("\"fmt\""),
+        "Go test file should import fmt when mock interpolation renders fmt.Sprintf"
+    );
+    assert!(
+        content.contains("fmt.Sprintf("),
+        "Go test file should render fmt.Sprintf for interpolated mock strings"
+    );
 }
 #[test]
 fn dag_pipeline_smoke() {
     let source = "module dag_smoke\n\ntype Point { x: Int  y: Int }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n";
     let result = compile_dag_named("dag_smoke.dag", source, RenderTarget::Dag);
     assert_no_diagnostics(&result);
-    assert_eq!(result.files.len(), 1, "Dag target should emit exactly 1 file");
+    assert_eq!(
+        result.files.len(),
+        1,
+        "Dag target should emit exactly 1 file"
+    );
     let content = find_file(&result, "dag-artifact.json");
-    assert!(content.contains("\"version\": \"0.1.0\""), "dag artifact should contain version");
-    assert!(content.contains("\"modules\""), "dag artifact should contain modules");
-    assert!(content.contains("dag_smoke"), "dag artifact should reference dag_smoke");
-    assert!(content.contains("\"module\""), "dag artifact should include serialized module objects");
-    assert!(content.contains("\"items\""), "dag artifact should include serialized items");
-    assert!(content.contains("\"diagnostics\": ["), "dag artifact should include diagnostics");
-    assert!(content.contains("\"item_registry_keys\""), "dag artifact should include item registry keys");
-    assert!(content.contains("\"expr_data\""), "dag artifact should include serialized expression data");
-    assert!(content.contains("\"kind\": \"ExprRecordLit\""), "dag artifact should capture expression variants");
+    assert!(
+        content.contains("\"version\": \"0.1.0\""),
+        "dag artifact should contain version"
+    );
+    assert!(
+        content.contains("\"modules\""),
+        "dag artifact should contain modules"
+    );
+    assert!(
+        content.contains("dag_smoke"),
+        "dag artifact should reference dag_smoke"
+    );
+    assert!(
+        content.contains("\"module\""),
+        "dag artifact should include serialized module objects"
+    );
+    assert!(
+        content.contains("\"items\""),
+        "dag artifact should include serialized items"
+    );
+    assert!(
+        content.contains("\"diagnostics\": ["),
+        "dag artifact should include diagnostics"
+    );
+    assert!(
+        content.contains("\"item_registry_keys\""),
+        "dag artifact should include item registry keys"
+    );
+    assert!(
+        content.contains("\"expr_data\""),
+        "dag artifact should include serialized expression data"
+    );
+    assert!(
+        content.contains("\"kind\": \"ExprRecordLit\""),
+        "dag artifact should capture expression variants"
+    );
 }
 
 // ── Multi-module tests ──────────────────────────────────────────────────
@@ -368,8 +467,14 @@ fn dag_pipeline_smoke() {
 #[test]
 fn multi_module_synthetic() {
     let files = &[
-        ("types.dag", "module mylib.types\ntype Point { x: Int, y: Int }\n"),
-        ("funcs.dag", "module mylib.funcs\nimport mylib.types { Point }\n"),
+        (
+            "types.dag",
+            "module mylib.types\ntype Point { x: Int, y: Int }\n",
+        ),
+        (
+            "funcs.dag",
+            "module mylib.funcs\nimport mylib.types { Point }\n",
+        ),
     ];
     let result = compile_multi(files);
     // Should not crash; diagnostics acceptable but not required to be zero
@@ -386,7 +491,10 @@ fn bare_import_wildcard_survives_pipeline() {
     assert_no_diagnostics(&result);
     // Stage0 renames module "main" to "main_mod" to avoid Rust's main.rs entry point
     let content = find_file(&result, "src/main_mod.rs");
-    assert!(content.contains("use crate::dep"), "main_mod.rs should contain 'use crate::dep'");
+    assert!(
+        content.contains("use crate::dep"),
+        "main_mod.rs should contain 'use crate::dep'"
+    );
 }
 
 #[test]
@@ -397,7 +505,10 @@ fn compile_sources_filters_none_parse_diagnostics() {
     ];
     let result = compile_multi(files);
     let msgs = diagnostic_messages(&result);
-    assert!(!msgs.is_empty(), "bad.dag (no module) should produce at least 1 diagnostic");
+    assert!(
+        !msgs.is_empty(),
+        "bad.dag (no module) should produce at least 1 diagnostic"
+    );
 }
 
 // ── Semantic / typecheck tests ──────────────────────────────────────────
@@ -408,7 +519,10 @@ fn lambda_record_optional_fields_are_wrapped() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test.rs");
-    assert!(content.contains("email: Some("), "optional field should be wrapped in Some(");
+    assert!(
+        content.contains("email: Some("),
+        "optional field should be wrapped in Some("
+    );
 }
 
 #[test]
@@ -417,20 +531,29 @@ fn workflow_cli_defaults_must_be_literal() {
     let source = "module test\nfn helper() -> String { \"x\" }\nfunc greet(name: String = helper()) -> String { name }\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-    assert!(!msgs.is_empty(), "non-literal default should produce a diagnostic");
+    assert!(
+        !msgs.is_empty(),
+        "non-literal default should produce a diagnostic"
+    );
 }
 
 #[test]
 fn empty_import_block_emits_no_rust_import() {
     let files = &[
         ("dep.dag", "module dep\n"),
-        ("main.dag", "module main\nimport dep {}\nfn noop() -> Int { 0 }\n"),
+        (
+            "main.dag",
+            "module main\nimport dep {}\nfn noop() -> Int { 0 }\n",
+        ),
     ];
     let result = compile_multi(files);
     let _paths = emitted_file_paths(&result);
     if has_file(&result, "src/main.rs") {
         let content = find_file(&result, "src/main.rs");
-        assert!(!content.contains("use crate::dep::*;"), "empty import block should not emit wildcard use");
+        assert!(
+            !content.contains("use crate::dep::*;"),
+            "empty import block should not emit wildcard use"
+        );
     }
 }
 
@@ -440,7 +563,10 @@ fn map_index_emits_lookup_style_rust() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test.rs");
-    assert!(content.contains("v2_rt"), "map index should emit runtime call (v2_rt)");
+    assert!(
+        content.contains("v2_rt"),
+        "map index should emit runtime call (v2_rt)"
+    );
 }
 
 #[test]
@@ -469,7 +595,8 @@ fn rust_container_ops_emit_rc_sharing_bridges() {
 
 #[test]
 fn optional_alias_field_access() {
-    let source = "module test\ndata USER: String? = \"admin\"\nfn get_user() -> String {\n  USER\n}\n";
+    let source =
+        "module test\ndata USER: String? = \"admin\"\nfn get_user() -> String {\n  USER\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
@@ -483,7 +610,8 @@ fn data_map_alias_lookup() {
 
 #[test]
 fn indirect_type_alias_cycles_do_not_recurse_forever() {
-    let source = "module test\ntype A { val: Int }\ntype B = A\nfn get(x: B) -> Int {\n  x.val\n}\n";
+    let source =
+        "module test\ntype A { val: Int }\ntype B = A\nfn get(x: B) -> Int {\n  x.val\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
@@ -520,7 +648,10 @@ fn map_index_key_type_mismatch_is_rejected() {
     let source = "module test\nfn bad(m: Map<String, Int>) -> Int {\n  m[0]\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-    assert!(!msgs.is_empty(), "integer key on String-keyed map should be rejected");
+    assert!(
+        !msgs.is_empty(),
+        "integer key on String-keyed map should be rejected"
+    );
 }
 
 #[test]
@@ -537,7 +668,8 @@ fn optional_match_requires_none_arm() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|msg| msg.contains("non-exhaustive") && msg.contains("None")),
+        msgs.iter()
+            .any(|msg| msg.contains("non-exhaustive") && msg.contains("None")),
         "missing None arm should produce a non-exhaustive Optional match diagnostic, got {:?}",
         msgs
     );
@@ -555,7 +687,10 @@ fn typecheck_rejects_cross_function_param_leak() {
     let source = "module test\nfn carries_param(ghost: Int) -> Int { ghost }\nfn uses_missing() -> Int { ghost }\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-    assert!(!msgs.is_empty(), "cross-function param leak should be rejected");
+    assert!(
+        !msgs.is_empty(),
+        "cross-function param leak should be rejected"
+    );
 }
 
 #[test]
@@ -570,7 +705,10 @@ fn if_else_branch_type_mismatch() {
     let source = "module test\nfn demo(cond: Bool) -> Int {\n  if cond { 1 } else { \"x\" }\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-    assert!(!msgs.is_empty(), "branch type mismatch should produce a diagnostic");
+    assert!(
+        !msgs.is_empty(),
+        "branch type mismatch should produce a diagnostic"
+    );
 }
 
 #[test]
@@ -603,7 +741,10 @@ fn parse_error_does_not_leak_to_resolve() {
     let source = "fn orphan() -> Int { 42 }";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
-    assert!(!msgs.is_empty(), "missing module declaration should produce a diagnostic");
+    assert!(
+        !msgs.is_empty(),
+        "missing module declaration should produce a diagnostic"
+    );
 }
 
 // ── Complexity report tests ─────────────────────────────────────────────
@@ -636,16 +777,23 @@ fn complexity_violation_ratchet() {
         ("module svc\ntype Config { name: String  retries: Int }\nfn default_config() -> Config {\n  Config { name: \"default\", retries: 3 }\n}\nfn config_name(c: Config) -> String { c.name }\n",),
         ("module coll\nfn double_all(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i * 2 })\n}\nfn total(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn head(items: List<Int>) -> Int? {\n  items |> first\n}\n",),
     ];
-    let files: Vec<(&str, &str)> = source.iter().enumerate().map(|(i, s)| {
-        let name = if i == 0 { "svc.dag" } else { "coll.dag" };
-        (name, s.0)
-    }).collect();
+    let files: Vec<(&str, &str)> = source
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let name = if i == 0 { "svc.dag" } else { "coll.dag" };
+            (name, s.0)
+        })
+        .collect();
     let result = compile_multi(&files);
     assert!(
         result.complexity.violations.is_empty(),
         "complexity violation ratchet: expected 0 violations, got {}:\n{}",
         result.complexity.violations.len(),
-        result.complexity.violations.iter()
+        result
+            .complexity
+            .violations
+            .iter()
             .map(|v| format!("  {}: {}", v.func_name, v.reason))
             .collect::<Vec<_>>()
             .join("\n")
@@ -678,7 +826,12 @@ fn pick(x: Int, y: Int) -> Int {
     assert!(
         result.complexity.violations.is_empty(),
         "non-recursive functions should have 0 violations, got: {:?}",
-        result.complexity.violations.iter().map(|v| &v.func_name).collect::<Vec<_>>()
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| &v.func_name)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -705,7 +858,12 @@ fn nested_sum(matrix: List<List<Int>>) -> Int {
     assert!(
         result.complexity.violations.is_empty(),
         "collection iteration should have 0 violations, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -725,7 +883,12 @@ fn sum_list(items: List<Int>) -> Int {
     assert!(
         result.complexity.violations.is_empty(),
         "linear recursion should have 0 violations, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -749,13 +912,21 @@ fn eval(e: Expr) -> Int {
 }
 "#;
     let result = compile_dag(source);
-    let eval_violations: Vec<_> = result.complexity.violations.iter()
+    let eval_violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
         .filter(|v| v.func_name == "eval")
         .collect();
     assert!(
         eval_violations.is_empty(),
         "structural-descent tree walk should not violate complexity analysis, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -771,7 +942,10 @@ fn walk(n: Int) -> Int {
 }
 "#;
     let result = compile_dag(source);
-    let walk_violations: Vec<_> = result.complexity.violations.iter()
+    let walk_violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
         .filter(|v| v.func_name == "walk")
         .collect();
     assert!(
@@ -791,12 +965,23 @@ fn split(n: Int) -> Int {
 }
 "#;
     let result = compile_dag(source);
-    let split_violations: Vec<_> = result.complexity.violations.iter()
+    let split_violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
         .filter(|v| v.func_name == "split")
         .collect();
-    assert_eq!(split_violations.len(), 1,
+    assert_eq!(
+        split_violations.len(),
+        1,
         "expected one branching-recursion violation, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
     assert!(
         split_violations[0].reason.contains("branching recursion"),
         "expected branching recursion reason, got: {}",
@@ -812,12 +997,23 @@ fn fib_like(n: Int) -> Int {
 }
 "#;
     let result = compile_dag(source);
-    let fib_violations: Vec<_> = result.complexity.violations.iter()
+    let fib_violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
         .filter(|v| v.func_name == "fib_like")
         .collect();
-    assert_eq!(fib_violations.len(), 1,
+    assert_eq!(
+        fib_violations.len(),
+        1,
         "expected one guarded branching-recursion violation, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
     assert!(
         fib_violations[0].reason.contains("branching recursion"),
         "expected branching recursion reason, got: {}",
@@ -840,13 +1036,21 @@ fn walk(t: Tree, depth: Int) -> Int {
 }
 "#;
     let result = compile_dag(source);
-    let walk_violations: Vec<_> = result.complexity.violations.iter()
+    let walk_violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
         .filter(|v| v.func_name == "walk")
         .collect();
     assert!(
         walk_violations.is_empty(),
         "structural-descent recursion should allow extra bookkeeping args, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -865,7 +1069,12 @@ fn process_items(items: List<Int>) -> Int {
     assert!(
         result.complexity.violations.is_empty(),
         "for-each should have 0 violations, got: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -894,14 +1103,26 @@ fn process_items(items: List<Int>) -> Int {
 use v2_compiler::v2_compiler_complexity::{classify_complexity, Certainty, CostExpr, SizeExpr};
 
 /// Helper: get the complexity class string for a function in a compile result.
-fn complexity_class_of(result: &v2_compiler::v2_compiler_compile::PipelineResult, func: &str) -> Option<String> {
-    result.complexity.function_summaries.get(func)
+fn complexity_class_of(
+    result: &v2_compiler::v2_compiler_compile::PipelineResult,
+    func: &str,
+) -> Option<String> {
+    result
+        .complexity
+        .function_summaries
+        .get(func)
         .map(|s| classify_complexity(s.work.clone()))
 }
 
 /// Helper: get certainty for a function.
-fn certainty_of(result: &v2_compiler::v2_compiler_compile::PipelineResult, func: &str) -> Option<Certainty> {
-    result.complexity.function_summaries.get(func)
+fn certainty_of(
+    result: &v2_compiler::v2_compiler_compile::PipelineResult,
+    func: &str,
+) -> Option<Certainty> {
+    result
+        .complexity
+        .function_summaries
+        .get(func)
         .map(|s| s.certainty)
 }
 
@@ -918,10 +1139,19 @@ fn triple(x: Int) -> Int { x * 3 }
     assert!(result.complexity.violations.is_empty());
     for func in &["add", "max", "triple"] {
         let class = complexity_class_of(&result, func);
-        assert_eq!(class.as_deref(), Some("O(1)"),
-            "{} should be O(1), got {:?}", func, class);
-        assert_eq!(certainty_of(&result, func), Some(Certainty::Proven),
-            "{} should be Proven", func);
+        assert_eq!(
+            class.as_deref(),
+            Some("O(1)"),
+            "{} should be O(1), got {:?}",
+            func,
+            class
+        );
+        assert_eq!(
+            certainty_of(&result, func),
+            Some(Certainty::Proven),
+            "{} should be Proven",
+            func
+        );
     }
 }
 
@@ -941,13 +1171,24 @@ fn pos_only(items: List<Int>) -> List<Int> {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    assert!(result.complexity.violations.is_empty(),
+    assert!(
+        result.complexity.violations.is_empty(),
         "linear functions should have 0 violations: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
     for func in &["sum_items", "doubled", "pos_only"] {
         let class = complexity_class_of(&result, func);
-        assert!(class.as_ref().is_some_and(|c| c.starts_with("O(")),
-            "{} should be O(n), got {:?}", func, class);
+        assert!(
+            class.as_ref().is_some_and(|c| c.starts_with("O(")),
+            "{} should be O(n), got {:?}",
+            func,
+            class
+        );
     }
 }
 
@@ -963,16 +1204,29 @@ fn all_pairs_sum(items: List<Int>) -> Int {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    assert!(result.complexity.violations.is_empty(),
+    assert!(
+        result.complexity.violations.is_empty(),
         "quadratic should have 0 violations: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
     let class = complexity_class_of(&result, "all_pairs_sum");
     // Nested fold over same collection: analyzer may simplify O(n*n) to O(n)
     // because it tracks collection identity. The key assertion is: no violations
     // and a concrete bound exists (not Unknown).
-    assert!(class.is_some(), "all_pairs_sum should have a complexity class");
-    assert!(class.as_ref().is_some_and(|c| c.starts_with("O(")),
-        "all_pairs_sum should have a concrete bound, got {:?}", class);
+    assert!(
+        class.is_some(),
+        "all_pairs_sum should have a complexity class"
+    );
+    assert!(
+        class.as_ref().is_some_and(|c| c.starts_with("O(")),
+        "all_pairs_sum should have a concrete bound, got {:?}",
+        class
+    );
 }
 
 /// O(n × m) — bilinear: fold over one collection, inner operation on another.
@@ -987,15 +1241,28 @@ fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    assert!(result.complexity.violations.is_empty(),
+    assert!(
+        result.complexity.violations.is_empty(),
         "bilinear should have 0 violations: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
     let class = complexity_class_of(&result, "cross_count");
     // Bilinear: fold over rows with inner fold over cols.
     // Analyzer should produce O(|rows| * |cols|) or a simplified form.
-    assert!(class.is_some(), "cross_count should have a complexity class");
-    assert!(class.as_ref().is_some_and(|c| c.starts_with("O(")),
-        "cross_count should have a concrete bound, got {:?}", class);
+    assert!(
+        class.is_some(),
+        "cross_count should have a complexity class"
+    );
+    assert!(
+        class.as_ref().is_some_and(|c| c.starts_with("O(")),
+        "cross_count should have a concrete bound, got {:?}",
+        class
+    );
 }
 
 /// sort_by — should be Proven with O(n log n) via CostLog.
@@ -1008,12 +1275,23 @@ fn sort_ascending(items: List<Int>) -> List<Int> {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    assert!(result.complexity.violations.is_empty(),
+    assert!(
+        result.complexity.violations.is_empty(),
         "sort should have 0 violations: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
     let cert = certainty_of(&result, "sort_ascending");
-    assert_eq!(cert, Some(Certainty::Proven),
-        "sort_by should produce Proven certainty (CostLog expresses n log n), got {:?}", cert);
+    assert_eq!(
+        cert,
+        Some(Certainty::Proven),
+        "sort_by should produce Proven certainty (CostLog expresses n log n), got {:?}",
+        cert
+    );
 }
 
 #[test]
@@ -1021,7 +1299,9 @@ fn complexity_class_add_keeps_log_terms() {
     let expr = Rc::new(CostExpr::CostAdd {
         left: Rc::new(CostExpr::CostLog {
             base: 2,
-            argument: Rc::new(SizeExpr::SizeVar { name: "n".to_string() }),
+            argument: Rc::new(SizeExpr::SizeVar {
+                name: "n".to_string(),
+            }),
         }),
         right: Rc::new(CostExpr::CostConst { value: 1 }),
     });
@@ -1038,7 +1318,9 @@ fn complexity_class_max_keeps_log_terms() {
         left: Rc::new(CostExpr::CostConst { value: 1 }),
         right: Rc::new(CostExpr::CostLog {
             base: 2,
-            argument: Rc::new(SizeExpr::SizeVar { name: "n".to_string() }),
+            argument: Rc::new(SizeExpr::SizeVar {
+                name: "n".to_string(),
+            }),
         }),
     });
     let class = classify_complexity(expr);
@@ -1073,12 +1355,19 @@ fn expand(items: List<Int>) -> List<Int> {
 "#;
     let files: Vec<(&str, &str)> = vec![("test.dag", source)];
     let result = compile_multi(&files);
-    assert!(result.complexity.violations.is_empty(),
+    assert!(
+        result.complexity.violations.is_empty(),
         "flat_map should have 0 violations: {:?}",
-        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>());
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+    );
 }
 
-/// Verify that the formatted complexity report contains all analyzed functions.
+/// Verify that the structural complexity report contains all analyzed functions.
 #[test]
 fn complexity_report_covers_all_functions() {
     let source = r#"module coverage
@@ -1098,14 +1387,18 @@ fn f4(a: List<Int>, b: List<Int>) -> Int {
     let summaries = &result.complexity.function_summaries;
     let keys: Vec<_> = summaries.keys().collect();
     for func in &["f1", "f2", "f3", "f4"] {
-        let found = summaries.contains_key(*func)
-            || summaries.keys().any(|k| k.ends_with(func));
-        assert!(found,
-            "function '{}' should have a complexity summary (keys: {:?})", func, keys);
+        let found = summaries.contains_key(*func) || summaries.keys().any(|k| k.ends_with(func));
+        assert!(
+            found,
+            "function '{}' should have a complexity summary (keys: {:?})",
+            func, keys
+        );
     }
     // Verify every expected function has a summary in the structural data
-    assert!(!summaries.is_empty(),
-        "function_summaries should not be empty");
+    assert!(
+        !summaries.is_empty(),
+        "function_summaries should not be empty"
+    );
 }
 
 /// Structural data scales to any number of functions without elision.
@@ -1116,17 +1409,26 @@ fn complexity_report_scales_to_large_programs() {
         source.push_str(&format!("fn f{idx}(x: Int) -> Int {{ x + 1 }}\n"));
     }
     let result = compile_dag(&source);
-    assert_eq!(result.complexity.function_summaries.len(), 401,
-        "structural data should contain all 401 function summaries");
-    assert!(result.complexity.violations.is_empty(),
-        "constant functions should have 0 violations");
+    assert_eq!(
+        result.complexity.function_summaries.len(),
+        401,
+        "structural data should contain all 401 function summaries"
+    );
+    assert!(
+        result.complexity.violations.is_empty(),
+        "constant functions should have 0 violations"
+    );
 }
 
 #[test]
 fn compile_sources_returns_ownership_proofs() {
-    let source = "module own\nfn identity(x: Int) -> Int { x }\nfn sum_twice(x: Int) -> Int { x + x }\n";
+    let source =
+        "module own\nfn identity(x: Int) -> Int { x }\nfn sum_twice(x: Int) -> Int { x + x }\n";
     let result = compile_dag(source);
-    assert!(!result.ownership.is_empty(), "ownership proofs should be non-empty");
+    assert!(
+        !result.ownership.is_empty(),
+        "ownership proofs should be non-empty"
+    );
 }
 
 // ── Compiler self-analysis (subset) ───────────────────────────────────
@@ -1140,10 +1442,7 @@ fn complexity_self_analysis_subset() {
     let ws = crate::helpers::workspace_root();
 
     // Compile complexity.dag + its transitive dependencies (types, core)
-    let seed_files = &[
-        "dsl/std/types.dag",
-        "src/v2/complexity.dag",
-    ];
+    let seed_files = &["dsl/std/types.dag", "src/v2/complexity.dag"];
     let mut dag_paths: Vec<String> = seed_files.iter().map(|s| s.to_string()).collect();
 
     // Also add 00_core.dag since complexity.dag imports from it
@@ -1159,14 +1458,20 @@ fn complexity_self_analysis_subset() {
         })
         .collect();
 
-    let file_refs: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let file_refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
     let result = crate::helpers::compile_multi(&file_refs);
 
     let summaries = &result.complexity.function_summaries;
     let violations = &result.complexity.violations;
 
-    eprintln!("\n=== Complexity self-analysis ({} functions, {} violations) ===",
-        summaries.len(), violations.len());
+    eprintln!(
+        "\n=== Complexity self-analysis ({} functions, {} violations) ===",
+        summaries.len(),
+        violations.len()
+    );
 
     // Print violations first
     if !violations.is_empty() {
@@ -1178,15 +1483,24 @@ fn complexity_self_analysis_subset() {
 
     // Print summaries for key functions (the recursive tree-walkers)
     let key_fns = [
-        "cost_of_expr", "cost_contains_computing_ref", "replace_computing_ref",
-        "count_self_calls", "max_path_self_calls", "classify_recursion_pattern",
-        "simplify_cost", "cost_of_method_by_shape", "build_complexity_report",
-        "get_or_compute_summary", "classify_complexity", "cost_sum_depth",
+        "cost_of_expr",
+        "cost_contains_computing_ref",
+        "replace_computing_ref",
+        "count_self_calls",
+        "max_path_self_calls",
+        "classify_recursion_pattern",
+        "simplify_cost",
+        "cost_of_method_by_shape",
+        "build_complexity_report",
+        "get_or_compute_summary",
+        "classify_complexity",
+        "cost_sum_depth",
     ];
     eprintln!("\nKEY FUNCTION SUMMARIES:");
     for func in &key_fns {
         if let Some(summary) = summaries.get(*func) {
-            let class = v2_compiler::v2_compiler_complexity::classify_complexity(summary.work.clone());
+            let class =
+                v2_compiler::v2_compiler_complexity::classify_complexity(summary.work.clone());
             let cert = match summary.certainty {
                 v2_compiler::v2_compiler_complexity::Certainty::Proven => "Proven",
                 v2_compiler::v2_compiler_complexity::Certainty::Conservative => "Conservative",
@@ -1202,7 +1516,8 @@ fn complexity_self_analysis_subset() {
 
 #[test]
 fn compile_sources_returns_default_artifact_plan() {
-    let source = "module artifact_smoke\ntype Point { x: Int }\nfn origin() -> Point { Point { x: 0 } }\n";
+    let source =
+        "module artifact_smoke\ntype Point { x: Int }\nfn origin() -> Point { Point { x: 0 } }\n";
     let result = compile_dag(source);
     assert!(
         !result.artifact_plan.artifacts.is_empty() || !result.artifact_plan.boundaries.is_empty(),
@@ -1216,7 +1531,10 @@ fn compile_sources_returns_empty_ownership_on_parse_error() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(!msgs.is_empty(), "syntax error should produce diagnostics");
-    assert!(result.ownership.is_empty(), "ownership should be empty on parse error");
+    assert!(
+        result.ownership.is_empty(),
+        "ownership should be empty on parse error"
+    );
 }
 
 // ── Scrambled name inference tests ──────────────────────────────────────
@@ -1249,17 +1567,14 @@ fn normalize_typed_graph(
             let mut out = serde_json::Map::new();
             for (k, v) in map {
                 // Strip spans — they are positional, not structural
-                if k == "span" {
+                if k == "span" || k == "ident_span" {
                     out.insert(k.clone(), Value::Null);
                     continue;
                 }
                 // Strip diagnostic messages — they may embed type names
                 if k == "diagnostics" {
                     if let Value::Array(arr) = v {
-                        out.insert(
-                            k.clone(),
-                            Value::Array(vec![Value::Null; arr.len()]),
-                        );
+                        out.insert(k.clone(), Value::Array(vec![Value::Null; arr.len()]));
                         continue;
                     }
                 }
@@ -1270,9 +1585,8 @@ fn normalize_typed_graph(
                             .iter()
                             .map(|v| normalize_typed_graph(v, name_map))
                             .collect();
-                        normalized.sort_by(|a, b| {
-                            a.as_str().unwrap_or("").cmp(b.as_str().unwrap_or(""))
-                        });
+                        normalized
+                            .sort_by(|a, b| a.as_str().unwrap_or("").cmp(b.as_str().unwrap_or("")));
                         out.insert(k.clone(), Value::Array(normalized));
                         continue;
                     }
@@ -1290,9 +1604,11 @@ fn normalize_typed_graph(
             }
             Value::Object(out)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.iter().map(|v| normalize_typed_graph(v, name_map)).collect())
-        }
+        Value::Array(arr) => Value::Array(
+            arr.iter()
+                .map(|v| normalize_typed_graph(v, name_map))
+                .collect(),
+        ),
         Value::String(s) => {
             if let Some(replacement) = name_map.get(s.as_str()) {
                 Value::String(replacement.clone())
@@ -1333,7 +1649,8 @@ fn assert_scrambled_name_structural_eq(
     let norm_b = normalize_typed_graph(&graph_b, &map_b);
 
     assert_eq!(
-        norm_a, norm_b,
+        norm_a,
+        norm_b,
         "scrambled-name structural mismatch in {label}:\n\
          normalized A:\n{}\n\
          normalized B:\n{}",
@@ -1414,7 +1731,10 @@ fn scrambled_name_inference_nested_types() {
 fn gist_service_pipeline_smoke() {
     let source = "module gist\n\ntype GistFile {\n  filename: String\n  content: String\n}\n\ntype GistResult {\n  id: String\n  files: List<GistFile>\n}\n\nfn empty_result() -> GistResult {\n  GistResult { id: \"\", files: [] }\n}\n\nfn file_count(result: GistResult) -> Int {\n  result.files |> count\n}\n";
     let result = compile_dag(source);
-    assert!(!result.files.is_empty(), "gist pipeline should emit at least 1 file");
+    assert!(
+        !result.files.is_empty(),
+        "gist pipeline should emit at least 1 file"
+    );
 }
 
 // ── Resolve diamond dedup ───────────────────────────────────────────────
@@ -1463,10 +1783,19 @@ fn python_emit_produces_valid_syntax() {
     let source = "module pymod\ntype Rec { x: Int  y: String }\nfn make(a: Int) -> Rec { Rec { x: a, y: \"hi\" } }\n";
     let result = compile_dag_target(source, RenderTarget::Python);
     assert_no_diagnostics(&result);
-    assert!(!result.files.is_empty(), "Python target should emit at least 1 file");
-    let py_file = result.files.iter().find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"));
+    assert!(
+        !result.files.is_empty(),
+        "Python target should emit at least 1 file"
+    );
+    let py_file = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"));
     assert!(py_file.is_some(), "Python target should emit a .py file");
-    assert!(!py_file.unwrap().content.is_empty(), "Python .py file should not be empty");
+    assert!(
+        !py_file.unwrap().content.is_empty(),
+        "Python .py file should not be empty"
+    );
 }
 
 #[test]
@@ -1474,11 +1803,20 @@ fn python_emit_has_dataclasses() {
     let source = "module pymod\ntype Rec { x: Int  y: String }\nfn make(a: Int) -> Rec { Rec { x: a, y: \"hi\" } }\n";
     let result = compile_dag_target(source, RenderTarget::Python);
     assert_no_diagnostics(&result);
-    let py_file = result.files.iter().find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"));
+    let py_file = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"));
     assert!(py_file.is_some(), "Python target should emit a .py file");
     let content = &py_file.unwrap().content;
-    assert!(content.contains("@dataclass"), "Python emit should use @dataclass");
-    assert!(content.contains("def "), "Python emit should contain function definitions");
+    assert!(
+        content.contains("@dataclass"),
+        "Python emit should use @dataclass"
+    );
+    assert!(
+        content.contains("def "),
+        "Python emit should contain function definitions"
+    );
     assert!(
         content.contains(": int") || content.contains(": str"),
         "Python emit should contain type hints"
@@ -1490,7 +1828,10 @@ fn python_emit_snake_case_functions() {
     let source = "module pymod\ntype Rec { x: Int  y: String }\nfn make(a: Int) -> Rec { Rec { x: a, y: \"hi\" } }\n";
     let result = compile_dag_target(source, RenderTarget::Python);
     assert_no_diagnostics(&result);
-    let py_file = result.files.iter().find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"));
+    let py_file = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"));
     assert!(py_file.is_some(), "Python target should emit a .py file");
     let content = &py_file.unwrap().content;
     for line in content.lines() {
@@ -1499,7 +1840,9 @@ fn python_emit_snake_case_functions() {
             let fn_name: String = name_part.chars().take_while(|c| *c != '(').collect();
             let fn_name = fn_name.trim();
             assert!(
-                fn_name.chars().all(|c| c.is_lowercase() || c == '_' || c.is_ascii_digit()),
+                fn_name
+                    .chars()
+                    .all(|c| c.is_lowercase() || c == '_' || c.is_ascii_digit()),
                 "Python function '{}' should be snake_case",
                 fn_name
             );
@@ -1529,7 +1872,11 @@ fn strict_complexity_violation_count() {
         .filter_map(|e| {
             let e = e.ok()?;
             let name = e.file_name().to_string_lossy().to_string();
-            if name.ends_with(".dag") { Some(format!("src/v2/{}", name)) } else { None }
+            if name.ends_with(".dag") {
+                Some(format!("src/v2/{}", name))
+            } else {
+                None
+            }
         })
         .collect();
     v2_files.sort();
@@ -1544,7 +1891,10 @@ fn strict_complexity_violation_count() {
         })
         .collect();
 
-    let file_refs: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+    let file_refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, c)| (p.as_str(), c.as_str()))
+        .collect();
     let result = crate::helpers::compile_multi(&file_refs);
 
     let violation_count = result.complexity.violations.len();
@@ -1565,7 +1915,8 @@ fn strict_complexity_violation_count() {
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
         "complexity violation count {} exceeds ratchet {}",
-        violation_count, COMPLEXITY_RATCHET
+        violation_count,
+        COMPLEXITY_RATCHET
     );
 }
 
@@ -1580,12 +1931,30 @@ fn serialized_if_match_block_preserve_kind() {
     let result = compile_dag_named("ser_test.dag", source, RenderTarget::Dag);
     assert_no_diagnostics(&result);
     let json = find_file(&result, "dag-artifact.json");
-    assert!(json.contains("\"kind\": \"ExprIf\""), "serialized graph must preserve ExprIf kind, not ExprOther");
-    assert!(json.contains("\"kind\": \"ExprMatch\""), "serialized graph must preserve ExprMatch kind");
-    assert!(json.contains("\"kind\": \"ExprBlock\""), "serialized graph must preserve ExprBlock kind");
-    assert!(json.contains("\"kind\": \"ExprLet\""), "serialized graph must preserve ExprLet kind");
-    assert!(json.contains("\"kind\": \"ExprBinOp\""), "serialized graph must preserve ExprBinOp kind");
-    assert!(!json.contains("\"kind\": \"ExprOther\""), "no expression variant should be collapsed to ExprOther");
+    assert!(
+        json.contains("\"kind\": \"ExprIf\""),
+        "serialized graph must preserve ExprIf kind, not ExprOther"
+    );
+    assert!(
+        json.contains("\"kind\": \"ExprMatch\""),
+        "serialized graph must preserve ExprMatch kind"
+    );
+    assert!(
+        json.contains("\"kind\": \"ExprBlock\""),
+        "serialized graph must preserve ExprBlock kind"
+    );
+    assert!(
+        json.contains("\"kind\": \"ExprLet\""),
+        "serialized graph must preserve ExprLet kind"
+    );
+    assert!(
+        json.contains("\"kind\": \"ExprBinOp\""),
+        "serialized graph must preserve ExprBinOp kind"
+    );
+    assert!(
+        !json.contains("\"kind\": \"ExprOther\""),
+        "no expression variant should be collapsed to ExprOther"
+    );
 }
 
 #[test]
@@ -1594,8 +1963,14 @@ fn serialized_list_string_interp_preserve_kind() {
     let result = compile_dag_named("ser_test2.dag", source, RenderTarget::Dag);
     assert_no_diagnostics(&result);
     let json = find_file(&result, "dag-artifact.json");
-    assert!(json.contains("\"kind\": \"ExprListLit\""), "serialized graph must preserve ExprListLit kind");
-    assert!(json.contains("\"kind\": \"ExprStringInterp\""), "serialized graph must preserve ExprStringInterp kind");
+    assert!(
+        json.contains("\"kind\": \"ExprListLit\""),
+        "serialized graph must preserve ExprListLit kind"
+    );
+    assert!(
+        json.contains("\"kind\": \"ExprStringInterp\""),
+        "serialized graph must preserve ExprStringInterp kind"
+    );
 }
 
 #[test]
@@ -1604,8 +1979,14 @@ fn serialized_cast_index_return_preserve_kind() {
     let result = compile_dag_named("ser_test3.dag", source, RenderTarget::Dag);
     assert_no_diagnostics(&result);
     let json = find_file(&result, "dag-artifact.json");
-    assert!(json.contains("\"kind\": \"ExprIndex\""), "serialized graph must preserve ExprIndex kind");
-    assert!(json.contains("\"kind\": \"ExprReturn\""), "serialized graph must preserve ExprReturn kind");
+    assert!(
+        json.contains("\"kind\": \"ExprIndex\""),
+        "serialized graph must preserve ExprIndex kind"
+    );
+    assert!(
+        json.contains("\"kind\": \"ExprReturn\""),
+        "serialized graph must preserve ExprReturn kind"
+    );
 }
 
 // ── TCO through wrapper nodes ─────────────────────────────────────────
@@ -1619,7 +2000,10 @@ fn tco_through_if_branches() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/tco_test.rs");
-    assert!(content.contains("loop {"), "self-recursive if/else should use TCO loop");
+    assert!(
+        content.contains("loop {"),
+        "self-recursive if/else should use TCO loop"
+    );
 }
 
 #[test]
@@ -1628,7 +2012,10 @@ fn tco_through_match_arms() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/tco_match.rs");
-    assert!(content.contains("loop {"), "self-recursive match should use TCO loop");
+    assert!(
+        content.contains("loop {"),
+        "self-recursive match should use TCO loop"
+    );
 }
 
 // =========================================================================
@@ -1651,7 +2038,8 @@ fn cross_module_unresolved_import_produces_diagnostic() {
     ]);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("not found") || m.contains("unresolved")),
+        msgs.iter()
+            .any(|m| m.contains("not found") || m.contains("unresolved")),
         "importing a non-existent name should produce a diagnostic, got: {:?}",
         msgs
     );
@@ -1661,7 +2049,10 @@ fn cross_module_unresolved_import_produces_diagnostic() {
 fn cross_module_valid_import_produces_no_diagnostic() {
     let result = compile_multi(&[
         ("types.dag", "module types\ntype User { name: String }"),
-        ("handler.dag", "module handler\nimport types { User }\nfn greet(u: User) -> String { u.name }"),
+        (
+            "handler.dag",
+            "module handler\nimport types { User }\nfn greet(u: User) -> String { u.name }",
+        ),
     ]);
     assert_no_diagnostics(&result);
 }
@@ -1677,7 +2068,8 @@ fn match_on_coproduct_missing_variant_produces_diagnostic() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-exhaustive") || m.contains("Triangle")),
+        msgs.iter()
+            .any(|m| m.contains("non-exhaustive") || m.contains("Triangle")),
         "missing Triangle arm should produce exhaustiveness diagnostic, got: {:?}",
         msgs
     );
@@ -1700,7 +2092,8 @@ fn optional_match_missing_none_arm_produces_diagnostic() {
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("non-exhaustive") || m.contains("None")),
+        msgs.iter()
+            .any(|m| m.contains("non-exhaustive") || m.contains("None")),
         "missing None arm on Optional should produce diagnostic, got: {:?}",
         msgs
     );
@@ -1736,7 +2129,8 @@ fn circular_module_dependency_produces_diagnostic() {
     ]);
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("circular") || m.contains("cycle")),
+        msgs.iter()
+            .any(|m| m.contains("circular") || m.contains("cycle")),
         "circular imports should produce a diagnostic, got: {:?}",
         msgs
     );
@@ -1749,7 +2143,8 @@ fn circular_module_dependency_produces_diagnostic() {
 
 #[test]
 fn field_access_on_wrong_type_produces_diagnostic() {
-    let source = "module field\n\ntype Point { x: Int  y: Int }\n\nfn bad(p: Point) -> String {\n  p.z\n}\n";
+    let source =
+        "module field\n\ntype Point { x: Int  y: Int }\n\nfn bad(p: Point) -> String {\n  p.z\n}\n";
     let result = compile_dag(source);
     let msgs = diagnostic_messages(&result);
     // Accessing a field that doesn't exist on the type should be caught
@@ -1763,7 +2158,8 @@ fn field_access_on_wrong_type_produces_diagnostic() {
 
 #[test]
 fn valid_field_access_produces_no_diagnostic() {
-    let source = "module field\n\ntype Point { x: Int  y: Int }\n\nfn get_x(p: Point) -> Int {\n  p.x\n}\n";
+    let source =
+        "module field\n\ntype Point { x: Int  y: Int }\n\nfn get_x(p: Point) -> Int {\n  p.x\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
@@ -1791,8 +2187,14 @@ fn same_source_emits_to_rust_and_python() {
     let python_result = compile_dag_target(source, RenderTarget::Python);
     assert_no_diagnostics(&rust_result);
     assert_no_diagnostics(&python_result);
-    assert!(!rust_result.files.is_empty(), "Rust target should emit files");
-    assert!(!python_result.files.is_empty(), "Python target should emit files");
+    assert!(
+        !rust_result.files.is_empty(),
+        "Rust target should emit files"
+    );
+    assert!(
+        !python_result.files.is_empty(),
+        "Python target should emit files"
+    );
 }
 
 // ── Duplicate module detection ───────────────────────────────────────────
@@ -1817,24 +2219,30 @@ fn duplicate_module_name_produces_diagnostic() {
 
 #[test]
 fn sh1_artifact_plan_valid() {
-    let source = "module artifact_check\n\ntype Foo { x: Int }\n\nfn make_foo() -> Foo { Foo { x: 1 } }\n";
+    let source =
+        "module artifact_check\n\ntype Foo { x: Int }\n\nfn make_foo() -> Foo { Foo { x: 1 } }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let plan = &result.artifact_plan;
     // Artifact plan should have at least one artifact
-    assert!(!plan.artifacts.is_empty(), "artifact plan should contain at least one artifact");
+    assert!(
+        !plan.artifacts.is_empty(),
+        "artifact plan should contain at least one artifact"
+    );
     // All boundary references should point to existing artifact names
     let artifact_names: Vec<&str> = plan.artifacts.iter().map(|a| a.name.as_str()).collect();
     for b in plan.boundaries.iter() {
         assert!(
             artifact_names.contains(&b.from_artifact.as_str()),
             "boundary from_artifact '{}' not found in artifacts: {:?}",
-            b.from_artifact, artifact_names
+            b.from_artifact,
+            artifact_names
         );
         assert!(
             artifact_names.contains(&b.to_artifact.as_str()),
             "boundary to_artifact '{}' not found in artifacts: {:?}",
-            b.to_artifact, artifact_names
+            b.to_artifact,
+            artifact_names
         );
         assert_ne!(
             b.from_artifact, b.to_artifact,
@@ -1850,9 +2258,21 @@ fn sh2_ownership_covers_all_functions() {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     // Every function with a body should have an ownership proof
-    let proof_names: Vec<&str> = result.ownership.iter().map(|p| p.func_name.as_str()).collect();
-    assert!(proof_names.contains(&"add"), "ownership should cover 'add', got: {:?}", proof_names);
-    assert!(proof_names.contains(&"greet"), "ownership should cover 'greet', got: {:?}", proof_names);
+    let proof_names: Vec<&str> = result
+        .ownership
+        .iter()
+        .map(|p| p.func_name.as_str())
+        .collect();
+    assert!(
+        proof_names.contains(&"add"),
+        "ownership should cover 'add', got: {:?}",
+        proof_names
+    );
+    assert!(
+        proof_names.contains(&"greet"),
+        "ownership should cover 'greet', got: {:?}",
+        proof_names
+    );
     // Every proof should have non-empty decisions
     for proof in result.ownership.iter() {
         assert!(
@@ -1889,7 +2309,11 @@ fn sh7_parse_output_has_valid_structure() {
     // Every emitted file should have a non-empty path and content
     for file in result.files.iter() {
         assert!(!file.path.is_empty(), "emitted file has empty path");
-        assert!(!file.content.is_empty(), "emitted file '{}' has empty content", file.path);
+        assert!(
+            !file.content.is_empty(),
+            "emitted file '{}' has empty content",
+            file.path
+        );
     }
 }
 
@@ -1897,10 +2321,7 @@ fn sh7_parse_output_has_valid_structure() {
 fn sh8_multi_module_imports_resolve() {
     let source_a = "module types_mod\n\ntype Color { r: Int  g: Int  b: Int }\n";
     let source_b = "module consumer_mod\n\nimport types_mod { Color }\n\nfn make_red() -> Color { Color { r: 255, g: 0, b: 0 } }\n";
-    let result = compile_multi(&[
-        ("types_mod.dag", source_a),
-        ("consumer_mod.dag", source_b),
-    ]);
+    let result = compile_multi(&[("types_mod.dag", source_a), ("consumer_mod.dag", source_b)]);
     assert_no_diagnostics(&result);
     // Both modules should produce output files
     assert!(
@@ -1912,7 +2333,10 @@ fn sh8_multi_module_imports_resolve() {
         "consumer_mod should produce an output file"
     );
     // Diagnostics should be empty (imports resolved successfully)
-    assert!(result.diagnostics.is_empty(), "multi-module compilation should have 0 diagnostics");
+    assert!(
+        result.diagnostics.is_empty(),
+        "multi-module compilation should have 0 diagnostics"
+    );
 }
 
 #[test]
@@ -1923,18 +2347,32 @@ fn sh4_resolved_graph_completeness() {
     let result = compile_dag_target(source, RenderTarget::Dag);
     assert_no_diagnostics(&result);
     let json_str = find_file(&result, "dag-artifact.json");
-    let artifact: Value = serde_json::from_str(&json_str).expect("dag artifact should be valid JSON");
+    let artifact: Value =
+        serde_json::from_str(&json_str).expect("dag artifact should be valid JSON");
     // Artifact should have version, modules, and diagnostics
-    assert!(artifact.get("version").is_some(), "artifact should have version");
-    assert!(artifact.get("modules").is_some(), "artifact should have modules");
-    let modules = artifact["modules"].as_array().expect("modules should be array");
+    assert!(
+        artifact.get("version").is_some(),
+        "artifact should have version"
+    );
+    assert!(
+        artifact.get("modules").is_some(),
+        "artifact should have modules"
+    );
+    let modules = artifact["modules"]
+        .as_array()
+        .expect("modules should be array");
     assert!(!modules.is_empty(), "modules should be non-empty");
     // Each module should have name and items
     for module in modules {
-        let mod_obj = module.get("module").expect("typed module should have 'module' field");
+        let mod_obj = module
+            .get("module")
+            .expect("typed module should have 'module' field");
         assert!(mod_obj.get("name").is_some(), "module should have a name");
         let items_field = module.get("items");
-        assert!(items_field.is_some(), "typed module should have 'items' field");
+        assert!(
+            items_field.is_some(),
+            "typed module should have 'items' field"
+        );
     }
 }
 
@@ -2026,7 +2464,10 @@ fn sort_json_arrays(value: &Value) -> Value {
             let sorted: Vec<Value> = arr.iter().map(sort_json_arrays).collect();
             // Sort arrays of strings (like item_registry_keys)
             if sorted.iter().all(|v| v.is_string()) {
-                let mut strs: Vec<String> = sorted.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+                let mut strs: Vec<String> = sorted
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect();
                 strs.sort();
                 Value::Array(strs.into_iter().map(Value::String).collect())
             } else {
@@ -2064,7 +2505,9 @@ fn greet(name: String) -> String { concat("Hello, ", name) }
         "compiling the same source twice should produce structurally identical typed graph JSON"
     );
     // Verify the artifact has the expected structural properties
-    let modules = json1["modules"].as_array().expect("modules should be array");
+    let modules = json1["modules"]
+        .as_array()
+        .expect("modules should be array");
     assert!(!modules.is_empty(), "should have at least one module");
     let module = &modules[0];
     let mod_obj = module.get("module").expect("should have module field");
@@ -2252,8 +2695,16 @@ fn rust_primitive_bool_lowers_to_bool() {
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_bool_lower.rs");
-    assert!(content.contains("bool"), "Bool should lower to bool in Rust, got: {}", content);
-    assert!(!content.contains(": Bool"), "Raw Bool should not appear as a type in Rust output, got: {}", content);
+    assert!(
+        content.contains("bool"),
+        "Bool should lower to bool in Rust, got: {}",
+        content
+    );
+    assert!(
+        !content.contains(": Bool"),
+        "Raw Bool should not appear as a type in Rust output, got: {}",
+        content
+    );
 }
 
 #[test]
@@ -2262,28 +2713,54 @@ fn rust_primitive_int_lowers_to_i64() {
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_int_lower.rs");
-    assert!(content.contains("i64"), "Int should lower to i64 in Rust, got: {}", content);
-    assert!(!content.contains(": Int"), "Raw Int should not appear as a type in Rust output, got: {}", content);
+    assert!(
+        content.contains("i64"),
+        "Int should lower to i64 in Rust, got: {}",
+        content
+    );
+    assert!(
+        !content.contains(": Int"),
+        "Raw Int should not appear as a type in Rust output, got: {}",
+        content
+    );
 }
 
 #[test]
 fn rust_primitive_float_lowers_to_f64() {
-    let source = "module test_float_lower\n\ntype Measurement {\n  value: Float\n  error: Float\n}\n";
+    let source =
+        "module test_float_lower\n\ntype Measurement {\n  value: Float\n  error: Float\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_float_lower.rs");
-    assert!(content.contains("f64"), "Float should lower to f64 in Rust, got: {}", content);
-    assert!(!content.contains(": Float"), "Raw Float should not appear as a type in Rust output, got: {}", content);
+    assert!(
+        content.contains("f64"),
+        "Float should lower to f64 in Rust, got: {}",
+        content
+    );
+    assert!(
+        !content.contains(": Float"),
+        "Raw Float should not appear as a type in Rust output, got: {}",
+        content
+    );
 }
 
 #[test]
 fn rust_list_type_lowers_to_rc_vec() {
-    let source = "module test_list_lower\n\ntype Batch {\n  items: List<Int>\n  names: List<String>\n}\n";
+    let source =
+        "module test_list_lower\n\ntype Batch {\n  items: List<Int>\n  names: List<String>\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_list_lower.rs");
-    assert!(content.contains("Rc<Vec<"), "List should lower to Rc<Vec<...>> in Rust, got: {}", content);
-    assert!(!content.contains("List<"), "Raw List<> should not appear in Rust output, got: {}", content);
+    assert!(
+        content.contains("Rc<Vec<"),
+        "List should lower to Rc<Vec<...>> in Rust, got: {}",
+        content
+    );
+    assert!(
+        !content.contains("List<"),
+        "Raw List<> should not appear in Rust output, got: {}",
+        content
+    );
 }
 
 #[test]
@@ -2294,7 +2771,8 @@ fn rust_map_type_lowers_to_rc_hashmap() {
     let content = find_file(&result, "src/test_map_lower.rs");
     assert!(
         content.contains("Rc<HashMap<"),
-        "Map should lower to Rc<HashMap<...>> in Rust, got: {}", content
+        "Map should lower to Rc<HashMap<...>> in Rust, got: {}",
+        content
     );
     // "Map<" without a leading letter (to exclude "HashMap<" and "Rc<HashMap<")
     let has_raw_map = content.lines().any(|line| {
@@ -2304,18 +2782,24 @@ fn rust_map_type_lowers_to_rc_hashmap() {
             false
         }
     });
-    assert!(!has_raw_map, "Raw Map<> (not HashMap/BTreeMap) should not appear in Rust output, got: {}", content);
+    assert!(
+        !has_raw_map,
+        "Raw Map<> (not HashMap/BTreeMap) should not appear in Rust output, got: {}",
+        content
+    );
 }
 
 #[test]
 fn rust_callable_renders_as_fn_trait() {
-    let source = "module test_callable\n\nfn apply(f: fn(Int) -> String, x: Int) -> String {\n  f(x)\n}\n";
+    let source =
+        "module test_callable\n\nfn apply(f: fn(Int) -> String, x: Int) -> String {\n  f(x)\n}\n";
     let result = compile_dag_target(source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_callable.rs");
     assert!(
         content.contains("Fn(") || content.contains("impl Fn"),
-        "Callable param should render as Fn trait in Rust, got: {}", content
+        "Callable param should render as Fn trait in Rust, got: {}",
+        content
     );
 }
 
@@ -2329,7 +2813,8 @@ fn rust_func_with_uses_emits_async_fn() {
         let content = find_file(&result, "src/test_async_func.rs");
         assert!(
             content.contains("async fn"),
-            "func with uses should emit async fn in Rust, got: {}", content
+            "func with uses should emit async fn in Rust, got: {}",
+            content
         );
     } else {
         // If compilation produces diagnostics instead of files, the test still
@@ -2360,7 +2845,8 @@ fn indexed_names(names: List<String>) -> List<String> {
     assert!(
         msgs.is_empty(),
         "enumerate .first/.second should compile without diagnostics, got {}: {:?}",
-        msgs.len(), msgs
+        msgs.len(),
+        msgs
     );
 }
 
@@ -2382,18 +2868,23 @@ fn make_outer() -> Outer {
 }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_struct.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_struct.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_struct.rs");
     // Struct field should be Rc-wrapped
     assert!(
         content.contains("Rc<Inner>"),
-        "struct field should be Rc<Inner>, got:\n{}", content
+        "struct field should be Rc<Inner>, got:\n{}",
+        content
     );
     // Construction should wrap in Rc::new
     assert!(
         content.contains("Rc::new(Inner"),
-        "struct construction should use Rc::new(Inner{{...}}), got:\n{}", content
+        "struct construction should use Rc::new(Inner{{...}}), got:\n{}",
+        content
     );
 }
 
@@ -2405,17 +2896,22 @@ type Color = Red | Green | Blue
 fn pick() -> Color { Red }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_unit_enum.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_unit_enum.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_unit_enum.rs");
     // Unit-only enum should NOT be Rc-wrapped (gets Copy derive)
     assert!(
         !content.contains("Rc<Color>"),
-        "unit enum should not be Rc<Color>, got:\n{}", content
+        "unit enum should not be Rc<Color>, got:\n{}",
+        content
     );
     assert!(
         content.contains("Copy"),
-        "unit enum should have Copy derive, got:\n{}", content
+        "unit enum should have Copy derive, got:\n{}",
+        content
     );
 }
 
@@ -2429,13 +2925,17 @@ type Shape
 type Drawing { shape: Shape }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_data_enum.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_data_enum.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_data_enum.rs");
     // Enum with data variants should be Rc-wrapped in field position
     assert!(
         content.contains("Rc<Shape>"),
-        "data enum field should be Rc<Shape>, got:\n{}", content
+        "data enum field should be Rc<Shape>, got:\n{}",
+        content
     );
 }
 
@@ -2446,13 +2946,17 @@ module test_rc_list
 type Bag { items: List<String> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_list.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_list.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_list.rs");
     // List field should be Rc-wrapped (either via template or predicate)
     assert!(
         content.contains("Rc<Vec<") || content.contains("Rc<Vec<String>"),
-        "list field should be Rc<Vec<...>>, got:\n{}", content
+        "list field should be Rc<Vec<...>>, got:\n{}",
+        content
     );
 }
 
@@ -2463,13 +2967,17 @@ module test_rc_map
 type Config { entries: Map<String, String> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_map.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_map.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_map.rs");
     // Map field should be Rc-wrapped
     assert!(
         content.contains("Rc<HashMap<"),
-        "map field should be Rc<HashMap<...>>, got:\n{}", content
+        "map field should be Rc<HashMap<...>>, got:\n{}",
+        content
     );
 }
 
@@ -2480,21 +2988,27 @@ module test_rc_primitives
 type Stats { count: Int, active: Bool, ratio: Float }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_primitives.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_primitives.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_primitives.rs");
     // Primitive fields should NOT be Rc-wrapped
     assert!(
         !content.contains("Rc<i64>"),
-        "Int field should be bare i64, not Rc<i64>, got:\n{}", content
+        "Int field should be bare i64, not Rc<i64>, got:\n{}",
+        content
     );
     assert!(
         !content.contains("Rc<bool>"),
-        "Bool field should be bare bool, not Rc<bool>, got:\n{}", content
+        "Bool field should be bare bool, not Rc<bool>, got:\n{}",
+        content
     );
     assert!(
         !content.contains("Rc<f64>"),
-        "Float field should be bare f64, not Rc<f64>, got:\n{}", content
+        "Float field should be bare f64, not Rc<f64>, got:\n{}",
+        content
     );
 }
 
@@ -2514,8 +3028,11 @@ fn unwrap(c: Container) -> Item {
 }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_param_match.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_param_match.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_param_match.rs");
     // Both field declaration and parameter should agree on Rc wrapping
     let has_rc_field = content.contains("item: Rc<Item>");
@@ -2547,8 +3064,11 @@ fn empty_batch() -> Batch {
 }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
-    assert!(has_file(&result, "src/test_rc_list_construct.rs"),
-        "expected emitted file, got diagnostics: {:?}", diagnostic_messages(&result));
+    assert!(
+        has_file(&result, "src/test_rc_list_construct.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
     let content = find_file(&result, "src/test_rc_list_construct.rs");
     // If field is Rc<Vec<...>>, construction must use Rc::new(vec![...])
     let has_rc_field = content.contains("Rc<Vec<");
@@ -2562,6 +3082,7 @@ fn empty_batch() -> Batch {
     // Construction must match field type — no bare vec![] for Rc<Vec> fields
     assert!(
         content.contains("Rc::new(vec!["),
-        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}", content
+        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
+        content
     );
 }

@@ -5,7 +5,7 @@
 //! All tests call stage0 functions directly.
 
 use crate::helpers::*;
-use v2_compiler::v2_std_core::TokenShape;
+use v2_compiler::v2_std_core::{InferredNode, TokenShape};
 
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 
@@ -145,6 +145,126 @@ fn fold_stack<T, B>(stack: List<T>, init: B, f: fn(B, T) -> B) -> B {
 }
 
 #[test]
+fn item_ident_spans_point_at_identifiers_not_keywords() {
+    let source = r#"module test
+type Widget = String
+fn make_widget() -> Widget {
+  Widget
+}
+service weather.api {
+}"#;
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "parse error: {:?}",
+        result.error.as_ref().map(|e| e.diagnostic.clone())
+    );
+
+    let module = result.module.clone().expect("module");
+    assert_eq!(module.children.len(), 3, "expected three top-level items");
+
+    let type_item = module.children[0].clone();
+    let type_ident = type_item.ident_span.clone().expect("type ident span");
+    assert_eq!(
+        type_item.span.start,
+        source.find("type Widget").unwrap() as i64
+    );
+    assert_eq!(type_ident.start, source.find("Widget").unwrap() as i64);
+    assert!(type_ident.start > type_item.span.start);
+
+    let fn_item = module.children[1].clone();
+    let fn_ident = fn_item.ident_span.clone().expect("fn ident span");
+    assert_eq!(
+        fn_item.span.start,
+        source.find("fn make_widget").unwrap() as i64
+    );
+    assert_eq!(fn_ident.start, source.find("make_widget").unwrap() as i64);
+    assert!(fn_ident.start > fn_item.span.start);
+
+    let service_item = module.children[2].clone();
+    let service_ident = service_item.ident_span.clone().expect("service ident span");
+    assert_eq!(
+        service_item.span.start,
+        source.find("service weather.api").unwrap() as i64
+    );
+    assert_eq!(
+        service_ident.start,
+        source.find("weather.api").unwrap() as i64
+    );
+    assert!(service_ident.start > service_item.span.start);
+}
+
+#[test]
+fn type_alias_rhs_ident_span_points_at_authored_type_name() {
+    let source = r#"module test
+type Alias = ResultType
+"#;
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "parse error: {:?}",
+        result.error.as_ref().map(|e| e.diagnostic.clone())
+    );
+
+    let module = result.module.clone().expect("module");
+    let alias_item = module.children[0].clone();
+    let rhs = match alias_item
+        .inferred
+        .as_ref()
+        .expect("alias inferred")
+        .as_ref()
+    {
+        InferredNode::Resolved { node, .. } => node.clone(),
+        other => panic!("expected resolved alias rhs, got {:?}", other),
+    };
+    let rhs_ident = rhs.ident_span.clone().expect("rhs ident span");
+    assert_eq!(
+        &source[rhs_ident.start as usize..rhs_ident.end as usize],
+        "ResultType"
+    );
+    assert_eq!(rhs_ident.start, source.find("ResultType").unwrap() as i64);
+    assert!(rhs_ident.start > alias_item.span.start);
+}
+
+#[test]
+fn type_param_spans_point_at_identifiers_not_delimiters() {
+    let source = r#"module test
+type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
+"#;
+    let result = parse_source(source);
+    assert!(
+        result.error.is_none(),
+        "parse error: {:?}",
+        result.error.as_ref().map(|e| e.diagnostic.clone())
+    );
+
+    let module = result.module.clone().expect("module");
+    let type_item = module.children[0].clone();
+    assert_eq!(type_item.params.len(), 2, "expected two type params");
+
+    let key_param = type_item.params[0].clone();
+    let key_type = key_param.children[0].clone();
+    let key_ident = key_type.ident_span.clone().expect("key type ident span");
+    assert_eq!(
+        &source[key_ident.start as usize..key_ident.end as usize],
+        "KeyT"
+    );
+    assert_eq!(key_ident.start, source.find("KeyT").unwrap() as i64);
+
+    let value_param = type_item.params[1].clone();
+    let value_type = value_param.children[0].clone();
+    let value_ident = value_type
+        .ident_span
+        .clone()
+        .expect("value type ident span");
+    assert_eq!(
+        &source[value_ident.start as usize..value_ident.end as usize],
+        "ValueU"
+    );
+    assert_eq!(value_ident.start, source.find("ValueU").unwrap() as i64);
+}
+
+#[test]
 fn stack_parses_strict() {
     assert_parses_strict("dsl/std/stack.dag");
 }
@@ -252,7 +372,9 @@ fn tokenizer_two_char_operators() {
 fn tokenizer_scans_pipe_arrow() {
     let tokens = tokenize("items |> count");
     assert!(
-        tokens.iter().any(|t| matches!(t.shape, TokenShape::ShPipeArrow)),
+        tokens
+            .iter()
+            .any(|t| matches!(t.shape, TokenShape::ShPipeArrow)),
         "should contain PipeArrow token"
     );
 }
