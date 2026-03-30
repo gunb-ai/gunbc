@@ -119,22 +119,16 @@ value semantics and the emitter inserts `.clone()` on every multi-use
 binding, the clone cost for bare collections is O(n) — catastrophic
 in any function that threads a collection through multiple calls.
 
-**The ad-hoc split (in `dsl/extdeps/languages/rust/emit.dag`):**
+**Status: PARTIALLY FIXED (2026-03-29).** The ad-hoc split between
+user types (Rc) and collections (bare) has been eliminated. Container
+templates are now bare (`Vec<{0}>`, `HashMap<{0}, {1}>`). Rc-wrapping
+is a single rendering decision via the `rc_types` map, built by
+`build_rc_types()`, which includes both user types and collection types.
+Three duplicate Rc predicates deleted.
 
-| Type category | Template | Clone cost |
-|--------------|----------|-----------|
-| User-defined struct | Rc<T> | O(1) |
-| User-defined enum (with fields) | Rc<T> | O(1) |
-| Primitive (Int, Bool, Float) | bare | O(1) (Copy) |
-| **List<T>** | **Vec<T>** | **O(n)** |
-| **Map<K,V>** | **HashMap<K,V>** | **O(n)** |
-| **String** | **String** | **O(n)** |
-
-**The fix is a rendering change, not an IR change.** The container
-templates in `LanguageSpec` should produce shared representations for
-ownership-based languages. For Rust: `Rc<Vec<{0}>>`, `Rc<HashMap<{0},
-{1}>>`. For Python/Go: unchanged (GC/value semantics handle sharing).
-This is declarative language data, not compiler logic.
+**Remaining:** the sharing model is Rust-only. Go emits bare structs
+(O(fields) copy cost). See "Emission is translation, not
+decision-making" invariant for the cross-language design target.
 
 #### Import resolution is the caller's job — it should be the compiler's (FF-9)
 
@@ -183,12 +177,6 @@ out-degree of a binding's edges, already present in the graph structure.
 The emitter doesn't need new information. It needs the right default
 rendering per language, declared in `LanguageSpec`.
 
-The template change must land together with matching emitter updates
-in `05_emit_rust.dag` (collection-producing methods, runtime bridge
-call conventions) and a stage0 regeneration pass. A half-migration
-(templates changed, emitter unchanged) produces type mismatches on
-the next regeneration.
-
 **The 2026-03-27 incident (proof of class):**
 
 Hand-patched generated stage0 files proved the fix class:
@@ -197,8 +185,10 @@ Hand-patched generated stage0 files proved the fix class:
 - Results: parse 37s → 0.4s, tokenize 7s → 0.06s, full compiler
   hang → 0.65s
 
-**Status: ROOT-CAUSED, fix pending.** Template + emitter + runtime
-changes must land atomically with a regeneration pass.
+**2026-03-29 fix:** Container templates made bare. Rc-wrapping unified
+via `rc_types` map (single authority). 689 redundant `.clone()` removed
+from stage0. Self-compile completes in ~2 min at 112MB. Regen pipeline
+produces 40 files with 0 diagnostics.
 
 ## Decidability Invariant
 
@@ -633,6 +623,52 @@ least one downstream consumer in the same change must read it as the
 authority for a real compilation decision. Otherwise the layer is still
 speculative metadata and should stay out of the pipeline until the
 consumer exists.
+
+### Emission is translation, not decision-making
+
+The emitter translates an annotated graph to target-language text. It
+does not make structural, semantic, or rendering decisions. Every fact
+the emitter needs — sharing strategy, type representation, clone
+behavior, import requirements — must be in the graph or in LanguageSpec
+data before emission begins. If the emitter branches on a type name,
+checks a hardcoded list, or guesses a rendering choice, a fact was
+lost at an upstream boundary.
+
+**The principle:** emission is a pure function from (annotated graph +
+LanguageSpec) to text. No heuristics, no fallbacks, no per-language
+decision logic. Language-specific facts live in LanguageSpec data
+declarations. The shared emitter reads them.
+
+**The test:** if adding a new target language requires writing emission
+*logic* (not just data declarations), the shared emitter is making
+decisions that should be data-driven. Target-language-specific code
+paths in the emitter are dual representations of facts that should be
+in LanguageSpec.
+
+**Fail-closed:** if the emitter encounters a type or construct for
+which it lacks a rendering annotation, it must produce a diagnostic
+error — not silently emit placeholder or structurally wrong code. A
+`compile_error!("...")` in generated Rust is a fabrication fallback;
+the compiler should have caught the gap before reaching emission.
+
+**Known violations (2026-03-29):**
+
+| Decision | Current state | LanguageSpec target |
+|----------|--------------|---------------------|
+| Sharing/wrapping | `rc_types` map (Rust only). Go emits bare value-type structs. | `sharing_wrap_template`, `sharing_construct_template` per language |
+| Clone semantics | Hardcoded `.clone()` in Rust emitter | Language-level clone/copy strategy |
+| Option/absence | Emitter heuristic | Absence variant spec in LanguageSpec |
+| Async/await | Hardcoded `"async fn"` in Rust emitter | Async syntax template |
+| Import generation | Per-emitter logic | Module system spec |
+| Container iteration | Hardcoded `.iter().cloned()` | Iterator pattern template |
+| Record literal Rc wrap | `Rc::new(...)` hardcoded at construction | Driven by sharing strategy |
+| Empty list in record field | Emits bare `vec![]` instead of `Rc::new(vec![])` | Should derive from sharing + type |
+
+The sharing model is the canonical instance. `.dag` has value semantics.
+Each target language has its own way of expressing shared ownership:
+Rust uses `Rc<T>`, Go uses `*T`, Python has reference semantics by
+default. This is ONE cross-language fact with per-language syntax —
+not three independent implementations in three emitters.
 
 ### Single-authority metadata
 

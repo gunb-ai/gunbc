@@ -35,6 +35,15 @@ Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
   emitter inserts `.clone()` on multi-use bindings — catastrophic in
   loops. Fix: change templates to shared representations. Root-caused
   2026-03-27, fix pending.
+- **Sharing model not in LanguageSpec.** Rc-wrapping (Rust), pointer
+  wrapping (Go `*T`), and reference semantics (Python) are three
+  implementations of the same cross-language concern: how non-trivial
+  types are shared. Currently `rc_types` is Rust-only and Go structs
+  are emitted as bare value types (O(fields) copy cost). The sharing
+  strategy (wrap template, construct template, which types need it)
+  should be modeled in LanguageSpec and applied by the shared emitter,
+  not per-language hardcoded. Low urgency (only Rust self-hosts) but
+  a dual representation that will diverge over time.
 - **Option rendering is an emitter heuristic.** Absence-variant
   rendering should be a `LanguageSpec` declaration.
 - **General recursion accepted.** `fn spin(n: n)` compiles. Fail-closed

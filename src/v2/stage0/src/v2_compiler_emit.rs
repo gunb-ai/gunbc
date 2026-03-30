@@ -1393,7 +1393,7 @@ param_strs.clone().join(&", ".to_string())
 pub fn emit_list_lit_expr(element_strs: Vec<String>, target: RenderTarget) -> String {
     if ((element_strs.clone().len() as i64) == 0) {
         match target.clone() {
-    RenderTarget::Rust => "vec![]".to_string(),
+    RenderTarget::Rust => "Rc::new(vec![])".to_string(),
     RenderTarget::Python => "[]".to_string(),
     RenderTarget::Go => "[]interface{}{}".to_string(),
     RenderTarget::Dag => "[]".to_string(),
@@ -1402,7 +1402,7 @@ pub fn emit_list_lit_expr(element_strs: Vec<String>, target: RenderTarget) -> St
         {
             let els_str = element_strs.clone().join(&", ".to_string());
 match target.clone() {
-    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("vec![".to_string(), els_str.clone()), "]".to_string()),
+    RenderTarget::Rust => v2_rt::concat(v2_rt::concat("Rc::new(vec![".to_string(), els_str.clone()), "])".to_string()),
     RenderTarget::Python => v2_rt::concat(v2_rt::concat("[".to_string(), els_str.clone()), "]".to_string()),
     RenderTarget::Go => v2_rt::concat(v2_rt::concat("[]interface{}{".to_string(), els_str.clone()), "}".to_string()),
     RenderTarget::Dag => v2_rt::concat(v2_rt::concat("[".to_string(), els_str.clone()), "]".to_string()),
