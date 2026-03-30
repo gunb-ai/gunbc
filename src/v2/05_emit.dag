@@ -121,7 +121,6 @@ type TypedItemKind
   | TypedItemDataDef
   | TypedItemServiceDef
   | TypedItemResourceDef
-  | TypedItemExternFunc
   | TypedItemUnhandled
 
 
@@ -1144,8 +1143,6 @@ fn classify_typed_item(item: Node) -> TypedItemKind {
     // Bare parameterized type declaration (e.g., type List<element>).
     // These are type-system declarations and intentionally emit no runtime code.
     TypedItemTypeDecl
-  } else if item.params |> count > 0 {
-    TypedItemExternFunc
   } else {
     TypedItemUnhandled
   }

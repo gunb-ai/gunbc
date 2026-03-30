@@ -93,7 +93,7 @@ import v2.compiler.infer_emit_info {
 import v2.compiler.emit {
   EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart,
   TypedItemKind, TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl,
-  TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc,
+  TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
@@ -677,10 +677,6 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
     emit_service_def(item: item, registry: registry)
   } else if (kind == TypedItemResourceDef) {
     emit_resource_def(item: item)
-  } else if (kind == TypedItemExternFunc) {
-    let params_str = emit_params(params: item.params, rc_types: rc_types)
-    let ret_str = emit_inferred(inferred: rt_type(n: item), rc_types: rc_types)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: item.name, target: Rust), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
   } else {
     concat("compile_error!(\"unhandled item: ", item.name, "\");")
   }
