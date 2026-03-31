@@ -217,11 +217,17 @@ and added to EmitGraphInfo in the same pass.
 Acceptance criteria:
 - [x] `data` declarations emit as constructor functions (no
   `lazy_static` + `Rc` → E0277 Send/Sync: 97→31)
-- [x] ValueContext `{ is_constant, has_fn_fields }` precomputed in
-  EmitGraphInfo (orthogonal flags, not sum type)
+- [ ] ValueContext `{ is_constant, has_fn_fields }` precomputed in
+  EmitGraphInfo (type defined in `04_emit_info.dag` but not yet a
+  field on `EmitGraphInfo`; `has_fn_fields` computed locally in
+  `emit_struct_from_children` instead of from the boundary)
 - [x] `fielded_variants` precomputed for structural variant-has-fields
-- [ ] Wire `has_fn_fields` → skip `PartialEq`/`Debug` derives for
-  algebra types (eliminates 40 E0369 + 31 E0277)
+- [x] `has_fn_fields` → skip `PartialEq`/`Debug` derives for
+  algebra types (working locally in `emit_struct_from_children`;
+  not yet sourced from `EmitGraphInfo` precomputation)
+- [ ] ValueContext on EmitGraphInfo end-to-end: add field, precompute
+  in `build_emit_graph_info`, read in `emit_struct_from_children`
+  (E0b invariant theme — separate branch per queue discipline)
 - [ ] Adding SPICE/English targets requires only ValueContext ×
   LanguageSpec data, no emission-side debugging
 - [ ] `rc_types` authority derived from ValueContext (is_constant →
