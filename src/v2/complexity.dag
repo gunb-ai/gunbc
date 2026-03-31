@@ -15,6 +15,7 @@
 module v2.compiler.complexity
 
 import std.types { SourceSpan }
+import v2.compiler.infer_env { recursive_variant_field_key }
 import v2.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
@@ -239,6 +240,21 @@ type SccInfo {
 type SccBuildAcc {
   assigned: Map<String, Bool>
   index: Map<String, SccInfo>
+}
+
+type DfsFinishAcc {
+  visited: Map<String, Bool>
+  order: List<String>
+}
+
+type SccComponentAcc {
+  visited: Map<String, Bool>
+  members: List<String>
+}
+
+type SccCycleAcc {
+  visited: Map<String, Bool>
+  has_cycle: Bool
 }
 
 type ParserStateParam {
@@ -1058,9 +1074,7 @@ fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserPro
     true
   } else {
     let graph = build_call_graph_from_parser_edges(names: members, edges: same_edges)
-    members |> any(name =>
-      (scc_members_for(root: name, graph: graph, names: members) |> count) > 1
-    )
+    graph_has_multi_node_scc(names: members, graph: graph)
   }
 }
 
@@ -1299,10 +1313,6 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
         acc + max_path_target_calls_with_cont(body: child, target_set: target_set, continue_calls: 0)
       )
   }
-}
-
-fn recursive_variant_field_key(type_name: String, variant_name: String, field_name: String) -> String {
-  concat(type_name, "::", variant_name, "::", field_name)
 }
 
 fn has_recursive_fields_for_type(type_name: String, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, Bool>) -> Bool {
@@ -1661,27 +1671,51 @@ fn build_scc_structural_params(members: List<String>, func_index: Map<String, Fu
   )
 }
 
-fn target_call_has_arithmetic_descent(call_node: Node, target_set: Map<String, Bool>) -> Bool {
+fn build_scc_measure_params(members: List<String>, func_index: Map<String, FuncEntry>) -> Map<String, Map<String, String>> {
+  members |> fold(init: empty_map(), f: (acc, name) =>
+    match map_get(func_index, name) {
+      Some { value: entry } =>
+        map_insert(acc, name, recursive_measure_param_names(body: entry.body, params: entry.params))
+      None => acc
+    }
+  )
+}
+
+fn target_call_has_arithmetic_descent(call_node: Node, target_set: Map<String, Bool>, func_index: Map<String, FuncEntry>, scc_measure_params: Map<String, Map<String, String>>) -> Bool {
   let callee = expr_call_func(texpr: call_node)
   if set_has(m: target_set, key: callee) == false {
     true
   } else {
-    call_node.children |> any(arg_node =>
-      is_descending_expr(expr: arg_value(n: arg_node))
-    )
+    match map_get(func_index, callee) {
+      Some { value: callee_entry } =>
+        let callee_measure_params = match map_get(scc_measure_params, callee) {
+          Some { value: params } => params
+          None => empty_map()
+        }
+        call_node.children |> enumerate |> any(pair =>
+          let arg_expr = arg_value(n: pair.second)
+          max_path_target_calls(body: arg_expr, target_set: target_set) == 0
+          && is_descending_expr(expr: arg_expr)
+          && match recursive_param_name_for_arg(idx: pair.first, arg_node: pair.second, params: callee_entry.params) {
+            Some { value: param_name } => map_get(callee_measure_params, param_name) != none
+            None => false
+          }
+        )
+      None => false
+    }
   }
 }
 
-fn scc_calls_have_arithmetic_descent(body: Node, target_set: Map<String, Bool>) -> Bool {
+fn scc_calls_have_arithmetic_descent(body: Node, target_set: Map<String, Bool>, func_index: Map<String, FuncEntry>, scc_measure_params: Map<String, Map<String, String>>) -> Bool {
   match body.expr_data {
     ExprCall { call_semantics: _ } =>
-      target_call_has_arithmetic_descent(call_node: body, target_set: target_set)
+      target_call_has_arithmetic_descent(call_node: body, target_set: target_set, func_index: func_index, scc_measure_params: scc_measure_params)
       && (body.children |> all(child =>
-        scc_calls_have_arithmetic_descent(body: child, target_set: target_set)
+        scc_calls_have_arithmetic_descent(body: child, target_set: target_set, func_index: func_index, scc_measure_params: scc_measure_params)
       ))
     _ =>
       body.children |> all(child =>
-        scc_calls_have_arithmetic_descent(body: child, target_set: target_set)
+        scc_calls_have_arithmetic_descent(body: child, target_set: target_set, func_index: func_index, scc_measure_params: scc_measure_params)
       )
   }
 }
@@ -1988,27 +2022,54 @@ fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {
   CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
-fn reachable_nodes(root: String, adjacency: Map<String, List<String>>, visited: Map<String, Bool>) -> Map<String, Bool> {
-  if set_has(m: visited, key: root) {
-    visited
+fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
+  if set_has(m: acc.visited, key: node) {
+    acc
   } else {
-    let next_visited = map_insert(visited, root, true)
-    let neighbors = match map_get(adjacency, root) {
+    let next_visited = map_insert(acc.visited, node, true)
+    let neighbors = match map_get(adjacency, node) {
       Some { value: ns } => ns
       None => []
     }
-    neighbors |> fold(init: next_visited, f: (acc, neighbor) =>
-      reachable_nodes(root: neighbor, adjacency: adjacency, visited: acc)
+    let explored = neighbors |> fold(init: DfsFinishAcc { visited: next_visited, order: acc.order }, f: (inner, neighbor) =>
+      dfs_finish_order(node: neighbor, adjacency: adjacency, acc: inner)
+    )
+    DfsFinishAcc { visited: explored.visited, order: list_push(explored.order, node) }
+  }
+}
+
+fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
+  if set_has(m: acc.visited, key: node) {
+    acc
+  } else {
+    let next_visited = map_insert(acc.visited, node, true)
+    let next_members = list_push(acc.members, node)
+    let neighbors = match map_get(adjacency, node) {
+      Some { value: ns } => ns
+      None => []
+    }
+    neighbors |> fold(init: SccComponentAcc { visited: next_visited, members: next_members }, f: (inner, neighbor) =>
+      dfs_collect_component(node: neighbor, adjacency: adjacency, acc: inner)
     )
   }
 }
 
-fn scc_members_for(root: String, graph: CallGraph, names: List<String>) -> List<String> {
-  let forward = reachable_nodes(root: root, adjacency: graph.forward, visited: empty_map())
-  let reverse = reachable_nodes(root: root, adjacency: graph.reverse, visited: empty_map())
-  names |> filter(name =>
-    set_has(m: forward, key: name) && set_has(m: reverse, key: name)
+fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
+    dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
   )
+  let result = finish.order |> reverse |> fold(init: SccCycleAcc { visited: empty_map(), has_cycle: false }, f: (acc, name) =>
+    if acc.has_cycle || set_has(m: acc.visited, key: name) {
+      acc
+    } else {
+      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
+      SccCycleAcc {
+        visited: component.visited,
+        has_cycle: (component.members |> count) > 1
+      }
+    }
+  )
+  result.has_cycle
 }
 
 fn scc_label(members: List<String>) -> String {
@@ -2023,6 +2084,7 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
     map_insert(acc, name, true)
   )
   let structural_params = build_scc_structural_params(members: members, func_index: func_index)
+  let scc_measure_params = build_scc_measure_params(members: members, func_index: func_index)
   let all_structural = members |> all(name =>
     match map_get(func_index, name) {
       Some { value: entry } =>
@@ -2050,7 +2112,7 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
           match map_get(func_index, name) {
             Some { value: entry } =>
               max_path_target_calls(body: entry.body, target_set: scc_name_set) <= 1
-              && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set)
+              && scc_calls_have_arithmetic_descent(body: entry.body, target_set: scc_name_set, func_index: func_index, scc_measure_params: scc_measure_params)
             None => false
           }
         )
@@ -2066,18 +2128,22 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
 fn build_scc_index(func_entries: List<FuncEntry>, func_index: Map<String, FuncEntry>) -> Map<String, SccInfo> {
   let names = func_entries |> map(entry => entry.name)
   let graph = build_call_graph(func_entries: func_entries)
-  let result = names |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
+  let finish = names |> fold(init: DfsFinishAcc { visited: empty_map(), order: [] }, f: (acc, name) =>
+    dfs_finish_order(node: name, adjacency: graph.forward, acc: acc)
+  )
+  let result = finish.order |> reverse |> fold(init: SccBuildAcc { assigned: empty_map(), index: empty_map() }, f: fn(acc, name) {
     if set_has(m: acc.assigned, key: name) {
       acc
     } else {
-      let members = scc_members_for(root: name, graph: graph, names: names)
-      let next_assigned = members |> fold(init: acc.assigned, f: (inner, member) =>
+      let component = dfs_collect_component(node: name, adjacency: graph.reverse, acc: SccComponentAcc { visited: acc.assigned, members: [] })
+      let member_set = component.members |> fold(init: empty_map(), f: (inner, member) =>
         map_insert(inner, member, true)
       )
+      let members = names |> filter(member =>
+        set_has(m: member_set, key: member)
+      )
+      let next_assigned = component.visited
       if members |> count > 1 {
-        let member_set = members |> fold(init: empty_map(), f: (inner, member) =>
-          map_insert(inner, member, true)
-        )
         let info = SccInfo {
           members: members,
           member_set: member_set,

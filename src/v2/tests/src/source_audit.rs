@@ -362,7 +362,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn max_path_self_calls_with_cont(",
         "fn max_path_self_calls_block(",
         "type CallGraphAcc {",
+        "type DfsFinishAcc {",
+        "type SccComponentAcc {",
+        "fn build_scc_measure_params(",
         "fn collect_descending_witness_names(",
+        "fn dfs_finish_order(",
+        "fn dfs_collect_component(",
         "fn is_descending_witness_arg(",
         "fn self_calls_have_descending_witness(",
         "fn is_structural_descent(",
@@ -387,7 +392,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn max_path_self_calls_with_cont(",
         "pub fn max_path_self_calls_block(",
         "pub struct CallGraphAcc",
+        "pub struct DfsFinishAcc",
+        "pub struct SccComponentAcc",
+        "pub fn build_scc_measure_params(",
         "pub fn collect_descending_witness_names(",
+        "pub fn dfs_finish_order(",
+        "pub fn dfs_collect_component(",
         "pub fn is_descending_witness_arg(",
         "pub fn self_calls_have_descending_witness(",
         "pub fn is_structural_descent(",
@@ -430,9 +440,29 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "ComplexityReport should not carry a formatted string field"
     );
     assert_live_not_contains(
+        &source,
+        "fn recursive_variant_field_key(",
+        "complexity should consume infer_env recursive field keys rather than redefining them"
+    );
+    assert_live_not_contains(
+        &source,
+        "fn scc_members_for(",
+        "complexity should not rebuild SCCs with repeated reachability passes"
+    );
+    assert_live_not_contains(
         &stage0,
         "pub formatted: String",
         "stage0 ComplexityReport should not carry a formatted string field"
+    );
+    assert_live_not_contains(
+        &stage0,
+        "pub fn recursive_variant_field_key(",
+        "stage0 complexity mirror should consume infer_env recursive field keys rather than redefining them"
+    );
+    assert_live_not_contains(
+        &stage0,
+        "pub fn scc_members_for(",
+        "stage0 complexity mirror should not rebuild SCCs with repeated reachability passes"
     );
 }
 

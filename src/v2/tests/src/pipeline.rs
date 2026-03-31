@@ -2243,6 +2243,22 @@ fn mutual_arithmetic_recursion_is_allowed() {
 }
 
 #[test]
+fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
+    let source = "module mutual_wrong_measure\n\nfn ping(n: Int, m: Int) -> Bool {\n  if n <= 0 { true }\n  else { pong(n: n, m: n - 1) }\n}\n\nfn pong(n: Int, m: Int) -> Bool {\n  if n <= 0 { false }\n  else { ping(n: n, m: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        "mutual recursion that only decreases an unmeasured callee param must be rejected, got: {:?}",
+        msgs
+    );
+    assert!(
+        result.files.is_empty(),
+        "mutual recursion on the wrong callee measure should block code emission"
+    );
+}
+
+#[test]
 fn function_calling_into_cycle_is_not_rejected() {
     // h calls into the ping<->pong cycle but is not part of it.
     // Must NOT be flagged as mutual recursion.

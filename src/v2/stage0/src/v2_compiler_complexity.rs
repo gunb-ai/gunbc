@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
+use crate::v2_compiler_infer_env::recursive_variant_field_key;
 use crate::v2_compiler_parse::{
     parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
     ParserResultWitness,
@@ -244,6 +245,24 @@ pub struct SccInfo {
 pub struct SccBuildAcc {
     pub assigned: HashMap<String, bool>,
     pub index: HashMap<String, Rc<SccInfo>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DfsFinishAcc {
+    pub visited: HashMap<String, bool>,
+    pub order: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SccComponentAcc {
+    pub visited: HashMap<String, bool>,
+    pub members: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SccCycleAcc {
+    pub visited: HashMap<String, bool>,
+    pub has_cycle: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1071,9 +1090,7 @@ pub fn same_progress_subgraph_has_cycle(members: Vec<String>, edges: Vec<ParserP
         true
     } else {
         let graph = build_call_graph_from_parser_edges(members.clone(), same_edges.clone());
-        members.iter().cloned().any(|name| {
-            scc_members_for(name.clone(), graph.clone(), members.clone()).len() > 1
-        })
+        graph_has_multi_node_scc(members.clone(), graph.clone())
     }
 }
 
@@ -1275,13 +1292,6 @@ pub fn max_path_target_calls_with_cont(body: Rc<Node>, target_set: HashMap<Strin
             acc + max_path_target_calls_with_cont(child.clone(), target_set.clone(), 0)
         }) + continue_calls,
     }
-}
-
-pub fn recursive_variant_field_key(type_name: String, variant_name: String, field_name: String) -> String {
-    v2_rt::concat(type_name.clone(),
-        v2_rt::concat("::".to_string(),
-            v2_rt::concat(variant_name.clone(),
-                v2_rt::concat("::".to_string(), field_name.clone()))))
 }
 
 pub fn has_recursive_fields_for_type(
@@ -1736,33 +1746,83 @@ pub fn build_scc_structural_params(
     })
 }
 
+pub fn build_scc_measure_params(
+    members: Vec<String>,
+    func_index: HashMap<String, Rc<FuncEntry>>,
+) -> HashMap<String, HashMap<String, String>> {
+    members.iter().cloned().fold(<HashMap<String, HashMap<String, String>>>::new(), |acc: _, name: String| {
+        match v2_rt::map_get(&func_index, name.clone()) {
+            Some(entry) => v2_rt::map_insert(
+                acc.clone(),
+                name.clone(),
+                (*recursive_measure_param_names(entry.body.clone(), entry.params.clone())).clone(),
+            ),
+            None => acc.clone(),
+        }
+    })
+}
+
 pub fn target_call_has_arithmetic_descent(
     call_node: Rc<Node>,
     target_set: HashMap<String, bool>,
+    func_index: HashMap<String, Rc<FuncEntry>>,
+    scc_measure_params: HashMap<String, HashMap<String, String>>,
 ) -> bool {
     let callee = expr_call_func(call_node.clone());
     if set_has(target_set.clone(), callee.clone()) == false {
         true
     } else {
-        call_node.children.clone().iter().cloned().any(|arg_node| {
-            is_descending_expr(arg_value(arg_node.clone()))
-        })
+        match v2_rt::map_get(&func_index, callee.clone()) {
+            Some(callee_entry) => {
+                let callee_measure_params = match v2_rt::map_get(&scc_measure_params, callee.clone()) {
+                    Some(params) => params.clone(),
+                    None => <HashMap<String, String>>::new(),
+                };
+                call_node.children.clone().iter().cloned().enumerate().any(|(idx, arg_node)| {
+                    let arg_expr = arg_value(arg_node.clone());
+                    max_path_target_calls(arg_expr.clone(), target_set.clone()) == 0
+                        && is_descending_expr(arg_expr.clone())
+                        && match recursive_param_name_for_arg(idx as i64, arg_node.clone(), callee_entry.params.clone()) {
+                            Some(param_name) => v2_rt::map_get(&callee_measure_params, param_name.clone()).is_some(),
+                            None => false,
+                        }
+                })
+            }
+            None => false,
+        }
     }
 }
 
 pub fn scc_calls_have_arithmetic_descent(
     body: Rc<Node>,
     target_set: HashMap<String, bool>,
+    func_index: HashMap<String, Rc<FuncEntry>>,
+    scc_measure_params: HashMap<String, HashMap<String, String>>,
 ) -> bool {
     match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            target_call_has_arithmetic_descent(body.clone(), target_set.clone())
+            target_call_has_arithmetic_descent(
+                body.clone(),
+                target_set.clone(),
+                func_index.clone(),
+                scc_measure_params.clone(),
+            )
                 && body.children.clone().iter().cloned().all(|child| {
-                    scc_calls_have_arithmetic_descent(child.clone(), target_set.clone())
+                    scc_calls_have_arithmetic_descent(
+                        child.clone(),
+                        target_set.clone(),
+                        func_index.clone(),
+                        scc_measure_params.clone(),
+                    )
                 })
         }
         _ => body.children.clone().iter().cloned().all(|child| {
-            scc_calls_have_arithmetic_descent(child.clone(), target_set.clone())
+            scc_calls_have_arithmetic_descent(
+                child.clone(),
+                target_set.clone(),
+                func_index.clone(),
+                scc_measure_params.clone(),
+            )
         }),
     }
 }
@@ -2203,27 +2263,72 @@ pub fn build_call_graph(func_entries: Vec<Rc<FuncEntry>>) -> Rc<CallGraph> {
     })
 }
 
-pub fn reachable_nodes(root: String, adjacency: HashMap<String, Vec<String>>, visited: HashMap<String, bool>) -> HashMap<String, bool> {
-    if set_has(visited.clone(), root.clone()) {
-        visited.clone()
+pub fn dfs_finish_order(node: String, adjacency: HashMap<String, Vec<String>>, acc: Rc<DfsFinishAcc>) -> Rc<DfsFinishAcc> {
+    if set_has(acc.visited.clone(), node.clone()) {
+        acc.clone()
     } else {
-        let next_visited = v2_rt::map_insert(visited.clone(), root.clone(), true);
-        let neighbors = match v2_rt::map_get(&adjacency, root.clone()) {
+        let next_visited = v2_rt::map_insert(acc.visited.clone(), node.clone(), true);
+        let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
             Some(ns) => ns.clone(),
             None => vec![],
         };
-        neighbors.iter().cloned().fold(next_visited.clone(), |acc: _, neighbor: String| {
-            reachable_nodes(neighbor.clone(), adjacency.clone(), acc.clone())
+        let explored = neighbors.iter().cloned().fold(Rc::new(DfsFinishAcc {
+            visited: next_visited.clone(),
+            order: acc.order.clone(),
+        }), |inner: _, neighbor: String| {
+            dfs_finish_order(neighbor.clone(), adjacency.clone(), inner.clone())
+        });
+        Rc::new(DfsFinishAcc {
+            visited: explored.visited.clone(),
+            order: v2_rt::list_push(explored.order.clone(), node.clone()),
         })
     }
 }
 
-pub fn scc_members_for(root: String, graph: Rc<CallGraph>, names: Vec<String>) -> Vec<String> {
-    let forward = reachable_nodes(root.clone(), graph.forward.clone(), <HashMap<String, bool>>::new());
-    let reverse = reachable_nodes(root.clone(), graph.reverse.clone(), <HashMap<String, bool>>::new());
-    names.iter().cloned().filter(|name| {
-        set_has(forward.clone(), name.clone()) && set_has(reverse.clone(), name.clone())
-    }).collect::<Vec<_>>()
+pub fn dfs_collect_component(node: String, adjacency: HashMap<String, Vec<String>>, acc: Rc<SccComponentAcc>) -> Rc<SccComponentAcc> {
+    if set_has(acc.visited.clone(), node.clone()) {
+        acc.clone()
+    } else {
+        let next_visited = v2_rt::map_insert(acc.visited.clone(), node.clone(), true);
+        let next_members = v2_rt::list_push(acc.members.clone(), node.clone());
+        let neighbors = match v2_rt::map_get(&adjacency, node.clone()) {
+            Some(ns) => ns.clone(),
+            None => vec![],
+        };
+        neighbors.iter().cloned().fold(Rc::new(SccComponentAcc {
+            visited: next_visited.clone(),
+            members: next_members.clone(),
+        }), |inner: _, neighbor: String| {
+            dfs_collect_component(neighbor.clone(), adjacency.clone(), inner.clone())
+        })
+    }
+}
+
+pub fn graph_has_multi_node_scc(names: Vec<String>, graph: Rc<CallGraph>) -> bool {
+    let finish = names.iter().cloned().fold(Rc::new(DfsFinishAcc {
+        visited: <HashMap<_, _>>::new(),
+        order: vec![],
+    }), |acc: _, name: String| {
+        dfs_finish_order(name.clone(), graph.forward.clone(), acc.clone())
+    });
+    let result = finish.order.clone().into_iter().rev().fold(Rc::new(SccCycleAcc {
+        visited: <HashMap<_, _>>::new(),
+        has_cycle: false,
+    }), |acc: _, name: String| {
+        if acc.has_cycle || set_has(acc.visited.clone(), name.clone()) {
+            acc.clone()
+        } else {
+            let component = dfs_collect_component(name.clone(), graph.reverse.clone(), Rc::new(SccComponentAcc {
+                visited: acc.visited.clone(),
+                members: vec![],
+            }));
+            Rc::new(SccCycleAcc {
+                visited: component.visited.clone(),
+                has_cycle: component.members.len() > 1,
+            })
+        }
+    });
+    result.has_cycle
 }
 
 pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>) -> Rc<RecursionPattern> {
@@ -2231,6 +2336,7 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
         v2_rt::map_insert(acc.clone(), name.clone(), true)
     });
     let structural_params = build_scc_structural_params(members.clone(), func_index.clone());
+    let scc_measure_params = build_scc_measure_params(members.clone(), func_index.clone());
     let all_structural = members.iter().cloned().all(|name| {
         match v2_rt::map_get(&func_index, name.clone()) {
             Some(entry) => match v2_rt::map_get(&structural_params, name.clone()) {
@@ -2257,7 +2363,12 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
                 let all_arithmetic = members.iter().cloned().all(|name| {
                     match v2_rt::map_get(&func_index, name.clone()) {
                         Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
-                            && scc_calls_have_arithmetic_descent(entry.body.clone(), scc_name_set.clone()),
+                            && scc_calls_have_arithmetic_descent(
+                                entry.body.clone(),
+                                scc_name_set.clone(),
+                                func_index.clone(),
+                                scc_measure_params.clone(),
+                            ),
                         None => false,
                     }
                 });
@@ -2278,21 +2389,31 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
 pub fn build_scc_index(func_entries: Vec<Rc<FuncEntry>>, func_index: HashMap<String, Rc<FuncEntry>>) -> HashMap<String, Rc<SccInfo>> {
     let names = func_entries.iter().cloned().map(|entry| entry.name.clone()).collect::<Vec<_>>();
     let graph = build_call_graph(func_entries.clone());
-    let result = names.iter().cloned().fold(Rc::new(SccBuildAcc {
+    let finish = names.iter().cloned().fold(Rc::new(DfsFinishAcc {
+        visited: <HashMap<_, _>>::new(),
+        order: vec![],
+    }), |acc: _, name: String| {
+        dfs_finish_order(name.clone(), graph.forward.clone(), acc.clone())
+    });
+    let result = finish.order.clone().into_iter().rev().fold(Rc::new(SccBuildAcc {
         assigned: <HashMap<_, _>>::new(),
         index: <HashMap<_, _>>::new(),
     }), |acc: _, name: String| {
         if set_has(acc.assigned.clone(), name.clone()) {
             acc.clone()
         } else {
-            let members = scc_members_for(name.clone(), graph.clone(), names.clone());
-            let next_assigned = members.iter().cloned().fold(acc.assigned.clone(), |inner: _, member: String| {
+            let component = dfs_collect_component(name.clone(), graph.reverse.clone(), Rc::new(SccComponentAcc {
+                visited: acc.assigned.clone(),
+                members: vec![],
+            }));
+            let member_set = component.members.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |inner: _, member: String| {
                 v2_rt::map_insert(inner.clone(), member.clone(), true)
             });
+            let members = names.iter().cloned().filter(|member| {
+                set_has(member_set.clone(), member.clone())
+            }).collect::<Vec<_>>();
+            let next_assigned = component.visited.clone();
             if members.len() > 1 {
-                let member_set = members.iter().cloned().fold(<HashMap<String, bool>>::new(), |inner: _, member: String| {
-                    v2_rt::map_insert(inner.clone(), member.clone(), true)
-                });
                 let info = Rc::new(SccInfo {
                     members: members.clone(),
                     member_set: member_set.clone(),
