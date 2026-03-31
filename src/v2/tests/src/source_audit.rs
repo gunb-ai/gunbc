@@ -411,12 +411,12 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
     // O(...) strings exist only at format_complexity_class boundary.
     assert_live_contains(
         &source,
-        "-> CostExpr",
+        "fn classify_complexity(expr: CostExpr) -> CostExpr",
         "classify_complexity should return CostExpr, not String"
     );
     assert_live_contains(
         &stage0,
-        "-> Rc<CostExpr>",
+        "pub fn classify_complexity(expr: Rc<CostExpr>) -> Rc<CostExpr>",
         "stage0 classify_complexity should return Rc<CostExpr>, not String"
     );
 

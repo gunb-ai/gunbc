@@ -997,8 +997,14 @@ pub fn classify_complexity(expr: Rc<CostExpr>) -> Rc<CostExpr> {
 }
 
 // Formatting boundary: O(...) string for display / diagnostics only.
+// Fail-closed: refuses to format unknown complexity.
 pub fn format_complexity_class(expr: Rc<CostExpr>) -> String {
-    format_cost_class(classify_complexity(expr.clone()))
+    let classified = classify_complexity(expr.clone());
+    if cost_contains_unknown(classified.clone()) {
+        "ERROR:unknown-complexity".to_string()
+    } else {
+        format_cost_class(classified)
+    }
 }
 
 // Structural fail-closed check: does the classified CostExpr contain
@@ -1547,13 +1553,6 @@ Rc::new(SummaryResult {
 }
 }
 
-pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
-    match (*expr.clone()).clone() {
-    CostExpr::CostUnknown { .. } => true,
-    _ => false,
-}
-}
-
 pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
@@ -1578,7 +1577,7 @@ Rc::new(SummaryResult {
 });
 let summaries_map = result.table.clone().summaries.clone();
 let violations = { let mut __result = Vec::new(); for entry in { let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
-    Some(summary) => is_unknown_cost(summary.work.clone()),
+    Some(summary) => is_unknown_class(summary.work.clone()),
     None => true,
 } { __result.push(entry); } } __result }.iter().cloned() { __result.push(match v2_rt::map_get(&summaries_map, entry.name.clone()) {
     Some(summary) => {
