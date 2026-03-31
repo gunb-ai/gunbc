@@ -466,12 +466,7 @@ let main_line = if ((top_with_parents.clone().len() as i64) > 0) {
                                     {
                                         let names_str = { let mut __result = Vec::new(); for n in top_with_parents.clone().iter().cloned() { __result.push(match v2_rt::map_get(&registry, n.clone()) {
     Some(info) => {
-                                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-if is_data.clone() {
-                                                to_screaming_snake(n.clone())
-} else {
-                                                n.clone()
-}
+                                            n.clone()
 },
     None => n.clone(),
 }); } __result }.join(&", ".to_string());
@@ -1450,7 +1445,7 @@ if emit_map_has(rc_types.clone(), enum_name.clone()) {
     Some(info) => {
                     let is_data = (info.kind.clone() == ItemKind::DataItem);
 if is_data.clone() {
-                        v2_rt::concat(to_screaming_snake(name.clone()), ".clone()".to_string())
+                        v2_rt::concat(to_snake(name.clone()), "()".to_string())
 } else {
                         {
                             let is_function_value = match binding_kind.clone().as_deref().cloned() {
@@ -1509,7 +1504,7 @@ if emit_map_has(rc_types.clone(), enum_name.clone()) {
     Some(info) => {
                     let is_data = (info.kind.clone() == ItemKind::DataItem);
 if is_data.clone() {
-                        to_screaming_snake(n.clone())
+                        v2_rt::concat(to_snake(n.clone()), "()".to_string())
 } else {
                         emit_ident(n.clone(), RenderTarget::Rust)
 }
@@ -3816,12 +3811,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_data_def(name: String, type_node: Rc<Node>, value: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, vtoe: HashMap<String, String>, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let ty_str = emit_node_type_rc(type_node.clone(), RenderTarget::Rust, <HashMap<_, _>>::new());
-let upper_name = to_screaming_snake(name.clone());
 let fn_name = to_snake(name.clone());
 if is_simple_type_node(type_node.clone()) {
             {
                 let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), <HashMap<_, _>>::new(), emit_info.clone());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "const ".to_string()), upper_name.clone()), ": ".to_string()), ty_str.clone()), " = ".to_string()), val_str.clone()), ";".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), " { ".to_string()), val_str.clone()), " }".to_string())
 }
 } else {
             if has_nested_records_node(type_node.clone()) {
