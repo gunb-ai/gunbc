@@ -15,6 +15,11 @@
 module v2.compiler.complexity
 
 import std.types { SourceSpan }
+import v2.compiler.parse {
+  ParserResultWitness,
+  ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
+  parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness
+}
 import v2.std.core {
   Node,
   ExprData,
@@ -220,6 +225,11 @@ type CallGraph {
   reverse: Map<String, List<String>>
 }
 
+type CallGraphAcc {
+  forward: Map<String, List<String>>
+  reverse: Map<String, List<String>>
+}
+
 type SccInfo {
   members: List<String>
   member_set: Map<String, Bool>
@@ -395,18 +405,6 @@ fn parser_state_base_var(expr: Node) -> String? {
   }
 }
 
-fn parser_consumed_var(expr: Node) -> String? {
-  match expr.expr_data {
-    ExprFieldAccess =>
-      if field_access_field(texpr: expr) == "consumed" {
-        parser_state_base_var(expr: expr)
-      } else {
-        none
-      }
-    _ => none
-  }
-}
-
 fn parser_result_state_progress(source: ParserResultSource, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>, result_name: String) -> ProgressKind {
   match source {
     ParserResultAdvance { input: input } => strict_progress(progress: input)
@@ -418,7 +416,7 @@ fn parser_result_state_progress(source: ParserResultSource, parser_always_advanc
         input
       }
     ParserResultCall { input: input, callee: callee } =>
-      if set_has(m: parser_always_advancing, key: callee) {
+      if set_has(m: consumed_true_set, key: result_name) || set_has(m: parser_always_advancing, key: callee) {
         strict_progress(progress: input)
       } else {
         input
@@ -482,25 +480,21 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
       }
 
     ExprCall { call_semantics: _ } =>
-      if expr_call_func(texpr: expr) == "skip_newlines" {
-        match parser_state_arg_expr(call_node: expr, state_param: ParserStateParam { name: "state", index: 1 }) {
-          Some { value: state_expr } =>
-            parser_state_expr_progress(
-              expr: state_expr,
-              state_param: state_param,
-              env: env,
-              parser_always_advancing: parser_always_advancing,
-              consumed_true_set: consumed_true_set
-            )
-          None => ProgressUnknown
-        }
-      } else {
-        ProgressUnknown
+      match parser_passthrough_state_expr(expr: expr) {
+        Some { value: state_expr } =>
+          parser_state_expr_progress(
+            expr: state_expr,
+            state_param: state_param,
+            env: env,
+            parser_always_advancing: parser_always_advancing,
+            consumed_true_set: consumed_true_set
+          )
+        None => ProgressUnknown
       }
 
     ExprIf =>
       let cond = if_condition(texpr: expr)
-      let then_consumed = match parser_consumed_var(expr: cond) {
+      let then_consumed = match parser_progress_flag_var(expr: cond) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
@@ -563,16 +557,16 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
           )
         None => ProgressUnknown
       }
-      match expr_call_func(texpr: expr) {
-        "advance" => ParserResultAdvance { input: input_progress }
-        "expect" => ParserResultExpect { input: input_progress }
-        "eat" => ParserResultEat { input: input_progress }
-        callee =>
-          if input_progress == ProgressUnknown {
-            ParserResultOpaque
-          } else {
-            ParserResultCall { input: input_progress, callee: callee }
+      match parser_result_witness(expr: expr) {
+        ParserWitnessAdvance => ParserResultAdvance { input: input_progress }
+        ParserWitnessExpect => ParserResultExpect { input: input_progress }
+        ParserWitnessEat => ParserResultEat { input: input_progress }
+        ParserWitnessCall { callee: callee } =>
+          match input_progress {
+            ProgressUnknown => ParserResultOpaque
+            _ => ParserResultCall { input: input_progress, callee: callee }
           }
+        ParserWitnessOpaque => ParserResultOpaque
       }
     _ => ParserResultOpaque
   }
@@ -602,13 +596,18 @@ fn parser_env_with_binding(name: String, value_expr: Node, env: ParserProgressEn
 fn parser_call_edge_progress(call_node: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
   match parser_state_arg_expr(call_node: call_node, state_param: state_param) {
     Some { value: state_expr } =>
-      parser_state_expr_progress(
+      let input_progress = parser_state_expr_progress(
         expr: state_expr,
         state_param: state_param,
         env: env,
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set
       )
+      if set_has(m: parser_always_advancing, key: expr_call_func(texpr: call_node)) {
+        strict_progress(progress: input_progress)
+      } else {
+        input_progress
+      }
     None => ProgressUnknown
   }
 }
@@ -708,7 +707,7 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set
       )
-      let then_consumed = match parser_consumed_var(expr: cond) {
+      let then_consumed = match parser_progress_flag_var(expr: cond) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
@@ -867,7 +866,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
 
     ExprIf =>
       let cond = if_condition(texpr: expr)
-      let then_consumed = match parser_consumed_var(expr: cond) {
+      let then_consumed = match parser_progress_flag_var(expr: cond) {
         Some { value: name } => map_insert(consumed_true_set, name, true)
         None => consumed_true_set
       }
@@ -949,6 +948,20 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
   }
 }
 
+fn parser_member_is_always_advancing(entry: FuncEntry, candidates: Map<String, Bool>) -> Bool {
+  match parser_state_param(params: entry.params) {
+    Some { value: state_param } =>
+      parser_success_progress(
+        expr: entry.body,
+        state_param: state_param,
+        env: empty_parser_progress_env(),
+        parser_always_advancing: candidates,
+        consumed_true_set: empty_map()
+      ) == ProgressStrict
+    None => false
+  }
+}
+
 fn same_member_set(a: Map<String, Bool>, b: Map<String, Bool>, members: List<String>) -> Bool {
   members |> all(name =>
     set_has(m: a, key: name) == set_has(m: b, key: name)
@@ -965,20 +978,10 @@ fn infer_parser_always_advancing_members_loop(members: List<String>, func_index:
       } else {
         match map_get(func_index, name) {
           Some { value: entry } =>
-            match parser_state_param(params: entry.params) {
-              Some { value: state_param } =>
-                if parser_success_progress(
-                  expr: entry.body,
-                  state_param: state_param,
-                  env: empty_parser_progress_env(),
-                  parser_always_advancing: candidates,
-                  consumed_true_set: empty_map()
-                ) == ProgressStrict {
-                  map_insert(acc, name, true)
-                } else {
-                  acc
-                }
-              None => acc
+            if parser_member_is_always_advancing(entry: entry, candidates: candidates) {
+              map_insert(acc, name, true)
+            } else {
+              acc
             }
           None => acc
         }
@@ -1007,6 +1010,34 @@ fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<
     candidates: initial,
     fuel: members |> count
   )
+}
+
+fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>) -> Map<String, Bool> {
+  let members = map_keys(func_index) |> filter(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } => parser_state_param(params: entry.params) != none
+      None => false
+    }
+  )
+  infer_parser_always_advancing_members(members: members, func_index: func_index)
+}
+
+fn self_calls_have_strict_parser_progress(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> Bool {
+  match parser_state_param(params: params) {
+    Some { value: state_param } =>
+      let self_set = map_insert(empty_map(), func_name, true)
+      let edges = collect_parser_progress_edges(
+        caller: func_name,
+        body: body,
+        state_param: state_param,
+        scc_name_set: self_set,
+        env: empty_parser_progress_env(),
+        parser_always_advancing: parser_always_advancing,
+        consumed_true_set: empty_map()
+      )
+      (edges |> count) > 0 && (edges |> all(edge => edge.progress == ProgressStrict))
+    None => false
+  }
 }
 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
@@ -1655,82 +1686,166 @@ fn scc_calls_have_arithmetic_descent(body: Node, target_set: Map<String, Bool>) 
   }
 }
 
-fn param_alias_name_set(params: List<Node>) -> Map<String, Bool> {
-  params |> fold(init: empty_map(), f: (acc, param) =>
-    map_insert(acc, param_node_name(n: param), true)
+fn descending_name_set_without_key(names: Map<String, String>, key: String) -> Map<String, String> {
+  names |> map_keys |> fold(init: empty_map(), f: (acc, name) =>
+    if name == key {
+      acc
+    } else {
+      match map_get(names, name) {
+        Some { value: source } => map_insert(acc, name, source)
+        None => acc
+      }
+    }
   )
 }
 
-fn expr_is_param_alias_var(expr: Node, param_alias_names: Map<String, Bool>) -> Bool {
+fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<String, String>) -> String? {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
-      map_get(param_alias_names, expr_var_name(texpr: expr)) != none
-    _ => false
+      map_get(descending_witness_names, expr_var_name(texpr: expr))
+    ExprBinOp { op: op } =>
+      match op {
+        Sub => expr_descending_witness_source(expr: binop_left(texpr: expr), descending_witness_names: descending_witness_names)
+        Div => expr_descending_witness_source(expr: binop_left(texpr: expr), descending_witness_names: descending_witness_names)
+        _ => none
+      }
+    _ => none
   }
 }
 
-fn collect_param_alias_names(body: Node, param_alias_names: Map<String, Bool>) -> Map<String, Bool> {
+fn collect_descending_witness_names(body: Node, descending_witness_names: Map<String, String>) -> Map<String, String> {
   match body.expr_data {
     ExprLet =>
-      let value_aliases = collect_param_alias_names(body: let_value(texpr: body), param_alias_names: param_alias_names)
-      let next_aliases = if expr_is_param_alias_var(expr: let_value(texpr: body), param_alias_names: value_aliases) {
-        map_insert(value_aliases, let_binding_name(texpr: body), true)
-      } else { value_aliases }
+      let value_witnesses = collect_descending_witness_names(body: let_value(texpr: body), descending_witness_names: descending_witness_names)
+      let next_witnesses_base = descending_name_set_without_key(names: value_witnesses, key: let_binding_name(texpr: body))
+      let next_witnesses = match expr_descending_witness_source(expr: let_value(texpr: body), descending_witness_names: value_witnesses) {
+        Some { value: source_param } => map_insert(next_witnesses_base, let_binding_name(texpr: body), source_param)
+        None => next_witnesses_base
+      }
       match let_body(texpr: body) {
-        Some { value: b } => collect_param_alias_names(body: b, param_alias_names: next_aliases)
-        None => next_aliases
+        Some { value: b } => collect_descending_witness_names(body: b, descending_witness_names: next_witnesses)
+        None => next_witnesses
       }
 
     ExprBlock =>
-      body.children |> fold(init: param_alias_names, f: (acc, stmt) =>
-        collect_param_alias_names(body: stmt, param_alias_names: acc)
+      body.children |> fold(init: descending_witness_names, f: (acc, stmt) =>
+        collect_descending_witness_names(body: stmt, descending_witness_names: acc)
       )
 
     _ =>
-      body.children |> fold(init: param_alias_names, f: (acc, child) =>
-        collect_param_alias_names(body: child, param_alias_names: acc)
+      body.children |> fold(init: descending_witness_names, f: (acc, child) =>
+        collect_descending_witness_names(body: child, descending_witness_names: acc)
       )
   }
 }
 
-fn is_non_computed_recursive_arg(expr: Node, func_name: String, param_alias_names: Map<String, Bool>) -> Bool {
+fn condition_param_names(expr: Node, param_set: Map<String, String>) -> Map<String, String> {
+  match expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name(texpr: expr)
+      match map_get(param_set, name) {
+        Some { value: _ } => map_insert(empty_map(), name, name)
+        None => empty_map()
+      }
+    _ =>
+      expr.children |> fold(init: empty_map(), f: (acc, child) =>
+        map_merge(acc, condition_param_names(expr: child, param_set: param_set))
+      )
+  }
+}
+
+fn recursive_measure_param_names(body: Node, params: List<Node>) -> Map<String, String> {
+  let param_set = params |> fold(init: empty_map(), f: (acc, param) =>
+    map_insert(acc, param_node_name(n: param), param_node_name(n: param))
+  )
+  match body.expr_data {
+    ExprIf =>
+      let then_names = recursive_measure_param_names(body: if_then_branch(texpr: body), params: params)
+      let else_names = match if_else_branch(texpr: body) {
+        Some { value: eb } => recursive_measure_param_names(body: eb, params: params)
+        None => empty_map()
+      }
+      map_merge(
+        condition_param_names(expr: if_condition(texpr: body), param_set: param_set),
+        then_names,
+        else_names
+      )
+    ExprMatch =>
+      let scrut_names = condition_param_names(expr: match_scrutinee(texpr: body), param_set: param_set)
+      let arm_names = match_arm_nodes(texpr: body) |> fold(init: empty_map(), f: (acc, arm_node) =>
+        map_merge(acc, recursive_measure_param_names(body: arm_body(n: arm_node), params: params))
+      )
+      map_merge(scrut_names, arm_names)
+    ExprLet =>
+      match let_body(texpr: body) {
+        Some { value: b } => recursive_measure_param_names(body: b, params: params)
+        None => empty_map()
+      }
+    ExprBlock =>
+      body.children |> fold(init: empty_map(), f: (acc, stmt) =>
+        map_merge(acc, recursive_measure_param_names(body: stmt, params: params))
+      )
+    _ =>
+      body.children |> fold(init: empty_map(), f: (acc, child) =>
+        map_merge(acc, recursive_measure_param_names(body: child, params: params))
+      )
+  }
+}
+
+fn recursive_param_name_for_arg(idx: Int, arg_node: Node, params: List<Node>) -> String? {
+  match arg_name(n: arg_node) {
+    Some { value: name } => Some { value: name }
+    None =>
+      params |> enumerate |> filter(pair => pair.first == idx) |> map(pair => param_node_name(n: pair.second)) |> first
+  }
+}
+
+fn is_descending_witness_arg(expr: Node, func_name: String, param_name: String, descending_witness_names: Map<String, String>) -> Bool {
   if count_self_calls(body: expr, func_name: func_name) > 0 { false }
   else {
-    match expr.expr_data {
-      ExprVar { binding_kind: _ } =>
-        !expr_is_param_alias_var(expr: expr, param_alias_names: param_alias_names)
-      ExprBinOp { op: _ } => false
-      ExprUnaryOp { op: _ } => false
-      _ => true
+    match expr_descending_witness_source(expr: expr, descending_witness_names: descending_witness_names) {
+      Some { value: source_param } => source_param == param_name
+      None => false
     }
   }
 }
 
-fn self_calls_use_non_computed_args(body: Node, func_name: String, param_alias_names: Map<String, Bool>) -> Bool {
+fn self_calls_have_descending_witness(body: Node, func_name: String, params: List<Node>, descending_witness_names: Map<String, String>) -> Bool {
   match body.expr_data {
     ExprCall { call_semantics: _ } =>
       let own_ok = if expr_call_func(texpr: body) == func_name {
-        let args = body.children |> map(arg_node => arg_value(n: arg_node))
+        let arg_nodes = body.children
+        let args = arg_nodes |> map(arg_node => arg_value(n: arg_node))
         let arg_shape_ok = args |> all(arg_expr =>
           count_self_calls(body: arg_expr, func_name: func_name) == 0
         )
-        let witness_ok = args |> any(arg_expr =>
-          is_non_computed_recursive_arg(expr: arg_expr, func_name: func_name, param_alias_names: param_alias_names)
+        let witness_ok = arg_nodes |> enumerate |> any(pair =>
+          match recursive_param_name_for_arg(idx: pair.first, arg_node: pair.second, params: params) {
+            Some { value: param_name } =>
+              is_descending_witness_arg(
+                expr: arg_value(n: pair.second),
+                func_name: func_name,
+                param_name: param_name,
+                descending_witness_names: descending_witness_names
+              )
+            None => false
+          }
         )
         arg_shape_ok && witness_ok
       } else { true }
       own_ok
       && (body.children |> all(child =>
-        self_calls_use_non_computed_args(
+        self_calls_have_descending_witness(
           body: child,
           func_name: func_name,
-          param_alias_names: param_alias_names
+          params: params,
+          descending_witness_names: descending_witness_names
         )
       ))
 
     _ =>
       body.children |> all(child =>
-        self_calls_use_non_computed_args(body: child, func_name: func_name, param_alias_names: param_alias_names)
+        self_calls_have_descending_witness(body: child, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
       )
   }
 }
@@ -1762,9 +1877,10 @@ fn has_arithmetic_descent(body: Node, func_name: String) -> Bool {
   }
 }
 
-fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, Bool>) -> RecursionPattern {
+fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, Bool>, parser_always_advancing: Map<String, Bool>) -> RecursionPattern {
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
-  let param_alias_names = collect_param_alias_names(body: body, param_alias_names: param_alias_name_set(params: params))
+  let initial_witnesses = recursive_measure_param_names(body: body, params: params)
+  let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
   if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if is_structural_descent(body: body, func_name: func_name, params: params, recursive_type_set: recursive_type_set, recursive_variant_fields: recursive_variant_fields) {
@@ -1772,11 +1888,10 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // in arms on destructured children. Total work = |tree| × per-node,
     // not k^depth. Classify as LinearRecursion (catamorphism).
     LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else if self_calls_use_non_computed_args(body: body, func_name: func_name, param_alias_names: param_alias_names) {
-    LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
-  } else if has_arithmetic_descent(body: body, func_name: func_name) {
+  } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
+    || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing) {
     // path_calls == 1, not structural descent, but at least one
     // self-call arg is param - expr or param / expr. Proven descent.
     LinearRecursion { iteration_var: concat("n_", func_name) }
@@ -1850,15 +1965,27 @@ fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {
   let edges = func_entries |> flat_map(entry =>
     collect_local_call_edges_in_expr(caller: entry.name, body: entry.body, local_func_set: local_func_set)
   )
-  let forward = names |> fold(init: empty_map(), f: (acc, name) =>
-    let callees = edges |> filter(edge => edge.caller == name) |> map(edge => edge.callee)
-    map_insert(acc, name, callees)
+  let initial_forward = names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
   )
-  let reverse = names |> fold(init: empty_map(), f: (acc, name) =>
-    let callers = edges |> filter(edge => edge.callee == name) |> map(edge => edge.caller)
-    map_insert(acc, name, callers)
+  let initial_reverse = names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
   )
-  CallGraph { forward: forward, reverse: reverse }
+  let graph_acc = edges |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+    let forward_neighbors = match map_get(acc.forward, edge.caller) {
+      Some { value: ns } => ns
+      None => []
+    }
+    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
+      Some { value: ns } => ns
+      None => []
+    }
+    CallGraphAcc {
+      forward: map_insert(acc.forward, edge.caller, concat(forward_neighbors, [edge.callee])),
+      reverse: map_insert(acc.reverse, edge.callee, concat(reverse_neighbors, [edge.caller]))
+    }
+  )
+  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
 fn reachable_nodes(root: String, adjacency: Map<String, List<String>>, visited: Map<String, Bool>) -> Map<String, Bool> {
@@ -2074,7 +2201,7 @@ fn resolve_lambda_arg(mc_arg_nodes: List<Node>) -> Node? {
   }
 }
 
-fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>) -> SummaryResult {
+fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, parser_always_advancing: Map<String, Bool>) -> SummaryResult {
   match lambda_arg {
     Some { value: la } =>
       match la.expr_data {
@@ -2082,12 +2209,12 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
           let fn_ref = expr_var_name(texpr: la)
           match map_get(func_index, fn_ref) {
             Some { value: _ } =>
-              get_or_compute_summary(func_name: fn_ref, func_index: func_index, scc_index: scc_index, table: recv_r.table)
+              get_or_compute_summary(func_name: fn_ref, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing)
             None =>
-              cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table)
+              cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing)
           }
         _ =>
-          cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table)
+          cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing)
       }
     None =>
       SummaryResult {
@@ -2102,11 +2229,11 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
   }
 }
 
-fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>) -> SummaryResult {
+fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: List<Node>, size: SizeExpr, binder: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, parser_always_advancing: Map<String, Bool>) -> SummaryResult {
   match shape {
     ShapeIterateBody { produces_collection: pc } =>
       let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
-      let body_result = resolve_callback_cost(lambda_arg: lambda_arg, recv_r: recv_r, func_index: func_index, scc_index: scc_index)
+      let body_result = resolve_callback_cost(lambda_arg: lambda_arg, recv_r: recv_r, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing)
       let loop_work = cost_loop(binder: binder, iterations: size, body: body_result.summary.work)
       // Space: non-producing iterators (fold/any/all) produce scalar or body output;
       // producing iterators (map/filter/etc.) produce proportional output
@@ -2132,7 +2259,7 @@ fn cost_of_method_by_shape(shape: CostShape, recv_r: SummaryResult, mc_args: Lis
       let lambda_arg = resolve_lambda_arg(mc_args: mc_args)
       let key_result = match lambda_arg {
         Some { value: la } =>
-          cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table)
+          cost_of_expr(texpr: la, func_index: func_index, scc_index: scc_index, table: recv_r.table, parser_always_advancing: parser_always_advancing)
         None =>
           SummaryResult {
             summary: ComplexitySummary {
@@ -2465,7 +2592,7 @@ type MatchCostAccum {
 }
 
 // Walk a single expression and produce its CostExpr for work.
-fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, table: CostInternTable) -> SummaryResult {
+fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, table: CostInternTable, parser_always_advancing: Map<String, Bool>) -> SummaryResult {
   match texpr.expr_data {
     ExprLiteral { value: _ } =>
       SummaryResult {
@@ -2503,8 +2630,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprBinOp { op: _ } =>
       let l = binop_left(texpr: texpr)
       let r = binop_right(texpr: texpr)
-      let lr = cost_of_expr(texpr: l, func_index: func_index, scc_index: scc_index, table: table)
-      let rr = cost_of_expr(texpr: r, func_index: func_index, scc_index: scc_index, table: lr.table)
+      let lr = cost_of_expr(texpr: l, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing)
+      let rr = cost_of_expr(texpr: r, func_index: func_index, scc_index: scc_index, table: lr.table, parser_always_advancing: parser_always_advancing)
       SummaryResult {
         summary: ComplexitySummary {
           work: cost_seq(a: lr.summary.work, b: cost_seq(a: CostConst { value: 1 }, b: rr.summary.work)),
@@ -2520,7 +2647,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
       let fname = expr_call_func(texpr: texpr)
       let callee_result = match map_get(func_index, fname) {
         Some { value: entry } =>
-          get_or_compute_summary(func_name: fname, func_index: func_index, scc_index: scc_index, table: table)
+          get_or_compute_summary(func_name: fname, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing)
         None =>
           SummaryResult {
             summary: ComplexitySummary {
@@ -2542,7 +2669,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         },
         table: callee_result.table
       }, f: fn(acc, a) {
-        let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, scc_index: scc_index, table: acc.table)
+        let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing)
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: acc.summary.work, b: ar.summary.work),
@@ -2566,7 +2693,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprMethodCall { method_semantics: ms } =>
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
-      let recv_r = cost_of_expr(texpr: recv, func_index: func_index, scc_index: scc_index, table: table)
+      let recv_r = cost_of_expr(texpr: recv, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing)
       let size = receiver_size_var(recv: recv)
       let binder = size_binder_name(size: size)
       // Dispatch on reconcile-provided method semantics.
@@ -2580,7 +2707,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
             let shape_match = method_cost_shape(method_name: md_name)
             match shape_match {
               Some { value: shape } =>
-                Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index) }
+                Some { value: cost_of_method_by_shape(shape: shape, recv_r: recv_r, mc_args: mc_args, size: size, binder: binder, func_index: func_index, scc_index: scc_index, parser_always_advancing: parser_always_advancing) }
               None =>
                 // All methods not in the known set (bridge methods) are O(1)
                 Some { value: SummaryResult {
@@ -2611,7 +2738,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
           },
           table: recv_r.table
         }, f: fn(acc, a) {
-          let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, scc_index: scc_index, table: acc.table)
+          let ar = cost_of_expr(texpr: arg_value(n: a), func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing)
           SummaryResult {
             summary: ComplexitySummary {
               work: cost_seq(a: acc.summary.work, b: ar.summary.work),
@@ -2636,7 +2763,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprMatch =>
       let scrut = match_scrutinee(texpr: texpr)
       let arm_nodes = match_arm_nodes(texpr: texpr)
-      let s_r = cost_of_expr(texpr: scrut, func_index: func_index, scc_index: scc_index, table: table)
+      let s_r = cost_of_expr(texpr: scrut, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing)
       let arms_accum = arm_nodes |> fold(init: MatchCostAccum {
         result: SummaryResult {
           summary: ComplexitySummary {
@@ -2649,7 +2776,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         },
         branch_costs: []
       }, f: fn(acc, arm_node) {
-        let ar = cost_of_expr(texpr: arm_body(n: arm_node), func_index: func_index, scc_index: scc_index, table: acc.result.table)
+        let ar = cost_of_expr(texpr: arm_body(n: arm_node), func_index: func_index, scc_index: scc_index, table: acc.result.table, parser_always_advancing: parser_always_advancing)
         MatchCostAccum {
           result: SummaryResult {
             summary: ComplexitySummary {
@@ -2676,11 +2803,11 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
-      let c_r = cost_of_expr(texpr: c, func_index: func_index, scc_index: scc_index, table: table)
-      let t_r = cost_of_expr(texpr: t, func_index: func_index, scc_index: scc_index, table: c_r.table)
+      let c_r = cost_of_expr(texpr: c, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing)
+      let t_r = cost_of_expr(texpr: t, func_index: func_index, scc_index: scc_index, table: c_r.table, parser_always_advancing: parser_always_advancing)
       let e_result = match if_else_branch(texpr: texpr) {
         Some { value: eb } =>
-          let er = cost_of_expr(texpr: eb, func_index: func_index, scc_index: scc_index, table: t_r.table)
+          let er = cost_of_expr(texpr: eb, func_index: func_index, scc_index: scc_index, table: t_r.table, parser_always_advancing: parser_always_advancing)
           SummaryResult {
             summary: er.summary,
             table: er.table
@@ -2709,10 +2836,10 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
 
     ExprLet =>
       let v = let_value(texpr: texpr)
-      let v_r = cost_of_expr(texpr: v, func_index: func_index, scc_index: scc_index, table: table)
+      let v_r = cost_of_expr(texpr: v, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing)
       match let_body(texpr: texpr) {
         Some { value: b } =>
-          let b_r = cost_of_expr(texpr: b, func_index: func_index, scc_index: scc_index, table: v_r.table)
+          let b_r = cost_of_expr(texpr: b, func_index: func_index, scc_index: scc_index, table: v_r.table, parser_always_advancing: parser_always_advancing)
           SummaryResult {
             summary: ComplexitySummary {
               work: cost_seq(a: v_r.summary.work, b: b_r.summary.work),
@@ -2735,7 +2862,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         },
         table: table
       }, f: fn(acc, s) {
-        let sr = cost_of_expr(texpr: s, func_index: func_index, scc_index: scc_index, table: acc.table)
+        let sr = cost_of_expr(texpr: s, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing)
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: acc.summary.work, b: sr.summary.work),
@@ -2750,8 +2877,8 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
     ExprForEach =>
       let c = foreach_collection(texpr: texpr)
       let bd = foreach_body(texpr: texpr)
-      let c_r = cost_of_expr(texpr: c, func_index: func_index, scc_index: scc_index, table: table)
-      let bd_r = cost_of_expr(texpr: bd, func_index: func_index, scc_index: scc_index, table: c_r.table)
+      let c_r = cost_of_expr(texpr: c, func_index: func_index, scc_index: scc_index, table: table, parser_always_advancing: parser_always_advancing)
+      let bd_r = cost_of_expr(texpr: bd, func_index: func_index, scc_index: scc_index, table: c_r.table, parser_always_advancing: parser_always_advancing)
       let size = receiver_size_var(recv: c)
       let binder = size_binder_name(size: size)
       let loop_work = cost_loop(binder: binder, iterations: size, body: bd_r.summary.work)
@@ -2776,7 +2903,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         },
         table: table
       }, f: fn(acc, child) {
-        let cr = cost_of_expr(texpr: child, func_index: func_index, scc_index: scc_index, table: acc.table)
+        let cr = cost_of_expr(texpr: child, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing)
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: acc.summary.work, b: cr.summary.work),
@@ -2800,7 +2927,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, scc_index: Map<
         },
         table: table
       }, f: fn(acc, child) {
-        let cr = cost_of_expr(texpr: child, func_index: func_index, scc_index: scc_index, table: acc.table)
+        let cr = cost_of_expr(texpr: child, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing)
         SummaryResult {
           summary: ComplexitySummary {
             work: cost_seq(a: acc.summary.work, b: cr.summary.work),
@@ -2826,7 +2953,7 @@ fn estimate_expr_size(texpr: Node, budget: Int) -> Int {
   }
 }
 
-fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, table: CostInternTable) -> SummaryResult {
+fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>, scc_index: Map<String, SccInfo>, table: CostInternTable, parser_always_advancing: Map<String, Bool>) -> SummaryResult {
   // Check cache first
   match lookup_summary(table: table, func_name: func_name) {
     Some { value: cached } =>
@@ -2849,7 +2976,7 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
             }
             let table_with_placeholder = cache_summary(table: table, func_name: func_name, summary: placeholder)
             // Walk the function body
-            let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_with_placeholder)
+            let result = cost_of_expr(texpr: entry.body, func_index: func_index, scc_index: scc_index, table: table_with_placeholder, parser_always_advancing: parser_always_advancing)
             // Detect and classify self-recursion: if the result cost still
             // contains the "computing: func_name" placeholder, the function
             // is recursive. Classify the pattern and produce a bounded cost.
@@ -2877,7 +3004,8 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
                     body: entry.body,
                     params: entry.params,
                     recursive_type_set: entry.recursive_type_set,
-                    recursive_variant_fields: entry.recursive_variant_fields
+                    recursive_variant_fields: entry.recursive_variant_fields,
+                    parser_always_advancing: parser_always_advancing
                   )
                   ComplexitySummary {
                     work: bounded_recursive_cost(pattern: pattern, raw_cost: result.summary.work, func_name: func_name),
@@ -2986,6 +3114,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
     map_insert(acc, entry.name, entry)
   )
   let scc_index = build_scc_index(func_entries: func_entries, func_index: func_index)
+  let parser_always_advancing = infer_all_parser_always_advancing(func_index: func_index)
   // Compute summaries for all functions
   let result = func_entries |> fold(init: SummaryResult {
     summary: ComplexitySummary {
@@ -2996,7 +3125,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
     },
     table: empty_intern_table()
   }, f: fn(acc, entry) {
-    let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: scc_index, table: acc.table)
+    let sr = get_or_compute_summary(func_name: entry.name, func_index: func_index, scc_index: scc_index, table: acc.table, parser_always_advancing: parser_always_advancing)
     SummaryResult { summary: sr.summary, table: sr.table }
   })
   // Collect function summaries and violations

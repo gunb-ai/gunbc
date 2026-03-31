@@ -361,8 +361,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn max_path_self_calls(",
         "fn max_path_self_calls_with_cont(",
         "fn max_path_self_calls_block(",
-        "fn is_non_computed_recursive_arg(",
-        "fn self_calls_use_non_computed_args(",
+        "type CallGraphAcc {",
+        "fn collect_descending_witness_names(",
+        "fn is_descending_witness_arg(",
+        "fn self_calls_have_descending_witness(",
         "fn is_structural_descent(",
         "fn normalize_asymptotic(",
         "fn normalize_constants(",
@@ -384,8 +386,10 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn max_path_self_calls(",
         "pub fn max_path_self_calls_with_cont(",
         "pub fn max_path_self_calls_block(",
-        "pub fn is_non_computed_recursive_arg(",
-        "pub fn self_calls_use_non_computed_args(",
+        "pub struct CallGraphAcc",
+        "pub fn collect_descending_witness_names(",
+        "pub fn is_descending_witness_arg(",
+        "pub fn self_calls_have_descending_witness(",
         "pub fn is_structural_descent(",
         "pub fn normalize_asymptotic(",
         "pub fn normalize_constants(",
@@ -429,6 +433,45 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         &stage0,
         "pub formatted: String",
         "stage0 ComplexityReport should not carry a formatted string field"
+    );
+}
+
+#[test]
+fn parser_progress_witness_hooks_live_in_parse_layer() {
+    let source = read_v2_file("src/v2/02_parse.dag");
+    let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_parse.rs");
+    let complexity = read_v2_file("src/v2/complexity.dag");
+
+    for needle in [
+        "type ParserResultWitness",
+        "fn parser_progress_flag_var(",
+        "fn parser_passthrough_state_expr(",
+        "fn parser_result_witness(",
+    ] {
+        assert_live_contains(
+            &source,
+            needle,
+            &format!("src/v2/02_parse.dag should contain {needle}")
+        );
+    }
+
+    for needle in [
+        "pub enum ParserResultWitness",
+        "pub fn parser_progress_flag_var(",
+        "pub fn parser_passthrough_state_expr(",
+        "pub fn parser_result_witness(",
+    ] {
+        assert_live_contains(
+            &stage0,
+            needle,
+            &format!("stage0 parser mirror should contain {needle}")
+        );
+    }
+
+    assert_live_contains(
+        &complexity,
+        "import v2.compiler.parse {",
+        "src/v2/complexity.dag should consume parser-owned progress witnesses",
     );
 }
 

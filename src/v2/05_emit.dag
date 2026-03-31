@@ -245,55 +245,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
         ExprLiteral { value: LitStr { value: text } } => Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
-      match target {
-        Rust =>
-          let fmt_parts = ps |> map(p => match p {
-            Text { value: v } =>
-              let escaped = v
-                |> split(delimiter: "{") |> join(separator: "{{")
-              let escaped2 = escaped
-                |> split(delimiter: "}") |> join(separator: "}}")
-              InterpPart { format_segment: escaped2, arg_expr: "" }
-            Interpolation { expr: e } =>
-              InterpPart { format_segment: "{}", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
-          })
-          let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
-          let args = fmt_parts
-            |> map(p => p.arg_expr)
-            |> filter(a => a != "")
-          if args |> count == 0 {
-            concat("\"", fmt_str, "\".to_string()")
-          } else {
-            let args_str = args |> join(separator: ", ")
-            concat("format!(\"", fmt_str, "\", ", args_str, ")")
-          }
-        Go =>
-          let fmt_parts = ps |> map(p => match p {
-            Text { value: v } => InterpPart { format_segment: v, arg_expr: "" }
-            Interpolation { expr: e } =>
-              InterpPart { format_segment: "%v", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
-          })
-          let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
-          let args = fmt_parts
-            |> map(p => p.arg_expr)
-            |> filter(a => a != "")
-          if args |> count == 0 {
-            concat("\"", fmt_str, "\"")
-          } else {
-            let args_str = args |> join(separator: ", ")
-            concat("fmt.Sprintf(\"", fmt_str, "\", ", args_str, ")")
-          }
-        Python =>
-          let segments = ps |> map(p => match p {
-            Text { value: v } =>
-              v |> split(delimiter: "{") |> join(separator: "{{")
-                |> split(delimiter: "}") |> join(separator: "}}")
-            Interpolation { expr: e } =>
-              concat("{", emit_simple_expr(expr: e, target: target, source_index: source_index), "}")
-          })
-          concat("f\"", segments |> join(separator: ""), "\"")
-        _ => emit_error_expr(message: "unsupported simple string interpolation target", target: target)
-      }
+      emit_simple_string_interp(parts: ps, target: target, source_index: source_index)
     _ => emit_error_expr(message: "unsupported simple expr in test/mock binding", target: target)
   }
 }

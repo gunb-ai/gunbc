@@ -2171,6 +2171,17 @@ fn descending_recursion_is_allowed() {
 }
 
 #[test]
+fn shadowed_descending_recursion_is_allowed() {
+    let source = "module shadow_countdown\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else {\n    let n = n - 1\n    countdown(n: n)\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    assert!(
+        !result.files.is_empty(),
+        "shadowed descending recursion should compile successfully"
+    );
+}
+
+#[test]
 fn ascending_recursion_is_rejected() {
     let source = "module spin_up\n\nfn spin(n: Int) -> Int {\n  spin(n: n + 1)\n}\n";
     let result = compile_dag(source);
