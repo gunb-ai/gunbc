@@ -3023,21 +3023,7 @@ let field_val = if needs_wrap.clone() {
 } else {
                                 val_str.clone()
 };
-// Wrap field value in Rc::new() if the field's type is Rc-wrapped
-let f_name_str = field_init_node_name(f.clone());
-let field_type_name = match lookup_emit_type_summary(emit_info.clone(), tn.clone()) {
-    Some(summary) => match v2_rt::map_get(&summary.field_type_map, f_name_str.clone()) {
-        Some(ft) => ft.clone(),
-        None => "".to_string(),
-    },
-    None => "".to_string(),
-};
-let field_needs_rc = !field_type_name.is_empty()
-    && v2_rt::map_contains_key(&rc_types, field_type_name.clone())
-    && !field_val.contains("Rc::new(")
-    && field_val != "None";
-let final_val = if field_needs_rc { format!("Rc::new({})", field_val) } else { field_val.clone() };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(f_name_str.clone(), RenderTarget::Rust)), ": ".to_string()), final_val.clone()), ",".to_string())
+v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("    ".to_string(), emit_ident(field_init_node_name(f.clone()), RenderTarget::Rust)), ": ".to_string()), field_val.clone()), ",".to_string())
 }); } __result };
 let all_field_strs = field_strs.clone();
 let fields_str = all_field_strs.clone().join(&"

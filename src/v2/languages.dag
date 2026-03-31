@@ -15,7 +15,9 @@ import v2.std.core {
   LiteralValue
 }
 import std.syntax {
-  ItemForm, OperatorSpec, SyntaxSpec, BodyKind, BinOp, LiteralKind
+  ItemForm, OperatorSpec, SyntaxSpec, BinOp, LiteralKind,
+  BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
+  ServiceBody, ResourceBody
 }
 
 import extdeps.languages.rust.emit {
