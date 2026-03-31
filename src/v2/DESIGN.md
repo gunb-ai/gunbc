@@ -42,3 +42,40 @@ output, `cargo test` on the emitted tests catches it.
 
 Every stage returns `{ value, diagnostics }`. Diagnostics thread through
 the pipeline. No diagnostic loss across stage boundaries.
+
+## Value context: how a value is used determines its representation
+
+The emitter must know HOW a value is used, not just WHAT it is.
+A `Map<String, String>` that is a constant lookup table, a runtime
+data structure, and an algebra witness are the same .dag type but
+need different target-language representations.
+
+**ValueContext** is a structural fact precomputed in EmitGraphInfo:
+
+| Context | Meaning | Classification |
+|---------|---------|---------------|
+| `ConstantData` | Immutable, known at compile time | `data` decl with literal/static body |
+| `RuntimeValue` | Heap-allocated, shared at runtime | `let` binding, function return, field |
+| `SpecificationWitness` | Structural property, not runtime data | Algebra `fn`-typed fields |
+| `CallableValue` | Function type, invokable | `fn`-typed params and fields |
+
+Each target language maps ValueContext to representation:
+
+- **Rust:** ConstantData → `const`/`static`; RuntimeValue → `Rc<T>`;
+  SpecWitness → phantom type or omitted; CallableValue → `fn(T)->U`
+- **Python:** ConstantData → module-level; RuntimeValue → `T` (GC);
+  CallableValue → `Callable`
+- **Go:** ConstantData → `var` (package); RuntimeValue → `*T` or value;
+  CallableValue → `func`
+- **SPICE:** ConstantData → `.param`; RuntimeValue → wire/node
+- **English:** ConstantData → table; RuntimeValue → paragraph
+
+**Why this matters:** Without ValueContext, the emitter applies one
+strategy everywhere (`Rc<T>` in Rust). This produces:
+- E0277: `Rc` in `lazy_static` (needs `Sync`, `Rc` is `!Sync`)
+- E0369: `Rc<dyn Fn>` equality (algebra witnesses aren't comparable)
+- Per-language bugs that multiply with each new target
+
+**Extension point:** `TypedItemKind` and `TypeSummary` already exist.
+ValueContext is computed from item kind + field types + usage analysis
+and added to `EmitGraphInfo` in the same precomputation pass.
