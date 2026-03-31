@@ -134,7 +134,9 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "map_values",         bridge_name: "map_values",       passes_by_ref: true },
   { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false },
   { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true },
-  { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true }
+  { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true },
+  { name: "reverse",            bridge_name: "reverse",          passes_by_ref: false },
+  { name: "replace",            bridge_name: "replace",          passes_by_ref: false }
 ]
 
 // Helper functions: O(1) lookup via indexed maps built from the registry.
@@ -157,7 +159,8 @@ data rt_functions: Map<String, Bool> = {
   "map_merge": true, "list_concat": true, "str_eq": true,
   "filesystem_read": true, "list_push": true, "map_get": true,
   "map_keys": true, "map_values": true,
-  "parse_int": true, "map_contains_key": true, "map_has": true
+  "parse_int": true, "map_contains_key": true, "map_has": true,
+  "reverse": true, "replace": true
 }
 
 data rt_ref_map_functions: Map<String, Bool> = {

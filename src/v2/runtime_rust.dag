@@ -95,6 +95,12 @@ fn rt_collection_ops() -> String {
     "}\n\n",
     "pub fn map_has<V>(m: &HashMap<String, V>, key: String) -> bool {\n",
     "    m.contains_key(&key)\n",
+    "}\n\n",
+    "pub fn reverse<T: Clone>(list: Vec<T>) -> Vec<T> {\n",
+    "    let mut v = list; v.reverse(); v\n",
+    "}\n\n",
+    "pub fn replace(s: String, from: String, to: String) -> String {\n",
+    "    s.replace(&from, &to)\n",
     "}\n\n")
 }
 

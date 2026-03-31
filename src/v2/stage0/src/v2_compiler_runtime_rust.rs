@@ -321,6 +321,17 @@ pub fn rt_filesystem() -> String {
 ".to_string())
 }
 
+pub fn rt_extra_ops() -> String {
+    let mut s = String::new();
+    s.push_str("pub fn reverse<T: Clone>(list: Vec<T>) -> Vec<T> {\n");
+    s.push_str("    let mut v = list; v.reverse(); v\n");
+    s.push_str("}\n\n");
+    s.push_str("pub fn replace(s: String, from: String, to: String) -> String {\n");
+    s.push_str("    s.replace(&from, &to)\n");
+    s.push_str("}\n\n");
+    s
+}
+
 pub fn rust_runtime_source() -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rt_header(), rt_concat_trait()), rt_string_ops()), rt_collection_ops()), rt_rc_container_ops()), rt_scanner_ops()), rt_unicode_ops()), rt_filesystem())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rt_header(), rt_concat_trait()), rt_string_ops()), rt_collection_ops()), rt_extra_ops()), rt_rc_container_ops()), rt_scanner_ops()), rt_unicode_ops()), rt_filesystem())
 }

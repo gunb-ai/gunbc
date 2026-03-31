@@ -164,6 +164,8 @@ lazy_static::lazy_static! {
         __m.insert("parse_int".to_string(), true);
         __m.insert("map_contains_key".to_string(), true);
         __m.insert("map_has".to_string(), true);
+        __m.insert("reverse".to_string(), true);
+        __m.insert("replace".to_string(), true);
         __m
     };
 }

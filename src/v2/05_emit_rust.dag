@@ -1913,9 +1913,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if value_type_str != "" {
           concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
         } else {
-          "compile_error!(\"empty_map requires concrete type parameters\")"
+          "Rc::new(HashMap::new())"
         }
-      _ => "compile_error!(\"empty_map requires concrete type parameters\")"
+      _ => "Rc::new(HashMap::new())"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
@@ -2275,10 +2275,10 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
             if value_type_str != "" {
               concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
             } else {
-              "compile_error!(\"empty_map requires concrete type parameters\")"
+              "Rc::new(HashMap::new())"
             }
           } else if init_func == "empty_map" {
-            "compile_error!(\"empty_map requires concrete type parameters\")"
+            "Rc::new(HashMap::new())"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           }
@@ -3564,13 +3564,13 @@ fn emit_capability_method(cap_node: Node, rc_types: Map<String, Bool>, env: Type
 // =========================================================================
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  // Constant data: render types without Rc wrapping. Emit as const for
-  // simple scalars, or as a constructor function for complex types.
-  // No lazy_static (requires Sync, which Rc doesn't implement).
-  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_map())
+  // Data defs emit as constructor functions. Use rc_types for type
+  // rendering so returned types match the sharing model (e.g., Rc<Node>).
+  let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: rc_types)
   let fn_name = to_snake(name: name)
+  let needs_rc = map_contains_key(rc_types, type_node.name)
   if is_simple_type_node(n: type_node) {
-    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
+    let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
   } else if has_nested_records_node(n: type_node) {
     let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
@@ -3584,7 +3584,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     match value.expr_data {
       ExprRecordLit { parent_enum: _ } =>
         let inserts = value.children |> map(f =>
-          let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
+          let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           concat("    __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
 
         )
@@ -3592,18 +3592,20 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
         concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
           "    let mut __m = HashMap::new();\n",
           inserts_str, "\n",
-          "    __m\n",
+          "    Rc::new(__m)\n",
           "}")
       _ =>
-        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
+        let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
         concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
           "    ", val_str, "\n",
           "}")
     }
     } else {
-      let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
+      let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+      let wrap_start = if needs_rc { "Rc::new(" } else { "" }
+      let wrap_end = if needs_rc { ")" } else { "" }
       concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
-        "    ", val_str, "\n",
+        "    ", wrap_start, val_str, wrap_end, "\n",
         "}")
     }
   }
