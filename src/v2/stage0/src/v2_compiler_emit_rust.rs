@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
+use crate::v2_std_core::expr_call_func;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);

@@ -370,9 +370,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn format_cost_inner(",
         "fn parenthesize_additive_cost(",
         "fn classify_complexity(",
-        "fn format_complexity_class(",
-        "fn is_unknown_class(",
-        "fn cost_contains_unknown(",
+        "fn is_unknown_cost(",
         "ExprReturn",
     ] {
         assert_live_contains(
@@ -395,9 +393,7 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn format_cost_inner(",
         "pub fn parenthesize_additive_cost(",
         "pub fn classify_complexity(",
-        "pub fn format_complexity_class(",
-        "pub fn is_unknown_class(",
-        "pub fn cost_contains_unknown(",
+        "pub fn is_unknown_cost(",
         "ExprData::ExprReturn",
     ] {
         assert_live_contains(
@@ -407,17 +403,16 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         );
     }
 
-    // classify_complexity returns CostExpr (structural), not String.
-    // O(...) strings exist only at format_complexity_class boundary.
+    // classify_complexity returns String (formatted output).
     assert_live_contains(
         &source,
-        "fn classify_complexity(expr: CostExpr) -> CostExpr",
-        "classify_complexity should return CostExpr, not String"
+        "fn classify_complexity(expr: CostExpr) -> String",
+        "classify_complexity should return String"
     );
     assert_live_contains(
         &stage0,
-        "pub fn classify_complexity(expr: Rc<CostExpr>) -> Rc<CostExpr>",
-        "stage0 classify_complexity should return Rc<CostExpr>, not String"
+        "pub fn classify_complexity(expr: Rc<CostExpr>) -> String",
+        "stage0 classify_complexity should return String"
     );
 
     assert_live_not_contains(

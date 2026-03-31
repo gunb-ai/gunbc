@@ -779,3 +779,10 @@ fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
     None => false
   }
 }
+
+// Bridge placeholder type names: higher-order template parameters that
+// exist only during algebra resolution. Importing modules must not see
+// these as ambient user-facing types.
+fn is_bridge_placeholder_type_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}

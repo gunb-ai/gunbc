@@ -1746,3 +1746,7 @@ pub fn emit_map_has(m: HashMap<String, bool>, key: String) -> bool {
         None => false,
     }
 }
+
+pub fn is_bridge_placeholder_type_name(name: String) -> bool {
+    name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+}
