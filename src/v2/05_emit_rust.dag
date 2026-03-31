@@ -2496,12 +2496,17 @@ fn emit_rust_flat_map_method_call(receiver: Node, args: List<Node>, registry: Ma
 }
 
 fn emit_rust_get_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let list_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+  let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   let index_str = match args |> first {
     Some { value: a } => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
     None => "compile_error!(\"get method missing index\")"
   }
-  concat(list_str, ".get((", index_str, ") as usize).cloned()")
+  // Distinguish Map.get (key lookup) from List.get (index access)
+  if is_map_typed_expr(texpr: receiver) {
+    concat("v2_rt::map_get(&", recv_str, ", ", index_str, ")")
+  } else {
+    concat(recv_str, ".get((", index_str, ") as usize).cloned()")
+  }
 }
 
 fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {

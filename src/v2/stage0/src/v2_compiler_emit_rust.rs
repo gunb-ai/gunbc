@@ -2502,12 +2502,17 @@ pub fn emit_rust_flat_map_method_call(receiver: Rc<Node>, args: Vec<Rc<Node>>, r
 }
 
 pub fn emit_rust_get_method_call(receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
-    let list_str = emit_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+    let recv_str = emit_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
     let index_str = match args.clone().first().cloned() {
     Some(a) => emit_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
     None => "compile_error!(\"get method missing index\")".to_string(),
 };
-v2_rt::concat(v2_rt::concat(v2_rt::concat(list_str.clone(), ".get((".to_string()), index_str.clone()), ") as usize).cloned()".to_string())
+// Distinguish Map.get (key lookup) from List.get (index access)
+if is_map_typed_expr(receiver.clone()) {
+    format!("v2_rt::map_get(&{}, {})", recv_str, index_str)
+} else {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), ".get((".to_string()), index_str.clone()), ") as usize).cloned()".to_string())
+}
 }
 
 pub fn emit_rust_with_method_call(receiver: Rc<Node>, args: Vec<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
