@@ -290,6 +290,28 @@ pub fn variant_belongs_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>,
     }
 }
 
+pub fn is_known_variant(type_summaries: HashMap<String, Rc<TypeSummary>>, name: String) -> bool {
+    v2_rt::map_values(&type_summaries).iter().cloned().any(|summary: Rc<TypeSummary>| {
+        match (*summary.repr.clone()).clone() {
+            TypeRepr::EnumRepr { .. } => summary.variant_name_set.contains_key(&name),
+            _ => false,
+        }
+    })
+}
+
+pub fn is_enum_in_summaries(type_summaries: HashMap<String, Rc<TypeSummary>>, type_name: String) -> bool {
+    match v2_rt::map_get(&type_summaries, type_name.clone()) {
+        Some(summary) => matches!(&*summary.repr, TypeRepr::EnumRepr { .. }),
+        None => false,
+    }
+}
+
+pub fn find_variant_parent(type_summaries: HashMap<String, Rc<TypeSummary>>, variant_name: String, scope_enums: Vec<String>) -> Option<String> {
+    scope_enums.iter().find(|en| {
+        variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), (*en).clone())
+    }).cloned()
+}
+
 pub fn derive_variant_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, String> {
     v2_rt::map_values(&type_summaries).iter().cloned().fold(<HashMap<String, String>>::new(), |acc: HashMap<String, String>, summary: Rc<TypeSummary>| {
         match (*summary.repr.clone()).clone() {

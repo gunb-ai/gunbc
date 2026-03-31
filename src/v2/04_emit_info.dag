@@ -171,6 +171,24 @@ fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_nam
   }
 }
 
+// Structural check: is type_name an enum in type_summaries?
+fn is_enum_in_summaries(type_summaries: Map<String, TypeSummary>, type_name: String) -> Bool {
+  match map_get(type_summaries, type_name) {
+    Some { value: summary } => match summary.repr {
+      EnumRepr { unit_only: _ } => true
+      _ => false
+    }
+    None => false
+  }
+}
+
+// Given a variant name and a list of in-scope enum names, find the parent.
+fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: String, scope_enums: List<String>) -> String? {
+  scope_enums |> filter(en =>
+    variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en)
+  ) |> first
+}
+
 // =========================================================================
 // Field summary helpers
 // =========================================================================

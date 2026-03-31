@@ -60,6 +60,8 @@ lazy_static::lazy_static! {
         __m.insert("Unit".to_string(), "()".to_string());
         __m.insert("Secret".to_string(), "String".to_string());
         __m.insert("Json".to_string(), "serde_json::Value".to_string());
+        __m.insert("free_monoid".to_string(), "Vec".to_string());
+        __m.insert("Callable".to_string(), "Rc<dyn Fn() -> ()>".to_string());
         __m
     };
 }
