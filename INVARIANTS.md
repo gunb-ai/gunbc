@@ -190,6 +190,28 @@ via `rc_types` map (single authority). 689 redundant `.clone()` removed
 from stage0. Self-compile completes in ~2 min at 112MB. Regen pipeline
 produces 40 files with 0 diagnostics.
 
+## Early Detection Invariant
+
+Alert others of problems as soon and as loudly as physically possible.
+
+Errors detected at stage N must not survive silently to stage N+1.
+If the compiler knows something is wrong — a type mismatch, an
+unresolved name, an inference failure — it must report it at the
+stage where the information is first available. Deferring errors to
+later stages (or worse, to emitted code) is a design failure: it
+hides the root cause behind cascading symptoms in a different context.
+
+**The rule:** every stage boundary is a gate. Facts that are wrong
+or missing must produce diagnostics at the stage that owns the fact.
+If an inference failure reaches the emitter, the emitter should
+`compile_error!` — but the real fix is always upstream, in the stage
+that failed to resolve the fact.
+
+**Corollary:** emitted code should never fail to compile due to
+errors the compiler could have caught. If `cargo check` on emitted
+Rust finds type mismatches, those are emission bugs — the compiler
+had the type information and lost it during rendering.
+
 ## Decidability Invariant
 
 All `.dag` programs are decidable. Undecidable programs are structurally

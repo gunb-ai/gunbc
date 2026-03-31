@@ -88,6 +88,31 @@ M1 (every .dag compiles)
 
 ---
 
+## Design Direction: .dag Model Convergence
+
+Post-bootstrap priority. The .dag model must converge to a minimal,
+non-overlapping set of files where each concept traces to an external
+authority (spec, standard, Wikipedia article).
+
+**Current violations:**
+
+| Concept | Duplicated in | Authority | Fix |
+|---------|--------------|-----------|-----|
+| BinOp / BinOpKind | `std/syntax.dag`, `00_core.dag` | Ring theory (arithmetic), total order (comparison), Boolean algebra (logic) | Unify; dissolve into `std/algebra.dag` operations |
+| LiteralKind / LiteralValue | `std/syntax.dag`, `00_core.dag` | Grammar (keyword literals) vs IR (all literal forms) | Keep both — different concepts. LiteralKind = grammar subset |
+| ItemForm, OperatorSpec, SyntaxSpec | `std/syntax.dag`, `languages.dag` | Language grammar (BNF) | **FIXED**: `languages.dag` imports from `std.syntax` |
+| NullCoalesce | `00_core.dag` as BinOpKind | Language design choice | Stays in syntax — not algebra |
+
+**Principle:** foundational `.dag` files (algebra, syntax, types) should
+be referenceable to external authorities — specs, standards, Wikipedia.
+At this level, concepts should be standard and agreed-upon. Higher up,
+users have their own domain models (boutique/application-level) that
+interact with the standard language infrastructure. The boundary matters:
+if a concept belongs to a standard, it should trace to one. If it's
+user-owned domain logic, it lives in user `.dag` files.
+
+---
+
 ## Milestones
 
 ### M1: Every .dag File Compiles (**COMPLETE**)
