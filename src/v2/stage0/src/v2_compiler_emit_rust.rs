@@ -411,7 +411,8 @@ if ((filtered_names.clone().len() as i64) == 0) {
 } else {
                             {
                                 let deduped_names = unique_strings(filtered_names.clone());
-let scope_enum_names: Vec<String> = deduped_names.iter().filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone())).cloned().collect();
+let all_enum_names: Vec<String> = v2_rt::map_keys(&emit_info.type_summaries).iter().filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone())).cloned().collect();
+let scope_enum_names = all_enum_names;
 let top_level = { let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if is_known_variant(emit_info.type_summaries.clone(), n.clone()) {
     is_enum_type_name(n.clone(), emit_info.type_summaries.clone())
 } else { true } { __result.push(n); } } __result };
@@ -1073,14 +1074,15 @@ if ((name.clone() == "Some".to_string()) || (name.clone() == "None".to_string())
 
 pub fn emit_variant_pattern(source_index: Option<Rc<NewlineIndex>>, name: String, parent_enum: Option<String>, field_bindings: Vec<Rc<Node>>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
     {
-        let qualified = if ((name.clone() == "Some".to_string()) || (name.clone() == "None".to_string())) {
-            name.clone()
-} else {
-            match pattern_parent_enum(name.clone(), parent_enum.clone(), scrut_type.clone(), emit_info.type_summaries.clone()) {
-    Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
-    None => name.clone(),
-}
-};
+        let resolved_parent = if (name.clone() == "Some".to_string()) || (name.clone() == "None".to_string()) {
+            None
+        } else {
+            pattern_parent_enum(name.clone(), parent_enum.clone(), scrut_type.clone(), emit_info.type_summaries.clone())
+        };
+        let qualified = match resolved_parent.clone() {
+            Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
+            None => name.clone(),
+        };
 if ((name.clone() == "Some".to_string()) && ((field_bindings.clone().len() as i64) == 1)) {
             match field_bindings.clone().first().cloned() {
     Some(fb) => { let fb_pat = field_binding_pattern(fb.clone()); if is_string_lit_pattern(fb_pat.clone()) {
@@ -1095,7 +1097,11 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
 }
 } else {
             if ((field_bindings.clone().len() as i64) == 0) {
-                match emit_info.fielded_variants.get(&name) {
+                let fielded_key = match resolved_parent.clone() {
+                    Some(ref parent) => format!("{}::{}", parent, name),
+                    None => name.clone(),
+                };
+                match emit_info.fielded_variants.get(&fielded_key) {
                     Some(true) => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
                     _ => qualified.clone(),
                 }
@@ -1237,14 +1243,15 @@ pub fn emit_pattern_rc_aware(source_index: Option<Rc<NewlineIndex>>, pattern: Rc
 
 pub fn emit_variant_pattern_rc_aware(source_index: Option<Rc<NewlineIndex>>, name: String, parent_enum: Option<String>, field_bindings: Vec<Rc<Node>>, rc_analysis: Rc<RcPatternAnalysis>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
     {
-        let qualified = if ((name.clone() == "Some".to_string()) || (name.clone() == "None".to_string())) {
-            name.clone()
-} else {
-            match pattern_parent_enum(name.clone(), parent_enum.clone(), scrut_type.clone(), emit_info.type_summaries.clone()) {
-    Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
-    None => name.clone(),
-}
-};
+        let resolved_parent = if (name.clone() == "Some".to_string()) || (name.clone() == "None".to_string()) {
+            None
+        } else {
+            pattern_parent_enum(name.clone(), parent_enum.clone(), scrut_type.clone(), emit_info.type_summaries.clone())
+        };
+        let qualified = match resolved_parent.clone() {
+            Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), name.clone()),
+            None => name.clone(),
+        };
 if ((name.clone() == "Some".to_string()) && ((field_bindings.clone().len() as i64) == 1)) {
             match field_bindings.clone().first().cloned() {
     Some(fb) => { let fb_pat = field_binding_pattern(fb.clone()); if is_string_lit_pattern(fb_pat.clone()) {
@@ -1260,7 +1267,11 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
 }
 } else {
             if ((field_bindings.clone().len() as i64) == 0) {
-                match emit_info.fielded_variants.get(&name) {
+                let fielded_key = match resolved_parent.clone() {
+                    Some(ref parent) => format!("{}::{}", parent, name),
+                    None => name.clone(),
+                };
+                match emit_info.fielded_variants.get(&fielded_key) {
                     Some(true) => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
                     _ => qualified.clone(),
                 }

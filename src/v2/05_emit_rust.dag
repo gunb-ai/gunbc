@@ -525,11 +525,14 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
               } else { true }
             )
             // Collect unique parent enum names for variant imports.
-            let scope_enums = deduped_names |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+            // Search ALL enums in type_summaries (not just explicitly imported enum
+            // names) so variant-only imports like `import m { Rust, Go }` find their
+            // parent even when the enum name itself isn't in the import list.
+            let all_enum_names = map_keys(type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
             let all_parents = deduped_names |> map(n =>
               if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) { "" }
               else {
-                match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: scope_enums) {
+                match find_variant_parent(type_summaries: type_summaries, variant_name: n, scope_enums: all_enum_names) {
                   Some { value: parent } => parent
                   None => ""
                 }
@@ -1196,7 +1199,11 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    let is_fielded = match map_get(emit_info.fielded_variants, name) {
+    let fielded_key = match resolved_parent {
+      Some { value: parent } => concat(parent, "::", name)
+      None => name
+    }
+    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
       Some { value: true } => true
       _ => false
     }
@@ -1357,7 +1364,11 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    let is_fielded = match map_get(emit_info.fielded_variants, name) {
+    let fielded_key = match resolved_parent {
+      Some { value: parent } => concat(parent, "::", name)
+      None => name
+    }
+    let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
       Some { value: true } => true
       _ => false
     }
