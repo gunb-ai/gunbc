@@ -19,7 +19,7 @@ import v2.std.core {
   no_span,
   unit_type,
   expr_var_name, expr_call_func, field_access_field, field_access_base,
-  method_receiver
+  method_receiver, param_node_type_expr
 }
 import v2.compiler.infer_types {
   emit_map_has, nominal_type_ref

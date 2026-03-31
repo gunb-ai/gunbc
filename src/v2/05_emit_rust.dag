@@ -49,7 +49,7 @@ import v2.std.core {
   arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_name_at, field_init_node_value,
   field_binding_name, make_arg_node, make_named_expr_node,
-  let_value, let_body, lambda_body, lambda_param_names_at,
+  let_value, let_body, lambda_body, lambda_param_names, lambda_param_names_at,
   foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
