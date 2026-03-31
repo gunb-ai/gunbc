@@ -665,7 +665,7 @@ pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>) -> String 
             "{\"kind\": \"PlainMethodSemantics\"}".to_string()
         }
         Some(MethodSemantics::AlgebraMethodSemantics {
-            method_name: method_name,
+            method_def: method_def,
             fold_accumulator_type: fold_accumulator_type,
             ..
         }) => v2_rt::concat(
@@ -673,7 +673,7 @@ pub fn serialize_method_semantics(value: Option<Rc<MethodSemantics>>) -> String 
                 v2_rt::concat(
                     v2_rt::concat(
                         "{\"kind\": \"AlgebraMethodSemantics\", \"method_name\": ".to_string(),
-                        json_quote(method_name.clone()),
+                        json_quote(method_def.name.clone()),
                     ),
                     ", \"fold_accumulator_type\": ".to_string(),
                 ),

@@ -2559,7 +2559,8 @@ let arg_strs = { let mut __result = Vec::new(); for a in filled_args.clone().ite
 let args_str = arg_strs.clone().join(&", ".to_string());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(var_name.clone(), ".".to_string()), emit_ident(method.clone(), RenderTarget::Rust)), "(".to_string()), args_str.clone()), ").await?".to_string())
 },
-    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, fold_accumulator_type: fold_accumulator_type, .. } => {
+    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, fold_accumulator_type: fold_accumulator_type, .. } => {
+    let method_name = method_def.name.clone();
     if method_name == "fold" {
         emit_rust_fold_method_call(fold_accumulator_type.clone(), result_type.clone(), receiver.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
     } else if method_name == "sort_by" {

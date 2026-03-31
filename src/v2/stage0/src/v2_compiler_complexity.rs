@@ -584,8 +584,8 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } =>
-        is_size_preserving_method(method_name.clone()),
+    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } =>
+        is_size_preserving_method(method_def.name.clone()),
     _ => false,
 }
 }
@@ -1192,7 +1192,8 @@ let method_cost_result = if (ms.clone() == None) {
                 None
 } else {
                 match (*ms.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_name: mn, .. } => {
+    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
+                    let mn = md.name.clone();
                     let shape_match = method_cost_shape(mn.clone());
 match shape_match.clone() {
     Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone())),
