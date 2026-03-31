@@ -218,13 +218,24 @@ pub fn ownership_diagnostics(proofs: Vec<Rc<OwnershipProof>>) -> Vec<Rc<ErrorNod
 
 pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Vec<Rc<ErrorNode>> {
     { let mut __result = Vec::new(); for v in complexity.violations.clone().iter().cloned() {
-        __result.push(make_error_node(
-            Rc::new(CompilerDiagnostic::InternalError {
-                message: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity violation: `".to_string(), v.func_name.clone()), "` has unresolvable cost (".to_string()), v.reason.clone()), ")".to_string()),
-                span: v.span.clone(),
-            }),
-            "".to_string(),
-        ));
+        if v2_rt::string_contains(v.reason.clone(), "computing: ".to_string()) {
+            __result.push(make_error_node(
+                Rc::new(CompilerDiagnostic::ComplexityWarning {
+                    func_name: v.func_name.clone(),
+                    reason: v.reason.clone(),
+                    span: v.span.clone(),
+                }),
+                "".to_string(),
+            ));
+        } else {
+            __result.push(make_error_node(
+                Rc::new(CompilerDiagnostic::InternalError {
+                    message: v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("complexity violation: `".to_string(), v.func_name.clone()), "` has unresolvable cost (".to_string()), v.reason.clone()), ")".to_string()),
+                    span: v.span.clone(),
+                }),
+                "".to_string(),
+            ));
+        }
     } __result }
 }
 

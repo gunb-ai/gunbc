@@ -15,7 +15,7 @@ module v2.compiler.compile
 
 import v2.std.core {
   CompileResult, TextFile, SourceSpan,
-  ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipWarning, no_span,
+  ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, ComplexityWarning, OwnershipWarning, no_span,
   Connective, NoConnective, Cardinality,
   resource_use_name, resource_use_resource,
   param_node_name, param_node_type_expr, param_node_default_value, param_node_span,
@@ -120,13 +120,24 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 
 fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
   complexity.violations |> map(v =>
-    make_error_node(
-      diagnostic: InternalError {
-        message: concat("complexity violation: `", v.func_name, "` has unresolvable cost (", v.reason, ")"),
-        span: v.span
-      },
-      module_name: ""
-    )
+    if v.reason |> string_contains(sub: "computing: ") {
+      make_error_node(
+        diagnostic: ComplexityWarning {
+          func_name: v.func_name,
+          reason: v.reason,
+          span: v.span
+        },
+        module_name: ""
+      )
+    } else {
+      make_error_node(
+        diagnostic: InternalError {
+          message: concat("complexity violation: `", v.func_name, "` has unresolvable cost (", v.reason, ")"),
+          span: v.span
+        },
+        module_name: ""
+      )
+    }
   )
 }
 
