@@ -476,6 +476,28 @@ fn parser_progress_witness_hooks_live_in_parse_layer() {
 }
 
 #[test]
+fn compile_gate_keeps_complexity_errors_blocking_in_stage0() {
+    let source = read_v2_file("src/v2/compile.dag");
+    let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_compile.rs");
+
+    assert_live_contains(
+        &source,
+        "let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
+        "src/v2/compile.dag should gate emission on all infer diagnostics, including complexity",
+    );
+    assert_live_contains(
+        &stage0,
+        "for d in all_infer_diags.clone().iter().cloned()",
+        "stage0 compile mirror should gate emission on all infer diagnostics, including complexity",
+    );
+    assert_live_not_contains(
+        &stage0,
+        "for d in typed_diags.clone().iter().cloned()",
+        "stage0 compile mirror should not gate emission on typed diags alone",
+    );
+}
+
+#[test]
 fn testgen_emits_valid_rust() {
     let source = read_v2_file("src/v2/05_emit_rust.dag");
     let shared_source = read_v2_file("src/v2/05_emit.dag");

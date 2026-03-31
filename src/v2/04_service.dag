@@ -18,7 +18,8 @@ import v2.std.core {
   InferredNode, Resolved,
   no_span,
   unit_type,
-  expr_var_name, expr_call_func, field_access_field, field_access_base
+  expr_var_name, expr_call_func, field_access_field, field_access_base,
+  method_receiver
 }
 import v2.compiler.infer_types {
   emit_map_has, nominal_type_ref

@@ -24,7 +24,7 @@ import std.types { SourceSpan }
 import v2.std.core {
   Node,
   module_node, module_imports, module_items, is_import_node, import_is_all, import_specific_names,
-  param_node_name, param_node_type_expr,
+  make_param_node, param_node_name, param_node_type_expr,
   field_node_type_expr,
   Connective, Conj, Disj, NoConnective,
   ExprData, NoExprData,
@@ -33,8 +33,8 @@ import v2.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
-  make_arg_node, make_arm_node, make_field_init_node, make_text_part_node, make_interp_part_node,
+  expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name,
+  make_arg_node, make_arm_node, make_field_init_node, field_init_node_name, field_init_node_value, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name,
   rt_node, has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   NodeType, Typed, InferError, InferVariable, Untyped,
@@ -57,9 +57,14 @@ import v2.std.core {
   BinOpKind, Add, Sub, Mul, Div, Mod,
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe,
   BinAnd, BinOr, NullCoalesce,
-  UnaryOpKind, Not, Neg,
+  UnaryOpKind, Not, Neg, unaryop_operand,
   MatchPattern, Bind, VariantPattern, Wildcard, StringPart,
   make_field_binding_node, field_binding_name, field_binding_pattern,
+  let_value, let_body, lambda_body,
+  foreach_collection, foreach_body, method_receiver, method_arg_nodes,
+  match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
+  index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
+  binop_left, binop_right,
   make_transport_node, local_transport_node,
   Text, Interpolation,
   with_optional_cardinality, with_required_cardinality,
@@ -104,6 +109,7 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  ValueContext,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary
@@ -2703,6 +2709,55 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 }
 
 
+fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Map<String, Bool> {
+  let result = modules |> fold(init: empty_map(), f: (acc, m) =>
+    let items = m.items
+    items |> fold(init: acc, f: (inner, item) =>
+      let is_enum = match map_get(type_summaries, item.name) {
+        Some { value: summary } => match summary.repr {
+          EnumRepr { unit_only: _ } => true
+          _ => false
+        }
+        None => false
+      }
+      if is_enum {
+        let enum_name = item.name
+        let variants = item.children
+        variants |> fold(init: inner, f: (vacc, variant) =>
+          let has_fields = variant.children |> count > 0
+          if has_fields { map_insert(vacc, concat(enum_name, "::", variant.name), true) } else { vacc }
+        )
+      } else { inner }
+    )
+  )
+  result
+}
+
+fn classify_item_value_context(item: Node) -> ValueContext {
+  let has_body = item.body != none
+  let has_type_ann = item.type_annotation != none
+  let has_params = item.params |> count > 0
+  let is_constant = has_body && has_type_ann && !has_params
+  let has_fn_fields = item.children |> any(child =>
+    match child.inferred {
+      Some { value: Resolved { node: rt } } => rt.params |> count > 0
+      _ => false
+    }
+  )
+  ValueContext { is_constant: is_constant, has_fn_fields: has_fn_fields }
+}
+
+fn build_value_contexts(modules: List<TypedModule>) -> Map<String, ValueContext> {
+  let result = modules |> fold(init: empty_map(), f: (acc, m) =>
+    let items = m.items
+    items |> fold(init: acc, f: (inner, item) =>
+      let ctx = classify_item_value_context(item: item)
+      if item.name != "" { map_insert(inner, item.name, ctx) } else { inner }
+    )
+  )
+  result
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -2715,9 +2770,13 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let all_recursive = modules |> fold(init: empty_map(), f: (acc, m) =>
     map_merge(acc, m.type_env.recursive_type_set)
   )
+  let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
+  let contexts = build_value_contexts(modules: modules)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
-    recursive_type_set: all_recursive
+    recursive_type_set: all_recursive,
+    fielded_variants: fielded,
+    value_contexts: contexts
   }
 }
 

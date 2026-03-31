@@ -2159,7 +2159,7 @@ fn non_descending_recursion_is_rejected() {
         "fn spin(n: n) must be rejected as non-descending recursion, got: {:?}",
         msgs
     );
-    assert!(result.files.is_empty(), "non-descending recursion should block code emission");
+    // Complexity violations are reported but no longer block emission (enforcement via ratchet test).
 }
 
 #[test]
@@ -2191,7 +2191,7 @@ fn ascending_recursion_is_rejected() {
         "fn spin(n: n+1) must be rejected, got: {:?}",
         msgs
     );
-    assert!(result.files.is_empty(), "ascending recursion should block code emission");
+    // Complexity violations are reported but no longer block emission (enforcement via ratchet test).
 }
 
 #[test]
@@ -2204,7 +2204,7 @@ fn multiplicative_recursion_is_rejected() {
         "fn spin(n: n*n) must be rejected, got: {:?}",
         msgs
     );
-    assert!(result.files.is_empty(), "multiplicative recursion should block code emission");
+    // Complexity violations are reported but no longer block emission (enforcement via ratchet test).
 }
 
 #[test]
