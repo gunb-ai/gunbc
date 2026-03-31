@@ -573,15 +573,7 @@ fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<St
             let top_with_parents = unique_strings(items: concat(top_level, parent_list))
             // Emit top-level use line.
             let main_line = if top_with_parents |> count > 0 {
-              let names_str = top_with_parents |> map(n =>
-                match map_get(registry, n) {
-                  Some { value: info } =>
-                    let is_data = info.kind == DataItem
-                    if is_data { to_screaming_snake(name: n) }
-                    else { n }
-                  None => n
-                }
-              ) |> join(separator: ", ")
+              let names_str = top_with_parents |> join(separator: ", ")
               concat("pub use crate::", mod_name, "::{", names_str, "};")
             } else { "" }
             // Emit per-enum variant import lines for explicitly listed variants.
@@ -3599,11 +3591,10 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   // simple scalars, or as a constructor function for complex types.
   // No lazy_static (requires Sync, which Rc doesn't implement).
   let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_map())
-  let upper_name = to_screaming_snake(name: name)
   let fn_name = to_snake(name: name)
   if is_simple_type_node(n: type_node) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "const ", upper_name, ": ", ty_str, " = ", val_str, ";")
+    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
   } else if has_nested_records_node(n: type_node) {
     let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
