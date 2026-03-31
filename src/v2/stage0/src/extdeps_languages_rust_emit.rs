@@ -103,19 +103,19 @@ lazy_static::lazy_static! {
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES: String = "#[derive(Debug, Clone, PartialEq)]".to_string();
+    pub static ref RUST_STRUCT_DERIVES: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq)]".to_string();
+    pub static ref RUST_STRUCT_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES: String = "#[derive(Debug, Clone, PartialEq)]".to_string();
+    pub static ref RUST_ENUM_DERIVES: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq)]".to_string();
+    pub static ref RUST_ENUM_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {

@@ -3609,11 +3609,13 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   if is_simple_type_node(n: type_node) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
     concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
+  } else if has_nested_records_node(n: type_node) {
+    let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
+    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+      "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
+      "        .expect(\"valid data definition\")\n",
+      "}")
   } else {
-    // Note: the has_nested_records_node→serde path was removed because
-    // derive macros don't include Deserialize (compilation cost). Struct
-    // data defs now go through the regular emit_typed_expr path which
-    // handles nested struct construction via emit_typed_record_lit.
     let is_map = node_is_keyed_collection(n: type_node)
     if is_map {
     match value.expr_data {
