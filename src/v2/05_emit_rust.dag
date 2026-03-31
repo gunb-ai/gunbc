@@ -1230,12 +1230,13 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       concat(qualified, " { .. }")
     } else {
       let binding_strs = effective_bindings |> map(fb =>
+        let fb_name = field_binding_name(n: fb)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust))
+          concat("ref ", emit_ident(name: fb_name, target: Rust))
         } else {
             let pat_str = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index)
-            concat(emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust), ": ", pat_str)
+            concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
         }
       )
       let bindings_str = binding_strs |> join(separator: ", ")
@@ -1387,16 +1388,17 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       concat(qualified, " { .. }")
     } else {
       let binding_strs = effective_bindings |> map(fb =>
+        let fb_name = field_binding_name(n: fb)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust))
+          concat("ref ", emit_ident(name: fb_name, target: Rust))
         } else {
-          if field_needs_rc_ref(field_name: authored_name_at(source_index: source_index, node: fb), rc_analysis: rc_analysis) {
-            concat("ref ", emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust))
+          if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+            concat("ref ", emit_ident(name: fb_name, target: Rust))
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
             let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index)
-            concat(emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust), ": ", pat_str)
+            concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
           }
         }
       )
