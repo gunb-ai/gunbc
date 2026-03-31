@@ -1124,8 +1124,41 @@ pub fn parenthesize_additive_cost(expr: Rc<CostExpr>) -> String {
     }
 }
 
-pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
-    format_cost_class(normalize_asymptotic(simplify_cost(expr.clone())))
+// Structural classification: returns the normalized CostExpr that IS the
+// complexity class.  CostExpr is the single authority.
+pub fn classify_complexity(expr: Rc<CostExpr>) -> Rc<CostExpr> {
+    normalize_asymptotic(simplify_cost(expr.clone()))
+}
+
+// Formatting boundary: O(...) string for display / diagnostics only.
+// Fail-closed: refuses to format unknown complexity.
+pub fn format_complexity_class(expr: Rc<CostExpr>) -> String {
+    let classified = classify_complexity(expr.clone());
+    if cost_contains_unknown(classified.clone()) {
+        "ERROR:unknown-complexity".to_string()
+    } else {
+        format_cost_class(classified)
+    }
+}
+
+// Structural fail-closed check: does the classified CostExpr contain
+// any CostUnknown?  Fail-closed means unknown complexity is always a
+// violation -- no steady-state O(?) success output.
+pub fn is_unknown_class(expr: Rc<CostExpr>) -> bool {
+    let classified = classify_complexity(expr.clone());
+    cost_contains_unknown(classified)
+}
+
+pub fn cost_contains_unknown(expr: Rc<CostExpr>) -> bool {
+    match &*expr {
+        CostExpr::CostUnknown { .. } => true,
+        CostExpr::CostAdd { left: l, right: r }
+        | CostExpr::CostMul { left: l, right: r }
+        | CostExpr::CostMax { left: l, right: r } =>
+            cost_contains_unknown(l.clone()) || cost_contains_unknown(r.clone()),
+        CostExpr::CostSum { body: b, .. } => cost_contains_unknown(b.clone()),
+        _ => false,
+    }
 }
 
 pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Vec<String> {
@@ -1654,13 +1687,6 @@ Rc::new(SummaryResult {
 }
 }
 
-pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
-    match (*expr.clone()).clone() {
-    CostExpr::CostUnknown { .. } => true,
-    _ => false,
-}
-}
-
 pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
@@ -1685,7 +1711,7 @@ Rc::new(SummaryResult {
 });
 let summaries_map = result.table.clone().summaries.clone();
 let violations = { let mut __result = Vec::new(); for entry in { let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
-    Some(summary) => is_unknown_cost(summary.work.clone()),
+    Some(summary) => is_unknown_class(summary.work.clone()),
     None => true,
 } { __result.push(entry); } } __result }.iter().cloned() { __result.push(match v2_rt::map_get(&summaries_map, entry.name.clone()) {
     Some(summary) => {

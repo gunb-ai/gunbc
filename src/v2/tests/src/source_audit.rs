@@ -370,6 +370,9 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "fn format_cost_inner(",
         "fn parenthesize_additive_cost(",
         "fn classify_complexity(",
+        "fn format_complexity_class(",
+        "fn is_unknown_class(",
+        "fn cost_contains_unknown(",
         "ExprReturn",
     ] {
         assert_live_contains(
@@ -392,6 +395,9 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn format_cost_inner(",
         "pub fn parenthesize_additive_cost(",
         "pub fn classify_complexity(",
+        "pub fn format_complexity_class(",
+        "pub fn is_unknown_class(",
+        "pub fn cost_contains_unknown(",
         "ExprData::ExprReturn",
     ] {
         assert_live_contains(
@@ -400,6 +406,19 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
             &format!("stage0 complexity mirror should contain {needle}")
         );
     }
+
+    // classify_complexity returns CostExpr (structural), not String.
+    // O(...) strings exist only at format_complexity_class boundary.
+    assert_live_contains(
+        &source,
+        "fn classify_complexity(expr: CostExpr) -> CostExpr",
+        "classify_complexity should return CostExpr, not String"
+    );
+    assert_live_contains(
+        &stage0,
+        "pub fn classify_complexity(expr: Rc<CostExpr>) -> Rc<CostExpr>",
+        "stage0 classify_complexity should return Rc<CostExpr>, not String"
+    );
 
     assert_live_not_contains(
         &source,

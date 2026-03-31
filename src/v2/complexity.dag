@@ -1086,8 +1086,47 @@ fn parenthesize_additive_cost(expr: CostExpr) -> String {
   }
 }
 
-fn classify_complexity(expr: CostExpr) -> String {
-  format_cost_class(expr: normalize_asymptotic(expr: simplify_cost(expr: expr)))
+// Structural classification: returns the normalized CostExpr that IS the
+// complexity class.  CostExpr is the single authority — no separate
+// ComplexityClass type.  O(...) strings are produced only by
+// format_complexity_class at the formatting boundary.
+fn classify_complexity(expr: CostExpr) -> CostExpr {
+  normalize_asymptotic(expr: simplify_cost(expr: expr))
+}
+
+// Formatting boundary: O(...) string for display / diagnostics only.
+// Fail-closed: refuses to format unknown complexity. Callers must
+// check is_unknown_class first; formatting an unknown is a bug.
+fn format_complexity_class(expr: CostExpr) -> String {
+  let classified = classify_complexity(expr: expr)
+  if cost_contains_unknown(expr: classified) {
+    "ERROR:unknown-complexity"
+  } else {
+    format_cost_class(expr: classified)
+  }
+}
+
+// Structural fail-closed check: does the classified CostExpr contain
+// any CostUnknown?  Fail-closed means unknown complexity is always a
+// violation -- no steady-state O(?) success output.
+fn is_unknown_class(expr: CostExpr) -> Bool {
+  let classified = classify_complexity(expr: expr)
+  cost_contains_unknown(expr: classified)
+}
+
+fn cost_contains_unknown(expr: CostExpr) -> Bool {
+  match expr {
+    CostUnknown { reason: _ } => true
+    CostAdd { left: l, right: r } =>
+      cost_contains_unknown(expr: l) || cost_contains_unknown(expr: r)
+    CostMul { left: l, right: r } =>
+      cost_contains_unknown(expr: l) || cost_contains_unknown(expr: r)
+    CostMax { left: l, right: r } =>
+      cost_contains_unknown(expr: l) || cost_contains_unknown(expr: r)
+    CostSum { binder: _, upper: _, body: b } =>
+      cost_contains_unknown(expr: b)
+    _ => false
+  }
 }
 
 // Collect all SizeLen collection names from a CostExpr tree for the "where" clause.
@@ -1599,13 +1638,6 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // for each, and collects violations (CostUnknown summaries).
 // =========================================================================
 
-fn is_unknown_cost(expr: CostExpr) -> Bool {
-  match expr {
-    CostUnknown { reason: _ } => true
-    _ => false
-  }
-}
-
 fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
   // Build function index for callee lookups
   let func_index = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
@@ -1628,7 +1660,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
   let summaries_map = result.table.summaries
   let violations = func_entries |> filter(entry =>
     match map_get(summaries_map, entry.name) {
-      Some { value: summary } => is_unknown_cost(expr: summary.work)
+      Some { value: summary } => is_unknown_class(expr: summary.work)
       None => true
     }
   ) |> map(entry =>

@@ -286,16 +286,21 @@ definitions/predicates. Lane 2 edits Node construction helpers.
 Different functions, no conflict.
 
 *Structural complexity facts (moved from M2 / PR #249):*
-- [ ] Replace `ComplexityClassInfo` string bags with structural
-  `ComplexityClass`
-- [ ] `O(...)` strings exist only at formatting boundary
+- [x] Replace `ComplexityClassInfo` string bags with structural
+  `CostExpr` — `classify_complexity` returns structural `CostExpr`
+  (the single authority); no separate `ComplexityClass` type
+- [x] `O(...)` strings exist only at formatting boundary —
+  `format_complexity_class` is the canonical producer (convention;
+  source-audit grep needed to enforce as invariant)
 - [ ] Unknown complexity stays fail-closed; no steady-state `O(?)`
-  success output
-- [ ] `ClassProduct` formatting parenthesizes additive children
-- [ ] Source-audit parity checks use `live_source` /
-  `assert_live_*`, not raw `contains(...)`
-- [ ] Delete `large_complexity_report_limit` / large-report elision
-  bridge
+  success output — `is_unknown_class` / `cost_contains_unknown`
+  provide structural detection; end-to-end gating in violation
+  path needs wiring
+- [x] `ClassProduct` formatting parenthesizes additive children
+  (already done: `parenthesize_additive_cost` pre-existing)
+- [x] Source-audit parity checks use `live_source` /
+  `assert_live_*`, not raw `contains(...)` (already done:
+  pre-existing for complexity section; new parity entries added)
 
 **Bridges owned by M4:**
 
