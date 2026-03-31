@@ -27,7 +27,7 @@ import v2.std.core {
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprBinOp, ExprUnaryOp, BinOpKind, Sub, Div,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda,
   MatchPattern, Bind, VariantPattern,
   field_init_node_name, field_init_node_value,
   arg_name, arg_value, arm_body, arm_guard, arm_pattern,
@@ -1251,9 +1251,12 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
     ExprCall { call_semantics: _ } =>
       let f = expr_call_func(texpr: body)
       let own = if f == func_name { 1 } else { 0 }
-      // Args may contain self-calls too
       let arg_calls = body.children |> fold(init: 0, f: (acc, child) =>
-        acc + max_path_self_calls_with_cont(body: arg_value(n: child), func_name: func_name, continue_calls: 0)
+        let val = arg_value(n: child)
+        match val.expr_data {
+          ExprLambda => acc
+          _ => acc + max_path_self_calls_with_cont(body: val, func_name: func_name, continue_calls: 0)
+        }
       )
       own + arg_calls + continue_calls
 

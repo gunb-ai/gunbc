@@ -1186,7 +1186,11 @@ pub fn max_path_self_calls_with_cont(body: Rc<Node>, func_name: String, continue
             let f = expr_call_func(body.clone());
             let own = if (f.clone() == func_name.clone()) { 1 } else { 0 };
             let arg_calls = body.children.clone().iter().cloned().fold(0i64, |acc, child| {
-                acc + max_path_self_calls_with_cont(arg_value(child.clone()), func_name.clone(), 0)
+                let val = arg_value(child.clone());
+                match (*val.expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => acc,
+                    _ => acc + max_path_self_calls_with_cont(val.clone(), func_name.clone(), 0),
+                }
             });
             own + arg_calls + continue_calls
         }
