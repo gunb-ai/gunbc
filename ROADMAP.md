@@ -24,7 +24,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 419 errors | 0 | Down from 8658. Remaining: CodegenBackend import (192), algebra fn-field derives (71), downstream (114), misc (42) |
+| Bootstrap emitted Rust (B) | 358 errors | 0 | Down from 8658. vtoe deleted → structural resolution. Remaining: CodegenBackend resolver scope (192), downstream E0308 (114), misc (52) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70; #253 landed structural algebra authority |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -218,17 +218,42 @@ Acceptance criteria:
 - [x] ValueContext `{ is_constant, has_fn_fields }` precomputed in
   EmitGraphInfo (orthogonal flags, not sum type)
 - [x] `fielded_variants` precomputed for structural variant-has-fields
-- [ ] Wire `has_fn_fields` → skip `PartialEq`/`Debug` derives for
-  algebra types (eliminates 40 E0369 + 31 E0277)
+- [x] `has_fn_fields` → skip `PartialEq`/`Debug` derives for
+  algebra types (fn-typed fields get `#[derive(Clone)]` only)
+- [x] serde derives added to non-fn-field types (Rust rendering decision)
 - [ ] Adding SPICE/English targets requires only ValueContext ×
   LanguageSpec data, no emission-side debugging
 - [ ] `rc_types` authority derived from ValueContext (is_constant →
   no wrap) instead of heuristic type_summary scan
 
+*V8 — Data def representation (deferred to M5):*
+Current: `fn name() -> T { ... }` rebuilds per call. Fix: LanguageSpec ×
+ValueContext chooses representation (Rust: `LazyLock`/`const`/`static`,
+Python: module-level, Go: `var`). Lands when M5 per-ValueContext rendering
+templates land. Two reviewer improvements deferred to same milestone:
+- Key ValueContext on qualified item identity (not bare-name maps)
+- Derive `is_constant`/`has_fn_fields` from resolved type graph, not
+  coarse booleans (C4 partially fixed for `has_fn_fields`)
+
+*Variant resolution (structural, vtoe deleted):*
+- [x] vtoe (lossy global cache) deleted — replaced by structural
+  queries against `type_summaries` (`is_enum_in_summaries`,
+  `find_variant_parent`, `variant_belongs_to_enum`)
+- [x] `fielded_variants` used for pattern field checks
+- [x] `free_monoid` → `Vec`, `Callable` → `Rc<dyn Fn()→()>` in
+  `rust_type_map` (Rust language extdep, not shared emitter)
+- [ ] **Blocker:** 192 CodegenBackend errors are a RESOLVER issue —
+  `lookup_variant_parent_enum` in `04_infer.dag` resolves `Rust` to
+  `CodegenBackend` instead of `RenderTarget` because `std.types`
+  ambient injection puts both enums in scope. Fix: resolver must
+  prefer the import-declared binding (`import artifact { Rust }`)
+  over the ambient injection. This is the FF-9 direction.
+
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
 - [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
 - [ ] Bootstrap B: stage0→stage1 emitted-Rust gate back under ratchet
+  (358 errors: 192 resolver scope + 114 downstream + 52 misc)
 - [ ] Bootstrap C: regenerate stage0 with `regenerate-stage0.sh`
 - [ ] Bootstrap D: owned bootstrap entrypoint in repo
 - [ ] CI-verified regeneration (regenerate + diff = empty)
