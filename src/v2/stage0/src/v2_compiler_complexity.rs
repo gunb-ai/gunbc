@@ -994,6 +994,20 @@ pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     format_cost_class(normalize_asymptotic(simplify_cost(expr.clone())))
 }
 
+pub fn first_unknown_reason(expr: Rc<CostExpr>) -> String {
+    match &*expr {
+        CostExpr::CostUnknown { reason: r, .. } => r.clone(),
+        CostExpr::CostAdd { left: l, right: r }
+        | CostExpr::CostMul { left: l, right: r }
+        | CostExpr::CostMax { left: l, right: r } => {
+            let lr = first_unknown_reason(l.clone());
+            if lr != "unknown" { lr } else { first_unknown_reason(r.clone()) }
+        }
+        CostExpr::CostSum { body: b, .. } => first_unknown_reason(b.clone()),
+        _ => "unknown".to_string(),
+    }
+}
+
 pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
     match &*expr {
         CostExpr::CostUnknown { .. } => true,
@@ -1561,10 +1575,7 @@ let violations = { let mut __result = Vec::new(); for entry in { let mut __resul
     None => true,
 } { __result.push(entry); } } __result }.iter().cloned() { __result.push(match v2_rt::map_get(&summaries_map, entry.name.clone()) {
     Some(summary) => {
-            let reason = match (*summary.work.clone()).clone() {
-    CostExpr::CostUnknown { reason: r, .. } => r.clone(),
-    _ => "unknown".to_string(),
-};
+            let reason = first_unknown_reason(summary.work.clone());
 Rc::new(ComplexityViolation {
     func_name: entry.name.clone(),
     reason: reason.clone(),

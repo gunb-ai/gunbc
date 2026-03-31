@@ -1499,6 +1499,26 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // Recursive walk: CostUnknown composes into trees (CostAdd, CostMul, etc.)
 // so a flat root check would miss nested unknowns. The cost algebra composes
 // correctly; the violation query must follow the composition.
+// Extract the reason from the first CostUnknown found anywhere in a cost tree.
+// Checks both branches of binary cost nodes — the unknown may be nested
+// on either side of CostAdd/CostMul/CostMax compositions.
+fn first_unknown_reason(expr: CostExpr) -> String {
+  match expr {
+    CostUnknown { reason: r } => r
+    CostAdd { left: l, right: r } =>
+      let lr = first_unknown_reason(expr: l)
+      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
+    CostMul { left: l, right: r } =>
+      let lr = first_unknown_reason(expr: l)
+      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
+    CostMax { left: l, right: r } =>
+      let lr = first_unknown_reason(expr: l)
+      if lr != "unknown" { lr } else { first_unknown_reason(expr: r) }
+    CostSum { binder: _, upper: _, body: b } => first_unknown_reason(expr: b)
+    _ => "unknown"
+  }
+}
+
 fn is_unknown_cost(expr: CostExpr) -> Bool {
   match expr {
     CostUnknown { reason: _ } => true
@@ -1538,10 +1558,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
   ) |> map(entry =>
     match map_get(summaries_map, entry.name) {
       Some { value: summary } =>
-        let reason = match summary.work {
-          CostUnknown { reason: r } => r
-          _ => "unknown"
-        }
+        let reason = first_unknown_reason(expr: summary.work)
         ComplexityViolation {
           func_name: entry.name,
           reason: reason,
