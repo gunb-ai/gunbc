@@ -1405,8 +1405,10 @@ fn structural_match_param_name(body: Node) -> String? {
 
     ExprBlock =>
       let stmts = body.children
-      if stmts |> count == 0 { none }
-      else { structural_match_param_name(body: stmts |> last) }
+      match stmts |> last {
+        Some { value: last_stmt } => structural_match_param_name(body: last_stmt)
+        None => none
+      }
 
     _ => none
   }
@@ -1588,7 +1590,10 @@ fn is_structural_descent_with_param(body: Node, func_name: String, structural_pa
         )
         if prefix_calls > 0 { false }
         else {
-          is_structural_descent_with_param(body: stmts |> last, func_name: func_name, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields)
+          match stmts |> last {
+            Some { value: last_stmt } => is_structural_descent_with_param(body: last_stmt, func_name: func_name, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields)
+            None => false
+          }
         }
       }
 
@@ -1712,7 +1717,10 @@ fn is_scc_structural_descent_with_param(body: Node, structural_param: Structural
         )
         if prefix_calls > 0 { false }
         else {
-          is_scc_structural_descent_with_param(body: stmts |> last, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields, scc_name_set: scc_name_set, scc_structural_params: scc_structural_params)
+          match stmts |> last {
+            Some { value: last_stmt } => is_scc_structural_descent_with_param(body: last_stmt, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields, scc_name_set: scc_name_set, scc_structural_params: scc_structural_params)
+            None => false
+          }
         }
       }
 
