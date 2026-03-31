@@ -91,7 +91,6 @@ pub struct EmitGraphInfo {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
     pub recursive_type_set: HashMap<String, bool>,
     pub fielded_variants: HashMap<String, bool>,
-    pub value_contexts: HashMap<String, ValueContext>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,7 +103,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: <HashMap<_, _>>::new(),
     recursive_type_set: <HashMap<_, _>>::new(),
     fielded_variants: <HashMap<_, _>>::new(),
-    value_contexts: <HashMap<_, _>>::new(),
 })
 }
 
@@ -288,6 +286,25 @@ pub fn variant_belongs_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>,
         },
         None => false,
     }
+}
+
+pub fn is_known_variant(type_summaries: HashMap<String, Rc<TypeSummary>>, name: String) -> bool {
+    v2_rt::map_values(&type_summaries).iter().any(|summary| {
+        matches!(&*summary.repr, TypeRepr::EnumRepr { .. }) && v2_rt::map_has(&summary.variant_name_set, name.clone())
+    })
+}
+
+pub fn is_enum_in_summaries(type_summaries: HashMap<String, Rc<TypeSummary>>, type_name: String) -> bool {
+    match v2_rt::map_get(&type_summaries, type_name.clone()) {
+        Some(summary) => matches!(&*summary.repr, TypeRepr::EnumRepr { .. }),
+        None => false,
+    }
+}
+
+pub fn find_variant_parent(type_summaries: HashMap<String, Rc<TypeSummary>>, variant_name: String, scope_enums: Vec<String>) -> Option<String> {
+    scope_enums.iter().find(|en| {
+        variant_belongs_to_enum(type_summaries.clone(), variant_name.clone(), (*en).clone())
+    }).cloned()
 }
 
 pub fn derive_variant_to_enum(type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, String> {

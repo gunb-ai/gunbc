@@ -242,6 +242,16 @@ pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -
 
 pub fn rc_empty_map<V>() -> Rc<HashMap<String, V>> { Rc::new(HashMap::new()) }
 
+pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
+    let mut v: Vec<T> = list.iter().cloned().collect();
+    v.reverse();
+    Rc::new(v)
+}
+
+pub fn replace(s: String, from: String, to: String) -> String {
+    s.replace(&from, &to)
+}
+
 impl<T: Clone> V2Concat for Rc<Vec<T>> {
     fn v2_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> { rc_list_concat(self, other) }
 }
