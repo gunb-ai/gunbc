@@ -17,7 +17,7 @@
 
 module v2.std.core
 
-import std.types { FilePath, NonEmptyStr, SourceSpan }
+import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_set, is_container_type }
 
 // =========================================================================
 // Tokens
@@ -106,33 +106,9 @@ type FieldSummary {
   value_shape: FieldValueShape
 }
 
-// Canonical set of kernel-provided primitive types.
-// Any stage that needs to recognize kernel names imports this set
-// instead of redefining its own copy. O(1) membership via Map.
-data kernel_type_set: Map<String, Bool> = {
-  "String": true, "Int": true, "Bool": true, "Float": true,
-  "Secret": true, "Json": true, "Unit": true, "Bytes": true
-}
-
-fn is_kernel_type(name: String) -> Bool {
-  match map_get(kernel_type_set, name) {
-    Some { value: _ } => true
-    None => false
-  }
-}
-
-// Container types: parameterized types that stay unexpanded at resolve time.
-// Used by parse and resolve to distinguish container generics from aliases.
-data container_type_set: Map<String, Bool> = {
-  "List": true, "Set": true, "NonEmptyList": true, "NonEmptySet": true, "Map": true
-}
-
-fn is_container_type(name: String) -> Bool {
-  match map_get(container_type_set, name) {
-    Some { value: _ } => true
-    None => false
-  }
-}
+// Kernel and container type sets: canonical definitions live in
+// dsl/std/types.dag. Imported via the top-level import above and
+// re-exported for backward compatibility with v2.std.core consumers.
 
 // Arity bridge DELETED (P3.7). The compiler no longer hardcodes which
 // types are parameterized. Arity comes from .dag declarations (params

@@ -60,6 +60,32 @@ import std.algebra { FreeMonoid, PartialFunction }
 // Until Part B lands (inference resolves methods from type fields),
 // the compiler still uses kernel_types/is_kernel_type for these.
 
+// Canonical set of kernel-provided primitive types.
+// Single authority: all compiler stages import from here.
+data kernel_type_set: Map<String, Bool> = {
+  "String": true, "Int": true, "Bool": true, "Float": true,
+  "Secret": true, "Json": true, "Unit": true, "Bytes": true
+}
+
+fn is_kernel_type(name: String) -> Bool {
+  match map_get(kernel_type_set, name) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
+// Container types: parameterized types that stay unexpanded at resolve time.
+data container_type_set: Map<String, Bool> = {
+  "List": true, "Set": true, "NonEmptyList": true, "NonEmptySet": true, "Map": true
+}
+
+fn is_container_type(name: String) -> Bool {
+  match map_get(container_type_set, name) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
 // Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
 // Target: Bool = BooleanAlgebra over {True, False}.
 type Bool = True | False
