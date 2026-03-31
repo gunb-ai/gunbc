@@ -16,6 +16,7 @@ module v2.compiler.complexity
 
 import std.types { SourceSpan }
 import v2.compiler.infer_env { RecursiveVariantFieldWitness }
+import v2.compiler.emit { to_string }
 import v2.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
@@ -2031,7 +2032,7 @@ fn bounded_scc_cost(pattern: RecursionPattern, raw_cost: CostExpr, members: List
     LinearRecursion { iteration_var: var } =>
       CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
     DivideAndConquer { split_factor: k } =>
-      CostUnknown { reason: concat("branching mutual recursion (", k, " self-calls) in ", scc_label(members: members)) }
+      CostUnknown { reason: concat("branching mutual recursion (", to_string(n: k), " self-calls) in ", scc_label(members: members)) }
     UnresolvableRecursion { reason: r } =>
       CostUnknown { reason: r }
   }

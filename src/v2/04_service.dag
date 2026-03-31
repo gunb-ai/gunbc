@@ -62,8 +62,9 @@ fn is_typed_service_call_receiver(receiver: Node) -> Bool {
       let b = field_access_base(texpr: receiver)
       match b.expr_data {
         ExprVar { binding_kind: _ } => {
+          // 65 = 'A', 90 = 'Z' (ASCII code points)
           match f |> chars |> first {
-            Some { value: ch } => ch >= "A" && ch <= "Z"
+            Some { value: ch } => ch >= 65 && ch <= 90
             None => false
           }
         }
