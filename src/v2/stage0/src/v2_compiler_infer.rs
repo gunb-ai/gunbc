@@ -3253,10 +3253,14 @@ pub fn infer_items(items: Vec<Rc<Node>>, scope: Rc<InferScope>) -> Vec<Rc<TypedI
 
 pub fn collect_item_recursive_variant_fields(
     item: Rc<Node>,
+    recursive_type_set: Rc<HashMap<String, bool>>,
 ) -> HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>> {
     if item.connective.clone() != Some(Connective::Disj) {
         <HashMap<_, _>>::new()
     } else {
+        if recursive_type_set.get(&item.name).is_none() {
+            return <HashMap<_, _>>::new();
+        }
         item
             .clone()
             .children
@@ -3289,8 +3293,9 @@ pub fn collect_item_recursive_variant_fields(
     }
 }
 
-pub fn build_recursive_variant_fields(
+pub fn build_item_recursive_variant_fields(
     items: Vec<Rc<Node>>,
+    recursive_type_set: Rc<HashMap<String, bool>>,
 ) -> HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>> {
     items
         .iter()
@@ -3300,7 +3305,7 @@ pub fn build_recursive_variant_fields(
             |acc: _, item: Rc<Node>| {
             merge_recursive_variant_fields(
                 acc.clone(),
-                collect_item_recursive_variant_fields(item.clone()),
+                collect_item_recursive_variant_fields(item.clone(), recursive_type_set.clone()),
             )
         },
         )
@@ -3675,14 +3680,11 @@ pub fn build_type_env(
             |acc: _, b: Rc<TypeBinding>| v2_rt::map_insert(acc.clone(), b.name.clone(), true),
         );
         let all_local_bindings = v2_rt::map_merge(local_bindings.clone(), param_bindings.clone());
-        let local_recursive_variant_fields = build_recursive_variant_fields(
-            module_items(module.module.clone()),
-        );
         let local_env = Rc::new(TypeEnv {
             bindings: Rc::new(all_local_bindings.clone()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
-            recursive_variant_fields: Rc::new(local_recursive_variant_fields.clone()),
+            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
             source_index: source_index.clone(),
         });
         let merged = merge_envs(vec![kernel.clone(), import_env.clone(), local_env.clone()]);
@@ -3707,11 +3709,19 @@ pub fn build_type_env(
             .fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
                 v2_rt::map_insert(acc.clone(), name.clone(), true)
             });
+        let local_recursive_variant_fields = build_item_recursive_variant_fields(
+            module_items(module.module.clone()),
+            Rc::new(cycle_map.clone()),
+        );
+        let merged_recursive_variant_fields = merge_recursive_variant_fields(
+            (*merged.recursive_variant_fields).clone(),
+            local_recursive_variant_fields.clone(),
+        );
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
             recursive_types: Rc::new(cycle_set.clone()),
             recursive_type_set: Rc::new(cycle_map.clone()),
-            recursive_variant_fields: merged.recursive_variant_fields.clone(),
+            recursive_variant_fields: Rc::new(merged_recursive_variant_fields.clone()),
             source_index: source_index.clone(),
         });
         let resolved = resolve_env_bindings(
@@ -4025,17 +4035,14 @@ pub fn build_type_env_unresolved(
                 }
             },
         );
-        let local_recursive_variant_fields = build_recursive_variant_fields(
-            module_items(module.module.clone()),
-        );
-        let local_env = Rc::new(TypeEnv {
+        let pre_local_env = Rc::new(TypeEnv {
             bindings: Rc::new(local_bindings.clone()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
-            recursive_variant_fields: Rc::new(local_recursive_variant_fields.clone()),
+            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
             source_index: source_index.clone(),
         });
-        let merged = merge_envs(vec![kernel.clone(), import_env.clone(), local_env.clone()]);
+        let merged = merge_envs(vec![kernel.clone(), import_env.clone(), pre_local_env.clone()]);
         let all_deps_map = v2_rt::map_values(&merged.bindings.clone())
             .iter()
             .cloned()
@@ -4057,11 +4064,19 @@ pub fn build_type_env_unresolved(
             .fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
                 v2_rt::map_insert(acc.clone(), name.clone(), true)
             });
+        let local_recursive_variant_fields = build_item_recursive_variant_fields(
+            module_items(module.module.clone()),
+            Rc::new(cycle_map.clone()),
+        );
+        let merged_recursive_variant_fields = merge_recursive_variant_fields(
+            (*merged.recursive_variant_fields).clone(),
+            local_recursive_variant_fields.clone(),
+        );
         let unresolved_env = Rc::new(TypeEnv {
             bindings: merged.bindings.clone(),
             recursive_types: Rc::new(cycle_set.clone()),
             recursive_type_set: Rc::new(cycle_map.clone()),
-            recursive_variant_fields: merged.recursive_variant_fields.clone(),
+            recursive_variant_fields: Rc::new(merged_recursive_variant_fields.clone()),
             source_index: source_index.clone(),
         });
         Rc::new(BuildTypeEnvResult {

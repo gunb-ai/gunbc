@@ -1754,14 +1754,15 @@ pub fn is_scc_structural_descent_with_param(
 pub fn build_scc_structural_params(
     members: Vec<String>,
     func_index: HashMap<String, Rc<FuncEntry>>,
+    recursion_ctx: Rc<RecursionContext>,
 ) -> HashMap<String, Rc<StructuralParam>> {
     members.iter().cloned().fold(<HashMap<String, Rc<StructuralParam>>>::new(), |acc: _, name: String| {
         match v2_rt::map_get(&func_index, name.clone()) {
             Some(entry) => match structural_param_from_body(
                 entry.body.clone(),
                 entry.params.clone(),
-                entry.recursive_type_set.clone(),
-                entry.recursive_variant_fields.clone(),
+                recursion_ctx.recursive_type_set.clone(),
+                recursion_ctx.recursive_variant_fields.clone(),
             ) {
                 Some(structural_param) => v2_rt::map_insert(acc.clone(), name.clone(), structural_param.clone()),
                 None => acc.clone(),
@@ -2356,11 +2357,11 @@ pub fn graph_has_multi_node_scc(names: Vec<String>, graph: Rc<CallGraph>) -> boo
     result.has_cycle
 }
 
-pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>) -> Rc<RecursionPattern> {
+pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> Rc<RecursionPattern> {
     let scc_name_set = members.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
         v2_rt::map_insert(acc.clone(), name.clone(), true)
     });
-    let structural_params = build_scc_structural_params(members.clone(), func_index.clone());
+    let structural_params = build_scc_structural_params(members.clone(), func_index.clone(), recursion_ctx.clone());
     let scc_measure_params = build_scc_measure_params(members.clone(), func_index.clone());
     let all_structural = members.iter().cloned().all(|name| {
         match v2_rt::map_get(&func_index, name.clone()) {
@@ -2368,7 +2369,7 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
                 Some(structural_param) => is_scc_structural_descent_with_param(
                     entry.body.clone(),
                     structural_param.clone(),
-                    entry.recursive_variant_fields.clone(),
+                    recursion_ctx.recursive_variant_fields.clone(),
                     scc_name_set.clone(),
                     structural_params.clone(),
                 ),
@@ -2411,7 +2412,7 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
     }
 }
 
-pub fn build_scc_index(func_entries: Vec<Rc<FuncEntry>>, func_index: HashMap<String, Rc<FuncEntry>>) -> HashMap<String, Rc<SccInfo>> {
+pub fn build_scc_index(func_entries: Vec<Rc<FuncEntry>>, func_index: HashMap<String, Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> HashMap<String, Rc<SccInfo>> {
     let names = func_entries.iter().cloned().map(|entry| entry.name.clone()).collect::<Vec<_>>();
     let graph = build_call_graph(func_entries.clone());
     let finish = names.iter().cloned().fold(Rc::new(DfsFinishAcc {
@@ -2442,7 +2443,7 @@ pub fn build_scc_index(func_entries: Vec<Rc<FuncEntry>>, func_index: HashMap<Str
                 let info = Rc::new(SccInfo {
                     members: members.clone(),
                     member_set: member_set.clone(),
-                    pattern: classify_scc_recursion_pattern(members.clone(), func_index.clone()),
+                    pattern: classify_scc_recursion_pattern(members.clone(), func_index.clone(), recursion_ctx.clone()),
                 });
                 let next_index = members.iter().cloned().fold(acc.index.clone(), |inner: _, member: String| {
                     v2_rt::map_insert(inner.clone(), member.clone(), info.clone())
@@ -2576,14 +2577,14 @@ match f_arg.clone() {
 }
 }
 
-pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryResult>, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, parser_always_advancing: HashMap<String, bool>) -> Rc<SummaryResult> {
+pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryResult>, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, parser_always_advancing: HashMap<String, bool>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
     match lambda_arg.clone() {
     Some(la) => match (*la.expr_data.clone()).clone() {
     ExprData::ExprVar { .. } => { let fn_ref = expr_var_name(la.clone()); match v2_rt::map_get(&func_index, fn_ref.clone()) {
-    Some(_) => get_or_compute_summary(fn_ref.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone()),
-    None => cost_of_expr(la.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone()),
+    Some(_) => get_or_compute_summary(fn_ref.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone()),
+    None => cost_of_expr(la.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone()),
 } },
-    _ => cost_of_expr(la.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone()),
+    _ => cost_of_expr(la.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone()),
 },
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
@@ -2601,11 +2602,11 @@ pub fn resolve_callback_cost(lambda_arg: Option<Rc<Node>>, recv_r: Rc<SummaryRes
 }
 }
 
-pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, mc_args: Vec<Rc<Node>>, size: Rc<SizeExpr>, binder: String, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, parser_always_advancing: HashMap<String, bool>) -> Rc<SummaryResult> {
+pub fn cost_of_method_by_shape(shape: Rc<CostShape>, recv_r: Rc<SummaryResult>, mc_args: Vec<Rc<Node>>, size: Rc<SizeExpr>, binder: String, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, parser_always_advancing: HashMap<String, bool>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
     match (*shape.clone()).clone() {
     CostShape::ShapeIterateBody { produces_collection: pc, .. } => {
         let lambda_arg = resolve_lambda_arg(mc_args.clone());
-let body_result = resolve_callback_cost(lambda_arg.clone(), recv_r.clone(), func_index.clone(), scc_index.clone(), parser_always_advancing.clone());
+let body_result = resolve_callback_cost(lambda_arg.clone(), recv_r.clone(), func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let loop_work = cost_loop(binder.clone(), size.clone(), body_result.summary.clone().work.clone());
 let os = if (pc.clone() == false) {
             body_result.summary.clone().output_size.clone()
@@ -2631,7 +2632,7 @@ Rc::new(SummaryResult {
         // O(n × log(n) × key_cost). CostLog makes this Proven.
         let lambda_arg = resolve_lambda_arg(mc_args.clone());
 let key_result = match lambda_arg.clone() {
-    Some(la) => cost_of_expr(la.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone()),
+    Some(la) => cost_of_expr(la.clone(), func_index.clone(), scc_index.clone(), recv_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone()),
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
@@ -3047,6 +3048,10 @@ pub struct FuncEntry {
     pub body: Rc<Node>,
     pub params: Vec<Rc<Node>>,
     pub span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecursionContext {
     pub recursive_type_set: Rc<HashMap<String, bool>>,
     pub recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 }
@@ -3063,7 +3068,7 @@ pub struct MatchCostAccum {
     pub branch_costs: Vec<Rc<CostExpr>>,
 }
 
-pub fn cost_of_expr(texpr: Rc<Node>, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, table: Rc<CostInternTable>, parser_always_advancing: HashMap<String, bool>) -> Rc<SummaryResult> {
+pub fn cost_of_expr(texpr: Rc<Node>, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, table: Rc<CostInternTable>, parser_always_advancing: HashMap<String, bool>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
     ExprData::ExprLiteral { .. } => Rc::new(SummaryResult {
@@ -3108,8 +3113,8 @@ pub fn cost_of_expr(texpr: Rc<Node>, func_index: HashMap<String, Rc<FuncEntry>>,
     ExprData::ExprBinOp { .. } => {
             let l = binop_left(texpr.clone());
 let r = binop_right(texpr.clone());
-let lr = cost_of_expr(l.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone());
-let rr = cost_of_expr(r.clone(), func_index.clone(), scc_index.clone(), lr.table.clone(), parser_always_advancing.clone());
+let lr = cost_of_expr(l.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
+let rr = cost_of_expr(r.clone(), func_index.clone(), scc_index.clone(), lr.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(lr.summary.clone().work.clone(), cost_seq(Rc::new(CostExpr::CostConst {
@@ -3126,7 +3131,7 @@ Rc::new(SummaryResult {
 },
     ExprData::ExprCall { .. } => { let fname = expr_call_func(texpr.clone());
             let callee_result = match v2_rt::map_get(&func_index, fname.clone()) {
-    Some(entry) => get_or_compute_summary(fname.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone()),
+    Some(entry) => get_or_compute_summary(fname.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone(), recursion_ctx.clone()),
     None => Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: Rc::new(CostExpr::CostConst {
@@ -3154,7 +3159,7 @@ let args_result = texpr.children.clone().iter().cloned().fold(Rc::new(SummaryRes
 }),
     table: callee_result.table.clone(),
 }), |acc: _, a: Rc<Node>| {
-                let ar = cost_of_expr(arg_value(a.clone()), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone());
+                let ar = cost_of_expr(arg_value(a.clone()), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(acc.summary.clone().work.clone(), ar.summary.clone().work.clone()),
@@ -3178,7 +3183,7 @@ Rc::new(SummaryResult {
     ExprData::ExprMethodCall { method_semantics: ms, .. } => {
             let recv = method_receiver(texpr.clone());
 let mc_args = method_arg_nodes(texpr.clone());
-let recv_r = cost_of_expr(recv.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone());
+let recv_r = cost_of_expr(recv.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let size = receiver_size_var(recv.clone());
 let binder = size_binder_name(size.clone());
 let method_cost_result = if (ms.clone() == None) {
@@ -3189,7 +3194,7 @@ let method_cost_result = if (ms.clone() == None) {
                     let mn = md.name.clone();
                     let shape_match = method_cost_shape(mn.clone());
 match shape_match.clone() {
-    Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone(), scc_index.clone(), parser_always_advancing.clone())),
+    Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone(), scc_index.clone(), parser_always_advancing.clone(), recursion_ctx.clone())),
     None => Some(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(recv_r.summary.clone().work.clone(), Rc::new(CostExpr::CostConst {
@@ -3224,7 +3229,7 @@ match method_cost_result.clone() {
 }),
     table: recv_r.table.clone(),
 }), |acc: _, a: Rc<Node>| {
-                    let ar = cost_of_expr(arg_value(a.clone()), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone());
+                    let ar = cost_of_expr(arg_value(a.clone()), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(acc.summary.clone().work.clone(), ar.summary.clone().work.clone()),
@@ -3254,7 +3259,7 @@ Rc::new(SummaryResult {
     ExprData::ExprMatch => {
             let scrut = match_scrutinee(texpr.clone());
 let arm_nodes = match_arm_nodes(texpr.clone());
-let s_r = cost_of_expr(scrut.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone());
+let s_r = cost_of_expr(scrut.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let arms_accum = arm_nodes.clone().iter().cloned().fold(Rc::new(MatchCostAccum {
     result: Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
@@ -3271,7 +3276,7 @@ let arms_accum = arm_nodes.clone().iter().cloned().fold(Rc::new(MatchCostAccum {
 }),
     branch_costs: vec![],
 }), |acc: _, arm_node: Rc<Node>| {
-                let ar = cost_of_expr(arm_body(arm_node.clone()), func_index.clone(), scc_index.clone(), acc.result.clone().table.clone(), parser_always_advancing.clone());
+                let ar = cost_of_expr(arm_body(arm_node.clone()), func_index.clone(), scc_index.clone(), acc.result.clone().table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(MatchCostAccum {
     result: Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
@@ -3298,11 +3303,11 @@ Rc::new(SummaryResult {
     ExprData::ExprIf => {
             let c = if_condition(texpr.clone());
 let t = if_then_branch(texpr.clone());
-let c_r = cost_of_expr(c.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone());
-let t_r = cost_of_expr(t.clone(), func_index.clone(), scc_index.clone(), c_r.table.clone(), parser_always_advancing.clone());
+let c_r = cost_of_expr(c.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
+let t_r = cost_of_expr(t.clone(), func_index.clone(), scc_index.clone(), c_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let e_result = match if_else_branch(texpr.clone()) {
     Some(eb) => {
-                let er = cost_of_expr(eb.clone(), func_index.clone(), scc_index.clone(), t_r.table.clone(), parser_always_advancing.clone());
+                let er = cost_of_expr(eb.clone(), func_index.clone(), scc_index.clone(), t_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: er.summary.clone(),
     table: er.table.clone(),
@@ -3334,10 +3339,10 @@ Rc::new(SummaryResult {
 },
     ExprData::ExprLet => {
             let v = let_value(texpr.clone());
-let v_r = cost_of_expr(v.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone());
+let v_r = cost_of_expr(v.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 match let_body(texpr.clone()) {
     Some(b) => {
-                let b_r = cost_of_expr(b.clone(), func_index.clone(), scc_index.clone(), v_r.table.clone(), parser_always_advancing.clone());
+                let b_r = cost_of_expr(b.clone(), func_index.clone(), scc_index.clone(), v_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(v_r.summary.clone().work.clone(), b_r.summary.clone().work.clone()),
@@ -3364,7 +3369,7 @@ Rc::new(SummaryResult {
 }),
     table: table.clone(),
 }), |acc: _, s: Rc<Node>| {
-            let sr = cost_of_expr(s.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone());
+            let sr = cost_of_expr(s.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(acc.summary.clone().work.clone(), sr.summary.clone().work.clone()),
@@ -3378,8 +3383,8 @@ Rc::new(SummaryResult {
     ExprData::ExprForEach => {
             let c = foreach_collection(texpr.clone());
 let bd = foreach_body(texpr.clone());
-let c_r = cost_of_expr(c.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone());
-let bd_r = cost_of_expr(bd.clone(), func_index.clone(), scc_index.clone(), c_r.table.clone(), parser_always_advancing.clone());
+let c_r = cost_of_expr(c.clone(), func_index.clone(), scc_index.clone(), table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
+let bd_r = cost_of_expr(bd.clone(), func_index.clone(), scc_index.clone(), c_r.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let size = receiver_size_var(c.clone());
 let binder = size_binder_name(size.clone());
 let loop_work = cost_loop(binder.clone(), size.clone(), bd_r.summary.clone().work.clone());
@@ -3406,7 +3411,7 @@ Rc::new(SummaryResult {
 }),
     table: table.clone(),
 }), |acc: _, child: Rc<Node>| {
-            let cr = cost_of_expr(child.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone());
+            let cr = cost_of_expr(child.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(acc.summary.clone().work.clone(), cr.summary.clone().work.clone()),
@@ -3430,7 +3435,7 @@ Rc::new(SummaryResult {
 }),
     table: table.clone(),
 }), |acc: _, child: Rc<Node>| {
-            let cr = cost_of_expr(child.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone());
+            let cr = cost_of_expr(child.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
     work: cost_seq(acc.summary.clone().work.clone(), cr.summary.clone().work.clone()),
@@ -3455,7 +3460,7 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
     })
 }
 
-pub fn get_or_compute_summary(func_name: String, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, table: Rc<CostInternTable>, parser_always_advancing: HashMap<String, bool>) -> Rc<SummaryResult> {
+pub fn get_or_compute_summary(func_name: String, func_index: HashMap<String, Rc<FuncEntry>>, scc_index: HashMap<String, Rc<SccInfo>>, table: Rc<CostInternTable>, parser_always_advancing: HashMap<String, bool>, recursion_ctx: Rc<RecursionContext>) -> Rc<SummaryResult> {
     match lookup_summary(table.clone(), func_name.clone()) {
     Some(cached) => Rc::new(SummaryResult {
     summary: cached.clone(),
@@ -3475,7 +3480,7 @@ pub fn get_or_compute_summary(func_name: String, func_index: HashMap<String, Rc<
     certainty: Certainty::Unknown,
 });
 let table_with_placeholder = cache_summary(table.clone(), func_name.clone(), placeholder.clone());
-let result = cost_of_expr(entry.body.clone(), func_index.clone(), scc_index.clone(), table_with_placeholder.clone(), parser_always_advancing.clone());
+let result = cost_of_expr(entry.body.clone(), func_index.clone(), scc_index.clone(), table_with_placeholder.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 let is_recursive = cost_contains_computing_ref(result.summary.clone().work.clone(), func_name.clone());
 let scc_bounded = match v2_rt::map_get(&scc_index, func_name.clone()) {
     Some(info) =>
@@ -3498,8 +3503,8 @@ let bounded = match scc_bounded.clone() {
             func_name.clone(),
             entry.body.clone(),
             entry.params.clone(),
-            entry.recursive_type_set.clone(),
-            entry.recursive_variant_fields.clone(),
+            recursion_ctx.recursive_type_set.clone(),
+            recursion_ctx.recursive_variant_fields.clone(),
             parser_always_advancing.clone(),
         );
         Rc::new(ComplexitySummary {
@@ -3545,10 +3550,10 @@ Rc::new(SummaryResult {
 }
 }
 
-pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>) -> Rc<ComplexityReport> {
+pub fn build_complexity_report(func_entries: Vec<Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> Rc<ComplexityReport> {
     {
         let func_index = func_entries.clone().iter().cloned().fold(<HashMap<String, Rc<FuncEntry>>>::new(), |acc: _, entry: Rc<FuncEntry>| v2_rt::map_insert(acc.clone(), entry.name.clone(), entry.clone()));
-let scc_index = build_scc_index(func_entries.clone(), func_index.clone());
+let scc_index = build_scc_index(func_entries.clone(), func_index.clone(), recursion_ctx.clone());
 let parser_always_advancing = infer_all_parser_always_advancing(func_index.clone());
 let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
     summary: Rc::new(ComplexitySummary {
@@ -3563,7 +3568,7 @@ let result = func_entries.clone().iter().cloned().fold(Rc::new(SummaryResult {
 }),
     table: empty_intern_table(),
 }), |acc: _, entry: Rc<FuncEntry>| {
-            let sr = get_or_compute_summary(entry.name.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone());
+            let sr = get_or_compute_summary(entry.name.clone(), func_index.clone(), scc_index.clone(), acc.table.clone(), parser_always_advancing.clone(), recursion_ctx.clone());
 Rc::new(SummaryResult {
     summary: sr.summary.clone(),
     table: sr.table.clone(),

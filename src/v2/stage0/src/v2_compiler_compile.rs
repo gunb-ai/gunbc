@@ -53,12 +53,14 @@ pub use crate::v2_compiler_artifact::{
 };
 pub use crate::v2_compiler_complexity::{
     build_complexity_report, empty_complexity_report, ComplexityReport, FuncEntry,
+    RecursionContext,
 };
 pub use crate::v2_compiler_emit::{escape_json_string, EmitResult};
 pub use crate::v2_compiler_emit_go::emit_go;
 pub use crate::v2_compiler_emit_python::emit_python;
 pub use crate::v2_compiler_emit_rust::emit_rust;
 pub use crate::v2_compiler_infer::reconcile;
+pub use crate::v2_compiler_infer_env::merge_recursive_variant_fields;
 pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_normalize::{normalize_graph, NormalizeResult};
 use crate::v2_compiler_ownership::OwnershipDecision::SharedError;
@@ -144,8 +146,6 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
                         body: item.body.clone().clone().unwrap(),
                         params: item.params.clone(),
                         span: item.span.clone(),
-                        recursive_type_set: m.type_env.clone().recursive_type_set.clone(),
-                        recursive_variant_fields: m.type_env.clone().recursive_variant_fields.clone(),
                     }));
                 }
                 __result
@@ -153,6 +153,24 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
         }
         __result
     }
+}
+
+pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> Rc<RecursionContext> {
+    typed.modules.iter().cloned().fold(
+        Rc::new(RecursionContext {
+            recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
+            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
+        }),
+        |acc: Rc<RecursionContext>, m: Rc<TypedModule>| {
+            Rc::new(RecursionContext {
+                recursive_type_set: Rc::new(v2_rt::map_merge((*acc.recursive_type_set).clone(), (*m.type_env.recursive_type_set).clone())),
+                recursive_variant_fields: Rc::new(merge_recursive_variant_fields(
+                    (*acc.recursive_variant_fields).clone(),
+                    (*m.type_env.recursive_variant_fields).clone(),
+                )),
+            })
+        },
+    )
 }
 
 pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Vec<Rc<OwnershipProof>> {
@@ -1720,7 +1738,8 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 let typed = reconcile(norm.graph.clone(), source_indices.clone());
                 let typed_diags = typed.diagnostics.clone();
                 let func_entries = extract_func_entries(typed.clone());
-                let complexity = build_complexity_report(func_entries.clone());
+                let recursion_ctx = build_recursion_context(typed.clone());
+                let complexity = build_complexity_report(func_entries.clone(), recursion_ctx.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
                 // Fail-closed gate: complexity/decidability errors block
                 // emission alongside typecheck errors.
