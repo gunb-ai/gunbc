@@ -1985,18 +1985,63 @@ fn strict_complexity_violation_count() {
         violation_count,
         result.complexity.function_summaries.len()
     );
-    for v in result.complexity.violations.iter().take(20) {
-        eprintln!("  {}: {}", v.func_name, v.reason);
+
+    // Root-cause cascade analysis: group violations by the root function
+    // whose indirect recursion causes the cascade. The reason field
+    // contains "computing: <root_fn>" — extract and count.
+    let mut root_cause_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let computing_prefix = "computing: ";
+    for v in result.complexity.violations.iter() {
+        let root = if v.reason.starts_with(computing_prefix) {
+            v.reason[computing_prefix.len()..].to_string()
+        } else {
+            v.reason.clone()
+        };
+        *root_cause_counts.entry(root).or_insert(0) += 1;
     }
+
+    eprintln!("\n  ROOT CAUSE CASCADE ({} root functions → {} violations):",
+        root_cause_counts.len(), violation_count);
+    let mut sorted: Vec<_> = root_cause_counts.iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(a.1));
+    for (root, count) in &sorted {
+        eprintln!("    {:40} {:>4} violations", root, count);
+    }
+
+    eprintln!("\n  SAMPLE VIOLATIONS (first 20):");
+    for v in result.complexity.violations.iter().take(20) {
+        eprintln!("    {}: {}", v.func_name, v.reason);
+    }
+
+    // All violations should be indirect recursion ("computing:" prefix).
+    // True decidability violations (non-descending recursion) would be a
+    // regression and should fail immediately, not hide behind the ratchet.
+    let non_indirect: Vec<_> = result.complexity.violations.iter()
+        .filter(|v| !v.reason.starts_with(computing_prefix))
+        .collect();
+    assert!(
+        non_indirect.is_empty(),
+        "found {} true decidability violation(s) (not indirect recursion):\n{}",
+        non_indirect.len(),
+        non_indirect.iter()
+            .map(|v| format!("  {}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
 
     // Ratchet history:
     // 2026-03-25: 2 violations out of 1169 function summaries.
     // 2026-03-30: 0 violations out of 1275 function summaries after
-    // continuation-aware path counting and large-report elision.
+    //   continuation-aware path counting and large-report elision.
     // 2026-03-30: 315 violations out of 1298 after restoring recursive
-    // is_unknown_cost (PR #264 review). All 315 are compiler self-recursion
-    // (parse, cost_of_expr, etc.) — resolves when .dag fold primitive
-    // replaces manual recursion with bounded iteration.
+    //   is_unknown_cost (PR #264 review). All 315 are compiler
+    //   self-recursion — indirect recursion (A→B→A) in 7 root functions
+    //   cascading to 315. All 7 are structurally bounded (descend on
+    //   children) but the cost algebra can't prove it because the
+    //   recursion is indirect. Fix: fold primitive in .dag language.
+    // 2026-03-31: ratchet stays at 315 with honest tracking.
+    //   ComplexityWarning separates these from hard errors.
     const COMPLEXITY_RATCHET: usize = 315;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
