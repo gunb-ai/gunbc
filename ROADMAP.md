@@ -30,7 +30,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 315 | 0 | 27 root functions × indirect recursion → 315 errors (ratcheted); resolves when fold primitive lands |
+| Complexity violations | 313 | 0 | 53 root functions → 313 errors (ratcheted); next drop needs SCC witness hardening + bridge dissolution |
 
 ---
 
@@ -671,16 +671,38 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-03-31):** 27 root functions × indirect
-recursion → 315 complexity violations, ratcheted. All are
+**Current state (2026-03-31):** 53 root functions → 313 complexity
+violations, ratcheted. All are
 structurally bounded but the cost algebra can't prove it because:
 (a) no `descend` primitive for recursive unions yet, (b) no SCC
-analysis for mutual recursion yet. Both are prerequisite for 315 → 0.
+analysis for mutual recursion yet. Both are prerequisite for 313 → 0.
 
 #### Implementation plan
 
 Three work items, in dependency order. Each is independently
 testable — the ratchet drops after each one lands.
+
+**Critical parallel cleanup (authority / bridge dissolution).**
+
+Recent mainline work has a clear pattern: declaration data moved out of
+the compiler, semantic lookups moved from source-text/name recovery to
+structural accessors, and complexity class authority moved from strings
+to `CostExpr`. The recursion/progress proof path should follow the same
+rule before we harden I1/I2 further.
+
+- [ ] Replace `recursive_variant_fields: Map<String, Bool>` with a
+  structural recursion witness owned by inference/env (variant-local
+  witness or direct edge), and thread it through imported/unresolved/final
+  envs so there is one authority
+- [ ] Replace `ParserWitnessCall { callee: String }` with a typed parser
+  helper identity so parser progress is not name-driven
+- [ ] Move structural descent proof ownership out of `complexity.dag`:
+  complexity should consume a resolved descent witness, not recover it
+  from encoded keys, raw names, or match-shape heuristics
+- [ ] Acceptance: recursion/progress proofs do not depend on
+  `split(\"::\")`, concatenated field keys, or raw callee-name strings
+- [ ] Acceptance: stage0/source parity + fixed-point regeneration stay
+  green after the witness refactor
 
 **I1: `descend` primitive for recursive unions.**
 
