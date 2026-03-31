@@ -594,7 +594,7 @@ pub fn emit_py_expr_var(expr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) 
 pub fn emit_py_expr_field_access(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     match (*expr.expr_data.clone()).clone() {
     ExprData::ExprFieldAccess { summary: summary, .. } => {
-    let f = authored_name_at(scope.type_env.source_index.clone(), expr.clone());
+    let f = expr.name.clone();
         let b = match expr.children.clone().first().cloned() {
     Some(v) => v.clone(),
     None => expr.clone(),

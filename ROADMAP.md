@@ -26,7 +26,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Bootstrap ratchet (`DIAG_RATCHET`) | 65 | 0 | OOM resolved; 65 inference false-positives remain |
 | L1 ratchet | 21 | 0 | Down from 70; #253 landed structural algebra authority |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
-| L2 resolve `.name` reads | 0 | 0 | B4 done: `authored_name` eliminated from `04_resolve.dag` |
+| L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
 | Complexity violations | 0 | 0 | Green |
 
@@ -239,13 +239,15 @@ resolve uses structural identity.
   param names across module boundaries; needs precomputed names
   at resolve time)
 
-*Resolve structural identity (B4 — done):*
-- [x] Replace 5 pre-existing `authored_name` semantic lookups in
-  `04_resolve.dag` with node-based accessors (`lookup_type_for`,
-  `is_recursive_type_for`) — text recovery removed from resolve
-- [x] Design structural identity model: node-based accessor layer
-  in `04_env.dag` encapsulates `.name` reads; when `Node.name` is
-  deleted, only the accessors change
+*Resolve structural identity (B4 — accessor layer done, node.name
+still semantic authority):*
+- [x] Replace 5 `authored_name` semantic lookups in `04_resolve.dag`
+  with node-based accessors — text recovery removed from resolve
+- [x] Node-based accessor layer (`lookup_type_for`,
+  `is_recursive_type_for`) encapsulates `.name` reads
+- [ ] Accessors still derive identity from `node.name` — hiding
+  the proxy, not replacing it with structure. True structural
+  identity requires declaration-node references or span-based keys
 
 *Node.name surface area (D6):*
 - [x] `source_text_at` infrastructure (B0)
