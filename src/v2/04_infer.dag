@@ -107,6 +107,7 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
+  ValueContext, ConstantData, RuntimeValue, SpecificationWitness, CallableValue,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary
@@ -2693,6 +2694,25 @@ fn build_fielded_variants(modules: List<TypedModule>) -> Map<String, Bool> {
   result
 }
 
+fn classify_item_value_context(item: Node) -> ValueContext {
+  let has_body = item.body != none
+  let has_type_ann = item.type_annotation != none
+  let has_params = item.params |> count > 0
+  let is_data = has_body && has_type_ann && !has_params
+  if is_data { ConstantData } else { RuntimeValue }
+}
+
+fn build_value_contexts(modules: List<TypedModule>) -> Map<String, ValueContext> {
+  let result = modules |> fold(init: empty_map(), f: (acc, m) =>
+    let items = m.items
+    items |> fold(init: acc, f: (inner, item) =>
+      let ctx = classify_item_value_context(item: item)
+      if item.name != "" { map_insert(inner, item.name, ctx) } else { inner }
+    )
+  )
+  result
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -2706,10 +2726,12 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     map_merge(acc, m.type_env.recursive_type_set)
   )
   let fielded = build_fielded_variants(modules: modules)
+  let contexts = build_value_contexts(modules: modules)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
-    fielded_variants: fielded
+    fielded_variants: fielded,
+    value_contexts: contexts
   }
 }
 

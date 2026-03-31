@@ -37,6 +37,21 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 
 type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
+// ValueContext: how a named value is used, determining its target-language
+// representation. Precomputed in EmitGraphInfo so the emitter reads facts
+// instead of applying heuristics.
+//
+// The emitter reads ValueContext × LanguageSpec to choose representation:
+//   ConstantData × Rust → const/static (no Rc, no lazy_static)
+//   RuntimeValue × Rust → Rc<T>
+//   SpecificationWitness × Rust → phantom type or omitted
+//   CallableValue × Rust → fn(T) -> U
+type ValueContext
+  = ConstantData
+  | RuntimeValue
+  | SpecificationWitness
+  | CallableValue
+
 type TypeSummary {
   name: String
   repr: TypeRepr
@@ -68,6 +83,9 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keyed by variant name → true if variant has children.
   fielded_variants: Map<String, Bool>
+  // Per-item value context: how each named value should be represented.
+  // Keyed by item name. Drives sharing/wrapping/derive decisions.
+  value_contexts: Map<String, ValueContext>
 }
 
 type EmitInfoBuildState {
@@ -82,11 +100,19 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
-    fielded_variants: empty_map()
+    fielded_variants: empty_map(),
+    value_contexts: empty_map()
   }
 }
 
 // Structural check: does this variant have fields (needs { .. } in patterns)?
+fn lookup_value_context(emit_info: EmitGraphInfo, name: String) -> ValueContext {
+  match map_get(emit_info.value_contexts, name) {
+    Some { value: vc } => vc
+    None => RuntimeValue
+  }
+}
+
 fn variant_has_fields(emit_info: EmitGraphInfo, variant_name: String) -> Bool {
   match map_get(emit_info.fielded_variants, variant_name) {
     Some { value: v } => v
