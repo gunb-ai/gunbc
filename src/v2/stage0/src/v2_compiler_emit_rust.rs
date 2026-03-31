@@ -466,7 +466,11 @@ let main_line = if ((top_with_parents.clone().len() as i64) > 0) {
                                     {
                                         let names_str = { let mut __result = Vec::new(); for n in top_with_parents.clone().iter().cloned() { __result.push(match v2_rt::map_get(&registry, n.clone()) {
     Some(info) => {
-                                            n.clone()
+                                            if info.kind.clone() == ItemKind::DataItem {
+                                                to_snake(n.clone())
+                                            } else {
+                                                n.clone()
+                                            }
 },
     None => n.clone(),
 }); } __result }.join(&", ".to_string());
