@@ -2706,7 +2706,7 @@ if rc_match.needs_option_deref.clone() {
                         let pat = arm_pattern(arm.clone());
                         let pat_str = match (*pat.clone()).clone() {
                             MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
-                                LiteralValue::LitStr { value: s, .. } => format!("ref __s if __s == \"{}\"", s),
+                                LiteralValue::LitStr { value: s, .. } => format!("ref __s if __s == \"{}\"", escape_string_literal_body(s.clone())),
                                 _ => rust_literal_for_pattern(v.clone()),
                             },
                             _ => emit_pattern(scope.type_env.source_index.clone(), pat.clone(), emit_info.clone(), rc_types.clone(), scrut_type.clone()),

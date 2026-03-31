@@ -2685,7 +2685,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
       let pat = arm_pattern(n: arm)
       let pat_str = match pat {
         LitPattern { value: v } => match v {
-          LitStr { value: s } => concat("ref __s if __s == \"", s, "\"")
+          LitStr { value: s } => concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"")
           _ => rust_literal_for_pattern(value: v)
         }
         _ => emit_pattern(pattern: pat, rc_types: rc_types, scrut_type: scrut_type, source_index: scope.type_env.source_index, emit_info: emit_info)
