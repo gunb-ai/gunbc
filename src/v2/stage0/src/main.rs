@@ -256,17 +256,8 @@ fn main() {
                 std::fs::write(&out_path, &*file.content)
                     .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
             }
-            let error_count = result.diagnostics.iter()
-                .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
-                .count();
-            let warning_count = result.diagnostics.len() - error_count;
-            if warning_count > 0 {
-                eprintln!("compiled: {} files emitted, {} diagnostics, {} warnings",
-                    result.files.len(), error_count, warning_count);
-            } else {
-                eprintln!("compiled: {} files emitted, {} diagnostics",
-                    result.files.len(), error_count);
-            }
+            eprintln!("compiled: {} files emitted, {} diagnostics",
+                result.files.len(), result.diagnostics.len());
             render_diagnostics(&result);
             if result.files.is_empty() {
                 eprintln!("error: no files emitted");
@@ -288,22 +279,13 @@ fn render_diagnostics(result: &PipelineResult) {
         .map(|idx| (idx.file.clone(), idx.clone()))
         .collect();
 
-    let mut error_count = 0usize;
-    let mut warning_count = 0usize;
+    // Render all diagnostics. No cascade tree — when a stage produces
+    // causal edges, re-add caused_by with both producer and consumer.
     for d in &result.diagnostics {
-        if is_error_diagnostic(d.diagnostic.clone()) {
-            error_count += 1;
-        } else {
-            warning_count += 1;
-        }
         render_one_diagnostic(d, &index_map, "");
     }
 
-    if warning_count > 0 {
-        eprintln!("\n{} error(s), {} warning(s)", error_count, warning_count);
-    } else {
-        eprintln!("\n{} error(s)", error_count);
-    }
+    eprintln!("\n{} error(s)", result.diagnostics.len());
 }
 
 fn render_one_diagnostic(

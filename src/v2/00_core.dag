@@ -335,7 +335,6 @@ type CompilerDiagnostic
   | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
   | ParseError         { message: String, span: SourceSpan }
   | InternalError      { message: String, span: SourceSpan }
-  | ComplexityWarning  { func_name: String, reason: String, span: SourceSpan }
   | OwnershipWarning   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
 
 type ErrorNode {
@@ -362,7 +361,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     MissingAnnotation  { fn_name: _, what: _, span: s }        => s
     ParseError         { message: _, span: s }                 => s
     InternalError      { message: _, span: s }                 => s
-    ComplexityWarning  { func_name: _, reason: _, span: s }    => s
     OwnershipWarning   { binding: _, fn_name: _, consumers: _, span: s } => s
   }
 }
@@ -382,14 +380,12 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
     ParseError         { message: m, span: _ }                    => m
     InternalError      { message: m, span: _ }                    => m
-    ComplexityWarning  { func_name: f, reason: r, span: _ }       => concat("complexity: `", f, "` has unknown cost (", r, ")")
     OwnershipWarning   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
   }
 }
 
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
-    ComplexityWarning { func_name: _, reason: _, span: _ } => false
     OwnershipWarning { binding: _, fn_name: _, consumers: _, span: _ } => false
     _ => true
   }

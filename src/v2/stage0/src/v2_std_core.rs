@@ -1764,11 +1764,6 @@ pub enum CompilerDiagnostic {
         message: String,
         span: Rc<SourceSpan>,
     },
-    ComplexityWarning {
-        func_name: String,
-        reason: String,
-        span: Rc<SourceSpan>,
-    },
     OwnershipWarning {
         binding: String,
         fn_name: String,
@@ -1803,7 +1798,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::MissingAnnotation { span, .. } => span.clone(),
         CompilerDiagnostic::ParseError { span, .. } => span.clone(),
         CompilerDiagnostic::InternalError { span, .. } => span.clone(),
-        CompilerDiagnostic::ComplexityWarning { span, .. } => span.clone(),
         CompilerDiagnostic::OwnershipWarning { span, .. } => span.clone(),
     }
 }
@@ -1861,12 +1855,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         }
         CompilerDiagnostic::ParseError { message, .. } => message.clone(),
         CompilerDiagnostic::InternalError { message, .. } => message.clone(),
-        CompilerDiagnostic::ComplexityWarning {
-            func_name, reason, ..
-        } => format!(
-            "complexity: `{}` has unknown cost ({})",
-            func_name, reason
-        ),
         CompilerDiagnostic::OwnershipWarning {
             binding,
             fn_name,
@@ -1880,11 +1868,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    !matches!(
-        &*d,
-        CompilerDiagnostic::ComplexityWarning { .. }
-            | CompilerDiagnostic::OwnershipWarning { .. }
-    )
+    !matches!(&*d, CompilerDiagnostic::OwnershipWarning { .. })
 }
 
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
