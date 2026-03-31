@@ -43,11 +43,11 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   expr_has_self_call, expr_has_non_tail_self_call,
-  field_access_field, foreach_variable,
+  field_access_field, foreach_variable, foreach_variable_at,
   expr_var_name, expr_call_func, expr_method_name, let_binding_name,
-  record_lit_type_name,
-  arg_name, arg_value, arm_body, arm_pattern, arm_guard,
-  field_init_node_name, field_init_node_value,
+  record_lit_type_name, record_lit_type_name_at,
+  arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard,
+  field_init_node_name, field_init_node_name_at, field_init_node_value,
   leaf_node, make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
@@ -1788,7 +1788,7 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
 fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprRecordLit { parent_enum: parent_enum } =>
-      let tn = record_lit_type_name(texpr: expr)
+      let tn = record_lit_type_name_at(texpr: expr, source_index: scope.type_env.source_index)
       let fs = expr.children
       emit_typed_record_lit(type_name: tn, fields: fs, parent_enum: parent_enum, resolved_type: rt_type(n: expr), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_record_lit expected ExprRecordLit", target: Rust)
@@ -1828,7 +1828,7 @@ fn emit_rust_expr_cast(expr: Node, registry: Map<String, ItemInfo>, scope: Infer
 fn emit_rust_expr_for_each(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprForEach =>
-      let v = foreach_variable(texpr: expr)
+      let v = foreach_variable_at(texpr: expr, source_index: scope.type_env.source_index)
       let c = foreach_collection(texpr: expr)
       let bd = foreach_body(texpr: expr)
       emit_typed_for_each(variable: v, collection: c, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -1969,7 +1969,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     // Extract field inits from the update argument (ExprRecordLit).
     let field_strs = match update_arg.expr_data {
       ExprRecordLit { parent_enum: _ } =>
-        update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)))
+        update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name_at(n: f, source_index: scope.type_env.source_index), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)))
       _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)]
     }
     let fields_str = field_strs |> join(separator: ", ")
@@ -2055,7 +2055,7 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
   // until names are precomputed at resolve time.
   match callee {
     Some { value: info } =>
-      let provided_names = ordered |> map(a => match arg_name(n: a) { Some { value: n } => n  None => "" })
+      let provided_names = ordered |> map(a => match arg_name_at(n: a, source_index: scope.type_env.source_index) { Some { value: n } => n  None => "" })
       let missing_with_defaults = info.params |> filter(p =>
         let is_provided = provided_names |> any(n => n == param_node_name(n: p))
         if is_provided { false }
@@ -2075,7 +2075,7 @@ fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Ma
   // cross-module services are added, this has the same boundary shape as
   // fill_default_args and needs the same param_node_name fallback.
   let si = scope.type_env.source_index
-  let provided_names = ordered |> map(a => match arg_name(n: a) { Some { value: n } => n  None => "" })
+  let provided_names = ordered |> map(a => match arg_name_at(n: a, source_index: si) { Some { value: n } => n  None => "" })
   let missing_with_defaults = op_params |> filter(p =>
     let is_provided = provided_names |> any(n => n == authored_name_at(source_index: si, node: p))
     if is_provided { false }
@@ -2466,7 +2466,7 @@ fn emit_rust_with_method_call(receiver: Node, args: List<Node>, registry: Map<St
   let update_arg = arg_value(n: (args |> first).value)
   let field_strs = match update_arg.expr_data {
     ExprRecordLit { parent_enum: _ } =>
-      update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name(n: f), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)))
+      update_arg.children |> map(f => concat(emit_ident(name: field_init_node_name_at(n: f, source_index: scope.type_env.source_index), target: Rust), ": ", emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)))
     _ => [emit_typed_expr(texpr: update_arg, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)]
   }
   let fields_str = field_strs |> join(separator: ", ")
@@ -2712,7 +2712,7 @@ fn is_optional_struct_field(emit_info: EmitGraphInfo, struct_name: String, field
 fn is_already_optional(texpr: Node, emit_info: EmitGraphInfo, scope: InferScope) -> Bool {
   let si = scope.type_env.source_index
   let n = authored_name_at(source_index: si, node: texpr)
-  let tn = record_lit_type_name(texpr: texpr)
+  let tn = record_lit_type_name_at(texpr: texpr, source_index: si)
   let f = authored_name_at(source_index: si, node: texpr)
   match texpr.expr_data {
     ExprLiteral { value: v } => match v { LitNull => true, _ => false }
@@ -2826,7 +2826,7 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
   match field_value.expr_data {
     ExprRecordLit { parent_enum: pe } =>
       let inner_fields = field_value.children
-      let tn = record_lit_type_name(texpr: field_value)
+      let tn = record_lit_type_name_at(texpr: field_value, source_index: scope.type_env.source_index)
       match tn {
         Some { value: variant_name } =>
           // Try node-based lookup first, then fall back to type_summaries
@@ -2940,7 +2940,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         if needs_rc { concat("Rc::new(", empty_raw, ")") } else { empty_raw }
       } else {
         let field_strs = fields |> map(f =>
-          let f_name = field_init_node_name(n: f)
+          let f_name = field_init_node_name_at(n: f, source_index: scope.type_env.source_index)
           let f_value = field_init_node_value(n: f)
           let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
           let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: f_name)
@@ -3607,7 +3607,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       ExprRecordLit { parent_enum: _ } =>
         let inserts = value.children |> map(f =>
           let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
-          concat("        __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
+          concat("        __m.insert(\"", field_init_node_name_at(n: f, source_index: scope.type_env.source_index), "\".to_string(), ", val_str, ");")
         )
         let inserts_str = inserts |> join(separator: "\n")
         concat("lazy_static::lazy_static! {\n",
