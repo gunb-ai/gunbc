@@ -253,6 +253,96 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
     }
 }
 
+pub fn collect_callees(body: Rc<Node>) -> Vec<String> {
+    let own = match (*(*body).clone().expr_data.clone()).clone() {
+        ExprData::ExprCall { call_semantics: _ } => {
+            vec![expr_call_func(body.clone())]
+        },
+        _ => vec![],
+    };
+    let from_children = body.clone().children.clone().iter().cloned().flat_map(|child| {
+        collect_callees(child.clone())
+    }).collect::<Vec<_>>();
+    let mut result = own;
+    result.extend(from_children);
+    result
+}
+
+pub fn detect_mutual_recursion_names(func_entries: Vec<Rc<FuncEntry>>) -> Vec<String> {
+    let func_names: Vec<String> = func_entries.clone().iter().cloned().map(|e| e.name.clone()).collect();
+    let func_set: HashMap<String, bool> = func_names.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, n| {
+        v2_rt::map_insert(acc.clone(), n.clone(), true)
+    });
+    let call_graph: HashMap<String, Vec<String>> = func_entries.clone().iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc, entry| {
+        let callees: Vec<String> = collect_callees(entry.body.clone())
+            .into_iter()
+            .filter(|c| c.clone() != entry.name.clone())
+            .filter(|c| match v2_rt::map_get(&func_set, c.clone()) {
+                Some(_) => true,
+                None => false,
+            })
+            .collect();
+        v2_rt::map_insert(acc.clone(), entry.name.clone(), callees)
+    });
+    let in_degrees: HashMap<String, i64> = func_names.clone().iter().cloned().fold(<HashMap<String, i64>>::new(), |acc, n| {
+        v2_rt::map_insert(acc.clone(), n.clone(), 0i64)
+    });
+    let in_degrees: HashMap<String, i64> = func_names.clone().iter().cloned().fold(in_degrees, |acc, n| {
+        match v2_rt::map_get(&call_graph, n.clone()) {
+            Some(callees) => {
+                callees.iter().cloned().fold(acc, |inner_acc, callee| {
+                    let current = match v2_rt::map_get(&inner_acc, callee.clone()) {
+                        Some(v) => v.clone(),
+                        None => 0i64,
+                    };
+                    v2_rt::map_insert(inner_acc.clone(), callee.clone(), current + 1)
+                })
+            },
+            None => acc,
+        }
+    });
+    let queue: Vec<String> = func_names.clone().into_iter().filter(|n| {
+        match v2_rt::map_get(&in_degrees, n.clone()) {
+            Some(v) => v.clone() == 0i64,
+            _ => false,
+        }
+    }).collect();
+    let removed = kahn_process_func(queue, in_degrees, call_graph, <HashMap<String, bool>>::new());
+    func_names.into_iter().filter(|n| {
+        match v2_rt::map_get(&removed, n.clone()) {
+            Some(_) => false,
+            None => true,
+        }
+    }).collect()
+}
+
+pub fn kahn_process_func(queue: Vec<String>, in_degrees: HashMap<String, i64>, call_graph: HashMap<String, Vec<String>>, removed: HashMap<String, bool>) -> HashMap<String, bool> {
+    if queue.is_empty() {
+        return removed;
+    }
+    let node = queue[0].clone();
+    let rest: Vec<String> = queue.clone().into_iter().skip(1).collect();
+    let new_removed = v2_rt::map_insert(removed.clone(), node.clone(), true);
+    let successors = match v2_rt::map_get(&call_graph, node.clone()) {
+        Some(s) => s.clone(),
+        None => vec![],
+    };
+    let mut current_degrees = in_degrees.clone();
+    let mut current_queue = rest;
+    for succ in successors.iter().cloned() {
+        let current = match v2_rt::map_get(&current_degrees, succ.clone()) {
+            Some(v) => v.clone(),
+            None => 0i64,
+        };
+        let new_deg = current - 1;
+        current_degrees = v2_rt::map_insert(current_degrees.clone(), succ.clone(), new_deg);
+        if new_deg == 0 {
+            current_queue.push(succ.clone());
+        }
+    }
+    kahn_process_func(current_queue, current_degrees, call_graph, new_removed)
+}
+
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { call_semantics: _ } => {
@@ -1573,9 +1663,24 @@ Rc::new(ComplexityViolation {
     span: entry.span.clone(),
 }),
 }); } __result };
+let mutual_cycle_names = detect_mutual_recursion_names(func_entries.clone());
+let mutual_violations: Vec<Rc<ComplexityViolation>> = mutual_cycle_names.iter().cloned().map(|name| {
+    let entry_span = match func_entries.clone().iter().cloned().find(|e| e.name.clone() == name.clone()) {
+        Some(e) => e.span.clone(),
+        None => Rc::new(SourceSpan { file: "".to_string(), start: 0, end: 0 }),
+    };
+    Rc::new(ComplexityViolation {
+        func_name: name.clone(),
+        reason: v2_rt::concat("mutual recursion cycle (".to_string(), v2_rt::concat(name.clone(), ")".to_string())),
+        summary: None,
+        span: entry_span,
+    })
+}).collect();
+let mut all_violations = violations.clone();
+all_violations.extend(mutual_violations);
 Rc::new(ComplexityReport {
     function_summaries: summaries_map.clone(),
-    violations: violations.clone(),
+    violations: all_violations,
     intern_table: result.table.clone(),
 })
 }
