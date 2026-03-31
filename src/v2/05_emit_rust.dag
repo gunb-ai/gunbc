@@ -1153,6 +1153,9 @@ fn collect_pattern_string_guards(pattern: MatchPattern, source_index: NewlineInd
 // Check if all match arms use string literal patterns (or wildcard).
 // When true, the scrutinee needs .as_str() conversion for Rust matching.
 fn all_arms_are_string_lit(arms: List<Node>) -> Bool {
+  // All arms are string literal or wildcard — safe for .as_str().
+  // Bind patterns are excluded: .as_str() makes bindings &str, breaking
+  // downstream uses that expect String.
   arms |> all(arm =>
     match arm_pattern(n: arm) {
       LitPattern { value: v } =>
@@ -1160,7 +1163,7 @@ fn all_arms_are_string_lit(arms: List<Node>) -> Bool {
       Wildcard => true
       _ => false
     }
-  )
+  ) && arms |> count > 0
 }
 
 fn emit_pattern(pattern: MatchPattern, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {

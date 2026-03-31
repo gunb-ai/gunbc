@@ -1044,14 +1044,13 @@ break guards.clone().join(&" && ".to_string());
 }
 
 pub fn all_arms_are_string_lit(arms: Vec<Rc<Node>>) -> bool {
-    { let mut __all = true; for arm in arms.clone().iter().cloned() { if !(match (*arm_pattern(arm.clone())).clone() {
-    MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
-    LiteralValue::LitStr { .. } => true,
-    _ => false,
-},
-    MatchPattern::Wildcard => true,
-    _ => false,
-}) { __all = false; break; } } __all }
+    !arms.is_empty() && arms.iter().all(|arm| {
+        match (*arm_pattern(arm.clone())).clone() {
+            MatchPattern::LitPattern { value: v, .. } => matches!((*v).clone(), LiteralValue::LitStr { .. }),
+            MatchPattern::Wildcard => true,
+            _ => false,
+        }
+    })
 }
 
 pub fn emit_pattern(source_index: Option<Rc<NewlineIndex>>, pattern: Rc<MatchPattern>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
