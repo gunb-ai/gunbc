@@ -24,7 +24,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | ~91 errors | 0 | Down from 8658→419→367→~91. Remaining: ExprData Rc/patterns (19), Callable type (9), serde derives (10), OperatorSpec module (2), type inference (6), misc (45) |
+| Bootstrap emitted Rust (B) | 67 errors | 0 | Down from 8658→419→367→67. Remaining: tuple-vs-struct algebra (8), Option mismatches (6), Rc container (5), Callable (9), type inference (5), misc (34) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 22 | 0 | Down from 70; #253 landed structural algebra authority; 22 after review fixes |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
