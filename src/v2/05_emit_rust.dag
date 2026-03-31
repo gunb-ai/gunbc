@@ -1735,16 +1735,9 @@ fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> B
 }
 
 fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
-  if function_name != "map_values" {
-    return false
-  }
-  match result_type {
-    Some { value: Resolved { node: ret_type } } =>
-      let resolved_ret = with_required_cardinality(n: ret_type)
-      let elem_type = for_each_element_type_node(n: resolved_ret)
-      type_needs_rc(type_node: elem_type)
-    _ => false
-  }
+  // With Rc-baked container templates, map values are already Rc<V>
+  // for user types. Adding .map(Rc::new) would double-wrap.
+  false
 }
 
 fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, result_type: InferredNode?) -> String {

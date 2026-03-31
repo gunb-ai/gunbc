@@ -1718,26 +1718,20 @@ pub fn rust_empty_map_value_type_str(map_type: Rc<Node>, rc_types: HashMap<Strin
     }
 }
 
-pub fn rust_runtime_bridge_wraps_optional_result_in_rc(function_name: String, receiver: Rc<Node>, scope: Rc<InferScope>) -> bool {
-    (((function_name.clone() == "map_get".to_string()) || (function_name.clone() == "lookup".to_string())) && rust_lookup_receiver_needs_rc_wrap(receiver.clone(), scope.clone()))
+pub fn rust_runtime_bridge_wraps_optional_result_in_rc(_function_name: String, _receiver: Rc<Node>, _scope: Rc<InferScope>) -> bool {
+    // With Rc-baked container templates, map values are already Rc<V>
+    // for user types. Adding .map(Rc::new) would double-wrap.
+    false
 }
 
 pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> bool {
     function_name == "map_keys".to_string() || function_name == "map_values".to_string()
 }
 
-pub fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: Option<Rc<InferredNode>>) -> bool {
-    if function_name != "map_values".to_string() {
-        return false;
-    }
-    match result_type.as_deref().cloned() {
-        Some(InferredNode::Resolved { node: ret_type, .. }) => {
-            let resolved_ret = with_required_cardinality(ret_type.clone());
-            let elem_type = for_each_element_type_node(resolved_ret.clone());
-            type_needs_rc(elem_type.clone())
-        }
-        _ => false,
-    }
+pub fn rust_runtime_bridge_collection_result_needs_rc_elements(_function_name: String, _result_type: Option<Rc<InferredNode>>) -> bool {
+    // With Rc-baked container templates, map values are already Rc<V>
+    // for user types. Adding .map(Rc::new) would double-wrap.
+    false
 }
 
 pub fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, result_type: Option<Rc<InferredNode>>) -> String {
