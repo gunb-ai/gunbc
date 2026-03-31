@@ -466,7 +466,11 @@ let main_line = if ((top_with_parents.clone().len() as i64) > 0) {
                                     {
                                         let names_str = { let mut __result = Vec::new(); for n in top_with_parents.clone().iter().cloned() { __result.push(match v2_rt::map_get(&registry, n.clone()) {
     Some(info) => {
-                                            n.clone()
+                                            if info.kind.clone() == ItemKind::DataItem {
+                                                to_snake(n.clone())
+                                            } else {
+                                                n.clone()
+                                            }
 },
     None => n.clone(),
 }); } __result }.join(&", ".to_string());
@@ -663,11 +667,22 @@ if is_product.clone() {
 
 pub fn emit_struct_from_children(name: String, type_params: String, children: Vec<Rc<Node>>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>, env: Rc<TypeEnv>) -> String {
     {
-        let derives = if emit_map_has(rc_types.clone(), name.clone()) {
+        let has_fn_fields = children.iter().any(|child| {
+            match child.inferred.as_ref() {
+                Some(inf) => match &**inf {
+                    InferredNode::Resolved { node: rt, .. } => !rt.params.is_empty(),
+                    _ => false,
+                },
+                None => false,
+            }
+        });
+        let derives = if has_fn_fields {
+            "#[derive(Clone)]".to_string()
+        } else if emit_map_has(rc_types.clone(), name.clone()) {
             rust_struct_derives_text()
-} else {
+        } else {
             rust_struct_derives_copy_text()
-};
+        };
 if ((children.clone().len() as i64) == 0) {
             v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(derives.clone(), "
 ".to_string()), rust_visibility_prefix()), "struct ".to_string()), name.clone()), type_params.clone()), ";".to_string())

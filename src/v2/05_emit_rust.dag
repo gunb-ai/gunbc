@@ -532,6 +532,14 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
 // Import emission
 // =========================================================================
 
+fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
+  let is_data = match map_get(registry, n) {
+    Some { value: info } => info.kind == DataItem
+    None => false
+  }
+  if is_data { to_snake(n) } else { n }
+}
+
 fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<String, ItemInfo>, local_names: List<String>) -> String {
   if imports |> count == 0 {
     ""
@@ -573,7 +581,9 @@ fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<St
             let top_with_parents = unique_strings(items: concat(top_level, parent_list))
             // Emit top-level use line.
             let main_line = if top_with_parents |> count > 0 {
-              let names_str = top_with_parents |> join(separator: ", ")
+              let names_str = top_with_parents |> map(n =>
+                emit_import_name(n: n, registry: registry)
+              ) |> join(separator: ", ")
               concat("pub use crate::", mod_name, "::{", names_str, "};")
             } else { "" }
             // Emit per-enum variant import lines for explicitly listed variants.
@@ -746,9 +756,18 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
 // is_type_alias_return_node is shared -- imported from v2.compiler.emit
 
 fn emit_struct_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
-  // rust_struct_derives is the base derive set from extdeps.languages.rust.emit.
-  // Non-Rc types get Copy added as a Rust-specific value semantics optimization.
-  let derives = if emit_map_has(m: rc_types, key: name) {
+  // Types with fn-typed fields (algebra witnesses) can't derive Debug/PartialEq
+  // because dyn Fn doesn't implement those traits. Derive Clone only.
+  // Check the resolved type of each child — callable types have params > 0.
+  let has_fn_fields = children |> any(child =>
+    match child.inferred {
+      Some { value: Resolved { node: rt } } => rt.params |> count > 0
+      _ => false
+    }
+  )
+  let derives = if has_fn_fields {
+    "#[derive(Clone)]"
+  } else if emit_map_has(m: rc_types, key: name) {
     rust_struct_derives_text()
   } else {
     rust_struct_derives_copy_text()
