@@ -254,9 +254,13 @@ Goal: compiler reads type/algebra facts from `.dag` declarations
 instead of hardcoding them. Includes FF-9 as prerequisite.
 
 *Tier 1 — data tables → `.dag` declarations (no new infra):*
-- [ ] Move `kernel_algebra_profile` to `dsl/std/algebra.dag` data
-- [ ] Move `is_kernel_type` / `is_container_type` predicate lists
+- [x] Move `kernel_algebra_profile` to `dsl/std/algebra.dag` data
+- [x] Move `is_kernel_type` / `is_container_type` predicate lists
   to `dsl/std/types.dag` data
+- [x] Move `AlgebraProfile`, `AlgebraTypeTemplate`, `AlgebraFieldTemplate`
+  types and all 6 template data tables to `dsl/std/algebra.dag`
+- [x] `00_core.dag` re-imports from `std.types` for backward compat
+- [x] `04_types.dag` imports from `std.algebra`
 - [ ] Convert per-profile field builders to `.dag` functions
 
 *Tier 2 — factor `enrich_kernel_type` (modest compiler change):*
@@ -283,11 +287,12 @@ Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,
 #### Lane 2: D6 + emit + resolve (Node.name deletion)
 
 **Status:** B3 (emit rendering) + B4 (resolve structural identity)
-complete. D6 (constructor/accessor cleanup) is next — mechanical
+complete. Lane 1 Tier 1 landed (algebra/kernel/container data moved
+to `dsl/std/`). D6 (constructor/accessor cleanup) is next — mechanical
 work to update `make_*` helpers, drop `name:` from Node
 constructions, and delete the field.
-Note: final `Node.name` deletion depends on Lane 1 landing
-declarations for kernel/algebra/container synthetic nodes.
+Note: final `Node.name` deletion depends on Lane 1 Tier 2+ landing
+structural identity for synthetic nodes.
 
 Goal: delete `Node.name` field. Rendering uses `source_text_at`,
 resolve uses structural identity.
@@ -344,6 +349,35 @@ still semantic authority):*
 Files: `05_emit*.dag`, `04_resolve.dag`, `04_env.dag`,
 `02_parse.dag`, `04_infer.dag`, `00_core.dag` (make_* helpers only —
 kernel type defs are Lane 1)
+
+*D6 `name:` usage audit (2026-03-31):*
+
+Per-file Node construction counts and classification:
+
+| File | Constructions | Display | Semantic | Synthetic |
+|------|:---:|:---:|:---:|:---:|
+| `02_parse.dag` | ~54 | ~5 | ~44 | ~5 |
+| `04_infer.dag` | ~20 | 0 | ~12 | ~8 |
+| `00_core.dag` | ~28 | ~5 | ~10 | ~13 |
+| `04_resolve.dag` | ~13 | 0 | ~13 | 0 |
+| `04_types.dag` | ~10 | 0 | ~8 | ~2 |
+| Other (`04_patterns`, `04_method`, `04_service`, `05_emit_rust`) | ~5 | 0 | ~5 | 0 |
+| **Total** | **~130** | **~10** | **~92** | **~28** |
+
+Blocking semantic-identity `.name` reads (must be structural before
+`name:` can drop):
+- Field/variant/method lookup: `filter(c => c.name == field_name)`
+  in `04_lookup.dag`, `04_types.dag`, `04_patterns.dag`
+- Type equality: `left.name == right.name` in `04_types.dag`
+- Resolve substitution: `map_get(slot_bindings, n.name)` in `04_resolve.dag`
+- Module/import graph: `module.name`, `import.name` in `03_resolve.dag`
+- Closed tags: `"Refined"`, `"Callable"`, `"Tuple"`, `"Map"` checks
+- Kernel identity: `is_kernel_type(name: n.name)` (6 sites)
+- Expression identity: `expr_call_func`, `expr_method_name` via `.name`
+
+Display-only sites (~10) are safe to drop now via `authored_name_at`.
+Synthetic sites (~28) need Lane 1 Tier 2+ (declaration-backed identity).
+Semantic sites (~92) need structural identity infrastructure (D6 blocker).
 
 #### Lane exclusivity
 
@@ -413,10 +447,13 @@ Different functions, no conflict.
 - [ ] 14 `Map<String, X>` metadata maps → structural edges
 
 *Split authority dissolution (PR #264 review):*
-- [ ] Merge `rt_functions: Map<String, Bool>` and
+- [x] Merge `rt_functions: Map<String, Bool>` and
   `rt_bridge_function_names: Map<String, String>` in `rust/emit.dag`
   into a single `RuntimeFunction { name: String, bridge_name: String,
   passes_by_ref: Bool }` list — one concept, one authority
+  (backward-compat maps preserved; helpers `is_rt_function`,
+  `rt_bridge_name`, `rt_passes_by_ref` added; downstream migration
+  to unified helpers is follow-up)
 
 *Compiler bug fixes owned by M5:*
 - [ ] Optional exhaustiveness: structural, not `Some`/`None` hardcoded
