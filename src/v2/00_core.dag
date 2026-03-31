@@ -615,6 +615,7 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
 }
 
 fn param_node_name(n: Node) -> String { n.name }
+fn param_node_name_at(n: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: n) }
 
 fn authored_name_at(source_index: NewlineIndex?, node: Node) -> String {
   match node.ident_span {
@@ -746,6 +747,10 @@ fn expr_child_at(texpr: Node, index: Int, role: String) -> Node {
 fn arg_name(n: Node) -> String? {
   if n.name == "" { none } else { Some { value: n.name } }
 }
+fn arg_name_at(n: Node, source_index: NewlineIndex?) -> String? {
+  let name = authored_name_at(source_index: source_index, node: n)
+  if name == "" { none } else { Some { value: name } }
+}
 
 fn arg_value(n: Node) -> Node {
   match n.children |> first {
@@ -771,6 +776,9 @@ fn arm_body(n: Node) -> Node {
 
 fn field_init_node_name(n: Node) -> String {
   n.name
+}
+fn field_init_node_name_at(n: Node, source_index: NewlineIndex?) -> String {
+  authored_name_at(source_index: source_index, node: n)
 }
 
 fn field_init_node_value(n: Node) -> Node {
@@ -798,18 +806,22 @@ fn unaryop_operand(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, 
 
 // -- ExprVar (D3: name dissolved into Node.name) --
 fn expr_var_name(texpr: Node) -> String { texpr.name }
+fn expr_var_name_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprFieldAccess (D3: field dissolved into Node.name) --
 fn field_access_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
 fn field_access_field(texpr: Node) -> String { texpr.name }
+fn field_access_field_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprCall (D3: func dissolved into Node.name) --
 fn expr_call_func(texpr: Node) -> String { texpr.name }
+fn expr_call_func_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprMethodCall (D3: method dissolved into Node.name) --
 fn method_receiver(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: Node) -> List<Node> { texpr.children |> skip(1) }
 fn expr_method_name(texpr: Node) -> String { texpr.name }
+fn expr_method_name_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprLambda (D3: params dissolved into child Nodes after body) --
 fn lambda_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "lambda body") }
@@ -820,6 +832,7 @@ fn lambda_param_names_at(texpr: Node, source_index: NewlineIndex?) -> List<Strin
 fn let_value(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "let value") }
 fn let_body(texpr: Node) -> Node? { texpr.children |> skip(1) |> first }
 fn let_binding_name(texpr: Node) -> String { texpr.name }
+fn let_binding_name_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprCast --
 fn cast_expr(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "cast expr") }
@@ -829,6 +842,7 @@ fn cast_target(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role
 fn foreach_collection(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "foreach collection") }
 fn foreach_body(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 1, role: "foreach body") }
 fn foreach_variable(texpr: Node) -> String { texpr.name }
+fn foreach_variable_at(texpr: Node, source_index: NewlineIndex?) -> String { authored_name_at(source_index: source_index, node: texpr) }
 
 // -- ExprIndex --
 fn index_base(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "index base") }
@@ -848,6 +862,10 @@ fn block_stmts(texpr: Node) -> List<Node> { texpr.children }
 // -- ExprRecordLit (D3: type_name dissolved into Node.name, parent_enum stays in ExprData) --
 fn record_lit_type_name(texpr: Node) -> String? {
   if texpr.name == "" { none } else { Some { value: texpr.name } }
+}
+fn record_lit_type_name_at(texpr: Node, source_index: NewlineIndex?) -> String? {
+  let name = authored_name_at(source_index: source_index, node: texpr)
+  if name == "" { none } else { Some { value: name } }
 }
 
 // ExprListLit, ExprStringInterp: children accessed
