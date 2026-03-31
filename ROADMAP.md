@@ -165,23 +165,62 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 
 *Emission correctness by construction (E0):*
 
-Prerequisite for Bootstrap B. The emitter must read structural facts
-from the graph, not recover them from source text. Heuristic fallback
-chains (`authored_name_at` → `source_text_at` → `node.name`) are
-boundary sufficiency failures (BS-1 class): the fact exists in the
-graph but the emitter uses a fragile recovery path that can silently
-produce wrong output (e.g., `:` instead of `intensity`).
+Prerequisite for Bootstrap B. Two layers:
 
-- [ ] Emitter reads `field_binding_name(fb)` for pattern field names,
-  not `authored_name_at(source_index, fb)` — no source-text recovery
-  for structural identifiers
-- [ ] Narrow `authored_name_at` to display/diagnostic contexts only;
-  structural emission reads graph facts directly
-- [ ] Acceptance: `Color::Red { intensity: i }` emitted correctly
-  (was: `Color::Red { :: i }` — `ident_span` pointed at `:` token,
-  `source_text_at` returned `":"`, overrode correct `node.name`)
-- [ ] Acceptance: emitted Rust for self-compile passes `rustc` syntax
-  check (122 pattern errors from this single class of bug)
+**E0a — Structural identity:** The emitter reads graph facts for
+identifiers, not source-text recovery. Heuristic fallback chains
+(`authored_name_at` → `source_text_at` → `node.name`) are boundary
+sufficiency failures. Done for field bindings, let/var/call/method;
+remaining sites in `authored_name_at` usage list.
+
+- [x] `field_binding_name(fb)` for pattern field names
+- [x] `expr_var_name`, `expr_call_func`, `expr_method_name`,
+  `let_binding_name` for expression identifiers
+- [ ] Narrow remaining `authored_name_at` to display/diagnostic only
+- [x] Acceptance: `Color::Red { intensity: i }` emitted correctly
+- [x] Acceptance: 122 pattern errors eliminated
+
+**E0b — Value context modeling:** The emitter applies one sharing
+strategy (Rc-wrap everything in Rust, identity in Python/Go) across
+all contexts. This fails for constant data (`lazy_static` + `Rc` →
+E0277 Send/Sync), algebra witnesses (`Rc<dyn Fn>` → E0369 PartialEq),
+and static globals. The root cause: the graph doesn't carry HOW a
+value is used, only WHAT it is.
+
+Design: `EmitGraphInfo` carries `value_contexts: Map<String, ValueContext>`
+precomputed alongside `type_summaries` and `recursive_type_set`.
+
+```
+type ValueContext
+  = ConstantData        // immutable lookup table, known at compile time
+  | RuntimeValue        // heap-allocated, shared, needs per-language wrapper
+  | SpecificationWitness  // structural fact (algebra op), not runtime data
+  | CallableValue       // function type, representation varies by language
+```
+
+Per-language emission reads ValueContext × LanguageSpec:
+
+| ValueContext | Rust | Python | Go | SPICE | English |
+|---|---|---|---|---|---|
+| ConstantData | `const`/`static` | module-level | `var` (pkg) | `.param` | table |
+| RuntimeValue | `Rc<T>` | `T` (GC) | `*T` | wire | paragraph |
+| SpecWitness | phantom/tag | not emitted | not emitted | N/A | "satisfies" |
+| CallableValue | `fn`/`Box<dyn Fn>` | `Callable` | `func` | N/A | "transforms" |
+
+Extension point: `TypedItemKind` already has 8 discriminants,
+`TypeSummary` already carries repr/fields. ValueContext is computed
+from the same data (syntactic item kind + field types + usage sites)
+and added to EmitGraphInfo in the same pass.
+
+Acceptance criteria:
+- [ ] `data` declarations emit as `const`/`static` in Rust (no
+  `lazy_static` + `Rc` → eliminates 97 E0277 Send/Sync errors)
+- [ ] Algebra types with `fn` fields skip `PartialEq`/`Debug` derives
+  or use structural tags (eliminates 40 E0369 + 13 E0277 errors)
+- [ ] Adding SPICE/English targets requires only ValueContext ×
+  LanguageSpec data, no emission-side debugging
+- [ ] `rc_types` authority derived from ValueContext (RuntimeValue →
+  wrap, ConstantData → no wrap) instead of heuristic type_summary scan
 
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
@@ -396,11 +435,15 @@ Different functions, no conflict.
   `dsl/extdeps/languages/go/`
 - [ ] Delete `runtime_rust.dag` → `rust/runtime.dag` extdep
 
-*LanguageSpec completion (~11 fields):*
+*LanguageSpec completion (~11 fields + ValueContext rendering):*
 - [ ] `statement_terminator`, `variable_declaration_keyword`,
   `assignment_operator`, `lambda_syntax`, `callable_type_template`,
   `error_expression`, `null_coalesce`, `string_interpolation`,
   `container_bracket`, `tuple_type_template`, `indentation_width`
+- [ ] Per-ValueContext rendering templates (depends on E0b from M2):
+  `constant_data_template`, `static_init_template`,
+  `callable_type_template` (already listed above),
+  `spec_witness_strategy` (phantom/tag/omit)
 
 *LintModel (depends on E0 from M2):*
 - [ ] Wire import rules, naming conventions, formatting model
