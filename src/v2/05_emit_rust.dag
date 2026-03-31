@@ -1221,12 +1221,15 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         match map_get(emit_info.fielded_variants, qualified) {
           Some { value: true } => true
           _ =>
-            let suffix = concat("::", name)
+            // Scan all fielded_variants for any key ending with ::VariantName
+            let target_key_suffix = concat("::", name)
             map_keys(emit_info.fielded_variants) |> any(k =>
-              k |> string_contains(suffix) && match map_get(emit_info.fielded_variants, k) {
-                Some { value: true } => true
-                _ => false
-              }
+              string_length(s: k) >= string_length(s: target_key_suffix)
+                && substring(s: k, start: string_length(s: k) - string_length(s: target_key_suffix), end: string_length(s: k)) == target_key_suffix
+                && match map_get(emit_info.fielded_variants, k) {
+                  Some { value: true } => true
+                  _ => false
+                }
             )
         }
     }
@@ -1400,12 +1403,15 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
         match map_get(emit_info.fielded_variants, qualified) {
           Some { value: true } => true
           _ =>
-            let suffix = concat("::", name)
+            // Scan all fielded_variants for any key ending with ::VariantName
+            let target_key_suffix = concat("::", name)
             map_keys(emit_info.fielded_variants) |> any(k =>
-              k |> string_contains(suffix) && match map_get(emit_info.fielded_variants, k) {
-                Some { value: true } => true
-                _ => false
-              }
+              string_length(s: k) >= string_length(s: target_key_suffix)
+                && substring(s: k, start: string_length(s: k) - string_length(s: target_key_suffix), end: string_length(s: k)) == target_key_suffix
+                && match map_get(emit_info.fielded_variants, k) {
+                  Some { value: true } => true
+                  _ => false
+                }
             )
         }
     }

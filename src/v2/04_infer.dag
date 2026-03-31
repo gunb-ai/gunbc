@@ -1909,7 +1909,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
                properties: item.properties, type_annotation: typed_anno,
         is_self_recursive: expr_has_self_call(texpr: body_typed, fn_name: item.name),
         has_non_tail_self_call: expr_has_non_tail_self_call(texpr: body_typed, fn_name: item.name, in_tail: true),
-        expr_data: NoExprData
+        match_pattern: none, expr_data: NoExprData
       },
       diagnostics: body_diags
     }
@@ -2845,5 +2845,6 @@ fn typecheck_modules(
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> ResolvedGraph {
   let typed = typecheck(graph: graph, source_indices: source_indices)
-  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics }
+  let emit_info = build_emit_graph_info(modules: typed.modules)
+  ResolvedGraph { modules: typed.modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
 }
