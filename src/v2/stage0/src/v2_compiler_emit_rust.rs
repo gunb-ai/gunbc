@@ -3844,12 +3844,8 @@ if is_simple_type_node(type_node.clone()) {
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), " { ".to_string()), val_str.clone()), " }".to_string())
 }
 } else {
-            if has_nested_records_node(type_node.clone()) {
-                {
-                    let json_str = emit_data_value_json(value.clone(), None);
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    serde_json::from_value(serde_json::json!(".to_string()), json_str.clone()), "))\n".to_string()), "        .expect(\"valid data definition\")\n".to_string()), "}".to_string())
-}
-} else {
+                // Serde path removed: derives don't include Deserialize.
+                // Struct data defs go through regular emit_typed_expr path.
                 if node_is_map(type_node.clone()) {
                     match (*value.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => {
@@ -3872,7 +3868,6 @@ let wrap_start = if needs_rc { "Rc::new(".to_string() } else { "".to_string() };
 let wrap_end = if needs_rc { ")".to_string() } else { "".to_string() };
 let body = v2_rt::concat(v2_rt::concat(wrap_start.clone(), val_str.clone()), wrap_end.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), v2_rt::concat(" {\n    ".to_string(), body.clone())), "\n}".to_string())
-}
 }
 }
 }
