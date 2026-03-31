@@ -144,6 +144,8 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
                         body: item.body.clone().clone().unwrap(),
                         params: item.params.clone(),
                         span: item.span.clone(),
+                        recursive_type_set: m.type_env.clone().recursive_type_set.clone(),
+                        recursive_variant_fields: m.type_env.clone().recursive_variant_fields.clone(),
                     }));
                 }
                 __result
@@ -1720,10 +1722,12 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 let func_entries = extract_func_entries(typed.clone());
                 let complexity = build_complexity_report(func_entries.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
+                // Fail-closed gate: complexity/decidability errors block
+                // emission alongside typecheck errors.
                 let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let typecheck_errors = {
                     let mut __result = Vec::new();
-                    for d in typed_diags.clone().iter().cloned() {
+                    for d in all_infer_diags.clone().iter().cloned() {
                         if is_error_diagnostic(d.diagnostic.clone()) {
                             __result.push(d);
                         }

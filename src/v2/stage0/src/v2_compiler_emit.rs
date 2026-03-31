@@ -312,6 +312,14 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
 }
 
 pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarget, source_index: Option<Rc<NewlineIndex>>) -> String {
+    let has_interpolations = parts
+        .clone()
+        .iter()
+        .cloned()
+        .any(|p| match (*p.clone()).clone() {
+            StringPart::Interpolation { .. } => true,
+            _ => false,
+        });
     match target.clone() {
         RenderTarget::Rust => {
             let fmt_parts = {
@@ -319,18 +327,11 @@ pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarge
                 for p in parts.clone().iter().cloned() {
                     __result.push(match (*p.clone()).clone() {
                         StringPart::Text { value: v, .. } => {
-                            let escaped = v
-                                .clone()
-                                .split(&"{".to_string())
-                                .map(|s| s.to_string())
-                                .collect::<Vec<_>>()
-                                .join(&"{{".to_string());
-                            let escaped2 = escaped
-                                .clone()
-                                .split(&"}".to_string())
-                                .map(|s| s.to_string())
-                                .collect::<Vec<_>>()
-                                .join(&"}}".to_string());
+                            let escaped2 = if has_interpolations.clone() {
+                                escape_rust_interp_text(v.clone())
+                            } else {
+                                escape_string_literal_body(v.clone())
+                            };
                             Rc::new(InterpPart {
                                 format_segment: escaped2.clone(),
                                 arg_expr: "".to_string(),
@@ -396,10 +397,17 @@ pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarge
                 let mut __result = Vec::new();
                 for p in parts.clone().iter().cloned() {
                     __result.push(match (*p.clone()).clone() {
-                        StringPart::Text { value: v, .. } => Rc::new(InterpPart {
-                            format_segment: v.clone(),
-                            arg_expr: "".to_string(),
-                        }),
+                        StringPart::Text { value: v, .. } => {
+                            let escaped = if has_interpolations.clone() {
+                                escape_go_interp_text(v.clone())
+                            } else {
+                                escape_string_literal_body(v.clone())
+                            };
+                            Rc::new(InterpPart {
+                                format_segment: escaped.clone(),
+                                arg_expr: "".to_string(),
+                            })
+                        }
                         StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
                             format_segment: "%v".to_string(),
                             arg_expr: emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
@@ -460,16 +468,11 @@ pub fn emit_simple_string_interp(parts: Vec<Rc<StringPart>>, target: RenderTarge
                 let mut __result = Vec::new();
                 for p in parts.clone().iter().cloned() {
                     __result.push(match (*p.clone()).clone() {
-                        StringPart::Text { value: v, .. } => v
-                            .clone()
-                            .split(&"{".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>()
-                            .join(&"{{".to_string())
-                            .split(&"}".to_string())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>()
-                            .join(&"}}".to_string()),
+                        StringPart::Text { value: v, .. } => if has_interpolations.clone() {
+                            escape_python_interp_text(v.clone())
+                        } else {
+                            escape_string_literal_body(v.clone())
+                        },
                         StringPart::Interpolation { expr: e, .. } => v2_rt::concat(
                             v2_rt::concat(
                                 "{".to_string(),
@@ -499,6 +502,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             bindings: Rc::new(<HashMap<_, _>>::new()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
+            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
             source_index: None,
         }),
         func_env: Rc::new(ResolvedFuncEnv {
@@ -1145,28 +1149,83 @@ pub fn reserved_suffix(target: RenderTarget) -> String {
     }
 }
 
+pub fn escape_string_literal_body(s: String) -> String {
+    let escaped = s
+        .clone()
+        .split(&"\\".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"\\\\".to_string());
+    let escaped2 = escaped
+        .clone()
+        .split(&"\"".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"\\\"".to_string());
+    let escaped3 = escaped2
+        .clone()
+        .split(&"\n".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"\\n".to_string());
+    let escaped4 = escaped3
+        .clone()
+        .split(&"\r".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"\\r".to_string());
+    escaped4
+        .clone()
+        .split(&"\t".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"\\t".to_string())
+}
+
+pub fn escape_rust_interp_text(s: String) -> String {
+    let escaped = escape_string_literal_body(s.clone())
+        .split(&"{".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"{{".to_string());
+    escaped
+        .clone()
+        .split(&"}".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"}}".to_string())
+}
+
+pub fn escape_go_interp_text(s: String) -> String {
+    escape_string_literal_body(s.clone())
+        .split(&"%".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"%%".to_string())
+}
+
+pub fn escape_python_interp_text(s: String) -> String {
+    let escaped = escape_string_literal_body(s.clone())
+        .split(&"{".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"{{".to_string());
+    escaped
+        .clone()
+        .split(&"}".to_string())
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(&"}}".to_string())
+}
+
 pub fn emit_string_literal(s: String, suffix: String) -> String {
-    {
-        let escaped = s
-            .clone()
-            .split(&"\\".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>()
-            .join(&"\\\\".to_string());
-        let escaped2 = escaped
-            .clone()
-            .split(&"\"".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>()
-            .join(&"\\\"".to_string());
+    v2_rt::concat(
         v2_rt::concat(
-            v2_rt::concat(
-                v2_rt::concat("\"".to_string(), escaped2.clone()),
-                "\"".to_string(),
-            ),
-            suffix.clone(),
-        )
-    }
+            v2_rt::concat("\"".to_string(), escape_string_literal_body(s.clone())),
+            "\"".to_string(),
+        ),
+        suffix.clone(),
+    )
 }
 
 pub fn is_null_coalesce(op: BinOpKind) -> bool {

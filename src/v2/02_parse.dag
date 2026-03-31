@@ -204,6 +204,24 @@ type OpBodyResult {
   state: ParserState, err: ErrorNode?
 }
 type UnitResult { state: ParserState, err: ErrorNode? }
+type StringLitResult { value: String, state: ParserState, err: ErrorNode? }
+type IntLitResult { value: Int, state: ParserState, err: ErrorNode? }
+
+type ParserHelperIdentity
+  = ParserHelperSkipNewlines
+  | ParserHelperSkipContinuationNewlines
+  | ParserHelperWith
+
+type ParserCallIdentity
+  = ParserCallHelper { helper: ParserHelperIdentity }
+  | ParserCallFunction { name: String }
+
+type ParserResultWitness
+  = ParserWitnessAdvance
+  | ParserWitnessExpect
+  | ParserWitnessEat
+  | ParserWitnessCall { callee: ParserCallIdentity }
+  | ParserWitnessOpaque
 
 // For parse_optional_from_key/parse_config_fields/parse_op_body_entries desc:
 type DescResult { desc: String?, state: ParserState }
@@ -258,6 +276,45 @@ fn has_err(err: ErrorNode?) -> Bool {
   match err {
     Some { value: _ } => true
     None => false
+  }
+}
+
+fn parse_string_literal_value(tokens: List<Token>, state: ParserState) -> StringLitResult {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } =>
+      match t.shape {
+        ShLitStr => {
+          let adv = advance(tokens: tokens, state: state)
+          StringLitResult { value: t.text, state: adv.state, err: none }
+        }
+        _ =>
+          StringLitResult { value: "", state: state, err: Some { value: parse_error(msg: "expected string literal", span: current_span(tokens: tokens, state: state)) } }
+      }
+    None =>
+      StringLitResult { value: "", state: state, err: Some { value: parse_error(msg: "expected string literal", span: current_span(tokens: tokens, state: state)) } }
+  }
+}
+
+fn parse_int_literal_value(tokens: List<Token>, state: ParserState) -> IntLitResult {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } =>
+      match t.shape {
+        ShLitInt =>
+          let n_opt = parse_int(s: t.text)
+          match n_opt {
+            Some { value: n } =>
+              let adv = advance(tokens: tokens, state: state)
+              IntLitResult { value: n, state: adv.state, err: none }
+            None =>
+              IntLitResult { value: 0, state: state, err: Some { value: parse_error(msg: concat("internal: ShLitInt token text not parseable as int: '", t.text, "'"), span: current_span(tokens: tokens, state: state)) } }
+          }
+        _ =>
+          IntLitResult { value: 0, state: state, err: Some { value: parse_error(msg: "expected integer literal", span: current_span(tokens: tokens, state: state)) } }
+      }
+    None =>
+      IntLitResult { value: 0, state: state, err: Some { value: parse_error(msg: "expected integer literal", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
@@ -740,6 +797,102 @@ fn eat(tokens: List<Token>, state: ParserState, expected: ExpectedToken) -> EatR
     EatResult { consumed: true, state: adv.state, token: Some { value: adv.token } }
   } else {
     EatResult { consumed: false, state: state, token: none }
+  }
+}
+
+fn parser_result_base_var(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprFieldAccess =>
+      match expr.children |> first {
+        Some { value: base } =>
+          match base.expr_data {
+            ExprVar { binding_kind: _ } => Some { value: expr_var_name(texpr: base) }
+            _ => none
+          }
+        None => none
+      }
+    _ => none
+  }
+}
+
+fn parser_helper_state_arg_expr(call_node: Node) -> Node? {
+  call_node.children |> enumerate |> fold(init: none, f: (acc, pair) =>
+    if acc != none {
+      acc
+    } else {
+      let idx = pair.first
+      let arg_node = pair.second
+      let matches_state = match arg_name(n: arg_node) {
+        Some { value: name } => name == "state"
+        None => idx == 1
+      }
+      if matches_state {
+        Some { value: arg_value(n: arg_node) }
+      } else {
+        none
+      }
+    }
+  )
+}
+
+fn parser_progress_flag_var(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprFieldAccess =>
+      let field = field_access_field(texpr: expr)
+      if field == "consumed" || field == "changed" {
+        parser_result_base_var(expr: expr)
+      } else {
+        none
+      }
+    _ => none
+  }
+}
+
+fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
+  if callee == "skip_newlines" {
+    Some { value: ParserHelperSkipNewlines }
+  } else if callee == "skip_continuation_newlines" {
+    Some { value: ParserHelperSkipContinuationNewlines }
+  } else if callee == "with" {
+    Some { value: ParserHelperWith }
+  } else {
+    none
+  }
+}
+
+fn parser_passthrough_state_expr(expr: Node) -> Node? {
+  match expr.expr_data {
+    ExprCall { call_semantics: _ } =>
+      match parser_helper_identity(callee: expr_call_func(texpr: expr)) {
+        Some { value: ParserHelperSkipNewlines } =>
+          parser_helper_state_arg_expr(call_node: expr)
+        Some { value: ParserHelperSkipContinuationNewlines } =>
+          parser_helper_state_arg_expr(call_node: expr)
+        Some { value: ParserHelperWith } =>
+          match expr.children |> first {
+            Some { value: base_arg } => Some { value: arg_value(n: base_arg) }
+            None => none
+          }
+        None => none
+      }
+    _ => none
+  }
+}
+
+fn parser_result_witness(expr: Node) -> ParserResultWitness {
+  match expr.expr_data {
+    ExprCall { call_semantics: _ } =>
+      match expr_call_func(texpr: expr) {
+        "advance" => ParserWitnessAdvance
+        "expect" => ParserWitnessExpect
+        "eat" => ParserWitnessEat
+        callee =>
+          match parser_helper_identity(callee: callee) {
+            Some { value: helper } => ParserWitnessCall { callee: ParserCallHelper { helper: helper } }
+            None => ParserWitnessCall { callee: ParserCallFunction { name: callee } }
+          }
+      }
+    _ => ParserWitnessOpaque
   }
 }
 
@@ -1323,16 +1476,11 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
   if e.consumed {
     match pred_name {
       "pattern" => {
-        let r2 = parse_expr(tokens: tokens, state: e.state)
+        let r2 = parse_string_literal_value(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        match r2.expr.expr_data {
-          ExprLiteral { value: LitStr { value: s } } =>
-            PredResult { predicate: make_field_init_node(name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
-          _ =>
-            PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "pattern() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
-        }
+        PredResult { predicate: make_field_init_node(name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
       }
       "format" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
@@ -1342,16 +1490,11 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         PredResult { predicate: make_field_init_node(name: "Format", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
       }
       "brand" => {
-        let r2 = parse_expr(tokens: tokens, state: e.state)
+        let r2 = parse_string_literal_value(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        match r2.expr.expr_data {
-          ExprLiteral { value: LitStr { value: s } } =>
-            PredResult { predicate: make_field_init_node(name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
-          _ =>
-            PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "brand() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
-        }
+        PredResult { predicate: make_field_init_node(name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
       }
       "content" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
@@ -1427,13 +1570,9 @@ fn parse_single_named_int(tokens: List<Token>, state: ParserState) -> NamedIntRe
   let name = r.name
   let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r2.state, err: r2.err } }
-  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  let r3 = parse_int_literal_value(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r3.state, err: r3.err } }
-  match r3.expr.expr_data {
-    ExprLiteral { value: LitInt { value: n } } =>
-      NamedIntResult { arg_name: name, arg_value: n, state: r3.state, err: none }
-    _ => NamedIntResult { arg_name: name, arg_value: 0, state: r3.state, err: Some { value: parse_error(msg: concat("range() argument `", name, "` requires an integer literal"), span: current_span(tokens: tokens, state: r3.state)) } }
-  }
+  NamedIntResult { arg_name: name, arg_value: r3.value, state: r3.state, err: none }
 }
 
 fn parse_variant_fields(tokens: List<Token>, state: ParserState, vname: String) -> VariantResult {

@@ -439,8 +439,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           // in env). Without this, optionality is silently discarded.
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match rt_node(n: resolved) {
-              Typed { node: target } =>
-                resolve_alias_target(target: target, env: env, module_name: module_name, depth: depth)
+              Typed { node: target } => target
               InferError { message: _, span: _ } => resolved
               InferVariable { id: _ } => resolved
               Untyped => resolved
@@ -903,6 +902,7 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
       }),
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,
+      recursive_variant_fields: e.recursive_variant_fields,
       source_index: e.source_index
     }
   )

@@ -74,7 +74,7 @@ pub use crate::v2_std_core::{
     arg_name, arg_value, arm_body, arm_guard, arm_pattern, binop_left, binop_right, cast_expr,
     cast_target, expr_call_func, expr_has_non_tail_self_call, expr_has_self_call, expr_method_name,
     expr_var_name, field_access_base, field_access_field, field_binding_name,
-    field_binding_pattern, field_init_node_name, field_init_node_value, foreach_body,
+    field_binding_pattern, field_init_node_name, field_init_node_value, field_node_type_expr, foreach_body,
     foreach_collection, foreach_variable, has_inferred, if_condition, if_else_branch,
     if_then_branch, import_is_all, import_specific_names, index_base, index_expr,
     is_error_diagnostic, is_import_node, is_kernel_type, lambda_body, lambda_param_names,
@@ -111,7 +111,8 @@ pub use crate::v2_compiler_infer_emit_info::{
     TypeSummary, ValueContext,
 };
 pub use crate::v2_compiler_infer_env::{
-    is_recursive_type, lookup_type, lookup_type_for, merge_envs, TypeBinding, TypeEnv,
+    is_recursive_type, lookup_type, lookup_type_for, merge_envs, merge_recursive_variant_fields,
+    put_recursive_variant_field_witness, RecursiveVariantFieldWitness, TypeBinding, TypeEnv,
 };
 use crate::v2_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -3250,6 +3251,61 @@ pub fn infer_items(items: Vec<Rc<Node>>, scope: Rc<InferScope>) -> Vec<Rc<TypedI
     }
 }
 
+pub fn collect_item_recursive_variant_fields(
+    item: Rc<Node>,
+) -> HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>> {
+    if item.connective.clone() != Some(Connective::Disj) {
+        <HashMap<_, _>>::new()
+    } else {
+        item
+            .clone()
+            .children
+            .clone()
+            .iter()
+            .cloned()
+            .fold(
+                <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
+                |variant_acc: _, variant_node: Rc<Node>| {
+                variant_node
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .fold(variant_acc.clone(), |field_acc: _, field_node: Rc<Node>| {
+                        let field_type_name = field_node_type_expr(field_node.clone()).name.clone();
+                        if field_type_name == item.name.clone() {
+                            put_recursive_variant_field_witness(
+                                field_acc.clone(),
+                                item.name.clone(),
+                                variant_node.name.clone(),
+                                field_node.name.clone(),
+                            )
+                        } else {
+                            field_acc.clone()
+                        }
+                    })
+            },
+            )
+    }
+}
+
+pub fn build_recursive_variant_fields(
+    items: Vec<Rc<Node>>,
+) -> HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>> {
+    items
+        .iter()
+        .cloned()
+        .fold(
+            <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
+            |acc: _, item: Rc<Node>| {
+            merge_recursive_variant_fields(
+                acc.clone(),
+                collect_item_recursive_variant_fields(item.clone()),
+            )
+        },
+        )
+}
+
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
     parent_index: HashMap<String, Rc<TypedModule>>,
@@ -3369,6 +3425,7 @@ pub fn build_type_env(
             bindings: Rc::new(kernel_bindings.clone()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
+            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
             source_index: source_index.clone(),
         });
         let parent_envs = {
@@ -3400,10 +3457,17 @@ pub fn build_type_env(
                 v2_rt::map_merge(acc.clone(), (*env.recursive_type_set).clone())
             },
         );
+        let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(
+            <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
+            |acc: _, env: Rc<TypeEnv>| {
+                merge_recursive_variant_fields(acc.clone(), (*env.recursive_variant_fields).clone())
+            },
+        );
         let import_env = Rc::new(TypeEnv {
             bindings: Rc::new(import_bindings.clone()),
             recursive_types: Rc::new(import_recursive.clone()),
             recursive_type_set: Rc::new(import_recursive_set.clone()),
+            recursive_variant_fields: Rc::new(import_recursive_variant_fields.clone()),
             source_index: source_index.clone(),
         });
         let import_diags = {
@@ -3611,10 +3675,14 @@ pub fn build_type_env(
             |acc: _, b: Rc<TypeBinding>| v2_rt::map_insert(acc.clone(), b.name.clone(), true),
         );
         let all_local_bindings = v2_rt::map_merge(local_bindings.clone(), param_bindings.clone());
+        let local_recursive_variant_fields = build_recursive_variant_fields(
+            module_items(module.module.clone()),
+        );
         let local_env = Rc::new(TypeEnv {
             bindings: Rc::new(all_local_bindings.clone()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
+            recursive_variant_fields: Rc::new(local_recursive_variant_fields.clone()),
             source_index: source_index.clone(),
         });
         let merged = merge_envs(vec![kernel.clone(), import_env.clone(), local_env.clone()]);
@@ -3643,6 +3711,7 @@ pub fn build_type_env(
             bindings: merged.bindings.clone(),
             recursive_types: Rc::new(cycle_set.clone()),
             recursive_type_set: Rc::new(cycle_map.clone()),
+            recursive_variant_fields: merged.recursive_variant_fields.clone(),
             source_index: source_index.clone(),
         });
         let resolved = resolve_env_bindings(
@@ -3653,8 +3722,15 @@ pub fn build_type_env(
         );
         let resolved_env_out = resolved.env.clone();
         let resolved_diags = resolved.diagnostics.clone();
+        let final_env = Rc::new(TypeEnv {
+            bindings: resolved_env_out.bindings.clone(),
+            recursive_types: resolved_env_out.recursive_types.clone(),
+            recursive_type_set: resolved_env_out.recursive_type_set.clone(),
+            recursive_variant_fields: resolved_env_out.recursive_variant_fields.clone(),
+            source_index: resolved_env_out.source_index.clone(),
+        });
         Rc::new(BuildTypeEnvResult {
-            env: resolved_env_out.clone(),
+            env: final_env.clone(),
             diagnostics: v2_rt::concat(import_diags.clone(), resolved_diags.clone()),
         })
     }
@@ -3779,6 +3855,7 @@ pub fn build_type_env_unresolved(
             bindings: Rc::new(kernel_bindings.clone()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
+            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
             source_index: source_index.clone(),
         });
         let parent_envs = {
@@ -3810,10 +3887,17 @@ pub fn build_type_env_unresolved(
                 v2_rt::map_merge(acc.clone(), (*env.recursive_type_set).clone())
             },
         );
+        let import_recursive_variant_fields = parent_envs.clone().iter().cloned().fold(
+            <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
+            |acc: _, env: Rc<TypeEnv>| {
+                merge_recursive_variant_fields(acc.clone(), (*env.recursive_variant_fields).clone())
+            },
+        );
         let import_env = Rc::new(TypeEnv {
             bindings: Rc::new(import_bindings.clone()),
             recursive_types: Rc::new(import_recursive.clone()),
             recursive_type_set: Rc::new(import_recursive_set.clone()),
+            recursive_variant_fields: Rc::new(import_recursive_variant_fields.clone()),
             source_index: source_index.clone(),
         });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
@@ -3941,10 +4025,14 @@ pub fn build_type_env_unresolved(
                 }
             },
         );
+        let local_recursive_variant_fields = build_recursive_variant_fields(
+            module_items(module.module.clone()),
+        );
         let local_env = Rc::new(TypeEnv {
             bindings: Rc::new(local_bindings.clone()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
+            recursive_variant_fields: Rc::new(local_recursive_variant_fields.clone()),
             source_index: source_index.clone(),
         });
         let merged = merge_envs(vec![kernel.clone(), import_env.clone(), local_env.clone()]);
@@ -3973,6 +4061,7 @@ pub fn build_type_env_unresolved(
             bindings: merged.bindings.clone(),
             recursive_types: Rc::new(cycle_set.clone()),
             recursive_type_set: Rc::new(cycle_map.clone()),
+            recursive_variant_fields: merged.recursive_variant_fields.clone(),
             source_index: source_index.clone(),
         });
         Rc::new(BuildTypeEnvResult {
@@ -4541,6 +4630,7 @@ pub fn topo_resolve_types(
                         bindings: Rc::new(stuck_accum.bindings.clone()),
                         recursive_types: env.recursive_types.clone(),
                         recursive_type_set: env.recursive_type_set.clone(),
+                        recursive_variant_fields: env.recursive_variant_fields.clone(),
                         source_index: env.source_index.clone(),
                     }),
                     diagnostics: v2_rt::concat(
@@ -4599,6 +4689,7 @@ pub fn topo_resolve_types(
                 bindings: Rc::new(ready_accum.bindings.clone()),
                 recursive_types: env.recursive_types.clone(),
                 recursive_type_set: env.recursive_type_set.clone(),
+                recursive_variant_fields: env.recursive_variant_fields.clone(),
                 source_index: env.source_index.clone(),
             });
             let __tco_2 = module_name.clone();

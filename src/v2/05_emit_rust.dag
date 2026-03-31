@@ -106,7 +106,7 @@ import v2.compiler.emit {
   rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, emit_ident, emit_let_binding, emit_return,
   emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
-  emit_string_literal, emit_simple_expr,
+  emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body,
   module_emit_scope,
   scope_after_expr,
   lookup_item,
@@ -3005,7 +3005,8 @@ fn is_string_typed_expr(e: Node) -> Bool {
 
 
 fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  let fmt_parts = parts |> map(p => typed_interp_format_part(part: p, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info))
+  let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
+  let fmt_parts = parts |> map(p => typed_interp_format_part(part: p, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, has_interpolations: has_interpolations))
   let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
   let args = fmt_parts
     |> map(p => p.arg_expr)
@@ -3018,14 +3019,11 @@ fn emit_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemI
   }
 }
 
-fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> InterpPart {
+fn typed_interp_format_part(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, has_interpolations: Bool) -> InterpPart {
   match part {
     Text { value: v } =>
-      let escaped = v
-        |> split(delimiter: "{") |> join(separator: "{{")
-      let escaped2 = escaped
-        |> split(delimiter: "}") |> join(separator: "}}")
-      InterpPart { format_segment: escaped2, arg_expr: "" }
+      let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+      InterpPart { format_segment: escaped, arg_expr: "" }
     Interpolation { expr: e } =>
       InterpPart { format_segment: "{}", arg_expr: emit_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024) }
   }

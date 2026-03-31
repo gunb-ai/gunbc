@@ -77,6 +77,7 @@ use crate::v2_std_core::TokenShape::{
 };
 use crate::v2_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v2_std_core::{
+    arg_name, arg_value,
     expr_var_name, field_binding_name, field_binding_pattern, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name, field_node_type_expr,
     file_transport_node, import_node, leaf_node, leaf_node_with_span, local_transport_node,
@@ -86,7 +87,7 @@ pub use crate::v2_std_core::{
     make_variant_node, module_node, no_span, node_is_coproduct, node_is_product,
     param_node_default_value, param_node_name, param_node_type_expr, rest_transport_node, rt_node,
     service_config_properties, shell_transport_node, variant_node_fields, variant_node_name,
-    with_required_cardinality, BinOpKind, Cardinality, CompilerDiagnostic, Connective, ErrorNode,
+    with_required_cardinality, expr_call_func, field_access_field, BinOpKind, Cardinality, CompilerDiagnostic, Connective, ErrorNode,
     ExprData, ExprErrorKind, InferredNode, LiteralValue, MatchPattern, Node, NodeType,
     OperationModifier, SourceSpan, StringPart, Token, TokenShape, UnaryOpKind,
 };
@@ -586,6 +587,48 @@ pub struct UnitResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct StringLitResult {
+    pub value: String,
+    pub state: Rc<ParserState>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IntLitResult {
+    pub value: i64,
+    pub state: Rc<ParserState>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParserHelperIdentity {
+    ParserHelperSkipNewlines,
+    ParserHelperSkipContinuationNewlines,
+    ParserHelperWith,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParserCallIdentity {
+    ParserCallHelper {
+        helper: ParserHelperIdentity,
+    },
+    ParserCallFunction {
+        name: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParserResultWitness {
+    ParserWitnessAdvance,
+    ParserWitnessExpect,
+    ParserWitnessEat,
+    ParserWitnessCall {
+        callee: ParserCallIdentity,
+    },
+    ParserWitnessOpaque,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescResult {
     pub desc: Option<String>,
     pub state: Rc<ParserState>,
@@ -662,6 +705,96 @@ pub fn has_err(err: Option<Rc<ErrorNode>>) -> bool {
     match err.clone() {
         Some(_) => true,
         None => false,
+    }
+}
+
+pub fn parse_string_literal_value(
+    tokens: Rc<Vec<Rc<Token>>>,
+    state: Rc<ParserState>,
+) -> Rc<StringLitResult> {
+    let tok = peek(tokens.clone(), state.clone());
+    match tok.clone() {
+        Some(t) => match t.shape.clone() {
+            TokenShape::ShLitStr => {
+                let adv = advance(tokens.clone(), state.clone());
+                Rc::new(StringLitResult {
+                    value: t.text.clone(),
+                    state: adv.state.clone(),
+                    err: None,
+                })
+            }
+            _ => Rc::new(StringLitResult {
+                value: "".to_string(),
+                state: state.clone(),
+                err: Some(parse_error(
+                    "expected string literal".to_string(),
+                    current_span(tokens.clone(), state.clone()),
+                )),
+            }),
+        },
+        None => Rc::new(StringLitResult {
+            value: "".to_string(),
+            state: state.clone(),
+            err: Some(parse_error(
+                "expected string literal".to_string(),
+                current_span(tokens.clone(), state.clone()),
+            )),
+        }),
+    }
+}
+
+pub fn parse_int_literal_value(
+    tokens: Rc<Vec<Rc<Token>>>,
+    state: Rc<ParserState>,
+) -> Rc<IntLitResult> {
+    let tok = peek(tokens.clone(), state.clone());
+    match tok.clone() {
+        Some(t) => match t.shape.clone() {
+            TokenShape::ShLitInt => {
+                let n_opt = v2_rt::parse_int(t.text.clone());
+                match n_opt.clone() {
+                    Some(n) => {
+                        let adv = advance(tokens.clone(), state.clone());
+                        Rc::new(IntLitResult {
+                            value: n.clone(),
+                            state: adv.state.clone(),
+                            err: None,
+                        })
+                    }
+                    None => Rc::new(IntLitResult {
+                        value: 0,
+                        state: state.clone(),
+                        err: Some(parse_error(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    "internal: ShLitInt token text not parseable as int: '"
+                                        .to_string(),
+                                    t.text.clone(),
+                                ),
+                                "'".to_string(),
+                            ),
+                            current_span(tokens.clone(), state.clone()),
+                        )),
+                    }),
+                }
+            }
+            _ => Rc::new(IntLitResult {
+                value: 0,
+                state: state.clone(),
+                err: Some(parse_error(
+                    "expected integer literal".to_string(),
+                    current_span(tokens.clone(), state.clone()),
+                )),
+            }),
+        },
+        None => Rc::new(IntLitResult {
+            value: 0,
+            state: state.clone(),
+            err: Some(parse_error(
+                "expected integer literal".to_string(),
+                current_span(tokens.clone(), state.clone()),
+            )),
+        }),
     }
 }
 
@@ -2029,6 +2162,108 @@ pub fn eat(
     }
 }
 
+pub fn parser_result_base_var(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprFieldAccess { .. } => match expr.children.first().cloned() {
+            Some(base) => match (*base.expr_data.clone()).clone() {
+                ExprData::ExprVar { .. } => Some(expr_var_name(base.clone())),
+                _ => None,
+            },
+            None => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn parser_helper_state_arg_expr(call_node: Rc<Node>) -> Option<Rc<Node>> {
+    call_node.children.iter().cloned().enumerate().fold(None, |acc, pair| {
+        if acc.is_some() {
+            acc
+        } else {
+            let idx = pair.0 as i64;
+            let arg_node = pair.1;
+            let matches_state = match arg_name(arg_node.clone()) {
+                Some(name) => name == "state".to_string(),
+                None => idx == 1,
+            };
+            if matches_state {
+                Some(arg_value(arg_node.clone()))
+            } else {
+                None
+            }
+        }
+    })
+}
+
+pub fn parser_progress_flag_var(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprFieldAccess { .. } => {
+            let field = field_access_field(expr.clone());
+            if field == "consumed".to_string() || field == "changed".to_string() {
+                parser_result_base_var(expr.clone())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn parser_passthrough_state_expr(expr: Rc<Node>) -> Option<Rc<Node>> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            match parser_helper_identity(expr_call_func(expr.clone())) {
+                Some(ParserHelperIdentity::ParserHelperSkipNewlines) =>
+                    parser_helper_state_arg_expr(expr.clone()),
+                Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines) =>
+                    parser_helper_state_arg_expr(expr.clone()),
+                Some(ParserHelperIdentity::ParserHelperWith) =>
+                    match expr.children.first().cloned() {
+                        Some(base_arg) => Some(arg_value(base_arg.clone())),
+                        None => None,
+                    },
+                None => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
+    if callee == "skip_newlines".to_string() {
+        Some(ParserHelperIdentity::ParserHelperSkipNewlines)
+    } else if callee == "skip_continuation_newlines".to_string() {
+        Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines)
+    } else if callee == "with".to_string() {
+        Some(ParserHelperIdentity::ParserHelperWith)
+    } else {
+        None
+    }
+}
+
+pub fn parser_result_witness(expr: Rc<Node>) -> ParserResultWitness {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => match expr_call_func(expr.clone()).as_str() {
+            "advance" => ParserResultWitness::ParserWitnessAdvance,
+            "expect" => ParserResultWitness::ParserWitnessExpect,
+            "eat" => ParserResultWitness::ParserWitnessEat,
+            callee => match parser_helper_identity(callee.to_string()) {
+                Some(helper) => ParserResultWitness::ParserWitnessCall {
+                    callee: ParserCallIdentity::ParserCallHelper {
+                        helper: helper.clone(),
+                    },
+                },
+                None => ParserResultWitness::ParserWitnessCall {
+                    callee: ParserCallIdentity::ParserCallFunction {
+                        name: callee.to_string(),
+                    },
+                },
+            },
+        },
+        _ => ParserResultWitness::ParserWitnessOpaque,
+    }
+}
+
 pub fn is_ident(tokens: Rc<Vec<Rc<Token>>>, state: Rc<ParserState>) -> bool {
     peek_is_ident(tokens.clone(), state.clone())
 }
@@ -3176,7 +3411,7 @@ pub fn parse_single_predicate(
         if e.consumed.clone() {
             match pred_name.clone().as_str() {
                 "pattern" => {
-                    let r2 = parse_expr(tokens.clone(), e.state.clone());
+                    let r2 = parse_string_literal_value(tokens.clone(), e.state.clone());
                     if has_err(r2.err.clone()) {
                         return Rc::new(PredResult {
                             predicate: dummy_pred.clone(),
@@ -3196,39 +3431,24 @@ pub fn parse_single_predicate(
                             err: r3.err.clone(),
                         });
                     }
-                    match (*r2.expr.clone().expr_data.clone()).clone() {
-                        ExprData::ExprLiteral { ref value, .. } => {
-                            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                                unreachable!()
-                            };
-                            Rc::new(PredResult {
-                                predicate: make_field_init_node(
-                                    "Pattern".to_string(),
-                                    make_expr_node(
-                                        Rc::new(ExprData::ExprLiteral {
-                                            value: Rc::new(LiteralValue::LitStr {
-                                                value: s.clone(),
-                                            }),
-                                        }),
-                                        vec![],
-                                        None,
-                                        zero_span.clone(),
-                                    ),
-                                    no_span(),
-                                ),
-                                state: r3.state.clone(),
-                                err: None,
-                            })
-                        }
-                        _ => Rc::new(PredResult {
-                            predicate: dummy_pred.clone(),
-                            state: r3.state.clone(),
-                            err: Some(parse_error(
-                                "pattern() requires a string literal argument".to_string(),
-                                current_span(tokens.clone(), r3.state.clone()),
-                            )),
-                        }),
-                    }
+                    Rc::new(PredResult {
+                        predicate: make_field_init_node(
+                            "Pattern".to_string(),
+                            make_expr_node(
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitStr {
+                                        value: r2.value.clone(),
+                                    }),
+                                }),
+                                vec![],
+                                None,
+                                zero_span.clone(),
+                            ),
+                            no_span(),
+                        ),
+                        state: r3.state.clone(),
+                        err: None,
+                    })
                 }
                 "format" => {
                     let r2 = expect_ident(tokens.clone(), e.state.clone());
@@ -3271,7 +3491,7 @@ pub fn parse_single_predicate(
                     })
                 }
                 "brand" => {
-                    let r2 = parse_expr(tokens.clone(), e.state.clone());
+                    let r2 = parse_string_literal_value(tokens.clone(), e.state.clone());
                     if has_err(r2.err.clone()) {
                         return Rc::new(PredResult {
                             predicate: dummy_pred.clone(),
@@ -3291,39 +3511,24 @@ pub fn parse_single_predicate(
                             err: r3.err.clone(),
                         });
                     }
-                    match (*r2.expr.clone().expr_data.clone()).clone() {
-                        ExprData::ExprLiteral { ref value, .. } => {
-                            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                                unreachable!()
-                            };
-                            Rc::new(PredResult {
-                                predicate: make_field_init_node(
-                                    "Brand".to_string(),
-                                    make_expr_node(
-                                        Rc::new(ExprData::ExprLiteral {
-                                            value: Rc::new(LiteralValue::LitStr {
-                                                value: s.clone(),
-                                            }),
-                                        }),
-                                        vec![],
-                                        None,
-                                        zero_span.clone(),
-                                    ),
-                                    no_span(),
-                                ),
-                                state: r3.state.clone(),
-                                err: None,
-                            })
-                        }
-                        _ => Rc::new(PredResult {
-                            predicate: dummy_pred.clone(),
-                            state: r3.state.clone(),
-                            err: Some(parse_error(
-                                "brand() requires a string literal argument".to_string(),
-                                current_span(tokens.clone(), r3.state.clone()),
-                            )),
-                        }),
-                    }
+                    Rc::new(PredResult {
+                        predicate: make_field_init_node(
+                            "Brand".to_string(),
+                            make_expr_node(
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitStr {
+                                        value: r2.value.clone(),
+                                    }),
+                                }),
+                                vec![],
+                                None,
+                                zero_span.clone(),
+                            ),
+                            no_span(),
+                        ),
+                        state: r3.state.clone(),
+                        err: None,
+                    })
                 }
                 "content" => {
                     let r2 = expect_ident(tokens.clone(), e.state.clone());
@@ -3632,7 +3837,7 @@ pub fn parse_single_named_int(
                 err: r2.err.clone(),
             });
         }
-        let r3 = parse_expr(tokens.clone(), r2.state.clone());
+        let r3 = parse_int_literal_value(tokens.clone(), r2.state.clone());
         if has_err(r3.err.clone()) {
             return Rc::new(NamedIntResult {
                 arg_name: name.clone(),
@@ -3641,31 +3846,12 @@ pub fn parse_single_named_int(
                 err: r3.err.clone(),
             });
         }
-        match (*r3.expr.clone().expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. } => {
-                let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Rc::new(NamedIntResult {
-                    arg_name: name.clone(),
-                    arg_value: n.clone(),
-                    state: r3.state.clone(),
-                    err: None,
-                })
-            }
-            _ => Rc::new(NamedIntResult {
-                arg_name: name.clone(),
-                arg_value: 0,
-                state: r3.state.clone(),
-                err: Some(parse_error(
-                    v2_rt::concat(
-                        v2_rt::concat("range() argument `".to_string(), name.clone()),
-                        "` requires an integer literal".to_string(),
-                    ),
-                    current_span(tokens.clone(), r3.state.clone()),
-                )),
-            }),
-        }
+        Rc::new(NamedIntResult {
+            arg_name: name.clone(),
+            arg_value: r3.value.clone(),
+            state: r3.state.clone(),
+            err: None,
+        })
     }
 }
 

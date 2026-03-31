@@ -70,7 +70,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_string_literal, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_string_literal, escape_python_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, typed_named_arg_matches, order_typed_call_args, unique_strings, has_nested_records_node, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc};
 
 pub fn emit_py_block_stmts(mut remaining: Vec<Rc<Node>>, mut text: Vec<String>, mut scope: Rc<InferScope>, mut registry: HashMap<String, Rc<ItemInfo>>, mut depth: i64) -> Rc<BlockEmitState> {
@@ -550,7 +550,19 @@ pub fn emit_py_pattern(source_index: Option<Rc<NewlineIndex>>, pattern: Rc<Match
     match (*pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Python),
     MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), RenderTarget::Python),
-    MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } => emit_py_variant_pattern(source_index.clone(), n.clone(), fbs.clone()),
+    MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } =>
+        if ((fbs.clone().len() as i64) == 0) {
+            v2_rt::concat(n.clone(), "()".to_string())
+        } else {
+            {
+                let binding_strs = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.push({
+                    let pat_str = emit_py_pattern(source_index.clone(), field_binding_pattern(fb.clone()));
+                    v2_rt::concat(v2_rt::concat(emit_ident(authored_name_at(source_index.clone(), fb.clone()), RenderTarget::Python), "=".to_string()), pat_str.clone())
+                }); } __result };
+                let bindings_str = binding_strs.clone().join(&", ".to_string());
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(n.clone(), "(".to_string()), bindings_str.clone()), ")".to_string())
+            }
+        },
     MatchPattern::Wildcard => "_".to_string(),
 }
 }
@@ -1044,15 +1056,23 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_py_typed_string_interp(parts: Vec<Rc<StringPart>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
     {
-        let segments = { let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(py_typed_interp_segment(p.clone(), registry.clone(), scope.clone(), depth.clone())); } __result };
+        let has_interpolations = parts.clone().iter().cloned().any(|p| match (*p.clone()).clone() {
+            StringPart::Interpolation { .. } => true,
+            _ => false,
+        });
+        let segments = { let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(py_typed_interp_segment(p.clone(), registry.clone(), scope.clone(), depth.clone(), has_interpolations.clone())); } __result };
 let fstr = segments.clone().join(&"".to_string());
 v2_rt::concat(v2_rt::concat("f\"".to_string(), fstr.clone()), "\"".to_string())
 }
 }
 
-pub fn py_typed_interp_segment(part: Rc<StringPart>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64) -> String {
+pub fn py_typed_interp_segment(part: Rc<StringPart>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, has_interpolations: bool) -> String {
     match (*part.clone()).clone() {
-    StringPart::Text { value: v, .. } => v.clone().split(&"{".to_string()).map(|s| s.to_string()).collect::<Vec<_>>().join(&"{{".to_string()).split(&"}".to_string()).map(|s| s.to_string()).collect::<Vec<_>>().join(&"}}".to_string()),
+    StringPart::Text { value: v, .. } => if has_interpolations.clone() {
+        escape_python_interp_text(v.clone())
+} else {
+        escape_string_literal_body(v.clone())
+},
     StringPart::Interpolation { expr: e, .. } => v2_rt::concat(v2_rt::concat("{".to_string(), emit_py_typed_expr(e.clone(), registry.clone(), scope.clone(), depth.clone())), "}".to_string()),
 }
 }

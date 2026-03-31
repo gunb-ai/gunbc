@@ -92,7 +92,7 @@ import v2.compiler.emit {
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
-  emit_string_literal,
+  emit_string_literal, escape_go_interp_text, escape_string_literal_body,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   lookup_item,
@@ -975,7 +975,8 @@ fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
 
 
 fn emit_go_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
-  let fmt_parts = parts |> map(p => go_typed_interp_segment(part: p, registry: registry, scope: scope))
+  let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
+  let fmt_parts = parts |> map(p => go_typed_interp_segment(part: p, registry: registry, scope: scope, has_interpolations: has_interpolations))
   let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
   let args = fmt_parts
     |> map(p => p.arg_expr)
@@ -988,9 +989,11 @@ fn emit_go_typed_string_interp(parts: List<StringPart>, registry: Map<String, It
   }
 }
 
-fn go_typed_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope) -> InterpPart {
+fn go_typed_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope, has_interpolations: Bool) -> InterpPart {
   match part {
-    Text { value: v } => InterpPart { format_segment: v, arg_expr: "" }
+    Text { value: v } =>
+      let escaped = if has_interpolations { escape_go_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+      InterpPart { format_segment: escaped, arg_expr: "" }
     Interpolation { expr: e } =>
       InterpPart { format_segment: "%v", arg_expr: emit_go_typed_expr(texpr: e, registry: registry, scope: scope, depth: 0, fuel: 1024) }
   }

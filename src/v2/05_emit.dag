@@ -251,15 +251,13 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
 }
 
 fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, source_index: NewlineIndex?) -> String {
+  let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
   match target {
     Rust =>
       let fmt_parts = parts |> map(p => match p {
         Text { value: v } =>
-          let escaped = v
-            |> split(delimiter: "{") |> join(separator: "{{")
-          let escaped2 = escaped
-            |> split(delimiter: "}") |> join(separator: "}}")
-          InterpPart { format_segment: escaped2, arg_expr: "" }
+          let escaped = if has_interpolations { escape_rust_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+          InterpPart { format_segment: escaped, arg_expr: "" }
         Interpolation { expr: e } =>
           InterpPart { format_segment: "{}", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
       })
@@ -275,7 +273,9 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
       }
     Go =>
       let fmt_parts = parts |> map(p => match p {
-        Text { value: v } => InterpPart { format_segment: v, arg_expr: "" }
+        Text { value: v } =>
+          let escaped = if has_interpolations { escape_go_interp_text(s: v) } else { escape_string_literal_body(s: v) }
+          InterpPart { format_segment: escaped, arg_expr: "" }
         Interpolation { expr: e } =>
           InterpPart { format_segment: "%v", arg_expr: emit_simple_expr(expr: e, target: target, source_index: source_index) }
       })
@@ -292,8 +292,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
     Python =>
       let segments = parts |> map(p => match p {
         Text { value: v } =>
-          v |> split(delimiter: "{") |> join(separator: "{{")
-            |> split(delimiter: "}") |> join(separator: "}}")
+          if has_interpolations { escape_python_interp_text(s: v) } else { escape_string_literal_body(s: v) }
         Interpolation { expr: e } =>
           concat("{", emit_simple_expr(expr: e, target: target, source_index: source_index), "}")
       })
@@ -308,7 +307,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), source_index: none },
+    type_env: TypeEnv { bindings: empty_map(), recursive_types: [], recursive_type_set: empty_map(), recursive_variant_fields: empty_map(), source_index: none },
     func_env: ResolvedFuncEnv { signatures: empty_map() },
     locals: empty_map(),
     module_name: "",
@@ -718,13 +717,41 @@ fn reserved_suffix(target: RenderTarget) -> String {
 // Shared leaf functions -- parameterized by language data
 // =========================================================================
 
+fn escape_string_literal_body(s: String) -> String {
+  let escaped_backslash = s
+    |> split(delimiter: "\\") |> join(separator: "\\\\")
+  let escaped_quote = escaped_backslash
+    |> split(delimiter: "\"") |> join(separator: "\\\"")
+  let escaped_newline = escaped_quote
+    |> split(delimiter: "\n") |> join(separator: "\\n")
+  let escaped_return = escaped_newline
+    |> split(delimiter: "\r") |> join(separator: "\\r")
+  escaped_return
+    |> split(delimiter: "\t") |> join(separator: "\\t")
+}
+
+fn escape_rust_interp_text(s: String) -> String {
+  let escaped = escape_string_literal_body(s: s)
+    |> split(delimiter: "{") |> join(separator: "{{")
+  escaped
+    |> split(delimiter: "}") |> join(separator: "}}")
+}
+
+fn escape_go_interp_text(s: String) -> String {
+  escape_string_literal_body(s: s)
+    |> split(delimiter: "%") |> join(separator: "%%")
+}
+
+fn escape_python_interp_text(s: String) -> String {
+  let escaped = escape_string_literal_body(s: s)
+    |> split(delimiter: "{") |> join(separator: "{{")
+  escaped
+    |> split(delimiter: "}") |> join(separator: "}}")
+}
+
 // Emit a string literal with language-specific suffix (e.g. ".to_string()" for Rust).
 fn emit_string_literal(s: String, suffix: String) -> String {
-  let escaped = s
-    |> split(delimiter: "\\") |> join(separator: "\\\\")
-  let escaped2 = escaped
-    |> split(delimiter: "\"") |> join(separator: "\\\"")
-  concat("\"", escaped2, "\"", suffix)
+  concat("\"", escape_string_literal_body(s: s), "\"", suffix)
 }
 
 // Check if a binary op is null coalesce (shared across all backends).

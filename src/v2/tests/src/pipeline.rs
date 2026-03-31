@@ -413,6 +413,33 @@ fn go_emit_mock_test_file_imports_fmt_for_string_interp() {
         "Go test file should render fmt.Sprintf for interpolated mock strings"
     );
 }
+
+#[test]
+fn go_emit_mock_interp_escapes_format_text() {
+    let source = r#"module mock_interp_escape
+
+type Pong = String
+
+service demo.Api {
+  operation Ping {
+    response {
+      200 => Pong
+    }
+    mock_response {
+      200 => "quote \" slash \\ newline \n brace \{ok\} percent % {-1}"
+    }
+  }
+}
+"#;
+    let result = compile_dag_named("mock_interp_escape.dag", source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_interp_escape_test.go");
+    assert!(
+        content.contains(r#"fmt.Sprintf("quote \" slash \\ newline \n brace {ok} percent %% %v""#),
+        "Go mock interpolation should escape format text through the shared renderer: {content}"
+    );
+}
+
 #[test]
 fn dag_pipeline_smoke() {
     let source = "module dag_smoke\n\ntype Point { x: Int  y: Int }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n";
@@ -1932,6 +1959,69 @@ fn python_emit_snake_case_functions() {
     }
 }
 
+#[test]
+fn rust_typed_string_interp_escapes_format_text() {
+    let source = r#"module interp_emit
+
+fn render(name: String) -> String {
+  "quote \" slash \\ newline \n brace \{ok\} percent % {name}"
+}
+"#;
+    let result = compile_dag_named("interp_emit.dag", source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/interp_emit.rs");
+    assert!(
+        content.contains(r#"format!("quote \" slash \\ newline \n brace {{ok}} percent % {}""#),
+        "Rust typed interpolation should escape literal format text: {content}"
+    );
+}
+
+#[test]
+fn python_typed_string_interp_escapes_fstring_text() {
+    let source = r#"module interp_emit
+
+fn render(name: String) -> String {
+  "quote \" slash \\ newline \n brace \{ok\} percent % {name}"
+}
+"#;
+    let result = compile_dag_named("interp_emit.dag", source, RenderTarget::Python);
+    assert_no_diagnostics(&result);
+    let content = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"))
+        .expect("Python target should emit a .py file")
+        .content
+        .clone();
+    assert!(
+        content.contains(r#"f"quote \" slash \\ newline \n brace {{ok}} percent % {name}""#),
+        "Python typed interpolation should escape literal f-string text: {content}"
+    );
+}
+
+#[test]
+fn go_typed_string_interp_escapes_format_text() {
+    let source = r#"module interp_emit
+
+fn render(name: String) -> String {
+  "quote \" slash \\ newline \n brace \{ok\} percent % {name}"
+}
+"#;
+    let result = compile_dag_named("interp_emit.dag", source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".go") && !f.path.contains("go.mod") && !f.path.contains("_test.go"))
+        .expect("Go target should emit a .go file")
+        .content
+        .clone();
+    assert!(
+        content.contains(r#"fmt.Sprintf("quote \" slash \\ newline \n brace {ok} percent %% %v""#),
+        "Go typed interpolation should escape literal format text: {content}"
+    );
+}
+
 // ── Self-compile complexity ratchet ─────────────────────────────────────
 //
 // Compiles all v2 .dag sources and asserts the complexity violation count
@@ -2171,6 +2261,17 @@ fn descending_recursion_is_allowed() {
 }
 
 #[test]
+fn shadowed_descending_recursion_is_allowed() {
+    let source = "module shadow_countdown\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else {\n    let n = n - 1\n    countdown(n: n)\n  }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    assert!(
+        !result.files.is_empty(),
+        "shadowed descending recursion should compile successfully"
+    );
+}
+
+#[test]
 fn ascending_recursion_is_rejected() {
     let source = "module spin_up\n\nfn spin(n: Int) -> Int {\n  spin(n: n + 1)\n}\n";
     let result = compile_dag(source);
@@ -2197,7 +2298,19 @@ fn multiplicative_recursion_is_rejected() {
 }
 
 #[test]
-#[ignore] // mutual recursion detection removed; CostUnknown-only violation model
+fn variable_rethread_recursion_is_rejected() {
+    let source = "module bounce_test\n\nfn bounce(n: Int, m: Int) -> Int {\n  if n <= 0 { 0 }\n  else { bounce(n: m, m: m) }\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        "fn bounce(n: m) must be rejected without a decreasing witness, got: {:?}",
+        msgs
+    );
+    assert!(result.files.is_empty(), "variable rethread recursion should block code emission");
+}
+
+#[test]
 fn mutual_recursion_is_rejected() {
     let source = "module mutual_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\n";
     let result = compile_dag(source);
@@ -2206,6 +2319,33 @@ fn mutual_recursion_is_rejected() {
         "mutual recursion (ping<->pong) must produce diagnostics"
     );
     assert!(result.files.is_empty(), "mutual recursion should block code emission");
+}
+
+#[test]
+fn mutual_arithmetic_recursion_is_allowed() {
+    let source = "module mutual_ok\n\nfn even(n: Int) -> Bool {\n  if n <= 0 { true }\n  else { odd(n: n - 1) }\n}\n\nfn odd(n: Int) -> Bool {\n  if n <= 0 { false }\n  else { even(n: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    assert!(
+        !result.files.is_empty(),
+        "bounded mutual recursion with arithmetic descent should compile successfully"
+    );
+}
+
+#[test]
+fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
+    let source = "module mutual_wrong_measure\n\nfn ping(n: Int, m: Int) -> Bool {\n  if n <= 0 { true }\n  else { pong(n: n, m: n - 1) }\n}\n\nfn pong(n: Int, m: Int) -> Bool {\n  if n <= 0 { false }\n  else { ping(n: n, m: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        "mutual recursion that only decreases an unmeasured callee param must be rejected, got: {:?}",
+        msgs
+    );
+    assert!(
+        result.files.is_empty(),
+        "mutual recursion on the wrong callee measure should block code emission"
+    );
 }
 
 #[test]
@@ -2225,6 +2365,16 @@ fn function_calling_into_cycle_is_not_rejected() {
         }),
         "helper() calls into cycle but is not part of it — should not be rejected. Diagnostics: {:?}",
         diag_names
+    );
+    assert!(
+        !result.complexity.violations.iter().any(|v| v.func_name == "helper"),
+        "helper() should not inherit the cycle's complexity violation: {:?}",
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -2392,6 +2542,25 @@ fn recursive_type_compiles_without_overflow() {
     let source = "module rec\n\ntype Tree<T> = Leaf { value: T } | Branch { left: Tree<T>  right: Tree<T> }\n\nfn depth(t: Tree<Int>) -> Int {\n  match t {\n    Leaf { value: _ } => 1\n    Branch { left: l, right: r } => 1 + depth(t: l)\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
+}
+
+#[test]
+fn imported_recursive_enum_catamorphism_compiles() {
+    let result = compile_multi(&[
+        (
+            "tree.dag",
+            "module tree\n\ntype Tree = Leaf { value: Int } | Pair { left: Tree  right: Tree }\n",
+        ),
+        (
+            "walker.dag",
+            "module walker\nimport tree { Tree }\n\nfn total(t: Tree) -> Int {\n  match t {\n    Leaf { value: v } => v\n    Pair { left: l, right: r } => total(t: l) + total(t: r)\n  }\n}\n",
+        ),
+    ]);
+    assert_no_diagnostics(&result);
+    assert!(
+        !result.files.is_empty(),
+        "imported recursive enum catamorphism should still emit code"
+    );
 }
 
 // ── Multi-target emission ────────────────────────────────────────────────
