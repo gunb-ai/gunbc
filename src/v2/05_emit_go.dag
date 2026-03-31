@@ -800,7 +800,7 @@ fn emit_go_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>,
   concat(base_str, "[", index_str, "]")
 }
 
-fn emit_go_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let start_str = emit_go_typed_expr(texpr: start, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope, depth: 0, fuel: 1024)
