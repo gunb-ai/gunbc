@@ -806,45 +806,6 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
-// P4.7e: Infer a lambda arg whose formal parameter type is Callable.
-// Threads the Callable's param types to the lambda's params.
-fn infer_lambda_with_callable_type(lambda_expr: Node, callable_type: Node, arg_name: String?, scope: InferScope) -> ArgInferResult {
-  match lambda_expr.expr_data {
-    ExprLambda { semantics: _ } =>
-      let span = lambda_expr.span
-      let lam_body = lambda_body(texpr: lambda_expr)
-      let lam_params = lambda_param_names(texpr: lambda_expr)
-      let callable_params = callable_type.params
-      let param_types = lam_params |> enumerate |> map(pair =>
-        match callable_params |> skip(pair.first) |> first {
-          Some { value: cp } => param_node_type_expr(n: cp)
-          None => type_variable_node(id: "callable_param")
-        }
-      )
-      let typed_scope = fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
-        let pt = match callable_params |> skip(pair.first) |> first {
-          Some { value: cp } => param_node_type_expr(n: cp)
-          None => type_variable_node(id: "callable_param")
-        }
-        extend_scope(scope: acc, name: pair.second, resolved: pt)
-      )
-      let body_result = infer_expr(texpr: lam_body, scope: typed_scope, expected: none)
-      let body_typed = body_result.typed
-      let lam_param_nodes = lambda_expr.children |> skip(1)
-      let typed_lam = make_expr_node(
-        expr_data: ExprLambda {
-          semantics: Some { value: lambda_semantics_from_param_types(param_types: param_types) }
-        },
-        children: concat([body_typed], lam_param_nodes),
-        inferred: Some { value: Resolved { node: rt_type(n: body_typed) } },
-        span: span
-      )
-      ArgInferResult { typed_arg: make_arg_node(name: arg_name, value: typed_lam, span: no_span()), diagnostics: body_result.diagnostics }
-    _ =>
-      let ar = infer_expr(texpr: lambda_expr, scope: scope, expected: none)
-      ArgInferResult { typed_arg: make_arg_node(name: arg_name, value: ar.typed, span: no_span()), diagnostics: ar.diagnostics }
-  }
-}
 
 fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<Node>, receiver_type: Node, fallback: Node) -> Node {
   let receiver_type_name = receiver_type.name
@@ -1111,13 +1072,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Some { value: p } => param_node_type_expr(n: p)
             None => type_variable_node(id: "callable_param")
           }
-          let is_callable_formal = formal_param_type.children |> count > 0
-          if is_lambda_expr(e: arg_value(n: a)) && is_callable_formal {
-            infer_lambda_with_callable_type(lambda_expr: arg_value(n: a), callable_type: formal_param_type, arg_name: arg_name(n: a), scope: scope)
-          } else {
-            let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: none)
-            ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
-          }
+          let is_callable_formal = formal_param_type.params |> count > 0
+          let expected = if is_callable_formal { Some { value: formal_param_type } } else { none }
+          let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: expected)
+          ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
         )
       }
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
@@ -1544,16 +1502,27 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       // Single param or last param gets the element type; others get TypeVariable.
       // This unifies infer_lambda_with_element_type into the main path.
       let lam_scope = if expected != none {
-        let elem = expected.value
-        if lam_params |> count == 1 {
+        let exp = expected.value
+        if exp.params |> count > 0 {
+          // Callable expected: thread each callable param type to corresponding lambda param.
+          // Dissolves infer_lambda_with_callable_type bypass.
+          fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
+            match exp.params |> skip(pair.first) |> first {
+              Some { value: cp } => extend_scope(scope: acc, name: pair.second, resolved: param_node_type_expr(n: cp))
+              None => extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"))
+            }
+          )
+        } else if lam_params |> count == 1 {
+          // Single element type expected: apply to sole param.
           match lam_params |> first {
-            Some { value: p } => extend_scope(scope: scope, name: p, resolved: elem)
+            Some { value: p } => extend_scope(scope: scope, name: p, resolved: exp)
             None => scope
           }
         } else {
+          // Element type expected with multiple params: apply to last param.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             if pair.first == (lam_params |> count) - 1 {
-              extend_scope(scope: acc, name: pair.second, resolved: elem)
+              extend_scope(scope: acc, name: pair.second, resolved: exp)
             } else {
               extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "lambda_param"))
             }
