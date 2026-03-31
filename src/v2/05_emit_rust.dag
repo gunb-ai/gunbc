@@ -2959,7 +2959,21 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
           } else { val_str }
-          concat("    ", emit_ident(name: f_name, target: Rust), ": ", field_val, ",")
+          // Wrap field value in Rc::new() if the field's type is Rc-wrapped
+          // and the value isn't already Rc-wrapped.
+          let field_type_name = match lookup_emit_type_summary(emit_info: emit_info, type_name: tn) {
+            Some { value: summary } => match map_get(summary.field_type_map, f_name) {
+              Some { value: ft } => ft
+              None => ""
+            }
+            None => ""
+          }
+          let field_needs_rc = field_type_name != "" && map_contains_key(rc_types, field_type_name)
+            && !string_contains(field_val, "Rc::new(")
+            && !string_contains(field_val, "Rc::new(")
+            && field_val != "None"
+          let final_val = if field_needs_rc { concat("Rc::new(", field_val, ")") } else { field_val }
+          concat("    ", emit_ident(name: f_name, target: Rust), ": ", final_val, ",")
         )
         let all_field_strs = field_strs
         let fields_str = all_field_strs |> join(separator: "\n")
