@@ -1166,6 +1166,20 @@ fn all_arms_are_string_lit(arms: List<Node>) -> Bool {
   ) && arms |> count > 0
 }
 
+fn has_string_lit_with_bind(arms: List<Node>) -> Bool {
+  // Mix of string literal patterns AND Bind catch-all. Can't use .as_str()
+  // (makes bindings &str). Instead, emit string lits as String::from("...").
+  let has_lit = arms |> any(arm => match arm_pattern(n: arm) {
+    LitPattern { value: v } => match v { LitStr { value: _ } => true  _ => false }
+    _ => false
+  })
+  let has_bind = arms |> any(arm => match arm_pattern(n: arm) {
+    Bind { name: _ } => true
+    _ => false
+  })
+  has_lit && has_bind
+}
+
 fn emit_pattern(pattern: MatchPattern, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
@@ -2657,12 +2671,34 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   // When all arms are string literal patterns, convert scrutinee to &str
   // so Rust can match &str patterns against String values.
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
+  let needs_string_from = has_string_lit_with_bind(arms: arms)
   if rc_match.needs_option_deref {
     concat("match ", scrut_str, ".as_deref().cloned() {\n", arms_str, "\n}")
   } else if rc_match.needs_deref {
     concat("match (*", scrut_str, ").clone() {\n", arms_str, "\n}")
   } else if needs_as_str {
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
+  } else if needs_string_from {
+    // Mix of string lits + Bind: emit lits as String::from(), no .as_str().
+    // Re-emit arms with string-from rendering.
+    let sf_arm_strs = arms |> map(arm =>
+      let pat = arm_pattern(n: arm)
+      let pat_str = match pat {
+        LitPattern { value: v } => match v {
+          LitStr { value: s } => concat("ref __s if __s == \"", s, "\"")
+          _ => rust_literal_for_pattern(value: v)
+        }
+        _ => emit_pattern(pattern: pat, rc_types: rc_types, scrut_type: scrut_type, source_index: scope.type_env.source_index, emit_info: emit_info)
+      }
+      let body_str = emit_typed_expr(texpr: arm_body(n: arm), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
+      let guard_str = match arm_guard(n: arm) {
+        Some { value: g } => concat(" if ", emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024))
+        None => ""
+      }
+      concat("    ", pat_str, guard_str, " => ", body_str, ",")
+    )
+    let sf_arms_str = sf_arm_strs |> join(separator: "\n")
+    concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
     concat("match ", scrut_str, " {\n", arms_str, "\n}")
   }

@@ -1053,6 +1053,17 @@ pub fn all_arms_are_string_lit(arms: Vec<Rc<Node>>) -> bool {
     })
 }
 
+pub fn has_string_lit_with_bind(arms: &[Rc<Node>]) -> bool {
+    let has_lit = arms.iter().any(|arm| {
+        matches!((*arm_pattern(arm.clone())).clone(),
+            MatchPattern::LitPattern { value: v, .. } if matches!((*v).clone(), LiteralValue::LitStr { .. }))
+    });
+    let has_bind = arms.iter().any(|arm| {
+        matches!((*arm_pattern(arm.clone())).clone(), MatchPattern::Bind { .. })
+    });
+    has_lit && has_bind
+}
+
 pub fn emit_pattern(source_index: Option<Rc<NewlineIndex>>, pattern: Rc<MatchPattern>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>, scrut_type: String) -> String {
     match (*pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
@@ -2689,6 +2700,26 @@ if rc_match.needs_option_deref.clone() {
                     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone()), ".as_str() {
 ".to_string()), arms_str.clone()), "
 }".to_string())
+} else if has_string_lit_with_bind(&arms) {
+                    // Mix of string lits + Bind: emit lits as ref guard patterns.
+                    let sf_arm_strs: Vec<String> = arms.iter().map(|arm| {
+                        let pat = arm_pattern(arm.clone());
+                        let pat_str = match (*pat.clone()).clone() {
+                            MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
+                                LiteralValue::LitStr { value: s, .. } => format!("ref __s if __s == \"{}\"", s),
+                                _ => rust_literal_for_pattern(v.clone()),
+                            },
+                            _ => emit_pattern(scope.type_env.source_index.clone(), pat.clone(), emit_info.clone(), rc_types.clone(), scrut_type.clone()),
+                        };
+                        let body_str = emit_typed_expr(arm_body(arm.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+                        let guard_str = match arm_guard(arm.clone()) {
+                            Some(g) => format!(" if {}", emit_typed_expr(g.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())),
+                            None => "".to_string(),
+                        };
+                        format!("    {}{} => {},", pat_str, guard_str, body_str)
+                    }).collect();
+                    let sf_arms_str = sf_arm_strs.join("\n");
+                    format!("match {} {{\n{}\n}}", scrut_str, sf_arms_str)
 } else {
                     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("match ".to_string(), scrut_str.clone()), " {
 ".to_string()), arms_str.clone()), "
