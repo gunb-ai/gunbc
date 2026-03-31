@@ -87,6 +87,9 @@ lazy_static::lazy_static! {
         __m.insert("non_empty_set".to_string(), "Rc<NonEmptyBTreeSet<{0}>>".to_string());
         __m.insert("optional".to_string(), "Option<{0}>".to_string());
         __m.insert("map".to_string(), "Rc<HashMap<{0}, {1}>>".to_string());
+        __m.insert("free_monoid".to_string(), "Rc<Vec<{0}>>".to_string());
+        __m.insert("partial_function".to_string(), "Rc<HashMap<{0}, {1}>>".to_string());
+        __m.insert("boolean_algebra".to_string(), "bool".to_string());
         __m
     };
 }
