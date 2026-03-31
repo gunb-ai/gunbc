@@ -57,6 +57,7 @@ pub struct TypeEnv {
     pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub recursive_types: Rc<Vec<String>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
+    pub recursive_variant_fields: Rc<HashMap<String, bool>>,
     pub source_index: Option<Rc<NewlineIndex>>,
 }
 
@@ -95,6 +96,20 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     is_recursive_type(env, node.name.clone())
 }
 
+pub fn recursive_variant_field_key(type_name: String, variant_name: String, field_name: String) -> String {
+    v2_rt::concat(type_name.clone(),
+        v2_rt::concat("::".to_string(),
+            v2_rt::concat(variant_name.clone(),
+                v2_rt::concat("::".to_string(), field_name.clone()))))
+}
+
+pub fn is_recursive_variant_field(env: Rc<TypeEnv>, type_name: String, variant_name: String, field_name: String) -> bool {
+    match v2_rt::map_get(&env.recursive_variant_fields, recursive_variant_field_key(type_name.clone(), variant_name.clone(), field_name.clone())) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
 pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {
     {
         let merged_bindings = envs.iter().cloned().fold(
@@ -113,6 +128,12 @@ pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {
                 v2_rt::map_merge(acc.clone(), (*env.recursive_type_set).clone())
             },
         );
+        let merged_recursive_variant_fields = envs.iter().cloned().fold(
+            <HashMap<String, bool>>::new(),
+            |acc: _, env: Rc<TypeEnv>| {
+                v2_rt::map_merge(acc.clone(), (*env.recursive_variant_fields).clone())
+            },
+        );
         let source_index = envs.iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| {
             match env.source_index.clone() {
                 Some(index) => Some(index.clone()),
@@ -123,6 +144,7 @@ pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {
             bindings: Rc::new(merged_bindings.clone()),
             recursive_types: Rc::new(merged_recursive.clone()),
             recursive_type_set: Rc::new(merged_recursive_set.clone()),
+            recursive_variant_fields: Rc::new(merged_recursive_variant_fields.clone()),
             source_index: source_index.clone(),
         })
     }

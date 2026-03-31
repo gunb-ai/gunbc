@@ -301,7 +301,151 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
                     }
                     __result
                 };
-                emit_simple_string_interp(ps.clone(), target.clone(), source_index.clone())
+                match target.clone() {
+                    RenderTarget::Rust => {
+                        let fmt_parts = {
+                            let mut __result = Vec::new();
+                            for p in ps.clone().iter().cloned() {
+                                __result.push(match (*p.clone()).clone() {
+                                    StringPart::Text { value: v, .. } => {
+                                        let escaped = v
+                                            .clone()
+                                            .split(&"{".to_string())
+                                            .map(|s| s.to_string())
+                                            .collect::<Vec<_>>()
+                                            .join(&"{{".to_string());
+                                        let escaped2 = escaped
+                                            .clone()
+                                            .split(&"}".to_string())
+                                            .map(|s| s.to_string())
+                                            .collect::<Vec<_>>()
+                                            .join(&"}}".to_string());
+                                        Rc::new(InterpPart {
+                                            format_segment: escaped2.clone(),
+                                            arg_expr: "".to_string(),
+                                        })
+                                    }
+                                    StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
+                                        format_segment: "{}".to_string(),
+                                        arg_expr: emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
+                                    }),
+                                });
+                            }
+                            __result
+                        };
+                        let fmt_str = fmt_parts
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .map(|p| p.format_segment.clone())
+                            .collect::<Vec<_>>()
+                            .join(&"".to_string());
+                        let args = fmt_parts
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .map(|p| p.arg_expr.clone())
+                            .filter(|a| a.clone() != "".to_string())
+                            .collect::<Vec<_>>();
+                        if args.is_empty() {
+                            v2_rt::concat(
+                                v2_rt::concat("\"".to_string(), fmt_str.clone()),
+                                "\".to_string()".to_string(),
+                            )
+                        } else {
+                            let args_str = args.join(&", ".to_string());
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat("format!(\"".to_string(), fmt_str.clone()),
+                                        "\", ".to_string(),
+                                    ),
+                                    args_str.clone(),
+                                ),
+                                ")".to_string(),
+                            )
+                        }
+                    }
+                    RenderTarget::Go => {
+                        let fmt_parts = {
+                            let mut __result = Vec::new();
+                            for p in ps.clone().iter().cloned() {
+                                __result.push(match (*p.clone()).clone() {
+                                    StringPart::Text { value: v, .. } => Rc::new(InterpPart {
+                                        format_segment: v.clone(),
+                                        arg_expr: "".to_string(),
+                                    }),
+                                    StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
+                                        format_segment: "%v".to_string(),
+                                        arg_expr: emit_simple_expr(e.clone(), target.clone(), source_index.clone()),
+                                    }),
+                                });
+                            }
+                            __result
+                        };
+                        let fmt_str = fmt_parts
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .map(|p| p.format_segment.clone())
+                            .collect::<Vec<_>>()
+                            .join(&"".to_string());
+                        let args = fmt_parts
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .map(|p| p.arg_expr.clone())
+                            .filter(|a| a.clone() != "".to_string())
+                            .collect::<Vec<_>>();
+                        if args.is_empty() {
+                            v2_rt::concat(v2_rt::concat("\"".to_string(), fmt_str.clone()), "\"".to_string())
+                        } else {
+                            let args_str = args.join(&", ".to_string());
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat("fmt.Sprintf(\"".to_string(), fmt_str.clone()),
+                                        "\", ".to_string(),
+                                    ),
+                                    args_str.clone(),
+                                ),
+                                ")".to_string(),
+                            )
+                        }
+                    }
+                    RenderTarget::Python => {
+                        let segments = {
+                            let mut __result = Vec::new();
+                            for p in ps.clone().iter().cloned() {
+                                __result.push(match (*p.clone()).clone() {
+                                    StringPart::Text { value: v, .. } => v
+                                        .clone()
+                                        .split(&"{".to_string())
+                                        .map(|s| s.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(&"{{".to_string())
+                                        .split(&"}".to_string())
+                                        .map(|s| s.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(&"}}".to_string()),
+                                    StringPart::Interpolation { expr: e, .. } => v2_rt::concat(
+                                        v2_rt::concat("{".to_string(), emit_simple_expr(e.clone(), target.clone(), source_index.clone())),
+                                        "}".to_string(),
+                                    ),
+                                });
+                            }
+                            __result
+                        };
+                        v2_rt::concat(
+                            v2_rt::concat("f\"".to_string(), segments.join(&"".to_string())),
+                            "\"".to_string(),
+                        )
+                    }
+                    _ => emit_error_expr(
+                        "unsupported simple string interpolation target".to_string(),
+                        target.clone(),
+                    ),
+                }
             }
             _ => emit_error_expr(
                 "unsupported simple expr in test/mock binding".to_string(),
@@ -499,6 +643,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             bindings: Rc::new(<HashMap<_, _>>::new()),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(<HashMap<_, _>>::new()),
+            recursive_variant_fields: Rc::new(<HashMap<_, _>>::new()),
             source_index: None,
         }),
         func_env: Rc::new(ResolvedFuncEnv {

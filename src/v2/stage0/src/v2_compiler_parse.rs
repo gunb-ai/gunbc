@@ -586,6 +586,20 @@ pub struct UnitResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct StringLitResult {
+    pub value: String,
+    pub state: Rc<ParserState>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct IntLitResult {
+    pub value: i64,
+    pub state: Rc<ParserState>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct DescResult {
     pub desc: Option<String>,
     pub state: Rc<ParserState>,
@@ -662,6 +676,96 @@ pub fn has_err(err: Option<Rc<ErrorNode>>) -> bool {
     match err.clone() {
         Some(_) => true,
         None => false,
+    }
+}
+
+pub fn parse_string_literal_value(
+    tokens: Rc<Vec<Rc<Token>>>,
+    state: Rc<ParserState>,
+) -> Rc<StringLitResult> {
+    let tok = peek(tokens.clone(), state.clone());
+    match tok.clone() {
+        Some(t) => match t.shape.clone() {
+            TokenShape::ShLitStr => {
+                let adv = advance(tokens.clone(), state.clone());
+                Rc::new(StringLitResult {
+                    value: t.text.clone(),
+                    state: adv.state.clone(),
+                    err: None,
+                })
+            }
+            _ => Rc::new(StringLitResult {
+                value: "".to_string(),
+                state: state.clone(),
+                err: Some(parse_error(
+                    "expected string literal".to_string(),
+                    current_span(tokens.clone(), state.clone()),
+                )),
+            }),
+        },
+        None => Rc::new(StringLitResult {
+            value: "".to_string(),
+            state: state.clone(),
+            err: Some(parse_error(
+                "expected string literal".to_string(),
+                current_span(tokens.clone(), state.clone()),
+            )),
+        }),
+    }
+}
+
+pub fn parse_int_literal_value(
+    tokens: Rc<Vec<Rc<Token>>>,
+    state: Rc<ParserState>,
+) -> Rc<IntLitResult> {
+    let tok = peek(tokens.clone(), state.clone());
+    match tok.clone() {
+        Some(t) => match t.shape.clone() {
+            TokenShape::ShLitInt => {
+                let n_opt = v2_rt::parse_int(t.text.clone());
+                match n_opt.clone() {
+                    Some(n) => {
+                        let adv = advance(tokens.clone(), state.clone());
+                        Rc::new(IntLitResult {
+                            value: n.clone(),
+                            state: adv.state.clone(),
+                            err: None,
+                        })
+                    }
+                    None => Rc::new(IntLitResult {
+                        value: 0,
+                        state: state.clone(),
+                        err: Some(parse_error(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    "internal: ShLitInt token text not parseable as int: '"
+                                        .to_string(),
+                                    t.text.clone(),
+                                ),
+                                "'".to_string(),
+                            ),
+                            current_span(tokens.clone(), state.clone()),
+                        )),
+                    }),
+                }
+            }
+            _ => Rc::new(IntLitResult {
+                value: 0,
+                state: state.clone(),
+                err: Some(parse_error(
+                    "expected integer literal".to_string(),
+                    current_span(tokens.clone(), state.clone()),
+                )),
+            }),
+        },
+        None => Rc::new(IntLitResult {
+            value: 0,
+            state: state.clone(),
+            err: Some(parse_error(
+                "expected integer literal".to_string(),
+                current_span(tokens.clone(), state.clone()),
+            )),
+        }),
     }
 }
 
@@ -3176,7 +3280,7 @@ pub fn parse_single_predicate(
         if e.consumed.clone() {
             match pred_name.clone().as_str() {
                 "pattern" => {
-                    let r2 = parse_expr(tokens.clone(), e.state.clone());
+                    let r2 = parse_string_literal_value(tokens.clone(), e.state.clone());
                     if has_err(r2.err.clone()) {
                         return Rc::new(PredResult {
                             predicate: dummy_pred.clone(),
@@ -3196,39 +3300,24 @@ pub fn parse_single_predicate(
                             err: r3.err.clone(),
                         });
                     }
-                    match (*r2.expr.clone().expr_data.clone()).clone() {
-                        ExprData::ExprLiteral { ref value, .. } => {
-                            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                                unreachable!()
-                            };
-                            Rc::new(PredResult {
-                                predicate: make_field_init_node(
-                                    "Pattern".to_string(),
-                                    make_expr_node(
-                                        Rc::new(ExprData::ExprLiteral {
-                                            value: Rc::new(LiteralValue::LitStr {
-                                                value: s.clone(),
-                                            }),
-                                        }),
-                                        vec![],
-                                        None,
-                                        zero_span.clone(),
-                                    ),
-                                    no_span(),
-                                ),
-                                state: r3.state.clone(),
-                                err: None,
-                            })
-                        }
-                        _ => Rc::new(PredResult {
-                            predicate: dummy_pred.clone(),
-                            state: r3.state.clone(),
-                            err: Some(parse_error(
-                                "pattern() requires a string literal argument".to_string(),
-                                current_span(tokens.clone(), r3.state.clone()),
-                            )),
-                        }),
-                    }
+                    Rc::new(PredResult {
+                        predicate: make_field_init_node(
+                            "Pattern".to_string(),
+                            make_expr_node(
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitStr {
+                                        value: r2.value.clone(),
+                                    }),
+                                }),
+                                vec![],
+                                None,
+                                zero_span.clone(),
+                            ),
+                            no_span(),
+                        ),
+                        state: r3.state.clone(),
+                        err: None,
+                    })
                 }
                 "format" => {
                     let r2 = expect_ident(tokens.clone(), e.state.clone());
@@ -3271,7 +3360,7 @@ pub fn parse_single_predicate(
                     })
                 }
                 "brand" => {
-                    let r2 = parse_expr(tokens.clone(), e.state.clone());
+                    let r2 = parse_string_literal_value(tokens.clone(), e.state.clone());
                     if has_err(r2.err.clone()) {
                         return Rc::new(PredResult {
                             predicate: dummy_pred.clone(),
@@ -3291,39 +3380,24 @@ pub fn parse_single_predicate(
                             err: r3.err.clone(),
                         });
                     }
-                    match (*r2.expr.clone().expr_data.clone()).clone() {
-                        ExprData::ExprLiteral { ref value, .. } => {
-                            let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                                unreachable!()
-                            };
-                            Rc::new(PredResult {
-                                predicate: make_field_init_node(
-                                    "Brand".to_string(),
-                                    make_expr_node(
-                                        Rc::new(ExprData::ExprLiteral {
-                                            value: Rc::new(LiteralValue::LitStr {
-                                                value: s.clone(),
-                                            }),
-                                        }),
-                                        vec![],
-                                        None,
-                                        zero_span.clone(),
-                                    ),
-                                    no_span(),
-                                ),
-                                state: r3.state.clone(),
-                                err: None,
-                            })
-                        }
-                        _ => Rc::new(PredResult {
-                            predicate: dummy_pred.clone(),
-                            state: r3.state.clone(),
-                            err: Some(parse_error(
-                                "brand() requires a string literal argument".to_string(),
-                                current_span(tokens.clone(), r3.state.clone()),
-                            )),
-                        }),
-                    }
+                    Rc::new(PredResult {
+                        predicate: make_field_init_node(
+                            "Brand".to_string(),
+                            make_expr_node(
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitStr {
+                                        value: r2.value.clone(),
+                                    }),
+                                }),
+                                vec![],
+                                None,
+                                zero_span.clone(),
+                            ),
+                            no_span(),
+                        ),
+                        state: r3.state.clone(),
+                        err: None,
+                    })
                 }
                 "content" => {
                     let r2 = expect_ident(tokens.clone(), e.state.clone());
@@ -3632,7 +3706,7 @@ pub fn parse_single_named_int(
                 err: r2.err.clone(),
             });
         }
-        let r3 = parse_expr(tokens.clone(), r2.state.clone());
+        let r3 = parse_int_literal_value(tokens.clone(), r2.state.clone());
         if has_err(r3.err.clone()) {
             return Rc::new(NamedIntResult {
                 arg_name: name.clone(),
@@ -3641,31 +3715,12 @@ pub fn parse_single_named_int(
                 err: r3.err.clone(),
             });
         }
-        match (*r3.expr.clone().expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. } => {
-                let LiteralValue::LitInt { value: n, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Rc::new(NamedIntResult {
-                    arg_name: name.clone(),
-                    arg_value: n.clone(),
-                    state: r3.state.clone(),
-                    err: None,
-                })
-            }
-            _ => Rc::new(NamedIntResult {
-                arg_name: name.clone(),
-                arg_value: 0,
-                state: r3.state.clone(),
-                err: Some(parse_error(
-                    v2_rt::concat(
-                        v2_rt::concat("range() argument `".to_string(), name.clone()),
-                        "` requires an integer literal".to_string(),
-                    ),
-                    current_span(tokens.clone(), r3.state.clone()),
-                )),
-            }),
-        }
+        Rc::new(NamedIntResult {
+            arg_name: name.clone(),
+            arg_value: r3.value.clone(),
+            state: r3.state.clone(),
+            err: None,
+        })
     }
 }
 

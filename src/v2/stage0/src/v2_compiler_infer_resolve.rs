@@ -2261,6 +2261,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                             )),
                             recursive_types: e.recursive_types.clone(),
                             recursive_type_set: e.recursive_type_set.clone(),
+                            recursive_variant_fields: e.recursive_variant_fields.clone(),
                             source_index: e.source_index.clone(),
                         })
                     });

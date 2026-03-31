@@ -2197,7 +2197,19 @@ fn multiplicative_recursion_is_rejected() {
 }
 
 #[test]
-#[ignore] // mutual recursion detection removed; CostUnknown-only violation model
+fn variable_rethread_recursion_is_rejected() {
+    let source = "module bounce_test\n\nfn bounce(n: Int, m: Int) -> Int {\n  if n <= 0 { 0 }\n  else { bounce(n: m, m: m) }\n}\n";
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.iter().any(|m| m.contains("non-descending") || m.contains("unresolvable")),
+        "fn bounce(n: m) must be rejected without a decreasing witness, got: {:?}",
+        msgs
+    );
+    assert!(result.files.is_empty(), "variable rethread recursion should block code emission");
+}
+
+#[test]
 fn mutual_recursion_is_rejected() {
     let source = "module mutual_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\n";
     let result = compile_dag(source);
@@ -2206,6 +2218,17 @@ fn mutual_recursion_is_rejected() {
         "mutual recursion (ping<->pong) must produce diagnostics"
     );
     assert!(result.files.is_empty(), "mutual recursion should block code emission");
+}
+
+#[test]
+fn mutual_arithmetic_recursion_is_allowed() {
+    let source = "module mutual_ok\n\nfn even(n: Int) -> Bool {\n  if n <= 0 { true }\n  else { odd(n: n - 1) }\n}\n\nfn odd(n: Int) -> Bool {\n  if n <= 0 { false }\n  else { even(n: n - 1) }\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    assert!(
+        !result.files.is_empty(),
+        "bounded mutual recursion with arithmetic descent should compile successfully"
+    );
 }
 
 #[test]
@@ -2225,6 +2248,16 @@ fn function_calling_into_cycle_is_not_rejected() {
         }),
         "helper() calls into cycle but is not part of it — should not be rejected. Diagnostics: {:?}",
         diag_names
+    );
+    assert!(
+        !result.complexity.violations.iter().any(|v| v.func_name == "helper"),
+        "helper() should not inherit the cycle's complexity violation: {:?}",
+        result
+            .complexity
+            .violations
+            .iter()
+            .map(|v| format!("{}: {}", v.func_name, v.reason))
+            .collect::<Vec<_>>()
     );
 }
 

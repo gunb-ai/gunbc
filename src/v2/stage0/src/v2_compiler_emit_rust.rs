@@ -1078,7 +1078,55 @@ pub fn emit_pattern(source_index: Option<Rc<NewlineIndex>>, pattern: Rc<MatchPat
     match (*pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
     MatchPattern::LitPattern { value: v, .. } => rust_literal_for_pattern(v.clone()),
-    MatchPattern::VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, .. } => emit_variant_pattern(source_index.clone(), n.clone(), parent_enum.clone(), fbs.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone()),
+    MatchPattern::VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, .. } => {
+        let qualified = if ((n.clone() == "Some".to_string()) || (n.clone() == "None".to_string())) {
+            n.clone()
+        } else {
+            match pattern_parent_enum(n.clone(), parent_enum.clone(), scrut_type.clone(), vtoe.clone()) {
+                Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), n.clone()),
+                None => n.clone(),
+            }
+        };
+        if ((n.clone() == "Some".to_string()) && ((fbs.clone().len() as i64) == 1)) {
+            match fbs.clone().first().cloned() {
+                Some(fb) => {
+                    let fb_pat = field_binding_pattern(fb.clone());
+                    if is_string_lit_pattern(fb_pat.clone()) {
+                        "Some(ref __some_val)".to_string()
+                    } else {
+                        let inner_pat = emit_pattern(source_index.clone(), fb_pat.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone());
+                        v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_string())
+                    }
+                }
+                None => qualified.clone(),
+            }
+        } else {
+            if ((fbs.clone().len() as i64) == 0) {
+                qualified.clone()
+            } else {
+                let effective_bindings = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
+                    MatchPattern::Wildcard => false,
+                    _ => true,
+                } { __result.push(fb); } } __result };
+                if ((effective_bindings.clone().len() as i64) == 0) {
+                    v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                } else {
+                    let binding_strs = { let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push({
+                        let fb_name = field_binding_name(fb.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        if is_string_lit_pattern(fb_pat.clone()) {
+                            v2_rt::concat("ref ".to_string(), emit_ident(fb_name.clone(), RenderTarget::Rust))
+                        } else {
+                            let pat_str = emit_pattern(source_index.clone(), fb_pat.clone(), vtoe.clone(), rc_types.clone(), "".to_string());
+                            v2_rt::concat(v2_rt::concat(emit_ident(fb_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+                        }
+                    }); } __result };
+                    let bindings_str = binding_strs.clone().join(&", ".to_string());
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat(qualified.clone(), " { ".to_string()), bindings_str.clone()), ", .. }".to_string())
+                }
+            }
+        }
+    }
     MatchPattern::Wildcard => "_".to_string(),
 }
 }
@@ -1254,7 +1302,61 @@ pub fn emit_pattern_rc_aware(source_index: Option<Rc<NewlineIndex>>, pattern: Rc
     match (*pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
     MatchPattern::LitPattern { value: v, .. } => rust_literal_for_pattern(v.clone()),
-    MatchPattern::VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, .. } => emit_variant_pattern_rc_aware(source_index.clone(), n.clone(), parent_enum.clone(), fbs.clone(), rc_analysis.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone()),
+    MatchPattern::VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs, .. } => {
+        let qualified = if ((n.clone() == "Some".to_string()) || (n.clone() == "None".to_string())) {
+            n.clone()
+        } else {
+            match pattern_parent_enum(n.clone(), parent_enum.clone(), scrut_type.clone(), vtoe.clone()) {
+                Some(parent) => v2_rt::concat(v2_rt::concat(parent.clone(), "::".to_string()), n.clone()),
+                None => n.clone(),
+            }
+        };
+        if ((n.clone() == "Some".to_string()) && ((fbs.clone().len() as i64) == 1)) {
+            match fbs.clone().first().cloned() {
+                Some(fb) => {
+                    let fb_pat = field_binding_pattern(fb.clone());
+                    if is_string_lit_pattern(fb_pat.clone()) {
+                        "Some(ref __some_val)".to_string()
+                    } else {
+                        let inner_analysis = analyze_rc_pattern(source_index.clone(), fb_pat.clone(), scrut_type.clone(), vtoe.clone(), rc_types.clone());
+                        let inner_pat = emit_pattern_rc_aware(source_index.clone(), fb_pat.clone(), inner_analysis.clone(), vtoe.clone(), rc_types.clone(), scrut_type.clone());
+                        v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_string())
+                    }
+                }
+                None => qualified.clone(),
+            }
+        } else {
+            if ((fbs.clone().len() as i64) == 0) {
+                qualified.clone()
+            } else {
+                let effective_bindings = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
+                    MatchPattern::Wildcard => false,
+                    _ => true,
+                } { __result.push(fb); } } __result };
+                if ((effective_bindings.clone().len() as i64) == 0) {
+                    v2_rt::concat(qualified.clone(), " { .. }".to_string())
+                } else {
+                    let binding_strs = { let mut __result = Vec::new(); for fb in effective_bindings.clone().iter().cloned() { __result.push({
+                        let fb_name = field_binding_name(fb.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        if is_string_lit_pattern(fb_pat.clone()) {
+                            v2_rt::concat("ref ".to_string(), emit_ident(fb_name.clone(), RenderTarget::Rust))
+                        } else {
+                            if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
+                                v2_rt::concat("ref ".to_string(), emit_ident(fb_name.clone(), RenderTarget::Rust))
+                            } else {
+                                let inner_analysis = analyze_rc_pattern(source_index.clone(), fb_pat.clone(), "".to_string(), vtoe.clone(), rc_types.clone());
+                                let pat_str = emit_pattern_rc_aware(source_index.clone(), fb_pat.clone(), inner_analysis.clone(), vtoe.clone(), rc_types.clone(), "".to_string());
+                                v2_rt::concat(v2_rt::concat(emit_ident(fb_name.clone(), RenderTarget::Rust), ": ".to_string()), pat_str.clone())
+                            }
+                        }
+                    }); } __result };
+                    let bindings_str = binding_strs.clone().join(&", ".to_string());
+                    v2_rt::concat(v2_rt::concat(v2_rt::concat(qualified.clone(), " { ".to_string()), bindings_str.clone()), ", .. }".to_string())
+                }
+            }
+        }
+    }
     MatchPattern::Wildcard => "_".to_string(),
 }
 }

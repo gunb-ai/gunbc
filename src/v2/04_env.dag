@@ -16,6 +16,7 @@ type TypeEnv {
   bindings: Map<String, TypeBinding>
   recursive_types: List<String>
   recursive_type_set: Map<String, Bool>
+  recursive_variant_fields: Map<String, Bool>
   source_index: NewlineIndex?
 }
 
@@ -58,12 +59,24 @@ fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
   is_recursive_type(env: env, name: node.name)
 }
 
+fn recursive_variant_field_key(type_name: String, variant_name: String, field_name: String) -> String {
+  concat(type_name, "::", variant_name, "::", field_name)
+}
+
+fn is_recursive_variant_field(env: TypeEnv, type_name: String, variant_name: String, field_name: String) -> Bool {
+  match map_get(env.recursive_variant_fields, recursive_variant_field_key(type_name: type_name, variant_name: variant_name, field_name: field_name)) {
+    Some { value: _ } => true
+    None => false
+  }
+}
+
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
+  let merged_recursive_variant_fields = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_variant_fields))
   let source_index = fold(envs, init: none, f: (acc, env) =>
     if env.source_index != none { env.source_index } else { acc }
   )
-  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, source_index: source_index }
+  TypeEnv { bindings: merged_bindings, recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, recursive_variant_fields: merged_recursive_variant_fields, source_index: source_index }
 }

@@ -144,6 +144,8 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Vec<Rc<FuncEntry>> {
                         body: item.body.clone().clone().unwrap(),
                         params: item.params.clone(),
                         span: item.span.clone(),
+                        recursive_type_set: m.type_env.clone().recursive_type_set.clone(),
+                        recursive_variant_fields: m.type_env.clone().recursive_variant_fields.clone(),
                     }));
                 }
                 __result

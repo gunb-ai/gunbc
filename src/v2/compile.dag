@@ -80,7 +80,14 @@ type FrontendResult {
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
   typed.modules |> flat_map(m =>
     m.items |> filter(item => item.body != None) |> map(item =>
-      FuncEntry { name: item.name, body: item.body.value, params: item.params, span: item.span }
+      FuncEntry {
+        name: item.name,
+        body: item.body.value,
+        params: item.params,
+        span: item.span,
+        recursive_type_set: m.type_env.recursive_type_set,
+        recursive_variant_fields: m.type_env.recursive_variant_fields
+      }
     )
   )
 }

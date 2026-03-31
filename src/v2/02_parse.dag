@@ -204,6 +204,8 @@ type OpBodyResult {
   state: ParserState, err: ErrorNode?
 }
 type UnitResult { state: ParserState, err: ErrorNode? }
+type StringLitResult { value: String, state: ParserState, err: ErrorNode? }
+type IntLitResult { value: Int, state: ParserState, err: ErrorNode? }
 
 // For parse_optional_from_key/parse_config_fields/parse_op_body_entries desc:
 type DescResult { desc: String?, state: ParserState }
@@ -258,6 +260,45 @@ fn has_err(err: ErrorNode?) -> Bool {
   match err {
     Some { value: _ } => true
     None => false
+  }
+}
+
+fn parse_string_literal_value(tokens: List<Token>, state: ParserState) -> StringLitResult {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } =>
+      match t.shape {
+        ShLitStr => {
+          let adv = advance(tokens: tokens, state: state)
+          StringLitResult { value: t.text, state: adv.state, err: none }
+        }
+        _ =>
+          StringLitResult { value: "", state: state, err: Some { value: parse_error(msg: "expected string literal", span: current_span(tokens: tokens, state: state)) } }
+      }
+    None =>
+      StringLitResult { value: "", state: state, err: Some { value: parse_error(msg: "expected string literal", span: current_span(tokens: tokens, state: state)) } }
+  }
+}
+
+fn parse_int_literal_value(tokens: List<Token>, state: ParserState) -> IntLitResult {
+  let tok = peek(tokens: tokens, state: state)
+  match tok {
+    Some { value: t } =>
+      match t.shape {
+        ShLitInt =>
+          let n_opt = parse_int(s: t.text)
+          match n_opt {
+            Some { value: n } =>
+              let adv = advance(tokens: tokens, state: state)
+              IntLitResult { value: n, state: adv.state, err: none }
+            None =>
+              IntLitResult { value: 0, state: state, err: Some { value: parse_error(msg: concat("internal: ShLitInt token text not parseable as int: '", t.text, "'"), span: current_span(tokens: tokens, state: state)) } }
+          }
+        _ =>
+          IntLitResult { value: 0, state: state, err: Some { value: parse_error(msg: "expected integer literal", span: current_span(tokens: tokens, state: state)) } }
+      }
+    None =>
+      IntLitResult { value: 0, state: state, err: Some { value: parse_error(msg: "expected integer literal", span: current_span(tokens: tokens, state: state)) } }
   }
 }
 
@@ -1323,16 +1364,11 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
   if e.consumed {
     match pred_name {
       "pattern" => {
-        let r2 = parse_expr(tokens: tokens, state: e.state)
+        let r2 = parse_string_literal_value(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        match r2.expr.expr_data {
-          ExprLiteral { value: LitStr { value: s } } =>
-            PredResult { predicate: make_field_init_node(name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
-          _ =>
-            PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "pattern() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
-        }
+        PredResult { predicate: make_field_init_node(name: "Pattern", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
       }
       "format" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
@@ -1342,16 +1378,11 @@ fn parse_single_predicate(tokens: List<Token>, state: ParserState) -> PredResult
         PredResult { predicate: make_field_init_node(name: "Format", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.name } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
       }
       "brand" => {
-        let r2 = parse_expr(tokens: tokens, state: e.state)
+        let r2 = parse_string_literal_value(tokens: tokens, state: e.state)
         if has_err(err: r2.err) { return PredResult { predicate: dummy_pred, state: r2.state, err: r2.err } }
         let r3 = expect(tokens: tokens, state: r2.state, expected: ExpectRParen)
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, state: r3.state, err: r3.err } }
-        match r2.expr.expr_data {
-          ExprLiteral { value: LitStr { value: s } } =>
-            PredResult { predicate: make_field_init_node(name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: s } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
-          _ =>
-            PredResult { predicate: dummy_pred, state: r3.state, err: Some { value: parse_error(msg: "brand() requires a string literal argument", span: current_span(tokens: tokens, state: r3.state)) } }
-        }
+        PredResult { predicate: make_field_init_node(name: "Brand", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: r2.value } }, children: [], inferred: none, span: zero_span), span: zero_span), state: r3.state, err: none }
       }
       "content" => {
         let r2 = expect_ident(tokens: tokens, state: e.state)
@@ -1427,13 +1458,9 @@ fn parse_single_named_int(tokens: List<Token>, state: ParserState) -> NamedIntRe
   let name = r.name
   let r2 = expect(tokens: tokens, state: r.state, expected: ExpectColon)
   if has_err(err: r2.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r2.state, err: r2.err } }
-  let r3 = parse_expr(tokens: tokens, state: r2.state)
+  let r3 = parse_int_literal_value(tokens: tokens, state: r2.state)
   if has_err(err: r3.err) { return NamedIntResult { arg_name: name, arg_value: 0, state: r3.state, err: r3.err } }
-  match r3.expr.expr_data {
-    ExprLiteral { value: LitInt { value: n } } =>
-      NamedIntResult { arg_name: name, arg_value: n, state: r3.state, err: none }
-    _ => NamedIntResult { arg_name: name, arg_value: 0, state: r3.state, err: Some { value: parse_error(msg: concat("range() argument `", name, "` requires an integer literal"), span: current_span(tokens: tokens, state: r3.state)) } }
-  }
+  NamedIntResult { arg_name: name, arg_value: r3.value, state: r3.state, err: none }
 }
 
 fn parse_variant_fields(tokens: List<Token>, state: ParserState, vname: String) -> VariantResult {
