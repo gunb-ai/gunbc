@@ -2628,6 +2628,238 @@ fn check_has(c: Counter) -> Bool {
     );
 }
 
+#[test]
+fn map_inline_lambda_propagates_result_type() {
+    let source = r#"module map_inline_lambda
+
+fn labels(xs: List<Int>) -> List<String> {
+  xs |> map(x => x |> to_string)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_named_callable_propagates_result_type() {
+    let source = r#"module map_named_callable
+
+fn render(x: Int) -> String {
+  x |> to_string
+}
+
+fn labels(xs: List<Int>) -> List<String> {
+  map(xs, render)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn flat_map_named_callable_propagates_result_type() {
+    let source = r#"module flat_map_named_callable
+
+fn expand(x: Int) -> List<String> {
+  [x |> to_string]
+}
+
+fn labels(xs: List<Int>) -> List<String> {
+  flat_map(xs, expand)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn flat_map_inline_lambda_propagates_result_type() {
+    let source = r#"module flat_map_inline_lambda
+
+fn labels(xs: List<Int>) -> List<String> {
+  flat_map(xs, x => [x |> to_string])
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn sort_by_named_callable_accepts_key_extractor_result_type() {
+    let source = r#"module sort_by_named_callable
+
+fn render_key(x: Int) -> String {
+  x |> to_string
+}
+
+fn sort_values(xs: List<Int>) -> List<Int> {
+  sort_by(xs, render_key)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn sort_by_inline_lambda_accepts_key_extractor_result_type() {
+    let source = r#"module sort_by_inline_lambda
+
+fn sort_values(xs: List<Int>) -> List<Int> {
+  sort_by(xs, x => x |> to_string)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_inline_lambda_returns_accumulator_type() {
+    let source = r#"module fold_string_accumulator
+
+fn join_ints(xs: List<Int>) -> String {
+  fold(xs, init: "", f: (acc, x) => concat(acc, x |> to_string))
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_wrong_callback_arity_fails_closed() {
+    let source = r#"module map_wrong_arity
+
+fn broken(xs: List<Int>) -> List<Int> {
+  map(xs, fn(a, b) { a })
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "wrong callback arity should produce diagnostics, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn sort_by_wrong_callback_arity_fails_closed() {
+    let source = r#"module sort_by_wrong_arity
+
+fn broken(xs: List<Int>) -> List<Int> {
+  sort_by(xs, fn(a, b) { a })
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "wrong sort_by callback arity should produce diagnostics, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn map_named_callable_wrong_arity_fails_closed() {
+    let source = r#"module map_named_wrong_arity
+
+fn render(a: Int, b: Int) -> String {
+  a |> to_string
+}
+
+fn broken(xs: List<Int>) -> List<String> {
+  map(xs, render)
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "wrong named callback arity should produce diagnostics, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn flat_map_wrong_callback_return_type_fails_closed() {
+    let source = r#"module flat_map_wrong_return
+
+fn broken(xs: List<Int>) -> List<Int> {
+  flat_map(xs, x => x)
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "wrong callback return type should produce diagnostics, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn flat_map_named_callable_wrong_return_type_fails_closed() {
+    let source = r#"module flat_map_named_wrong_return
+
+fn expand(x: Int) -> String {
+  x |> to_string
+}
+
+fn broken(xs: List<Int>) -> List<String> {
+  flat_map(xs, expand)
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "wrong named callback return type should produce diagnostics, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn higher_order_placeholders_are_not_user_visible_types() {
+    let source = r#"module placeholder_escape
+
+fn leak(x: MappedElement, acc: FoldAccumulator) -> MappedElement {
+  x
+}
+"#;
+    let result = compile_dag(source);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        !msgs.is_empty(),
+        "bridge placeholder types should not be available in user signatures, got {:?}",
+        msgs
+    );
+}
+
+#[test]
+fn imported_user_type_named_like_bridge_placeholder_remains_visible() {
+    let result = compile_multi(&[
+        (
+            "provider.dag",
+            r#"module provider
+
+type MappedElement {
+  label: String
+}
+"#,
+        ),
+        (
+            "consumer.dag",
+            r#"module consumer
+
+import provider { MappedElement }
+
+fn label_of(value: MappedElement) -> String {
+  value.label
+}
+"#,
+        ),
+    ]);
+    assert_no_diagnostics(&result);
+}
 // ── Parse-emit round-trip smoke test ────────────────────────────────────
 //
 // Verify that compiling the same source twice produces identical typed

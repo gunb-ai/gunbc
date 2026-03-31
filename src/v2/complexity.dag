@@ -30,7 +30,7 @@ import v2.std.core {
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes, return_value,
-  expr_call_func,
+  expr_call_func, expr_var_name, field_access_base, field_access_field,
   make_span
 }
 
@@ -422,13 +422,13 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       let branch_max = if then_calls > else_calls { then_calls } else { else_calls }
       cond_calls + branch_max
 
-    ExprForEach { variable: _ } =>
+    ExprForEach =>
       // Self-calls inside a forEach body are bounded by the iteration.
       // They do NOT contribute to the recursion branching factor.
       // Only count calls in the collection expression (not the body).
       max_path_self_calls(body: foreach_collection(texpr: body), func_name: func_name) + continue_calls
 
-    ExprLet { name: _ } =>
+    ExprLet =>
       let val_calls = max_path_self_calls(body: let_value(texpr: body), func_name: func_name)
       let body_calls = match let_body(texpr: body) {
         Some { value: b } => max_path_self_calls_with_cont(body: b, func_name: func_name, continue_calls: continue_calls)
@@ -439,7 +439,7 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
     ExprBlock =>
       max_path_self_calls_block(stmts: body.children, func_name: func_name, continue_calls: continue_calls)
 
-    ExprMethodCall { method: _, method_semantics: _ } =>
+    ExprMethodCall { method_semantics: _ } =>
       // Receiver + non-lambda args contribute to path calls.
       // Lambda args (callbacks to fold/map/filter) are iteration-bounded
       // and excluded, same as forEach body exclusion.
@@ -530,7 +530,7 @@ fn is_structural_descent(body: Node, func_name: String) -> Bool {
         None => true
       }
 
-    ExprLet { name: _ } =>
+    ExprLet =>
       // let x = ... in <body>: descent if the body is a descent
       // and the let-value has no self-calls
       let val_calls = count_self_calls(body: let_value(texpr: body), func_name: func_name)
@@ -641,16 +641,15 @@ fn classify_recursion_pattern(func_name: String, body: Node) -> RecursionPattern
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
-  } else if self_calls_use_non_computed_args(body: body, func_name: func_name) {
-    // path_calls == 1, not structural descent, but self-call args are
-    // non-computed (plain variables like n, not n-1). This is the
-    // fn spin(n: n) pattern — non-descending. Fail-closed.
-    // Reuses the existing is_non_computed_recursive_arg walk (no new walker).
-    UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
   } else if has_arithmetic_descent(body: body, func_name: func_name) {
     // path_calls == 1, not structural descent, but at least one
     // self-call arg is param - expr or param / expr. Proven descent.
     LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else if self_calls_use_non_computed_args(body: body, func_name: func_name) {
+    // path_calls == 1, not structural descent, and no descending witness
+    // was found. A recursive call that only rethreads plain variables is
+    // the fn spin(n: n) pattern — non-descending. Fail closed.
+    UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
   } else {
     // path_calls == 1, not structural descent, no proven descent
     // (e.g., n + 1, abs(n)). Fail-closed: non-descending.
@@ -746,12 +745,27 @@ fn method_preserves_collection_size(method_semantics: MethodSemantics?) -> Bool 
   }
 }
 
+fn receiver_size_key(recv: Node) -> String {
+  match recv.expr_data {
+    ExprVar =>
+      expr_var_name(texpr: recv)
+    ExprFieldAccess =>
+      let base = field_access_base(texpr: recv)
+      let field = field_access_field(texpr: recv)
+      let base_key = receiver_size_key(recv: base)
+      if base_key == "__expr" { "__expr" } else { concat(base_key, ".", field) }
+    _ =>
+      "__expr"
+  }
+}
+
 fn receiver_size_var(recv: Node) -> SizeExpr {
   match recv.expr_data {
     ExprVar =>
-      SizeLen { collection: vname }
+      SizeLen { collection: receiver_size_key(recv: recv) }
     ExprFieldAccess =>
-      SizeLen { collection: fname }
+      let key = receiver_size_key(recv: recv)
+      if key == "__expr" { SizeLen { collection: "__expr" } } else { SizeLen { collection: key } }
     ExprMethodCall { method_semantics: method_semantics } =>
       let inner_recv = match recv.children |> first { Some { value: r } => r  None => recv }
       if method_preserves_collection_size(method_semantics: method_semantics) {
@@ -795,6 +809,7 @@ fn resolve_callback_cost(lambda_arg: Node?, recv_r: SummaryResult, func_index: M
     Some { value: la } =>
       match la.expr_data {
         ExprVar =>
+          let fn_ref = expr_var_name(texpr: la)
           match map_get(func_index, fn_ref) {
             Some { value: _ } =>
               get_or_compute_summary(func_name: fn_ref, func_index: func_index, table: recv_r.table)
@@ -1261,6 +1276,7 @@ fn cost_of_expr(texpr: Node, func_index: Map<String, FuncEntry>, table: CostInte
 
     ExprCall =>
       // Look up callee summary (recursive via get_or_compute_summary)
+      let fname = expr_call_func(texpr: texpr)
       let callee_result = match map_get(func_index, fname) {
         Some { value: entry } =>
           get_or_compute_summary(func_name: fname, func_index: func_index, table: table)

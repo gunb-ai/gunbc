@@ -647,6 +647,8 @@ pub fn free_monoid_scalar_templates() -> Vec<AlgebraFieldTemplate> {
     ]
 }
 
+// Bridge-only authority: keep stage0 aligned with the source bridge until
+// collection algebra is loaded directly from std declarations.
 pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
         AlgebraFieldTemplate {

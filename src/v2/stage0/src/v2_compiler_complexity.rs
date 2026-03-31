@@ -615,13 +615,13 @@ pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<Recur
         Rc::new(RecursionPattern::DivideAndConquer {
             split_factor: path_calls.clone(),
         })
-    } else if self_calls_use_non_computed_args(body.clone(), func_name.clone()) {
-        Rc::new(RecursionPattern::UnresolvableRecursion {
-            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
-        })
     } else if has_arithmetic_descent(body.clone(), func_name.clone()) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if self_calls_use_non_computed_args(body.clone(), func_name.clone()) {
+        Rc::new(RecursionPattern::UnresolvableRecursion {
+            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
         })
     } else {
         Rc::new(RecursionPattern::UnresolvableRecursion {

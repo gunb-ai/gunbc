@@ -210,6 +210,8 @@ data free_monoid_scalar_templates: List<AlgebraFieldTemplate> = [
   { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf }
 ]
 
+// Bridge-only authority: these templates must dissolve once structural
+// method lookup reads the collection algebra directly from std declarations.
 data free_monoid_collection_templates: List<AlgebraFieldTemplate> = [
   { name: "map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
   { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf },

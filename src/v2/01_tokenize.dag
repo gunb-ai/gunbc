@@ -111,16 +111,16 @@ fn tokenize(source: String, file: String) -> List<Token> {
   // Tokens are passed as a separate TCO parameter so that Rc::try_unwrap
   // succeeds in the loop (the standalone Rc has refcount 1, unlike a field
   // inside an Rc-wrapped struct which always has refcount >= 2).
-  let final_state = tokenize_loop(source: src, tokens: [], pos: initial)
+  let final_state = tokenize_loop(source: src, tokens: [], pos: initial, fuel: string_length(s: src.text) + 1)
   let eof_span = make_file_span(file: src.file, start: final_state.pos, end: final_state.pos)
   list_push(final_state.tokens, make_token(text: "", span: eof_span, shape: ShEof))
 }
 
 // === Main loop ===
 
-fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> TokenizerState {
-  let s = skip_spaces_and_comments(source: source, pos: pos)
-  if s.pos >= string_length(s: source.text) {
+fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos, fuel: Int) -> TokenizerState {
+  let s = skip_spaces_and_comments(source: source, pos: pos, fuel: fuel)
+  if fuel <= 0 || s.pos >= string_length(s: source.text) {
     return TokenizerState { pos: s.pos, tokens: tokens, interp_depth: s.interp_depth }
   }
   let ch = char_at(s: source.text, pos: s.pos)
@@ -130,7 +130,7 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
     let tok = make_token(text: "\n", span: make_file_span(file: source.file, start: s.pos, end: s.pos + 1), shape: ShNewline)
     return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
       pos: s.pos + 1, interp_depth: s.interp_depth
-    })
+    }, fuel: fuel - 1)
   }
 
   // When inside string interpolation and we hit }, check if this
@@ -144,19 +144,19 @@ fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos) -> Tokeniz
         pos: s.pos + 1, interp_depth: popped
       }
       let result = scan_str_cont(source: source, pos: cont_pos, span_start: s.pos)
-      return tokenize_loop(source: source, tokens: list_push(tokens, result.token), pos: TokPos { pos: result.pos, interp_depth: result.interp_depth })
+      return tokenize_loop(source: source, tokens: list_push(tokens, result.token), pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1)
     } else {
       // Nested brace inside interpolation expression -- decrement depth
       let new_depth = replace_last(stack: s.interp_depth, value: top - 1)
       let tok = make_token(text: "}", span: make_file_span(file: source.file, start: s.pos, end: s.pos + 1), shape: ShRBrace)
       return tokenize_loop(source: source, tokens: list_push(tokens, tok), pos: TokPos {
         pos: s.pos + 1, interp_depth: new_depth
-      })
+      }, fuel: fuel - 1)
     }
   }
 
   let result = scan_token(source: source, pos: s, ch: ch)
-  tokenize_loop(source: source, tokens: list_push(tokens, result.token), pos: TokPos { pos: result.pos, interp_depth: result.interp_depth })
+  tokenize_loop(source: source, tokens: list_push(tokens, result.token), pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1)
 }
 
 // === Token scanning ===
@@ -449,13 +449,13 @@ fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
 
 // Skip spaces and tabs (NOT newlines -- those are tokens).
 // Also skip line comments (// to end of line).
-fn skip_spaces_and_comments(source: SourceRef, pos: TokPos) -> TokPos {
+fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos {
   let p = skip_horizontal_ws(s: source.text, start: pos.pos)
-  if p + 1 < string_length(s: source.text) && char_at(s: source.text, pos: p) == "/" && char_at(s: source.text, pos: p + 1) == "/" {
+  if fuel > 0 && p + 1 < string_length(s: source.text) && char_at(s: source.text, pos: p) == "/" && char_at(s: source.text, pos: p + 1) == "/" {
     let eol = scan_to_eol(s: source.text, start: p)
     return skip_spaces_and_comments(source: source, pos: TokPos {
       pos: eol, interp_depth: pos.interp_depth
-    })
+    }, fuel: fuel - 1)
   }
   TokPos { pos: p, interp_depth: pos.interp_depth }
 }
