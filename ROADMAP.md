@@ -328,6 +328,14 @@ still semantic authority):*
 - [x] Accessor layer: `lookup_type_for`, `is_recursive_type_for`,
   `authored_name_at`, `lambda_param_names_at` encapsulate all
   `.name`-as-identity reads (emit + resolve + infer + lookup)
+- [x] Add `_at` variants for all expression/wrapper node name
+  accessors: `expr_var_name_at`, `expr_call_func_at`,
+  `expr_method_name_at`, `let_binding_name_at`,
+  `field_access_field_at`, `foreach_variable_at`,
+  `record_lit_type_name_at`, `field_init_node_name_at`,
+  `arg_name_at`, `param_node_name_at`
+- [x] Migrate 9 Rust emitter rendering sites to `_at` variants
+- [ ] Migrate remaining emit sites (Python ~5, Go ~5, shared ~5)
 - [ ] Update 17 `make_*` helpers (blocked: all `.name` reads replaced)
 - [ ] Update ~256 Node constructions to drop `name:`
 - [ ] Migrate synthetic node identity to structural (blocked: L1)
