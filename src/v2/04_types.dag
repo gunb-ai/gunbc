@@ -10,6 +10,18 @@
 module v2.compiler.infer_types
 
 import std.types { SourceSpan }
+import std.algebra {
+  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
+  BooleanAlgebraProfile, FreeMonoidScalarProfile,
+  FreeMonoidCollectionProfile, PartialFunctionProfile,
+  AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
+  NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
+  AlgebraFieldTemplate,
+  kernel_algebra_profile,
+  ordered_ring_templates, approximate_field_templates, boolean_algebra_templates,
+  free_monoid_scalar_templates, free_monoid_collection_templates,
+  partial_function_templates
+}
 import v2.std.core {
   Node, make_param_node, param_node_type_expr,
   Connective, Conj, Disj, NoConnective,
@@ -119,140 +131,6 @@ fn bare_map_node() -> Node {
 // Per-profile builder functions produce the field lists; enrich_kernel_type
 // does a single lookup and dispatches to the appropriate builder.
 // =========================================================================
-
-// AlgebraProfile: which algebraic structure a kernel type inhabits.
-// See dsl/std/algebra.dag for the mathematical grounding.
-type AlgebraProfile
-  = OrderedRingProfile
-  | ApproximateFieldProfile
-  | BooleanAlgebraProfile
-  | FreeMonoidScalarProfile
-  | FreeMonoidCollectionProfile
-  | PartialFunctionProfile
-
-// Data-driven type templates for bridge-era algebra field materialization.
-// The bridge stays local, but the field facts become one declarative source.
-type AlgebraTypeTemplate
-  = ReceiverSelf
-  | ReceiverElement
-  | ReceiverKey
-  | ReceiverValue
-  | NamedTemplate { name: String }
-  | ReceiverCollectionOf { element: AlgebraTypeTemplate }
-  | ListOf { element: AlgebraTypeTemplate }
-  | OptionalOf { inner: AlgebraTypeTemplate }
-  | TupleOf { first: AlgebraTypeTemplate, second: AlgebraTypeTemplate }
-
-type AlgebraFieldTemplate {
-  name: String
-  param_types: List<AlgebraTypeTemplate>
-  return_type: AlgebraTypeTemplate
-}
-
-// Data table: kernel type name -> algebra profile.
-// Adding algebraic enrichment for a new kernel type = one line here.
-data kernel_algebra_profile: Map<String, AlgebraProfile> = {
-  "Int": OrderedRingProfile,
-  "Float": ApproximateFieldProfile,
-  "Bool": BooleanAlgebraProfile,
-  "String": FreeMonoidScalarProfile,
-  "List": FreeMonoidCollectionProfile,
-  "Set": FreeMonoidCollectionProfile,
-  "NonEmptyList": FreeMonoidCollectionProfile,
-  "NonEmptySet": FreeMonoidCollectionProfile,
-  "Map": PartialFunctionProfile
-}
-
-data ordered_ring_templates: List<AlgebraFieldTemplate> = [
-  { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "zero", param_types: [], return_type: ReceiverSelf },
-  { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "one", param_types: [], return_type: ReceiverSelf },
-  { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" } }
-]
-
-data approximate_field_templates: List<AlgebraFieldTemplate> = [
-  { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "zero", param_types: [], return_type: ReceiverSelf },
-  { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "one", param_types: [], return_type: ReceiverSelf },
-  { name: "reciprocal", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" } }
-]
-
-data boolean_algebra_templates: List<AlgebraFieldTemplate> = [
-  { name: "meet", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "join", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "complement", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "top", param_types: [], return_type: ReceiverSelf },
-  { name: "bottom", param_types: [], return_type: ReceiverSelf }
-]
-
-data free_monoid_scalar_templates: List<AlgebraFieldTemplate> = [
-  { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "empty", param_types: [], return_type: ReceiverSelf },
-  { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
-  { name: "chars", param_types: [ReceiverSelf], return_type: ListOf { element: NamedTemplate { name: "Char" } } },
-  { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ListOf { element: ReceiverSelf } },
-  { name: "join", param_types: [ListOf { element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "contains", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-  { name: "starts_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-  { name: "ends_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-  { name: "trim", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "to_lower", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "to_upper", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "replace", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "substring", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }, NamedTemplate { name: "Int" }], return_type: ReceiverSelf },
-  { name: "to_int", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
-  { name: "to_string", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf }
-]
-
-// Bridge-only authority: these templates must dissolve once structural
-// method lookup reads the collection algebra directly from std declarations.
-data free_monoid_collection_templates: List<AlgebraFieldTemplate> = [
-  { name: "map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "flat_map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "fold", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "any", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-  { name: "all", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
-  { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
-  { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement } },
-  { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement } },
-  { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf },
-  { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf },
-  { name: "sort_by", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf },
-  { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" } },
-  { name: "enumerate", param_types: [ReceiverSelf], return_type: ReceiverCollectionOf { element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } } },
-  { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf },
-  { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" } },
-  { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "list_push", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf },
-  { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } }
-]
-
-data partial_function_templates: List<AlgebraFieldTemplate> = [
-  { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue } },
-  { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue } },
-  { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue } },
-  { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf },
-  { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
-  { name: "has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
-  { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
-  { name: "emit_map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
-  { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
-  { name: "keys", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverKey } },
-  { name: "map_keys", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverKey } },
-  { name: "values", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverValue } },
-  { name: "map_values", param_types: [ReceiverSelf], return_type: ListOf { element: ReceiverValue } },
-  { name: "with", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf },
-  { name: "contains", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" } },
-  { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } }
-]
 
 // Build a value field (e.g., zero: Int, identity: String).
 fn algebra_value_field(name: String, type_node: Node) -> Node {

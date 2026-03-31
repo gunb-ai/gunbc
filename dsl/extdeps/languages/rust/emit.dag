@@ -93,9 +93,61 @@ data rust_source_extension: String = ".rs"
 data rust_source_dir: String = "src/"
 data rust_visibility: String = "pub "
 
-// -- Runtime function lookup tables --------------------------------------
-// Maps of functions backed by v2_rt at runtime.
-// Used by the emitter to decide calling convention (v2_rt:: prefix, &-ref args).
+// -- Runtime function registry --------------------------------------------
+// Single authority for DAG functions backed by v2_rt at runtime.
+// Each entry declares: the DAG-level name, the Rust bridge symbol (when
+// it differs from the DAG name), and whether the first map argument is
+// passed by reference.
+//
+// Consumers call is_rt_function / rt_bridge_name / rt_passes_by_ref
+// instead of probing three separate maps.
+
+type RuntimeFunction {
+  name: String
+  bridge_name: String
+  passes_by_ref: Bool
+}
+
+data rt_function_registry: List<RuntimeFunction> = [
+  { name: "concat",             bridge_name: "concat",           passes_by_ref: false },
+  { name: "char_at",            bridge_name: "char_at",          passes_by_ref: false },
+  { name: "string_length",      bridge_name: "string_length",    passes_by_ref: false },
+  { name: "substring",          bridge_name: "substring",        passes_by_ref: false },
+  { name: "string_contains",    bridge_name: "string_contains",  passes_by_ref: false },
+  { name: "scan_while",         bridge_name: "scan_while",       passes_by_ref: false },
+  { name: "skip_horizontal_ws", bridge_name: "skip_horizontal_ws", passes_by_ref: false },
+  { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: false },
+  { name: "scan_string_end",    bridge_name: "scan_string_end",  passes_by_ref: false },
+  { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false },
+  { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false },
+  { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true },
+  { name: "index_by",           bridge_name: "rc_index_by",      passes_by_ref: false },
+  { name: "empty_map",          bridge_name: "rc_empty_map",     passes_by_ref: false },
+  { name: "map_insert",         bridge_name: "rc_map_insert",    passes_by_ref: false },
+  { name: "map_merge",          bridge_name: "rc_map_merge",     passes_by_ref: false },
+  { name: "list_concat",        bridge_name: "rc_list_concat",   passes_by_ref: false },
+  { name: "str_eq",             bridge_name: "str_eq",           passes_by_ref: false },
+  { name: "filesystem_read",    bridge_name: "filesystem_read",  passes_by_ref: false },
+  { name: "list_push",          bridge_name: "rc_list_push",     passes_by_ref: false },
+  { name: "map_get",            bridge_name: "map_get",          passes_by_ref: true },
+  { name: "map_keys",           bridge_name: "map_keys",         passes_by_ref: true },
+  { name: "map_values",         bridge_name: "map_values",       passes_by_ref: true },
+  { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false },
+  { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true },
+  { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true }
+]
+
+// Helper functions: O(1) lookup via indexed maps built from the registry.
+// The registry is the single hand-maintained authority. These maps are
+// the DERIVED index — their content must match the registry. If you add
+// a runtime function, add it to rt_function_registry above; then update
+// the maps below to match.
+//
+// Why not derive programmatically? The .dag data syntax only supports
+// literal map/list initializers, not computed expressions. When the
+// language gains computed data declarations, these maps should become
+// `rt_function_registry |> fold(...)`.
+
 data rt_functions: Map<String, Bool> = {
   "concat": true, "char_at": true, "string_length": true,
   "substring": true, "string_contains": true, "scan_while": true,
@@ -108,13 +160,11 @@ data rt_functions: Map<String, Bool> = {
   "parse_int": true, "map_contains_key": true, "map_has": true
 }
 
-// Runtime functions that take map arguments by reference.
 data rt_ref_map_functions: Map<String, Bool> = {
   "map_get": true, "map_keys": true, "map_values": true,
   "lookup": true, "map_contains_key": true, "map_has": true
 }
 
-// Runtime functions whose Rust bridge names differ from the DAG-level name.
 data rt_bridge_function_names: Map<String, String> = {
   "empty_map": "rc_empty_map",
   "index_by": "rc_index_by",
@@ -122,4 +172,19 @@ data rt_bridge_function_names: Map<String, String> = {
   "list_push": "rc_list_push",
   "map_insert": "rc_map_insert",
   "map_merge": "rc_map_merge"
+}
+
+fn is_rt_function(name: String) -> Bool {
+  map_contains_key(rt_functions, name)
+}
+
+fn rt_bridge_name(name: String) -> String {
+  match map_get(rt_bridge_function_names, name) {
+    Some { value: bridge } => bridge
+    None => name
+  }
+}
+
+fn rt_passes_by_ref(name: String) -> Bool {
+  map_contains_key(rt_ref_map_functions, name)
 }
