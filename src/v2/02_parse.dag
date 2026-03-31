@@ -1085,6 +1085,11 @@ fn parse_import_names(tokens: List<Token>, state: ParserState) -> NamesResult {
   parse_import_names_acc(tokens: tokens, state: state, acc: [])
 }
 
+// Parser-produced name leaf. Currently delegates to the core leaf
+// constructor, but exists as a single indirection point: if parser
+// name leaves later need different provenance (e.g., carrying ident_span
+// or distinguishing parsed names from synthetic ones), only this
+// function changes — not every lambda/import call site.
 fn parsed_name_leaf(name: String, span: SourceSpan) -> Node {
   leaf_node(name: name, span: span)
 }
@@ -2733,13 +2738,15 @@ fn last_child_or_self(n: Node) -> Node {
 }
 
 // Extract a string name from a Node for use in property values.
+// Keyed-container detection derives from container_type_set (single authority
+// for container identity) plus structural child count — no parallel name list.
 fn node_to_name_str(n: Node) -> String {
   let has_children = n.children |> count > 0
   let is_optional = n.return_cardinality == CardOptional
-  let is_binary_container = is_container_type(name: n.name) && n.children |> count == 2
+  let is_keyed_container = is_container_type(name: n.name) && n.children |> count == 2
   if is_optional {
     concat("Optional_", node_to_name_str(n: with_required_cardinality(n: n)))
-  } else if is_binary_container {
+  } else if is_keyed_container {
     if n.children |> count > 1 { concat(n.name, "_", node_to_name_str(n: last_child_or_self(n: n))) }
     else { n.name }
   } else if n.name == "Refined" {

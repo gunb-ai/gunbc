@@ -2,9 +2,12 @@ use std::rc::Rc;
 
 use v2_compiler::v2_compiler_infer_access;
 use v2_compiler::v2_compiler_infer_env::{TypeBinding, TypeEnv};
+use v2_compiler::v2_compiler_infer_lookup;
 use v2_compiler::v2_compiler_infer_patterns::{self, NodeLookupStatus};
 use v2_compiler::v2_compiler_infer_resolve::resolve_node;
-use v2_compiler::v2_compiler_infer_types::{bare_map_node, container_node, map_node};
+use v2_compiler::v2_compiler_infer_types::{
+    bare_map_node, container_node, map_node, node_is_keyed_collection,
+};
 use v2_compiler::v2_std_core::{
     leaf_node, make_arm_node, with_optional_cardinality, Cardinality, ExprData, InferredNode,
     MatchPattern, Node, NodeType, SourceSpan,
@@ -263,3 +266,301 @@ fn resolve_node_uses_node_name_for_lookup() {
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     assert_eq!(result.resolved.name, "User");
 }
+
+// =========================================================================
+// Higher-order method instantiation tests
+//
+// These test observable behavior through the public lookup_structural_method
+// API: given a receiver type and method name, does the method resolve, and
+// what is the result type? No peeking into Node.inferred or params —
+// the tests exercise the same contract downstream consumers use.
+// =========================================================================
+
+#[test]
+fn structural_method_lookup_resolves_all_list_collection_methods() {
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let expected_methods = [
+        "map", "filter", "flat_map", "fold", "any", "all", "count", "first", "last", "skip",
+        "take", "sort_by", "append", "contains", "enumerate", "reverse", "join", "concat",
+    ];
+    for method_name in &expected_methods {
+        assert!(
+            v2_compiler_infer_lookup::lookup_structural_method(
+                list_int.clone(),
+                method_name.to_string()
+            )
+            .is_some(),
+            "lookup_structural_method should resolve '{}' on List<Int>",
+            method_name
+        );
+    }
+}
+
+#[test]
+fn structural_method_any_on_list_returns_bool() {
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int,
+        "any".to_string(),
+    )
+    .expect("any must resolve on List<Int>");
+    assert_eq!(result.name, "Bool", "any on List<Int> should return Bool");
+}
+
+#[test]
+fn structural_method_all_on_list_returns_bool() {
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int,
+        "all".to_string(),
+    )
+    .expect("all must resolve on List<Int>");
+    assert_eq!(result.name, "Bool", "all on List<Int> should return Bool");
+}
+
+#[test]
+fn structural_method_sort_by_on_list_returns_self() {
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int,
+        "sort_by".to_string(),
+    )
+    .expect("sort_by must resolve on List<Int>");
+    assert_eq!(
+        result.name, "List",
+        "sort_by on List<Int> should return List (ReceiverSelf)"
+    );
+}
+
+#[test]
+fn structural_method_first_on_list_returns_optional_element() {
+    let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_int,
+        "first".to_string(),
+    )
+    .expect("first must resolve on List<Int>");
+    assert_eq!(result.name, "Int", "first on List<Int> should return Int");
+    assert!(
+        matches!(result.return_cardinality, Cardinality::CardOptional),
+        "first should return Optional"
+    );
+}
+
+#[test]
+fn structural_method_count_on_list_returns_int() {
+    let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        list_string,
+        "count".to_string(),
+    )
+    .expect("count must resolve on List<String>");
+    assert_eq!(result.name, "Int", "count should return Int");
+}
+
+#[test]
+fn structural_method_lookup_resolves_all_int_ring_methods() {
+    let int_node = leaf_node("Int".to_string());
+    let expected_methods = ["add", "zero", "negate", "mul", "one", "compare"];
+    for method_name in &expected_methods {
+        assert!(
+            v2_compiler_infer_lookup::lookup_structural_method(
+                int_node.clone(),
+                method_name.to_string()
+            )
+            .is_some(),
+            "lookup_structural_method should resolve '{}' on Int",
+            method_name
+        );
+    }
+}
+
+#[test]
+fn structural_method_compare_on_int_returns_ordering() {
+    let int_node = leaf_node("Int".to_string());
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        int_node,
+        "compare".to_string(),
+    )
+    .expect("compare must resolve on Int");
+    assert_eq!(
+        result.name, "Ordering",
+        "compare on Int should return Ordering"
+    );
+}
+
+#[test]
+fn structural_method_lookup_resolves_all_map_partial_function_methods() {
+    let m = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    let expected_methods = [
+        "get", "map_get", "lookup", "map_insert", "map_merge", "has", "keys", "values",
+        "contains", "length",
+    ];
+    for method_name in &expected_methods {
+        assert!(
+            v2_compiler_infer_lookup::lookup_structural_method(
+                m.clone(),
+                method_name.to_string()
+            )
+            .is_some(),
+            "lookup_structural_method should resolve '{}' on Map<String,Int>",
+            method_name
+        );
+    }
+}
+
+#[test]
+fn structural_method_get_on_map_returns_optional_value() {
+    let m = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        m,
+        "get".to_string(),
+    )
+    .expect("get must resolve on Map<String,Int>");
+    assert_eq!(result.name, "Int", "get on Map<String,Int> should return Int");
+    assert!(
+        matches!(result.return_cardinality, Cardinality::CardOptional),
+        "get should return Optional"
+    );
+}
+
+#[test]
+fn structural_method_keys_on_map_returns_list_of_key_type() {
+    let m = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    let result = v2_compiler_infer_lookup::lookup_structural_method(
+        m,
+        "keys".to_string(),
+    )
+    .expect("keys must resolve on Map<String,Int>");
+    assert_eq!(result.name, "List", "keys should return List");
+    assert_eq!(result.children.len(), 1, "keys result should have one child");
+    assert_eq!(
+        result.children[0].name, "String",
+        "keys on Map<String,Int> should return List<String>"
+    );
+}
+
+#[test]
+fn structural_method_lookup_returns_none_for_unknown_type() {
+    let custom = leaf_node("MyType".to_string());
+    assert!(
+        v2_compiler_infer_lookup::lookup_structural_method(custom, "add".to_string()).is_none(),
+        "custom types without algebra should not have structural methods"
+    );
+}
+
+// =========================================================================
+// Keyed-collection access tests
+//
+// These verify that KeyedCollectionParts correctly decomposes keyed
+// collection types (Map) and that the structural predicate
+// node_is_keyed_collection distinguishes maps from element collections.
+// =========================================================================
+
+#[test]
+fn keyed_collection_parts_extracts_key_and_value() {
+    let m = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    let parts = v2_compiler_infer_access::keyed_collection_parts(m);
+    let parts = parts.expect("Map<String,Int> should decompose to keyed parts");
+    assert_eq!(parts.key_type.name, "String");
+    assert_eq!(parts.value_type.name, "Int");
+}
+
+#[test]
+fn keyed_collection_parts_returns_none_for_element_collection() {
+    let list = container_node("List".to_string(), leaf_node("Int".to_string()));
+    let parts = v2_compiler_infer_access::keyed_collection_parts(list);
+    assert!(
+        parts.is_none(),
+        "List<Int> is not a keyed collection, should return None"
+    );
+}
+
+#[test]
+fn keyed_collection_parts_returns_none_for_bare_map() {
+    let bare = bare_map_node();
+    let parts = v2_compiler_infer_access::keyed_collection_parts(bare);
+    assert!(
+        parts.is_none(),
+        "bare Map (no children) should return None"
+    );
+}
+
+#[test]
+fn node_is_keyed_collection_true_for_map() {
+    let m = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Bool".to_string()),
+    );
+    assert!(node_is_keyed_collection(m));
+}
+
+#[test]
+fn node_is_keyed_collection_false_for_list() {
+    let list = container_node("List".to_string(), leaf_node("Int".to_string()));
+    assert!(!node_is_keyed_collection(list));
+}
+
+#[test]
+fn node_is_keyed_collection_false_for_leaf() {
+    let leaf = leaf_node("String".to_string());
+    assert!(!node_is_keyed_collection(leaf));
+}
+
+#[test]
+fn map_index_with_correct_key_type_succeeds() {
+    let map_type = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    let result = v2_compiler_infer_access::check_index_access_node(
+        map_type,
+        leaf_node("String".to_string()),
+        zero_span(),
+        "test".to_string(),
+    );
+    assert!(
+        result.diagnostics.is_empty(),
+        "Map<String,Int>[String] should succeed, got: {:?}",
+        result.diagnostics.len()
+    );
+    match result.inferred.as_ref().map(|i| i.as_ref()) {
+        Some(InferredNode::Resolved { node }) => {
+            assert_eq!(node.name, "Int");
+            assert!(matches!(node.return_cardinality, Cardinality::CardOptional));
+        }
+        other => panic!("expected Resolved(Int?), got {:?}", other),
+    }
+}
+
+#[test]
+fn map_index_with_wrong_key_type_reports_error() {
+    let map_type = map_node(
+        leaf_node("String".to_string()),
+        leaf_node("Int".to_string()),
+    );
+    let result = v2_compiler_infer_access::check_index_access_node(
+        map_type,
+        leaf_node("Int".to_string()),
+        zero_span(),
+        "test".to_string(),
+    );
+    assert_eq!(
+        result.diagnostics.len(),
+        1,
+        "Map<String,Int>[Int] should report key type mismatch"
+    );
+}
+
