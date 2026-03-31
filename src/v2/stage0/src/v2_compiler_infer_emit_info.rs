@@ -81,11 +81,9 @@ pub struct TypeSummary {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ValueContext {
-    ConstantData,
-    RuntimeValue,
-    SpecificationWitness,
-    CallableValue,
+pub struct ValueContext {
+    pub is_constant: bool,
+    pub has_fn_fields: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

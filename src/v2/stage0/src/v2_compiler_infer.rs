@@ -4693,11 +4693,9 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
                 let has_body = item.body.is_some();
                 let has_type_ann = item.type_annotation.is_some();
                 let has_params = !item.params.is_empty();
-                let ctx = if has_body && has_type_ann && !has_params {
-                    ValueContext::ConstantData
-                } else {
-                    ValueContext::RuntimeValue
-                };
+                let is_constant = has_body && has_type_ann && !has_params;
+                let has_fn_fields = item.children.iter().any(|child| !child.params.is_empty());
+                let ctx = ValueContext { is_constant, has_fn_fields };
                 if !item.name.is_empty() {
                     v2_rt::map_insert(inner, item.name.clone(), ctx)
                 } else { inner }

@@ -107,7 +107,7 @@ import v2.compiler.infer_sigs {
 import v2.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
-  ValueContext, ConstantData, RuntimeValue, SpecificationWitness, CallableValue,
+  ValueContext,
   empty_emit_graph_info, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
   add_emit_item_summary
@@ -2698,8 +2698,9 @@ fn classify_item_value_context(item: Node) -> ValueContext {
   let has_body = item.body != none
   let has_type_ann = item.type_annotation != none
   let has_params = item.params |> count > 0
-  let is_data = has_body && has_type_ann && !has_params
-  if is_data { ConstantData } else { RuntimeValue }
+  let is_constant = has_body && has_type_ann && !has_params
+  let has_fn_fields = item.children |> any(child => child.params |> count > 0)
+  ValueContext { is_constant: is_constant, has_fn_fields: has_fn_fields }
 }
 
 fn build_value_contexts(modules: List<TypedModule>) -> Map<String, ValueContext> {
