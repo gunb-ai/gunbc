@@ -71,7 +71,7 @@ pub use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule, ItemInfo, I
 use crate::v2_compiler_infer_items::ItemKind::{FuncItem};
 pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, expr_span};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_string_literal, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, InterpPart, TestProjection, TcoFrame, TcoReassignInput, TypedItemKind, emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type, emit_node_type, emit_ident, emit_let_binding, emit_simple_expr, emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_string_literal, escape_go_interp_text, escape_string_literal_body, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item, unique_strings, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, emit_null_coalesce, is_type_alias_return_node, has_nested_records_node, is_service_item, typed_named_arg_matches, order_typed_call_args, classify_typed_item, extract_test_projections, is_tco_eligible, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc};
 
 pub fn emit_go_block_stmts(mut remaining: Vec<Rc<Node>>, mut text: Vec<String>, mut scope: Rc<InferScope>, mut registry: HashMap<String, Rc<ItemInfo>>, mut depth: i64) -> Rc<BlockEmitState> {
@@ -1098,7 +1098,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_go_typed_string_interp(parts: Vec<Rc<StringPart>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> String {
     {
-        let fmt_parts = { let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(go_typed_interp_segment(p.clone(), registry.clone(), scope.clone())); } __result };
+        let has_interpolations = parts.clone().iter().cloned().any(|p| match (*p.clone()).clone() {
+            StringPart::Interpolation { .. } => true,
+            _ => false,
+        });
+        let fmt_parts = { let mut __result = Vec::new(); for p in parts.clone().iter().cloned() { __result.push(go_typed_interp_segment(p.clone(), registry.clone(), scope.clone(), has_interpolations.clone())); } __result };
 let fmt_str = { let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.format_segment.clone()); } __result }.join(&"".to_string());
 let args = { let mut __result = Vec::new(); for a in { let mut __result = Vec::new(); for p in fmt_parts.clone().iter().cloned() { __result.push(p.arg_expr.clone()); } __result }.iter().cloned() { if (a.clone() != "".to_string()) { __result.push(a); } } __result };
 if ((args.clone().len() as i64) == 0) {
@@ -1112,12 +1116,19 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("fmt.Sprintf(\"".to_stri
 }
 }
 
-pub fn go_typed_interp_segment(part: Rc<StringPart>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>) -> Rc<InterpPart> {
+pub fn go_typed_interp_segment(part: Rc<StringPart>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, has_interpolations: bool) -> Rc<InterpPart> {
     match (*part.clone()).clone() {
-    StringPart::Text { value: v, .. } => Rc::new(InterpPart {
-    format_segment: v.clone(),
+    StringPart::Text { value: v, .. } => {
+        let escaped = if has_interpolations.clone() {
+            escape_go_interp_text(v.clone())
+} else {
+            escape_string_literal_body(v.clone())
+};
+        Rc::new(InterpPart {
+    format_segment: escaped.clone(),
     arg_expr: "".to_string(),
-}),
+})
+},
     StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
     format_segment: "%v".to_string(),
     arg_expr: emit_go_typed_expr(e.clone(), registry.clone(), scope.clone(), 0),

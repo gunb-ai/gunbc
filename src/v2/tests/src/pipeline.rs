@@ -413,6 +413,33 @@ fn go_emit_mock_test_file_imports_fmt_for_string_interp() {
         "Go test file should render fmt.Sprintf for interpolated mock strings"
     );
 }
+
+#[test]
+fn go_emit_mock_interp_escapes_format_text() {
+    let source = r#"module mock_interp_escape
+
+type Pong = String
+
+service demo.Api {
+  operation Ping {
+    response {
+      200 => Pong
+    }
+    mock_response {
+      200 => "quote \" slash \\ newline \n brace \{ok\} percent % {-1}"
+    }
+  }
+}
+"#;
+    let result = compile_dag_named("mock_interp_escape.dag", source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "mock_interp_escape_test.go");
+    assert!(
+        content.contains(r#"fmt.Sprintf("quote \" slash \\ newline \n brace {ok} percent %% %v""#),
+        "Go mock interpolation should escape format text through the shared renderer: {content}"
+    );
+}
+
 #[test]
 fn dag_pipeline_smoke() {
     let source = "module dag_smoke\n\ntype Point { x: Int  y: Int }\n\nfn origin() -> Point {\n  Point { x: 0, y: 0 }\n}\n";
@@ -1932,6 +1959,69 @@ fn python_emit_snake_case_functions() {
     }
 }
 
+#[test]
+fn rust_typed_string_interp_escapes_format_text() {
+    let source = r#"module interp_emit
+
+fn render(name: String) -> String {
+  "quote \" slash \\ newline \n brace \{ok\} percent % {name}"
+}
+"#;
+    let result = compile_dag_named("interp_emit.dag", source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/interp_emit.rs");
+    assert!(
+        content.contains(r#"format!("quote \" slash \\ newline \n brace {{ok}} percent % {}""#),
+        "Rust typed interpolation should escape literal format text: {content}"
+    );
+}
+
+#[test]
+fn python_typed_string_interp_escapes_fstring_text() {
+    let source = r#"module interp_emit
+
+fn render(name: String) -> String {
+  "quote \" slash \\ newline \n brace \{ok\} percent % {name}"
+}
+"#;
+    let result = compile_dag_named("interp_emit.dag", source, RenderTarget::Python);
+    assert_no_diagnostics(&result);
+    let content = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".py") && !f.path.contains("__init__"))
+        .expect("Python target should emit a .py file")
+        .content
+        .clone();
+    assert!(
+        content.contains(r#"f"quote \" slash \\ newline \n brace {{ok}} percent % {name}""#),
+        "Python typed interpolation should escape literal f-string text: {content}"
+    );
+}
+
+#[test]
+fn go_typed_string_interp_escapes_format_text() {
+    let source = r#"module interp_emit
+
+fn render(name: String) -> String {
+  "quote \" slash \\ newline \n brace \{ok\} percent % {name}"
+}
+"#;
+    let result = compile_dag_named("interp_emit.dag", source, RenderTarget::Go);
+    assert_no_diagnostics(&result);
+    let content = result
+        .files
+        .iter()
+        .find(|f| f.path.ends_with(".go") && !f.path.contains("go.mod") && !f.path.contains("_test.go"))
+        .expect("Go target should emit a .go file")
+        .content
+        .clone();
+    assert!(
+        content.contains(r#"fmt.Sprintf("quote \" slash \\ newline \n brace {ok} percent %% %v""#),
+        "Go typed interpolation should escape literal format text: {content}"
+    );
+}
+
 // ── Self-compile complexity ratchet ─────────────────────────────────────
 //
 // Compiles all v2 .dag sources and asserts the complexity violation count
@@ -2452,6 +2542,25 @@ fn recursive_type_compiles_without_overflow() {
     let source = "module rec\n\ntype Tree<T> = Leaf { value: T } | Branch { left: Tree<T>  right: Tree<T> }\n\nfn depth(t: Tree<Int>) -> Int {\n  match t {\n    Leaf { value: _ } => 1\n    Branch { left: l, right: r } => 1 + depth(t: l)\n  }\n}\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
+}
+
+#[test]
+fn imported_recursive_enum_catamorphism_compiles() {
+    let result = compile_multi(&[
+        (
+            "tree.dag",
+            "module tree\n\ntype Tree = Leaf { value: Int } | Pair { left: Tree  right: Tree }\n",
+        ),
+        (
+            "walker.dag",
+            "module walker\nimport tree { Tree }\n\nfn total(t: Tree) -> Int {\n  match t {\n    Leaf { value: v } => v\n    Pair { left: l, right: r } => total(t: l) + total(t: r)\n  }\n}\n",
+        ),
+    ]);
+    assert_no_diagnostics(&result);
+    assert!(
+        !result.files.is_empty(),
+        "imported recursive enum catamorphism should still emit code"
+    );
 }
 
 // ── Multi-target emission ────────────────────────────────────────────────

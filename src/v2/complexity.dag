@@ -15,10 +15,11 @@
 module v2.compiler.complexity
 
 import std.types { SourceSpan }
-import v2.compiler.infer_env { recursive_variant_field_key }
+import v2.compiler.infer_env { RecursiveVariantFieldWitness }
 import v2.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
+  ParserCallHelper, ParserCallFunction,
   parser_progress_flag_var, parser_passthrough_state_expr, parser_result_witness
 }
 import v2.std.core {
@@ -578,9 +579,13 @@ fn parser_result_source_for_expr(expr: Node, state_param: ParserStateParam, env:
         ParserWitnessExpect => ParserResultExpect { input: input_progress }
         ParserWitnessEat => ParserResultEat { input: input_progress }
         ParserWitnessCall { callee: callee } =>
-          match input_progress {
-            ProgressUnknown => ParserResultOpaque
-            _ => ParserResultCall { input: input_progress, callee: callee }
+          match callee {
+            ParserCallHelper { helper: _ } => ParserResultOpaque
+            ParserCallFunction { name: name } =>
+              match input_progress {
+                ProgressUnknown => ParserResultOpaque
+                _ => ParserResultCall { input: input_progress, callee: name }
+              }
           }
         ParserWitnessOpaque => ParserResultOpaque
       }
@@ -964,77 +969,111 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
   }
 }
 
-fn parser_member_is_always_advancing(entry: FuncEntry, candidates: Map<String, Bool>) -> Bool {
+fn parser_member_is_always_advancing(entry: FuncEntry, parser_name_set: Map<String, Bool>, proven: Map<String, Bool>) -> Bool {
   match parser_state_param(params: entry.params) {
     Some { value: state_param } =>
-      parser_success_progress(
+      let edges = collect_parser_progress_edges(
+        caller: entry.name,
+        body: entry.body,
+        state_param: state_param,
+        scc_name_set: parser_name_set,
+        env: empty_parser_progress_env(),
+        parser_always_advancing: proven,
+        consumed_true_set: empty_map()
+      )
+      (edges |> all(edge => edge.progress == ProgressStrict))
+      && parser_success_progress(
         expr: entry.body,
         state_param: state_param,
         env: empty_parser_progress_env(),
-        parser_always_advancing: candidates,
+        parser_always_advancing: proven,
         consumed_true_set: empty_map()
       ) == ProgressStrict
     None => false
   }
 }
 
-fn same_member_set(a: Map<String, Bool>, b: Map<String, Bool>, members: List<String>) -> Bool {
-  members |> all(name =>
-    set_has(m: a, key: name) == set_has(m: b, key: name)
-  )
-}
-
-fn infer_parser_always_advancing_members_loop(members: List<String>, func_index: Map<String, FuncEntry>, candidates: Map<String, Bool>, fuel: Int) -> Map<String, Bool> {
-  if fuel <= 0 {
-    candidates
-  } else {
-    let next = members |> fold(init: empty_map(), f: (acc, name) =>
-      if set_has(m: candidates, key: name) == false {
-        acc
+fn infer_parser_always_advancing_members_worklist(queue: List<String>, func_index: Map<String, FuncEntry>, parser_name_set: Map<String, Bool>, reverse_graph: Map<String, List<String>>, proven: Map<String, Bool>) -> Map<String, Bool> {
+  match queue |> first {
+    Some { value: name } =>
+      let rest = queue |> skip(1)
+      if set_has(m: proven, key: name) {
+        infer_parser_always_advancing_members_worklist(
+          queue: rest,
+          func_index: func_index,
+          parser_name_set: parser_name_set,
+          reverse_graph: reverse_graph,
+          proven: proven
+        )
       } else {
         match map_get(func_index, name) {
           Some { value: entry } =>
-            if parser_member_is_always_advancing(entry: entry, candidates: candidates) {
-              map_insert(acc, name, true)
+            if parser_member_is_always_advancing(entry: entry, parser_name_set: parser_name_set, proven: proven) {
+              let callers = match map_get(reverse_graph, name) {
+                Some { value: members } => members
+                None => []
+              }
+              infer_parser_always_advancing_members_worklist(
+                queue: deduplicate(items: concat(rest, callers)),
+                func_index: func_index,
+                parser_name_set: parser_name_set,
+                reverse_graph: reverse_graph,
+                proven: map_insert(proven, name, true)
+              )
             } else {
-              acc
+              infer_parser_always_advancing_members_worklist(
+                queue: rest,
+                func_index: func_index,
+                parser_name_set: parser_name_set,
+                reverse_graph: reverse_graph,
+                proven: proven
+              )
             }
-          None => acc
+          None =>
+            infer_parser_always_advancing_members_worklist(
+              queue: rest,
+              func_index: func_index,
+              parser_name_set: parser_name_set,
+              reverse_graph: reverse_graph,
+              proven: proven
+            )
         }
       }
-    )
-    if same_member_set(a: candidates, b: next, members: members) {
-      next
-    } else {
-      infer_parser_always_advancing_members_loop(
-        members: members,
-        func_index: func_index,
-        candidates: next,
-        fuel: fuel - 1
-      )
-    }
+    None => proven
   }
 }
 
 fn infer_parser_always_advancing_members(members: List<String>, func_index: Map<String, FuncEntry>) -> Map<String, Bool> {
-  let initial = members |> fold(init: empty_map(), f: (acc, name) =>
+  let parser_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
-  infer_parser_always_advancing_members_loop(
-    members: members,
+  let parser_entries = members |> flat_map(name =>
+    match map_get(func_index, name) {
+      Some { value: entry } => [entry]
+      None => []
+    }
+  )
+  let reverse_graph = build_call_graph(func_entries: parser_entries).reverse
+  infer_parser_always_advancing_members_worklist(
+    queue: members,
     func_index: func_index,
-    candidates: initial,
-    fuel: members |> count
+    parser_name_set: parser_name_set,
+    reverse_graph: reverse_graph,
+    proven: empty_map()
   )
 }
 
-fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>) -> Map<String, Bool> {
-  let members = map_keys(func_index) |> filter(name =>
+fn parser_function_names(func_index: Map<String, FuncEntry>) -> List<String> {
+  map_keys(func_index) |> filter(name =>
     match map_get(func_index, name) {
       Some { value: entry } => parser_state_param(params: entry.params) != none
       None => false
     }
   )
+}
+
+fn infer_all_parser_always_advancing(func_index: Map<String, FuncEntry>) -> Map<String, Bool> {
+  let members = parser_function_names(func_index: func_index)
   infer_parser_always_advancing_members(members: members, func_index: func_index)
 }
 
@@ -1057,15 +1096,27 @@ fn self_calls_have_strict_parser_progress(func_name: String, body: Node, params:
 }
 
 fn build_call_graph_from_parser_edges(names: List<String>, edges: List<ParserProgressEdge>) -> CallGraph {
-  let forward = names |> fold(init: empty_map(), f: (acc, name) =>
-    let callees = edges |> filter(edge => edge.caller == name) |> map(edge => edge.callee)
-    map_insert(acc, name, callees)
+  let initial_forward = names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
   )
-  let reverse = names |> fold(init: empty_map(), f: (acc, name) =>
-    let callers = edges |> filter(edge => edge.callee == name) |> map(edge => edge.caller)
-    map_insert(acc, name, callers)
+  let initial_reverse = names |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [])
   )
-  CallGraph { forward: forward, reverse: reverse }
+  let graph_acc = edges |> fold(init: CallGraphAcc { forward: initial_forward, reverse: initial_reverse }, f: (acc, edge) =>
+    let forward_neighbors = match map_get(acc.forward, edge.caller) {
+      Some { value: ns } => ns
+      None => []
+    }
+    let reverse_neighbors = match map_get(acc.reverse, edge.callee) {
+      Some { value: ns } => ns
+      None => []
+    }
+    CallGraphAcc {
+      forward: map_insert(acc.forward, edge.caller, list_push(forward_neighbors, edge.callee)),
+      reverse: map_insert(acc.reverse, edge.callee, list_push(reverse_neighbors, edge.caller))
+    }
+  )
+  CallGraph { forward: graph_acc.forward, reverse: graph_acc.reverse }
 }
 
 fn same_progress_subgraph_has_cycle(members: List<String>, edges: List<ParserProgressEdge>) -> Bool {
@@ -1091,7 +1142,10 @@ fn classify_parser_scc_recursion_pattern(members: List<String>, func_index: Map<
   if has_parser_state == false {
     none
   } else {
-    let parser_always_advancing = infer_parser_always_advancing_members(members: members, func_index: func_index)
+    let parser_always_advancing = infer_parser_always_advancing_members(
+      members: parser_function_names(func_index: func_index),
+      func_index: func_index
+    )
     let edges = members |> flat_map(name =>
       match map_get(func_index, name) {
         Some { value: entry } =>
@@ -1315,14 +1369,21 @@ fn max_path_target_calls_with_cont(body: Node, target_set: Map<String, Bool>, co
   }
 }
 
-fn has_recursive_fields_for_type(type_name: String, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, Bool>) -> Bool {
+fn recursive_variant_field_witnesses_for_type(type_name: String, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> List<RecursiveVariantFieldWitness> {
+  match map_get(recursive_variant_fields, type_name) {
+    Some { value: witnesses } => witnesses
+    None => []
+  }
+}
+
+fn has_recursive_variant_field(type_name: String, variant_name: String, field_name: String, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
+  recursive_variant_field_witnesses_for_type(type_name: type_name, recursive_variant_fields: recursive_variant_fields)
+    |> any(witness => witness.variant_name == variant_name && witness.field_name == field_name)
+}
+
+fn has_recursive_fields_for_type(type_name: String, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
   map_get(recursive_type_set, type_name) != none
-  || (recursive_variant_fields |> map_keys |> any(key =>
-    match key |> split(delimiter: "::") |> first {
-      Some { value: prefix } => prefix == type_name
-      None => false
-    }
-  ))
+  || map_get(recursive_variant_fields, type_name) != none
 }
 
 fn structural_match_param_name(body: Node) -> String? {
@@ -1349,7 +1410,7 @@ fn structural_match_param_name(body: Node) -> String? {
   }
 }
 
-fn structural_param_from_body(body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, Bool>) -> StructuralParam? {
+fn structural_param_from_body(body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> StructuralParam? {
   match structural_match_param_name(body: body) {
     Some { value: target_name } =>
       params |> enumerate |> fold(init: none, f: (acc, pair) =>
@@ -1371,7 +1432,7 @@ fn structural_param_from_body(body: Node, params: List<Node>, recursive_type_set
   }
 }
 
-fn recursive_arm_binding_names(arm_node: Node, structural_param: StructuralParam, recursive_variant_fields: Map<String, Bool>) -> List<String> {
+fn recursive_arm_binding_names(arm_node: Node, structural_param: StructuralParam, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> List<String> {
   match arm_pattern(n: arm_node) {
     VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings } =>
       let all_bindings = bindings |> flat_map(fb =>
@@ -1381,8 +1442,7 @@ fn recursive_arm_binding_names(arm_node: Node, structural_param: StructuralParam
         }
       )
       let recursive_bindings = bindings |> flat_map(fb =>
-        let key = recursive_variant_field_key(type_name: structural_param.type_name, variant_name: variant_name, field_name: field_binding_name(n: fb))
-        if map_get(recursive_variant_fields, key) == none {
+        if has_recursive_variant_field(type_name: structural_param.type_name, variant_name: variant_name, field_name: field_binding_name(n: fb), recursive_variant_fields: recursive_variant_fields) == false {
           []
         } else {
           match field_binding_pattern(n: fb) {
@@ -1472,7 +1532,7 @@ fn self_calls_descend_on_recursive_bindings(body: Node, func_name: String, struc
 //   }
 //
 // Total work = |tree| × max(per-arm cost). Not 2^depth.
-fn is_structural_descent_with_param(body: Node, func_name: String, structural_param: StructuralParam, recursive_variant_fields: Map<String, Bool>) -> Bool {
+fn is_structural_descent_with_param(body: Node, func_name: String, structural_param: StructuralParam, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
   match body.expr_data {
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
@@ -1534,7 +1594,7 @@ fn is_structural_descent_with_param(body: Node, func_name: String, structural_pa
   }
 }
 
-fn is_structural_descent(body: Node, func_name: String, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, Bool>) -> Bool {
+fn is_structural_descent(body: Node, func_name: String, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>) -> Bool {
   match structural_param_from_body(body: body, params: params, recursive_type_set: recursive_type_set, recursive_variant_fields: recursive_variant_fields) {
     Some { value: structural_param } =>
       is_structural_descent_with_param(
@@ -1600,7 +1660,7 @@ fn scc_calls_descend_on_recursive_bindings(body: Node, scc_name_set: Map<String,
   }
 }
 
-fn is_scc_structural_descent_with_param(body: Node, structural_param: StructuralParam, recursive_variant_fields: Map<String, Bool>, scc_name_set: Map<String, Bool>, scc_structural_params: Map<String, StructuralParam>) -> Bool {
+fn is_scc_structural_descent_with_param(body: Node, structural_param: StructuralParam, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>, scc_name_set: Map<String, Bool>, scc_structural_params: Map<String, StructuralParam>) -> Bool {
   match body.expr_data {
     ExprMatch =>
       let scrut = match_scrutinee(texpr: body)
@@ -1911,7 +1971,7 @@ fn has_arithmetic_descent(body: Node, func_name: String) -> Bool {
   }
 }
 
-fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, Bool>, parser_always_advancing: Map<String, Bool>) -> RecursionPattern {
+fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, recursive_type_set: Map<String, Bool>, recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>, parser_always_advancing: Map<String, Bool>) -> RecursionPattern {
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
   let initial_witnesses = recursive_measure_param_names(body: body, params: params)
   let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
@@ -2643,7 +2703,7 @@ type FuncEntry {
   params: List<Node>
   span: SourceSpan
   recursive_type_set: Map<String, Bool>
-  recursive_variant_fields: Map<String, Bool>
+  recursive_variant_fields: Map<String, List<RecursiveVariantFieldWitness>>
 }
 
 // Result of get_or_compute_summary: updated table + the summary.
@@ -3136,28 +3196,12 @@ fn first_unknown_reason(expr: CostExpr) -> String {
   }
 }
 
-fn mutual_recursion_reason_root(reason: String) -> Option<String> {
-  let prefix = "non-descending mutual recursion in "
-  let prefix_len = string_length(s: prefix)
-  let reason_len = string_length(s: reason)
-  if reason_len < prefix_len {
-    none
-  } else {
-    let actual_prefix = substring(s: reason, start: 0, end: prefix_len)
-    if actual_prefix == prefix {
-      Some { value: substring(s: reason, start: prefix_len, end: reason_len) }
-    } else {
-      none
-    }
-  }
-}
-
-fn should_emit_unknown_violation(func_name: String, reason: String, scc_index: Map<String, SccInfo>) -> Bool {
-  match mutual_recursion_reason_root(reason: reason) {
-    Some { value: root } =>
-      match map_get(scc_index, func_name) {
-        Some { value: info } => root == scc_label(members: info.members)
-        None => false
+fn should_emit_unknown_violation(func_name: String, scc_index: Map<String, SccInfo>) -> Bool {
+  match map_get(scc_index, func_name) {
+    Some { value: info } =>
+      match info.pattern {
+        LinearRecursion { iteration_var: _ } => true
+        _ => func_name == scc_label(members: info.members)
       }
     None => true
   }
@@ -3200,8 +3244,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
     match map_get(summaries_map, entry.name) {
       Some { value: summary } =>
         if is_unknown_cost(expr: summary.work) {
-          let reason = first_unknown_reason(expr: summary.work)
-          should_emit_unknown_violation(func_name: entry.name, reason: reason, scc_index: scc_index)
+          should_emit_unknown_violation(func_name: entry.name, scc_index: scc_index)
         } else {
           false
         }

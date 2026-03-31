@@ -81,7 +81,7 @@ import v2.compiler.emit {
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
   emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
-  emit_string_literal,
+  emit_string_literal, escape_python_interp_text, escape_string_literal_body,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
   lookup_item,
@@ -955,16 +955,16 @@ fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<St
 
 
 fn emit_py_typed_string_interp(parts: List<StringPart>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
-  let segments = parts |> map(p => py_typed_interp_segment(part: p, registry: registry, scope: scope, depth: depth))
+  let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
+  let segments = parts |> map(p => py_typed_interp_segment(part: p, registry: registry, scope: scope, depth: depth, has_interpolations: has_interpolations))
   let fstr = segments |> join(separator: "")
   concat("f\"", fstr, "\"")
 }
 
-fn py_typed_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn py_typed_interp_segment(part: StringPart, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, has_interpolations: Bool) -> String {
   match part {
     Text { value: v } =>
-      v |> split(delimiter: "{") |> join(separator: "{{")
-        |> split(delimiter: "}") |> join(separator: "}}")
+      if has_interpolations { escape_python_interp_text(s: v) } else { escape_string_literal_body(s: v) }
     Interpolation { expr: e } =>
       concat("{", emit_py_typed_expr(texpr: e, registry: registry, scope: scope, depth: depth, fuel: 1024), "}")
   }

@@ -450,6 +450,11 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "complexity should not rebuild SCCs with repeated reachability passes"
     );
     assert_live_not_contains(
+        &source,
+        "split(delimiter: \"::\")",
+        "complexity should not recover recursive fields from concatenated string keys"
+    );
+    assert_live_not_contains(
         &stage0,
         "pub formatted: String",
         "stage0 ComplexityReport should not carry a formatted string field"
@@ -464,6 +469,11 @@ fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() {
         "pub fn scc_members_for(",
         "stage0 complexity mirror should not rebuild SCCs with repeated reachability passes"
     );
+    assert_live_not_contains(
+        &stage0,
+        ".split(&\"::\".to_string())",
+        "stage0 complexity mirror should not recover recursive fields from concatenated string keys"
+    );
 }
 
 #[test]
@@ -473,8 +483,10 @@ fn parser_progress_witness_hooks_live_in_parse_layer() {
     let complexity = read_v2_file("src/v2/complexity.dag");
 
     for needle in [
+        "type ParserHelperIdentity",
         "type ParserResultWitness",
         "fn parser_progress_flag_var(",
+        "fn parser_helper_identity(",
         "fn parser_passthrough_state_expr(",
         "fn parser_result_witness(",
     ] {
@@ -486,8 +498,10 @@ fn parser_progress_witness_hooks_live_in_parse_layer() {
     }
 
     for needle in [
+        "pub enum ParserHelperIdentity",
         "pub enum ParserResultWitness",
         "pub fn parser_progress_flag_var(",
+        "pub fn parser_helper_identity(",
         "pub fn parser_passthrough_state_expr(",
         "pub fn parser_result_witness(",
     ] {
@@ -503,6 +517,106 @@ fn parser_progress_witness_hooks_live_in_parse_layer() {
         "import v2.compiler.parse {",
         "src/v2/complexity.dag should consume parser-owned progress witnesses",
     );
+    assert_live_not_contains(
+        &complexity,
+        "\"skip_newlines\"",
+        "complexity should not hardcode parser helper names inline",
+    );
+    assert_live_not_contains(
+        &complexity,
+        "\"skip_continuation_newlines\"",
+        "complexity should not hardcode parser helper names inline",
+    );
+}
+
+#[test]
+fn recursive_variant_witnesses_are_structural() {
+    let env_source = read_v2_file("src/v2/04_env.dag");
+    let env_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_infer_env.rs");
+    let infer_source = read_v2_file("src/v2/04_infer.dag");
+
+    for needle in [
+        "type RecursiveVariantFieldWitness",
+        "fn put_recursive_variant_field_witness(",
+        "fn merge_recursive_variant_fields(",
+    ] {
+        assert_live_contains(
+            &env_source,
+            needle,
+            &format!("src/v2/04_env.dag should contain {needle}")
+        );
+    }
+
+    for needle in [
+        "pub struct RecursiveVariantFieldWitness",
+        "pub fn put_recursive_variant_field_witness(",
+        "pub fn merge_recursive_variant_fields(",
+    ] {
+        assert_live_contains(
+            &env_stage0,
+            needle,
+            &format!("stage0 infer env mirror should contain {needle}")
+        );
+    }
+
+    assert_live_not_contains(
+        &env_source,
+        "fn recursive_variant_field_key(",
+        "recursive variant witnesses should no longer be keyed by concatenated strings",
+    );
+    assert_live_not_contains(
+        &env_stage0,
+        "pub fn recursive_variant_field_key(",
+        "stage0 recursive variant witnesses should no longer be keyed by concatenated strings",
+    );
+    assert_live_contains(
+        &infer_source,
+        "put_recursive_variant_field_witness(",
+        "inference should build recursive-field witnesses structurally",
+    );
+}
+
+#[test]
+fn emit_backends_do_not_consume_recursive_variant_witnesses() {
+    let emit_source = read_v2_file("src/v2/05_emit.dag");
+    let emit_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_emit.rs");
+    let rust_source = read_v2_file("src/v2/05_emit_rust.dag");
+    let go_source = read_v2_file("src/v2/05_emit_go.dag");
+    let py_source = read_v2_file("src/v2/05_emit_python.dag");
+    let rust_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_emit_rust.rs");
+    let go_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_emit_go.rs");
+    let py_stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_emit_python.rs");
+
+    assert_live_not_contains(
+        &emit_source,
+        "scope.type_env.recursive_variant_fields",
+        "shared emit helpers should not read recursive variant witnesses from TypeEnv",
+    );
+    assert_live_not_contains(
+        &emit_stage0,
+        "scope.type_env.recursive_variant_fields",
+        "stage0 shared emit helpers should not read recursive variant witnesses from TypeEnv",
+    );
+
+    for (label, source) in [
+        ("src/v2/05_emit_rust.dag", rust_source.as_str()),
+        ("src/v2/05_emit_go.dag", go_source.as_str()),
+        ("src/v2/05_emit_python.dag", py_source.as_str()),
+        ("src/v2/stage0/src/v2_compiler_emit_rust.rs", rust_stage0.as_str()),
+        ("src/v2/stage0/src/v2_compiler_emit_go.rs", go_stage0.as_str()),
+        ("src/v2/stage0/src/v2_compiler_emit_python.rs", py_stage0.as_str()),
+    ] {
+        assert_live_not_contains(
+            source,
+            "recursive_variant_fields",
+            &format!("{label} should not consume recursion witnesses directly"),
+        );
+        assert_live_not_contains(
+            source,
+            "RecursiveVariantFieldWitness",
+            &format!("{label} should not import recursion witness types directly"),
+        );
+    }
 }
 
 #[test]
@@ -514,6 +628,11 @@ fn compile_gate_keeps_complexity_errors_blocking_in_stage0() {
         &source,
         "let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
         "src/v2/compile.dag should gate emission on all infer diagnostics, including complexity",
+    );
+    assert_live_not_contains(
+        &source,
+        "let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
+        "src/v2/compile.dag should not gate emission on typed diagnostics alone",
     );
     assert_live_contains(
         &stage0,

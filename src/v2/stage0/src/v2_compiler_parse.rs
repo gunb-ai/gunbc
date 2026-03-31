@@ -601,12 +601,29 @@ pub struct IntLitResult {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ParserHelperIdentity {
+    ParserHelperSkipNewlines,
+    ParserHelperSkipContinuationNewlines,
+    ParserHelperWith,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParserCallIdentity {
+    ParserCallHelper {
+        helper: ParserHelperIdentity,
+    },
+    ParserCallFunction {
+        name: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParserResultWitness {
     ParserWitnessAdvance,
     ParserWitnessExpect,
     ParserWitnessEat,
     ParserWitnessCall {
-        callee: String,
+        callee: ParserCallIdentity,
     },
     ParserWitnessOpaque,
 }
@@ -2195,21 +2212,32 @@ pub fn parser_progress_flag_var(expr: Rc<Node>) -> Option<String> {
 pub fn parser_passthrough_state_expr(expr: Rc<Node>) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            let callee = expr_call_func(expr.clone());
-            if callee == "skip_newlines".to_string()
-                || callee == "skip_continuation_newlines".to_string()
-            {
-                parser_helper_state_arg_expr(expr.clone())
-            } else if callee == "with".to_string() {
-                match expr.children.first().cloned() {
-                    Some(base_arg) => Some(arg_value(base_arg.clone())),
-                    None => None,
-                }
-            } else {
-                None
+            match parser_helper_identity(expr_call_func(expr.clone())) {
+                Some(ParserHelperIdentity::ParserHelperSkipNewlines) =>
+                    parser_helper_state_arg_expr(expr.clone()),
+                Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines) =>
+                    parser_helper_state_arg_expr(expr.clone()),
+                Some(ParserHelperIdentity::ParserHelperWith) =>
+                    match expr.children.first().cloned() {
+                        Some(base_arg) => Some(arg_value(base_arg.clone())),
+                        None => None,
+                    },
+                None => None,
             }
         }
         _ => None,
+    }
+}
+
+pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
+    if callee == "skip_newlines".to_string() {
+        Some(ParserHelperIdentity::ParserHelperSkipNewlines)
+    } else if callee == "skip_continuation_newlines".to_string() {
+        Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines)
+    } else if callee == "with".to_string() {
+        Some(ParserHelperIdentity::ParserHelperWith)
+    } else {
+        None
     }
 }
 
@@ -2219,8 +2247,17 @@ pub fn parser_result_witness(expr: Rc<Node>) -> ParserResultWitness {
             "advance" => ParserResultWitness::ParserWitnessAdvance,
             "expect" => ParserResultWitness::ParserWitnessExpect,
             "eat" => ParserResultWitness::ParserWitnessEat,
-            callee => ParserResultWitness::ParserWitnessCall {
-                callee: callee.to_string(),
+            callee => match parser_helper_identity(callee.to_string()) {
+                Some(helper) => ParserResultWitness::ParserWitnessCall {
+                    callee: ParserCallIdentity::ParserCallHelper {
+                        helper: helper.clone(),
+                    },
+                },
+                None => ParserResultWitness::ParserWitnessCall {
+                    callee: ParserCallIdentity::ParserCallFunction {
+                        name: callee.to_string(),
+                    },
+                },
             },
         },
         _ => ParserResultWitness::ParserWitnessOpaque,

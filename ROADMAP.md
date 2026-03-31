@@ -30,7 +30,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 313 | 0 | 53 root functions → 313 errors (ratcheted); next drop needs SCC witness hardening + bridge dissolution |
+| Complexity violations | 313 | 0 | 53 root functions → 313 errors (ratcheted); direct + mutual recursion are fail-closed, next drop needs parser/block/type-normalization witness work |
 
 ---
 
@@ -120,10 +120,10 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Reject ascending-argument recursion (`fn spin(n: n+1)` → error)
 - [x] Allow proven descent (`n-1`, `n/2`, structural catamorphism)
 - [x] Wire complexity ratchet into fail-closed gate
-- [ ] Mutual recursion detection — `detect_mutual_recursion_names`
-  not yet implemented in `complexity.dag`; SCC analysis design is
-  in Exploratory Directions (I2). Current: indirect recursion
-  detected as `CostUnknown` via placeholder cache, ratcheted at 315
+- [x] Mutual recursion detection — SCC analysis now fail-closes
+  indirect recursion, accepts bounded mutual descent, and keeps
+  helper-into-cycle callers out of the violation set. Remaining work:
+  richer SCC witnesses for parser/block/cache roots (ratchet 313)
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -672,10 +672,20 @@ If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
 **Current state (2026-03-31):** 53 root functions → 313 complexity
-violations, ratcheted. All are
-structurally bounded but the cost algebra can't prove it because:
-(a) no `descend` primitive for recursive unions yet, (b) no SCC
-analysis for mutual recursion yet. Both are prerequisite for 313 → 0.
+violations, ratcheted. This branch landed the first real proof
+infrastructure:
+- direct recursion is fail-closed on the actual measured parameter
+- SCC ownership is explicit, so callers into a cycle do not inherit the
+  cycle's violation
+- parser progress is parse-owned via typed helper identities
+- recursive-field facts are structural witnesses, not concatenated keys
+
+The remaining blockers are no longer "mutual recursion is missing";
+they are specific witness gaps:
+(a) parser SCC progress for the `parse_type_expr` family,
+(b) block/tree-walker SCC descent for emit/infer,
+(c) type-normalization self-recursion, and
+(d) a few cache/dispatcher SCCs. Those are the path from 313 → 0.
 
 #### Implementation plan
 
@@ -690,19 +700,52 @@ structural accessors, and complexity class authority moved from strings
 to `CostExpr`. The recursion/progress proof path should follow the same
 rule before we harden I1/I2 further.
 
-- [ ] Replace `recursive_variant_fields: Map<String, Bool>` with a
+- [x] Replace `recursive_variant_fields: Map<String, Bool>` with a
   structural recursion witness owned by inference/env (variant-local
   witness or direct edge), and thread it through imported/unresolved/final
   envs so there is one authority
-- [ ] Replace `ParserWitnessCall { callee: String }` with a typed parser
+- [x] Replace `ParserWitnessCall { callee: String }` with a typed parser
   helper identity so parser progress is not name-driven
 - [ ] Move structural descent proof ownership out of `complexity.dag`:
   complexity should consume a resolved descent witness, not recover it
   from encoded keys, raw names, or match-shape heuristics
-- [ ] Acceptance: recursion/progress proofs do not depend on
-  `split(\"::\")`, concatenated field keys, or raw callee-name strings
-- [ ] Acceptance: stage0/source parity + fixed-point regeneration stay
-  green after the witness refactor
+- [x] Acceptance: recursion/progress proofs no longer depend on
+  `split(\"::\")`, concatenated field keys, or raw parser-helper-name
+  strings
+- [x] Acceptance: stage0/source parity stays green after the witness
+  refactor
+- [ ] Acceptance: fixed-point regeneration stays green after the witness
+  refactor
+
+**Next branch after PR #270 merge (313 → 0 path).**
+
+- [ ] Parser SCC witness completion: prove token/cursor progress across
+  the `parse_type_expr` / `parse_callable_type_expr` / block-expression
+  SCC instead of falling back to generic non-descending mutual recursion
+- [ ] Block/tree-walker SCC witness completion: add one shared
+  statement-tail / child-node descent proof and apply it to
+  `emit_rust_block_stmts`, `emit_py_block_stmts`, `emit_go_block_stmts`,
+  `infer_block_stmts`, `emit_*_tco_if`, and `emit_node_type_rc`
+- [ ] Type-normalization recursion proof: discharge
+  `normalize_access_type_node` and its downstream family
+  (`node_type_shape`, `node_type_compatible`, `node_type_equals`,
+  `node_type_deps`) with a fail-closed structural measure
+- [ ] Cache/frontier SCC proof: finish `resolve_callback_cost` and any
+  remaining finite-key SCCs with a real frontier witness rather than a
+  placeholder cycle explanation
+- [ ] Parser contract tests: pin `range(...)` integer-literal behavior
+  with one negative-literal test if supported and one explicit rejection
+  test for computed expressions
+- [ ] Re-lock regeneration only after the root witnesses move:
+  `./scripts/regenerate-stage0.sh && git diff --exit-code src/v2/stage0/`
+- [ ] Boundary cleanup follow-up: replace raw `.name` equality in
+  `collect_item_recursive_variant_fields` with resolved structural
+  recursive-type identity
+- [ ] Boundary cleanup follow-up: stop copying module recursion facts
+  into every `FuncEntry`; keep one module-owned authority for complexity
+- [ ] Emitter cleanup follow-up: route Python `VariantPattern` emission
+  through `emit_py_variant_pattern` instead of keeping a parallel inline
+  implementation
 
 **I1: `descend` primitive for recursive unions.**
 
@@ -744,36 +787,33 @@ eliminated.
 **I2: SCC analysis for mutual recursion.**
 
 What exists:
-- `detect_mutual_recursion_names` is mentioned in M2 but not
-  implemented in `complexity.dag`
-- The test `mutual_recursion_is_rejected` is `#[ignore]` with
-  comment "mutual recursion detection removed"
-- `get_or_compute_summary` uses a placeholder cache that *detects*
-  indirect recursion (the "computing: X" reason) but doesn't *prove*
-  it bounded
+- SCC construction and ownership filtering exist in `complexity.dag`
+- Mutual recursion fail-closes when no shared decreasing measure is
+  found, bounded arithmetic mutual descent is accepted, and callers into
+  the SCC are excluded from the cycle's violation set
+- Parser helper progress is modeled in `02_parse.dag` and consumed by
+  complexity, rather than guessed from helper-name strings
 
 What's needed:
-1. Build the call graph from `FuncEntry` list (already have function
-   bodies and `expr_call_func` to extract callees).
-2. Find SCCs (Tarjan's or Kosaraju's — both are `fold` over the
-   graph, decidable).
-3. For each SCC with >1 function, find the shared decreasing
-   measure. Three cases:
+1. For each SCC with >1 function, find the shared decreasing measure.
+   Three remaining cases:
    - All functions pass children of a recursive union → `descend`
-     (tree walkers like emit_typed_expr ↔ emit_shared_expr)
+     (tree walkers / block emitters / infer walkers)
    - All functions advance a position in a collection → `fold`
      (parsers like parse_type_expr ↔ parse_callable_type_expr)
    - Functions thread through a cache with finite keys → `fold`
      over the key set (complexity SCC: cost_of_expr ↔
      get_or_compute_summary)
-4. Replace the "computing: X" `CostUnknown` with the proven
+2. Replace the remaining placeholder-cycle `CostUnknown` with the proven
    `CostSum` for the SCC's bound.
+3. Once the shared witnesses are authoritative, delete any leftover
+   fallback logic that compensates for missing SCC proofs.
 
-Blocked on: I1 (needs recursive-field knowledge to verify "passes
-children of a recursive union").
+Blocked on: a stronger `descend` witness for recursive unions and a
+shared parser-progress witness across parser SCCs.
 
-Test: remaining violations from parser SCCs and complexity SCCs
-resolve → 315 approaches 0.
+Test: parser + block-emitter + cache SCC roots disappear; 313 approaches
+0 without suppression.
 
 **I3: `while` surface sugar.**
 
@@ -801,7 +841,7 @@ reports `O(max_int × per_step)`.
 - `while` keyword desugars to `repeat(max_int, ...)`
 - `complexity.dag` uses fold/descend instead of 53 manual traversals
 - `is_unknown_cost` is one line, not ten
-- Complexity gate: 315 → 0 without suppression or ratchet
+- Complexity gate: 313 → 0 without suppression or ratchet
 - Cost algebra: one cost rule per primitive, composition closed
 
 **Unified Sequence (Seq\<T>).** Ordered collections share FreeMonoid

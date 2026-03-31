@@ -4,10 +4,10 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
-use crate::v2_compiler_infer_env::recursive_variant_field_key;
+use crate::v2_compiler_infer_env::RecursiveVariantFieldWitness;
 use crate::v2_compiler_parse::{
     parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
-    ParserResultWitness,
+    ParserCallIdentity, ParserResultWitness,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -605,11 +605,14 @@ pub fn parser_result_source_for_expr(expr: Rc<Node>, state_param: ParserStatePar
                     ParserResultSource::ParserResultExpect { input: input_progress },
                 ParserResultWitness::ParserWitnessEat =>
                     ParserResultSource::ParserResultEat { input: input_progress },
-                ParserResultWitness::ParserWitnessCall { callee } => match input_progress {
-                    ProgressKind::ProgressUnknown => ParserResultSource::ParserResultOpaque,
-                    _ => ParserResultSource::ParserResultCall {
-                        input: input_progress,
-                        callee: callee.clone(),
+                ParserResultWitness::ParserWitnessCall { callee } => match callee.clone() {
+                    ParserCallIdentity::ParserCallHelper { .. } => ParserResultSource::ParserResultOpaque,
+                    ParserCallIdentity::ParserCallFunction { name } => match input_progress {
+                        ProgressKind::ProgressUnknown => ParserResultSource::ParserResultOpaque,
+                        _ => ParserResultSource::ParserResultCall {
+                            input: input_progress,
+                            callee: name.clone(),
+                        },
                     },
                 },
                 ParserResultWitness::ParserWitnessOpaque =>
@@ -1294,15 +1297,37 @@ pub fn max_path_target_calls_with_cont(body: Rc<Node>, target_set: HashMap<Strin
     }
 }
 
+pub fn recursive_variant_field_witnesses_for_type(
+    type_name: String,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
+) -> Vec<Rc<RecursiveVariantFieldWitness>> {
+    match v2_rt::map_get(&recursive_variant_fields, type_name.clone()) {
+        Some(witnesses) => witnesses.clone(),
+        None => vec![],
+    }
+}
+
+pub fn has_recursive_variant_field(
+    type_name: String,
+    variant_name: String,
+    field_name: String,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
+) -> bool {
+    recursive_variant_field_witnesses_for_type(type_name.clone(), recursive_variant_fields.clone())
+        .iter()
+        .any(|witness| {
+            (witness.variant_name.clone() == variant_name.clone())
+                && (witness.field_name.clone() == field_name.clone())
+        })
+}
+
 pub fn has_recursive_fields_for_type(
     type_name: String,
     recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, bool>>,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 ) -> bool {
     v2_rt::map_get(&recursive_type_set, type_name.clone()).is_some()
-        || recursive_variant_fields
-            .keys()
-            .any(|key| key.split("::").next() == Some(type_name.as_str()))
+        || v2_rt::map_get(&recursive_variant_fields, type_name.clone()).is_some()
 }
 
 pub fn structural_match_param_name(
@@ -1341,7 +1366,7 @@ pub fn structural_param_from_body(
     body: Rc<Node>,
     params: Vec<Rc<Node>>,
     recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, bool>>,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 ) -> Option<Rc<StructuralParam>> {
     match structural_match_param_name(body.clone()) {
         Some(target_name) => params.iter().cloned().enumerate().fold(None, |acc: _, pair| {
@@ -1375,7 +1400,7 @@ pub fn structural_param_from_body(
 pub fn recursive_arm_binding_names(
     arm_node: Rc<Node>,
     structural_param: Rc<StructuralParam>,
-    recursive_variant_fields: Rc<HashMap<String, bool>>,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 ) -> Vec<String> {
     match (*arm_pattern(arm_node.clone())).clone() {
         crate::v2_std_core::MatchPattern::VariantPattern { name: variant_name, field_bindings: bindings, .. } => {
@@ -1386,12 +1411,12 @@ pub fn recursive_arm_binding_names(
                     crate::v2_std_core::MatchPattern::Bind { name: binding_name } => all_bindings.push(binding_name.clone()),
                     _ => {}
                 }
-                let key = recursive_variant_field_key(
+                if has_recursive_variant_field(
                     structural_param.type_name.clone(),
                     variant_name.clone(),
                     fb.name.clone(),
-                );
-                if v2_rt::map_get(&recursive_variant_fields, key.clone()).is_some() {
+                    recursive_variant_fields.clone(),
+                ) {
                     match (*field_binding_pattern(fb.clone())).clone() {
                         crate::v2_std_core::MatchPattern::Bind { name: binding_name } => recursive_bindings.push(binding_name.clone()),
                         _ => {}
@@ -1479,7 +1504,7 @@ pub fn is_structural_descent_with_param(
     body: Rc<Node>,
     func_name: String,
     structural_param: Rc<StructuralParam>,
-    recursive_variant_fields: Rc<HashMap<String, bool>>,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 ) -> bool {
     match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprMatch { .. } => {
@@ -1560,7 +1585,7 @@ pub fn is_structural_descent(
     func_name: String,
     params: Vec<Rc<Node>>,
     recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, bool>>,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 ) -> bool {
     match structural_param_from_body(
         body.clone(),
@@ -1646,7 +1671,7 @@ pub fn scc_calls_descend_on_recursive_bindings(
 pub fn is_scc_structural_descent_with_param(
     body: Rc<Node>,
     structural_param: Rc<StructuralParam>,
-    recursive_variant_fields: Rc<HashMap<String, bool>>,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
     scc_name_set: HashMap<String, bool>,
     scc_structural_params: HashMap<String, Rc<StructuralParam>>,
 ) -> bool {
@@ -2096,7 +2121,7 @@ pub fn classify_recursion_pattern(
     body: Rc<Node>,
     params: Vec<Rc<Node>>,
     recursive_type_set: Rc<HashMap<String, bool>>,
-    recursive_variant_fields: Rc<HashMap<String, bool>>,
+    recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
     parser_always_advancing: HashMap<String, bool>,
 ) -> Rc<RecursionPattern> {
     let path_calls = max_path_self_calls(body.clone(), func_name.clone());
@@ -3023,7 +3048,7 @@ pub struct FuncEntry {
     pub params: Vec<Rc<Node>>,
     pub span: Rc<SourceSpan>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
-    pub recursive_variant_fields: Rc<HashMap<String, bool>>,
+    pub recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

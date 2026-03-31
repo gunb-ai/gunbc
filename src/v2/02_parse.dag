@@ -207,11 +207,20 @@ type UnitResult { state: ParserState, err: ErrorNode? }
 type StringLitResult { value: String, state: ParserState, err: ErrorNode? }
 type IntLitResult { value: Int, state: ParserState, err: ErrorNode? }
 
+type ParserHelperIdentity
+  = ParserHelperSkipNewlines
+  | ParserHelperSkipContinuationNewlines
+  | ParserHelperWith
+
+type ParserCallIdentity
+  = ParserCallHelper { helper: ParserHelperIdentity }
+  | ParserCallFunction { name: String }
+
 type ParserResultWitness
   = ParserWitnessAdvance
   | ParserWitnessExpect
   | ParserWitnessEat
-  | ParserWitnessCall { callee: String }
+  | ParserWitnessCall { callee: ParserCallIdentity }
   | ParserWitnessOpaque
 
 // For parse_optional_from_key/parse_config_fields/parse_op_body_entries desc:
@@ -839,19 +848,32 @@ fn parser_progress_flag_var(expr: Node) -> String? {
   }
 }
 
+fn parser_helper_identity(callee: String) -> ParserHelperIdentity? {
+  if callee == "skip_newlines" {
+    Some { value: ParserHelperSkipNewlines }
+  } else if callee == "skip_continuation_newlines" {
+    Some { value: ParserHelperSkipContinuationNewlines }
+  } else if callee == "with" {
+    Some { value: ParserHelperWith }
+  } else {
+    none
+  }
+}
+
 fn parser_passthrough_state_expr(expr: Node) -> Node? {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      let callee = expr_call_func(texpr: expr)
-      if callee == "skip_newlines" || callee == "skip_continuation_newlines" {
-        parser_helper_state_arg_expr(call_node: expr)
-      } else if callee == "with" {
-        match expr.children |> first {
-          Some { value: base_arg } => Some { value: arg_value(n: base_arg) }
-          None => none
-        }
-      } else {
-        none
+      match parser_helper_identity(callee: expr_call_func(texpr: expr)) {
+        Some { value: ParserHelperSkipNewlines } =>
+          parser_helper_state_arg_expr(call_node: expr)
+        Some { value: ParserHelperSkipContinuationNewlines } =>
+          parser_helper_state_arg_expr(call_node: expr)
+        Some { value: ParserHelperWith } =>
+          match expr.children |> first {
+            Some { value: base_arg } => Some { value: arg_value(n: base_arg) }
+            None => none
+          }
+        None => none
       }
     _ => none
   }
@@ -864,7 +886,11 @@ fn parser_result_witness(expr: Node) -> ParserResultWitness {
         "advance" => ParserWitnessAdvance
         "expect" => ParserWitnessExpect
         "eat" => ParserWitnessEat
-        callee => ParserWitnessCall { callee: callee }
+        callee =>
+          match parser_helper_identity(callee: callee) {
+            Some { value: helper } => ParserWitnessCall { callee: ParserCallHelper { helper: helper } }
+            None => ParserWitnessCall { callee: ParserCallFunction { name: callee } }
+          }
       }
     _ => ParserWitnessOpaque
   }

@@ -57,7 +57,7 @@ pub struct TypeEnv {
     pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub recursive_types: Rc<Vec<String>>,
     pub recursive_type_set: Rc<HashMap<String, bool>>,
-    pub recursive_variant_fields: Rc<HashMap<String, bool>>,
+    pub recursive_variant_fields: Rc<HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>,
     pub source_index: Option<Rc<NewlineIndex>>,
 }
 
@@ -65,6 +65,12 @@ pub struct TypeEnv {
 pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecursiveVariantFieldWitness {
+    pub variant_name: String,
+    pub field_name: String,
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, name: String) -> bool {
@@ -96,18 +102,65 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     is_recursive_type(env, node.name.clone())
 }
 
-pub fn recursive_variant_field_key(type_name: String, variant_name: String, field_name: String) -> String {
-    v2_rt::concat(type_name.clone(),
-        v2_rt::concat("::".to_string(),
-            v2_rt::concat(variant_name.clone(),
-                v2_rt::concat("::".to_string(), field_name.clone()))))
+pub fn recursive_variant_field_witnesses(env: Rc<TypeEnv>, type_name: String) -> Vec<Rc<RecursiveVariantFieldWitness>> {
+    match v2_rt::map_get(&env.recursive_variant_fields, type_name.clone()) {
+        Some(witnesses) => witnesses.clone(),
+        None => vec![],
+    }
 }
 
 pub fn is_recursive_variant_field(env: Rc<TypeEnv>, type_name: String, variant_name: String, field_name: String) -> bool {
-    match v2_rt::map_get(&env.recursive_variant_fields, recursive_variant_field_key(type_name.clone(), variant_name.clone(), field_name.clone())) {
-        Some(_) => true,
-        None => false,
-    }
+    recursive_variant_field_witnesses(env.clone(), type_name.clone())
+        .iter()
+        .any(|witness| {
+            (witness.variant_name.clone() == variant_name.clone())
+                && (witness.field_name.clone() == field_name.clone())
+        })
+}
+
+pub fn put_recursive_variant_field_witness(
+    fields: HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>,
+    type_name: String,
+    variant_name: String,
+    field_name: String,
+) -> HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>> {
+    let existing = match v2_rt::map_get(&fields, type_name.clone()) {
+        Some(witnesses) => witnesses.clone(),
+        None => vec![],
+    };
+    v2_rt::map_insert(
+        fields.clone(),
+        type_name.clone(),
+        v2_rt::concat(
+            existing.clone(),
+            vec![Rc::new(RecursiveVariantFieldWitness {
+                variant_name: variant_name.clone(),
+                field_name: field_name.clone(),
+            })],
+        ),
+    )
+}
+
+pub fn merge_recursive_variant_fields(
+    left: HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>,
+    right: HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>,
+) -> HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>> {
+    right.clone().keys().cloned().fold(left.clone(), |acc: _, type_name: String| {
+        match v2_rt::map_get(&right, type_name.clone()) {
+            Some(incoming) => {
+                let existing = match v2_rt::map_get(&acc, type_name.clone()) {
+                    Some(witnesses) => witnesses.clone(),
+                    None => vec![],
+                };
+                v2_rt::map_insert(
+                    acc.clone(),
+                    type_name.clone(),
+                    v2_rt::concat(existing.clone(), incoming.clone()),
+                )
+            }
+            None => acc.clone(),
+        }
+    })
 }
 
 pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {
@@ -129,9 +182,9 @@ pub fn merge_envs(envs: Vec<Rc<TypeEnv>>) -> Rc<TypeEnv> {
             },
         );
         let merged_recursive_variant_fields = envs.iter().cloned().fold(
-            <HashMap<String, bool>>::new(),
+            <HashMap<String, Vec<Rc<RecursiveVariantFieldWitness>>>>::new(),
             |acc: _, env: Rc<TypeEnv>| {
-                v2_rt::map_merge(acc.clone(), (*env.recursive_variant_fields).clone())
+                merge_recursive_variant_fields(acc.clone(), (*env.recursive_variant_fields).clone())
             },
         );
         let source_index = envs.iter().cloned().fold(None, |acc: _, env: Rc<TypeEnv>| {

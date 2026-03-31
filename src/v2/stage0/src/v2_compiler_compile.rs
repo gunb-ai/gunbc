@@ -1722,6 +1722,8 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 let func_entries = extract_func_entries(typed.clone());
                 let complexity = build_complexity_report(func_entries.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
+                // Fail-closed gate: complexity/decidability errors block
+                // emission alongside typecheck errors.
                 let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let typecheck_errors = {
                     let mut __result = Vec::new();
