@@ -67,6 +67,8 @@ pub struct ResolvedModule {
 pub struct ResolvedImport {
     pub module_path: String,
     pub target_span: Option<Rc<SourceSpan>>,
+    pub is_all: bool,
+    pub specific_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,6 +172,8 @@ Rc::new(ImportResolveResult {
     resolved: Rc::new(ResolvedImport {
     module_path: import.name.clone(),
     target_span: None,
+    is_all: import_is_all(import.clone()),
+    specific_names: import_specific_names(import.clone()),
 }),
     diagnostics: vec![diag.clone()],
 })
@@ -188,6 +192,8 @@ Rc::new(ImportResolveResult {
     resolved: Rc::new(ResolvedImport {
     module_path: import.name.clone(),
     target_span: Some(target_mod.span.clone()),
+    is_all: import_is_all(import.clone()),
+    specific_names: import_specific_names(import.clone()),
 }),
     diagnostics: name_diags.clone(),
 })

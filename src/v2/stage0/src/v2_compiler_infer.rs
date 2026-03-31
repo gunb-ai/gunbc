@@ -4276,35 +4276,35 @@ pub fn build_module_context(
             <HashMap<_, _>>::new(),
             vec![],
         );
-        let imported_variant_locals = v2_rt::map_values(&env.bindings.clone())
-            .iter()
-            .cloned()
-            .fold(
+        // Phase 2: explicitly imported enums overwrite ambient variants.
+        let all_variant_candidates = v2_rt::map_values(&env.bindings.clone())
+            .iter().cloned().fold(
                 <HashMap<String, Rc<TypeBinding>>>::new(),
-                |acc: _, binding: Rc<TypeBinding>| {
+                |acc: HashMap<String, Rc<TypeBinding>>, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
-                        binding
-                            .resolved
-                            .clone()
-                            .children
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .fold(acc.clone(), |vacc: _, child: Rc<Node>| {
-                                v2_rt::map_insert(
-                                    vacc.clone(),
-                                    child.name.clone(),
-                                    Rc::new(TypeBinding {
-                                        name: child.name.clone(),
-                                        resolved: binding.resolved.clone(),
-                                    }),
-                                )
+                        binding.resolved.clone().children.clone().iter().cloned().fold(
+                            acc.clone(),
+                            |vacc: HashMap<String, Rc<TypeBinding>>, child: Rc<Node>| {
+                                match v2_rt::map_get(&vacc, child.name.clone()) {
+                                    Some(prev) => {
+                                        let prev_is_imported = resolved_imports.iter().any(|imp| {
+                                            imp.specific_names.iter().any(|n| *n == prev.resolved.name)
+                                        });
+                                        let curr_is_imported = resolved_imports.iter().any(|imp| {
+                                            imp.specific_names.iter().any(|n| *n == binding.resolved.name)
+                                        });
+                                        if curr_is_imported && !prev_is_imported {
+                                            v2_rt::map_insert(vacc.clone(), child.name.clone(),
+                                                Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
+                                        } else { vacc.clone() }
+                                    }
+                                    None => v2_rt::map_insert(vacc.clone(), child.name.clone(),
+                                        Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
+                                }
                             })
-                    } else {
-                        acc.clone()
-                    }
-                },
-            );
+                    } else { acc.clone() }
+                });
+        let imported_variant_locals = all_variant_candidates;
         let env_variant_locals = variant_locals_from_items(
             local.resolved_items.clone(),
             imported_variant_locals.clone(),
@@ -4766,25 +4766,10 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
                 } else { inner }
             })
         });
-        // Classify value contexts for each named item.
-        let contexts = modules.iter().cloned().fold(<HashMap<String, ValueContext>>::new(), |acc, m| {
-            m.items.iter().cloned().fold(acc, |inner, item| {
-                let has_body = item.body.is_some();
-                let has_type_ann = item.type_annotation.is_some();
-                let has_params = !item.params.is_empty();
-                let is_constant = has_body && has_type_ann && !has_params;
-                let has_fn_fields = item.children.iter().any(|child| !child.params.is_empty());
-                let ctx = ValueContext { is_constant, has_fn_fields };
-                if !item.name.is_empty() {
-                    v2_rt::map_insert(inner, item.name.clone(), ctx)
-                } else { inner }
-            })
-        });
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: fielded,
-            value_contexts: contexts,
         })
     }
 }

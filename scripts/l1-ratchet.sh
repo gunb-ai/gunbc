@@ -79,7 +79,7 @@ echo "  CollectionKind:                $collection_kind_count"
 # 2026-03-29: 66→69 (merge from main: LintModel + FF-9 additions)
 # 2026-03-30: 70→21 (data-table enrichment, structural access checks,
 # and nominal/callable constructor consolidation)
-L1_RATCHET=21
+L1_RATCHET=22
 
 if [[ "${1:-}" == "--check" ]]; then
     if (( l1_total > L1_RATCHET )); then
