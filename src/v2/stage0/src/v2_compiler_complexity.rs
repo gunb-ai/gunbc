@@ -2187,7 +2187,8 @@ pub fn classify_recursion_pattern(
             body.clone(),
             params.clone(),
             parser_always_advancing.clone(),
-        ) {
+        )
+        {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
