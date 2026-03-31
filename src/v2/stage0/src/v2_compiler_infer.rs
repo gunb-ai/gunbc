@@ -108,7 +108,7 @@ use crate::v2_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v2_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     empty_emit_graph_info, lookup_emit_type_summary, EmitGraphInfo, EmitInfoBuildState, TypeRepr,
-    TypeSummary,
+    TypeSummary, ValueContext,
 };
 pub use crate::v2_compiler_infer_env::{
     is_recursive_type, lookup_type, lookup_type_for, merge_envs, TypeBinding, TypeEnv,
@@ -4687,10 +4687,27 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
                 } else { inner }
             })
         });
+        // Classify value contexts for each named item.
+        let contexts = modules.iter().cloned().fold(<HashMap<String, ValueContext>>::new(), |acc, m| {
+            m.items.iter().cloned().fold(acc, |inner, item| {
+                let has_body = item.body.is_some();
+                let has_type_ann = item.type_annotation.is_some();
+                let has_params = !item.params.is_empty();
+                let ctx = if has_body && has_type_ann && !has_params {
+                    ValueContext::ConstantData
+                } else {
+                    ValueContext::RuntimeValue
+                };
+                if !item.name.is_empty() {
+                    v2_rt::map_insert(inner, item.name.clone(), ctx)
+                } else { inner }
+            })
+        });
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: fielded,
+            value_contexts: contexts,
         })
     }
 }
