@@ -78,7 +78,8 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Reject ascending-argument recursion (`fn spin(n: n+1)` → error)
 - [x] Allow proven descent (`n-1`, `n/2`, structural catamorphism)
 - [x] Wire complexity ratchet into fail-closed gate
-- [ ] Mutual recursion detection (SCC-based, not yet implemented)
+- [x] Mutual recursion detection (SCC-based via Kahn's algorithm;
+  `detect_mutual_recursion_names` in `complexity.dag`)
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -94,8 +95,10 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Add `expected: Node?` parameter to `infer_expr` (41 call sites)
 - [x] ExprLambda uses `expected` for param typing (replaces
   `infer_lambda_with_element_type` bypass for `infer_arg_with_element_type`)
-- [ ] Dissolve remaining bypass functions (`infer_lambda_with_callable_type`,
-  `infer_fold_lambda_arg`)
+- [x] Dissolve `infer_lambda_with_callable_type` — ExprLambda
+  `expected` context now handles callable-typed params positionally
+- [ ] Dissolve `infer_fold_lambda_arg` (needs design: `expected`
+  must carry structured param info for acc+element typing)
 
 *No-fabrication cleanup:*
 - [x] Remove `Dynamic` as universal compatibility in `node_type_equals`
