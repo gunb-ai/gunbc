@@ -1897,6 +1897,12 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 }
 
 fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, fuel: Int) -> String {
+  // Intercept BinOp for Rust-specific handling (Optional comparisons, string .as_str()).
+  match texpr.expr_data {
+    ExprBinOp { op: op } =>
+      return emit_typed_bin_op(op: op, left: binop_left(texpr: texpr), right: binop_right(texpr: texpr), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+    _ => ""
+  }
   emit_shared_expr(
     texpr: texpr,
     target: Rust,
