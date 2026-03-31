@@ -182,6 +182,11 @@ produce wrong output (e.g., `:` instead of `intensity`).
   `source_text_at` returned `":"`, overrode correct `node.name`)
 - [ ] Acceptance: emitted Rust for self-compile passes `rustc` syntax
   check (122 pattern errors from this single class of bug)
+- [ ] Eliminate `compile_error!(...)` emission: when the emitter
+  encounters a typing gap (e.g., `05_emit_rust.dag:2285` fold acc
+  type), it must reject before emission, not push the gap into
+  generated Rust. `compile_error!` in output is a fabrication
+  fallback that violates "Emission is translation, not decision-making."
 
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
@@ -269,6 +274,25 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
   `runtime_bridge_method_index()`
 - [ ] ~60 string branches → structural algebra queries
 
+*Tier 2.5 — algebra bridge fidelity (no new infra, modeling only):*
+- [ ] Fix `Set`/`NonEmptySet` profile: `FreeMonoidCollectionProfile`
+  → `BooleanAlgebraCollectionProfile` (or split). The `std/algebra.dag`
+  denotation says sets inhabit `BooleanAlgebra<A>`, but the bridge maps
+  them to `FreeMonoidCollectionProfile` which gives them list operations
+  (append, sort_by, fold) instead of set operations (union, intersect,
+  diff, member). New profile + template list needed.
+- [ ] Fix carrier-changing type loss in `free_monoid_collection_templates`:
+  `map`/`flat_map`/`fold` param_types and return_types are `ReceiverSelf`
+  but should express the higher-order function parameter structure (e.g.,
+  `fold` takes `fn(Acc, T) -> Acc` and returns `Acc`, not `Self`). The
+  `FreeMonoid<T>` declaration already models this correctly.
+- [ ] Same issue in `partial_function_templates`: parallel authority for
+  `PartialFunction` operations including emitter-only alias `emit_map_has`
+  that doesn't exist on the carrier algebra.
+- [ ] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replace
+  hardcoded name checks (`"T"`, `"K"`, `"V"`, `"MappedElement"`,
+  `"FoldAccumulator"`) with structural detection from algebra templates.
+
 *Tier 3 — full structural algebra (requires FF-9):*
 - [ ] FF-9: import-driven source resolution (compiler discovers
   modules transitively from source roots)
@@ -276,6 +300,9 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
   at resolve time
 - [ ] Replace template-era higher-order collection placeholders with
   function-typed algebra witnesses from `std/algebra.dag`
+- [ ] Derive kernel/container identity from type declarations
+  themselves rather than from `kernel_type_set`/`container_type_set`
+  name maps — compiler reads structure, not proxy strings
 - [ ] Kernel types as algebraic compositions loaded from `std/`
 - [ ] 21 type constructor sites → 0
 - [x] Type-name comparisons → 0
@@ -404,6 +431,11 @@ Different functions, no conflict.
   success output — `is_unknown_class` / `cost_contains_unknown`
   provide structural detection; end-to-end gating in violation
   path needs wiring
+- [ ] Mutual-recursion cycle errors: `complexity.dag:1579` returns
+  only `violations`, omitting the cycle-error diagnostics that
+  `detect_mutual_recursion_names` previously supplied. Verify that
+  mutual-recursion cycles produce fail-closed diagnostics in the
+  pipeline output, not silent omission.
 - [x] `ClassProduct` formatting parenthesizes additive children
   (already done: `parenthesize_additive_cost` pre-existing)
 - [x] Source-audit parity checks use `live_source` /
@@ -548,6 +580,14 @@ error.
 
 **Space complexity as peer dimension.** `space: CostExpr` peer to `work`
 and `span`. Currently `output_size` is unpopulated.
+
+**Computed data declarations.** The `.dag` `data` syntax only supports
+literal initializers (maps, lists, records). Computed expressions
+(`data x = list |> fold(...)`) are not supported. This prevents
+deriving indexed maps from authoritative lists, requiring hand-
+maintained parallel data declarations (e.g., `rt_functions` maps
+alongside `rt_function_registry`). When the parser gains computed
+data declarations, parallel-data violations dissolve.
 
 **Everything is coercion.** Unifying concept: minimal complete
 representation in a target domain. Applies at stage boundaries, type
