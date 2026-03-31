@@ -4770,9 +4770,10 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
         let fielded = modules.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, typed_module| {
             typed_module.items.iter().cloned().fold(acc, |inner, item| {
                 if item.connective.as_ref().map(|c| matches!(c, Connective::Disj)).unwrap_or(false) {
+                    let enum_name = item.name.clone();
                     item.children.iter().cloned().fold(inner, |vacc, variant| {
                         if !variant.children.is_empty() {
-                            v2_rt::map_insert(vacc, variant.name.clone(), true)
+                            v2_rt::map_insert(vacc, format!("{}::{}", enum_name, variant.name), true)
                         } else { vacc }
                     })
                 } else { inner }

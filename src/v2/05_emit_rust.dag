@@ -1217,13 +1217,18 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
       Some { value: true } => true
       _ =>
-        let all_enum_names = map_keys(emit_info.type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: emit_info.type_summaries, type_name: n))
-        all_enum_names |> any(en =>
-          match map_get(emit_info.fielded_variants, concat(en, "::", name)) {
-            Some { value: true } => true
-            _ => false
-          }
-        )
+        // Also check with the display-qualified name and scan all keys
+        match map_get(emit_info.fielded_variants, qualified) {
+          Some { value: true } => true
+          _ =>
+            let suffix = concat("::", name)
+            map_keys(emit_info.fielded_variants) |> any(k =>
+              k |> string_contains(suffix) && match map_get(emit_info.fielded_variants, k) {
+                Some { value: true } => true
+                _ => false
+              }
+            )
+        }
     }
     if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
@@ -1391,13 +1396,18 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
       Some { value: true } => true
       _ =>
-        let all_enum_names = map_keys(emit_info.type_summaries) |> filter(n => is_enum_in_summaries(type_summaries: emit_info.type_summaries, type_name: n))
-        all_enum_names |> any(en =>
-          match map_get(emit_info.fielded_variants, concat(en, "::", name)) {
-            Some { value: true } => true
-            _ => false
-          }
-        )
+        // Also check with the display-qualified name and scan all keys
+        match map_get(emit_info.fielded_variants, qualified) {
+          Some { value: true } => true
+          _ =>
+            let suffix = concat("::", name)
+            map_keys(emit_info.fielded_variants) |> any(k =>
+              k |> string_contains(suffix) && match map_get(emit_info.fielded_variants, k) {
+                Some { value: true } => true
+                _ => false
+              }
+            )
+        }
     }
     if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
@@ -3627,8 +3637,11 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     }
     } else {
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      let wrap_start = if needs_rc { "Rc::new(" } else { "" }
-      let wrap_end = if needs_rc { ")" } else { "" }
+      // Don't Rc-wrap here if the value is a record literal — emit_typed_record_lit
+      // already wraps struct construction in Rc::new() based on rc_types.
+      let is_record = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  _ => false }
+      let wrap_start = if needs_rc && !is_record { "Rc::new(" } else { "" }
+      let wrap_end = if needs_rc && !is_record { ")" } else { "" }
       concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
         "    ", wrap_start, val_str, wrap_end, "\n",
         "}")

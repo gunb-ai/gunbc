@@ -1107,18 +1107,14 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
                     Some(ref parent) => format!("{}::{}", parent, name),
                     None => name.clone(),
                 };
-                let is_fielded = match emit_info.fielded_variants.get(&fielded_key) {
-                    Some(true) => true,
-                    _ => {
-                        let all_enum_names: Vec<String> = v2_rt::map_keys(&emit_info.type_summaries).iter()
-                            .filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone()))
-                            .cloned().collect();
-                        all_enum_names.iter().any(|en| {
-                            let key = format!("{}::{}", en, name);
-                            matches!(emit_info.fielded_variants.get(&key), Some(true))
+                let is_fielded = emit_info.fielded_variants.get(&fielded_key) == Some(&true)
+                    || emit_info.fielded_variants.get(&qualified) == Some(&true)
+                    || {
+                        // Last resort: scan all fielded_variants keys for matching variant name
+                        v2_rt::map_keys(&emit_info.fielded_variants).iter().any(|k| {
+                            k.ends_with(&format!("::{}", name)) && emit_info.fielded_variants.get(k) == Some(&true)
                         })
-                    }
-                };
+                    };
                 if is_fielded { v2_rt::concat(qualified.clone(), " { .. }".to_string()) } else { qualified.clone() }
 } else {
                 {
@@ -1286,18 +1282,14 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
                     Some(ref parent) => format!("{}::{}", parent, name),
                     None => name.clone(),
                 };
-                let is_fielded = match emit_info.fielded_variants.get(&fielded_key) {
-                    Some(true) => true,
-                    _ => {
-                        let all_enum_names: Vec<String> = v2_rt::map_keys(&emit_info.type_summaries).iter()
-                            .filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone()))
-                            .cloned().collect();
-                        all_enum_names.iter().any(|en| {
-                            let key = format!("{}::{}", en, name);
-                            matches!(emit_info.fielded_variants.get(&key), Some(true))
+                let is_fielded = emit_info.fielded_variants.get(&fielded_key) == Some(&true)
+                    || emit_info.fielded_variants.get(&qualified) == Some(&true)
+                    || {
+                        // Last resort: scan all fielded_variants keys for matching variant name
+                        v2_rt::map_keys(&emit_info.fielded_variants).iter().any(|k| {
+                            k.ends_with(&format!("::{}", name)) && emit_info.fielded_variants.get(k) == Some(&true)
                         })
-                    }
-                };
+                    };
                 if is_fielded { v2_rt::concat(qualified.clone(), " { .. }".to_string()) } else { qualified.clone() }
 } else {
                 {
@@ -3850,8 +3842,9 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 } else {
                     {
                         let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
-let wrap_start = if needs_rc { "Rc::new(".to_string() } else { "".to_string() };
-let wrap_end = if needs_rc { ")".to_string() } else { "".to_string() };
+let is_record = matches!((*value.expr_data.clone()).clone(), ExprData::ExprRecordLit { .. });
+let wrap_start = if needs_rc && !is_record { "Rc::new(".to_string() } else { "".to_string() };
+let wrap_end = if needs_rc && !is_record { ")".to_string() } else { "".to_string() };
 let body = v2_rt::concat(v2_rt::concat(wrap_start.clone(), val_str.clone()), wrap_end.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), v2_rt::concat(" {\n    ".to_string(), body.clone())), "\n}".to_string())
 }
