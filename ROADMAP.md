@@ -120,8 +120,10 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Reject ascending-argument recursion (`fn spin(n: n+1)` → error)
 - [x] Allow proven descent (`n-1`, `n/2`, structural catamorphism)
 - [x] Wire complexity ratchet into fail-closed gate
-- [x] Mutual recursion detection (SCC-based via Kahn's algorithm;
-  `detect_mutual_recursion_names` in `complexity.dag`)
+- [ ] Mutual recursion detection — `detect_mutual_recursion_names`
+  not yet implemented in `complexity.dag`; SCC analysis design is
+  in Exploratory Directions (I2). Current: indirect recursion
+  detected as `CostUnknown` via placeholder cache, ratcheted at 315
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -634,10 +636,106 @@ structurally bounded but the cost algebra can't prove it because:
 (a) no `descend` primitive for recursive unions yet, (b) no SCC
 analysis for mutual recursion yet. Both are prerequisite for 315 → 0.
 
-**Concrete acceptance criteria:**
-- `while` keyword desugars to `repeat(max_int, ...)` in the parser
+#### Implementation plan
+
+Three work items, in dependency order. Each is independently
+testable — the ratchet drops after each one lands.
+
+**I1: `descend` primitive for recursive unions.**
+
+The compiler already knows which types are recursive
+(`recursive_type_set` in `TypeEnv`). The missing piece is knowing
+which *fields* of each variant are the recursive positions.
+
+What exists:
+- `recursive_type_set` tracks recursive type names (in `04_env.dag`)
+- `classify_recursion_pattern` proves direct self-recursion is bounded
+  (in `complexity.dag`, checks `is_structural_descent` and
+  `has_arithmetic_descent`)
+- `CostSum` in the cost algebra already represents bounded iteration
+- `iteration.dag` declares `descend` conceptually but no compiler
+  implementation exists
+
+What's needed:
+1. At resolve time, for each recursive union type, record which
+   variant fields are recursive positions (field type == parent type).
+   This is a small addition to `TypeEnv` or `TypeBinding` — a
+   `recursive_fields: Map<String, List<String>>` keyed by variant name.
+2. In `classify_recursion_pattern`, when a function matches on a
+   recursive union and self-calls receive recursive fields: classify
+   as `LinearRecursion` (same as today's `is_structural_descent`,
+   but using type-definition knowledge instead of heuristic child
+   analysis).
+3. The cost algebra already produces `CostSum` for linear recursion.
+   No cost algebra changes needed.
+
+Blocked on: nothing. All prerequisite infrastructure exists.
+
+Test: `strict_complexity_violation_count` drops. The 53 manual
+`CostExpr` traversals in `complexity.dag` and the `ExprData` tree
+walkers in emit/infer become provably bounded. Expected reduction:
+tree-walker root functions (emit_typed_expr, infer_expr,
+simplify_cost, format_cost_inner, etc.) resolve → ~200 violations
+eliminated.
+
+**I2: SCC analysis for mutual recursion.**
+
+What exists:
+- `detect_mutual_recursion_names` is mentioned in M2 but not
+  implemented in `complexity.dag`
+- The test `mutual_recursion_is_rejected` is `#[ignore]` with
+  comment "mutual recursion detection removed"
+- `get_or_compute_summary` uses a placeholder cache that *detects*
+  indirect recursion (the "computing: X" reason) but doesn't *prove*
+  it bounded
+
+What's needed:
+1. Build the call graph from `FuncEntry` list (already have function
+   bodies and `expr_call_func` to extract callees).
+2. Find SCCs (Tarjan's or Kosaraju's — both are `fold` over the
+   graph, decidable).
+3. For each SCC with >1 function, find the shared decreasing
+   measure. Three cases:
+   - All functions pass children of a recursive union → `descend`
+     (tree walkers like emit_typed_expr ↔ emit_shared_expr)
+   - All functions advance a position in a collection → `fold`
+     (parsers like parse_type_expr ↔ parse_callable_type_expr)
+   - Functions thread through a cache with finite keys → `fold`
+     over the key set (complexity SCC: cost_of_expr ↔
+     get_or_compute_summary)
+4. Replace the "computing: X" `CostUnknown` with the proven
+   `CostSum` for the SCC's bound.
+
+Blocked on: I1 (needs recursive-field knowledge to verify "passes
+children of a recursive union").
+
+Test: remaining violations from parser SCCs and complexity SCCs
+resolve → 315 approaches 0.
+
+**I3: `while` surface sugar.**
+
+What's needed:
+1. Tokenizer: add `while` keyword.
+2. Parser: `while <expr> { <body> }` desugars to
+   `ExprForEach` with a synthetic `repeat(max_int)` range, or a
+   new `ExprRepeat` node that the rest of the pipeline handles
+   like `ExprForEach`. Design choice: reuse existing `ExprForEach`
+   (less pipeline change) or add `ExprRepeat` (cleaner separation).
+3. Complexity: `repeat(N)` already has cost `CostSum { upper: N }`.
+   `while(true)` gets `CostSum { upper: max_int }`.
+4. Emit: each target renders its native loop. Rust: `for _ in 0..N`.
+   Python: `for _ in range(N)`. Go: `for i := 0; i < N; i++`.
+
+Blocked on: nothing. Independent of I1/I2. Could land first as a
+standalone language feature.
+
+Test: `while(true)` compiles, emits working target code, complexity
+reports `O(max_int × per_step)`.
+
+**Acceptance criteria (all three landed):**
 - Recursive functions on recursive unions lower to `descend`
 - Mutual recursion SCCs verified and lowered to `descend`/`fold`
+- `while` keyword desugars to `repeat(max_int, ...)`
 - `complexity.dag` uses fold/descend instead of 53 manual traversals
 - `is_unknown_cost` is one line, not ten
 - Complexity gate: 315 → 0 without suppression or ratchet
