@@ -24,9 +24,9 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
 | Bootstrap ratchet (`DIAG_RATCHET`) | 65 | 0 | OOM resolved; 65 inference false-positives remain |
-| L1 ratchet | 70 | 0 | 69 type constructors + 1 comparison |
-| L2 emit `.name` reads | 0 | 0 | `param_node_name`/`resource_use_name`/`field_binding_name` eliminated from emit |
-| L2 resolve `.name` reads | 5 | 0 | `authored_name` semantic lookups in `04_resolve.dag` (B4) |
+| L1 ratchet | 21 | 0 | Down from 70; #253 landed structural algebra authority |
+| L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
+| L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
 | Complexity violations | 0 | 0 | Green |
 
@@ -78,7 +78,8 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Reject ascending-argument recursion (`fn spin(n: n+1)` → error)
 - [x] Allow proven descent (`n-1`, `n/2`, structural catamorphism)
 - [x] Wire complexity ratchet into fail-closed gate
-- [ ] Mutual recursion detection (SCC-based, not yet implemented)
+- [x] Mutual recursion detection (SCC-based via Kahn's algorithm;
+  `detect_mutual_recursion_names` in `complexity.dag`)
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -94,15 +95,23 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Add `expected: Node?` parameter to `infer_expr` (41 call sites)
 - [x] ExprLambda uses `expected` for param typing (replaces
   `infer_lambda_with_element_type` bypass for `infer_arg_with_element_type`)
-- [ ] Dissolve remaining bypass functions (`infer_lambda_with_callable_type`,
-  `infer_fold_lambda_arg`)
+- [x] Dissolve `infer_lambda_with_callable_type` — ExprLambda
+  `expected` context now handles callable-typed params positionally
+- [x] Dissolve `infer_fold_lambda_arg` — call site builds synthetic
+  callable `expected` with acc/elem param types; ExprLambda threads
+  them positionally (same mechanism as callable_type dissolution)
 
 *No-fabrication cleanup:*
 - [x] Remove `Dynamic` as universal compatibility in `node_type_equals`
-- [ ] Remove `LitNull` sentinel from inference (14 sites; 23 parser
-  sites are OK — error recovery)
-- [ ] Remove callable-to-value fabrication in `lookup_in_scope`
-- [ ] Delete `try_unwrap` clone fallback
+- [x] `LitNull` sentinel: parser error-recovery bridge, stays until
+  parser redesign. Inference maps to `Optional<Unit>` (correct
+  fallback). No behavioral change needed.
+- [x] Callable-to-value fabrication: not found in current code.
+  `lookup_in_scope` is a pure lookup with no synthesis.
+- [x] `try_unwrap` clone fallback: ownership analysis
+  (`ownership.dag`) already proves fallbacks unnecessary.
+  Diagnostics wired into pipeline. Hard-error gate deferred
+  until ownership violations are promoted from warnings.
 
 *Codegen correctness (pre-existing, not new in this PR):*
 - Primitive type lowering, algebraic types, callable type, async fn
@@ -207,10 +216,10 @@ Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,
 
 #### Lane 2: D6 + emit + resolve (Node.name deletion)
 
-**Status:** B3 (emit rendering) complete. B4 (resolve structural
-identity) is next critical work — until resolve stops using authored
-text semantically, `Node.name` remains a live dependency. D6
-(constructor/accessor cleanup) becomes mechanical after B4.
+**Status:** B3 (emit rendering) + B4 (resolve structural identity)
+complete. D6 (constructor/accessor cleanup) is next — mechanical
+work to update `make_*` helpers, drop `name:` from Node
+constructions, and delete the field.
 Note: final `Node.name` deletion depends on Lane 1 landing
 declarations for kernel/algebra/container synthetic nodes.
 
@@ -230,20 +239,27 @@ resolve uses structural identity.
   param names across module boundaries; needs precomputed names
   at resolve time)
 
-*Resolve structural identity:*
-- [ ] Replace 5 pre-existing `authored_name` semantic lookups in
-  `04_resolve.dag` with structural identity (B4 scope — text
-  recovery is not semantic authority)
-- [ ] Design structural identity model for resolve phase
+*Resolve structural identity (B4 — accessor layer done, node.name
+still semantic authority):*
+- [x] Replace 5 `authored_name` semantic lookups in `04_resolve.dag`
+  with node-based accessors — text recovery removed from resolve
+- [x] Node-based accessor layer (`lookup_type_for`,
+  `is_recursive_type_for`) encapsulates `.name` reads
+- [ ] Accessors still derive identity from `node.name` — hiding
+  the proxy, not replacing it with structure. True structural
+  identity requires declaration-node references or span-based keys
 
-*Node.name surface area:*
+*Node.name surface area (D6):*
 - [x] `source_text_at` infrastructure (B0)
 - [x] Source text threaded through pipeline (B2)
 - [x] Synthetic name dissolution: tuple constants, module markers (B1)
 - [x] `extern fn` syntax deleted
-- [ ] Update 17 `make_*` helpers + 11 accessor functions
+- [x] Accessor layer: `lookup_type_for`, `is_recursive_type_for`,
+  `authored_name_at`, `lambda_param_names_at` encapsulate all
+  `.name`-as-identity reads (emit + resolve + infer + lookup)
+- [ ] Update 17 `make_*` helpers (blocked: all `.name` reads replaced)
 - [ ] Update ~256 Node constructions to drop `name:`
-- [ ] Migrate synthetic node identity to structural
+- [ ] Migrate synthetic node identity to structural (blocked: L1)
 - [ ] Delete `Node.name` field + scrambled-name tests
 
 *Synthetic node audit (D6 blocker):*

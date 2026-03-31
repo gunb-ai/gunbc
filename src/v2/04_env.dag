@@ -47,6 +47,17 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
   authored_name_at(source_index: env.source_index, node: node)
 }
 
+// Node-based lookup accessors — encapsulate identity extraction so
+// resolve callers use node-based API, not string-based. When
+// Node.name is deleted (D6), only these functions change.
+fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
+  lookup_type(env: env, name: node.name)
+}
+
+fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
+  is_recursive_type(env: env, name: node.name)
+}
+
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.bindings))
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))

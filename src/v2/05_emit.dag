@@ -227,8 +227,9 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_index: NewlineIndex
     ExprVar { binding_kind: _ } => emit_ident(name: authored_name_at(source_index: source_index, node: expr), target: target)
     ExprFieldAccess { summary: _ } =>
       // field_access_field: ExprFieldAccess.ident_span carries the '.'
-      // token span, not the member name. Use node.name until parser
-      // sets ident_span to the field identifier.
+      // ExprFieldAccess: ident_span = full expression span (make_named_expr_node
+      // copies span to ident_span). Needs separate ident_span for field name
+      // before authored_name_at can work here.
       let f = expr.name
       let b = field_access_base(texpr: expr)
       if is_typed_service_call_receiver(receiver: expr) {

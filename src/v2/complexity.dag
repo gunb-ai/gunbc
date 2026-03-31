@@ -30,7 +30,8 @@ import v2.std.core {
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes, return_value,
-  expr_call_func
+  expr_call_func,
+  make_span
 }
 
 // =========================================================================
@@ -269,6 +270,109 @@ fn count_self_calls(body: Node, func_name: String) -> Int {
     acc + count_self_calls(body: child, func_name: func_name)
   )
   own + from_children
+}
+
+// Collect all distinct function call targets in a body expression tree.
+// Used by mutual recursion detection to build the function call graph.
+fn collect_callees(body: Node) -> List<String> {
+  let own = match body.expr_data {
+    ExprCall { call_semantics: _ } => [expr_call_func(texpr: body)]
+    _ => []
+  }
+  let from_children = body.children |> flat_map(child => collect_callees(body: child))
+  concat(own, from_children)
+}
+
+// Detect mutual recursion: build function call graph, find cycles
+// using Kahn's algorithm (same approach as 04_cycle.dag for types).
+// Returns names of functions in mutual recursion cycles.
+fn detect_mutual_recursion_names(func_entries: List<FuncEntry>) -> List<String> {
+  let func_names = func_entries |> map(e => e.name)
+  let func_set = func_names |> fold(init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
+  // Build call graph: for each function, collect callees that are in func_set
+  let call_graph = func_entries |> fold(init: empty_map(), f: (acc, entry) =>
+    let callees = collect_callees(body: entry.body)
+      |> filter(c => c != entry.name)
+      |> filter(c => match map_get(func_set, c) { Some { value: _ } => true  None => false })
+    map_insert(acc, entry.name, callees)
+  )
+  // Kahn's algorithm: compute in-degrees, iteratively remove zero-in-degree nodes
+  let in_degrees = func_names |> fold(init: empty_map(), f: (acc, n) => map_insert(acc, n, 0))
+  let in_degrees = func_names |> fold(init: in_degrees, f: (acc, n) =>
+    match map_get(call_graph, n) {
+      Some { value: callees } =>
+        callees |> fold(init: acc, f: (inner_acc, callee) =>
+          let current = match map_get(inner_acc, callee) { Some { value: v } => v  None => 0 }
+          map_insert(inner_acc, callee, current + 1)
+        )
+      None => acc
+    }
+  )
+  // Find initial zero-in-degree nodes
+  let queue = func_names |> filter(n =>
+    match map_get(in_degrees, n) { Some { value: 0 } => true  _ => false }
+  )
+  // Process queue: remove nodes, decrement successors
+  let result = kahn_process_func(queue: queue, in_degrees: in_degrees, call_graph: call_graph, removed: empty_map())
+  // Remaining nodes include cycle members AND acyclic callees downstream
+  // of cycles. Post-filter: only keep nodes that can reach themselves
+  // through the call graph (actual cycle members).
+  let candidates = func_names |> fold(init: empty_map(), f: (acc, n) =>
+    match map_get(result, n) { Some { value: _ } => acc  None => map_insert(acc, n, true) }
+  )
+  func_names |> filter(n =>
+    match map_get(candidates, n) {
+      None => false
+      Some { value: _ } => can_reach_self(name: n, call_graph: call_graph, candidates: candidates)
+    }
+  )
+}
+
+// Check if a candidate node can reach itself through the call graph
+// (restricted to candidates). True = actually in a cycle, not just
+// downstream of one. BFS from callees, looking for self.
+fn can_reach_self(name: String, call_graph: Map<String, List<String>>, candidates: Map<String, Bool>) -> Bool {
+  let initial = match map_get(call_graph, name) {
+    Some { value: cs } => cs |> filter(c => c != name && match map_get(candidates, c) { Some { value: _ } => true  None => false })
+    None => []
+  }
+  can_reach_target(target: name, queue: initial, visited: empty_map(), call_graph: call_graph, candidates: candidates)
+}
+
+fn can_reach_target(target: String, queue: List<String>, visited: Map<String, Bool>, call_graph: Map<String, List<String>>, candidates: Map<String, Bool>) -> Bool {
+  match queue |> first {
+    None => false
+    Some { value: current } =>
+      if current == target { true }
+      else if match map_get(visited, current) { Some { value: _ } => true  None => false } {
+        can_reach_target(target: target, queue: queue |> skip(1), visited: visited, call_graph: call_graph, candidates: candidates)
+      } else {
+        let new_visited = map_insert(visited, current, true)
+        let next = match map_get(call_graph, current) {
+          Some { value: cs } => cs |> filter(c => match map_get(candidates, c) { Some { value: _ } => true  None => false })
+          None => []
+        }
+        can_reach_target(target: target, queue: concat(queue |> skip(1), next), visited: new_visited, call_graph: call_graph, candidates: candidates)
+      }
+  }
+}
+
+fn kahn_process_func(queue: List<String>, in_degrees: Map<String, Int>, call_graph: Map<String, List<String>>, removed: Map<String, Bool>) -> Map<String, Bool> {
+  match queue |> first {
+    None => removed
+    Some { value: node } =>
+      let rest = queue |> skip(1)
+      let new_removed = map_insert(removed, node, true)
+      let successors = match map_get(call_graph, node) { Some { value: s } => s  None => [] }
+      let updates = successors |> fold(init: { degrees: in_degrees, new_queue: rest }, f: (acc, succ) =>
+        let current = match map_get(acc.degrees, succ) { Some { value: v } => v  None => 0 }
+        let new_deg = current - 1
+        let new_degrees = map_insert(acc.degrees, succ, new_deg)
+        let new_q = if new_deg == 0 { concat(acc.new_queue, [succ]) } else { acc.new_queue }
+        { degrees: new_degrees, new_queue: new_q }
+      )
+      kahn_process_func(queue: updates.new_queue, in_degrees: updates.degrees, call_graph: call_graph, removed: new_removed)
+  }
 }
 
 // Count maximum self-calls on any single execution path through an
@@ -1549,9 +1653,23 @@ fn build_complexity_report(func_entries: List<FuncEntry>) -> ComplexityReport {
         }
     }
   )
+  // Detect mutual recursion (SCC-based)
+  let mutual_cycle_names = detect_mutual_recursion_names(func_entries: func_entries)
+  let mutual_violations = mutual_cycle_names |> map(name =>
+    let entry_span = match func_entries |> filter(e => e.name == name) |> first {
+      Some { value: e } => e.span
+      None => make_span(start: 0, end: 0)
+    }
+    ComplexityViolation {
+      func_name: name,
+      reason: concat("mutual recursion cycle (", name, ")"),
+      summary: none,
+      span: entry_span
+    }
+  )
   ComplexityReport {
     function_summaries: summaries_map,
-    violations: violations,
+    violations: concat(violations, mutual_violations),
     intern_table: result.table
   }
 }

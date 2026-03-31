@@ -34,7 +34,7 @@ import v2.compiler.infer_types {
 }
 import v2.compiler.infer_env {
   TypeEnv, TypeBinding,
-  is_recursive_type, lookup_type
+  is_recursive_type, lookup_type, lookup_type_for
 }
 import v2.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
@@ -161,7 +161,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
       nominal_type_ref(name: normed.name)
     } else {
       let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      match lookup_type(env: env, name: normed.name) {
+      match lookup_type_for(env: env, node: normed) {
         Some { value: resolved } =>
           if resolved.name == normed.name && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
             normed

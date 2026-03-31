@@ -2070,6 +2070,37 @@ fn multiplicative_recursion_is_rejected() {
 }
 
 #[test]
+fn mutual_recursion_is_rejected() {
+    let source = "module mutual_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\n";
+    let result = compile_dag(source);
+    assert!(
+        !result.diagnostics.is_empty(),
+        "mutual recursion (ping<->pong) must produce diagnostics"
+    );
+    assert!(result.files.is_empty(), "mutual recursion should block code emission");
+}
+
+#[test]
+fn function_calling_into_cycle_is_not_rejected() {
+    // h calls into the ping<->pong cycle but is not part of it.
+    // Must NOT be flagged as mutual recursion.
+    let source = "module downstream_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\nfn helper(n: Int) -> Int { ping(n: n) }\n";
+    let result = compile_dag(source);
+    let diag_names: Vec<String> = result.diagnostics.iter()
+        .map(|d| d.module_name.clone())
+        .collect();
+    // ping and pong should have diagnostics, but helper should NOT
+    assert!(
+        !result.diagnostics.iter().any(|d| {
+            let msg = format!("{:?}", d.diagnostic);
+            msg.contains("helper")
+        }),
+        "helper() calls into cycle but is not part of it — should not be rejected. Diagnostics: {:?}",
+        diag_names
+    );
+}
+
+#[test]
 fn division_descent_is_allowed() {
     let source = "module halve_test\n\nfn halve(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { halve(n: n / 2) }\n}\n";
     let result = compile_dag(source);

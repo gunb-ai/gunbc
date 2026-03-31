@@ -50,7 +50,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
 pub use crate::v2_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
-pub use crate::v2_compiler_infer_env::{is_recursive_type, lookup_type, TypeBinding, TypeEnv};
+pub use crate::v2_compiler_infer_env::{is_recursive_type, lookup_type, lookup_type_for, TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_service::{
     check_service_method_call_node, OpEntry, ServiceMethodResult,
 };
@@ -235,7 +235,7 @@ pub fn resolve_scrutinee_type_node_seen(
                             } else {
                                 v2_rt::map_insert(seen.clone(), canonical.clone(), true)
                             };
-                            match lookup_type(env.clone(), normed.name.clone()) {
+                            match lookup_type_for(env.clone(), normed.clone()) {
                                 Some(resolved) => {
                                     if ((((resolved.name.clone() == normed.name.clone())
                                         && (resolved.inferred.clone() == None))
