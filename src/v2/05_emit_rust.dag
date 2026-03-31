@@ -693,10 +693,6 @@ fn emit_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScop
     emit_service_def(item: item, registry: registry, rc_types: rc_types, env: env)
   } else if (kind == TypedItemResourceDef) {
     emit_resource_def(item: item, rc_types: rc_types, env: env)
-  } else if (kind == TypedItemExternFunc) {
-    let params_str = emit_params(params: item.params, rc_types: rc_types, source_index: env.source_index)
-    let ret_str = emit_inferred(inferred: rt_type(n: item), rc_types: rc_types)
-    concat(rust_visibility_prefix(), "fn ", emit_ident(name: item_text, target: Rust), "(", params_str, ")", ret_str, " { todo!(\"extern func\") }")
   } else {
     concat("compile_error!(\"unhandled item: ", item_text, "\");")
   }

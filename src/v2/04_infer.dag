@@ -799,7 +799,7 @@ fn refine_collection_result_type(semantics: MethodSemantics?, typed_args: List<N
     // fold returns the accumulator type, not the lambda body type.
     let fold_acc = if semantics == none { none } else {
       match semantics.value {
-        AlgebraMethodSemantics { method_name: _, fold_accumulator_type: fat } => fat
+        AlgebraMethodSemantics { method_def: _, fold_accumulator_type: fat } => fat
         _ => none
       }
     }
