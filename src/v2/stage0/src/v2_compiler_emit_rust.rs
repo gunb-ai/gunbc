@@ -412,16 +412,22 @@ if ((filtered_names.clone().len() as i64) == 0) {
                             {
                                 let deduped_names = unique_strings(filtered_names.clone());
 let all_enum_names: Vec<String> = v2_rt::map_keys(&emit_info.type_summaries).iter().filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone())).cloned().collect();
-let scope_enum_names = all_enum_names;
+let scope_enum_names = all_enum_names.clone();
+// Prefer parent enums that are explicitly imported in this import statement.
+let imported_enums: Vec<String> = deduped_names.clone().iter().filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone())).cloned().collect();
 let top_level = { let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if is_known_variant(emit_info.type_summaries.clone(), n.clone()) {
     is_enum_type_name(n.clone(), emit_info.type_summaries.clone())
 } else { true } { __result.push(n); } } __result };
 let all_parents = { let mut __result = Vec::new(); for p in { let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { __result.push(if is_enum_type_name(n.clone(), emit_info.type_summaries.clone()) {
                                     "".to_string()
 } else {
-                                    match find_variant_parent(emit_info.type_summaries.clone(), n.clone(), scope_enum_names.clone()) {
+                                    // Try imported enums first, fall back to all enums
+                                    match find_variant_parent(emit_info.type_summaries.clone(), n.clone(), imported_enums.clone()) {
     Some(parent) => parent.clone(),
-    None => "".to_string(),
+    None => match find_variant_parent(emit_info.type_summaries.clone(), n.clone(), scope_enum_names.clone()) {
+        Some(parent) => parent.clone(),
+        None => "".to_string(),
+    },
 }
 }); } __result }.iter().cloned() { if (p.clone() != "".to_string()) { __result.push(p); } } __result };
 let parent_list = unique_strings(all_parents.clone());
@@ -1101,10 +1107,19 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
                     Some(ref parent) => format!("{}::{}", parent, name),
                     None => name.clone(),
                 };
-                match emit_info.fielded_variants.get(&fielded_key) {
-                    Some(true) => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
-                    _ => qualified.clone(),
-                }
+                let is_fielded = match emit_info.fielded_variants.get(&fielded_key) {
+                    Some(true) => true,
+                    _ => {
+                        let all_enum_names: Vec<String> = v2_rt::map_keys(&emit_info.type_summaries).iter()
+                            .filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone()))
+                            .cloned().collect();
+                        all_enum_names.iter().any(|en| {
+                            let key = format!("{}::{}", en, name);
+                            matches!(emit_info.fielded_variants.get(&key), Some(true))
+                        })
+                    }
+                };
+                if is_fielded { v2_rt::concat(qualified.clone(), " { .. }".to_string()) } else { qualified.clone() }
 } else {
                 {
                     let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
@@ -1271,10 +1286,19 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
                     Some(ref parent) => format!("{}::{}", parent, name),
                     None => name.clone(),
                 };
-                match emit_info.fielded_variants.get(&fielded_key) {
-                    Some(true) => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
-                    _ => qualified.clone(),
-                }
+                let is_fielded = match emit_info.fielded_variants.get(&fielded_key) {
+                    Some(true) => true,
+                    _ => {
+                        let all_enum_names: Vec<String> = v2_rt::map_keys(&emit_info.type_summaries).iter()
+                            .filter(|n| is_enum_in_summaries(emit_info.type_summaries.clone(), (*n).clone()))
+                            .cloned().collect();
+                        all_enum_names.iter().any(|en| {
+                            let key = format!("{}::{}", en, name);
+                            matches!(emit_info.fielded_variants.get(&key), Some(true))
+                        })
+                    }
+                };
+                if is_fielded { v2_rt::concat(qualified.clone(), " { .. }".to_string()) } else { qualified.clone() }
 } else {
                 {
                     let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
