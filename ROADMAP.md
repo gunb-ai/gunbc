@@ -24,8 +24,8 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 126 errors | 0 | 122 are E0 class (field name in patterns); blocked on emission-correctness-by-construction |
-| Stage0 regeneration (C) | RED | GREEN | Blocked on B; `regenerate-stage0.sh` can emit 40 files but output doesn't compile |
+| Bootstrap emitted Rust (B) | 419 errors | 0 | Down from 8658. Remaining: CodegenBackend import (192), algebra fn-field derives (71), downstream (114), misc (42) |
+| Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70; #253 landed structural algebra authority |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
@@ -213,14 +213,17 @@ from the same data (syntactic item kind + field types + usage sites)
 and added to EmitGraphInfo in the same pass.
 
 Acceptance criteria:
-- [ ] `data` declarations emit as `const`/`static` in Rust (no
-  `lazy_static` + `Rc` → eliminates 97 E0277 Send/Sync errors)
-- [ ] Algebra types with `fn` fields skip `PartialEq`/`Debug` derives
-  or use structural tags (eliminates 40 E0369 + 13 E0277 errors)
+- [x] `data` declarations emit as constructor functions (no
+  `lazy_static` + `Rc` → E0277 Send/Sync: 97→31)
+- [x] ValueContext `{ is_constant, has_fn_fields }` precomputed in
+  EmitGraphInfo (orthogonal flags, not sum type)
+- [x] `fielded_variants` precomputed for structural variant-has-fields
+- [ ] Wire `has_fn_fields` → skip `PartialEq`/`Debug` derives for
+  algebra types (eliminates 40 E0369 + 31 E0277)
 - [ ] Adding SPICE/English targets requires only ValueContext ×
   LanguageSpec data, no emission-side debugging
-- [ ] `rc_types` authority derived from ValueContext (RuntimeValue →
-  wrap, ConstantData → no wrap) instead of heuristic type_summary scan
+- [ ] `rc_types` authority derived from ValueContext (is_constant →
+  no wrap) instead of heuristic type_summary scan
 
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
