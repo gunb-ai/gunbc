@@ -22,7 +22,7 @@ import v2.std.core {
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
-  rt_type, child_inferred_or_name, node_type_equals
+  rt_type, emit_map_has, child_inferred_or_name, node_type_equals
 }
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -36,6 +36,23 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 // =========================================================================
 
 type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
+
+// ValueContext: orthogonal facts about how a named value is used,
+// determining its target-language representation. Precomputed in
+// EmitGraphInfo so the emitter reads facts instead of heuristics.
+//
+// Orthogonal because a value can be constant AND callable (e.g.,
+// a data declaration of function type). A sum type would force
+// ad hoc classification; orthogonal flags compose naturally.
+//
+// The emitter reads ValueContext × LanguageSpec to choose representation:
+//   is_constant × Rust → const/static (no Rc, no lazy_static)
+//   !is_constant × Rust → Rc<T>
+//   has_fn_fields × Rust → skip PartialEq/Debug derives
+type ValueContext {
+  is_constant: Bool
+  has_fn_fields: Bool
+}
 
 type TypeSummary {
   name: String
@@ -64,6 +81,13 @@ type TypeSummary {
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   recursive_type_set: Map<String, Bool>
+  // Per-variant structural fact: does this variant have fields?
+  // Used by pattern emission to decide Variant vs Variant { .. }.
+  // Keyed by variant name → true if variant has children.
+  fielded_variants: Map<String, Bool>
+  // Per-item value context: how each named value should be represented.
+  // Keyed by item name. Drives sharing/wrapping/derive decisions.
+  value_contexts: Map<String, ValueContext>
 }
 
 type EmitInfoBuildState {
@@ -77,7 +101,25 @@ type EmitInfoBuildState {
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
-    recursive_type_set: empty_map()
+    recursive_type_set: empty_map(),
+    fielded_variants: empty_map(),
+    value_contexts: empty_map()
+  }
+}
+
+// Structural check: does this variant have fields (needs { .. } in patterns)?
+fn lookup_value_context(emit_info: EmitGraphInfo, name: String) -> ValueContext {
+  match map_get(emit_info.value_contexts, name) {
+    Some { value: vc } => vc
+    None => ValueContext { is_constant: false, has_fn_fields: false }
+  }
+}
+
+fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
+  let key = concat(enum_name, "::", variant_name)
+  match map_get(emit_info.fielded_variants, key) {
+    Some { value: v } => v
+    None => false
   }
 }
 

@@ -43,11 +43,17 @@ import v2.std.core {
   transport_has_auth, transport_auth_token, transport_auth_header_name,
   transport_headers, transport_env,
   expr_has_self_call, expr_has_non_tail_self_call,
-  field_access_field, foreach_variable, foreach_variable_at,
+  field_access_base, field_access_field, foreach_variable, foreach_variable_at,
   expr_var_name, expr_call_func, expr_method_name, let_binding_name,
   record_lit_type_name, record_lit_type_name_at,
   arg_name, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name, field_init_node_name_at, field_init_node_value,
+  field_binding_name, make_arg_node, make_named_expr_node,
+  let_value, let_body, lambda_body, lambda_param_names_at,
+  foreach_collection, foreach_body, method_receiver, method_arg_nodes,
+  match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch,
+  index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
+  binop_left, binop_right,
   leaf_node, make_span, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
@@ -567,15 +573,7 @@ fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<St
             let top_with_parents = unique_strings(items: concat(top_level, parent_list))
             // Emit top-level use line.
             let main_line = if top_with_parents |> count > 0 {
-              let names_str = top_with_parents |> map(n =>
-                match map_get(registry, n) {
-                  Some { value: info } =>
-                    let is_data = info.kind == DataItem
-                    if is_data { to_screaming_snake(name: n) }
-                    else { n }
-                  None => n
-                }
-              ) |> join(separator: ", ")
+              let names_str = top_with_parents |> join(separator: ", ")
               concat("pub use crate::", mod_name, "::{", names_str, "};")
             } else { "" }
             // Emit per-enum variant import lines for explicitly listed variants.
@@ -977,7 +975,7 @@ fn emit_func_body(body: Node, registry: Map<String, ItemInfo>, scope: InferScope
   let si = scope.type_env.source_index
   match body.expr_data {
     ExprLet => {
-      let n = authored_name_at(source_index: si, node: body)
+      let n = let_binding_name(texpr: body)
       let v = let_value(texpr: body)
       let inner = let_body(texpr: body)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
@@ -1175,12 +1173,12 @@ fn all_arms_are_string_lit(arms: List<Node>) -> Bool {
   )
 }
 
-fn emit_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
+fn emit_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
     Wildcard => "_"
   }
 }
@@ -1196,18 +1194,17 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, v
   }
 }
 
-fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
+fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   // RC1: Qualify variant names with parent enum using scrutinee type.
   // Some/None are Rust builtins -- never qualify. For all others, use the
   // scrutinee type so that variant name collisions (e.g. LitStr in both
   // TokenShape and LiteralValue) are resolved correctly.
-  let qualified = if name == "Some" || name == "None" { name }
-    else {
-      match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
-        Some { value: parent } => concat(parent, "::", name)
-        None => name
-      }
-    }
+  let resolved_parent = if name == "Some" || name == "None" { none }
+    else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) }
+  let qualified = match resolved_parent {
+    Some { value: parent } => concat(parent, "::", name)
+    None => name
+  }
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
@@ -1215,13 +1212,17 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+          let inner_pat = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    qualified
+    let is_fielded = match resolved_parent {
+      Some { value: parent } => variant_has_fields(emit_info: emit_info, enum_name: parent, variant_name: name)
+      None => false
+    }
+    if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
@@ -1235,7 +1236,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           concat("ref ", emit_ident(name: fb_name, target: Rust))
         } else {
-            let pat_str = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index)
+            let pat_str = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
             concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
         }
       )
@@ -1347,24 +1348,23 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, vtoe:
   }
 }
 
-fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
+fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
-  let qualified = if name == "Some" || name == "None" { name }
-    else {
-      match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
-        Some { value: parent } => concat(parent, "::", name)
-        None => name
-      }
-    }
+fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
+  let resolved_parent = if name == "Some" || name == "None" { none }
+    else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) }
+  let qualified = match resolved_parent {
+    Some { value: parent } => concat(parent, "::", name)
+    None => name
+  }
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
@@ -1373,13 +1373,17 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           "Some(ref __some_val)"
         } else {
           let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
-          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    qualified
+    let is_fielded = match resolved_parent {
+      Some { value: parent } => variant_has_fields(emit_info: emit_info, enum_name: parent, variant_name: name)
+      None => false
+    }
+    if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
@@ -1397,7 +1401,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             concat("ref ", emit_ident(name: fb_name, target: Rust))
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
-            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index)
+            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
             concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
           }
         }
@@ -1408,7 +1412,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   }
 }
 
-fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       if n == "Some" || n == "None" {
@@ -1417,14 +1421,14 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
             Some { value: fb } =>
               let fb_pat = field_binding_pattern(n: fb)
               let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", vtoe: vtoe, rc_types: rc_types, source_index: source_index)
-              rc_pattern_preludes(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, source_index: source_index)
+              rc_pattern_preludes(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, source_index: source_index, emit_info: emit_info)
             None => ""
           }
         } else { "" }
       } else {
         let preludes = fbs |> flat_map(fb =>
           if field_needs_rc_ref(field_name: authored_name_at(source_index: source_index, node: fb), rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index), " = ", emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust), ".as_ref() else { unreachable!() };")]
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info), " = ", emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -1521,7 +1525,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         match map_get(registry, name) {
           Some { value: info } =>
             let is_data = info.kind == DataItem
-            if is_data { concat(to_screaming_snake(name: name), ".clone()") }
+            if is_data { concat(to_snake(name: name), "()") }
             else {
               let is_function_value = match binding_kind {
                 Some { value: FunctionValueBinding } => true
@@ -1556,7 +1560,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   let si = scope.type_env.source_index
   match texpr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
-      let n = authored_name_at(source_index: si, node: texpr)
+      let n = expr_var_name(texpr: texpr)
       // Emit var without .clone() for borrowing contexts.
       if n == "none" || n == "None" { emit_keyword(key: "null", target: Rust) }
       else if n == "true" || n == "false" { emit_keyword(key: n, target: Rust) }
@@ -1572,7 +1576,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             match map_get(registry, n) {
               Some { value: info } =>
                 let is_data = info.kind == DataItem
-                if is_data { to_screaming_snake(name: n) }
+                if is_data { concat(to_snake(name: n), "()") }
                 else { emit_ident(name: n, target: Rust) }
               None => emit_ident(name: n, target: Rust)
             }
@@ -1709,7 +1713,7 @@ fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, 
 fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, source_index: NewlineIndex?) -> String {
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
-      let n = authored_name_at(source_index: source_index, node: expr)
+      let n = expr_var_name(texpr: expr)
       emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, vtoe: vtoe, rc_types: rc_types, registry: registry, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
@@ -1736,7 +1740,7 @@ fn emit_rust_expr_field_access(expr: Node, registry: Map<String, ItemInfo>, scop
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprCall { call_semantics: _ } =>
-      let f = authored_name_at(source_index: scope.type_env.source_index, node: expr)
+      let f = expr_call_func(texpr: expr)
       emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
   }
@@ -1747,7 +1751,7 @@ fn emit_rust_expr_method_call(expr: Node, registry: Map<String, ItemInfo>, scope
     ExprMethodCall { method_semantics: method_semantics } =>
       let r = method_receiver(texpr: expr)
       let a = method_arg_nodes(texpr: expr)
-      let m = authored_name_at(source_index: scope.type_env.source_index, node: expr)
+      let m = expr_method_name(texpr: expr)
       emit_typed_method_call(receiver: r, method: m, args: a, result_type: expr.inferred, method_semantics: method_semantics, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_method_call expected ExprMethodCall", target: Rust)
   }
@@ -1777,7 +1781,7 @@ fn emit_rust_expr_if(expr: Node, registry: Map<String, ItemInfo>, scope: InferSc
 fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprLet =>
-      let n = authored_name_at(source_index: scope.type_env.source_index, node: expr)
+      let n = let_binding_name(texpr: expr)
       let v = let_value(texpr: expr)
       let bd = let_body(texpr: expr)
       emit_typed_let(name: n, value: v, body: bd, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -1920,9 +1924,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if value_type_str != "" {
           concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
         } else {
-          "compile_error!(\"empty_map requires a concrete result type\")"
+          "compile_error!(\"empty_map requires concrete type parameters\")"
         }
-      _ => "compile_error!(\"empty_map missing resolved return type\")"
+      _ => "compile_error!(\"empty_map requires concrete type parameters\")"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2276,16 +2280,16 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
     Some { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
         ExprCall { call_semantics: _ } =>
-          let init_func = authored_name_at(source_index: scope.type_env.source_index, node: arg_value(n: init_arg))
+          let init_func = expr_call_func(texpr: arg_value(n: init_arg))
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             let value_type_str = rust_empty_map_value_type_str(map_type: acc_type_node, rc_types: rc_types)
             if value_type_str != "" {
               concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
             } else {
-              "compile_error!(\"fold empty_map init requires a concrete accumulator value type\")"
+              "compile_error!(\"empty_map requires concrete type parameters\")"
             }
           } else if init_func == "empty_map" {
-            "compile_error!(\"fold empty_map init requires a concrete accumulator type\")"
+            "compile_error!(\"empty_map requires concrete type parameters\")"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           }
@@ -2630,9 +2634,9 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   let si = scope.type_env.source_index
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types, source_index: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
   let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_index: si)
@@ -2650,7 +2654,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   } else { "" }
   let body_str = match arm_b.expr_data {
     ExprVar { binding_kind: body_binding_kind } =>
-      let body_name = authored_name_at(source_index: scope.type_env.source_index, node: arm_b)
+      let body_name = expr_var_name(texpr: arm_b)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
         emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Some { value: Resolved { node: match_result_type } }, vtoe: vtoe, rc_types: rc_types, registry: registry, emit_info: emit_info)
       } else {
@@ -2659,7 +2663,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     _ => emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   }
   if rc_analysis.needs_rc_pattern {
-    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si)
+    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
   } else {
     concat("    ", pat_str, guard_str, " => ", body_str, ",")
@@ -3101,11 +3105,10 @@ fn emit_tco_init_block_stmts(remaining: List<Node>, text: List<String>,
 fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match stmt.expr_data {
     ExprLet =>
-      let si = scope.type_env.source_index
-      let n = authored_name_at(source_index: si, node: stmt)
+      let n = let_binding_name(texpr: stmt)
       let v = let_value(texpr: stmt)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      let is_param = params |> any(p => authored_name_at(source_index: si, node: p) == n)
+      let is_param = params |> any(p => param_node_name(n: p) == n)
       if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") }
       else { emit_let_binding(name: n, value: val_str, target: Rust) }
     _ => emit_typed_expr(texpr: stmt, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
@@ -3184,12 +3187,11 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
 fn emit_rust_tco_let(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprLet =>
-      let si = frame.scope.type_env.source_index
-      let n = authored_name_at(source_index: si, node: frame.expr)
+      let n = let_binding_name(texpr: frame.expr)
       let v = let_value(texpr: frame.expr)
       let bd = let_body(texpr: frame.expr)
       let val_str = emit_typed_expr(texpr: v, registry: registry, scope: frame.scope, depth: frame.depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      let is_param = params |> any(p => authored_name_at(source_index: si, node: p) == n)
+      let is_param = params |> any(p => param_node_name(n: p) == n)
       let let_line = if is_param { concat(emit_ident(name: n, target: Rust), " = ", val_str, ";") } else { concat("let ", emit_ident(name: n, target: Rust), " = ", val_str, ";") }
       let next_scope = extend_scope(scope: frame.scope, name: n, resolved: rt_type(n: v))
       match bd {
@@ -3246,9 +3248,9 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let si = scope.type_env.source_index
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types, source_index: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
   let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_index: si)
@@ -3265,7 +3267,7 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   } else { "" }
   let body_str = emit_typed_tco_expr(texpr: arm_b, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   if rc_analysis.needs_rc_pattern {
-    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si)
+    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
   } else {
     concat("    ", pat_str, guard_str, " => { ", body_str, " },")
@@ -3584,50 +3586,46 @@ fn emit_capability_method(cap_node: Node, rc_types: Map<String, Bool>, env: Type
 // =========================================================================
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, vtoe: Map<String, String>, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
-  // Data defs use lazy_static (requires Sync) or serde (requires Deserialize),
-  // so render types without Rc wrapping.
+  // Constant data: render types without Rc wrapping. Emit as const for
+  // simple scalars, or as a constructor function for complex types.
+  // No lazy_static (requires Sync, which Rc doesn't implement).
   let ty_str = emit_node_type_rc(n: type_node, target: Rust, rc_types: empty_map())
-  let upper_name = to_screaming_snake(name: name)
+  let fn_name = to_snake(name: name)
   if is_simple_type_node(n: type_node) {
     let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
-    concat(rust_visibility_prefix(), "const ", upper_name, ": ", ty_str, " = ", val_str, ";")
+    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " { ", val_str, " }")
   } else if has_nested_records_node(n: type_node) {
-    // Complex data with nested anonymous records -> serde deserialization
     let json_str = emit_data_value_json(value: value, source_index: scope.type_env.source_index)
-    concat(rust_visibility_prefix(), "fn ", to_snake(name: name), "() -> ", ty_str, " {\n",
+    concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
       "    serde_json::from_value(serde_json::json!(", json_str, "))\n",
       "        .expect(\"valid data definition\")\n",
       "}")
   } else {
     let is_map = node_is_keyed_collection(n: type_node)
     if is_map {
-    // Map data: emit as lazy_static with explicit insert() calls.
-    // The value is a RecordLit whose field names are map keys and field values are map values.
     match value.expr_data {
       ExprRecordLit { parent_enum: _ } =>
         let inserts = value.children |> map(f =>
           let val_str = emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
-          concat("        __m.insert(\"", field_init_node_name_at(n: f, source_index: scope.type_env.source_index), "\".to_string(), ", val_str, ");")
+          concat("    __m.insert(\"", field_init_node_name(n: f), "\".to_string(), ", val_str, ");")
+
         )
         let inserts_str = inserts |> join(separator: "\n")
-        concat("lazy_static::lazy_static! {\n",
-          "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = {\n",
-          "        let mut __m = HashMap::new();\n",
+        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+          "    let mut __m = HashMap::new();\n",
           inserts_str, "\n",
-          "        Rc::new(__m)\n",
-          "    };\n",
+          "    __m\n",
           "}")
       _ =>
         let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
-        concat("lazy_static::lazy_static! {\n",
-          "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+        concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+          "    ", val_str, "\n",
           "}")
     }
     } else {
-      // Complex types use lazy_static for heap-allocated values
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: empty_map(), emit_info: emit_info, fuel: 1024)
-      concat("lazy_static::lazy_static! {\n",
-        "    ", rust_visibility_prefix(), "static ref ", upper_name, ": ", ty_str, " = ", val_str, ";\n",
+      concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
+        "    ", val_str, "\n",
         "}")
     }
   }

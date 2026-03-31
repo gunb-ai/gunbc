@@ -26,7 +26,7 @@ import v2.std.core {
   VarBindingKind, CallSemantics, LambdaSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
-  arm_pattern, arm_guard, arm_body,
+  arg_name, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_value,
   LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node,
   NewlineIndex, build_newline_index,
   field_access_field, expr_call_func, lambda_param_names, record_lit_type_name, foreach_variable, expr_method_name
@@ -805,7 +805,9 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let complexity = build_complexity_report(func_entries: func_entries)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
 
-      // Gate: if typecheck or complexity produced errors, do not proceed to emit.
+      // Gate: all hard errors (typecheck + decidability) block emission.
+      // Soft complexity violations are tracked by the ratchet test
+      // (strict_complexity_violation_count), not the emission gate.
       let all_infer_diags = concat(typed_diags, complexity_diags)
       let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if typecheck_errors |> count > 0 {
