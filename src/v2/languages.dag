@@ -14,11 +14,7 @@ import v2.std.core {
   BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
   LiteralValue
 }
-import std.syntax {
-  ItemForm, OperatorSpec, SyntaxSpec, BinOp, LiteralKind,
-  BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
-  ServiceBody, ResourceBody
-}
+
 
 import extdeps.languages.rust.emit {
   rust_type_map, rust_keywords, rust_container_templates,
@@ -188,12 +184,45 @@ type LanguageSpec {
 }
 
 // =========================================================================
-// SyntaxSpec — imported from std.syntax (canonical source)
+// SyntaxSpec — compiler-internal versions
 //
-// ItemForm, OperatorSpec, SyntaxSpec, BodyKind are grammar facts.
-// They live in std/syntax.dag, grounded in the language spec.
-// This module imports them rather than re-defining.
+// These types mirror std.syntax but use compiler-internal types
+// (BinOpKind, LiteralValue) instead of spec types (BinOp, LiteralKind).
+// Unification tracked in ROADMAP .dag model convergence direction.
 // =========================================================================
+
+type BodyKind
+  = ExprBody
+  | BlockBody
+  | TypeBody
+  | ValueBody
+  | NoBody
+  | ServiceBody
+  | ResourceBody
+
+type ItemForm {
+  keyword: String
+  has_type_params: Bool
+  has_params: Bool
+  has_return_type: Bool
+  return_required: Bool
+  has_uses: Bool
+  body_kind: BodyKind
+}
+
+type OperatorSpec {
+  symbol: String
+  left_bp: Int
+  right_bp: Int
+  binop: BinOpKind?
+}
+
+type SyntaxSpec {
+  item_forms: List<ItemForm>
+  operators: List<OperatorSpec>
+  keyword_literals: Map<String, LiteralValue>
+  keyword_set: Map<String, Bool>
+}
 
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
