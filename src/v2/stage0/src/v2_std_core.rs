@@ -971,7 +971,7 @@ pub fn param_node_name(n: Rc<Node>) -> String {
 }
 
 pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) -> String {
-    match (node.ident_span.clone(), source_index) {
+    let result = match (node.ident_span.clone(), source_index) {
         (Some(span), Some(index)) if span.file == index.file => {
             let text = source_text_at(index.clone(), span.clone());
             if text.is_empty() {
@@ -981,7 +981,11 @@ pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) 
             }
         }
         _ => node.name.clone(),
+    };
+    if node.match_pattern.is_some() {
+        eprintln!("[DEBUG authored_name_at] field_binding: name='{}' result='{}' ident_span={:?}", node.name, result, node.ident_span);
     }
+    result
 }
 
 pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
