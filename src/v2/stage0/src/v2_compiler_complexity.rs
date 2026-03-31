@@ -997,6 +997,11 @@ pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
 pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
     match &*expr {
         CostExpr::CostUnknown { .. } => true,
+        CostExpr::CostAdd { left: l, right: r }
+        | CostExpr::CostMul { left: l, right: r }
+        | CostExpr::CostMax { left: l, right: r } =>
+            is_unknown_cost(l.clone()) || is_unknown_cost(r.clone()),
+        CostExpr::CostSum { body: b, .. } => is_unknown_cost(b.clone()),
         _ => false,
     }
 }

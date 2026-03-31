@@ -30,7 +30,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 0 | 0 | Green |
+| Complexity violations | 315 | 0 | Compiler self-recursion; resolves when fold primitive lands |
 
 ---
 
@@ -412,6 +412,12 @@ Different functions, no conflict.
 *Edge-only facts (Lane D, parallel):*
 - [ ] 14 `Map<String, X>` metadata maps → structural edges
 
+*Split authority dissolution (PR #264 review):*
+- [ ] Merge `rt_functions: Map<String, Bool>` and
+  `rt_bridge_function_names: Map<String, String>` in `rust/emit.dag`
+  into a single `RuntimeFunction { name: String, bridge_name: String,
+  passes_by_ref: Bool }` list — one concept, one authority
+
 *Compiler bug fixes owned by M5:*
 - [ ] Optional exhaustiveness: structural, not `Some`/`None` hardcoded
 - [ ] Single-variant enum parsing
@@ -465,6 +471,32 @@ enums — compiler reads the graph.
 
 ## Exploratory Directions
 
+**Structural fold over recursive union types.** The language must
+provide catamorphism/fold for any recursive type definition. Today,
+every consumer of a recursive type (CostExpr, ExprData, MatchPattern,
+Node children) writes the same manual traversal — 53 manual traversals
+of CostExpr alone in `complexity.dag`. This is the root cause of:
+- **Shallow projection bugs:** `is_unknown_cost` checked only the root
+  node, missing `CostUnknown` nested inside `CostAdd`/`CostMul`/etc.
+  The cost algebra composes correctly; consumer projections don't follow.
+- **Glue code explosion:** N consumers × M variants = N×M match arms,
+  all mechanically identical except the leaf logic.
+- **Decidability gap:** 315 compiler functions use manual recursion
+  (`parse`, `cost_of_expr`, etc.) instead of bounded fold. The
+  decidability gate correctly flags them — the fix is the fold
+  primitive, not suppressing the gate.
+
+When `.dag` provides `fold` over recursive unions, `is_unknown_cost`
+becomes `cost_expr_any(expr, fn(c) => c is CostUnknown)` — one line,
+structurally correct, decidable. The compiler's own code replaces
+manual recursion with fold, and 315 violations disappear.
+
+Concrete acceptance criteria:
+- `complexity.dag` uses fold/contains instead of 53 manual traversals
+- `is_unknown_cost` is a one-liner, not a 10-line recursive function
+- Parser uses fold over token sequences, not manual recursive descent
+- Complexity gate: 315 → 0 without suppression or ratchet
+
 **Unified Sequence (Seq\<T>).** Ordered collections share FreeMonoid
 algebra; access pattern determines representation. Mixed access = type
 error.
@@ -485,7 +517,7 @@ compatibility, and language rendering.
 | Self-compile diagnostics | 0 | 0 | `strict_compile_diagnostic_count -- --ignored` |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 70 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 0 | 0 | `strict_complexity_violation_count -- --ignored` |
+| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (315 are compiler self-recursion; resolves when fold primitive lands) |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |

@@ -1496,9 +1496,16 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
 // for each, and collects violations (CostUnknown summaries).
 // =========================================================================
 
+// Recursive walk: CostUnknown composes into trees (CostAdd, CostMul, etc.)
+// so a flat root check would miss nested unknowns. The cost algebra composes
+// correctly; the violation query must follow the composition.
 fn is_unknown_cost(expr: CostExpr) -> Bool {
   match expr {
     CostUnknown { reason: _ } => true
+    CostAdd { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostMul { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostMax { left: l, right: r } => is_unknown_cost(expr: l) || is_unknown_cost(expr: r)
+    CostSum { binder: _, upper: _, body: b } => is_unknown_cost(expr: b)
     _ => false
   }
 }
