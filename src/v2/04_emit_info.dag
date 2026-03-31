@@ -64,6 +64,10 @@ type TypeSummary {
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   recursive_type_set: Map<String, Bool>
+  // Per-variant structural fact: does this variant have fields?
+  // Used by pattern emission to decide Variant vs Variant { .. }.
+  // Keyed by variant name → true if variant has children.
+  fielded_variants: Map<String, Bool>
 }
 
 type EmitInfoBuildState {
@@ -77,7 +81,16 @@ type EmitInfoBuildState {
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
-    recursive_type_set: empty_map()
+    recursive_type_set: empty_map(),
+    fielded_variants: empty_map()
+  }
+}
+
+// Structural check: does this variant have fields (needs { .. } in patterns)?
+fn variant_has_fields(emit_info: EmitGraphInfo, variant_name: String) -> Bool {
+  match map_get(emit_info.fielded_variants, variant_name) {
+    Some { value: v } => v
+    None => false
   }
 }
 

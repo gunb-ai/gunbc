@@ -2677,6 +2677,22 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 }
 
 
+fn build_fielded_variants(modules: List<TypedModule>) -> Map<String, Bool> {
+  let result = modules |> fold(init: empty_map(), f: (acc, m) =>
+    let items = m.items
+    items |> fold(init: acc, f: (inner, item) =>
+      if item.connective != Conj && item.children |> count > 0 && item.body == none {
+        let variants = item.children
+        variants |> fold(init: inner, f: (vacc, variant) =>
+          let has_fields = variant.children |> count > 0
+          if has_fields { map_insert(vacc, variant.name, true) } else { vacc }
+        )
+      } else { inner }
+    )
+  )
+  result
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map()
@@ -2689,9 +2705,11 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let all_recursive = modules |> fold(init: empty_map(), f: (acc, m) =>
     map_merge(acc, m.type_env.recursive_type_set)
   )
+  let fielded = build_fielded_variants(modules: modules)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
-    recursive_type_set: all_recursive
+    recursive_type_set: all_recursive,
+    fielded_variants: fielded
   }
 }
 
