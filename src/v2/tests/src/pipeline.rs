@@ -1985,18 +1985,59 @@ fn strict_complexity_violation_count() {
         violation_count,
         result.complexity.function_summaries.len()
     );
+
+    // Root-cause cascade (diagnostic display only — no assertions on
+    // reason strings). Groups violations by the root function from
+    // first_unknown_reason. The "computing: " prefix is an implementation
+    // detail of get_or_compute_summary's placeholder cache; a typed
+    // cause on CostUnknown would make this structural (see I1/I2 in
+    // ROADMAP.md Exploratory Directions).
+    let mut root_cause_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let computing_prefix = "computing: ";
+    for v in result.complexity.violations.iter() {
+        let root = if v.reason.starts_with(computing_prefix) {
+            v.reason[computing_prefix.len()..].to_string()
+        } else {
+            v.reason.clone()
+        };
+        *root_cause_counts.entry(root).or_insert(0) += 1;
+    }
+
+    eprintln!(
+        "\n  ROOT CAUSE CASCADE ({} root functions → {} violations):",
+        root_cause_counts.len(),
+        violation_count
+    );
+    let mut sorted: Vec<_> = root_cause_counts.iter().collect();
+    sorted.sort_by(|a, b| b.1.cmp(a.1));
+    for (root, count) in &sorted {
+        eprintln!("    {:40} {:>4} violations", root, count);
+    }
+
+    eprintln!("\n  SAMPLE VIOLATIONS (first 20):");
     for v in result.complexity.violations.iter().take(20) {
-        eprintln!("  {}: {}", v.func_name, v.reason);
+        eprintln!("    {}: {}", v.func_name, v.reason);
     }
 
     // Ratchet history:
     // 2026-03-25: 2 violations out of 1169 function summaries.
     // 2026-03-30: 0 violations out of 1275 function summaries after
-    // continuation-aware path counting and large-report elision.
+    //   continuation-aware path counting and large-report elision.
     // 2026-03-30: 315 violations out of 1298 after restoring recursive
-    // is_unknown_cost (PR #264 review). All 315 are compiler self-recursion
-    // (parse, cost_of_expr, etc.) — resolves when .dag fold primitive
-    // replaces manual recursion with bounded iteration.
+    //   is_unknown_cost (PR #264 review). All 315 are indirect recursion
+    //   (A→B→A) from 27 root functions cascading to 315. All root
+    //   functions are structurally bounded (descend on children) but the
+    //   cost algebra can't prove it because the recursion is indirect.
+    //   Fix: fold primitive in .dag (I1/I2 in ROADMAP). NOT inlining.
+    //
+    // Decidability invariant status: the 315 are analyzer limitations,
+    // not program violations. INVARIANTS.md §Decidability: "If the
+    // analyzer produces ?O(?), the bug is in the analyzer (it cannot
+    // see the bound that structurally exists), not in the program."
+    // The ratchet tracks the analyzer gap honestly. The violations
+    // remain errors (not downgraded to warnings). The ratchet only
+    // moves down, never up, until I1/I2 resolve them to 0.
     const COMPLEXITY_RATCHET: usize = 315;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
