@@ -30,7 +30,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 315 | 0 | 27 root functions × indirect recursion → 315 warnings (not errors); resolves when fold primitive lands |
+| Complexity violations | 315 | 0 | Compiler self-recursion; resolves when fold primitive lands |
 
 ---
 
@@ -517,7 +517,7 @@ compatibility, and language rendering.
 | Self-compile diagnostics | 0 | 0 | `strict_compile_diagnostic_count -- --ignored` |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 70 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 315 warnings; resolves when fold primitive lands) |
+| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (315 are compiler self-recursion; resolves when fold primitive lands) |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
