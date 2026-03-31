@@ -95,7 +95,12 @@ fn stage0_cargo_check() {
 //   (PR #264 review). All 315 are indirect-recursion complexity violations
 //   (A→B→A) from 27 root functions. They are real errors, not bypassed.
 //   Resolves when .dag fold primitive replaces manual recursion with
-//   bounded iteration. first_unknown_reason gives root-cause visibility.
+//   bounded iteration (I1/I2 in ROADMAP Exploratory Directions).
+//
+// These are analyzer limitations, not program violations. INVARIANTS.md
+// §Decidability: "If the analyzer produces ?O(?), the bug is in the
+// analyzer (it cannot see the bound that structurally exists), not in
+// the program." The ratchet only moves down, never up.
 const DIAG_RATCHET: usize = 315;
 
 #[test]

@@ -1986,9 +1986,12 @@ fn strict_complexity_violation_count() {
         result.complexity.function_summaries.len()
     );
 
-    // Root-cause cascade: group violations by the root function whose
-    // indirect recursion causes the cascade. The reason "computing: X"
-    // from first_unknown_reason identifies the root.
+    // Root-cause cascade (diagnostic display only — no assertions on
+    // reason strings). Groups violations by the root function from
+    // first_unknown_reason. The "computing: " prefix is an implementation
+    // detail of get_or_compute_summary's placeholder cache; a typed
+    // cause on CostUnknown would make this structural (see I1/I2 in
+    // ROADMAP.md Exploratory Directions).
     let mut root_cause_counts: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
     let computing_prefix = "computing: ";
@@ -2026,7 +2029,15 @@ fn strict_complexity_violation_count() {
     //   (A→B→A) from 27 root functions cascading to 315. All root
     //   functions are structurally bounded (descend on children) but the
     //   cost algebra can't prove it because the recursion is indirect.
-    //   Fix: fold primitive in .dag. NOT inlining.
+    //   Fix: fold primitive in .dag (I1/I2 in ROADMAP). NOT inlining.
+    //
+    // Decidability invariant status: the 315 are analyzer limitations,
+    // not program violations. INVARIANTS.md §Decidability: "If the
+    // analyzer produces ?O(?), the bug is in the analyzer (it cannot
+    // see the bound that structurally exists), not in the program."
+    // The ratchet tracks the analyzer gap honestly. The violations
+    // remain errors (not downgraded to warnings). The ratchet only
+    // moves down, never up, until I1/I2 resolve them to 0.
     const COMPLEXITY_RATCHET: usize = 315;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
