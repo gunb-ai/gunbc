@@ -137,9 +137,17 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true }
 ]
 
-// Backward-compatible maps derived from the registry.
-// These are consumed by 05_emit_rust.dag until all call sites migrate
-// to the helper functions below.
+// Helper functions: O(1) lookup via indexed maps built from the registry.
+// The registry is the single hand-maintained authority. These maps are
+// the DERIVED index — their content must match the registry. If you add
+// a runtime function, add it to rt_function_registry above; then update
+// the maps below to match.
+//
+// Why not derive programmatically? The .dag data syntax only supports
+// literal map/list initializers, not computed expressions. When the
+// language gains computed data declarations, these maps should become
+// `rt_function_registry |> fold(...)`.
+
 data rt_functions: Map<String, Bool> = {
   "concat": true, "char_at": true, "string_length": true,
   "substring": true, "string_contains": true, "scan_while": true,
@@ -166,21 +174,17 @@ data rt_bridge_function_names: Map<String, String> = {
   "map_merge": "rc_map_merge"
 }
 
-// Helper functions for the unified registry.
 fn is_rt_function(name: String) -> Bool {
-  rt_function_registry |> any(f => f.name == name)
+  map_contains_key(rt_functions, name)
 }
 
 fn rt_bridge_name(name: String) -> String {
-  match rt_function_registry |> filter(f => f.name == name) |> first {
-    Some { value: f } => f.bridge_name
+  match map_get(rt_bridge_function_names, name) {
+    Some { value: bridge } => bridge
     None => name
   }
 }
 
 fn rt_passes_by_ref(name: String) -> Bool {
-  match rt_function_registry |> filter(f => f.name == name) |> first {
-    Some { value: f } => f.passes_by_ref
-    None => false
-  }
+  map_contains_key(rt_ref_map_functions, name)
 }
