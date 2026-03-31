@@ -556,7 +556,7 @@ fn to_snake(name: String) -> String {
         concat("_", to_lower_char(ch: ch))
       }
     } else {
-      ch
+      from_code_point(cp: ch)
     }
   )
   result |> join(separator: "")
@@ -569,31 +569,31 @@ fn to_screaming_snake(name: String) -> String {
 }
 
 // Check if a character is uppercase.
-fn is_upper(ch: String) -> Bool {
-  ch >= "A" && ch <= "Z"
+fn is_upper(ch: Int) -> Bool {
+  ch >= 65 && ch <= 90
 }
 
 // Convert an uppercase character to lowercase.
-fn to_lower_char(ch: String) -> String {
-  let cp = code_point(ch: ch)
+fn to_lower_char(ch: Int) -> String {
+  let cp = ch
   // A=65, a=97, difference is 32
   if cp >= 65 && cp <= 90 {
     let lower_cp = cp + 32
     from_code_point(cp: lower_cp)
   } else {
-    ch
+    from_code_point(cp: ch)
   }
 }
 
 // Convert a lowercase character to uppercase.
-fn to_upper_char(ch: String) -> String {
-  let cp = code_point(ch: ch)
+fn to_upper_char(ch: Int) -> String {
+  let cp = ch
   // a=97, A=65, difference is 32
   if cp >= 97 && cp <= 122 {
     let upper_cp = cp - 32
     from_code_point(cp: upper_cp)
   } else {
-    ch
+    from_code_point(cp: ch)
   }
 }
 
@@ -618,7 +618,7 @@ fn capitalize_first(s: String) -> String {
       if pair.first == 0 {
         to_upper_char(ch: pair.second)
       } else {
-        pair.second
+        from_code_point(cp: pair.second)
       }
     ) |> join(separator: "")
   }

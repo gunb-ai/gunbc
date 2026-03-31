@@ -210,6 +210,8 @@ data free_monoid_scalar_templates: List<AlgebraFieldTemplate> = [
   { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf }
 ]
 
+// Bridge-only authority: these templates must dissolve once structural
+// method lookup reads the collection algebra directly from std declarations.
 data free_monoid_collection_templates: List<AlgebraFieldTemplate> = [
   { name: "map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
   { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf },
@@ -776,4 +778,13 @@ fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
     Some { value: _ } => true
     None => false
   }
+}
+
+// Bridge placeholder type names: higher-order template parameters that
+// exist only during algebra resolution. Importing modules must not see
+// these as ambient user-facing types.
+// TODO(L1): these names duplicate AlgebraTypeTemplate parameter names from
+// std/algebra.dag. Should read from algebra data, not a parallel string list.
+fn is_bridge_placeholder_type_name(name: String) -> Bool {
+  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }

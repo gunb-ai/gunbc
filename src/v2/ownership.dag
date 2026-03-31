@@ -18,12 +18,12 @@ import v2.std.core {
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn,
   arg_value, arm_body,
-  field_access_base,
+  field_access_base, field_access_field,
   if_condition, if_then_branch, if_else_branch,
   let_value, let_body,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes,
-  expr_var_name
+  expr_var_name, expr_call_func, expr_method_name
 }
 
 // =========================================================================
@@ -155,12 +155,15 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       let base_node = field_access_base(texpr: texpr)
       match base_node.expr_data {
         ExprVar =>
+          let vn = expr_var_name(texpr: base_node)
+          let f = field_access_field(texpr: texpr)
           record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f))
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false)
       }
 
     ExprCall =>
       // children = [arg0_node, arg1_node, ...]. Arg names on node.name.
+      let fname = expr_call_func(texpr: texpr)
       if fname == "fold" {
         let init_arg = texpr.children |> filter(a => a.name == "init") |> first
         let threaded_accum = match init_arg {
@@ -168,6 +171,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar =>
+                let vn = expr_var_name(texpr: ia_val)
                 record_use(accum: accum, name: vn, kind: Threaded, site: "fold_init")
               _ => walk_expr(accum: accum, texpr: ia_val, in_tail: false)
             }
@@ -187,6 +191,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
       // children = [receiver, arg0_node, arg1_node, ...].
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
+      let mname = expr_method_name(texpr: texpr)
       if mname == "fold" {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false)
         let init_arg = mc_args |> filter(a => a.name == "init") |> first
@@ -195,6 +200,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool) -> UsageAccum {
             let ia_val = arg_value(n: ia)
             match ia_val.expr_data {
               ExprVar =>
+                let vn = expr_var_name(texpr: ia_val)
                 record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init")
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false)
             }

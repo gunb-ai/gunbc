@@ -573,13 +573,14 @@ mod compiler_tests {
         // Ratchet history:
         //   2026-03-28: Node 176, ExprData 800 (R2 boxing)
         //   2026-03-30: Node 184 (post-Lane-A definition-edge dispatch)
+        //   2026-03-30: Node 192 (cherry-pick source-root bootstrap closure)
         let node_size = std::mem::size_of::<crate::v2_std_core::Node>();
         let expr_size = std::mem::size_of::<crate::v2_std_core::ExprData>();
         eprintln!("  Node: {} bytes", node_size);
         eprintln!("  Expr: {} bytes", expr_size);
         assert!(
-            node_size <= 184,
-            "Node size regression: {} bytes (limit: 184). Check for unboxed rare fields.",
+            node_size <= 192,
+            "Node size regression: {} bytes (limit: 192). Check for unboxed rare fields.",
             node_size
         );
         assert!(

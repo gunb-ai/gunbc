@@ -23,13 +23,14 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
-| Bootstrap front-end diagnostics | Transitional | 0 | Old `DIAG_RATCHET = 65` story is stale; source-root bootstrap health is the real lead indicator |
-| Stage0 regeneration | RED | GREEN | `regenerate-stage0.sh` is not fixed-point yet; this is Priority Zero before more structural lane work |
+| Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
+| Bootstrap emitted Rust (B) | 126 errors | 0 | 122 are E0 class (field name in patterns); blocked on emission-correctness-by-construction |
+| Stage0 regeneration (C) | RED | GREEN | Blocked on B; `regenerate-stage0.sh` can emit 40 files but output doesn't compile |
 | L1 ratchet | 21 | 0 | Down from 70; #253 landed structural algebra authority |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 0 | 0 | Green |
+| Complexity violations | 315 | 0 | Compiler self-recursion; resolves when fold primitive lands |
 
 ---
 
@@ -162,9 +163,29 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [ ] Variadic arguments (currently strict arity; should be free from
   modeling)
 
+*Emission correctness by construction (E0):*
+
+Prerequisite for Bootstrap B. The emitter must read structural facts
+from the graph, not recover them from source text. Heuristic fallback
+chains (`authored_name_at` → `source_text_at` → `node.name`) are
+boundary sufficiency failures (BS-1 class): the fact exists in the
+graph but the emitter uses a fragile recovery path that can silently
+produce wrong output (e.g., `:` instead of `intensity`).
+
+- [ ] Emitter reads `field_binding_name(fb)` for pattern field names,
+  not `authored_name_at(source_index, fb)` — no source-text recovery
+  for structural identifiers
+- [ ] Narrow `authored_name_at` to display/diagnostic contexts only;
+  structural emission reads graph facts directly
+- [ ] Acceptance: `Color::Red { intensity: i }` emitted correctly
+  (was: `Color::Red { :: i }` — `ident_span` pointed at `:` token,
+  `source_text_at` returned `":"`, overrode correct `node.name`)
+- [ ] Acceptance: emitted Rust for self-compile passes `rustc` syntax
+  check (122 pattern errors from this single class of bug)
+
 *Bootstrap:*
+- [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
 - [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
-- [ ] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
 - [ ] Bootstrap B: stage0→stage1 emitted-Rust gate back under ratchet
 - [ ] Bootstrap C: regenerate stage0 with `regenerate-stage0.sh`
 - [ ] Bootstrap D: owned bootstrap entrypoint in repo
@@ -381,11 +402,21 @@ Different functions, no conflict.
   `error_expression`, `null_coalesce`, `string_interpolation`,
   `container_bracket`, `tuple_type_template`, `indentation_width`
 
-*LintModel:*
+*LintModel (depends on E0 from M2):*
 - [ ] Wire import rules, naming conventions, formatting model
+- [ ] Acceptance: emitted code for every target language is
+  syntactically valid by construction — no post-hoc validation
+  needed. Adding SPICE/English/Markdown targets must not require
+  emission-side debugging of identifier recovery or span bugs.
 
 *Edge-only facts (Lane D, parallel):*
 - [ ] 14 `Map<String, X>` metadata maps → structural edges
+
+*Split authority dissolution (PR #264 review):*
+- [ ] Merge `rt_functions: Map<String, Bool>` and
+  `rt_bridge_function_names: Map<String, String>` in `rust/emit.dag`
+  into a single `RuntimeFunction { name: String, bridge_name: String,
+  passes_by_ref: Bool }` list — one concept, one authority
 
 *Compiler bug fixes owned by M5:*
 - [ ] Optional exhaustiveness: structural, not `Some`/`None` hardcoded
@@ -440,6 +471,32 @@ enums — compiler reads the graph.
 
 ## Exploratory Directions
 
+**Structural fold over recursive union types.** The language must
+provide catamorphism/fold for any recursive type definition. Today,
+every consumer of a recursive type (CostExpr, ExprData, MatchPattern,
+Node children) writes the same manual traversal — 53 manual traversals
+of CostExpr alone in `complexity.dag`. This is the root cause of:
+- **Shallow projection bugs:** `is_unknown_cost` checked only the root
+  node, missing `CostUnknown` nested inside `CostAdd`/`CostMul`/etc.
+  The cost algebra composes correctly; consumer projections don't follow.
+- **Glue code explosion:** N consumers × M variants = N×M match arms,
+  all mechanically identical except the leaf logic.
+- **Decidability gap:** 315 compiler functions use manual recursion
+  (`parse`, `cost_of_expr`, etc.) instead of bounded fold. The
+  decidability gate correctly flags them — the fix is the fold
+  primitive, not suppressing the gate.
+
+When `.dag` provides `fold` over recursive unions, `is_unknown_cost`
+becomes `cost_expr_any(expr, fn(c) => c is CostUnknown)` — one line,
+structurally correct, decidable. The compiler's own code replaces
+manual recursion with fold, and 315 violations disappear.
+
+Concrete acceptance criteria:
+- `complexity.dag` uses fold/contains instead of 53 manual traversals
+- `is_unknown_cost` is a one-liner, not a 10-line recursive function
+- Parser uses fold over token sequences, not manual recursive descent
+- Complexity gate: 315 → 0 without suppression or ratchet
+
 **Unified Sequence (Seq\<T>).** Ordered collections share FreeMonoid
 algebra; access pattern determines representation. Mixed access = type
 error.
@@ -460,7 +517,7 @@ compatibility, and language rendering.
 | Self-compile diagnostics | 0 | 0 | `strict_compile_diagnostic_count -- --ignored` |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 70 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 0 | 0 | `strict_complexity_violation_count -- --ignored` |
+| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (315 are compiler self-recursion; resolves when fold primitive lands) |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |

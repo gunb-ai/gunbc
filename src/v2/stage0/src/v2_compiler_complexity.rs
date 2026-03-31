@@ -253,140 +253,6 @@ pub fn replace_computing_ref(expr: Rc<CostExpr>, func_name: String, replacement:
     }
 }
 
-pub fn collect_callees(body: Rc<Node>) -> Vec<String> {
-    let own = match (*(*body).clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { call_semantics: _ } => {
-            vec![expr_call_func(body.clone())]
-        },
-        _ => vec![],
-    };
-    let from_children = body.clone().children.clone().iter().cloned().flat_map(|child| {
-        collect_callees(child.clone())
-    }).collect::<Vec<_>>();
-    let mut result = own;
-    result.extend(from_children);
-    result
-}
-
-pub fn detect_mutual_recursion_names(func_entries: Vec<Rc<FuncEntry>>) -> Vec<String> {
-    let func_names: Vec<String> = func_entries.clone().iter().cloned().map(|e| e.name.clone()).collect();
-    let func_set: HashMap<String, bool> = func_names.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, n| {
-        v2_rt::map_insert(acc.clone(), n.clone(), true)
-    });
-    let call_graph: HashMap<String, Vec<String>> = func_entries.clone().iter().cloned().fold(<HashMap<String, Vec<String>>>::new(), |acc, entry| {
-        let callees: Vec<String> = collect_callees(entry.body.clone())
-            .into_iter()
-            .filter(|c| c.clone() != entry.name.clone())
-            .filter(|c| match v2_rt::map_get(&func_set, c.clone()) {
-                Some(_) => true,
-                None => false,
-            })
-            .collect();
-        v2_rt::map_insert(acc.clone(), entry.name.clone(), callees)
-    });
-    let in_degrees: HashMap<String, i64> = func_names.clone().iter().cloned().fold(<HashMap<String, i64>>::new(), |acc, n| {
-        v2_rt::map_insert(acc.clone(), n.clone(), 0i64)
-    });
-    let in_degrees: HashMap<String, i64> = func_names.clone().iter().cloned().fold(in_degrees, |acc, n| {
-        match v2_rt::map_get(&call_graph, n.clone()) {
-            Some(callees) => {
-                callees.iter().cloned().fold(acc, |inner_acc, callee| {
-                    let current = match v2_rt::map_get(&inner_acc, callee.clone()) {
-                        Some(v) => v.clone(),
-                        None => 0i64,
-                    };
-                    v2_rt::map_insert(inner_acc.clone(), callee.clone(), current + 1)
-                })
-            },
-            None => acc,
-        }
-    });
-    let queue: Vec<String> = func_names.clone().into_iter().filter(|n| {
-        match v2_rt::map_get(&in_degrees, n.clone()) {
-            Some(v) => v.clone() == 0i64,
-            _ => false,
-        }
-    }).collect();
-    let removed = kahn_process_func(queue, in_degrees, call_graph.clone(), <HashMap<String, bool>>::new());
-    // Remaining nodes include cycle members AND acyclic callees downstream
-    // of cycles. Post-filter: only keep nodes that can reach themselves
-    // through the call graph (actual cycle members).
-    let candidates: HashMap<String, bool> = func_names.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, n| {
-        match v2_rt::map_get(&removed, n.clone()) {
-            Some(_) => acc,
-            None => v2_rt::map_insert(acc.clone(), n.clone(), true),
-        }
-    });
-    func_names.into_iter().filter(|n| {
-        match v2_rt::map_get(&candidates, n.clone()) {
-            None => false,
-            Some(_) => can_reach_self(n.clone(), call_graph.clone(), candidates.clone()),
-        }
-    }).collect()
-}
-
-pub fn kahn_process_func(queue: Vec<String>, in_degrees: HashMap<String, i64>, call_graph: HashMap<String, Vec<String>>, removed: HashMap<String, bool>) -> HashMap<String, bool> {
-    if queue.is_empty() {
-        return removed;
-    }
-    let node = queue[0].clone();
-    let rest: Vec<String> = queue.clone().into_iter().skip(1).collect();
-    let new_removed = v2_rt::map_insert(removed.clone(), node.clone(), true);
-    let successors = match v2_rt::map_get(&call_graph, node.clone()) {
-        Some(s) => s.clone(),
-        None => vec![],
-    };
-    let mut current_degrees = in_degrees.clone();
-    let mut current_queue = rest;
-    for succ in successors.iter().cloned() {
-        let current = match v2_rt::map_get(&current_degrees, succ.clone()) {
-            Some(v) => v.clone(),
-            None => 0i64,
-        };
-        let new_deg = current - 1;
-        current_degrees = v2_rt::map_insert(current_degrees.clone(), succ.clone(), new_deg);
-        if new_deg == 0 {
-            current_queue.push(succ.clone());
-        }
-    }
-    kahn_process_func(current_queue, current_degrees, call_graph, new_removed)
-}
-
-pub fn can_reach_self(name: String, call_graph: HashMap<String, Vec<String>>, candidates: HashMap<String, bool>) -> bool {
-    let initial: Vec<String> = match v2_rt::map_get(&call_graph, name.clone()) {
-        Some(cs) => cs.clone().into_iter()
-            .filter(|c| c.clone() != name.clone() && match v2_rt::map_get(&candidates, c.clone()) { Some(_) => true, None => false })
-            .collect(),
-        None => vec![],
-    };
-    can_reach_target(name.clone(), initial, <HashMap<String, bool>>::new(), call_graph, candidates)
-}
-
-pub fn can_reach_target(target: String, queue: Vec<String>, visited: HashMap<String, bool>, call_graph: HashMap<String, Vec<String>>, candidates: HashMap<String, bool>) -> bool {
-    if queue.is_empty() {
-        return false;
-    }
-    let current = queue[0].clone();
-    if current.clone() == target.clone() {
-        return true;
-    }
-    if match v2_rt::map_get(&visited, current.clone()) { Some(_) => true, None => false } {
-        let rest: Vec<String> = queue.clone().into_iter().skip(1).collect();
-        return can_reach_target(target, rest, visited, call_graph, candidates);
-    }
-    let new_visited = v2_rt::map_insert(visited.clone(), current.clone(), true);
-    let next: Vec<String> = match v2_rt::map_get(&call_graph, current.clone()) {
-        Some(cs) => cs.clone().into_iter()
-            .filter(|c| match v2_rt::map_get(&candidates, c.clone()) { Some(_) => true, None => false })
-            .collect(),
-        None => vec![],
-    };
-    let rest: Vec<String> = queue.clone().into_iter().skip(1).collect();
-    let mut new_queue = rest;
-    new_queue.extend(next);
-    can_reach_target(target, new_queue, new_visited, call_graph, candidates)
-}
-
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
     let own = match (*(*body).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { call_semantics: _ } => {
@@ -615,13 +481,13 @@ pub fn classify_recursion_pattern(func_name: String, body: Rc<Node>) -> Rc<Recur
         Rc::new(RecursionPattern::DivideAndConquer {
             split_factor: path_calls.clone(),
         })
-    } else if self_calls_use_non_computed_args(body.clone(), func_name.clone()) {
-        Rc::new(RecursionPattern::UnresolvableRecursion {
-            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
-        })
     } else if has_arithmetic_descent(body.clone(), func_name.clone()) {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if self_calls_use_non_computed_args(body.clone(), func_name.clone()) {
+        Rc::new(RecursionPattern::UnresolvableRecursion {
+            reason: v2_rt::concat("non-descending recursion in ".to_string(), func_name.clone()),
         })
     } else {
         Rc::new(RecursionPattern::UnresolvableRecursion {
@@ -718,8 +584,8 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
         false
 } else {
         match (*method_semantics.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_name: method_name, .. } =>
-        is_size_preserving_method(method_name.clone()),
+    MethodSemantics::AlgebraMethodSemantics { method_def: method_def, .. } =>
+        is_size_preserving_method(method_def.name.clone()),
     _ => false,
 }
 }
@@ -1124,39 +990,18 @@ pub fn parenthesize_additive_cost(expr: Rc<CostExpr>) -> String {
     }
 }
 
-// Structural classification: returns the normalized CostExpr that IS the
-// complexity class.  CostExpr is the single authority.
-pub fn classify_complexity(expr: Rc<CostExpr>) -> Rc<CostExpr> {
-    normalize_asymptotic(simplify_cost(expr.clone()))
+pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
+    format_cost_class(normalize_asymptotic(simplify_cost(expr.clone())))
 }
 
-// Formatting boundary: O(...) string for display / diagnostics only.
-// Fail-closed: refuses to format unknown complexity.
-pub fn format_complexity_class(expr: Rc<CostExpr>) -> String {
-    let classified = classify_complexity(expr.clone());
-    if cost_contains_unknown(classified.clone()) {
-        "ERROR:unknown-complexity".to_string()
-    } else {
-        format_cost_class(classified)
-    }
-}
-
-// Structural fail-closed check: does the classified CostExpr contain
-// any CostUnknown?  Fail-closed means unknown complexity is always a
-// violation -- no steady-state O(?) success output.
-pub fn is_unknown_class(expr: Rc<CostExpr>) -> bool {
-    let classified = classify_complexity(expr.clone());
-    cost_contains_unknown(classified)
-}
-
-pub fn cost_contains_unknown(expr: Rc<CostExpr>) -> bool {
+pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
     match &*expr {
         CostExpr::CostUnknown { .. } => true,
         CostExpr::CostAdd { left: l, right: r }
         | CostExpr::CostMul { left: l, right: r }
         | CostExpr::CostMax { left: l, right: r } =>
-            cost_contains_unknown(l.clone()) || cost_contains_unknown(r.clone()),
-        CostExpr::CostSum { body: b, .. } => cost_contains_unknown(b.clone()),
+            is_unknown_cost(l.clone()) || is_unknown_cost(r.clone()),
+        CostExpr::CostSum { body: b, .. } => is_unknown_cost(b.clone()),
         _ => false,
     }
 }
@@ -1352,7 +1197,8 @@ let method_cost_result = if (ms.clone() == None) {
                 None
 } else {
                 match (*ms.clone().unwrap()).clone() {
-    MethodSemantics::AlgebraMethodSemantics { method_name: mn, .. } => {
+    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
+                    let mn = md.name.clone();
                     let shape_match = method_cost_shape(mn.clone());
 match shape_match.clone() {
     Some(shape) => Some(cost_of_method_by_shape(shape.clone(), recv_r.clone(), mc_args.clone(), size.clone(), binder.clone(), func_index.clone())),
@@ -1711,7 +1557,7 @@ Rc::new(SummaryResult {
 });
 let summaries_map = result.table.clone().summaries.clone();
 let violations = { let mut __result = Vec::new(); for entry in { let mut __result = Vec::new(); for entry in func_entries.clone().iter().cloned() { if match v2_rt::map_get(&summaries_map, entry.name.clone()) {
-    Some(summary) => is_unknown_class(summary.work.clone()),
+    Some(summary) => is_unknown_cost(summary.work.clone()),
     None => true,
 } { __result.push(entry); } } __result }.iter().cloned() { __result.push(match v2_rt::map_get(&summaries_map, entry.name.clone()) {
     Some(summary) => {
@@ -1733,24 +1579,9 @@ Rc::new(ComplexityViolation {
     span: entry.span.clone(),
 }),
 }); } __result };
-let mutual_cycle_names = detect_mutual_recursion_names(func_entries.clone());
-let mutual_violations: Vec<Rc<ComplexityViolation>> = mutual_cycle_names.iter().cloned().map(|name| {
-    let entry_span = match func_entries.clone().iter().cloned().find(|e| e.name.clone() == name.clone()) {
-        Some(e) => e.span.clone(),
-        None => Rc::new(SourceSpan { file: "".to_string(), start: 0, end: 0 }),
-    };
-    Rc::new(ComplexityViolation {
-        func_name: name.clone(),
-        reason: v2_rt::concat("mutual recursion cycle (".to_string(), v2_rt::concat(name.clone(), ")".to_string())),
-        summary: None,
-        span: entry_span,
-    })
-}).collect();
-let mut all_violations = violations.clone();
-all_violations.extend(mutual_violations);
 Rc::new(ComplexityReport {
     function_summaries: summaries_map.clone(),
-    violations: all_violations,
+    violations: violations,
     intern_table: result.table.clone(),
 })
 }

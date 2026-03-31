@@ -1052,7 +1052,11 @@ fn parse_item_by_form(tokens: List<Token>, state: ParserState, form: ItemForm) -
     ServiceBody => parse_service_after_kw(tokens: tokens, state: r.state, start_span: start_span)
     ResourceBody => parse_resource_after_kw(tokens: tokens, state: r.state, start_span: start_span)
     ValueBody => parse_data_after_kw(tokens: tokens, state: r.state, start_span: start_span)
-    NoBody => parse_extern_after_kw(tokens: tokens, state: r.state, start_span: start_span)
+    NoBody => {
+      let prefix = parse_item_prefix(tokens: tokens, state: r.state, form: form)
+      if has_err(err: prefix.err) { return ItemResult { item: dummy, state: prefix.state, err: prefix.err } }
+      parse_no_body_from_prefix(prefix: prefix, start_span: start_span)
+    }
   }
 }
 
@@ -1916,6 +1920,16 @@ fn parse_block_body_from_prefix(tokens: List<Token>, prefix: ItemPrefixResult, s
     properties: [], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ItemResult { item: item, state: skip_newlines(tokens: tokens, state: r.state), err: none }
+}
+
+fn parse_no_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
+  let item = Node {
+    name: prefix.name, span: start_span, ident_span: Some { value: prefix.name_span }, children: [],
+    params: prefix.params, inferred: prefix.inferred, return_cardinality: Required, uses: prefix.uses,
+    body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none,
+    is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+  ItemResult { item: item, state: prefix.state, err: none }
 }
 
 fn parse_uses_clause(tokens: List<Token>, state: ParserState) -> UsesResult {
@@ -3492,7 +3506,7 @@ fn parse_pipe_rhs(tokens: List<Token>, state: ParserState, receiver: Node, span:
   if peek_is_lparen(tokens: tokens, state: s) {
     let r2 = parse_call_args(tokens: tokens, state: s)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, state: r2.state, err: r2.err } }
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: na.name, value: na.value, span: span))), inferred: none, span: span), state: r2.state, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name(n: na), value: arg_value(n: na), span: span))), inferred: none, span: span), state: r2.state, err: none }
   } else {
     ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span), state: s, err: none }
   }

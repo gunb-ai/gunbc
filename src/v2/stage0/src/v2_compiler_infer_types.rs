@@ -647,6 +647,8 @@ pub fn free_monoid_scalar_templates() -> Vec<AlgebraFieldTemplate> {
     ]
 }
 
+// Bridge-only authority: keep stage0 aligned with the source bridge until
+// collection algebra is loaded directly from std declarations.
 pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
     vec![
         AlgebraFieldTemplate {
@@ -1743,4 +1745,8 @@ pub fn emit_map_has(m: HashMap<String, bool>, key: String) -> bool {
         Some(_) => true,
         None => false,
     }
+}
+
+pub fn is_bridge_placeholder_type_name(name: String) -> bool {
+    name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }

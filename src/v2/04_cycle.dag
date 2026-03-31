@@ -82,7 +82,7 @@ fn kahn_remove_loop(
   )
   // Process queue: for each removed node, decrement dependents' in-degree.
   // Newly zero-in-degree nodes are added to the next queue.
-  let final_state = kahn_cycle_drain(queue: initial_queue, in_degree: in_degree, reverse_adj: reverse_adj, removed_count: 0)
+  let final_state = kahn_cycle_drain(queue: initial_queue, in_degree: in_degree, reverse_adj: reverse_adj, removed_count: 0, fuel: remaining |> count)
   // If all nodes were removed, no cycles. Otherwise, remaining nodes are cycle members.
   if final_state.removed_count == (remaining |> count) {
     []
@@ -102,7 +102,8 @@ fn kahn_cycle_drain(
     queue: List<String>,
     in_degree: Map<String, Int>,
     reverse_adj: Map<String, List<String>>,
-    removed_count: Int
+    removed_count: Int,
+    fuel: Int
 ) -> KahnState {
   if queue |> count == 0 {
     return KahnState { in_degree: in_degree, removed_count: removed_count }
@@ -124,7 +125,7 @@ fn kahn_cycle_drain(
       if deg == 0 { list_push(inner_acc, dep) } else { inner_acc }
     )
   )
-  kahn_cycle_drain(queue: next_queue, in_degree: result.in_degree, reverse_adj: reverse_adj, removed_count: result.removed_count)
+  kahn_cycle_drain(queue: next_queue, in_degree: result.in_degree, reverse_adj: reverse_adj, removed_count: result.removed_count, fuel: fuel - 1)
 }
 
 // Detect cycle-participating types using indexed Kahn's algorithm — O(V+E).

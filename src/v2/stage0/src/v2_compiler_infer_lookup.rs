@@ -411,8 +411,9 @@ pub fn resolve_known_method_node(
     let tier0_result = lookup_structural_method(receiver_type.clone(), method_name.clone());
     match tier0_result {
         Some(result_type) => {
+            let method_def_node = crate::v2_std_core::leaf_node(method_name.clone());
             let semantics: Rc<MethodSemantics> = Rc::new(MethodSemantics::AlgebraMethodSemantics {
-                method_name: method_name.clone(),
+                method_def: method_def_node,
                 fold_accumulator_type: fold_accumulator_type.clone(),
             });
             let resolved_type = substitute_algebra_result(

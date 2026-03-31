@@ -1183,8 +1183,8 @@ pub fn refine_collection_result_type(
         } else {
             match (*semantics.clone().unwrap()).clone() {
                 MethodSemantics::AlgebraMethodSemantics {
-                    method_name: mn, ..
-                } => Some(mn),
+                    method_def: md, ..
+                } => Some(md.name.clone()),
                 _ => None,
             }
         };
