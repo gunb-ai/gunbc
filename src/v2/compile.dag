@@ -36,12 +36,13 @@ import v2.compiler.parse { parse, ParseResult }
 import v2.compiler.resolve { resolve_modules, ModuleGraph }
 import v2.compiler.normalize { normalize_graph, NormalizeResult }
 import v2.compiler.infer_items { ResolvedGraph, TypedModule }
+import v2.compiler.infer_env { merge_recursive_variant_fields }
 import v2.compiler.infer { reconcile }
 import v2.compiler.emit { EmitResult, escape_json_string }
 import v2.compiler.emit_rust { emit_rust }
 import v2.compiler.emit_python { emit_python }
 import v2.compiler.emit_go { emit_go }
-import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, build_complexity_report, empty_complexity_report }
+import v2.compiler.complexity { ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext, build_complexity_report, empty_complexity_report }
 import v2.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v2.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
@@ -84,11 +85,21 @@ fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
         name: item.name,
         body: item.body.value,
         params: item.params,
-        span: item.span,
-        recursive_type_set: m.type_env.recursive_type_set,
-        recursive_variant_fields: m.type_env.recursive_variant_fields
+        span: item.span
       }
     )
+  )
+}
+
+// Build module-owned recursion context by merging TypeEnv facts across
+// all compiled modules. This is the single authority for recursive type
+// and variant field information consumed by the complexity analyzer.
+fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
+  typed.modules |> fold(init: RecursionContext { recursive_type_set: empty_map(), recursive_variant_fields: empty_map() }, f: (acc, m) =>
+    RecursionContext {
+      recursive_type_set: map_merge(acc.recursive_type_set, m.type_env.recursive_type_set),
+      recursive_variant_fields: merge_recursive_variant_fields(left: acc.recursive_variant_fields, right: m.type_env.recursive_variant_fields)
+    }
   )
 }
 
@@ -809,7 +820,8 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // produces CostUnknown, which complexity_diagnostics surfaces as
       // a hard compile error. No separate decidability walker needed.
       let func_entries = extract_func_entries(typed: typed)
-      let complexity = build_complexity_report(func_entries: func_entries)
+      let recursion_ctx = build_recursion_context(typed: typed)
+      let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
 
       // Gate: all hard infer errors block emission, including complexity.

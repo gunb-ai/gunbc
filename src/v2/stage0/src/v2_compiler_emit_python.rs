@@ -550,19 +550,9 @@ pub fn emit_py_pattern(source_index: Option<Rc<NewlineIndex>>, pattern: Rc<Match
     match (*pattern.clone()).clone() {
     MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Python),
     MatchPattern::LitPattern { value: v, .. } => emit_literal(v.clone(), RenderTarget::Python),
-    MatchPattern::VariantPattern { name: n, field_bindings: fbs, .. } =>
-        if ((fbs.clone().len() as i64) == 0) {
-            v2_rt::concat(n.clone(), "()".to_string())
-        } else {
-            {
-                let binding_strs = { let mut __result = Vec::new(); for fb in fbs.clone().iter().cloned() { __result.push({
-                    let pat_str = emit_py_pattern(source_index.clone(), field_binding_pattern(fb.clone()));
-                    v2_rt::concat(v2_rt::concat(emit_ident(authored_name_at(source_index.clone(), fb.clone()), RenderTarget::Python), "=".to_string()), pat_str.clone())
-                }); } __result };
-                let bindings_str = binding_strs.clone().join(&", ".to_string());
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(n.clone(), "(".to_string()), bindings_str.clone()), ")".to_string())
-            }
-        },
+    MatchPattern::VariantPattern { name: n, parent_enum: _, field_bindings: fbs } => {
+        emit_py_variant_pattern(source_index.clone(), n.clone(), fbs.clone())
+    },
     MatchPattern::Wildcard => "_".to_string(),
 }
 }
