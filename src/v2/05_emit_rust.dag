@@ -1173,12 +1173,12 @@ fn all_arms_are_string_lit(arms: List<Node>) -> Bool {
   )
 }
 
-fn emit_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
+fn emit_pattern(pattern: MatchPattern, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
     Wildcard => "_"
   }
 }
@@ -1194,18 +1194,17 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, v
   }
 }
 
-fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
+fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   // RC1: Qualify variant names with parent enum using scrutinee type.
   // Some/None are Rust builtins -- never qualify. For all others, use the
   // scrutinee type so that variant name collisions (e.g. LitStr in both
   // TokenShape and LiteralValue) are resolved correctly.
-  let qualified = if name == "Some" || name == "None" { name }
-    else {
-      match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
-        Some { value: parent } => concat(parent, "::", name)
-        None => name
-      }
-    }
+  let resolved_parent = if name == "Some" || name == "None" { none }
+    else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) }
+  let qualified = match resolved_parent {
+    Some { value: parent } => concat(parent, "::", name)
+    None => name
+  }
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
@@ -1213,16 +1212,17 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+          let inner_pat = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    match map_get(vtoe, name) {
-      Some { value: _ } => concat(qualified, " { .. }")
-      None => qualified
+    let is_fielded = match resolved_parent {
+      Some { value: parent } => variant_has_fields(emit_info: emit_info, enum_name: parent, variant_name: name)
+      None => false
     }
+    if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
@@ -1236,7 +1236,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           concat("ref ", emit_ident(name: fb_name, target: Rust))
         } else {
-            let pat_str = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index)
+            let pat_str = emit_pattern(pattern: fb_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
             concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
         }
       )
@@ -1348,24 +1348,23 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, vtoe:
   }
 }
 
-fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
+fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?) -> String {
-  let qualified = if name == "Some" || name == "None" { name }
-    else {
-      match pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) {
-        Some { value: parent } => concat(parent, "::", name)
-        None => name
-      }
-    }
+fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, scrut_type: String, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
+  let resolved_parent = if name == "Some" || name == "None" { none }
+    else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, vtoe: vtoe) }
+  let qualified = match resolved_parent {
+    Some { value: parent } => concat(parent, "::", name)
+    None => name
+  }
   if name == "Some" && field_bindings |> count == 1 {
     match field_bindings |> first {
       Some { value: fb } =>
@@ -1374,16 +1373,17 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           "Some(ref __some_val)"
         } else {
           let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types)
-          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index)
+          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: source_index, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    match map_get(vtoe, name) {
-      Some { value: _ } => concat(qualified, " { .. }")
-      None => qualified
+    let is_fielded = match resolved_parent {
+      Some { value: parent } => variant_has_fields(emit_info: emit_info, enum_name: parent, variant_name: name)
+      None => false
     }
+    if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
@@ -1401,7 +1401,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             concat("ref ", emit_ident(name: fb_name, target: Rust))
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", vtoe: vtoe, rc_types: rc_types)
-            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index)
+            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info)
             concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
           }
         }
@@ -1412,7 +1412,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   }
 }
 
-fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, source_index: NewlineIndex?) -> String {
+fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vtoe: Map<String, String>, rc_types: Map<String, Bool>, source_index: NewlineIndex?, emit_info: EmitGraphInfo) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       if n == "Some" || n == "None" {
@@ -1421,14 +1421,14 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, vt
             Some { value: fb } =>
               let fb_pat = field_binding_pattern(n: fb)
               let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", vtoe: vtoe, rc_types: rc_types, source_index: source_index)
-              rc_pattern_preludes(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, source_index: source_index)
+              rc_pattern_preludes(pattern: fb_pat, rc_analysis: inner_analysis, vtoe: vtoe, rc_types: rc_types, source_index: source_index, emit_info: emit_info)
             None => ""
           }
         } else { "" }
       } else {
         let preludes = fbs |> flat_map(fb =>
           if field_needs_rc_ref(field_name: authored_name_at(source_index: source_index, node: fb), rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index), " = ", emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust), ".as_ref() else { unreachable!() };")]
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), vtoe: vtoe, rc_types: rc_types, scrut_type: "", source_index: source_index, emit_info: emit_info), " = ", emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -1525,7 +1525,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         match map_get(registry, name) {
           Some { value: info } =>
             let is_data = info.kind == DataItem
-            if is_data { concat(to_screaming_snake(name: name), ".clone()") }
+            if is_data { concat(to_snake(name: name), "()") }
             else {
               let is_function_value = match binding_kind {
                 Some { value: FunctionValueBinding } => true
@@ -1576,7 +1576,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
             match map_get(registry, n) {
               Some { value: info } =>
                 let is_data = info.kind == DataItem
-                if is_data { to_screaming_snake(name: n) }
+                if is_data { concat(to_snake(name: n), "()") }
                 else { emit_ident(name: n, target: Rust) }
               None => emit_ident(name: n, target: Rust)
             }
@@ -1924,10 +1924,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if value_type_str != "" {
           concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
         } else {
-          // Type params not resolved on node — let Rust infer from context.
-          "Rc::new(<HashMap<_, _>>::new())"
+          "compile_error!(\"empty_map requires concrete type parameters\")"
         }
-      _ => "Rc::new(<HashMap<_, _>>::new())"
+      _ => "compile_error!(\"empty_map requires concrete type parameters\")"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2287,10 +2286,10 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
             if value_type_str != "" {
               concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
             } else {
-              "Rc::new(<HashMap<_, _>>::new())"
+              "compile_error!(\"empty_map requires concrete type parameters\")"
             }
           } else if init_func == "empty_map" {
-            "Rc::new(<HashMap<_, _>>::new())"
+            "compile_error!(\"empty_map requires concrete type parameters\")"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           }
@@ -2635,9 +2634,9 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
   let si = scope.type_env.source_index
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types, source_index: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
   let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_index: si)
@@ -2664,7 +2663,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     _ => emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
   }
   if rc_analysis.needs_rc_pattern {
-    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si)
+    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
   } else {
     concat("    ", pat_str, guard_str, " => ", body_str, ",")
@@ -3249,9 +3248,9 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let si = scope.type_env.source_index
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, vtoe: vtoe, rc_types: rc_types, source_index: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si)
+    emit_pattern(pattern: arm_pat, vtoe: vtoe, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
   let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_index: si)
@@ -3268,7 +3267,7 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   } else { "" }
   let body_str = emit_typed_tco_expr(texpr: arm_b, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
   if rc_analysis.needs_rc_pattern {
-    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si)
+    let prelude = rc_pattern_preludes(pattern: arm_pat, rc_analysis: rc_analysis, vtoe: vtoe, rc_types: rc_types, source_index: si, emit_info: emit_info)
     concat("    ", pat_str, guard_str, " => { ", prelude, " ", body_str, " },")
   } else {
     concat("    ", pat_str, guard_str, " => { ", body_str, " },")

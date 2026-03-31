@@ -115,8 +115,9 @@ fn lookup_value_context(emit_info: EmitGraphInfo, name: String) -> ValueContext 
   }
 }
 
-fn variant_has_fields(emit_info: EmitGraphInfo, variant_name: String) -> Bool {
-  match map_get(emit_info.fielded_variants, variant_name) {
+fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
+  let key = concat(enum_name, "::", variant_name)
+  match map_get(emit_info.fielded_variants, key) {
     Some { value: v } => v
     None => false
   }
