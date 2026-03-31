@@ -182,6 +182,11 @@ produce wrong output (e.g., `:` instead of `intensity`).
   `source_text_at` returned `":"`, overrode correct `node.name`)
 - [ ] Acceptance: emitted Rust for self-compile passes `rustc` syntax
   check (122 pattern errors from this single class of bug)
+- [ ] Eliminate `compile_error!(...)` emission: when the emitter
+  encounters a typing gap (e.g., `05_emit_rust.dag:2285` fold acc
+  type), it must reject before emission, not push the gap into
+  generated Rust. `compile_error!` in output is a fabrication
+  fallback that violates "Emission is translation, not decision-making."
 
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
@@ -254,9 +259,13 @@ Goal: compiler reads type/algebra facts from `.dag` declarations
 instead of hardcoding them. Includes FF-9 as prerequisite.
 
 *Tier 1 — data tables → `.dag` declarations (no new infra):*
-- [ ] Move `kernel_algebra_profile` to `dsl/std/algebra.dag` data
-- [ ] Move `is_kernel_type` / `is_container_type` predicate lists
+- [x] Move `kernel_algebra_profile` to `dsl/std/algebra.dag` data
+- [x] Move `is_kernel_type` / `is_container_type` predicate lists
   to `dsl/std/types.dag` data
+- [x] Move `AlgebraProfile`, `AlgebraTypeTemplate`, `AlgebraFieldTemplate`
+  types and all 6 template data tables to `dsl/std/algebra.dag`
+- [x] `00_core.dag` re-imports from `std.types` for backward compat
+- [x] `04_types.dag` imports from `std.algebra`
 - [ ] Convert per-profile field builders to `.dag` functions
 
 *Tier 2 — factor `enrich_kernel_type` (modest compiler change):*
@@ -265,6 +274,25 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
   `runtime_bridge_method_index()`
 - [ ] ~60 string branches → structural algebra queries
 
+*Tier 2.5 — algebra bridge fidelity (no new infra, modeling only):*
+- [ ] Fix `Set`/`NonEmptySet` profile: `FreeMonoidCollectionProfile`
+  → `BooleanAlgebraCollectionProfile` (or split). The `std/algebra.dag`
+  denotation says sets inhabit `BooleanAlgebra<A>`, but the bridge maps
+  them to `FreeMonoidCollectionProfile` which gives them list operations
+  (append, sort_by, fold) instead of set operations (union, intersect,
+  diff, member). New profile + template list needed.
+- [ ] Fix carrier-changing type loss in `free_monoid_collection_templates`:
+  `map`/`flat_map`/`fold` param_types and return_types are `ReceiverSelf`
+  but should express the higher-order function parameter structure (e.g.,
+  `fold` takes `fn(Acc, T) -> Acc` and returns `Acc`, not `Self`). The
+  `FreeMonoid<T>` declaration already models this correctly.
+- [ ] Same issue in `partial_function_templates`: parallel authority for
+  `PartialFunction` operations including emitter-only alias `emit_map_has`
+  that doesn't exist on the carrier algebra.
+- [ ] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replace
+  hardcoded name checks (`"T"`, `"K"`, `"V"`, `"MappedElement"`,
+  `"FoldAccumulator"`) with structural detection from algebra templates.
+
 *Tier 3 — full structural algebra (requires FF-9):*
 - [ ] FF-9: import-driven source resolution (compiler discovers
   modules transitively from source roots)
@@ -272,6 +300,9 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
   at resolve time
 - [ ] Replace template-era higher-order collection placeholders with
   function-typed algebra witnesses from `std/algebra.dag`
+- [ ] Derive kernel/container identity from type declarations
+  themselves rather than from `kernel_type_set`/`container_type_set`
+  name maps — compiler reads structure, not proxy strings
 - [ ] Kernel types as algebraic compositions loaded from `std/`
 - [ ] 21 type constructor sites → 0
 - [x] Type-name comparisons → 0
@@ -283,11 +314,12 @@ Files: `04_types.dag`, `00_core.dag`, `04_lookup.dag`,
 #### Lane 2: D6 + emit + resolve (Node.name deletion)
 
 **Status:** B3 (emit rendering) + B4 (resolve structural identity)
-complete. D6 (constructor/accessor cleanup) is next — mechanical
+complete. Lane 1 Tier 1 landed (algebra/kernel/container data moved
+to `dsl/std/`). D6 (constructor/accessor cleanup) is next — mechanical
 work to update `make_*` helpers, drop `name:` from Node
 constructions, and delete the field.
-Note: final `Node.name` deletion depends on Lane 1 landing
-declarations for kernel/algebra/container synthetic nodes.
+Note: final `Node.name` deletion depends on Lane 1 Tier 2+ landing
+structural identity for synthetic nodes.
 
 Goal: delete `Node.name` field. Rendering uses `source_text_at`,
 resolve uses structural identity.
@@ -323,6 +355,14 @@ still semantic authority):*
 - [x] Accessor layer: `lookup_type_for`, `is_recursive_type_for`,
   `authored_name_at`, `lambda_param_names_at` encapsulate all
   `.name`-as-identity reads (emit + resolve + infer + lookup)
+- [x] Add `_at` variants for all expression/wrapper node name
+  accessors: `expr_var_name_at`, `expr_call_func_at`,
+  `expr_method_name_at`, `let_binding_name_at`,
+  `field_access_field_at`, `foreach_variable_at`,
+  `record_lit_type_name_at`, `field_init_node_name_at`,
+  `arg_name_at`, `param_node_name_at`
+- [x] Migrate 9 Rust emitter rendering sites to `_at` variants
+- [ ] Migrate remaining emit sites (Python ~5, Go ~5, shared ~5)
 - [ ] Update 17 `make_*` helpers (blocked: all `.name` reads replaced)
 - [ ] Update ~256 Node constructions to drop `name:`
 - [ ] Migrate synthetic node identity to structural (blocked: L1)
@@ -345,6 +385,35 @@ Files: `05_emit*.dag`, `04_resolve.dag`, `04_env.dag`,
 `02_parse.dag`, `04_infer.dag`, `00_core.dag` (make_* helpers only —
 kernel type defs are Lane 1)
 
+*D6 `name:` usage audit (2026-03-31):*
+
+Per-file Node construction counts and classification:
+
+| File | Constructions | Display | Semantic | Synthetic |
+|------|:---:|:---:|:---:|:---:|
+| `02_parse.dag` | ~54 | ~5 | ~44 | ~5 |
+| `04_infer.dag` | ~20 | 0 | ~12 | ~8 |
+| `00_core.dag` | ~28 | ~5 | ~10 | ~13 |
+| `04_resolve.dag` | ~13 | 0 | ~13 | 0 |
+| `04_types.dag` | ~10 | 0 | ~8 | ~2 |
+| Other (`04_patterns`, `04_method`, `04_service`, `05_emit_rust`) | ~5 | 0 | ~5 | 0 |
+| **Total** | **~130** | **~10** | **~92** | **~28** |
+
+Blocking semantic-identity `.name` reads (must be structural before
+`name:` can drop):
+- Field/variant/method lookup: `filter(c => c.name == field_name)`
+  in `04_lookup.dag`, `04_types.dag`, `04_patterns.dag`
+- Type equality: `left.name == right.name` in `04_types.dag`
+- Resolve substitution: `map_get(slot_bindings, n.name)` in `04_resolve.dag`
+- Module/import graph: `module.name`, `import.name` in `03_resolve.dag`
+- Closed tags: `"Refined"`, `"Callable"`, `"Tuple"`, `"Map"` checks
+- Kernel identity: `is_kernel_type(name: n.name)` (6 sites)
+- Expression identity: `expr_call_func`, `expr_method_name` via `.name`
+
+Display-only sites (~10) are safe to drop now via `authored_name_at`.
+Synthetic sites (~28) need Lane 1 Tier 2+ (declaration-backed identity).
+Semantic sites (~92) need structural identity infrastructure (D6 blocker).
+
 #### Lane exclusivity
 
 Only shared file: `00_core.dag`. Lane 1 edits kernel type
@@ -362,6 +431,11 @@ Different functions, no conflict.
   success output — `is_unknown_class` / `cost_contains_unknown`
   provide structural detection; end-to-end gating in violation
   path needs wiring
+- [ ] Mutual-recursion cycle errors: `complexity.dag:1579` returns
+  only `violations`, omitting the cycle-error diagnostics that
+  `detect_mutual_recursion_names` previously supplied. Verify that
+  mutual-recursion cycles produce fail-closed diagnostics in the
+  pipeline output, not silent omission.
 - [x] `ClassProduct` formatting parenthesizes additive children
   (already done: `parenthesize_additive_cost` pre-existing)
 - [x] Source-audit parity checks use `live_source` /
@@ -413,10 +487,13 @@ Different functions, no conflict.
 - [ ] 14 `Map<String, X>` metadata maps → structural edges
 
 *Split authority dissolution (PR #264 review):*
-- [ ] Merge `rt_functions: Map<String, Bool>` and
+- [x] Merge `rt_functions: Map<String, Bool>` and
   `rt_bridge_function_names: Map<String, String>` in `rust/emit.dag`
   into a single `RuntimeFunction { name: String, bridge_name: String,
   passes_by_ref: Bool }` list — one concept, one authority
+  (backward-compat maps preserved; helpers `is_rt_function`,
+  `rt_bridge_name`, `rt_passes_by_ref` added; downstream migration
+  to unified helpers is follow-up)
 
 *Compiler bug fixes owned by M5:*
 - [ ] Optional exhaustiveness: structural, not `Some`/`None` hardcoded
@@ -503,6 +580,14 @@ error.
 
 **Space complexity as peer dimension.** `space: CostExpr` peer to `work`
 and `span`. Currently `output_size` is unpopulated.
+
+**Computed data declarations.** The `.dag` `data` syntax only supports
+literal initializers (maps, lists, records). Computed expressions
+(`data x = list |> fold(...)`) are not supported. This prevents
+deriving indexed maps from authoritative lists, requiring hand-
+maintained parallel data declarations (e.g., `rt_functions` maps
+alongside `rt_function_registry`). When the parser gains computed
+data declarations, parallel-data violations dissolve.
 
 **Everything is coercion.** Unifying concept: minimal complete
 representation in a target domain. Applies at stage boundaries, type
