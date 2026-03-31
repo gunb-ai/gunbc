@@ -24,7 +24,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 29 errors | 0 | Down from 8658→419→367→29. Type cascade (6, deferred M4), fold inference (5), TCO Optional (3), Rc edge cases (5), Option<Rc> go/python (4), misc (6) |
+| Bootstrap emitted Rust (B) | 11 errors | 0 | Down from 8658→419→367→11. Type cascade (6, deferred M4), inference leaks (3), FreeMonoid generics (2) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 22 | 0 | Down from 70; #253 landed structural algebra authority; 22 after review fixes |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
