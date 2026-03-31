@@ -661,8 +661,13 @@ fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
 // Bridge placeholder type names: higher-order template parameters that
 // exist only during algebra resolution. Importing modules must not see
 // these as ambient user-facing types.
-// TODO(L1): these names duplicate AlgebraTypeTemplate parameter names from
-// std/algebra.dag. Should read from algebra data, not a parallel string list.
+//
+// BRIDGE(L1-Tier2.5): these names duplicate AlgebraTypeTemplate parameter
+// names from std/algebra.dag. Migration path: extract placeholder names
+// from the AlgebraFieldTemplate param_types/return_type trees (walk for
+// NamedTemplate { name } variants) to build this set structurally at
+// startup, then delete this hardcoded list. Blocked on: computed data
+// declarations or an init-time fold over template lists.
 fn is_bridge_placeholder_type_name(name: String) -> Bool {
   name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
 }
