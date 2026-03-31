@@ -532,6 +532,14 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
 // Import emission
 // =========================================================================
 
+fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
+  let is_data = match map_get(registry, n) {
+    Some { value: info } => info.kind == DataItem
+    None => false
+  }
+  if is_data { to_snake(n) } else { n }
+}
+
 fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<String, ItemInfo>, local_names: List<String>) -> String {
   if imports |> count == 0 {
     ""
@@ -573,7 +581,9 @@ fn emit_imports(imports: List<Node>, vtoe: Map<String, String>, registry: Map<St
             let top_with_parents = unique_strings(items: concat(top_level, parent_list))
             // Emit top-level use line.
             let main_line = if top_with_parents |> count > 0 {
-              let names_str = top_with_parents |> join(separator: ", ")
+              let names_str = top_with_parents |> map(n =>
+                emit_import_name(n: n, registry: registry)
+              ) |> join(separator: ", ")
               concat("pub use crate::", mod_name, "::{", names_str, "};")
             } else { "" }
             // Emit per-enum variant import lines for explicitly listed variants.
