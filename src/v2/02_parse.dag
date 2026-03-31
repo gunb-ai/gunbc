@@ -37,8 +37,8 @@ import v2.std.core {
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   ExprErrorKind, ParseRecoveryError,
-  BinOpKind, Add, Sub, Mul, Div, Mod,
-  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
+  BinOp, Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
@@ -3628,7 +3628,7 @@ fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
   }
 }
 
-fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOpKind? {
+fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
   let matching = ops |> filter(op => op.symbol == symbol)
   if matching |> count > 0 {
     first(matching).value.binop

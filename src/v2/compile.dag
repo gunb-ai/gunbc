@@ -27,7 +27,7 @@ import v2.std.core {
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
   arg_name, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_value,
-  LiteralValue, BinOpKind, UnaryOpKind, StringPart, Node,
+  LiteralValue, BinOp, UnaryOpKind, StringPart, Node,
   NewlineIndex, build_newline_index,
   field_access_field, expr_call_func, lambda_param_names, record_lit_type_name, foreach_variable, expr_method_name
 }
@@ -256,21 +256,21 @@ fn expr_error_kind_name(value: ExprErrorKind) -> String {
   }
 }
 
-fn bin_op_name(value: BinOpKind) -> String {
+fn bin_op_name(value: BinOp) -> String {
   match value {
     Add => "Add"
     Sub => "Sub"
     Mul => "Mul"
     Div => "Div"
     Mod => "Mod"
-    BinEq => "BinEq"
-    BinNe => "BinNe"
-    BinLt => "BinLt"
-    BinGt => "BinGt"
-    BinLe => "BinLe"
-    BinGe => "BinGe"
-    BinAnd => "BinAnd"
-    BinOr => "BinOr"
+    Eq => "Eq"
+    Ne => "Ne"
+    Lt => "Lt"
+    Gt => "Gt"
+    Le => "Le"
+    Ge => "Ge"
+    And => "And"
+    Or => "Or"
     NullCoalesce => "NullCoalesce"
   }
 }

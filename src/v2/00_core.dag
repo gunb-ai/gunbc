@@ -18,6 +18,10 @@
 module v2.std.core
 
 import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_set, is_container_type }
+import std.syntax {
+  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull
+}
 
 // =========================================================================
 // Tokens
@@ -225,7 +229,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOpKind }
+  | ExprBinOp { op: BinOp }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda { semantics: LambdaSemantics? }
   | ExprStringInterp
@@ -249,17 +253,9 @@ type MatchPattern
 // Accessors: field_binding_name, field_binding_pattern
 
 
-type LiteralValue
-  = LitStr { value: String }
-  | LitInt { value: Int }
-  | LitFloat { value: String }
-  | LitBool { value: Bool }
-  | LitNull
-
-type BinOpKind
-  = Add | Sub | Mul | Div | Mod
-  | BinEq | BinNe | BinLt | BinGt | BinLe | BinGe
-  | BinAnd | BinOr | NullCoalesce
+// BinOp and LiteralValue: canonical definitions in std/syntax.dag.
+// Imported here for compiler use.
+// (Imported via module header below)
 
 type UnaryOpKind = Not | Neg
 

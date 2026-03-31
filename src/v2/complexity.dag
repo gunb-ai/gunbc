@@ -27,7 +27,7 @@ import v2.std.core {
   Node,
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprBinOp, ExprUnaryOp, BinOpKind, Sub, Div,
+  ExprBinOp, ExprUnaryOp, BinOp, Sub, Div,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn,
   MatchPattern, Bind, VariantPattern,
   field_init_node_name, field_init_node_value,
