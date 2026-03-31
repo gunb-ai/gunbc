@@ -1227,7 +1227,10 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    qualified
+    match map_get(vtoe, name) {
+      Some { value: _ } => concat(qualified, " { .. }")
+      None => qualified
+    }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
@@ -1385,7 +1388,10 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
       None => qualified
     }
   } else if field_bindings |> count == 0 {
-    qualified
+    match map_get(vtoe, name) {
+      Some { value: _ } => concat(qualified, " { .. }")
+      None => qualified
+    }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
@@ -1926,9 +1932,10 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if value_type_str != "" {
           concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
         } else {
-          "compile_error!(\"empty_map requires a concrete result type\")"
+          // Type params not resolved on node — let Rust infer from context.
+          "Rc::new(<HashMap<_, _>>::new())"
         }
-      _ => "compile_error!(\"empty_map missing resolved return type\")"
+      _ => "Rc::new(<HashMap<_, _>>::new())"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info)
@@ -2282,16 +2289,16 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
     Some { value: init_arg } =>
       match arg_value(n: init_arg).expr_data {
         ExprCall { call_semantics: _ } =>
-          let init_func = authored_name_at(source_index: scope.type_env.source_index, node: arg_value(n: init_arg))
+          let init_func = expr_call_func(texpr: arg_value(n: init_arg))
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             let value_type_str = rust_empty_map_value_type_str(map_type: acc_type_node, rc_types: rc_types)
             if value_type_str != "" {
               concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
             } else {
-              "compile_error!(\"fold empty_map init requires a concrete accumulator value type\")"
+              "Rc::new(<HashMap<_, _>>::new())"
             }
           } else if init_func == "empty_map" {
-            "compile_error!(\"fold empty_map init requires a concrete accumulator type\")"
+            "Rc::new(<HashMap<_, _>>::new())"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           }
