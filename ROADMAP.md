@@ -23,12 +23,38 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
-| Bootstrap ratchet (`DIAG_RATCHET`) | 65 | 0 | OOM resolved; 65 inference false-positives remain |
+| Bootstrap front-end diagnostics | Transitional | 0 | Old `DIAG_RATCHET = 65` story is stale; source-root bootstrap health is the real lead indicator |
+| Stage0 regeneration | RED | GREEN | `regenerate-stage0.sh` is not fixed-point yet; this is Priority Zero before more structural lane work |
 | L1 ratchet | 21 | 0 | Down from 70; #253 landed structural algebra authority |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
 | Complexity violations | 0 | 0 | Green |
+
+---
+
+## Bootstrap Health
+
+Priority Zero is restoring a reproducible stage0 pipeline. Lane 1 and Lane 2 can
+keep landing only when they do not obscure bootstrap health, but regeneration now
+beats further ratchet-chasing.
+
+Current reality:
+- `std.types` injection is still an ambient bootstrap bridge until FF-9 becomes fully import-driven.
+- Manual stage0 edits are still possible because regeneration is not green; that is the productivity failure we need to eliminate.
+- The next milestone is not “more lane work,” it is “stage0 regeneration is authoritative again.”
+
+Clean-repo workflow:
+1. `cargo check -p v2-compiler`
+2. `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored --nocapture`
+3. `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture`
+4. When those are green, run `./scripts/regenerate-stage0.sh`
+5. Require `git diff --exit-code src/v2/stage0`
+
+Stabilization rules:
+- No manual `src/v2/stage0/` edits once regeneration is green.
+- Add CI gate: `./scripts/regenerate-stage0.sh && git diff --exit-code src/v2/stage0/`
+- Prefer one owned bootstrap entrypoint over ad hoc cargo workflows; the invariant is reproducible stage0, not any particular wrapper name.
 
 ---
 
@@ -123,9 +149,11 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 
 *Bootstrap:*
 - [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
-- [ ] Regenerate stage0 with `regenerate-stage0.sh` (blocked by 65
-  inference false-positives: pipe-to-bare-function element type loss)
+- [ ] Regenerate stage0 with `regenerate-stage0.sh`
+  Current blocker is stage0→stage1 bootstrap/emitted-Rust stability,
+  not the old `65 false-positives` story.
 - [ ] CI-verified regeneration (regenerate + diff = empty)
+- [ ] Single owned bootstrap command for clean-repo verification
 
 *User experience:*
 - [x] `dsl/examples/weather/` committed example project
@@ -136,7 +164,7 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
 | `COMPLEXITY_RATCHET = 0` | Fail-closed compilation → 0 violations | M2 (done — wired into pipeline) |
-| `DIAG_RATCHET = 65` | OOM resolved (FF-8); 65 inference false-positives | M2 |
+| Ambient/manual stage0 maintenance | `regenerate-stage0.sh` green + CI diff gate | M2 |
 
 ---
 
@@ -171,7 +199,9 @@ works. 9 scrambled-name tests in CI. Parse/emit round-trip smoke test.
 
 **Status:** L1 = 21. Depends on M2. Two exclusive lanes. Current Lane 1
 direction: finish declaration-driven structural algebra, then remove
-the remaining bootstrap/stage0 bridge work so
+the remaining bootstrap/stage0 bridge work. Current FF-9 state is an
+ambient `std.types` bootstrap bridge, not the final import-only
+resolution model, so
 `scripts/l1-ratchet.sh --check` can hit 0 instead of just enforcing a
 lower ceiling.
 **Gate:** `scripts/l1-ratchet.sh --check` reports 0. Scrambled-name
