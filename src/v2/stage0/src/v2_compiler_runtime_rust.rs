@@ -323,8 +323,8 @@ pub fn rt_filesystem() -> String {
 
 pub fn rt_extra_ops() -> String {
     let mut s = String::new();
-    s.push_str("pub fn reverse<T: Clone>(list: Vec<T>) -> Vec<T> {\n");
-    s.push_str("    let mut v = list; v.reverse(); v\n");
+    s.push_str("pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {\n");
+    s.push_str("    let mut v = (*list).clone(); v.reverse(); Rc::new(v)\n");
     s.push_str("}\n\n");
     s.push_str("pub fn replace(s: String, from: String, to: String) -> String {\n");
     s.push_str("    s.replace(&from, &to)\n");
