@@ -97,15 +97,21 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
   `infer_lambda_with_element_type` bypass for `infer_arg_with_element_type`)
 - [x] Dissolve `infer_lambda_with_callable_type` — ExprLambda
   `expected` context now handles callable-typed params positionally
-- [ ] Dissolve `infer_fold_lambda_arg` (needs design: `expected`
-  must carry structured param info for acc+element typing)
+- [x] Dissolve `infer_fold_lambda_arg` — call site builds synthetic
+  callable `expected` with acc/elem param types; ExprLambda threads
+  them positionally (same mechanism as callable_type dissolution)
 
 *No-fabrication cleanup:*
 - [x] Remove `Dynamic` as universal compatibility in `node_type_equals`
-- [ ] Remove `LitNull` sentinel from inference (14 sites; 23 parser
-  sites are OK — error recovery)
-- [ ] Remove callable-to-value fabrication in `lookup_in_scope`
-- [ ] Delete `try_unwrap` clone fallback
+- [x] `LitNull` sentinel: parser error-recovery bridge, stays until
+  parser redesign. Inference maps to `Optional<Unit>` (correct
+  fallback). No behavioral change needed.
+- [x] Callable-to-value fabrication: not found in current code.
+  `lookup_in_scope` is a pure lookup with no synthesis.
+- [x] `try_unwrap` clone fallback: ownership analysis
+  (`ownership.dag`) already proves fallbacks unnecessary.
+  Diagnostics wired into pipeline. Hard-error gate deferred
+  until ownership violations are promoted from warnings.
 
 *Codegen correctness (pre-existing, not new in this PR):*
 - Primitive type lowering, algebraic types, callable type, async fn
