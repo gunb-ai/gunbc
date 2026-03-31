@@ -159,7 +159,9 @@ works. 9 scrambled-name tests in CI. Parse/emit round-trip smoke test.
 
 **Status:** L1 = 21. Depends on M2. Two exclusive lanes. Current Lane 1
 direction: finish declaration-driven structural algebra, then remove
-the remaining bootstrap/stage0 bridge work so
+the remaining bootstrap/stage0 bridge work. Current FF-9 state is an
+ambient `std.types` bootstrap bridge, not the final import-only
+resolution model, so
 `scripts/l1-ratchet.sh --check` can hit 0 instead of just enforcing a
 lower ceiling.
 **Gate:** `scripts/l1-ratchet.sh --check` reports 0. Scrambled-name

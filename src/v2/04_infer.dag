@@ -2146,8 +2146,9 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 
 // Kernel primitives (String, Int, Bool, Float, Secret, Json, Unit, Bytes)
 // are now defined as bare type declarations in dsl/std/types.dag.
-// std.types is always first in compilation order, so all modules receive
-// primitive bindings through imports.
+// Today the compiler still injects std.types as an ambient bootstrap bridge
+// when needed; that keeps declaration lookup working during Lane 1, but it
+// is not the final import-driven FF-9 state.
 
 // =========================================================================
 // Type environment lookup
@@ -2202,6 +2203,8 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // map/list (not a struct field). Rc::try_unwrap succeeds on bare
   // accumulators -- avoids O(N^2) full-map cloning per import.
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
+  // Bootstrap bridge: seed std.types into modules that did not import it
+  // explicitly so declaration-driven lookup can run during the transition.
   let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
     match map_get(parent_index, "std.types") {
       Some { value: typed_std } => [typed_std.type_env]
@@ -2360,6 +2363,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = map_insert(kernel_bindings, "Optional", TypeBinding { name: "Optional", resolved: kernel_optional })
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: [], recursive_type_set: empty_map(), source_index: source_index }
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
+  // Mirror the same bootstrap bridge in the unresolved path.
   let std_types_parent_env = if module.module.name != "std.types" && imports_std_types == false {
     match map_get(parent_index, "std.types") {
       Some { value: typed_std } => [typed_std.type_env]
@@ -2740,7 +2744,7 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Stri
     filter(env.bindings |> map_values, b => emit_map_has(m: local_names, key: b.name)),
     b => b.name
   )
-  topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map)
+  topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map, fuel: remaining |> count)
 }
 
 // Topological resolution loop for type bindings.
@@ -2753,9 +2757,10 @@ fn topo_resolve_types(
     module_name: String,
     diagnostics: List<ErrorNode>,
     local_names: Map<String, Bool>,
-    deps_map: Map<String, List<String>>
+    deps_map: Map<String, List<String>>,
+    fuel: Int
 ) -> EnvResolveResult {
-  if remaining |> count == 0 {
+  if fuel <= 0 || remaining |> count == 0 {
     return EnvResolveResult { env: env, diagnostics: diagnostics }
   }
 
@@ -2815,7 +2820,8 @@ fn topo_resolve_types(
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,
-    deps_map: deps_map
+    deps_map: deps_map,
+    fuel: fuel - 1
   )
 }
 

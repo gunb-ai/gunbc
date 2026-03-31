@@ -2591,6 +2591,18 @@ fn sort_values(xs: List<Int>) -> List<Int> {
 }
 
 #[test]
+fn sort_by_inline_lambda_accepts_key_extractor_result_type() {
+    let source = r#"module sort_by_inline_lambda
+
+fn sort_values(xs: List<Int>) -> List<Int> {
+  sort_by(xs, x => x |> to_string)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn fold_inline_lambda_returns_accumulator_type() {
     let source = r#"module fold_string_accumulator
 
