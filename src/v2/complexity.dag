@@ -1859,11 +1859,10 @@ fn recursive_measure_param_names(body: Node, params: List<Node>) -> Map<String, 
         Some { value: eb } => recursive_measure_param_names(body: eb, params: params)
         None => empty_map()
       }
-      map_merge(
+      map_merge(map_merge(
         condition_param_names(expr: if_condition(texpr: body), param_set: param_set),
-        then_names,
-        else_names
-      )
+        then_names),
+        else_names)
     ExprMatch =>
       let scrut_names = condition_param_names(expr: match_scrutinee(texpr: body), param_set: param_set)
       let arm_names = match_arm_nodes(texpr: body) |> fold(init: empty_map(), f: (acc, arm_node) =>

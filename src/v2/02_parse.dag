@@ -1091,7 +1091,7 @@ fn parse_import_names(tokens: List<Token>, state: ParserState) -> NamesResult {
 // or distinguishing parsed names from synthetic ones), only this
 // function changes — not every lambda/import call site.
 fn parsed_name_leaf(name: String, span: SourceSpan) -> Node {
-  leaf_node(name: name, span: span)
+  leaf_node_with_span(name: name, span: span)
 }
 
 fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> NamesResult {
