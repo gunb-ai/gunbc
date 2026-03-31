@@ -307,11 +307,20 @@ pub fn detect_mutual_recursion_names(func_entries: Vec<Rc<FuncEntry>>) -> Vec<St
             _ => false,
         }
     }).collect();
-    let removed = kahn_process_func(queue, in_degrees, call_graph, <HashMap<String, bool>>::new());
-    func_names.into_iter().filter(|n| {
+    let removed = kahn_process_func(queue, in_degrees, call_graph.clone(), <HashMap<String, bool>>::new());
+    // Remaining nodes include cycle members AND acyclic callees downstream
+    // of cycles. Post-filter: only keep nodes that can reach themselves
+    // through the call graph (actual cycle members).
+    let candidates: HashMap<String, bool> = func_names.clone().iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, n| {
         match v2_rt::map_get(&removed, n.clone()) {
-            Some(_) => false,
-            None => true,
+            Some(_) => acc,
+            None => v2_rt::map_insert(acc.clone(), n.clone(), true),
+        }
+    });
+    func_names.into_iter().filter(|n| {
+        match v2_rt::map_get(&candidates, n.clone()) {
+            None => false,
+            Some(_) => can_reach_self(n.clone(), call_graph.clone(), candidates.clone()),
         }
     }).collect()
 }
@@ -341,6 +350,41 @@ pub fn kahn_process_func(queue: Vec<String>, in_degrees: HashMap<String, i64>, c
         }
     }
     kahn_process_func(current_queue, current_degrees, call_graph, new_removed)
+}
+
+pub fn can_reach_self(name: String, call_graph: HashMap<String, Vec<String>>, candidates: HashMap<String, bool>) -> bool {
+    let initial: Vec<String> = match v2_rt::map_get(&call_graph, name.clone()) {
+        Some(cs) => cs.clone().into_iter()
+            .filter(|c| c.clone() != name.clone() && match v2_rt::map_get(&candidates, c.clone()) { Some(_) => true, None => false })
+            .collect(),
+        None => vec![],
+    };
+    can_reach_target(name.clone(), initial, <HashMap<String, bool>>::new(), call_graph, candidates)
+}
+
+pub fn can_reach_target(target: String, queue: Vec<String>, visited: HashMap<String, bool>, call_graph: HashMap<String, Vec<String>>, candidates: HashMap<String, bool>) -> bool {
+    if queue.is_empty() {
+        return false;
+    }
+    let current = queue[0].clone();
+    if current.clone() == target.clone() {
+        return true;
+    }
+    if match v2_rt::map_get(&visited, current.clone()) { Some(_) => true, None => false } {
+        let rest: Vec<String> = queue.clone().into_iter().skip(1).collect();
+        return can_reach_target(target, rest, visited, call_graph, candidates);
+    }
+    let new_visited = v2_rt::map_insert(visited.clone(), current.clone(), true);
+    let next: Vec<String> = match v2_rt::map_get(&call_graph, current.clone()) {
+        Some(cs) => cs.clone().into_iter()
+            .filter(|c| match v2_rt::map_get(&candidates, c.clone()) { Some(_) => true, None => false })
+            .collect(),
+        None => vec![],
+    };
+    let rest: Vec<String> = queue.clone().into_iter().skip(1).collect();
+    let mut new_queue = rest;
+    new_queue.extend(next);
+    can_reach_target(target, new_queue, new_visited, call_graph, candidates)
 }
 
 pub fn count_self_calls(body: Rc<Node>, func_name: String) -> i64 {
