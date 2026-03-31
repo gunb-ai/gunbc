@@ -1122,7 +1122,10 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
 }
 } else {
             if ((field_bindings.clone().len() as i64) == 0) {
-                qualified.clone()
+                match v2_rt::map_get(&vtoe, name.clone()) {
+                    Some(_) => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
+                    None => qualified.clone(),
+                }
 } else {
                 {
                     let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
@@ -1284,7 +1287,10 @@ v2_rt::concat(v2_rt::concat("Some(".to_string(), inner_pat.clone()), ")".to_stri
 }
 } else {
             if ((field_bindings.clone().len() as i64) == 0) {
-                qualified.clone()
+                match v2_rt::map_get(&vtoe, name.clone()) {
+                    Some(_) => v2_rt::concat(qualified.clone(), " { .. }".to_string()),
+                    None => qualified.clone(),
+                }
 } else {
                 {
                     let effective_bindings = { let mut __result = Vec::new(); for fb in field_bindings.clone().iter().cloned() { if match (*field_binding_pattern(fb.clone()).clone()).clone() {
@@ -1946,12 +1952,12 @@ pub fn emit_typed_call_expr(func: String, args: Vec<Rc<Node>>, inferred: Option<
             Some(InferredNode::Resolved { node: ret_type, .. }) => {
                 let value_type_str = rust_empty_map_value_type_str(ret_type.clone(), rc_types.clone());
                 if value_type_str.is_empty() {
-                    "compile_error!(\"empty_map requires a concrete result type\")".to_string()
+                    "Rc::new(<HashMap<_, _>>::new())".to_string()
                 } else {
                     format!("v2_rt::rc_empty_map::<{}>()", value_type_str)
                 }
             }
-            _ => "compile_error!(\"empty_map missing resolved return type\")".to_string(),
+            _ => "Rc::new(<HashMap<_, _>>::new())".to_string(),
         }
     } else {
         emit_typed_call(func.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
@@ -2377,14 +2383,14 @@ let init_str = match args.clone().first().cloned() {
                 {
                     let value_type_str = rust_empty_map_value_type_str(acc_type_node.clone(), rc_types.clone());
 if value_type_str.is_empty() {
-                        "compile_error!(\"fold empty_map init requires a concrete accumulator value type\")".to_string()
+                        "Rc::new(<HashMap<_, _>>::new())".to_string()
 } else {
                         format!("v2_rt::rc_empty_map::<{}>()", value_type_str)
 }
 }
 } else {
                 if (init_func.clone() == "empty_map".to_string()) {
-                    "compile_error!(\"fold empty_map init requires a concrete accumulator type\")".to_string()
+                    "Rc::new(<HashMap<_, _>>::new())".to_string()
 } else {
                     emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
 }
