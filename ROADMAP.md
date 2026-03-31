@@ -56,6 +56,21 @@ Stabilization rules:
 - Add CI gate: `./scripts/regenerate-stage0.sh && git diff --exit-code src/v2/stage0/`
 - Prefer one owned bootstrap entrypoint over ad hoc cargo workflows; the invariant is reproducible stage0, not any particular wrapper name.
 
+Owned bootstrap entrypoint contract:
+1. Build/check the current compiler from a clean repo.
+2. Run the source sanity gates (`full_dsl_compiles`, bootstrap diagnostic gate).
+3. Run the stage0→stage1 emitted-Rust gate.
+4. Run `./scripts/regenerate-stage0.sh`.
+5. Fail if `src/v2/stage0/` differs after regeneration.
+6. Report the live blocking counts so regressions are visible instead of hidden behind partial success.
+
+Next passes:
+1. Bootstrap A: restore the front-end/bootstrap diagnostic gates to a trustworthy green baseline.
+2. Bootstrap B: reduce stage0→stage1 emitted-Rust failures until the bootstrap cargo-check ratchet is green.
+3. Bootstrap C: make `regenerate-stage0.sh` a fixed-point clean-repo path.
+4. Bootstrap D: wire the owned bootstrap entrypoint plus the CI diff gate, then forbid manual stage0 edits.
+5. Resume broader Lane 1 / Lane 2 work only after A-D are stable.
+
 ---
 
 ## Critical Path
@@ -149,11 +164,11 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 
 *Bootstrap:*
 - [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
-- [ ] Regenerate stage0 with `regenerate-stage0.sh`
-  Current blocker is stage0→stage1 bootstrap/emitted-Rust stability,
-  not the old `65 false-positives` story.
+- [ ] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
+- [ ] Bootstrap B: stage0→stage1 emitted-Rust gate back under ratchet
+- [ ] Bootstrap C: regenerate stage0 with `regenerate-stage0.sh`
+- [ ] Bootstrap D: owned bootstrap entrypoint in repo
 - [ ] CI-verified regeneration (regenerate + diff = empty)
-- [ ] Single owned bootstrap command for clean-repo verification
 
 *User experience:*
 - [x] `dsl/examples/weather/` committed example project
