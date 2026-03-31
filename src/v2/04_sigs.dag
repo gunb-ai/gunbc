@@ -134,7 +134,7 @@ fn topo_resolve_loop(
     diagnostics: List<ErrorNode>,
     fuel: Int
 ) -> ResolveFuncSigsResult {
-  if fuel <= 0 || remaining |> count == 0 {
+  if remaining |> count == 0 {
     // Include non-local (parent) sigs -- they have inferred: Some from conversion.
     let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
       if dsig.inferred != none {

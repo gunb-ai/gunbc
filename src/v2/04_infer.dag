@@ -2583,7 +2583,7 @@ fn topo_resolve_types(
     deps_map: Map<String, List<String>>,
     fuel: Int
 ) -> EnvResolveResult {
-  if fuel <= 0 || remaining |> count == 0 {
+  if remaining |> count == 0 {
     return EnvResolveResult { env: env, diagnostics: diagnostics }
   }
 

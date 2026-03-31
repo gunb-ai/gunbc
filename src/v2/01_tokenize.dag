@@ -120,7 +120,7 @@ fn tokenize(source: String, file: String) -> List<Token> {
 
 fn tokenize_loop(source: SourceRef, tokens: List<Token>, pos: TokPos, fuel: Int) -> TokenizerState {
   let s = skip_spaces_and_comments(source: source, pos: pos, fuel: fuel)
-  if fuel <= 0 || s.pos >= string_length(s: source.text) {
+  if s.pos >= string_length(s: source.text) {
     return TokenizerState { pos: s.pos, tokens: tokens, interp_depth: s.interp_depth }
   }
   let ch = char_at(s: source.text, pos: s.pos)
@@ -451,7 +451,7 @@ fn replace_last(stack: List<Int>, value: Int) -> List<Int> {
 // Also skip line comments (// to end of line).
 fn skip_spaces_and_comments(source: SourceRef, pos: TokPos, fuel: Int) -> TokPos {
   let p = skip_horizontal_ws(s: source.text, start: pos.pos)
-  if fuel > 0 && p + 1 < string_length(s: source.text) && char_at(s: source.text, pos: p) == "/" && char_at(s: source.text, pos: p + 1) == "/" {
+  if p + 1 < string_length(s: source.text) && char_at(s: source.text, pos: p) == "/" && char_at(s: source.text, pos: p + 1) == "/" {
     let eol = scan_to_eol(s: source.text, start: p)
     return skip_spaces_and_comments(source: source, pos: TokPos {
       pos: eol, interp_depth: pos.interp_depth

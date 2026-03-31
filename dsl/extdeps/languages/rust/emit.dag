@@ -113,3 +113,13 @@ data rt_ref_map_functions: Map<String, Bool> = {
   "map_get": true, "map_keys": true, "map_values": true,
   "lookup": true, "map_contains_key": true, "map_has": true
 }
+
+// Runtime functions whose Rust bridge names differ from the DAG-level name.
+data rt_bridge_function_names: Map<String, String> = {
+  "empty_map": "rc_empty_map",
+  "index_by": "rc_index_by",
+  "list_concat": "rc_list_concat",
+  "list_push": "rc_list_push",
+  "map_insert": "rc_map_insert",
+  "map_merge": "rc_map_merge"
+}

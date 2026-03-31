@@ -105,7 +105,7 @@ fn kahn_cycle_drain(
     removed_count: Int,
     fuel: Int
 ) -> KahnState {
-  if fuel <= 0 || queue |> count == 0 {
+  if queue |> count == 0 {
     return KahnState { in_degree: in_degree, removed_count: removed_count }
   }
   // Process all nodes in queue: decrement dependents' in-degree, collect newly ready.

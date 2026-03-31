@@ -43,7 +43,7 @@ use crate::v2_std_core::BinOpKind::*;
 use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
-pub use crate::extdeps_languages_rust_emit::{RT_FUNCTIONS, RT_REF_MAP_FUNCTIONS};
+pub use crate::extdeps_languages_rust_emit::{RT_BRIDGE_FUNCTION_NAMES, RT_FUNCTIONS, RT_REF_MAP_FUNCTIONS};
 pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, test_conventions_for_target, top_level_visibility_for_target};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
@@ -1676,14 +1676,9 @@ pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> bool
 }
 
 pub fn rust_runtime_bridge_name(function_name: String) -> String {
-    match function_name.as_str() {
-        "empty_map" => "rc_empty_map".to_string(),
-        "index_by" => "rc_index_by".to_string(),
-        "list_concat" => "rc_list_concat".to_string(),
-        "list_push" => "rc_list_push".to_string(),
-        "map_insert" => "rc_map_insert".to_string(),
-        "map_merge" => "rc_map_merge".to_string(),
-        _ => function_name,
+    match v2_rt::map_get(&RT_BRIDGE_FUNCTION_NAMES, function_name.clone()) {
+        Some(runtime_name) => runtime_name,
+        None => function_name,
     }
 }
 
@@ -1700,9 +1695,9 @@ pub fn rust_empty_map_value_type_str(map_type: Rc<Node>, rc_types: HashMap<Strin
     {
         Some(value_type) => {
             let rendered = emit_node_type_rc(value_type.clone(), RenderTarget::Rust, rc_types.clone());
-            if rendered.is_empty() { "_".to_string() } else { rendered }
+            if rendered.is_empty() { "".to_string() } else { rendered }
         }
-        None => "_".to_string(),
+        None => "".to_string(),
     }
 }
 
@@ -2377,11 +2372,18 @@ let acc_type_str = emit_node_type_rc(acc_type_node.clone(), RenderTarget::Rust, 
 let acc_has_unit_child = ({ let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if ((c.name.clone() == "Unit".to_string()) || (c.name.clone() == "".to_string())) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type_node.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if ((gc.name.clone() == "Unit".to_string()) || (gc.name.clone() == "".to_string())) { __found = true; break; } } __found } { __found = true; break; } } __found });
 let init_str = match args.clone().first().cloned() {
     Some(init_arg) => match (*arg_value(init_arg.clone()).expr_data.clone()).clone() {
-    ExprData::ExprCall { .. } => { let si = scope.type_env.source_index.clone(); let init_func = authored_name_at(si.clone(), arg_value(init_arg.clone())); if ((((init_func.clone() == "empty_map".to_string()) && (acc_type_str.clone() != "_".to_string())) && (acc_type_str.clone() != "Dynamic".to_string())) && !acc_has_unit_child.clone()) {
-                format!("v2_rt::rc_empty_map::<{}>()", rust_empty_map_value_type_str(acc_type_node.clone(), rc_types.clone()))
+    ExprData::ExprCall { .. } => { let init_func = expr_call_func(arg_value(init_arg.clone())); if ((((init_func.clone() == "empty_map".to_string()) && (acc_type_str.clone() != "_".to_string())) && (acc_type_str.clone() != "".to_string())) && !acc_has_unit_child.clone()) {
+                {
+                    let value_type_str = rust_empty_map_value_type_str(acc_type_node.clone(), rc_types.clone());
+if value_type_str.is_empty() {
+                        "compile_error!(\"fold empty_map init requires a concrete accumulator value type\")".to_string()
+} else {
+                        format!("v2_rt::rc_empty_map::<{}>()", value_type_str)
+}
+}
 } else {
                 if (init_func.clone() == "empty_map".to_string()) {
-                    "v2_rt::rc_empty_map::<_>()".to_string()
+                    "compile_error!(\"fold empty_map init requires a concrete accumulator type\")".to_string()
 } else {
                     emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), vtoe.clone(), rc_types.clone(), emit_info.clone())
 }

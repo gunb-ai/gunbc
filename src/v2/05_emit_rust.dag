@@ -56,7 +56,7 @@ import v2.std.core {
 
 import v2.compiler.artifact { RenderTarget, Rust }
 import extdeps.languages.rust.emit {
-  rt_functions, rt_ref_map_functions, rust_container_templates
+  rt_functions, rt_ref_map_functions, rt_bridge_function_names, rust_container_templates
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
@@ -1660,14 +1660,9 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 }
 
 fn rust_runtime_bridge_name(function_name: String) -> String {
-  match function_name {
-    "empty_map" => "rc_empty_map"
-    "index_by" => "rc_index_by"
-    "list_concat" => "rc_list_concat"
-    "list_push" => "rc_list_push"
-    "map_insert" => "rc_map_insert"
-    "map_merge" => "rc_map_merge"
-    _ => function_name
+  match map_get(rt_bridge_function_names, function_name) {
+    Some { value: runtime_name } => runtime_name
+    None => function_name
   }
 }
 
@@ -1675,8 +1670,8 @@ fn rust_empty_map_value_type_str(map_type: Node, rc_types: Map<String, Bool>) ->
   match map_type.children |> skip(1) |> first {
     Some { value: value_type } =>
       let rendered = emit_node_type_rc(n: value_type, target: Rust, rc_types: rc_types)
-      if rendered == "" { "_" } else { rendered }
-    None => "_"
+      if rendered == "" { "" } else { rendered }
+    None => ""
   }
 }
 
@@ -2285,9 +2280,14 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
         ExprCall { call_semantics: _ } =>
           let init_func = authored_name_at(source_index: scope.type_env.source_index, node: arg_value(n: init_arg))
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
-            concat("v2_rt::rc_empty_map::<", rust_empty_map_value_type_str(map_type: acc_type_node, rc_types: rc_types), ">()")
+            let value_type_str = rust_empty_map_value_type_str(map_type: acc_type_node, rc_types: rc_types)
+            if value_type_str != "" {
+              concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
+            } else {
+              "compile_error!(\"fold empty_map init requires a concrete accumulator value type\")"
+            }
           } else if init_func == "empty_map" {
-            "v2_rt::rc_empty_map::<_>()"
+            "compile_error!(\"fold empty_map init requires a concrete accumulator type\")"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, vtoe: vtoe, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           }

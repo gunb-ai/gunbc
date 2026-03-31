@@ -180,3 +180,16 @@ lazy_static::lazy_static! {
         __m
     };
 }
+
+lazy_static::lazy_static! {
+    pub static ref RT_BRIDGE_FUNCTION_NAMES: HashMap<String, String> = {
+        let mut __m = HashMap::new();
+        __m.insert("empty_map".to_string(), "rc_empty_map".to_string());
+        __m.insert("index_by".to_string(), "rc_index_by".to_string());
+        __m.insert("list_concat".to_string(), "rc_list_concat".to_string());
+        __m.insert("list_push".to_string(), "rc_list_push".to_string());
+        __m.insert("map_insert".to_string(), "rc_map_insert".to_string());
+        __m.insert("map_merge".to_string(), "rc_map_merge".to_string());
+        __m
+    };
+}

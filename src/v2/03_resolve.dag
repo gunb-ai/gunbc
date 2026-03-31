@@ -410,7 +410,7 @@ type KahnDrainState {
 // Each dequeued node's neighbors have their in-degree decremented;
 // any that reach 0 are appended to the queue for the next round.
 fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<String, Int>, adjacency: Map<String, List<String>>, fuel: Int) -> KahnDrainState {
-  if fuel <= 0 || queue |> count == 0 {
+  if queue |> count == 0 {
     return KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }
   }
 
