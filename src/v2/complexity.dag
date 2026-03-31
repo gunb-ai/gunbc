@@ -556,6 +556,24 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
         None => ProgressUnknown
       }
 
+    ExprMatch =>
+      let arm_progresses = match_arm_nodes(texpr: expr) |> map(arm_node =>
+        parser_state_expr_progress(
+          expr: arm_body(n: arm_node),
+          state_param: state_param,
+          env: env,
+          parser_always_advancing: parser_always_advancing,
+          consumed_true_set: consumed_true_set
+        )
+      )
+      match arm_progresses |> first {
+        Some { value: initial } =>
+          arm_progresses |> fold(init: initial, f: (acc, p) =>
+            merge_progress(a: acc, b: p)
+          )
+        None => ProgressUnknown
+      }
+
     _ => ProgressUnknown
   }
 }
@@ -800,6 +818,29 @@ fn collect_parser_progress_edges(caller: String, body: Node, state_param: Parser
         parser_always_advancing: parser_always_advancing,
         consumed_true_set: consumed_true_set
       )
+
+    ExprMatch =>
+      let scrut_edges = collect_parser_progress_edges(
+        caller: caller,
+        body: match_scrutinee(texpr: body),
+        state_param: state_param,
+        scc_name_set: scc_name_set,
+        env: env,
+        parser_always_advancing: parser_always_advancing,
+        consumed_true_set: consumed_true_set
+      )
+      let arm_edges = match_arm_nodes(texpr: body) |> flat_map(arm_node =>
+        collect_parser_progress_edges(
+          caller: caller,
+          body: arm_body(n: arm_node),
+          state_param: state_param,
+          scc_name_set: scc_name_set,
+          env: env,
+          parser_always_advancing: parser_always_advancing,
+          consumed_true_set: consumed_true_set
+        )
+      )
+      concat(scrut_edges, arm_edges)
 
     _ =>
       body.children |> flat_map(child =>

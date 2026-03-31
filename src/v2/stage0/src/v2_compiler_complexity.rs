@@ -830,6 +830,29 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
             parser_always_advancing.clone(),
             consumed_true_set.clone(),
         ),
+        ExprData::ExprMatch { .. } => {
+            let scrut_edges = collect_parser_progress_edges(
+                caller.clone(),
+                match_scrutinee(body.clone()),
+                state_param.clone(),
+                scc_name_set.clone(),
+                env.clone(),
+                parser_always_advancing.clone(),
+                consumed_true_set.clone(),
+            );
+            let arm_edges: Vec<ParserProgressEdge> = match_arm_nodes(body.clone()).iter().cloned().flat_map(|arm_node| {
+                collect_parser_progress_edges(
+                    caller.clone(),
+                    arm_body(arm_node.clone()),
+                    state_param.clone(),
+                    scc_name_set.clone(),
+                    env.clone(),
+                    parser_always_advancing.clone(),
+                    consumed_true_set.clone(),
+                )
+            }).collect();
+            scrut_edges.into_iter().chain(arm_edges.into_iter()).collect::<Vec<_>>()
+        }
         _ => body.children.clone().iter().cloned().flat_map(|child| {
             collect_parser_progress_edges(
                 caller.clone(),
