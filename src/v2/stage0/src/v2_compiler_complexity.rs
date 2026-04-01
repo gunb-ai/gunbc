@@ -2443,49 +2443,21 @@ pub fn bounded_scc_cost(pattern: Rc<RecursionPattern>, raw_cost: Rc<CostExpr>, m
 }
 
 pub fn collect_local_call_edges_in_expr(caller: String, body: Rc<Node>, local_func_set: HashMap<String, bool>) -> Vec<Rc<CallEdge>> {
-    match (*body.expr_data.clone()).clone() {
+    let this_edges = match (*body.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let callee = expr_call_func(body.clone());
-            let this_edges = if set_has(local_func_set.clone(), callee.clone()) {
+            if set_has(local_func_set.clone(), callee.clone()) {
                 vec![Rc::new(CallEdge { caller: caller.clone(), callee: callee.clone() })]
             } else {
                 vec![]
-            };
-            let arg_edges: Vec<Rc<CallEdge>> = body.children.clone().iter().cloned().flat_map(|child| {
-                match (*arg_value(child.clone()).expr_data.clone()).clone() {
-                    ExprData::ExprLambda { .. } => vec![],
-                    _ => collect_local_call_edges_in_expr(caller.clone(), child.clone(), local_func_set.clone()),
-                }
-            }).collect();
-            v2_rt::concat(this_edges, arg_edges)
+            }
         }
-        ExprData::ExprMethodCall { .. } => {
-            let recv_edges = collect_local_call_edges_in_expr(
-                caller.clone(),
-                method_receiver(body.clone()),
-                local_func_set.clone(),
-            );
-            let arg_edges: Vec<Rc<CallEdge>> = method_arg_nodes(body.clone()).iter().cloned().flat_map(|arg_node| {
-                match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
-                    ExprData::ExprLambda { .. } => vec![],
-                    _ => collect_local_call_edges_in_expr(caller.clone(), arg_value(arg_node.clone()), local_func_set.clone()),
-                }
-            }).collect();
-            v2_rt::concat(recv_edges, arg_edges)
-        }
-        ExprData::ExprForEach { .. } => {
-            collect_local_call_edges_in_expr(
-                caller.clone(),
-                foreach_collection(body.clone()),
-                local_func_set.clone(),
-            )
-        }
-        _ => {
-            body.children.clone().iter().cloned().flat_map(|child| {
-                collect_local_call_edges_in_expr(caller.clone(), child.clone(), local_func_set.clone())
-            }).collect()
-        }
-    }
+        _ => vec![],
+    };
+    let child_edges = body.children.clone().iter().cloned().flat_map(|child| {
+        collect_local_call_edges_in_expr(caller.clone(), child.clone(), local_func_set.clone())
+    }).collect::<Vec<_>>();
+    v2_rt::concat(this_edges.clone(), child_edges.clone())
 }
 
 pub fn build_call_graph(func_entries: Vec<Rc<FuncEntry>>) -> Rc<CallGraph> {
@@ -2601,6 +2573,63 @@ pub fn graph_has_multi_node_scc(names: Vec<String>, graph: Rc<CallGraph>) -> boo
     result.has_cycle
 }
 
+pub fn scc_body_calls_have_witnessed_descent(
+    body: Rc<Node>,
+    scc_name_set: &HashMap<String, bool>,
+    descending_witness_names: Rc<HashMap<String, String>>,
+) -> bool {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(body.clone());
+            let own_ok = if set_has(scc_name_set.clone(), callee.clone()) {
+                body.children.iter().cloned().any(|arg_node| {
+                    expr_descending_witness_source(
+                        arg_value(arg_node.clone()),
+                        descending_witness_names.clone(),
+                    ).is_some()
+                })
+            } else {
+                true
+            };
+            let children_ok = body.children.iter().cloned().all(|child| {
+                match (*arg_value(child.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => true,
+                    _ => scc_body_calls_have_witnessed_descent(
+                        child, scc_name_set, descending_witness_names.clone(),
+                    ),
+                }
+            });
+            own_ok && children_ok
+        }
+        ExprData::ExprMethodCall { .. } => {
+            let recv_ok = scc_body_calls_have_witnessed_descent(
+                method_receiver(body.clone()), scc_name_set, descending_witness_names.clone(),
+            );
+            let args_ok = method_arg_nodes(body.clone()).iter().cloned().all(|arg_node| {
+                match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => true,
+                    _ => scc_body_calls_have_witnessed_descent(
+                        arg_value(arg_node.clone()), scc_name_set, descending_witness_names.clone(),
+                    ),
+                }
+            });
+            recv_ok && args_ok
+        }
+        ExprData::ExprForEach { .. } => {
+            scc_body_calls_have_witnessed_descent(
+                foreach_collection(body.clone()), scc_name_set, descending_witness_names.clone(),
+            )
+        }
+        _ => {
+            body.children.iter().cloned().all(|child| {
+                scc_body_calls_have_witnessed_descent(
+                    child, scc_name_set, descending_witness_names.clone(),
+                )
+            })
+        }
+    }
+}
+
 pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>, recursion_ctx: Rc<RecursionContext>) -> Rc<RecursionPattern> {
     let scc_name_set = members.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
         v2_rt::map_insert(acc.clone(), name.clone(), true)
@@ -2647,9 +2676,48 @@ pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<
                         iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
                     })
                 } else {
-                    Rc::new(RecursionPattern::UnresolvableRecursion {
-                        reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
-                    })
+                    let all_witnessed = members.iter().cloned().all(|name| {
+                        match v2_rt::map_get(&func_index, name.clone()) {
+                            Some(entry) => {
+                                let all_param_witnesses = Rc::new(entry.params.iter().cloned().fold(
+                                    <HashMap<String, String>>::new(),
+                                    |acc, param| v2_rt::map_insert(acc, param_node_name(param.clone()), param_node_name(param.clone())),
+                                ));
+                                let witnesses = collect_descending_witness_names(
+                                    entry.body.clone(), all_param_witnesses.clone(),
+                                );
+                                scc_body_calls_have_witnessed_descent(
+                                    entry.body.clone(), &scc_name_set, witnesses.clone(),
+                                )
+                            }
+                            None => false,
+                        }
+                    });
+                    let some_strict_descent = members.iter().cloned().any(|name| {
+                        match v2_rt::map_get(&func_index, name.clone()) {
+                            Some(entry) => {
+                                let strict_witnesses = recursive_measure_param_names(
+                                    entry.body.clone(), entry.params.clone(),
+                                );
+                                let witnesses = collect_descending_witness_names(
+                                    entry.body.clone(), strict_witnesses.clone(),
+                                );
+                                scc_body_calls_have_witnessed_descent(
+                                    entry.body.clone(), &scc_name_set, witnesses.clone(),
+                                )
+                            }
+                            None => false,
+                        }
+                    });
+                    if all_witnessed && some_strict_descent {
+                        Rc::new(RecursionPattern::LinearRecursion {
+                            iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
+                        })
+                    } else {
+                        Rc::new(RecursionPattern::UnresolvableRecursion {
+                            reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
+                        })
+                    }
                 }
             }
         }

@@ -2128,7 +2128,7 @@ fn strict_complexity_violation_count() {
     // The ratchet tracks the analyzer gap honestly. The violations
     // remain errors (all diagnostics are errors). The ratchet only
     // moves down, never up, until I1/I2 resolve them to 0.
-    const COMPLEXITY_RATCHET: usize = 315;
+    const COMPLEXITY_RATCHET: usize = 225;
     assert!(
         violation_count <= COMPLEXITY_RATCHET,
         "complexity violation count {} exceeds ratchet {}",

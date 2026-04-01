@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 313 | 0 | 53 root functions → 313 errors (ratcheted); direct + mutual recursion are fail-closed, next drop needs parser/block/type-normalization witness work |
+| Complexity violations | 225 | 0 | 27 root functions → 225 errors (ratcheted); descent witnesses (ExprMatch, skip, first, field access), SCC witness check, and reordered branching classification reduced from 311; remaining: parser SCC (60), emit block SCC (101), branching (13), scattered (51) |
 
 ---
 

@@ -2238,38 +2238,17 @@ fn bounded_scc_cost(pattern: RecursionPattern, raw_cost: CostExpr, members: List
 }
 
 fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
-  match body.expr_data {
+  let this_edges = match body.expr_data {
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: body)
-      let this_edges = if set_has(m: local_func_set, key: callee) {
-        [CallEdge { caller: caller, callee: callee }]
-      } else { [] }
-      let arg_edges = body.children |> flat_map(child =>
-        match arg_value(n: child).expr_data {
-          ExprLambda => []
-          _ => collect_local_call_edges_in_expr(caller: caller, body: child, local_func_set: local_func_set)
-        }
-      )
-      concat(this_edges, arg_edges)
-
-    ExprMethodCall { method_semantics: _ } =>
-      let recv_edges = collect_local_call_edges_in_expr(caller: caller, body: method_receiver(texpr: body), local_func_set: local_func_set)
-      let arg_edges = method_arg_nodes(texpr: body) |> flat_map(arg_node =>
-        match arg_value(n: arg_node).expr_data {
-          ExprLambda => []
-          _ => collect_local_call_edges_in_expr(caller: caller, body: arg_value(n: arg_node), local_func_set: local_func_set)
-        }
-      )
-      concat(recv_edges, arg_edges)
-
-    ExprForEach =>
-      collect_local_call_edges_in_expr(caller: caller, body: foreach_collection(texpr: body), local_func_set: local_func_set)
-
-    _ =>
-      body.children |> flat_map(child =>
-        collect_local_call_edges_in_expr(caller: caller, body: child, local_func_set: local_func_set)
-      )
+      if set_has(m: local_func_set, key: callee) { [CallEdge { caller: caller, callee: callee }] }
+      else { [] }
+    _ => []
   }
+  let child_edges = body.children |> flat_map(child =>
+    collect_local_call_edges_in_expr(caller: caller, body: child, local_func_set: local_func_set)
+  )
+  concat(this_edges, child_edges)
 }
 
 fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {
@@ -2360,6 +2339,46 @@ fn scc_label(members: List<String>) -> String {
   }
 }
 
+fn scc_body_calls_have_witnessed_descent(body: Node, scc_name_set: Map<String, Bool>, descending_witness_names: Map<String, String>) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: body)
+      let own_ok = if set_has(m: scc_name_set, key: callee) {
+        body.children |> any(arg_node =>
+          match expr_descending_witness_source(expr: arg_value(n: arg_node), descending_witness_names: descending_witness_names) {
+            Some { value: _ } => true
+            None => false
+          }
+        )
+      } else { true }
+      let children_ok = body.children |> all(child =>
+        match arg_value(n: child).expr_data {
+          ExprLambda => true
+          _ => scc_body_calls_have_witnessed_descent(body: child, scc_name_set: scc_name_set, descending_witness_names: descending_witness_names)
+        }
+      )
+      own_ok && children_ok
+
+    ExprMethodCall { method_semantics: _ } =>
+      let recv_ok = scc_body_calls_have_witnessed_descent(body: method_receiver(texpr: body), scc_name_set: scc_name_set, descending_witness_names: descending_witness_names)
+      let args_ok = method_arg_nodes(texpr: body) |> all(arg_node =>
+        match arg_value(n: arg_node).expr_data {
+          ExprLambda => true
+          _ => scc_body_calls_have_witnessed_descent(body: arg_value(n: arg_node), scc_name_set: scc_name_set, descending_witness_names: descending_witness_names)
+        }
+      )
+      recv_ok && args_ok
+
+    ExprForEach =>
+      scc_body_calls_have_witnessed_descent(body: foreach_collection(texpr: body), scc_name_set: scc_name_set, descending_witness_names: descending_witness_names)
+
+    _ =>
+      body.children |> all(child =>
+        scc_body_calls_have_witnessed_descent(body: child, scc_name_set: scc_name_set, descending_witness_names: descending_witness_names)
+      )
+  }
+}
+
 fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String, FuncEntry>, recursion_ctx: RecursionContext) -> RecursionPattern {
   let scc_name_set = members |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
@@ -2400,17 +2419,33 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
         if all_arithmetic {
           LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
         } else {
-          // Remaining SCC witness gaps (313→0 path):
-          //   (a) parser SCC: parse_type_expr / parse_callable_type_expr
-          //       family needs token/cursor progress proved across SCC
-          //       edges. Infrastructure exists in classify_parser_scc_
-          //       recursion_pattern; gap is ProgressUnknown edges for
-          //       specific parser helper chains.
-          //   (b) block/tree-walker SCC: emit_rust_block_stmts,
-          //       emit_py_block_stmts, emit_go_block_stmts,
-          //       infer_block_stmts — need a shared statement-tail /
-          //       child-node descent proof for block-processing SCCs.
-          UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
+          let all_witnessed = members |> all(name =>
+            match map_get(func_index, name) {
+              Some { value: entry } =>
+                // All params are potential witnesses so identity passes
+                // (forwarding a param unchanged) are accepted.
+                let all_param_witnesses = entry.params |> fold(init: empty_map(), f: (acc, param) =>
+                  map_insert(acc, param_node_name(n: param), param_node_name(n: param))
+                )
+                let witnesses = collect_descending_witness_names(body: entry.body, descending_witness_names: all_param_witnesses)
+                scc_body_calls_have_witnessed_descent(body: entry.body, scc_name_set: scc_name_set, descending_witness_names: witnesses)
+              None => false
+            }
+          )
+          let some_strict_descent = members |> any(name =>
+            match map_get(func_index, name) {
+              Some { value: entry } =>
+                let strict_witnesses = recursive_measure_param_names(body: entry.body, params: entry.params)
+                let witnesses = collect_descending_witness_names(body: entry.body, descending_witness_names: strict_witnesses)
+                scc_body_calls_have_witnessed_descent(body: entry.body, scc_name_set: scc_name_set, descending_witness_names: witnesses)
+              None => false
+            }
+          )
+          if all_witnessed && some_strict_descent {
+            LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
+          } else {
+            UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
+          }
         }
     }
   }
