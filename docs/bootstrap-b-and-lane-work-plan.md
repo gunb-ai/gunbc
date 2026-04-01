@@ -5,7 +5,7 @@ discussion. Each item includes: what needs to change, which files are
 touched, dependencies, risks, and a concrete design sketch where
 non-trivial.
 
-**Baseline (verified 2026-03-31):**
+**Baseline (verified 2026-03-31, after merging bootstrap-b-remaining):**
 
 | Gate | Status |
 |------|--------|
@@ -13,10 +13,36 @@ non-trivial.
 | `cargo test -p v2-compiler-tests` | 263 pass, 15 ignored |
 | `cargo clippy --all-targets -- -D warnings` | Clean |
 | `full_dsl_compiles -- --ignored` | 91 dsl + 29 v2, 0 diagnostics |
-| `strict_compile_diagnostic_count -- --ignored` | 311 errors (ratchet 316) |
-| `scripts/l1-ratchet.sh --check` | L1 = 22 (ratchet 22) |
+| `strict_compile_diagnostic_count -- --ignored` | 310 errors (ratchet 316) |
+| `scripts/l1-ratchet.sh --check` | L1 = 21 (ratchet 22) |
 | `EMITTED_RUST_ERROR_RATCHET` (bootstrap.rs) | 880 |
-| ROADMAP dashboard Bootstrap B | 419 errors |
+| ROADMAP dashboard Bootstrap B | **11 errors** (down from 419→11 via bootstrap-b-remaining) |
+
+**Parallel work (bootstrap-b-remaining, now merged):**
+
+The `bootstrap-b-remaining` branch landed 36 commits reducing Bootstrap B
+from 419 → 11 errors. This work completed:
+- BinOp/BinOpKind and LiteralValue/LiteralKind unification (type cascade)
+- Empty map emission fixes
+- Data def Rc wrapping, double-Rc removal
+- CodegenBackend import attribution, ExprData variant patterns
+- String/&str match with Bind patterns, char code point comparisons
+- Optional comparison bin_op wiring, slice end parameter fix
+- BOOTSTRAP_MODE flag for complexity gate
+- Early Detection invariant added to INVARIANTS.md
+
+**Remaining 11 errors (from ROADMAP on bootstrap-b-remaining):**
+- Type cascade: 6 errors (deferred to M4 — `std.syntax` ↔ `v2.compiler.languages`)
+- Inference leaks: 3 errors (Error type reaching emit — 3 coded + 7 uncoded)
+- FreeMonoid/PartialFunction generics: 2 errors
+
+**Active parallel work (still in progress on bootstrap-b-remaining):**
+- Fix inference leaks: Error type reaching emit (IN PROGRESS)
+- Thread generic params for FreeMonoid/PartialFunction (NOT STARTED)
+
+**Constraint:** Items 6, 7, 8 from the original plan overlap with the
+active parallel work. This branch should NOT touch the inference leak
+or FreeMonoid generic threading areas until the parallel work merges.
 
 ---
 
@@ -651,46 +677,58 @@ Low. Edge case fix.
 
 ---
 
-## Execution Order & Dependencies
+## Execution Order & Dependencies (Revised Post-Merge)
+
+After merging `bootstrap-b-remaining`, the landscape is:
+
+- Items 6, 7, 8 (inference propagation, FreeMonoid generics, Unit data)
+  **overlap with active parallel work** on `bootstrap-b-remaining`. The
+  other branch is actively fixing inference leaks and will tackle
+  FreeMonoid/PartialFunction generics next. **Do not duplicate this work.**
+
+- Items 1, 2, 3b, 4, 5 are **safe to proceed** on this branch — they
+  don't overlap with the parallel work.
 
 ```
-                    Independent (can land on main)
+                    Safe to proceed (this branch)
                     ┌──────────────────────────────┐
                     │ 1. Algebra fn builders        │
                     │ 2. Set/NonEmptySet profile    │
                     │ 3b. rt_functions consistency  │
                     │ 4. CI ratchet additions       │
                     │ 5. Test coverage              │
+                    │ 3a. ROADMAP number update     │
                     └──────────────────────────────┘
 
-                    Bootstrap branch (sequential)
+                    BLOCKED — parallel work in progress
                     ┌──────────────────────────────┐
-                    │ 7. FreeMonoid generics (easy) │
-                    │ 8. Unit data item (easy)      │
-                    │ 6. Inference propagation      │──── highest leverage
-                    │ 3a. ROADMAP number update     │──── after measuring
+                    │ 6. Inference propagation      │ ← active on bootstrap-b-remaining
+                    │ 7. FreeMonoid generics        │ ← queued on bootstrap-b-remaining
+                    │ 8. Unit data item             │ ← may be covered by parallel work
                     └──────────────────────────────┘
 ```
 
-**Recommended execution order:**
+**Recommended execution order for this branch:**
 
-1. **Items 7 + 8** (FreeMonoid generics + Unit data): Quick wins, reduce
-   Bootstrap B error count by ~3, build confidence in the emitter.
+1. **Item 5** (Test coverage): Higher-order method + keyed-collection
+   tests. Establishes safety net for everything else.
 
-2. **Item 5** (Test coverage): Establish the test safety net before
-   touching inference.
+2. **Item 1** (Algebra fn builders): Pure modeling, `dsl/std/algebra.dag`
+   + `src/v2/04_types.dag`. No overlap.
 
-3. **Item 6** (Inference propagation): The big one. Phase 1 first
-   (signature-driven expected types), measure impact, then Phase 2
-   (fold refinement), then Phase 3 (lambda multi-param).
+3. **Item 2** (Set/NonEmptySet profile): Pure modeling, same files +
+   new `BooleanAlgebraCollectionProfile`. No overlap.
 
-4. **Item 4** (CI ratchet): Add once we have a stable error count to
-   ratchet at.
+4. **Item 4** (CI ratchet): Add gates to ci.yml. Should update the
+   ratchet constant to a tighter value after confirming current count.
 
-5. **Items 1 + 2** (Algebra modeling): Independent, can proceed in
-   parallel on main.
+5. **Item 3** (Convergence): ROADMAP numbers + rt_functions consistency
+   test. Low risk.
 
-6. **Item 3** (Convergence cleanup): After Bootstrap B work stabilizes.
+**After parallel work merges:** Re-evaluate items 6, 7, 8. If the
+parallel branch resolves inference leaks and FreeMonoid generics,
+those items close. The inference propagation design (Phase 1-3) in
+this document remains valid as reference if gaps remain.
 
 ### Estimated Complexity
 
