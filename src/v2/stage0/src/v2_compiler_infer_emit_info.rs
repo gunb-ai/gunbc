@@ -593,17 +593,15 @@ fn build_disj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
     }
 }
 
-// V5: Container identity from data authority, not hardcoded name checks.
-// Derived from container template keys in extdeps/languages/*/emit.dag.
-const KEYED_CONTAINER_NAMES: &[&str] = &["Map", "PartialFunction"];
-const ELEMENT_CONTAINER_NAMES: &[&str] = &["List", "Set", "NonEmptyList", "NonEmptySet", "FreeMonoid"];
-
+// V5: Container identity from coercion data authority.
+// Derived from algebra inhabitants in dsl/extdeps/languages/*/types.dag:
+// arity-2 algebras → keyed containers, arity-1 algebras → element containers.
 pub fn is_known_keyed_container_name(name: &str) -> bool {
-    KEYED_CONTAINER_NAMES.contains(&name)
+    crate::v2_coercion::COERCION_KEYED_CONTAINER_NAMES.contains(&name)
 }
 
 pub fn is_known_element_container_name(name: &str) -> bool {
-    ELEMENT_CONTAINER_NAMES.contains(&name)
+    crate::v2_coercion::COERCION_ELEMENT_CONTAINER_NAMES.contains(&name)
 }
 
 pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String) -> Option<Rc<TypeSummary>> {
