@@ -525,9 +525,6 @@ read them. This tier is a prerequisite for early coercion implementation.
   `is_bridge_placeholder_type_name` now delegates to the structural set.
 - [ ] Derive T/K/V type parameter names from algebra type declarations
   instead of hardcoding. Requires accessor on algebra profile data.
-- [ ] Cache `bridge_placeholder_type_names()` result (currently rebuilds
-  on every call). Stage0 `thread_local!` pattern like
-  `builtin_function_registry`.
 
 *Tier 3 — full structural algebra (requires FF-9):*
 - [ ] FF-9: import-driven source resolution (compiler discovers

@@ -698,8 +698,8 @@ fn bridge_placeholder_type_names() -> Map<String, Bool> {
   )
 }
 
-fn is_bridge_placeholder_type_name(name: String) -> Bool {
-  match map_get(bridge_placeholder_type_names(), name) {
+fn is_bridge_placeholder(placeholder_names: Map<String, Bool>, name: String) -> Bool {
+  match map_get(placeholder_names, name) {
     Some { value: _ } => true
     None => false
   }
