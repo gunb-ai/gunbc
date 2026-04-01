@@ -176,6 +176,12 @@ pub struct ModuleContext {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct VariantFoldState {
+    pub locals: HashMap<String, Rc<TypeBinding>>,
+    pub warnings: Vec<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -4376,11 +4382,10 @@ pub fn build_module_context(
             <HashMap<_, _>>::new(),
             vec![],
         );
-        // Phase 2: explicitly imported enums overwrite ambient variants.
-        let all_variant_candidates = v2_rt::map_values(&env.bindings.clone())
+        let variant_fold = v2_rt::map_values(&env.bindings.clone())
             .iter().cloned().fold(
-                <HashMap<String, Rc<TypeBinding>>>::new(),
-                |acc: HashMap<String, Rc<TypeBinding>>, binding: Rc<TypeBinding>| {
+                VariantFoldState { locals: <HashMap<_, _>>::new(), warnings: vec![] },
+                |acc: VariantFoldState, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
                         let enum_name = binding.resolved.name.clone();
                         let curr_is_imported = resolved_imports.iter().any(|imp| {
@@ -4388,22 +4393,44 @@ pub fn build_module_context(
                         });
                         binding.resolved.clone().children.clone().iter().cloned().fold(
                             acc.clone(),
-                            |vacc: HashMap<String, Rc<TypeBinding>>, child: Rc<Node>| {
-                                match v2_rt::map_get(&vacc, child.name.clone()) {
-                                    Some(_prev) => {
-                                        // Ambiguous: only replace if current enum is imported.
+                            |vacc: VariantFoldState, child: Rc<Node>| {
+                                match v2_rt::map_get(&vacc.locals, child.name.clone()) {
+                                    Some(prev) => {
+                                        let prev_is_imported = resolved_imports.iter().any(|imp| {
+                                            imp.specific_names.iter().any(|n| *n == prev.resolved.name)
+                                        });
+                                        let next_warnings = if curr_is_imported && prev_is_imported {
+                                            let mut w = vacc.warnings.clone();
+                                            w.push(make_error_node(
+                                                Rc::new(CompilerDiagnostic::VariantCollisionWarning {
+                                                    variant: child.name.clone(),
+                                                    enum1: prev.resolved.name.clone(),
+                                                    enum2: binding.resolved.name.clone(),
+                                                    span: no_span(),
+                                                }),
+                                                module_name.clone(),
+                                            ));
+                                            w
+                                        } else { vacc.warnings.clone() };
                                         if curr_is_imported {
-                                            v2_rt::map_insert(vacc.clone(), child.name.clone(),
-                                                Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
-                                        } else { vacc.clone() }
+                                            VariantFoldState {
+                                                locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
+                                                    Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
+                                                warnings: next_warnings,
+                                            }
+                                        } else { VariantFoldState { locals: vacc.locals.clone(), warnings: next_warnings } }
                                     }
-                                    None => v2_rt::map_insert(vacc.clone(), child.name.clone(),
-                                        Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
+                                    None => VariantFoldState {
+                                        locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
+                                            Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
+                                        warnings: vacc.warnings.clone(),
+                                    }
                                 }
                             })
                     } else { acc.clone() }
                 });
-        let imported_variant_locals = all_variant_candidates;
+        let imported_variant_locals = variant_fold.locals.clone();
+        let variant_collision_warnings = variant_fold.warnings.clone();
         let env_variant_locals = variant_locals_from_items(
             local.resolved_items.clone(),
             imported_variant_locals.clone(),
@@ -4439,14 +4466,17 @@ pub fn build_module_context(
             locals: all_locals.clone(),
             item_registry: local.item_registry.clone(),
             diagnostics: v2_rt::concat(
-                {
-                    let mut __result = Vec::new();
-                    for c in local.diag_chunks.clone().iter().cloned() {
-                        __result.extend(c.clone());
-                    }
-                    __result
-                },
-                resolve_result.diagnostics.clone(),
+                v2_rt::concat(
+                    {
+                        let mut __result = Vec::new();
+                        for c in local.diag_chunks.clone().iter().cloned() {
+                            __result.extend(c.clone());
+                        }
+                        __result
+                    },
+                    resolve_result.diagnostics.clone(),
+                ),
+                variant_collision_warnings.clone(),
             ),
         })
     }

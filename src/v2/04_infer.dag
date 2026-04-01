@@ -40,7 +40,7 @@ import v2.std.core {
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError,
+  InternalError, VariantCollisionWarning,
   resource_use_name, resource_use_resource,
   kernel_type_set, is_kernel_type,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -164,6 +164,11 @@ type ModuleContext {
   locals: Map<String, TypeBinding>
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
+}
+
+type VariantFoldState {
+  locals: Map<String, TypeBinding>
+  warnings: List<ErrorNode>
 }
 
 type InferScope {
@@ -2498,32 +2503,39 @@ fn build_module_context(contributions: List<ItemContribution>,
   // Disambiguation: when a variant name appears in multiple enums (e.g. Rust
   // in both RenderTarget and CodegenBackend), prefer the enum explicitly named
   // in this module's imports over ambient std.types injection.
-  let imported_variant_locals = fold(env.bindings |> map_values, init: empty_map(), f: (acc, binding) =>
+  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), warnings: [] }, f: (acc, binding) =>
     let is_coproduct = binding.resolved.connective == Disj
     if is_coproduct {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-        match map_get(vacc, child.name) {
-          Some { value: _ } =>
+        match map_get(vacc.locals, child.name) {
+          Some { value: prev } =>
             // Ambiguous: only replace if current enum is explicitly imported.
-            // Avoids accessing prev.resolved.name (inference gap on bare Map value type).
             let curr_is_imported = resolved_imports |> any(imp =>
               imp.specific_names |> any(n => n == binding.resolved.name)
             )
+            let prev_is_imported = resolved_imports |> any(imp =>
+              imp.specific_names |> any(n => n == prev.resolved.name)
+            )
+            let next_warnings = if curr_is_imported && prev_is_imported {
+              list_push(vacc.warnings, make_error_node(diagnostic: VariantCollisionWarning { variant: child.name, enum1: prev.resolved.name, enum2: binding.resolved.name, span: no_span() }, module_name: module_name))
+            } else { vacc.warnings }
             if curr_is_imported {
-              map_insert(vacc, child.name, TypeBinding {
-                name: child.name,
-                resolved: binding.resolved
-              })
-            } else { vacc }
+              VariantFoldState {
+                locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),
+                warnings: next_warnings
+              }
+            } else { VariantFoldState { locals: vacc.locals, warnings: next_warnings } }
           None =>
-            map_insert(vacc, child.name, TypeBinding {
-              name: child.name,
-              resolved: binding.resolved
-            })
+            VariantFoldState {
+              locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),
+              warnings: vacc.warnings
+            }
         }
       )
     } else { acc }
   )
+  let imported_variant_locals = variant_fold.locals
+  let variant_collision_warnings = variant_fold.warnings
   let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals)
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
@@ -2552,7 +2564,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: merged_scope.svc_registry,
     locals: all_locals,
     item_registry: local.item_registry,
-    diagnostics: concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics)
+    diagnostics: concat(concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics), variant_collision_warnings)
   }
 }
 

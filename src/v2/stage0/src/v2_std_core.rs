@@ -1770,6 +1770,12 @@ pub enum CompilerDiagnostic {
         consumers: i64,
         span: Rc<SourceSpan>,
     },
+    VariantCollisionWarning {
+        variant: String,
+        enum1: String,
+        enum2: String,
+        span: Rc<SourceSpan>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1799,6 +1805,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ParseError { span, .. } => span.clone(),
         CompilerDiagnostic::InternalError { span, .. } => span.clone(),
         CompilerDiagnostic::OwnershipWarning { span, .. } => span.clone(),
+        CompilerDiagnostic::VariantCollisionWarning { span, .. } => span.clone(),
     }
 }
 
@@ -1864,11 +1871,24 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             "ownership: binding '{}' in '{}' has {} consumers",
             binding, fn_name, consumers
         ),
+        CompilerDiagnostic::VariantCollisionWarning {
+            variant,
+            enum1,
+            enum2,
+            ..
+        } => format!(
+            "variant '{}' appears in both '{}' and '{}'",
+            variant, enum1, enum2
+        ),
     }
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    !matches!(&*d, CompilerDiagnostic::OwnershipWarning { .. })
+    !matches!(
+        &*d,
+        CompilerDiagnostic::OwnershipWarning { .. }
+            | CompilerDiagnostic::VariantCollisionWarning { .. }
+    )
 }
 
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
