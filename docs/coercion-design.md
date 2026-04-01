@@ -57,29 +57,100 @@ algebra field → law assertion. Hand-written tests reserved for exceptional cas
 
 ---
 
-## Remaining Open Questions
+## Resolved Questions (cont.)
 
-**OQ-1: Law metadata in std/algebra.dag.**
-The test generation algorithm requires each algebra to declare its laws explicitly
-(e.g., `is_associative`, `has_identity`, `is_commutative`). Currently
-`std/algebra.dag` declares operations but not law metadata. What is the minimal
-law annotation surface needed to auto-generate correct positive tests?
+**RQ-9 (was OQ-1): Law metadata in std/algebra.dag.**
+Resolved: the laws are not metadata — they ARE the algebras. The current
+`std/algebra.dag` declares operations as fields and laws as comments. This
+inverts the priority. The faithful model: an algebra is defined BY its axioms;
+operations are what you need to witness the laws. The resolution:
+- Each algebra in `std/algebra.dag` gets a companion law declaration using
+  the existing `data` construct (no new language features):
+  `data monoid_laws: List<AlgebraLaw> = [...]`
+- Laws are first-class `.dag` data: `{ name: "associativity", forall: ["a","b","c"], ... }`
+- Test generation reads law data, not comments. An `InhabitantDecl` without
+  corresponding law verification is an unproven claim.
+- Operations remain as type fields (they are what laws quantify over), but
+  laws are the defining content that gives the algebra its identity.
 
-**OQ-2: TypeRendering variant coverage.**
-The roadmap's E0c defines `TypeRendering` variants (`PrimitiveRendering`,
-`ContainerRendering`, `MapRendering`, etc.). Does the set of `InhabitantDecl`
-entries in a language file need to cover every `TypeRendering` variant, or can
-some variants be structurally derived without an explicit inhabitant?
+**RQ-10 (was OQ-2): TypeRendering variant coverage.**
+Resolved: coverage follows from the grounding fact. TypeRendering variants
+backed by algebraic facts (FreeMonoid, PartialFunction, BooleanAlgebra) need
+explicit `InhabitantDecl` entries — the algebraic fact is what validates the
+coercion. Variants that are structural (Product, Coproduct, Tuple) are derived
+from the type definition itself — the structural fact IS the definition.
+Callables and optionals are per-language rendering data. No gap exists:
+
+| TypeRendering variant | Grounding fact | Coercion source |
+|---|---|---|
+| `PrimitiveRendering` | TypeCheckpoint declaration | Checkpoint lookup |
+| `ContainerRendering` | Algebra axioms (FreeMonoid) | InhabitantDecl |
+| `MapRendering` | Algebra axioms (PartialFunction) | InhabitantDecl |
+| `SetRendering` | Algebra axioms (BooleanAlgebra) | InhabitantDecl |
+| `ProductRendering` | Type definition (struct) | Structural recursion |
+| `CoproductRendering` | Type definition (enum) | Structural recursion |
+| `CallableRendering` | CallableRepr data | Per-language rendering |
+| `OptionalRendering` | Cardinality annotation | Per-language template |
+| `TupleRendering` | Type definition (anonymous product) | Structural recursion |
+
+---
+
+## Chief Invariant: Faithful Fact Modeling
+
+Every construct in this system derives its identity and validity from an
+agreed-upon external fact — an algebraic axiom, a language specification,
+a standard, a set-theoretic definition. If a construct is not grounded in
+a fact, it is not a valid authority for this codebase.
+
+This is the foundational principle. Everything else follows from it:
+
+**Algebras are their axioms.** `Monoid` is not a name — it's the axiom set
+{associativity, left identity, right identity}. Two structures satisfying
+the same axioms ARE the same algebra regardless of naming. `std/algebra.dag`
+formalizes the intersubjective mathematical framework that programmers rely
+on (list append is associative, empty list is the identity) but never
+declare literally. The `.dag` project makes these implicit agreements explicit.
+
+**Inhabitant declarations are theorem statements.** When `rust/types.dag`
+declares that `Vec<T>` inhabits `FreeMonoid<T>`, that is a claim that
+`Vec<T>` satisfies the FreeMonoid axioms (associative concatenation, identity
+element, length homomorphism). The generated tests are the proof. An
+inhabitant declaration without law verification is an unproven theorem.
+
+**Fail-closed is epistemologically necessary.** If no inhabitant is declared,
+we don't have a fact grounding the coercion. Emitting code anyway would be
+making a factual claim (this type works here) without evidence. Silent
+fallback isn't just dangerous — it's intellectually dishonest.
+
+**Coercion validity is grounded in shared algebraic structure.** Rust's
+`Vec<i64>` and Python's `list[int]` are interoperable because they both
+inhabit `FreeMonoid<OrderedRing>`. The shared fact (the algebra) is what
+makes cross-language serialization correct. JSON works as a universal
+serialization format because it represents the algebraic structure directly.
+
+**The string identity problem is a faithfulness problem.** The real identity
+of `OrderedRing` is its axiom set, not the string "OrderedRing". M4/Lane 1's
+goal of replacing string keys with declaration edges is really about ensuring
+that identity flows from facts (the axioms at that declaration site) rather
+than from names (which are arbitrary labels for human convenience).
+
+**Dependency on external facts is the starting point, not an afterthought.**
+Every new construct should begin by identifying the fact it models. For
+type coercion: the facts are algebraic axioms (from mathematics), type
+system specifications (from language references), and structural definitions
+(from `.dag` type declarations). The design is trustworthy exactly to the
+degree that these facts are faithfully represented.
 
 ---
 
 ## Core Thesis
 
-Type rendering is coercion. The compiler walks a .dag type composition tree
-and sidecasts to the target language's type at the first level the language
-declares an inhabitant for. Each language declares its algebra inhabitants
-as .dag extdep data. The compiler sidecasts mechanically. Fail-loud when
-no inhabitant exists.
+Type rendering is coercion grounded in algebraic facts. The compiler walks
+a `.dag` type composition tree and sidecasts to the target language's type
+at the first level the language declares a fact-backed inhabitant for. Each
+inhabitant declaration is a theorem: "this target type satisfies these
+algebra axioms." The compiler sidecasts mechanically. Tests verify the
+theorems. Fail-loud when no fact exists.
 
 **Scope of this design:** This covers the type-coercion slice of language
 backends. The full backend still requires `LanguageSpec` (statement terminators,
