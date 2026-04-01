@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 225 | 0 | 27 root functions → 225 errors (ratcheted); descent witnesses (ExprMatch, skip, first, field access), SCC witness check, and reordered branching classification reduced from 311; remaining: parser SCC (60), emit block SCC (101), branching (13), scattered (51) |
+| Complexity violations | 0 | 0 | Resolved: 311→0 via generalized descent witnesses (generic function-call propagation, nested pattern bindings, let-value param detection), SCC identity-pass + strict-descent check, reordered branching classification |
 
 ---
 
@@ -1235,7 +1235,7 @@ the first level the language recognizes.
 | Self-compile diagnostics | 310 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 310 are indirect-recursion complexity violations) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 310 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 310; resolves when fold primitive lands) |
+| Complexity violations | 0 | 0 | `strict_complexity_violation_count -- --ignored` (resolved: generalized descent witnesses eliminate all termination violations) |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |

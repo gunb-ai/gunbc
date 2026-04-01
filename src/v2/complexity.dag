@@ -1960,6 +1960,18 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
   }
 }
 
+fn add_pattern_witnesses(acc: Map<String, String>, pattern: MatchPattern, source_param: String) -> Map<String, String> {
+  match pattern {
+    Bind { name: binding_name } =>
+      map_insert(acc, binding_name, source_param)
+    VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+      bindings |> fold(init: acc, f: (inner, fb) =>
+        add_pattern_witnesses(acc: inner, pattern: field_binding_pattern(n: fb), source_param: source_param)
+      )
+    _ => acc
+  }
+}
+
 fn collect_descending_witness_names(body: Node, descending_witness_names: Map<String, String>) -> Map<String, String> {
   match body.expr_data {
     ExprLet =>
@@ -1989,19 +2001,7 @@ fn collect_descending_witness_names(body: Node, descending_witness_names: Map<St
       match_arm_nodes(texpr: body) |> fold(init: descending_witness_names, f: (acc, arm_node) =>
         let arm_witnesses = match scrut_source {
           Some { value: source_param } =>
-            match arm_pattern(n: arm_node) {
-              VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
-                bindings |> fold(init: acc, f: (inner, fb) =>
-                  match field_binding_pattern(n: fb) {
-                    Bind { name: binding_name } =>
-                      map_insert(inner, binding_name, source_param)
-                    _ => inner
-                  }
-                )
-              Bind { name: binding_name } =>
-                map_insert(acc, binding_name, source_param)
-              _ => acc
-            }
+            add_pattern_witnesses(acc: acc, pattern: arm_pattern(n: arm_node), source_param: source_param)
           None => acc
         }
         collect_descending_witness_names(body: arm_body(n: arm_node), descending_witness_names: arm_witnesses)

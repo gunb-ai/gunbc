@@ -2050,6 +2050,28 @@ pub fn expr_descending_witness_source(
     }
 }
 
+pub fn add_pattern_witnesses(
+    acc: Rc<HashMap<String, String>>,
+    pattern: Rc<crate::v2_std_core::MatchPattern>,
+    source_param: String,
+) -> Rc<HashMap<String, String>> {
+    match &*pattern {
+        crate::v2_std_core::MatchPattern::Bind { name } => {
+            Rc::new(v2_rt::map_insert((*acc).clone(), name.clone(), source_param.clone()))
+        }
+        crate::v2_std_core::MatchPattern::VariantPattern { name: _, parent_enum: _, field_bindings } => {
+            Rc::new(field_bindings.iter().cloned().fold((*acc).clone(), |inner, fb| {
+                (*add_pattern_witnesses(
+                    Rc::new(inner),
+                    field_binding_pattern(fb.clone()),
+                    source_param.clone(),
+                )).clone()
+            }))
+        }
+        _ => acc,
+    }
+}
+
 pub fn collect_descending_witness_names(
     body: Rc<Node>,
     descending_witness_names: Rc<HashMap<String, String>>,
@@ -2099,22 +2121,15 @@ pub fn collect_descending_witness_names(
             );
             let arms = match_arm_nodes(body.clone());
             Rc::new(arms.iter().cloned().fold((*descending_witness_names).clone(), |acc, arm_node| {
-                let mut arm_witnesses = acc.clone();
-                if let Some(ref source_param) = scrut_source {
-                    match (*arm_pattern(arm_node.clone())).clone() {
-                        crate::v2_std_core::MatchPattern::VariantPattern { field_bindings: bindings, .. } => {
-                            for fb in bindings.iter().cloned() {
-                                if let crate::v2_std_core::MatchPattern::Bind { name: binding_name } = (*field_binding_pattern(fb.clone())).clone() {
-                                    arm_witnesses = v2_rt::map_insert(arm_witnesses, binding_name, source_param.clone());
-                                }
-                            }
-                        }
-                        crate::v2_std_core::MatchPattern::Bind { name: binding_name } => {
-                            arm_witnesses = v2_rt::map_insert(arm_witnesses, binding_name, source_param.clone());
-                        }
-                        _ => {}
-                    }
-                }
+                let arm_witnesses = if let Some(ref source_param) = scrut_source {
+                    (*add_pattern_witnesses(
+                        Rc::new(acc.clone()),
+                        arm_pattern(arm_node.clone()),
+                        source_param.clone(),
+                    )).clone()
+                } else {
+                    acc.clone()
+                };
                 (*collect_descending_witness_names(
                     arm_body(arm_node.clone()),
                     Rc::new(arm_witnesses),
@@ -2245,12 +2260,21 @@ pub fn self_calls_have_descending_witness(
                 });
                 let witness_ok = arg_nodes.iter().cloned().enumerate().any(|(idx, arg_node)| {
                     match recursive_param_name_for_arg(idx as i64, arg_node.clone(), params.clone()) {
-                        Some(param_name) => is_descending_witness_arg(
-                            arg_value(arg_node.clone()),
-                            func_name.clone(),
-                            param_name.clone(),
-                            descending_witness_names.clone(),
-                        ),
+                        Some(param_name) => {
+                            let r = is_descending_witness_arg(
+                                arg_value(arg_node.clone()),
+                                func_name.clone(),
+                                param_name.clone(),
+                                descending_witness_names.clone(),
+                            );
+                            if func_name == "fib_like" {
+                                let val = arg_value(arg_node.clone());
+                                eprintln!("  fib arg idx={} param={} expr={:?} witness_src={:?} result={}",
+                                    idx, param_name, &*val.expr_data,
+                                    expr_descending_witness_source(val.clone(), descending_witness_names.clone()), r);
+                            }
+                            r
+                        },
                         None => false,
                     }
                 });
@@ -2372,12 +2396,15 @@ pub fn classify_recursion_pattern(
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
-    } else if self_calls_have_descending_witness(
+    } else if {
+        let w = self_calls_have_descending_witness(
             body.clone(),
             func_name.clone(),
             params.clone(),
             descending_witness_names.clone(),
-        )
+        );
+        if func_name == "fib_like" { eprintln!("DEBUG fib_like: path={}, witness={}", path_calls, w); }
+        w }
         || self_calls_have_strict_parser_progress(
             func_name.clone(),
             body.clone(),
