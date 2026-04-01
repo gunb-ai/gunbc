@@ -265,7 +265,12 @@ fn stage0_compile_accepts_dag_target() {
 //   - Emit: bare container fallback to contextual accumulator type
 //   - receiver_is_map extended for bare Map{} (0 children)
 //   Remaining 12: 8 E0425 (cross-module import, pre-existing), 4 E0282 (Map<K,List<Unit>> fold)
-const EMITTED_RUST_ERROR_RATCHET: usize = 12;
+// 2026-04-01: 12 → 5 via invariant review fixes:
+//   - 7 E0425 resolved: added algebra template function imports to 04_types.dag
+//     (partial_function_templates, free_monoid_collection_templates, etc.)
+//   - EmitGraphInfo.type_params added to 04_emit_info.dag (was stage0-only)
+//   Remaining 5: 1 E0425 (field_access_base), 4 E0282 (Map<K,List<Unit>> fold)
+const EMITTED_RUST_ERROR_RATCHET: usize = 5;
 
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check

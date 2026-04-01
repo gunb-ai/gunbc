@@ -26,7 +26,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 12 errors | 0 | Down from 8658→99→12. TypeRendering + always-annotate-let + inference fixes. PR #277. Two independent categories remaining (8 imports + 4 inference) |
+| Bootstrap emitted Rust (B) | 5 errors | 0 | Down from 8658→99→12→5. Algebra imports fixed, EmitGraphInfo.type_params synced. Remaining: 1 E0425 (field_access_base) + 4 E0282 (bidirectional inference) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -36,25 +36,24 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
-## Active: Bootstrap B → 0 (12 errors remaining)
+## Active: Bootstrap B → 0 (5 errors remaining)
 
 TypeRendering infrastructure landed. Always-annotate let bindings
 enforced. 10 reviewer violations resolved. Fold inference improved.
-Error count: 99 → 12 (87 fixed). PR #277.
+Error count: 99 → 12 → 5 (94 fixed). PR #277.
 
-**Remaining 12 errors (2 independent categories):**
+**Remaining 5 errors (2 independent categories):**
 
-### Category A: Cross-module imports (8 E0425) — separate branch
+### Category A: Cross-module imports (8 → 1 E0425) — mostly fixed
 
-Functions from `dsl/std/algebra.dag` (e.g., `partial_function_templates`,
-`free_monoid_collection_templates`) used in `04_types.dag` and
-`complexity.dag` but not in the emitted import lists. Previously
-masked by `compile_error!` sentinels; revealed when fold inference
-fixes resolved the sentinels. Same pattern as TestConventions/Token
-fix: add functions to `.dag` import statements + stage0 `pub use`.
+7 of 8 E0425 resolved: algebra template function imports added to
+`04_types.dag` (`partial_function_templates`, `free_monoid_collection_templates`,
+`free_monoid_scalar_templates`, `boolean_algebra_collection_templates`,
+`boolean_algebra_templates`, `approximate_field_templates`,
+`ordered_ring_templates`). `EmitGraphInfo.type_params` added to
+`04_emit_info.dag` (was stage0-only, violating No duplicate representations).
 
-Files: `src/v2/04_types.dag`, `src/v2/complexity.dag`, and their
-stage0 counterparts. No overlap with Category B.
+Remaining 1 E0425: `field_access_base` — separate import fix needed.
 
 ### Category B: Nested collection bidirectional inference (4 E0282) — separate branch
 

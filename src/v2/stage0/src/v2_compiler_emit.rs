@@ -1349,10 +1349,17 @@ pub fn emit_callable_type(param_str: String, return_str: String, target: RenderT
     }
 }
 
+/// Deprecated: use build_type_rendering + render_type instead.
+/// This function inspects raw Node trees for type rendering; the TypeRendering
+/// path (render_type) is the single authority per E0c. Remaining call sites
+/// should migrate to TypeRendering. Deletion point: when all type-position
+/// call sites in emit/emit_rust use build_type_rendering + render_type.
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
     emit_node_type_rc(n.clone(), target.clone(), <HashMap<_, _>>::new())
 }
 
+/// Deprecated: use build_type_rendering + render_type instead.
+/// See emit_node_type deprecation note.
 pub fn emit_node_type_rc(
     n: Rc<Node>,
     target: RenderTarget,

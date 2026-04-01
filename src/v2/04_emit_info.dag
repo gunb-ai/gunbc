@@ -85,6 +85,10 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keyed by variant name → true if variant has children.
   fielded_variants: Map<String, Bool>
+  // Maps type names to their generic parameter names (e.g. "FreeMonoid" → ["T"]).
+  // Used by build_type_rendering to recover generic params for self-referential
+  // field types where the resolved Node carries a bare name without type arguments.
+  type_params: Map<String, List<String>>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -122,7 +126,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
-    fielded_variants: empty_map()
+    fielded_variants: empty_map(),
+    type_params: empty_map()
   }
 }
 

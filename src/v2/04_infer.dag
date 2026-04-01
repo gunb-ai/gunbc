@@ -2832,10 +2832,19 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     map_merge(acc, m.type_env.recursive_type_set)
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
+  let type_params = modules |> fold(init: empty_map(), f: (acc, m) =>
+    m.items |> fold(init: acc, f: (inner, item) =>
+      if item.params |> count > 0 {
+        let param_names = item.params |> map(p => param_node_name(n: p))
+        map_insert(inner, item.name, param_names)
+      } else { inner }
+    )
+  )
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
-    fielded_variants: fielded
+    fielded_variants: fielded,
+    type_params: type_params
   }
 }
 
