@@ -166,16 +166,6 @@ data rust_callable: CallableRepr = CallableRepr {
 // =========================================================================
 
 
-// =========================================================================
-// Structural coercion (derives)
-// =========================================================================
-
-data rust_struct_derives: List<String> = ["Debug", "Clone", "PartialEq", "Serialize", "Deserialize"]
-data rust_struct_derives_copy: List<String> = ["Debug", "Clone", "Copy", "PartialEq", "Serialize", "Deserialize"]
-data rust_enum_derives: List<String> = ["Debug", "Clone", "PartialEq", "Serialize", "Deserialize"]
-data rust_enum_derives_copy: List<String> = ["Debug", "Clone", "Copy", "PartialEq", "Serialize", "Deserialize"]
-data rust_fn_field_excluded_derives: List<String> = ["PartialEq", "Debug"]
-
 
 // =========================================================================
 // Test generation
