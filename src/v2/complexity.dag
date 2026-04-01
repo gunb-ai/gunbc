@@ -16,6 +16,7 @@ module v2.compiler.complexity
 
 import std.types { SourceSpan }
 import v2.compiler.infer_env { RecursiveVariantFieldWitness }
+import v2.compiler.emit { to_string }
 import v2.compiler.parse {
   ParserResultWitness,
   ParserWitnessAdvance, ParserWitnessExpect, ParserWitnessEat, ParserWitnessCall, ParserWitnessOpaque,
@@ -26,8 +27,8 @@ import v2.std.core {
   Node,
   ExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprBinOp, ExprUnaryOp, BinOpKind, Sub, Div,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn, ExprLambda,
+  ExprBinOp, ExprUnaryOp, BinOp, Sub, Div,
+  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn,
   MatchPattern, Bind, VariantPattern,
   field_init_node_name, field_init_node_value,
   arg_name, arg_value, arm_body, arm_guard, arm_pattern,
@@ -40,7 +41,8 @@ import v2.std.core {
   let_value, let_body, let_binding_name,
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
-  expr_call_func, expr_var_name, field_access_field
+  expr_call_func, expr_var_name, field_access_field,
+  LiteralValue, LitNull
 }
 
 // =========================================================================
@@ -1447,8 +1449,10 @@ fn structural_match_param_name(body: Node) -> String? {
 
     ExprBlock =>
       let stmts = body.children
-      if stmts |> count == 0 { none }
-      else { structural_match_param_name(body: stmts |> last) }
+      match stmts |> last {
+        Some { value: last_stmt } => structural_match_param_name(body: last_stmt)
+        None => none
+      }
 
     _ => none
   }
@@ -1630,7 +1634,10 @@ fn is_structural_descent_with_param(body: Node, func_name: String, structural_pa
         )
         if prefix_calls > 0 { false }
         else {
-          is_structural_descent_with_param(body: stmts |> last, func_name: func_name, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields)
+          match stmts |> last {
+            Some { value: last_stmt } => is_structural_descent_with_param(body: last_stmt, func_name: func_name, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields)
+            None => false
+          }
         }
       }
 
@@ -1754,7 +1761,10 @@ fn is_scc_structural_descent_with_param(body: Node, structural_param: Structural
         )
         if prefix_calls > 0 { false }
         else {
-          is_scc_structural_descent_with_param(body: stmts |> last, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields, scc_name_set: scc_name_set, scc_structural_params: scc_structural_params)
+          match stmts |> last {
+            Some { value: last_stmt } => is_scc_structural_descent_with_param(body: last_stmt, structural_param: structural_param, recursive_variant_fields: recursive_variant_fields, scc_name_set: scc_name_set, scc_structural_params: scc_structural_params)
+            None => false
+          }
         }
       }
 
@@ -1903,11 +1913,10 @@ fn recursive_measure_param_names(body: Node, params: List<Node>) -> Map<String, 
         Some { value: eb } => recursive_measure_param_names(body: eb, params: params)
         None => empty_map()
       }
-      map_merge(
+      map_merge(map_merge(
         condition_param_names(expr: if_condition(texpr: body), param_set: param_set),
-        then_names,
-        else_names
-      )
+        then_names),
+        else_names)
     ExprMatch =>
       let scrut_names = condition_param_names(expr: match_scrutinee(texpr: body), param_set: param_set)
       let arm_names = match_arm_nodes(texpr: body) |> fold(init: empty_map(), f: (acc, arm_node) =>
@@ -2029,7 +2038,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
   } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
   } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
-    || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx)
+    || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
     {
     // path_calls == 1, not structural descent, but at least one
     // self-call arg is param - expr or param / expr. Proven descent.
@@ -2076,7 +2085,7 @@ fn bounded_scc_cost(pattern: RecursionPattern, raw_cost: CostExpr, members: List
     LinearRecursion { iteration_var: var } =>
       CostSum { binder: var, upper: SizeVar { name: var }, body: per_iter }
     DivideAndConquer { split_factor: k } =>
-      CostUnknown { reason: concat("branching mutual recursion (", k, " self-calls) in ", scc_label(members: members)) }
+      CostUnknown { reason: concat("branching mutual recursion (", to_string(n: k), " self-calls) in ", scc_label(members: members)) }
     UnresolvableRecursion { reason: r } =>
       CostUnknown { reason: r }
   }

@@ -18,15 +18,15 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 
 | Metric | Value | Target | Notes |
 |--------|-------|--------|-------|
-| .dag files | 90 | — | `dsl/` (+3 transport extdeps) |
+| .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
-| `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
+| `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 419 errors | 0 | Down from 8658. Remaining: CodegenBackend import (192), algebra fn-field derives (71), downstream (114), misc (42) |
+| Bootstrap emitted Rust (B) | 101 errors | 0 | Down from 8658→419→367→0→101 (merge regression). Type annotations (73), mismatched types (17), Callable scope (9), other (2) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
-| L1 ratchet | 22 | 0 | Down from 70; #253 landed structural algebra authority; 22 after review fixes |
+| L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
@@ -85,6 +85,31 @@ M1 (every .dag compiles)
              └→ M6 (parse-emit symmetry)
                  └→ M7 (dissolve structural bridges)
 ```
+
+---
+
+## Design Direction: .dag Model Convergence
+
+Post-bootstrap priority. The .dag model must converge to a minimal,
+non-overlapping set of files where each concept traces to an external
+authority (spec, standard, Wikipedia article).
+
+**Current violations:**
+
+| Concept | Duplicated in | Authority | Fix |
+|---------|--------------|-----------|-----|
+| BinOp / BinOpKind | `std/syntax.dag`, `00_core.dag` | Ring theory (arithmetic), total order (comparison), Boolean algebra (logic) | Unify; dissolve into `std/algebra.dag` operations |
+| LiteralKind / LiteralValue | `std/syntax.dag`, `00_core.dag` | Grammar (keyword literals) vs IR (all literal forms) | Keep both — different concepts. LiteralKind = grammar subset |
+| ItemForm, OperatorSpec, SyntaxSpec | `std/syntax.dag`, `languages.dag` | Language grammar (BNF) | **FIXED**: `languages.dag` imports from `std.syntax` |
+| NullCoalesce | `00_core.dag` as BinOpKind | Language design choice | Stays in syntax — not algebra |
+
+**Principle:** foundational `.dag` files (algebra, syntax, types) should
+be referenceable to external authorities — specs, standards, Wikipedia.
+At this level, concepts should be standard and agreed-upon. Higher up,
+users have their own domain models (boutique/application-level) that
+interact with the standard language infrastructure. The boundary matters:
+if a concept belongs to a standard, it should trace to one. If it's
+user-owned domain logic, it lives in user `.dag` files.
 
 ---
 
@@ -233,6 +258,64 @@ Acceptance criteria:
 - [ ] `rc_types` authority derived from ValueContext (is_constant →
   no wrap) instead of heuristic type_summary scan
 
+*Type rendering boundary (E0c — resolution→emit type parameterization):*
+
+The resolution→emit boundary doesn't carry type parameterization for
+resolved generic types. `emit_node_type_rc` dispatches on structural
+shape (connective, children count, params count) which is ambiguous —
+a named Conj could be a struct definition, a resolved alias, or a
+self-referential field type. Emit compensates with name-based fallbacks
+that silently produce wrong output for any type not in a hardcoded list.
+
+Evidence: `FreeMonoid<T>` field `empty: FreeMonoid<T>` emits as
+`Rc<FreeMonoid>` (missing `<T>`). Resolution expands the alias to a
+structural Conj, stripping type params. Container templates exist
+(`"free_monoid": "Vec<{0}>"`) but dispatch never reaches them. This
+class of bug would silently affect every new backend.
+
+Six escape hatches in the type rendering pipeline:
+
+| Escape hatch | What it fabricates | Structural fix |
+|---|---|---|
+| `emit_node_type_conj_rc` named catch-all | Bare type name for generic Conj (e.g. `FreeMonoid` without `<T>`) | `TypeRendering` descriptor — Conj nodes carry rendering intent |
+| `emit_node_type_leaf_rc` bare name | Unrecognized type name emitted literally | Fail-closed: `compile_error!` for types without rendering annotation |
+| `emit_primitive_type` pass-through | Any name not in type map emitted as-is | Exhaustive type map or fail-closed on miss |
+| `rt_type` → `unit_type` on inference failure | `()` for unresolved field types | Fail-closed: emit refuses error-typed fields |
+| `_` placeholders in bare containers | `Vec<_>` / `HashMap<_, _>` (invalid in struct fields) | Complete type params from resolution, not placeholders |
+| No type-ref vs type-def distinction | Resolution-expanded Conj treated as type reference | `TypeRendering` or nominal references for field types |
+
+Proposed fix: `TypeRendering` descriptor precomputed at the
+resolution→emit boundary, parallel to `ValueContext`:
+
+```
+type TypeRendering
+  = PrimitiveRendering { rust_name: String }
+  | ContainerRendering { template_key: String, args: List<TypeRendering> }
+  | MapRendering { key: TypeRendering, value: TypeRendering }
+  | ProductRendering { name: String, type_params: List<String> }
+  | CoproductRendering { name: String, type_params: List<String> }
+  | CallableRendering { params: List<TypeRendering>, return_type: TypeRendering }
+  | OptionalRendering { inner: TypeRendering }
+  | TupleRendering { elements: List<TypeRendering> }
+```
+
+Emit becomes a trivial match on `TypeRendering × LanguageSpec`. No
+heuristics, no name checking, no connective inspection. Each variant
+is unambiguous. Adding a backend means adding one rendering function
+per variant — no discovery of how resolution shapes nodes. The
+container template system already has the data; `TypeRendering` is the
+structural routing that connects resolved types to templates.
+
+Acceptance:
+- [ ] `TypeRendering` type defined in `04_emit_info.dag`
+- [ ] `build_type_rendering(n: Node, type_env: TypeEnv) -> TypeRendering`
+  precomputed for every field type and function return type
+- [ ] `emit_node_type_rc` replaced by `emit_type_rendering(tr: TypeRendering, target, rc_types)`
+  — trivial match, no `node_is_collection` / `emit_primitive_type` fallbacks
+- [ ] `emit_primitive_type` deleted or made fail-closed (no pass-through)
+- [ ] `rt_type` returns `TypeRendering | RenderError` not `Node | unit_type`
+- [ ] Adding SPICE/English target requires zero changes to type rendering dispatch
+
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
 - [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
@@ -240,6 +323,50 @@ Acceptance criteria:
 - [ ] Bootstrap C: regenerate stage0 with `regenerate-stage0.sh`
 - [ ] Bootstrap D: owned bootstrap entrypoint in repo
 - [ ] CI-verified regeneration (regenerate + diff = empty)
+
+*Boundary sufficiency / zero guess paths (M2 hardening):*
+
+Gate stronger than "Bootstrap B = 0": no correctness-affecting fallback
+remains on the bootstrap-critical path. The resolution→emit boundary
+must carry enough structure for emit to be a pure translation — every
+place emit guesses from names or shape is a place a new backend can
+silently go wrong.
+
+Three blocker classes:
+
+1. **Fabricated parameterization** — parameterized types reaching infer
+   without bound children. `algebra_child_or_placeholder` and
+   `map_key_type_in_env` are fail-closed (return `error_type`/`none`)
+   but should be deleted behind a normalization/resolve gate. Bare
+   `Map` without `<K,V>` is the canonical case.
+   - [x] Fallbacks converted to fail-closed (`error_type` not `string_type`)
+   - [ ] Incomplete parameterized types rejected at normalization, not infer
+   - [ ] `algebra_child_or_placeholder` error_type fallback deleted
+
+2. **Inference propagation** — expected types not flowing far enough.
+   `resolve_builtin_call_type` → `unit_type`, fold accumulators
+   under-resolved, higher-order method templates collapse callable
+   structure into `ReceiverSelf`.
+   - [x] `expected` parameter threaded to `infer_expr` (41 sites)
+   - [x] ExprLambda uses `expected` for param typing
+   - [ ] Thread `expected` to all formal params, not just callable ones
+   - [ ] Refine fold accumulators structurally via `is_fully_resolved`
+   - [ ] Model higher-order signatures explicitly for `sort_by`/`fold`
+
+3. **Structural ownership and identity** — variant constructors must
+   use structural resolved facts, not name-based stand-ins. Variant
+   suffix scanning is M2 correctness with M4 deletion trigger: fix
+   now by carrying explicit owner facts, let M4 identity dissolution
+   remove remaining surface area.
+   - [x] Variant lookup is structural (not suffix scanning)
+   - [x] `emit_field_value_with_context` Rc-wraps record fields correctly
+   - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
+
+Acceptance: no fabricated type args for parameterized types, no
+generic/wrong fallback return types when extraction fails, no
+suffix/name scans to recover ownership, no raw-node guessing in type
+rendering once E0c lands. Fallback count promoted into CI alongside
+existing emitted-Rust/bootstrap fixed-point gates.
 
 *User experience:*
 - [x] `dsl/examples/weather/` committed example project
@@ -875,10 +1002,10 @@ compatibility, and language rendering.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 315 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 315 are indirect-recursion complexity violations) |
+| Self-compile diagnostics | 310 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 310 are indirect-recursion complexity violations) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
-| L1 type knowledge | 22 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 315; resolves when fold primitive lands) |
+| L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
+| Complexity violations | 310 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 310; resolves when fold primitive lands) |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
@@ -887,10 +1014,11 @@ compatibility, and language rendering.
 
 | Gate | Command |
 |------|---------|
-| Unit tests | `cargo test --workspace --exclude v2-compiler-tests` |
-| Clippy | `cargo clippy --all-targets -- -D warnings` |
+| Clippy | `cargo clippy --workspace -- -D warnings` |
 | V2 compiler tests | `cargo test -p v2-compiler-tests` |
-| Scrambled-name | `cargo test -p v2-compiler-tests scrambled_name` |
+| Full DSL compiles | `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored` |
+| Diagnostic ratchet | `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored` |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` |
 
 ### Required Before Merge (Tier 3)
 

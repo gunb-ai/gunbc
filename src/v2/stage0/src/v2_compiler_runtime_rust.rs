@@ -118,7 +118,7 @@ pub fn rt_string_ops() -> String {
 }
 
 pub fn rt_collection_ops() -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
 ".to_string(), "    table.get(&key).cloned()
 ".to_string()), "}
 
@@ -158,6 +158,14 @@ pub fn rt_collection_ops() -> String {
 
 ".to_string()), "pub fn map_has<V>(m: &HashMap<String, V>, key: String) -> bool {
 ".to_string()), "    m.contains_key(&key)
+".to_string()), "}
+
+".to_string()), "pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
+".to_string()), "    let mut v = (*list).clone(); v.reverse(); Rc::new(v)
+".to_string()), "}
+
+".to_string()), "pub fn replace(s: String, from: String, to: String) -> String {
+".to_string()), "    s.replace(&from, &to)
 ".to_string()), "}
 
 ".to_string())

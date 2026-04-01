@@ -12,13 +12,15 @@ module v2.compiler.infer_types
 import std.types { SourceSpan }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
-  BooleanAlgebraProfile, FreeMonoidScalarProfile,
+  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
+  FreeMonoidScalarProfile,
   FreeMonoidCollectionProfile, PartialFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
   ordered_ring_templates, approximate_field_templates, boolean_algebra_templates,
+  boolean_algebra_collection_templates,
   free_monoid_scalar_templates, free_monoid_collection_templates,
   partial_function_templates
 }
@@ -31,7 +33,7 @@ import v2.std.core {
   make_expr_node, make_expr_error_node,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   is_kernel_type,
-  BinOpKind, BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
+  BinOp, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   InferredNode, Resolved, CompilerError, TypeVariable, rt_node, has_inferred, is_compiler_error,
   NodeType, Typed, InferError, InferVariable, Untyped,
   leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
@@ -198,12 +200,13 @@ fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Node) -> Node
 
 fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
   match profile {
-    OrderedRingProfile => ordered_ring_templates
-    ApproximateFieldProfile => approximate_field_templates
-    BooleanAlgebraProfile => boolean_algebra_templates
-    FreeMonoidScalarProfile => free_monoid_scalar_templates
-    FreeMonoidCollectionProfile => free_monoid_collection_templates
-    PartialFunctionProfile => partial_function_templates
+    OrderedRingProfile => ordered_ring_templates()
+    ApproximateFieldProfile => approximate_field_templates()
+    BooleanAlgebraProfile => boolean_algebra_templates()
+    BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates()
+    FreeMonoidScalarProfile => free_monoid_scalar_templates()
+    FreeMonoidCollectionProfile => free_monoid_collection_templates()
+    PartialFunctionProfile => partial_function_templates()
   }
 }
 
@@ -576,40 +579,40 @@ fn extract_optional_inner_node(n: Node) -> Node {
   else { n }
 }
 
-// Map BinOpKind to the algebraic field name on the receiver type.
+// Map BinOp to the algebraic field name on the receiver type.
 // This is a closed structural mapping (enum → field name), not a
 // name check on the type. The compiler knows + means "add"; it
 // doesn't know which types have "add" — that's in the DAG structure.
-fn binop_algebra_field(op: BinOpKind) -> String {
+fn binop_algebra_field(op: BinOp) -> String {
   match op {
     Add => "add"
     Sub => "add"
     Mul => "mul"
     Div => "reciprocal"
     Mod => "add"
-    BinEq => "compare"
-    BinNe => "compare"
-    BinLt => "compare"
-    BinGt => "compare"
-    BinLe => "compare"
-    BinGe => "compare"
-    BinAnd => "meet"
-    BinOr => "join"
+    Eq => "compare"
+    Ne => "compare"
+    Lt => "compare"
+    Gt => "compare"
+    Le => "compare"
+    Ge => "compare"
+    And => "meet"
+    Or => "join"
     NullCoalesce => ""
   }
 }
 
-fn infer_binop_type_node(op: BinOpKind, left_type: Node) -> Node {
+fn infer_binop_type_node(op: BinOp, left_type: Node) -> Node {
   // Comparison and boolean ops always return Bool
   match op {
-    BinEq => bool_type
-    BinNe => bool_type
-    BinLt => bool_type
-    BinGt => bool_type
-    BinLe => bool_type
-    BinGe => bool_type
-    BinAnd => bool_type
-    BinOr => bool_type
+    Eq => bool_type
+    Ne => bool_type
+    Lt => bool_type
+    Gt => bool_type
+    Le => bool_type
+    Ge => bool_type
+    And => bool_type
+    Or => bool_type
     NullCoalesce => extract_optional_inner_node(n: left_type)
     _ =>
       // Arithmetic ops: try structural lookup on the receiver type.

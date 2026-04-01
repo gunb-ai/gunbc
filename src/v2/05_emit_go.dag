@@ -29,7 +29,7 @@ import v2.std.core {
   MatchPattern, LiteralValue, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_resource,
-  BinOpKind, NullCoalesce,
+  BinOp, NullCoalesce,
   UnaryOpKind, StringPart,
   DeclaredFuncSig,
   transport_has_auth, transport_auth_header_name,
@@ -91,7 +91,7 @@ import v2.compiler.emit {
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
   emit_string_literal, escape_go_interp_text, escape_string_literal_body,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -765,7 +765,8 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     emit_cast: expr => emit_go_expr_cast(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_for_each: expr => emit_go_expr_for_each(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_index: expr => emit_go_expr_index(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_slice: expr => emit_go_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth))
+    emit_slice: expr => emit_go_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth),
+    emit_bin_op: expr => emit_default_bin_op(texpr: expr, target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: 0, fuel: fuel - 1), wrap_result: result => if result == "" { "" } else { concat(prefix, result) }))
 }
 
 fn emit_go_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
@@ -800,7 +801,7 @@ fn emit_go_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>,
   concat(base_str, "[", index_str, "]")
 }
 
-fn emit_go_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let base_str = emit_go_typed_expr(texpr: base, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let start_str = emit_go_typed_expr(texpr: start, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let end_str = emit_go_typed_expr(texpr: end, registry: registry, scope: scope, depth: 0, fuel: 1024)
@@ -962,7 +963,7 @@ fn emit_go_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
 }
 
 
-fn emit_go_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
+fn emit_go_typed_bin_op(op: BinOp, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let l_str = emit_go_typed_expr(texpr: left, registry: registry, scope: scope, depth: 0, fuel: 1024)
   let r_str = emit_go_typed_expr(texpr: right, registry: registry, scope: scope, depth: 0, fuel: 1024)
   if is_null_coalesce(op: op) {

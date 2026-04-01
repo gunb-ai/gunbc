@@ -123,7 +123,7 @@ pub use crate::v2_compiler_infer_items::{
 };
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, map_value_type_in_env, resolve_known_method_node,
+    lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env, resolve_known_method_node,
     resolve_scrutinee_type_node, KnownMethodResolution,
 };
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type};
@@ -1846,6 +1846,64 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                                     resolve_builtin_call_type(func_name.clone())
                                                 }
                                             }
+                                        } else if (func_name.clone() == "map_keys".to_string()) {
+                                            match typed_args.clone().first().cloned() {
+                                                Some(receiver_arg) => match (*rt_node(arg_value(
+                                                    receiver_arg.clone(),
+                                                )))
+                                                .clone()
+                                                {
+                                                    NodeType::Typed {
+                                                        node: receiver_type,
+                                                        ..
+                                                    } => match map_key_type_in_env(
+                                                        receiver_type.clone(),
+                                                        scope.type_env.clone(),
+                                                    ) {
+                                                        Some(key_type) => {
+                                                            container_node("List".to_string(), key_type.clone())
+                                                        }
+                                                        None => resolve_builtin_call_type(
+                                                            func_name.clone(),
+                                                        ),
+                                                    },
+                                                    _ => {
+                                                        resolve_builtin_call_type(func_name.clone())
+                                                    }
+                                                },
+                                                None => {
+                                                    resolve_builtin_call_type(func_name.clone())
+                                                }
+                                            }
+                                        } else if (func_name.clone() == "map_values".to_string()) {
+                                            match typed_args.clone().first().cloned() {
+                                                Some(receiver_arg) => match (*rt_node(arg_value(
+                                                    receiver_arg.clone(),
+                                                )))
+                                                .clone()
+                                                {
+                                                    NodeType::Typed {
+                                                        node: receiver_type,
+                                                        ..
+                                                    } => match map_value_type_in_env(
+                                                        receiver_type.clone(),
+                                                        scope.type_env.clone(),
+                                                    ) {
+                                                        Some(value_type) => {
+                                                            container_node("List".to_string(), value_type.clone())
+                                                        }
+                                                        None => resolve_builtin_call_type(
+                                                            func_name.clone(),
+                                                        ),
+                                                    },
+                                                    _ => {
+                                                        resolve_builtin_call_type(func_name.clone())
+                                                    }
+                                                },
+                                                None => {
+                                                    resolve_builtin_call_type(func_name.clone())
+                                                }
+                                            }
                                         } else {
                                             resolve_builtin_call_type(func_name.clone())
                                         };
@@ -2024,7 +2082,22 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 );
                 let base_result_type = match method_resolution.result_type.clone() {
                     Some(rt) => rt.clone(),
-                    None => recv_rt.clone(),
+                    None => {
+                        // Fallback: check if method is a builtin function used via pipe (x |> map_keys).
+                        if (method_name.clone() == "map_keys".to_string()) {
+                            match map_key_type_in_env(recv_rt.clone(), scope.type_env.clone()) {
+                                Some(key_type) => container_node("List".to_string(), key_type.clone()),
+                                None => recv_rt.clone(),
+                            }
+                        } else if (method_name.clone() == "map_values".to_string()) {
+                            match map_value_type_in_env(recv_rt.clone(), scope.type_env.clone()) {
+                                Some(value_type) => container_node("List".to_string(), value_type.clone()),
+                                None => recv_rt.clone(),
+                            }
+                        } else {
+                            recv_rt.clone()
+                        }
+                    }
                 };
                 let result_type = refine_collection_result_type(
                     method_resolution.semantics.clone(),
@@ -4309,18 +4382,17 @@ pub fn build_module_context(
                 <HashMap<String, Rc<TypeBinding>>>::new(),
                 |acc: HashMap<String, Rc<TypeBinding>>, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
+                        let enum_name = binding.resolved.name.clone();
+                        let curr_is_imported = resolved_imports.iter().any(|imp| {
+                            imp.specific_names.iter().any(|n| *n == enum_name)
+                        });
                         binding.resolved.clone().children.clone().iter().cloned().fold(
                             acc.clone(),
                             |vacc: HashMap<String, Rc<TypeBinding>>, child: Rc<Node>| {
                                 match v2_rt::map_get(&vacc, child.name.clone()) {
-                                    Some(prev) => {
-                                        let prev_is_imported = resolved_imports.iter().any(|imp| {
-                                            imp.specific_names.iter().any(|n| *n == prev.resolved.name)
-                                        });
-                                        let curr_is_imported = resolved_imports.iter().any(|imp| {
-                                            imp.specific_names.iter().any(|n| *n == binding.resolved.name)
-                                        });
-                                        if curr_is_imported && !prev_is_imported {
+                                    Some(_prev) => {
+                                        // Ambiguous: only replace if current enum is imported.
+                                        if curr_is_imported {
                                             v2_rt::map_insert(vacc.clone(), child.name.clone(),
                                                 Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
                                         } else { vacc.clone() }
@@ -4756,6 +4828,27 @@ pub fn collect_parent_envs(
     }
 }
 
+pub fn build_fielded_variants(modules: Vec<Rc<TypedModule>>, type_summaries: HashMap<String, Rc<TypeSummary>>) -> HashMap<String, bool> {
+    let result = modules.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, m| {
+        let items = m.items.clone();
+        items.iter().cloned().fold(acc, |inner, item| {
+            let is_enum = match v2_rt::map_get(&type_summaries, item.name.clone()) {
+                Some(summary) => matches!(*summary.repr, TypeRepr::EnumRepr { .. }),
+                None => false,
+            };
+            if is_enum {
+                let enum_name = item.name.clone();
+                let variants = item.children.clone();
+                variants.iter().cloned().fold(inner, |vacc, variant| {
+                    let has_fields = variant.children.len() > 0;
+                    if has_fields { v2_rt::map_insert(vacc, v2_rt::concat(v2_rt::concat(enum_name.clone(), "::".to_string()), variant.name.clone()), true) } else { vacc }
+                })
+            } else { inner }
+        })
+    });
+    result
+}
+
 pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
@@ -4781,18 +4874,7 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
                 )
             },
         );
-        // Derive per-variant field facts from original item nodes.
-        let fielded = modules.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, typed_module| {
-            typed_module.items.iter().cloned().fold(acc, |inner, item| {
-                if item.connective.as_ref().map(|c| matches!(c, Connective::Disj)).unwrap_or(false) {
-                    item.children.iter().cloned().fold(inner, |vacc, variant| {
-                        if !variant.children.is_empty() {
-                            v2_rt::map_insert(vacc, variant.name.clone(), true)
-                        } else { vacc }
-                    })
-                } else { inner }
-            })
-        });
+        let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive.clone(),

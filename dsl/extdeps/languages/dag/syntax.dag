@@ -11,9 +11,9 @@ import std.syntax {
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
   OperatorSpec, SyntaxSpec,
-  BinOp, OpAdd, OpSub, OpMul, OpDiv, OpMod,
-  OpEq, OpNe, OpLt, OpGt, OpLe, OpGe, OpAnd, OpOr, OpNullCoalesce,
-  LiteralKind, BoolLiteral, NullLiteral
+  BinOp, Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  LiteralValue, LitBool, LitNull
 }
 
 // Item forms: keyword -> structural components + body kind.
@@ -51,11 +51,11 @@ data dag_item_forms: List<ItemForm> = [
 // Literal keywords: keyword text -> LiteralValue.
 // The parser checks this map before expression keywords.
 
-data dag_keyword_literals: Map<String, LiteralKind> = {
-  "true": BoolLiteral { value: true },
-  "false": BoolLiteral { value: false },
-  "none": NullLiteral,
-  "null": NullLiteral
+data dag_keyword_literals: Map<String, LiteralValue> = {
+  "true": LitBool { value: true },
+  "false": LitBool { value: false },
+  "none": LitNull,
+  "null": LitNull
 }
 
 // Keyword lookup map — the single authority for what strings are keywords.
@@ -80,20 +80,20 @@ data dag_keyword_set: Map<String, Bool> = {
 // (the expression loop handles them as pipe/field-access, not binary ops).
 
 data dag_operators: List<OperatorSpec> = [
-  OperatorSpec { symbol: "??", left_bp: 3, right_bp: 4, binop: OpNullCoalesce },
-  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: OpOr },
-  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: OpAnd },
-  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: OpEq },
-  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: OpNe },
-  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: OpLt },
-  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: OpGt },
-  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: OpLe },
-  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: OpGe },
-  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: OpAdd },
-  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: OpSub },
-  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: OpMul },
-  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: OpDiv },
-  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: OpMod },
+  OperatorSpec { symbol: "??", left_bp: 3, right_bp: 4, binop: NullCoalesce },
+  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or },
+  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And },
+  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq },
+  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne },
+  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt },
+  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt },
+  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le },
+  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge },
+  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add },
+  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub },
+  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div },
+  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod },
   OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: none },
   OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none }
 ]

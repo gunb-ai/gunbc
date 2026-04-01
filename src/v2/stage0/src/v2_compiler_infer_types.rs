@@ -960,10 +960,10 @@ pub fn algebra_child_or_placeholder(
     placeholder: String,
 ) -> Rc<Node> {
     let _ = placeholder;
-    base.children
-        .get(child_index as usize)
-        .cloned()
-        .unwrap_or_else(|| error_type_node())
+    match base.children.get(child_index as usize).cloned() {
+        Some(child) => child,
+        None => error_type_node(),
+    }
 }
 
 pub fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Rc<Node>) -> Rc<Node> {

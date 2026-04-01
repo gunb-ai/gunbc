@@ -3026,6 +3026,172 @@ fn broken(xs: List<Int>) -> List<String> {
     );
 }
 
+// ── Higher-order method instantiation tests ─────────────────────────────
+//
+// These verify that the inference engine correctly threads element types
+// into lambda parameters and resolves result types for collection methods.
+
+#[test]
+fn map_with_identity_lambda_compiles() {
+    let source = r#"module map_identity
+
+fn id_list(xs: List<Int>) -> List<Int> {
+  xs |> map(x => x)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn filter_preserves_collection_type() {
+    let source = r#"module filter_preserve
+
+fn positives(xs: List<Int>) -> List<Int> {
+  xs |> filter(x => x > 0)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_to_int_accumulator() {
+    let source = r#"module fold_sum
+
+fn sum(xs: List<Int>) -> Int {
+  xs |> fold(init: 0, f: (acc, x) => acc + x)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn any_returns_bool() {
+    let source = r#"module any_bool
+
+fn has_positive(xs: List<Int>) -> Bool {
+  xs |> any(x => x > 0)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn all_returns_bool() {
+    let source = r#"module all_bool
+
+fn all_positive(xs: List<Int>) -> Bool {
+  xs |> all(x => x > 0)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn count_returns_int() {
+    let source = r#"module count_int
+
+fn len(xs: List<Int>) -> Int {
+  xs |> count
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn chained_filter_map_fold() {
+    let source = r#"module chain_test
+
+fn count_positive_strings(xs: List<Int>) -> String {
+  xs |> filter(x => x > 0) |> fold(init: "", f: (acc, x) => concat(acc, x |> to_string))
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+// ── Keyed-collection access tests ───────────────────────────────────────
+
+#[test]
+fn map_get_returns_optional() {
+    let source = r#"module map_get_test
+
+fn find(m: Map<String, Int>, key: String) -> Int {
+  match m |> get(key) {
+    Some { value: v } => v
+    None => 0
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_has_returns_bool() {
+    let source = r#"module map_has_test
+
+fn exists(m: Map<String, Int>, key: String) -> Bool {
+  m |> has(key)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_insert_preserves_map_type() {
+    let source = r#"module map_insert_test
+
+fn add_entry(m: Map<String, Int>, key: String, val: Int) -> Map<String, Int> {
+  m |> map_insert(key, val)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_keys_returns_list() {
+    let source = r#"module map_keys_test
+
+fn all_keys(m: Map<String, Int>) -> List<String> {
+  m |> keys
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_values_returns_list() {
+    let source = r#"module map_values_test
+
+fn all_values(m: Map<String, Int>) -> List<Int> {
+  m |> values
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_merge_preserves_type() {
+    let source = r#"module map_merge_test
+
+fn combine(a: Map<String, Int>, b: Map<String, Int>) -> Map<String, Int> {
+  a |> map_merge(b)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
 #[test]
 fn higher_order_placeholders_are_not_user_visible_types() {
     let source = r#"module placeholder_escape
@@ -3707,6 +3873,105 @@ fn empty_batch() -> Batch {
     assert!(
         content.contains("Rc::new(vec!["),
         "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
+        content
+    );
+}
+
+// ── M2 Boundary Sufficiency: Higher-Order Method Type Propagation ────
+
+#[test]
+fn map_preserves_element_type() {
+    let source = "\
+module test_map_type
+type Item { name: String, cost: Int }
+fn names(items: List<Item>) -> List<String> {
+  items |> map(i => i.name)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn filter_preserves_struct_element_type() {
+    let source = "\
+module test_filter_struct
+type Item { name: String, cost: Int }
+fn expensive(items: List<Item>) -> List<Item> {
+  items |> filter(i => i.cost > 100)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_to_different_type() {
+    let source = "\
+module test_fold_diff
+type Item { name: String, cost: Int }
+fn total_cost(items: List<Item>) -> Int {
+  items |> fold(init: 0, f: (acc, i) => acc + i.cost)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn duplicate_variant_names_across_enums_dont_collide() {
+    let source = "\
+module test_dup_variants
+type Color = Red | Blue | Green
+type Signal = Red | Yellow | Green
+
+fn pick_color() -> Color { Blue }
+fn pick_signal() -> Signal { Yellow }
+fn use_both(c: Color, s: Signal) -> String {
+  let c_str = match c {
+    Red => \"red\"
+    Blue => \"blue\"
+    Green => \"green\"
+  }
+  let s_str = match s {
+    Red => \"stop\"
+    Yellow => \"caution\"
+    Green => \"go\"
+  }
+  concat(c_str, s_str)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_dup_variants.rs");
+    assert!(
+        content.contains("Color::") && content.contains("Signal::"),
+        "both Color:: and Signal:: qualifiers should appear in match arms, got:\n{}",
+        content
+    );
+}
+
+#[test]
+fn emit_struct_field_from_child_routes_through_emit_node_type_rc() {
+    let source = "\
+module test_struct_field_emit
+type Inner { x: Int, y: String }
+type Outer { data: Inner, label: String }
+fn make() -> Outer {
+  Outer { data: Inner { x: 1, y: \"hi\" }, label: \"test\" }
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_struct_field_emit.rs");
+    assert!(
+        content.contains("Rc<Inner>"),
+        "struct field type should be rendered as Rc<Inner> via emit_node_type_rc, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("label: String"),
+        "String field should not be Rc-wrapped, got:\n{}",
         content
     );
 }

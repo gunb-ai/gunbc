@@ -1464,6 +1464,9 @@ pub fn emit_node_type_leaf_rc(
     rc_types: HashMap<String, bool>,
 ) -> String {
     if ((n.children.clone().len() as i64) == 0) {
+        if n.name == "FreeMonoid" || n.name == "PartialFunction" {
+            eprintln!("[DEBUG emit_type] {}: children=0, going to bare leaf path", n.name);
+        }
         {
             let base = if (n.name.clone() == "Map".to_string()) {
                 emit_map_type("_".to_string(), "_".to_string(), target.clone())
@@ -1516,9 +1519,14 @@ pub fn emit_node_type_leaf_rc(
                         None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__".to_string(),
                     };
                     let is_container = node_is_collection(n.clone());
+                    if n.name == "FreeMonoid" {
+                        eprintln!("[DEBUG emit_type] FreeMonoid: children={}, is_container={}, inner={}", n.children.len(), is_container, inner);
+                    }
                     if is_container {
                         let container_kind = to_snake(n.name.clone());
-                        emit_container(container_kind.clone(), inner.clone(), target.clone())
+                        let result = emit_container(container_kind.clone(), inner.clone(), target.clone());
+                        if n.name == "FreeMonoid" { eprintln!("[DEBUG] container result for FreeMonoid: '{}'", result); }
+                        result
                     } else {
                         // Non-container generic type (e.g., FreeMonoid<T>): emit as Name<Inner>
                         let base = emit_primitive_type(n.name.clone(), target.clone());
@@ -1534,6 +1542,9 @@ pub fn emit_node_type_leaf_rc(
                     }
                 }
             } else {
+                if n.name == "PartialFunction" || n.name == "FreeMonoid" {
+                    eprintln!("[DEBUG emit_type] {}: children={}, falling to bare name", n.name, n.children.len());
+                }
                 n.name.clone()
             }
         }
@@ -1836,6 +1847,16 @@ pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
             {
                 TypedItemKind::TypedItemTypeAlias
             } else {
+                // Bare leaf declarations that fail is_type_alias_return_node (e.g., Unit).
+                // These are type-system declarations handled by the type map.
+                if ((((((item_has_structure.clone() == false) && (item.body.clone() == None))
+                    && ((item.params.clone().len() as i64) == 0))
+                    && (item.transport.clone() == None))
+                    && ((item.children.clone().len() as i64) == 0))
+                    && !is_type_alias_return_node(rt_type(item.clone())))
+                {
+                    TypedItemKind::TypedItemTypeDecl
+                } else {
                 if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
                     TypedItemKind::TypedItemFunction
                 } else {
@@ -1872,6 +1893,7 @@ pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
                             }
                         }
                     }
+                }
                 }
             }
         };
@@ -2612,6 +2634,7 @@ pub fn emit_shared_expr(
     emit_for_each: impl Fn(Rc<Node>) -> String,
     emit_index: impl Fn(Rc<Node>) -> String,
     emit_slice: impl Fn(Rc<Node>) -> String,
+    emit_bin_op: impl Fn(Rc<Node>) -> String,
 ) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => {
@@ -2628,39 +2651,7 @@ pub fn emit_shared_expr(
         ExprData::ExprIf => emit_if(texpr.clone()),
         ExprData::ExprLet => emit_let(texpr.clone()),
         ExprData::ExprRecordLit { .. } => emit_record_lit(texpr.clone()),
-        ExprData::ExprBinOp { op: op, .. } => {
-            let left = binop_left(texpr.clone());
-            let right = binop_right(texpr.clone());
-            let left_str = recurse(left.clone());
-            let right_str = recurse(right.clone());
-            if is_null_coalesce(op.clone()) {
-                wrap_result(emit_null_coalesce(
-                    left_str.clone(),
-                    right_str.clone(),
-                    target.clone(),
-                ))
-            } else {
-                {
-                    let op_str = emit_bin_op_symbol(op.clone(), target.clone());
-                    wrap_result(v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat("(".to_string(), left_str.clone()),
-                                        " ".to_string(),
-                                    ),
-                                    op_str.clone(),
-                                ),
-                                " ".to_string(),
-                            ),
-                            right_str.clone(),
-                        ),
-                        ")".to_string(),
-                    ))
-                }
-            }
-        }
+        ExprData::ExprBinOp { .. } => emit_bin_op(texpr.clone()),
         ExprData::ExprUnaryOp { op: op, .. } => {
             let operand = unaryop_operand(texpr.clone());
             wrap_result(emit_unary_op(
@@ -2699,5 +2690,24 @@ pub fn emit_shared_expr(
             wrap_result(emit_return(recurse(ret_val.clone()), target.clone()))
         }
         ExprData::NoExprData => wrap_result("".to_string()),
+    }
+}
+
+// Default BinOp handler for languages without special BinOp rendering (Go, Python).
+pub fn emit_default_bin_op(texpr: Rc<Node>, target: RenderTarget, recurse: impl Fn(Rc<Node>) -> String, wrap_result: impl Fn(String) -> String) -> String {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprBinOp { op: op, .. } => {
+            let left = binop_left(texpr.clone());
+            let right = binop_right(texpr.clone());
+            let left_str = recurse(left.clone());
+            let right_str = recurse(right.clone());
+            if is_null_coalesce(op.clone()) {
+                wrap_result(emit_null_coalesce(left_str.clone(), right_str.clone(), target.clone()))
+            } else {
+                let op_str = emit_bin_op_symbol(op.clone(), target.clone());
+                wrap_result(v2_rt::concat("(".to_string(), v2_rt::concat(left_str.clone(), v2_rt::concat(" ".to_string(), v2_rt::concat(op_str.clone(), v2_rt::concat(" ".to_string(), v2_rt::concat(right_str.clone(), ")".to_string())))))))
+            }
+        }
+        _ => wrap_result(emit_error_expr("emit_default_bin_op expected ExprBinOp".to_string(), target.clone())),
     }
 }

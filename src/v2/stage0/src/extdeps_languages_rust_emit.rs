@@ -87,6 +87,9 @@ lazy_static::lazy_static! {
         __m.insert("non_empty_set".to_string(), "Rc<NonEmptyBTreeSet<{0}>>".to_string());
         __m.insert("optional".to_string(), "Option<{0}>".to_string());
         __m.insert("map".to_string(), "Rc<HashMap<{0}, {1}>>".to_string());
+        __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
+        __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
+        __m.insert("boolean_algebra".to_string(), "bool".to_string());
         __m
     };
 }
@@ -100,19 +103,19 @@ lazy_static::lazy_static! {
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES: String = "#[derive(Debug, Clone, PartialEq)]".to_string();
+    pub static ref RUST_STRUCT_DERIVES: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_STRUCT_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq)]".to_string();
+    pub static ref RUST_STRUCT_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES: String = "#[derive(Debug, Clone, PartialEq)]".to_string();
+    pub static ref RUST_ENUM_DERIVES: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {
-    pub static ref RUST_ENUM_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq)]".to_string();
+    pub static ref RUST_ENUM_DERIVES_COPY: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string();
 }
 
 lazy_static::lazy_static! {

@@ -31,7 +31,7 @@ import v2.std.core {
   StringPart, Text, Interpolation,
   LiteralValue,
   TextFile, SourceSpan,
-  BinOpKind, UnaryOpKind, NullCoalesce,
+  BinOp, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
   lambda_param_names_at, record_lit_type_name,
   arm_body, arm_pattern, arm_guard,
@@ -755,7 +755,7 @@ fn emit_string_literal(s: String, suffix: String) -> String {
 }
 
 // Check if a binary op is null coalesce (shared across all backends).
-fn is_null_coalesce(op: BinOpKind) -> Bool {
+fn is_null_coalesce(op: BinOp) -> Bool {
   match op {
     NullCoalesce => true
     _ => false
@@ -806,11 +806,11 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   }
 }
 
-fn emit_bin_op_symbol(op: BinOpKind, target: RenderTarget) -> String {
+fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
   match op {
     Add => "+"  Sub => "-"  Mul => "*"  Div => emit_keyword(key: "div", target: target)  Mod => "%"
-    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
-    BinAnd => emit_keyword(key: "and", target: target)  BinOr => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
+    Eq => "=="  Ne => "!="  Lt => "<"  Gt => ">"  Le => "<="  Ge => ">="
+    And => emit_keyword(key: "and", target: target)  Or => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
   }
 }
 
@@ -895,12 +895,24 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   if n.children |> count == 0 {
     // Bare container nodes (from empty_map(), etc.) need container templates
     // even without children — emit with "_" placeholders.
+    // Also handles generic types like FreeMonoid<T> / PartialFunction<K,V>
+    // that arrive as bare leaves when type parameters haven't been substituted.
     let bare_is_map = node_is_keyed_collection(n: n)
     let bare_is_collection = node_is_element_collection(n: n)
+    let has_map_template = target_container_template(target: target, kind: "map") != none
+    let has_container_template = target_container_template(target: target, kind: to_snake(name: n.name)) != none
+    let param_count = n.params |> count
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if bare_is_collection {
       emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
+    } else if has_container_template && param_count == 1 {
+      // Single-param generic with a container template (e.g., FreeMonoid<T> → Vec<T>).
+      let param_strs = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
+      match param_strs |> first {
+        Some { value: inner } => emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
+        None => emit_primitive_type(name: n.name, target: target)
+      }
     } else {
       emit_primitive_type(name: n.name, target: target)
     }
@@ -1565,7 +1577,8 @@ fn emit_shared_expr(
   emit_cast: fn(Node) -> String,
   emit_for_each: fn(Node) -> String,
   emit_index: fn(Node) -> String,
-  emit_slice: fn(Node) -> String
+  emit_slice: fn(Node) -> String,
+  emit_bin_op: fn(Node) -> String
 ) -> String {
   match texpr.expr_data {
     ExprLiteral { value: v } =>
@@ -1588,17 +1601,8 @@ fn emit_shared_expr(
       emit_let(texpr)
     ExprRecordLit { parent_enum: _ } =>
       emit_record_lit(texpr)
-    ExprBinOp { op: op } =>
-      let left = binop_left(texpr: texpr)
-      let right = binop_right(texpr: texpr)
-      let left_str = recurse(left)
-      let right_str = recurse(right)
-      if is_null_coalesce(op: op) {
-        wrap_result(emit_null_coalesce(l_str: left_str, r_str: right_str, target: target))
-      } else {
-        let op_str = emit_bin_op_symbol(op: op, target: target)
-        wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
-      }
+    ExprBinOp { op: _ } =>
+      emit_bin_op(texpr)
     ExprUnaryOp { op: op } =>
       let operand = unaryop_operand(texpr: texpr)
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
@@ -1623,5 +1627,23 @@ fn emit_shared_expr(
       let ret_val = return_value(texpr: texpr)
       wrap_result(emit_return(value: recurse(ret_val), target: target))
     NoExprData => wrap_result("")
+  }
+}
+
+// Default BinOp handler for languages without special BinOp rendering (Go, Python).
+fn emit_default_bin_op(texpr: Node, target: RenderTarget, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
+  match texpr.expr_data {
+    ExprBinOp { op: op } =>
+      let left = binop_left(texpr: texpr)
+      let right = binop_right(texpr: texpr)
+      let left_str = recurse(left)
+      let right_str = recurse(right)
+      if is_null_coalesce(op: op) {
+        wrap_result(emit_null_coalesce(l_str: left_str, r_str: right_str, target: target))
+      } else {
+        let op_str = emit_bin_op_symbol(op: op, target: target)
+        wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
+      }
+    _ => wrap_result(emit_error_expr(message: "emit_default_bin_op expected ExprBinOp", target: target))
   }
 }

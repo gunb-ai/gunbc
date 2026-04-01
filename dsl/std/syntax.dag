@@ -1,34 +1,36 @@
 // std/syntax.dag -- Language syntax specification types.
 //
-// Types for describing a language's surface syntax as data:
-// item forms (what declarations exist), operators (precedence
-// and associativity), and literal keywords.
-//
-// These are language-level concepts, not compiler internals.
-// The compiler has its own representations (in v2/00_core.dag
-// and v2/languages.dag) which may converge with these over time.
-// For now, the DSL defines what it needs independently.
+// Single authority for binary operations, literal values, and syntax
+// specification types. The compiler (v2/00_core.dag) imports from here.
 //
 // Consumers:
-//   extdeps/languages/dag/syntax.dag  -- .dag language spec
+//   v2/00_core.dag                      -- compiler IR
+//   v2/languages.dag                    -- LanguageSpec shim
+//   extdeps/languages/dag/syntax.dag    -- .dag language spec
 //   (future) extdeps/languages/*/syntax.dag -- other frontends
 
 module std.syntax
 
 // -- Binary operators -------------------------------------------------
-// The set of binary operations a language can express.
+// The set of binary operations. Compact naming — these are universal.
+// Ref: ring theory (Add/Sub/Mul/Div/Mod), total order (Eq/Ne/Lt/Gt/Le/Ge),
+// boolean algebra (And/Or), language syntax (NullCoalesce).
 
 type BinOp
-  = OpAdd | OpSub | OpMul | OpDiv | OpMod
-  | OpEq | OpNe | OpLt | OpGt | OpLe | OpGe
-  | OpAnd | OpOr | OpNullCoalesce
+  = Add | Sub | Mul | Div | Mod
+  | Eq | Ne | Lt | Gt | Le | Ge
+  | And | Or | NullCoalesce
 
 // -- Literal values ---------------------------------------------------
-// Value forms that appear as keywords in source.
+// All value forms that can appear as literals in source.
+// Keyword literals (true/false/null) are a subset used by SyntaxSpec.
 
-type LiteralKind
-  = BoolLiteral { value: Bool }
-  | NullLiteral
+type LiteralValue
+  = LitStr { value: String }
+  | LitInt { value: Int }
+  | LitFloat { value: String }
+  | LitBool { value: Bool }
+  | LitNull
 
 // -- Item body kinds --------------------------------------------------
 // How the body of a declaration is structured.
@@ -73,6 +75,6 @@ type OperatorSpec {
 type SyntaxSpec {
   item_forms: List<ItemForm>
   operators: List<OperatorSpec>
-  keyword_literals: Map<String, LiteralKind>
+  keyword_literals: Map<String, LiteralValue>
   keyword_set: Map<String, Bool>
 }

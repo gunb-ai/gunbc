@@ -64,6 +64,16 @@ fn list_of_type_variable(id: String) -> Node {
   }
 }
 
+fn list_of_element(element: Node) -> Node {
+  Node {
+    name: "List", span: make_span(start: 0, end: 0), ident_span: none,
+    children: [element], connective: NoConnective, params: [],
+    inferred: none, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+  }
+}
+
 // Builtin function return type registry.
 //
 // BRIDGE: This map_insert chain is a duplicate authority over facts that

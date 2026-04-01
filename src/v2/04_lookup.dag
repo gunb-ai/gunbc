@@ -192,6 +192,20 @@ fn map_value_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   }
 }
 
+fn map_key_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
+  let normed = normalize_access_type_node(n: type_node)
+  let resolved = resolve_scrutinee_type_node(env: env, n: normed)
+  let map_type = normalize_access_type_node(n: resolved)
+  if node_is_keyed_collection(n: map_type) && map_type.children |> count >= 1 {
+    match map_type.children |> first {
+      Some { value: key_type } => Some { value: key_type }
+      None => none
+    }
+  } else {
+    none
+  }
+}
+
 fn field_summary_for_type(base_type: Node, env: TypeEnv, field: String) -> FieldSummary? {
   let resolved = resolve_scrutinee_type_node(env: env, n: base_type)
   let normed = normalize_access_type_node(n: resolved)
