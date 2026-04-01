@@ -258,6 +258,64 @@ Acceptance criteria:
 - [ ] `rc_types` authority derived from ValueContext (is_constant →
   no wrap) instead of heuristic type_summary scan
 
+*Type rendering boundary (E0c — resolution→emit type parameterization):*
+
+The resolution→emit boundary doesn't carry type parameterization for
+resolved generic types. `emit_node_type_rc` dispatches on structural
+shape (connective, children count, params count) which is ambiguous —
+a named Conj could be a struct definition, a resolved alias, or a
+self-referential field type. Emit compensates with name-based fallbacks
+that silently produce wrong output for any type not in a hardcoded list.
+
+Evidence: `FreeMonoid<T>` field `empty: FreeMonoid<T>` emits as
+`Rc<FreeMonoid>` (missing `<T>`). Resolution expands the alias to a
+structural Conj, stripping type params. Container templates exist
+(`"free_monoid": "Vec<{0}>"`) but dispatch never reaches them. This
+class of bug would silently affect every new backend.
+
+Six escape hatches in the type rendering pipeline:
+
+| Escape hatch | What it fabricates | Structural fix |
+|---|---|---|
+| `emit_node_type_conj_rc` named catch-all | Bare type name for generic Conj (e.g. `FreeMonoid` without `<T>`) | `TypeRendering` descriptor — Conj nodes carry rendering intent |
+| `emit_node_type_leaf_rc` bare name | Unrecognized type name emitted literally | Fail-closed: `compile_error!` for types without rendering annotation |
+| `emit_primitive_type` pass-through | Any name not in type map emitted as-is | Exhaustive type map or fail-closed on miss |
+| `rt_type` → `unit_type` on inference failure | `()` for unresolved field types | Fail-closed: emit refuses error-typed fields |
+| `_` placeholders in bare containers | `Vec<_>` / `HashMap<_, _>` (invalid in struct fields) | Complete type params from resolution, not placeholders |
+| No type-ref vs type-def distinction | Resolution-expanded Conj treated as type reference | `TypeRendering` or nominal references for field types |
+
+Proposed fix: `TypeRendering` descriptor precomputed at the
+resolution→emit boundary, parallel to `ValueContext`:
+
+```
+type TypeRendering
+  = PrimitiveRendering { rust_name: String }
+  | ContainerRendering { template_key: String, args: List<TypeRendering> }
+  | MapRendering { key: TypeRendering, value: TypeRendering }
+  | ProductRendering { name: String, type_params: List<String> }
+  | CoproductRendering { name: String, type_params: List<String> }
+  | CallableRendering { params: List<TypeRendering>, return_type: TypeRendering }
+  | OptionalRendering { inner: TypeRendering }
+  | TupleRendering { elements: List<TypeRendering> }
+```
+
+Emit becomes a trivial match on `TypeRendering × LanguageSpec`. No
+heuristics, no name checking, no connective inspection. Each variant
+is unambiguous. Adding a backend means adding one rendering function
+per variant — no discovery of how resolution shapes nodes. The
+container template system already has the data; `TypeRendering` is the
+structural routing that connects resolved types to templates.
+
+Acceptance:
+- [ ] `TypeRendering` type defined in `04_emit_info.dag`
+- [ ] `build_type_rendering(n: Node, type_env: TypeEnv) -> TypeRendering`
+  precomputed for every field type and function return type
+- [ ] `emit_node_type_rc` replaced by `emit_type_rendering(tr: TypeRendering, target, rc_types)`
+  — trivial match, no `node_is_collection` / `emit_primitive_type` fallbacks
+- [ ] `emit_primitive_type` deleted or made fail-closed (no pass-through)
+- [ ] `rt_type` returns `TypeRendering | RenderError` not `Node | unit_type`
+- [ ] Adding SPICE/English target requires zero changes to type rendering dispatch
+
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
 - [x] `dag/syntax.dag` included in bootstrap (OOM resolved by FF-8)
