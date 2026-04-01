@@ -4985,25 +4985,10 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
             },
         );
         let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
-        // Collect generic type parameter names from type definitions
-        let type_params: HashMap<String, Vec<String>> = modules.iter().cloned().fold(
-            <HashMap<_, _>>::new(),
-            |acc: HashMap<String, Vec<String>>, m: Rc<TypedModule>| {
-                m.items.iter().cloned().fold(acc, |inner: HashMap<String, Vec<String>>, item: Rc<Node>| {
-                    if !item.params.is_empty() {
-                        let param_names: Vec<String> = item.params.iter().map(|p| param_node_name(p.clone())).collect();
-                        v2_rt::map_insert(inner, item.name.clone(), param_names)
-                    } else {
-                        inner
-                    }
-                })
-            },
-        );
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: fielded,
-            type_params,
         })
     }
 }

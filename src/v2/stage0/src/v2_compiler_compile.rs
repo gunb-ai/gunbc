@@ -5,10 +5,6 @@ use crate::v2_rt;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Bootstrap mode: when true, complexity diagnostics don't block emission.
-/// Deprecated global — callers should use compile_sources_with_options instead.
-/// Kept only for backward compatibility with main.rs binary entrypoint.
-pub static BOOTSTRAP_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
@@ -1665,17 +1661,6 @@ pub fn resolve_sources(sources: Vec<Rc<SourceFile>>) -> Rc<CompileResult> {
 }
 
 pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc<PipelineResult> {
-    let bootstrap = BOOTSTRAP_MODE.load(std::sync::atomic::Ordering::Relaxed);
-    compile_sources_inner(sources, target, bootstrap)
-}
-
-/// Bootstrap-mode compilation: complexity diagnostics don't gate emission.
-/// Use this instead of toggling the global BOOTSTRAP_MODE flag.
-pub fn compile_sources_bootstrap(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc<PipelineResult> {
-    compile_sources_inner(sources, target, true)
-}
-
-fn compile_sources_inner(sources: Vec<Rc<SourceFile>>, target: RenderTarget, bootstrap_mode: bool) -> Rc<PipelineResult> {
     {
         // Build newline indices from input sources. O(n) per file, done once.
         let newline_indices: Vec<Rc<NewlineIndex>> = {
@@ -1753,18 +1738,10 @@ fn compile_sources_inner(sources: Vec<Rc<SourceFile>>, target: RenderTarget, boo
                 let recursion_ctx = build_recursion_context(typed.clone());
                 let complexity = build_complexity_report(func_entries.clone(), recursion_ctx.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
-                // Fail-closed gate: complexity/decidability errors block
-                // emission alongside typecheck errors.
-                // Bootstrap mode: only typed_diags block (complexity reprieved).
                 let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
-                let gate_diags = if bootstrap_mode {
-                    typed_diags.clone()
-                } else {
-                    all_infer_diags.clone()
-                };
                 let typecheck_errors = {
                     let mut __result = Vec::new();
-                    for d in gate_diags.clone().iter().cloned() {
+                    for d in all_infer_diags.clone().iter().cloned() {
                         if is_error_diagnostic(d.diagnostic.clone()) {
                             __result.push(d);
                         }
