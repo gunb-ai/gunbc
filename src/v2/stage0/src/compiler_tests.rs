@@ -423,9 +423,7 @@ mod compiler_tests {
             .spawn(|| {
                 let sources = self_compile_sources();
 
-                // Bootstrap mode: complexity diagnostics don't gate emission
-                // (310+ complexity violations are pending fold primitive work).
-                let result = crate::v2_compiler_compile::compile_sources_bootstrap(
+                let result = crate::v2_compiler_compile::compile_sources(
                     sources,
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );

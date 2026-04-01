@@ -624,36 +624,25 @@ fn compile_gate_keeps_complexity_errors_blocking_in_stage0() {
     let source = read_v2_file("src/v2/compile.dag");
     let stage0 = read_v2_file("src/v2/stage0/src/v2_compiler_compile.rs");
 
-    // compile.dag uses gate_diags to select between fail-closed (all_infer_diags)
-    // and bootstrap (typed_diags only). The default compile_sources path passes
-    // bootstrap_mode: false, which selects the fail-closed gate.
     assert_live_contains(
         &source,
-        "let gate_diags = if bootstrap_mode { typed_diags } else { all_infer_diags }",
-        "src/v2/compile.dag should select gate diagnostics based on bootstrap_mode",
+        "let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
+        "src/v2/compile.dag should gate emission on all infer diagnostics, including complexity",
     );
-    assert_live_contains(
+    assert_live_not_contains(
         &source,
-        "let typecheck_errors = gate_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
-        "src/v2/compile.dag should gate emission on selected diagnostics",
-    );
-    assert_live_contains(
-        &source,
-        "fn compile_sources_bootstrap(",
-        "src/v2/compile.dag should have compile_sources_bootstrap matching stage0",
-    );
-    // Stage0 uses BOOTSTRAP_MODE flag: gate_diags is all_infer_diags
-    // unless bootstrap mode is active (complexity reprieve for the binary).
-    // The gate_diags variable selects between fail-closed and bootstrap.
-    assert_live_contains(
-        &stage0,
-        "BOOTSTRAP_MODE",
-        "stage0 compile mirror should use BOOTSTRAP_MODE flag for gate selection",
+        "bootstrap_mode",
+        "src/v2/compile.dag should not have bootstrap escape hatch",
     );
     assert_live_contains(
         &stage0,
         "all_infer_diags.clone()",
         "stage0 compile mirror should reference all_infer_diags for fail-closed path",
+    );
+    assert_live_not_contains(
+        &stage0,
+        "BOOTSTRAP_MODE",
+        "stage0 compile mirror should not have BOOTSTRAP_MODE escape hatch",
     );
 }
 
