@@ -790,3 +790,76 @@ this document remains valid as reference if gaps remain.
 | 6. Inference propagation | 2 | **High** (inference engine) | Items 5, 7, 8 |
 | 7. FreeMonoid generics | 1-2 | Low (name mapping) | None |
 | 8. Unit data item | 1 | Low (edge case) | None |
+
+---
+
+## Post Fail-Closed Audit: 8 Surfaced Errors (2026-04-01)
+
+After merging `bootstrap-b-remaining` (B=0 + fail-closed fallback
+elimination), the bootstrap pipeline now shows **10 emitted Rust errors**
+(8 E0308, 1 E0631, 1 E0282). Of these, **8 are newly surfaced** by
+making fabrication fallbacks fail-closed. They were previously hidden
+by silent type fabrication.
+
+### What was made fail-closed
+
+| Site | Was | Now |
+|------|-----|-----|
+| `algebra_child_or_placeholder` | `string_type` for bare Map key (index 0) | `error_type` → surfaces as `compile_error!` |
+| `map_key_type_in_env` | `Some { value: string_type }` for bare Map | `none` → caller handles absence |
+| `emit_rust` variant suffix scan (2 sites) | Scan all `fielded_variants` keys by `::Name` suffix | `false` → may emit wrong pattern shape |
+
+### Root cause analysis
+
+All 8 errors trace to **two boundary deficits**:
+
+**Deficit A: Bare Map nodes (0 children) reach emit without key/value type params.**
+
+When `empty_map()` is used or a `Map` type appears without explicit
+parameterization, inference produces a bare `Map` node with 0 children.
+The old fabrication assumed `String`-keyed, which was usually correct
+but structurally wrong — it's the same class as IV-6/IV-7/IV-8 from
+INVARIANTS.md (inference producing incomplete container types that emit
+compensates for).
+
+Upstream fix: bidirectional type inference (Phase 1 from Item 6) should
+propagate expected parameter types to `empty_map()` calls. When the
+calling context expects `Map<String, Bool>`, inference should produce
+`Map<String, Bool>` not `Map`.
+
+5 of the 8 errors are "unresolved Error type reached emit" —
+`error_type` propagating through fields that previously got `string_type`.
+
+**Deficit B: `fielded_variants` keying doesn't carry parent enum identity.**
+
+The `fielded_variants` map in `EmitGraphInfo` is keyed by
+`"EnumName::VariantName"`. When a variant is matched in a pattern,
+the emitter needs to know if it has fields to emit `{ .. }` vs bare.
+The lookup uses `find_variant_parent` to get the enum name, but when
+that fails (incomplete type summaries), the old code scanned ALL keys
+by suffix. Now it returns `false` (not-fielded), which may emit the
+wrong Rust pattern for fielded variants.
+
+Upstream fix: `fielded_variants` should be keyed by a structural
+variant identifier (node reference or positional index within enum),
+not by concatenated name strings. This is the "No duplicate
+representations" invariant — variant identity should come from
+graph structure, not string concatenation.
+
+### Relationship to TypeRendering (E0c)
+
+Both deficits are instances of the same boundary insufficiency that
+`TypeRendering` (ROADMAP E0c) is designed to eliminate:
+
+- Deficit A: the type rendering descriptor would carry complete
+  parameterization, so bare containers are structurally impossible
+  at the emit boundary.
+- Deficit B: variant rendering would be part of `CoproductRendering`
+  with structural variant identity, not string-keyed lookups.
+
+### Status
+
+These errors are expected and deliberate — fail-closed is the correct
+behavior. The fabrication fallbacks were hiding real boundary deficits.
+The root cause fixes belong to the inference propagation (Item 6) and
+TypeRendering (E0c) work, not to emit-level workarounds.
