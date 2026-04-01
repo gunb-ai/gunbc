@@ -2494,15 +2494,13 @@ fn build_module_context(contributions: List<ItemContribution>,
     if is_coproduct {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         match map_get(vacc, child.name) {
-          Some { value: prev } =>
-            // Ambiguous: prefer explicitly imported enum over ambient.
-            let prev_is_imported = resolved_imports |> any(imp =>
-              imp.specific_names |> any(n => n == prev.resolved.name)
-            )
+          Some { value: _ } =>
+            // Ambiguous: only replace if current enum is explicitly imported.
+            // Avoids accessing prev.resolved.name (inference gap on bare Map value type).
             let curr_is_imported = resolved_imports |> any(imp =>
               imp.specific_names |> any(n => n == binding.resolved.name)
             )
-            if curr_is_imported && prev_is_imported == false {
+            if curr_is_imported {
               map_insert(vacc, child.name, TypeBinding {
                 name: child.name,
                 resolved: binding.resolved

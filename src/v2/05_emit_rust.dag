@@ -4162,7 +4162,7 @@ fn emit_compile_match_arm() -> String {
     "            }\n",
     "            eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), source_dir, target);\n",
     "            let result = ", pipeline_mod, "::compile_sources(\n",
-    "                sources,\n",
+    "                Rc::new(sources),\n",
     "                render_target,\n",
     "            );\n",
     "            std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n",

@@ -4367,18 +4367,17 @@ pub fn build_module_context(
                 <HashMap<String, Rc<TypeBinding>>>::new(),
                 |acc: HashMap<String, Rc<TypeBinding>>, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
+                        let enum_name = binding.resolved.name.clone();
+                        let curr_is_imported = resolved_imports.iter().any(|imp| {
+                            imp.specific_names.iter().any(|n| *n == enum_name)
+                        });
                         binding.resolved.clone().children.clone().iter().cloned().fold(
                             acc.clone(),
                             |vacc: HashMap<String, Rc<TypeBinding>>, child: Rc<Node>| {
                                 match v2_rt::map_get(&vacc, child.name.clone()) {
-                                    Some(prev) => {
-                                        let prev_is_imported = resolved_imports.iter().any(|imp| {
-                                            imp.specific_names.iter().any(|n| *n == prev.resolved.name)
-                                        });
-                                        let curr_is_imported = resolved_imports.iter().any(|imp| {
-                                            imp.specific_names.iter().any(|n| *n == binding.resolved.name)
-                                        });
-                                        if curr_is_imported && !prev_is_imported {
+                                    Some(_prev) => {
+                                        // Ambiguous: only replace if current enum is imported.
+                                        if curr_is_imported {
                                             v2_rt::map_insert(vacc.clone(), child.name.clone(),
                                                 Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
                                         } else { vacc.clone() }

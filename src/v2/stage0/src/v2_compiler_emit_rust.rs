@@ -4376,7 +4376,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 ".to_string()), "            }
 ".to_string()), "            eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), source_dir, target);
 ".to_string()), "            let result = ".to_string()), pipeline_mod.clone()), "::compile_sources(
-".to_string()), "                sources,
+".to_string()), "                Rc::new(sources),
 ".to_string()), "                render_target,
 ".to_string()), "            );
 ".to_string()), "            std::fs::create_dir_all(format!(\"{}/src\", output_dir))
