@@ -783,7 +783,23 @@ These items can land as soon as E0c's `TypeRendering` boundary exists
 and M4 Lane 1 Tier 2.5 corrects algebra profiles. They do not require
 M4 completion or full language plugin extraction.
 
+- [x] Coercion data structures in stage0 (`TypeCheckpoint`, `InhabitantDecl`,
+  `CallableRepr`, `CoercionRegistry`) mirroring `std/coercion.dag` schema
+- [x] Per-language checkpoint + inhabitant data populated from
+  `dsl/extdeps/languages/{rust,python,go}/types.dag` declarations
+- [x] `target_primitive_type` reads `CoercionRegistry.lookup_checkpoint`
+  instead of per-language `*_TYPE_MAP` hash maps
+- [x] Container identity (`is_known_keyed_container_name`,
+  `is_known_element_container_name`) derived from inhabitant arity
+- [x] `target_container_template_bare` provides algebra-based bare templates
+  for the TypeRendering path (no sharing wrapping baked in)
+- [x] Per-language registries built once via `lazy_static` singletons
+  (`RUST_REGISTRY`, `PYTHON_REGISTRY`, etc.) — O(1) per lookup
+- [x] 7 coercion registry tests: checkpoint resolution, cross-language
+  inhabitants, is_copy data, template application
 - [ ] `build_type_rendering` reads `TypeCheckpoint` data for primitives
+  (currently reads through `target_primitive_type` → coercion registry;
+  needs direct integration for fail-closed contract)
 - [ ] `build_type_rendering` reads `InhabitantDecl` data for algebra
   containers (FreeMonoid → Vec, PartialFunction → HashMap, etc.)
 - [ ] `build_type_rendering` reads `CallableRepr` for callable types

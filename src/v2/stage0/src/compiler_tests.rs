@@ -594,6 +594,112 @@ mod compiler_tests {
         );
     }
 
+    // =========================================================================
+    // Coercion registry tests
+    // =========================================================================
+
+    #[test]
+    fn coercion_rust_checkpoint_resolves_primitives() {
+        use crate::v2_coercion::*;
+        use crate::v2_compiler_emit::RenderTarget;
+        let reg = registry_for_target(&RenderTarget::Rust);
+        assert_eq!(coerce_primitive_type(&reg, "Int"), "i64");
+        assert_eq!(coerce_primitive_type(&reg, "Float"), "f64");
+        assert_eq!(coerce_primitive_type(&reg, "Bool"), "bool");
+        assert_eq!(coerce_primitive_type(&reg, "String"), "String");
+        assert_eq!(coerce_primitive_type(&reg, "Unit"), "()");
+        assert_eq!(coerce_primitive_type(&reg, "Bytes"), "Vec<u8>");
+        assert_eq!(coerce_primitive_type(&reg, "Json"), "serde_json::Value");
+        // Unknown type falls through unchanged (transitional)
+        assert_eq!(coerce_primitive_type(&reg, "FooBar"), "FooBar");
+    }
+
+    #[test]
+    fn coercion_python_checkpoint_resolves_primitives() {
+        use crate::v2_coercion::*;
+        use crate::v2_compiler_emit::RenderTarget;
+        let reg = registry_for_target(&RenderTarget::Python);
+        assert_eq!(coerce_primitive_type(&reg, "Int"), "int");
+        assert_eq!(coerce_primitive_type(&reg, "String"), "str");
+        assert_eq!(coerce_primitive_type(&reg, "Bool"), "bool");
+    }
+
+    #[test]
+    fn coercion_go_checkpoint_resolves_primitives() {
+        use crate::v2_coercion::*;
+        use crate::v2_compiler_emit::RenderTarget;
+        let reg = registry_for_target(&RenderTarget::Go);
+        assert_eq!(coerce_primitive_type(&reg, "Int"), "int64");
+        assert_eq!(coerce_primitive_type(&reg, "String"), "string");
+        assert_eq!(coerce_primitive_type(&reg, "Unit"), "struct{}");
+    }
+
+    #[test]
+    fn coercion_inhabitant_resolves_containers() {
+        use crate::v2_coercion::*;
+        use crate::v2_compiler_emit::RenderTarget;
+        let rust = registry_for_target(&RenderTarget::Rust);
+        // FreeMonoid → Vec<{0}>
+        assert_eq!(
+            coerce_container_template(&rust, "List"),
+            Some("Vec<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(&rust, "FreeMonoid"),
+            Some("Vec<{0}>".to_string())
+        );
+        // PartialFunction → HashMap<{0}, {1}>
+        assert_eq!(
+            coerce_container_template(&rust, "Map"),
+            Some("HashMap<{0}, {1}>".to_string())
+        );
+        // BooleanAlgebra → BTreeSet<{0}>
+        assert_eq!(
+            coerce_container_template(&rust, "Set"),
+            Some("std::collections::BTreeSet<{0}>".to_string())
+        );
+        // Unknown container → None
+        assert_eq!(coerce_container_template(&rust, "FooBar"), None);
+    }
+
+    #[test]
+    fn coercion_cross_language_inhabitant_templates() {
+        use crate::v2_coercion::*;
+        use crate::v2_compiler_emit::RenderTarget;
+        let py = registry_for_target(&RenderTarget::Python);
+        assert_eq!(coerce_container_template(&py, "List"), Some("list[{0}]".to_string()));
+        assert_eq!(coerce_container_template(&py, "Map"), Some("dict[{0}, {1}]".to_string()));
+        assert_eq!(coerce_container_template(&py, "Set"), Some("set[{0}]".to_string()));
+
+        let go = registry_for_target(&RenderTarget::Go);
+        assert_eq!(coerce_container_template(&go, "List"), Some("[]{0}".to_string()));
+        assert_eq!(coerce_container_template(&go, "Map"), Some("map[{0}]{1}".to_string()));
+        assert_eq!(coerce_container_template(&go, "Set"), Some("map[{0}]struct{}".to_string()));
+    }
+
+    #[test]
+    fn coercion_is_copy_from_checkpoint() {
+        use crate::v2_coercion::*;
+        use crate::v2_compiler_emit::RenderTarget;
+        let rust = registry_for_target(&RenderTarget::Rust);
+        assert_eq!(rust.is_copy("Int"), Some(true));
+        assert_eq!(rust.is_copy("Bool"), Some(true));
+        assert_eq!(rust.is_copy("String"), Some(false));
+        assert_eq!(rust.is_copy("Unknown"), None);
+
+        let py = registry_for_target(&RenderTarget::Python);
+        assert_eq!(py.is_copy("Int"), None);
+    }
+
+    #[test]
+    fn coercion_template_application() {
+        use crate::v2_coercion::*;
+        assert_eq!(apply_inhabitant_template1("Vec<{0}>", "i64"), "Vec<i64>");
+        assert_eq!(apply_inhabitant_template2("HashMap<{0}, {1}>", "String", "i64"), "HashMap<String, i64>");
+        assert_eq!(apply_inhabitant_template1("[]{0}", "int64"), "[]int64");
+        assert_eq!(apply_inhabitant_template2("map[{0}]{1}", "string", "int64"), "map[string]int64");
+    }
+
     /// Profile the gist pipeline by stage: tokenize, parse, resolve.
     /// Reports per-file and per-stage wall-clock times.
     #[test]
