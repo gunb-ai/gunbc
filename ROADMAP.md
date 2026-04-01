@@ -9,8 +9,10 @@ compilation.
 
 Full thesis: [docs/architecture.md](docs/architecture.md)
 Compiler laws and coercion model: [docs/compiler-laws.md](docs/compiler-laws.md)
+Coercion design (algebra-keyed inhabitants): [docs/coercion-design.md](docs/coercion-design.md)
 Testing strategy: [docs/testing-strategy.md](docs/testing-strategy.md)
 Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
+Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
@@ -79,12 +81,30 @@ Next passes:
 ```
 M1 (every .dag compiles)
  └→ M2 (working Rust codegen)
-     ├→ M3 (test generation)          ← parallel with M4
-     └→ M4 (L1 = 0, zero type names)
-         └→ M5 (coercion engine + language plugins)
-             └→ M6 (parse-emit symmetry)
-                 └→ M7 (dissolve structural bridges)
+     ├→ M3 (test generation)           ← parallel with M4
+     ├→ M4 (L1 = 0, zero type names)
+     │   ├─ Lane 1 Tier 2.5: algebra fidelity ──┐
+     │   └─ Lane 1 Tier 3: declaration-driven ──┤
+     │                                           │ parallel
+     └→ E0c (TypeRendering boundary) ───────────┤
+         └→ M5-early: coercion reads inhabitant ─┘
+              data via TypeRendering (starts when
+              E0c + Lane 1 Tier 2.5 land)
+                 └→ M5-full (language plugin extraction)
+                     └→ M6 (parse-emit symmetry)
+                         └→ M7 (dissolve structural bridges)
 ```
+
+**Coercion implementation parallelism:** The coercion design is complete
+([docs/coercion-design.md](docs/coercion-design.md)). Implementation
+does not wait for M4 to finish — it starts as soon as E0c's
+`TypeRendering` boundary lands and M4 Lane 1 Tier 2.5 corrects
+algebra fidelity. The coercion engine's core loop (`build_type_rendering`
+reading `InhabitantDecl` data from `.dag` files) is E0c's structural
+fix with coercion data as the input. Full language plugin extraction
+(M5-full) still needs M4 for identity dissolution, but the
+fail-closed coercion contract and algebra-keyed type rendering can
+land earlier.
 
 ---
 
@@ -292,6 +312,7 @@ type TypeRendering
   = PrimitiveRendering { rust_name: String }
   | ContainerRendering { template_key: String, args: List<TypeRendering> }
   | MapRendering { key: TypeRendering, value: TypeRendering }
+  | SetRendering { element: TypeRendering }
   | ProductRendering { name: String, type_params: List<String> }
   | CoproductRendering { name: String, type_params: List<String> }
   | CallableRendering { params: List<TypeRendering>, return_type: TypeRendering }
@@ -306,14 +327,33 @@ per variant — no discovery of how resolution shapes nodes. The
 container template system already has the data; `TypeRendering` is the
 structural routing that connects resolved types to templates.
 
+**Coercion data as input:** `build_type_rendering` is the implementation
+boundary where the coercion design lands. Instead of dispatching on
+node shape heuristics, it reads:
+- `TypeCheckpoint` data from language `types.dag` files (primitives)
+- `InhabitantDecl` data from language `types.dag` files (algebra containers)
+- `CallableRepr` data (callable syntax)
+- Structural recursion for products/coproducts (no data needed)
+- Cardinality annotations for optionals (binding-site `?`)
+
+The shared schema lives in `std/coercion.dag`; per-language instances
+in `extdeps/languages/{rust,python,go}/types.dag`. See
+[docs/coercion-design.md](docs/coercion-design.md) for the full
+algorithm (Appendix A walks every case end-to-end). The fail-closed
+contract: if no checkpoint or inhabitant is declared for a type, emit
+produces a diagnostic error — not a bare name or placeholder.
+
 Acceptance:
 - [ ] `TypeRendering` type defined in `04_emit_info.dag`
 - [ ] `build_type_rendering(n: Node, type_env: TypeEnv) -> TypeRendering`
   precomputed for every field type and function return type
+- [ ] `build_type_rendering` reads `TypeCheckpoint` / `InhabitantDecl`
+  data from `.dag` declarations (not hardcoded type maps)
 - [ ] `emit_node_type_rc` replaced by `emit_type_rendering(tr: TypeRendering, target, rc_types)`
   — trivial match, no `node_is_collection` / `emit_primitive_type` fallbacks
 - [ ] `emit_primitive_type` deleted or made fail-closed (no pass-through)
 - [ ] `rt_type` returns `TypeRendering | RenderError` not `Node | unit_type`
+- [ ] Missing checkpoint/inhabitant → diagnostic error (fail-closed)
 - [ ] Adding SPICE/English target requires zero changes to type rendering dispatch
 
 *Bootstrap:*
@@ -449,6 +489,11 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
 - [ ] ~60 string branches → structural algebra queries
 
 *Tier 2.5 — algebra bridge fidelity (no new infra, modeling only):*
+
+Informed by the coercion design ([docs/coercion-design.md](docs/coercion-design.md)):
+algebra inhabitants must be correct before `build_type_rendering` can
+read them. This tier is a prerequisite for early coercion implementation.
+
 - [x] Fix `Set`/`NonEmptySet` profile: `FreeMonoidCollectionProfile`
   → `BooleanAlgebraCollectionProfile`. Added `BooleanAlgebraCollectionProfile`
   variant, `boolean_algebra_collection_templates()`, and updated
@@ -627,11 +672,33 @@ Different functions, no conflict.
 
 ### M5: Coercion Engine + Language Plugin Extraction
 
-**Status:** Design phase. Depends on M2, M3, M4.
+**Status:** Design complete. Early implementation starts parallel with
+M4 (see critical path). Full extraction depends on M2, M4.
+**Design:** [docs/coercion-design.md](docs/coercion-design.md) — shared
+schema in `std/coercion.dag`, per-language data in
+`extdeps/languages/{rust,python,go}/types.dag`.
 **Gate:** Zero `match render_target` branches. Zero language mentions in
 `src/v2/*.dag`. LintModel validates every emitted file.
 
-*Coercion engine (Lane C):*
+*M5-early: coercion via TypeRendering (parallel with M4, needs E0c):*
+
+These items can land as soon as E0c's `TypeRendering` boundary exists
+and M4 Lane 1 Tier 2.5 corrects algebra profiles. They do not require
+M4 completion or full language plugin extraction.
+
+- [ ] `build_type_rendering` reads `TypeCheckpoint` data for primitives
+- [ ] `build_type_rendering` reads `InhabitantDecl` data for algebra
+  containers (FreeMonoid → Vec, PartialFunction → HashMap, etc.)
+- [ ] `build_type_rendering` reads `CallableRepr` for callable types
+- [ ] Fail-closed contract: missing checkpoint/inhabitant → diagnostic
+  error (not bare name or placeholder)
+- [ ] Algebra law test generation: for each `InhabitantDecl`, compile
+  law predicates from `std/algebra.dag` to target-language tests
+- [ ] Coercion refusal tests: for every `.dag` type without a declared
+  inhabitant in target X, verify the compiler produces a diagnostic
+
+*M5-full: language plugin extraction (needs M4 for identity):*
+
 - [ ] `05_emit.dag` walks typed graph, invokes language-declared
   coercion
 - [ ] Delete `05_emit_rust.dag` (4,121 lines) →

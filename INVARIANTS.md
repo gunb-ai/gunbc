@@ -4,6 +4,34 @@ This document governs the engineering invariants for the entire
 codebase: the v1 Rust compiler (`src/v1/`), the v2 self-hosted
 compiler (`src/v2/`), and the DSL source (`dsl/`).
 
+## Modeling Faithfulness Invariant
+
+The compiler and the `.dag` source share one governing principle:
+every construct must be grounded in an identifiable external fact
+(axiom, specification, standard, or structural derivation). Constructs
+without factual grounding are not valid authorities in this codebase.
+
+Full modeling guidelines: [`MODELING.md`](MODELING.md).
+
+**The compiler's role:** enforce faithfulness mechanically. When the
+compiler encounters a type, coercion, or structural claim for which no
+grounding fact is declared, it must produce a diagnostic error. Silent
+defaults, fabrication fallbacks, and placeholder emissions are violations
+of this invariant — they allow ungrounded claims to propagate through
+the pipeline as if they were facts.
+
+**Annotations are not facts.** When a structural gap requires new
+information, the fix is to extend `.dag` structure (types, edges,
+functions), not to add metadata or annotations. The `.dag` language is
+the meta-language for expressing intersubjective agreements; there is
+no meta-language above it.
+
+This invariant is upstream of all others. Performance invariants assume
+the model is faithful. Decidability proofs assume the structures are
+well-grounded. Sustainability rules assume facts have single authorities.
+If the modeling is unfaithful, the downstream invariants are protecting
+the wrong thing.
+
 ## Performance Invariant
 
 Performance is a correctness property for this repo, not a cleanup pass

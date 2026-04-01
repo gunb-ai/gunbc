@@ -1,17 +1,19 @@
-// extdeps/languages/python/types.dag -- "What is the Python type system?"
+// extdeps/languages/python/types.dag -- Python coercion data.
 //
-// Duck typing, type hints (PEP 484), dataclasses (PEP 557),
-// enums, and value semantics as specified in the Python Language
-// Reference and typing module documentation.
+// Declares which Python types inhabit which .dag algebraic structures.
+// Python has garbage collection, so sharing is identity (no wrapper).
+//
+// FAIL-CLOSED CONTRACT: Missing inhabitant = compile error.
+//
+// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
+// This file instantiates data only — no local type families.
 //
 // Ref: Python Language Reference (docs.python.org/3/reference)
-//      PEP 484 "Type Hints"
-//      PEP 557 "Data Classes"
-//      PEP 613 "TypeAlias"
-//      PEP 604 "Union types with X | Y"
+//      PEP 484 "Type Hints", PEP 557 "Data Classes"
+//      std/algebra.dag, std/coercion.dag
 //
 // Consumers:
-//   v2/05_emit_python.dag -- type emission, class generation, decorator usage
+//   v2/05_emit_python.dag -- coercion engine reads inhabitants
 
 module extdeps.languages.python.types
 
@@ -20,99 +22,134 @@ import std.languages {
   TypeDefinitionSyntax, LiteralSyntax
 }
 
-// -- Type system model -----------------------------------------------
-// Ref: Python Reference 3 "Data model"
-
-// Python is dynamically typed. Type hints are optional annotations
-// checked by external tools (mypy, pyright), not the runtime.
-type PythonTypeKind
-  = DynamicType                        // no annotation, duck-typed
-  | AnnotatedType                      // type hint present, checked by mypy
-
-// "Which types are mutable?"
-// Ref: Python Reference 3 "Data model" -- mutable vs immutable
-type PythonMutability
-  = Immutable                          // str, int, float, bool, tuple, frozenset, bytes
-  | Mutable                            // list, dict, set, bytearray, user objects
-
-// Primitive type facts with mutability.
-type PythonPrimitiveInfo {
-  dag_name: String                     // DAG abstract name
-  python_name: String                  // Python concrete type
-  mutability: PythonMutability
-  falsy_value: String                  // what value is falsy
+import std.coercion {
+  TypeCheckpoint, InhabitantDecl, CallableRepr
 }
 
-data python_primitives: List<PythonPrimitiveInfo> = [
-  { dag_name: "Int",    python_name: "int",   mutability: Immutable, falsy_value: "0" },
-  { dag_name: "Float",  python_name: "float", mutability: Immutable, falsy_value: "0.0" },
-  { dag_name: "Bool",   python_name: "bool",  mutability: Immutable, falsy_value: "False" },
-  { dag_name: "Unit",   python_name: "None",  mutability: Immutable, falsy_value: "None" },
-  { dag_name: "String", python_name: "str",   mutability: Immutable, falsy_value: "\"\"" },
-  { dag_name: "Bytes",  python_name: "bytes", mutability: Immutable, falsy_value: "b\"\"" },
-  { dag_name: "Secret", python_name: "str",   mutability: Immutable, falsy_value: "\"\"" },
-  { dag_name: "Json",   python_name: "dict",  mutability: Mutable,   falsy_value: "{}" }
+
+// =========================================================================
+// Type checkpoints
+//
+// Python has no Copy/Move distinction. All values are references to
+// objects on the GC heap. is_copy is none for all entries.
+// =========================================================================
+
+data python_type_checkpoints: List<TypeCheckpoint> = [
+  { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none },
+  { dag_name: "Float",  target_type: "float", default_expr: "0.0",    is_copy: none },
+  { dag_name: "Bool",   target_type: "bool",  default_expr: "False",  is_copy: none },
+  { dag_name: "Unit",   target_type: "None",  default_expr: "None",   is_copy: none },
+  { dag_name: "String", target_type: "str",   default_expr: "\"\"",   is_copy: none },
+  { dag_name: "Bytes",  target_type: "bytes", default_expr: "b\"\"",  is_copy: none },
+  { dag_name: "Secret", target_type: "str",   default_expr: "\"\"",   is_copy: none },
+  { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none }
 ]
 
-// -- Dataclass model -------------------------------------------------
-// Ref: PEP 557 "Data Classes" (Python 3.7+)
 
-// "How does Python define structured data?"
-// @dataclass decorator auto-generates __init__, __repr__, __eq__.
+// =========================================================================
+// Algebra inhabitants
+//
+// COMPARISON WITH RUST:
+//   FreeMonoid     → list (Python) vs Vec<T> (Rust)
+//   BooleanAlgebra → set (Python) vs BTreeSet<T> (Rust)
+//   PartialFunction→ dict (Python) vs HashMap<K,V> (Rust)
+// =========================================================================
+
+data python_algebra_inhabitants: List<InhabitantDecl> = [
+  { algebra: "FreeMonoid",
+    template: "list[\{0\}]",
+    arity: 1,
+    identity_expr: "[]",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "BooleanAlgebra",
+    template: "set[\{0\}]",
+    arity: 1,
+    identity_expr: "set()",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "PartialFunction",
+    template: "dict[\{0\}, \{1\}]",
+    arity: 2,
+    identity_expr: "{}",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "OrderedRing",
+    template: "int",
+    arity: 0,
+    identity_expr: "0",
+    import_path: none,
+    is_copy: none },
+
+  { algebra: "ApproximateField",
+    template: "float",
+    arity: 0,
+    identity_expr: "0.0",
+    import_path: none,
+    is_copy: none }
+]
+
+
+// =========================================================================
+// Optional: T | None (PEP 604)
+//
+// Authority: typing_optional and none_literal below. No separate optional
+// declarations — they would duplicate the existing syntax facts.
+// =========================================================================
+
+
+// =========================================================================
+// Callable: Callable[[T], U] (typing module)
+//
+// Python has no owned/shared/static distinction. GC handles everything.
+// =========================================================================
+
+data python_callable: CallableRepr = CallableRepr {
+  template: "Callable[[\{params\}], \{return\}]",
+  param_separator: ", ",
+  return_separator: ", ",
+  import_path: "from typing import Callable"
+}
+
+
+// =========================================================================
+// Sharing
+//
+// Python has GC. Sharing is structural identity — no wrapper needed.
+// The emitter knows this from the target language, not from a declared
+// SharingStrategy config surface.
+// =========================================================================
+
+
+// =========================================================================
+// Retained Python type system facts
+// =========================================================================
+
+type PythonTypeKind
+  = DynamicType
+  | AnnotatedType
+
 data dataclass_decorator: String = "@dataclass"
 data dataclass_import: String = "from dataclasses import dataclass, field"
-
-// Dataclass field with default value.
 data field_default_template: String = "field(default=\{value\})"
 data field_default_factory_template: String = "field(default_factory=\{factory\})"
-
-// -- Enum model ------------------------------------------------------
-// Ref: Python enum module (docs.python.org/3/library/enum.html)
-
 data enum_import: String = "from enum import Enum, auto"
 data enum_class_template: String = "class \{name\}(Enum):\n\{variants\}"
 data enum_auto_value: String = "auto()"
-
-// -- Union / Optional types ------------------------------------------
-// Ref: PEP 604 "Allow writing union types as X | Y" (Python 3.10+)
-
-// Python 3.10+ union syntax: X | Y instead of Union[X, Y].
 data union_syntax: String = "\{a\} | \{b\}"
 data optional_syntax: String = "\{type\} | None"
-
-// Pre-3.10 syntax (typing module).
 data typing_optional: String = "Optional[\{type\}]"
 data typing_union: String = "Union[\{types\}]"
 data typing_import: String = "from typing import Optional, Union"
-
-// -- Type alias ------------------------------------------------------
-// Ref: PEP 613 "TypeAlias" (Python 3.10+)
-
 data type_alias_template: String = "\{name\} = \{type\}"
-
-// -- Generic types ---------------------------------------------------
-// Ref: PEP 484, typing module
-
 data generic_param_template: String = "[\{params\}]"
 data typing_generic_import: String = "from typing import Generic, TypeVar"
-
-// -- None handling ---------------------------------------------------
-// Ref: Python Reference 3 "Data model"
-
 data none_literal: String = "None"
 data none_check_template: String = "\{expr\} is None"
 data none_not_check_template: String = "\{expr\} is not None"
-
-// -- Pass statement --------------------------------------------------
-// Ref: Python Reference 7.4 "The pass statement"
-
 data pass_statement: String = "pass"
-
-// -- Type checking tools ---------------------------------------------
-// The canonical type checkers for Python type hints.
-
 data type_checker: String = "mypy"
 data type_checker_strict: String = "mypy --strict"
-
-// Emission-facing maps (python_type_map, python_keywords, python_container_templates)
-// now live in extdeps.languages.python.emit -- single source of truth.
