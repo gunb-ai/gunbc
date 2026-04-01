@@ -1177,6 +1177,140 @@ reports `O(max_int × per_step)`.
 - Complexity gate: 313 → 0 without suppression or ratchet
 - Cost algebra: one cost rule per primitive, composition closed
 
+### Bounded by construction — no unbounded expressions
+
+Every expression in `.dag` has a finite cost. This is not validated —
+it is structurally impossible to write an unbounded expression. The
+language has no primitive for unbounded computation, and composition
+of bounded primitives is closed (bounded + bounded = bounded).
+
+**Current state:** recursive syntax is sugar that the compiler lowers
+to bounded primitives (`fold`, `descend`, `repeat`). The 311
+violations are analyzer gaps — the programs ARE bounded, the analyzer
+can't prove it yet. Fixing the analyzer to recognize all descent
+patterns resolves these. Once lowering is complete, `CostUnknown`
+becomes structurally unreachable — not just validated away, but
+impossible to construct.
+
+**No cyclic graphs.** `.dag` is DAG by definition. Every data
+structure is a directed acyclic graph. Cycles are unrepresentable:
+- Values are immutable — no back-edges via mutation
+- Recursive types use structural descent (catamorphism) — the
+  recursion follows the tree, never revisits nodes
+- Self-referential type fields are indirection markers (Box/Rc),
+  not actual cycles in the data
+- The compiler's own IR is a DAG — module dependency is topologically
+  sorted, type resolution is acyclic
+
+Cyclic data structures (doubly-linked lists, circular buffers, general
+graphs with back-edges) are not expressible. Programs that need cycle
+representations model them as adjacency maps (`Map<NodeId, List<NodeId>>`)
+— the map is a DAG, the logical graph has cycles only in interpretation.
+
+### Cost comparator — refuse to compile suboptimal code
+
+After every function has a proven tight bound, the compiler can detect
+known-suboptimal patterns and refuse to compile them. This is not a
+linter — it is a provable statement: "an equivalent implementation
+with strictly lower cost exists using the same primitives."
+
+**Known suboptimal patterns (O(n²) → O(n) or O(n log n)):**
+
+| Pattern | Cost | Optimal | Cost | Detection |
+|---------|------|---------|------|-----------|
+| Membership check in fold accumulator: `acc \|> any(x => x == item)` | O(n²) | `set_member(acc_set, item)` | O(n log n) | fold body scans growing accumulator |
+| String concat in loop: `fold(items, init: "", f: (acc, s) => concat(acc, s))` | O(n²) | `join(items, separator)` | O(n) | fold body concats to accumulator string |
+| Repeated list append: `fold(items, f: (acc, x) => concat(acc, [x]))` | O(n²) | `list_push(acc, x)` | O(n) | fold body concats single-element list |
+| Sort + extract: `sort(list) \|> first` | O(n log n) | `fold(list, min)` | O(n) | sort followed by single-element access |
+| Nested find: `list \|> map(x => other \|> find(...))` | O(n×m) | Build index, then lookup | O(n+m) | nested collection scan in map/fold body |
+| Loop-invariant computation: `fold(items, f: (acc, x) => let k = expensive_pure(constant) ...)` | ×cost(f) | Hoist before fold | O(1) | pure call with loop-invariant args inside fold |
+
+**Design:** The cost comparator runs after complexity analysis. For
+each function with proven cost, it pattern-matches the cost structure
+against the suboptimal pattern table. If a match is found AND a
+strictly cheaper alternative exists:
+
+1. The alternative must use the same primitives (no new language
+   features required)
+2. The alternative must produce identical output (semantic
+   equivalence)
+3. The cost improvement must be strict (O(n²) → O(n), not O(n) →
+   O(n) with better constant)
+
+When all three hold, compilation fails with a diagnostic that shows
+the suboptimal pattern and the suggested fix. The developer can then
+choose the optimal implementation.
+
+**Space-time tradeoff awareness:** O(n²) time + O(1) space is NOT
+always worse than O(n) time + O(n) space. The comparator only refuses
+when the alternative is strictly better in ALL dimensions, or when
+the time improvement dominates (e.g., O(n²) → O(n log n) with same
+space). Ambiguous tradeoffs are allowed — the developer makes the
+call.
+
+**Example: binary tree search (O(log n))**
+
+```
+type Tree<T> = Leaf | Branch { value: T, left: Tree<T>, right: Tree<T> }
+
+fn search(tree: Tree<Int>, target: Int) -> Bool {
+  match tree {
+    Leaf => false
+    Branch { value: v, left: l, right: r } =>
+      if target == v { true }
+      else if target < v { search(tree: l, target: target) }
+      else { search(tree: r, target: target) }
+  }
+}
+// Compiler lowers to: descend(tree, f)
+// Cost: O(|tree|) in general, O(log |tree|) for balanced BST
+// The tight bound depends on tree balance — a refinement type
+// (BalancedTree<T>) could express this.
+```
+
+**Example: accumulator scan detection**
+
+```
+// REJECTED: O(n²) — fold body scans growing accumulator
+fn unique(items: List<String>) -> List<String> {
+  items |> fold(init: [], f: (acc, item) =>
+    if acc |> any(a => a == item) { acc }
+    else { list_push(acc, item) }
+  )
+}
+// Diagnostic: "fold accumulator scanned with `any` — O(n²).
+//   Use Set for O(n log n): set_insert + set_to_list."
+
+// ACCEPTED: O(n log n) — Set membership is O(log n)
+fn unique(items: List<String>) -> List<String> {
+  let result = items |> fold(init: { seen: empty_set(), out: [] }, f: (acc, item) =>
+    if set_member(acc.seen, item) { acc }
+    else { { seen: set_insert(acc.seen, item), out: list_push(acc.out, item) } }
+  )
+  result.out
+}
+```
+
+### Cost algebra extensions
+
+Current algebra: `CostConst`, `CostAdd`, `CostMul`, `CostMax`,
+`CostSum` (bounded summation), `CostLog`. Supports O(1) through
+O(n^k × log^j n) — all polynomial-logarithmic classes.
+
+**Planned additions:**
+
+| Shape | CostExpr variant | Use case |
+|-------|-----------------|----------|
+| O(√n) | `CostSqrt { argument: SizeExpr }` | Trial division, block decomposition, Mo's algorithm |
+| O(n^k) for constant k | `CostPow { base: SizeExpr, exponent: Int }` | Matrix multiply O(n³), naive sort O(n²) |
+| Amortized O(1) | `CostAmortized { worst: CostExpr, amortized: CostExpr }` | Dynamic array append, splay tree |
+
+**Space complexity as peer dimension:** `space: CostExpr` peer to
+`work` and `span`. Currently `output_size` is unpopulated. When space
+is tracked, the cost comparator can reason about space-time tradeoffs
+and avoid rejecting O(n²) time + O(1) space when the O(n) alternative
+requires O(n) space.
+
 **Unified Sequence (Seq\<T>).** Ordered collections share FreeMonoid
 algebra; access pattern determines representation. Mixed access = type
 error.
