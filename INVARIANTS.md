@@ -249,10 +249,50 @@ errors the compiler could have caught. If `cargo check` on emitted
 Rust finds type mismatches, those are emission bugs — the compiler
 had the type information and lost it during rendering.
 
+## Strict Forward Progress
+
+Time flows strictly forward. Every execution step moves the
+computation forward through a bounded structure — never revisiting,
+never cycling.
+
+This is the foundational invariant from which decidability,
+complexity analysis, and termination all follow. A recursive
+function is a logical description of a computation. Its execution
+is a finite walk forward through time. The recursion is syntax;
+the forward progress is physics.
+
+**Data can represent cycles.** Adjacency maps, parent pointers,
+back-edges as IDs — all expressible. A `Map<NodeId, List<NodeId>>`
+can encode an arbitrary graph with cycles. The data is a value;
+it sits still.
+
+**Expressions cannot cycle.** Iteration walks the finite container
+(Map entries, List elements, tree nodes), not the logical edges.
+`fold(graph_entries, f)` is bounded by `|graph_entries|` regardless
+of the graph's topology. The computation moves forward through the
+container, one element at a time, and terminates when the container
+is exhausted.
+
+**The distinction:** `.dag` is DAG in its expressions (every
+computation has a finite cost), not in its data (values can represent
+arbitrary topologies). Cycles in interpretation are fine; cycles in
+evaluation are structurally impossible.
+
+**Why this matters:** if execution can only move forward, then:
+- Every program terminates (decidability)
+- Every program has a computable cost (complexity analysis is total)
+- Every program has a computable memory footprint (space analysis)
+- Composition is closed (forward + forward = forward)
+- The compiler itself provably terminates on all inputs
+
 ## Decidability Invariant
 
 All `.dag` programs are decidable. Undecidable programs are structurally
 unrepresentable — the language has no primitive for unbounded computation.
+
+This follows directly from strict forward progress. If every execution
+step moves forward through a bounded structure, the computation must
+terminate — there are only finitely many steps to take.
 
 This is the highest-leverage invariant in the system. If every function
 terminates, then: complexity analysis is total (every function gets a
