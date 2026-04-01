@@ -842,6 +842,19 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
 
+      // Gate: ownership errors block emission (Early Detection invariant).
+      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if ownership_errors |> count > 0 {
+        return PipelineResult {
+          files: [],
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags, ownership_diags),
+          complexity: complexity,
+          ownership: ownership,
+          artifact_plan: empty_artifact_plan(),
+          newline_indices: newline_indices
+        }
+      }
+
       // Stage 7: Default artifact planning for the current single-artifact flow.
       let artifact_plan = default_artifact_plan(
         root_modules: typed.modules |> map(m => m.module.name),

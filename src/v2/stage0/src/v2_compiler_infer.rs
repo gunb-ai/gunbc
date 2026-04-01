@@ -4382,24 +4382,25 @@ pub fn build_module_context(
             <HashMap<_, _>>::new(),
             vec![],
         );
+        let imported_enum_names: HashMap<String, bool> = resolved_imports.iter().cloned().fold(
+            <HashMap<_, _>>::new(),
+            |acc: HashMap<String, bool>, imp: Rc<ResolvedImport>| {
+                imp.specific_names.iter().cloned().fold(acc,
+                    |inner: HashMap<String, bool>, n: String| v2_rt::map_insert(inner, n, true))
+            });
         let variant_fold = v2_rt::map_values(&env.bindings.clone())
             .iter().cloned().fold(
                 VariantFoldState { locals: <HashMap<_, _>>::new(), collision_errors: vec![] },
                 |acc: VariantFoldState, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
-                        let enum_name = binding.resolved.name.clone();
-                        let curr_is_imported = resolved_imports.iter().any(|imp| {
-                            imp.specific_names.iter().any(|n| *n == enum_name)
-                        });
+                        let curr_is_imported = imported_enum_names.contains_key(&binding.resolved.name);
                         binding.resolved.clone().children.clone().iter().cloned().fold(
                             acc.clone(),
                             |vacc: VariantFoldState, child: Rc<Node>| {
                                 match v2_rt::map_get(&vacc.locals, child.name.clone()) {
                                     Some(prev) => {
-                                        let prev_is_imported = resolved_imports.iter().any(|imp| {
-                                            imp.specific_names.iter().any(|n| *n == prev.resolved.name)
-                                        });
-                                        let next_errors = if curr_is_imported && prev_is_imported {
+                                        let prev_is_imported = imported_enum_names.contains_key(&prev.resolved.name);
+                                        if curr_is_imported && prev_is_imported {
                                             let mut w = vacc.collision_errors.clone();
                                             w.push(make_error_node(
                                                 Rc::new(CompilerDiagnostic::VariantCollision {
@@ -4410,15 +4411,14 @@ pub fn build_module_context(
                                                 }),
                                                 module_name.clone(),
                                             ));
-                                            w
-                                        } else { vacc.collision_errors.clone() };
-                                        if curr_is_imported {
+                                            VariantFoldState { locals: vacc.locals.clone(), collision_errors: w }
+                                        } else if curr_is_imported {
                                             VariantFoldState {
                                                 locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
                                                     Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
-                                                collision_errors: next_errors,
+                                                collision_errors: vacc.collision_errors.clone(),
                                             }
-                                        } else { VariantFoldState { locals: vacc.locals.clone(), collision_errors: next_errors } }
+                                        } else { vacc.clone() }
                                     }
                                     None => VariantFoldState {
                                         locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),

@@ -2503,27 +2503,31 @@ fn build_module_context(contributions: List<ItemContribution>,
   // Disambiguation: when a variant name appears in multiple enums (e.g. Rust
   // in both RenderTarget and CodegenBackend), prefer the enum explicitly named
   // in this module's imports over ambient std.types injection.
+  // Pre-compute import membership as an indexed set (FF — facts flow forward).
+  let imported_enum_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
+    fold(imp.specific_names, init: acc, f: (inner, n) => map_insert(inner, n, true))
+  )
   let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
     let is_coproduct = binding.resolved.connective == Disj
     if is_coproduct {
+      let curr_is_imported = map_get(imported_enum_names, binding.resolved.name) != none
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         match map_get(vacc.locals, child.name) {
           Some { value: prev } =>
-            let curr_is_imported = resolved_imports |> any(imp =>
-              imp.specific_names |> any(n => n == binding.resolved.name)
-            )
-            let prev_is_imported = resolved_imports |> any(imp =>
-              imp.specific_names |> any(n => n == prev.resolved.name)
-            )
-            let next_errors = if curr_is_imported && prev_is_imported {
-              list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: child.name, enum1: prev.resolved.name, enum2: binding.resolved.name, span: no_span() }, module_name: module_name))
-            } else { vacc.collision_errors }
-            if curr_is_imported {
+            let prev_is_imported = map_get(imported_enum_names, prev.resolved.name) != none
+            if curr_is_imported && prev_is_imported {
+              // Both enums explicitly imported — ambiguous. Remove the
+              // binding so later phases cannot consume a fabricated choice.
+              VariantFoldState {
+                locals: vacc.locals,
+                collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: child.name, enum1: prev.resolved.name, enum2: binding.resolved.name, span: no_span() }, module_name: module_name))
+              }
+            } else if curr_is_imported {
               VariantFoldState {
                 locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),
-                collision_errors: next_errors
+                collision_errors: vacc.collision_errors
               }
-            } else { VariantFoldState { locals: vacc.locals, collision_errors: next_errors } }
+            } else { vacc }
           None =>
             VariantFoldState {
               locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),

@@ -1774,6 +1774,31 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 }
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
+                let ownership_errors: Vec<Rc<ErrorNode>> = {
+                    let mut __result = Vec::new();
+                    for d in ownership_diags.clone().iter().cloned() {
+                        if is_error_diagnostic(d.diagnostic.clone()) {
+                            __result.push(d);
+                        }
+                    }
+                    __result
+                };
+                if (ownership_errors.len() as i64) > 0 {
+                    return Rc::new(PipelineResult {
+                        files: vec![],
+                        diagnostics: v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+                                all_infer_diags.clone(),
+                            ),
+                            ownership_diags.clone(),
+                        ),
+                        complexity: complexity.clone(),
+                        ownership: ownership.clone(),
+                        artifact_plan: empty_artifact_plan(),
+                        newline_indices: newline_indices.clone(),
+                    });
+                }
                 let artifact_plan = default_artifact_plan(
                     {
                         let mut __result = Vec::new();
