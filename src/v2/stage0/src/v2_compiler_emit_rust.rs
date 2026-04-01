@@ -2830,10 +2830,7 @@ let type_ann = if value.inferred.is_some() {
     let tr = build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone());
     if !tr.is_error {
         let ty = render_type(tr, RenderTarget::Rust);
-        // Skip annotations with incomplete inference: Vec<()> means fold/empty-list
-        // init type wasn't unified with the body's return type
-        let has_unit_element = ty.contains("Vec<()>");
-        if !ty.is_empty() && ty != "()" && !has_unit_element { Some(ty) } else { None }
+        if !ty.is_empty() && ty != "()" { Some(ty) } else { None }
     } else { None }
 } else { None };
 let let_line = emit_let_binding_typed(name.clone(), val_str.clone(), type_ann.clone(), RenderTarget::Rust);
