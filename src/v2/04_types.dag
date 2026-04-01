@@ -9,7 +9,7 @@
 
 module v2.compiler.infer_types
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, is_container_type }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -19,7 +19,14 @@ import std.algebra {
   NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
-  algebra_templates_for_profile
+  algebra_templates_for_profile,
+  partial_function_templates,
+  free_monoid_collection_templates,
+  free_monoid_scalar_templates,
+  boolean_algebra_collection_templates,
+  boolean_algebra_templates,
+  approximate_field_templates,
+  ordered_ring_templates
 }
 import v2.std.core {
   Node, make_param_node, param_node_type_expr,
@@ -80,7 +87,7 @@ fn rt_type(n: Node) -> Node {
 // =========================================================================
 
 fn node_is_collection(n: Node) -> Bool {
-  (n.children |> count) > 0 && n.connective == NoConnective
+  (n.children |> count) > 0 && n.connective == NoConnective && is_container_type(name: n.name)
 }
 
 fn node_is_keyed_collection(n: Node) -> Bool {

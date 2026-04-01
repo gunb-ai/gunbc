@@ -58,7 +58,7 @@ use crate::v2_std_core::InferredNode::{CompilerError, Resolved};
 use crate::v2_std_core::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr};
 use crate::v2_std_core::NodeType::{InferError, Typed, Untyped};
 pub use crate::v2_std_core::{
-    has_inferred, is_kernel_numeric, is_kernel_textual, is_kernel_type, leaf_node,
+    has_inferred, is_container_type, is_kernel_numeric, is_kernel_textual, is_kernel_type, leaf_node,
     leaf_node_with_span, make_expr_node, make_param_node, no_span, node_has_structure,
     node_is_coproduct, node_is_product, param_node_type_expr, rt_node,
     with_optional_cardinality, with_required_cardinality, BinOpKind, Cardinality, Connective,
@@ -634,7 +634,7 @@ pub fn free_monoid_scalar_templates() -> Vec<AlgebraFieldTemplate> {
             param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
             return_type: AlgebraTypeTemplate::ListOf {
                 element: Box::new(AlgebraTypeTemplate::NamedTemplate {
-                    name: "Char".to_string(),
+                    name: "Int".to_string(),
                 }),
             },
         },
@@ -1160,7 +1160,7 @@ pub fn node_is_bridge_dynamic_name(n: Rc<Node>) -> bool {
 }
 
 pub fn node_is_collection(n: Rc<Node>) -> bool {
-    ((n.children.clone().len() as i64) > 0) && (n.connective.clone() == None)
+    ((n.children.clone().len() as i64) > 0) && (n.connective.clone() == None) && is_container_type(n.name.clone())
 }
 
 pub fn node_is_keyed_collection(n: Rc<Node>) -> bool {

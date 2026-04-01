@@ -26,13 +26,59 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 101 errors | 0 | Down from 8658→419→367→0→101 (merge regression). Type annotations (73), mismatched types (17), Callable scope (9), other (2) |
+| Bootstrap emitted Rust (B) | 5 errors | 0 | Down from 8658→99→12→5. Algebra imports fixed, EmitGraphInfo.type_params synced. Remaining: 1 E0425 (field_access_base) + 4 E0282 (bidirectional inference) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
 | Complexity violations | 225 | 0 | 27 root functions → 225 errors (ratcheted); descent witnesses (ExprMatch, skip, first, field access), SCC witness check, and reordered branching classification reduced from 311; remaining: parser SCC (60), emit block SCC (101), branching (13), scattered (51) |
+
+---
+
+## Active: Bootstrap B → 0 (5 errors remaining)
+
+TypeRendering infrastructure landed. Always-annotate let bindings
+enforced. 10 reviewer violations resolved. Fold inference improved.
+Error count: 99 → 12 → 5 (94 fixed). PR #277.
+
+**Remaining 5 errors (2 independent categories):**
+
+### Category A: Cross-module imports (8 → 1 E0425) — mostly fixed
+
+7 of 8 E0425 resolved: algebra template function imports added to
+`04_types.dag` (`partial_function_templates`, `free_monoid_collection_templates`,
+`free_monoid_scalar_templates`, `boolean_algebra_collection_templates`,
+`boolean_algebra_templates`, `approximate_field_templates`,
+`ordered_ring_templates`). `EmitGraphInfo.type_params` added to
+`04_emit_info.dag` (was stage0-only, violating No duplicate representations).
+
+Remaining 1 E0425: `field_access_base` — separate import fix needed.
+
+### Category B: Nested collection bidirectional inference (4 E0282) — separate branch
+
+`Map<String, List<Unit>>` fold accumulators where the inner
+`List<Unit>` comes from empty `[]` literals inside struct fields.
+The single-pass inference pipeline resolves struct fields top-down
+but can't propagate the actual element type from downstream fold
+body back into the struct's list field type. Needs field-level
+bidirectional type unification.
+
+Files: `src/v2/stage0/src/v2_compiler_infer.rs` (fold inference
+path). No overlap with Category A.
+
+**Reviewer-flagged structural debt (tracked, not blocking merge):**
+
+- `find_struct_by_fields`: heuristic name match → needs record literal
+  inference to carry struct name from boundary (M2 boundary sufficiency)
+- Fold refinement magic names (Unit/Dynamic/Error) → needs bidirectional
+  fold type unification in inference (M2 boundary sufficiency)
+- `with()` string-keyed branch → needs algebra operation registry
+  (M4 Lane 1, algebra-driven builtin operations)
+- TypeRendering mixes backend policy (shared/boxed) with diagnostics
+  (is_error) → dissolves into coercion engine (M5)
+- Codepoint carrier: chars() returns List\<Int> but should model
+  codepoints explicitly → algebra design (M4 Tier 2.5)
 
 ---
 
@@ -304,28 +350,56 @@ Six escape hatches in the type rendering pipeline:
 | `_` placeholders in bare containers | `Vec<_>` / `HashMap<_, _>` (invalid in struct fields) | Complete type params from resolution, not placeholders |
 | No type-ref vs type-def distinction | Resolution-expanded Conj treated as type reference | `TypeRendering` or nominal references for field types |
 
-Proposed fix: `TypeRendering` descriptor precomputed at the
-resolution→emit boundary, parallel to `ValueContext`:
+Proposed fix: `TypeRendering` — a .dag struct with named edges and
+bits, precomputed at the resolution→emit boundary. Shape is emergent
+from which edges are populated (no tag enum). Named edges prevent
+positional fabrication — you can't confuse key with element.
 
 ```
-type TypeRendering
-  = PrimitiveRendering { rust_name: String }
-  | ContainerRendering { template_key: String, args: List<TypeRendering> }
-  | MapRendering { key: TypeRendering, value: TypeRendering }
-  | SetRendering { element: TypeRendering }
-  | ProductRendering { name: String, type_params: List<String> }
-  | CoproductRendering { name: String, type_params: List<String> }
-  | CallableRendering { params: List<TypeRendering>, return_type: TypeRendering }
-  | OptionalRendering { inner: TypeRendering }
-  | TupleRendering { elements: List<TypeRendering> }
+type TypeRendering {
+  type_name: String                   // identity
+  element: TypeRendering?             // List<THIS>, Set<THIS>
+  key: TypeRendering?                 // Map<THIS, V>
+  value: TypeRendering?               // Map<K, THIS>
+  params: List<TypeRendering>         // fn(THESE, ...) -> ...
+  return_type: TypeRendering?         // fn(...) -> THIS
+  inner: TypeRendering?               // Optional<THIS>, Refined<THIS>
+  generic_args: List<TypeRendering>   // FreeMonoid<THIS>
+  shared: Bool                        // needs Rc/pointer/GC
+  boxed: Bool                         // recursive indirection
+  is_tuple: Bool                      // structural tuple
+  is_error: Bool                      // inference failure — fail-closed
+  error_label: String                 // diagnostic context
+}
 ```
 
-Emit becomes a trivial match on `TypeRendering × LanguageSpec`. No
-heuristics, no name checking, no connective inspection. Each variant
-is unambiguous. Adding a backend means adding one rendering function
-per variant — no discovery of how resolution shapes nodes. The
-container template system already has the data; `TypeRendering` is the
-structural routing that connects resolved types to templates.
+`build_type_rendering(n: Node, info: EmitGraphInfo) -> TypeRendering`
+is a pure function called at each type reference site. `render_type`
+matches on which edges exist and applies LanguageSpec templates:
+
+- `params` non-empty → callable: `emit_callable_type(params, return_type, target)`
+- `key` set → keyed container: `emit_map_type(key, value, target)`
+- `element` set → container: `emit_container(kind, element, target)`
+- `inner` set → wrapper: `emit_container("optional", inner, target)`
+- else → leaf/named: `target_primitive_type(type_name, target)`
+- then apply bits: `shared` → `wrap_shared_type`, `boxed` → `wrap_box`
+
+No Node inspection after `build_type_rendering`. No name-based
+dispatch in `render_type`. No `rc_types` map. The boundary is
+sufficient. Adding a backend means adding LanguageSpec data, not
+emission logic.
+
+**Design direction (2026-04-01):** TypeRendering is a stepping stone.
+The final architecture is coercion-based emission: each target
+language declares its type algebra inhabitants in .dag extdeps (e.g.,
+Rust's `Vec<T>` inhabits FreeMonoid, `HashMap<K,V>` inhabits
+PartialFunction, `i64` inhabits Word64). The compiler sidecasts from
+.dag structural types to target types via algebraic identity —
+mechanical, no heuristics. TypeRendering's named edges map directly to
+the algebraic relationships that coercion will formalize. When M5's
+coercion engine lands, TypeRendering dissolves into it.
+
+Design doc: `docs/e0c-type-rendering.md` (on `fast-hen-341` worktree).
 
 **Coercion data as input:** `build_type_rendering` is the implementation
 boundary where the coercion design lands. Instead of dispatching on
@@ -344,17 +418,24 @@ contract: if no checkpoint or inhabitant is declared for a type, emit
 produces a diagnostic error — not a bare name or placeholder.
 
 Acceptance:
-- [ ] `TypeRendering` type defined in `04_emit_info.dag`
-- [ ] `build_type_rendering(n: Node, type_env: TypeEnv) -> TypeRendering`
+- [ ] `TypeRendering` struct defined in `04_emit_info.dag`
+- [ ] `build_type_rendering(n: Node, info: EmitGraphInfo) -> TypeRendering`
   precomputed for every field type and function return type
-- [ ] `build_type_rendering` reads `TypeCheckpoint` / `InhabitantDecl`
-  data from `.dag` declarations (not hardcoded type maps)
-- [ ] `emit_node_type_rc` replaced by `emit_type_rendering(tr: TypeRendering, target, rc_types)`
-  — trivial match, no `node_is_collection` / `emit_primitive_type` fallbacks
-- [ ] `emit_primitive_type` deleted or made fail-closed (no pass-through)
-- [ ] `rt_type` returns `TypeRendering | RenderError` not `Node | unit_type`
-- [ ] Missing checkpoint/inhabitant → diagnostic error (fail-closed)
-- [ ] Adding SPICE/English target requires zero changes to type rendering dispatch
+- [ ] `render_type(tr: TypeRendering, target: RenderTarget) -> String`
+  replaces `emit_node_type_rc` — matches on edges × LanguageSpec
+- [x] `TypeRendering` struct defined in `04_emit_info.dag` with named
+  edges (element, key, value, params, return_type, inner, generic_args)
+  and structural flags (shared, boxed, is_tuple, is_error)
+- [x] `build_type_rendering` + `render_type` implemented in stage0 Rust
+- [x] Type-position call sites replaced with TypeRendering path
+- [x] Always-annotate let bindings (type proof at every binding site)
+- [ ] Delete `emit_node_type_rc` / `emit_node_type_leaf_rc` /
+  `emit_node_type_conj_rc` / `emit_node_type_disj_rc` (old path)
+- [ ] `build_rc_types` eliminated — sharing authority in TypeRendering
+- [ ] `emit_primitive_type` fail-closed (no pass-through on miss)
+- [ ] TypeRendering dissolves into coercion engine (M5): build_type_rendering
+  reads `TypeCheckpoint` / `InhabitantDecl` from `.dag` declarations
+- [ ] Adding SPICE/English target requires zero changes to type rendering
 
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
@@ -702,7 +783,23 @@ These items can land as soon as E0c's `TypeRendering` boundary exists
 and M4 Lane 1 Tier 2.5 corrects algebra profiles. They do not require
 M4 completion or full language plugin extraction.
 
+- [x] Coercion data structures in stage0 (`TypeCheckpoint`, `InhabitantDecl`,
+  `CallableRepr`, `CoercionRegistry`) mirroring `std/coercion.dag` schema
+- [x] Per-language checkpoint + inhabitant data populated from
+  `dsl/extdeps/languages/{rust,python,go}/types.dag` declarations
+- [x] `target_primitive_type` reads `CoercionRegistry.lookup_checkpoint`
+  instead of per-language `*_TYPE_MAP` hash maps
+- [x] Container identity (`is_known_keyed_container_name`,
+  `is_known_element_container_name`) derived from inhabitant arity
+- [x] `target_container_template_bare` provides algebra-based bare templates
+  for the TypeRendering path (no sharing wrapping baked in)
+- [x] Per-language registries built once via `lazy_static` singletons
+  (`RUST_REGISTRY`, `PYTHON_REGISTRY`, etc.) — O(1) per lookup
+- [x] 7 coercion registry tests: checkpoint resolution, cross-language
+  inhabitants, is_copy data, template application
 - [ ] `build_type_rendering` reads `TypeCheckpoint` data for primitives
+  (currently reads through `target_primitive_type` → coercion registry;
+  needs direct integration for fail-closed contract)
 - [ ] `build_type_rendering` reads `InhabitantDecl` data for algebra
   containers (FreeMonoid → Vec, PartialFunction → HashMap, etc.)
 - [ ] `build_type_rendering` reads `CallableRepr` for callable types
@@ -724,6 +821,35 @@ M4 completion or full language plugin extraction.
 - [ ] Delete `05_emit_go.dag` (1,387 lines) →
   `dsl/extdeps/languages/go/`
 - [ ] Delete `runtime_rust.dag` → `rust/runtime.dag` extdep
+
+*Type coercion via algebra inhabitants (dissolves E0c TypeRendering):*
+
+Type rendering is coercion: mapping .dag structural types to target
+language types via algebraic identity (sidecast). Each language
+declares which of its types inhabit which algebras:
+
+```
+// dsl/extdeps/languages/rust/types.dag
+data type_inhabitants: Map<String, String> = {
+  "Word64": "i64",
+  "CharSequence": "String",
+  "FreeMonoid": "Vec<{0}>",
+  "PartialFunction": "HashMap<{0}, {1}>",
+  "BooleanAlgebra": "HashSet<{0}>",
+  "Bit": "bool"
+}
+data sharing_strategy = "Rc<{0}>"  // Rust has move semantics
+```
+
+The compiler walks the .dag type composition tree, finds the first
+level the language declares an inhabitant for (the "checkpoint"),
+and sidecasts. Languages that don't declare an inhabitant for an
+algebra get a compile error — no silent fallback.
+
+When this lands, TypeRendering (E0c) dissolves: its named edges
+(`element`, `key`, `value`, `params`, `return_type`) become the
+algebraic relationships that coercion formalizes. `build_type_rendering`
+becomes `coerce_type`. `render_type` becomes template application.
 
 *LanguageSpec completion (~11 fields + ValueContext rendering):*
 - [ ] `statement_terminator`, `variable_declaration_keyword`,
@@ -1084,6 +1210,21 @@ data declarations, parallel-data violations dissolve.
 **Everything is coercion.** Unifying concept: minimal complete
 representation in a target domain. Applies at stage boundaries, type
 compatibility, and language rendering.
+
+Type rendering is the canonical instance: .dag's `List<Int>` and
+Rust's `Vec<i64>` both inhabit FreeMonoid<Word64>. The mapping is a
+sidecast — same algebra, different representation. Each language
+declares its algebra inhabitants as .dag extdep data. The compiler
+sidecasts mechanically. Adding a new language = declaring inhabitants
++ sharing strategy. No emission logic. Fail-loud when no inhabitant
+exists: the coercion has no target, the compiler refuses.
+
+The checkpoint model: .dag types compose from primitives (Bit →
+BitWord<64> → Int → NonNegativeInt). Each language checkpoints at the
+level it cares about. Rust says "I know Int → i64" and skips the
+intermediate compositions. SPICE might checkpoint at BitWord<64> →
+"wire[63:0]". The compiler walks the composition tree and stops at
+the first level the language recognizes.
 
 ---
 

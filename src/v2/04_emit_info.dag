@@ -85,6 +85,33 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keyed by variant name → true if variant has children.
   fielded_variants: Map<String, Bool>
+  // Maps type names to their generic parameter names (e.g. "FreeMonoid" → ["T"]).
+  // Used by build_type_rendering to recover generic params for self-referential
+  // field types where the resolved Node carries a bare name without type arguments.
+  type_params: Map<String, List<String>>
+}
+
+// TypeRendering: structural descriptor for type rendering.
+// Named edges encode the type's composition; shape is emergent from which
+// edges are populated (no tag enum). The emitter matches on edges ×
+// LanguageSpec — no Node inspection, no name-based dispatch.
+//
+// Stepping stone for coercion-based emission (M5): named edges map directly
+// to algebraic relationships that the coercion engine will formalize.
+type TypeRendering {
+  type_name: String                   // identity: "Int", "list", "Token", "map"
+  element: TypeRendering?             // List<THIS>, Set<THIS>
+  key: TypeRendering?                 // Map<THIS, V>
+  value: TypeRendering?               // Map<K, THIS>
+  params: List<TypeRendering>         // fn(THESE, ...) -> ...
+  return_type: TypeRendering?         // fn(...) -> THIS
+  inner: TypeRendering?               // Optional<THIS>, Refined<THIS>
+  generic_args: List<TypeRendering>   // FreeMonoid<THIS>, PartialFunction<THIS, THIS>
+  shared: Bool                        // needs Rc/pointer/GC wrapper
+  boxed: Bool                         // recursive indirection (Box in Rust)
+  is_tuple: Bool                      // structural tuple (not name-derived)
+  is_error: Bool                      // inference failure — emit must fail-closed
+  error_label: String                 // diagnostic context for the error
 }
 
 type EmitInfoBuildState {
@@ -99,9 +126,55 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
-    fielded_variants: empty_map()
+    fielded_variants: empty_map(),
+    type_params: empty_map()
   }
 }
+
+fn leaf_type_rendering(name: String) -> TypeRendering {
+  TypeRendering {
+    type_name: name,
+    element: none,
+    key: none,
+    value: none,
+    params: [],
+    return_type: none,
+    inner: none,
+    generic_args: [],
+    shared: false,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: ""
+  }
+}
+
+fn leaf_type_rendering_shared(name: String) -> TypeRendering {
+  TypeRendering {
+    type_name: name,
+    element: none,
+    key: none,
+    value: none,
+    params: [],
+    return_type: none,
+    inner: none,
+    generic_args: [],
+    shared: true,
+    boxed: false,
+    is_tuple: false,
+    is_error: false,
+    error_label: ""
+  }
+}
+
+// build_type_rendering and helpers are implemented in stage0 Rust
+// (v2_compiler_infer_emit_info.rs). The .dag source will use these
+// once the stage0 bootstrap reaches fixed point and regeneration
+// can produce this code. Until then, stage0 Rust is the authority.
+
+// =========================================================================
+// Variant and lookup helpers
+// =========================================================================
 
 fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
   let key = concat(enum_name, "::", variant_name)

@@ -63,7 +63,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Go};
 pub use crate::extdeps_languages_go_emit::{GO_RESERVED, GO_RESERVED_ESCAPE_SUFFIX};
-pub use crate::v2_compiler_languages::{scaffold_for_target, test_conventions_for_target};
+pub use crate::v2_compiler_languages::{scaffold_for_target, TestConventions, test_conventions_for_target};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{for_each_element_type_node, node_is_optional, node_is_map, rt_type};
 pub use crate::v2_compiler_infer_sigs::{ResolvedFuncSig, ResolvedFuncEnv};
