@@ -1325,10 +1325,11 @@ fn search(tree: Tree<Int>, target: Int) -> Bool {
       else { search(tree: r, target: target) }
   }
 }
-// Compiler lowers to: descend(tree, f)
-// Cost: O(|tree|) in general, O(log |tree|) for balanced BST
-// The tight bound depends on tree balance — a refinement type
-// (BalancedTree<T>) could express this.
+// Compiler lowers to: repeat(height(tree), ...) with single-branch selection
+// NOT descend(tree, f) — descend is a catamorphism that visits ALL nodes (O(n)).
+// BST search follows ONE branch per level — arithmetic descent on tree height.
+// Cost: O(height) — which is O(log n) for balanced trees, O(n) for degenerate.
+// A refinement type (BalancedTree<T>) would express the O(log n) guarantee.
 ```
 
 **Example: accumulator scan detection**
@@ -1406,7 +1407,7 @@ iteration primitives. Each primitive declares a recurrence:
 | `fold(collection, f)` | T(n) = Σ_{i=1}^{n} f(element_i) | CostSum(i, \|collection\|, cost(f)) |
 | `descend(tree, f)` | T(n) = Σ_{children} T(child) + f(node) | CostSum over tree structure |
 | `repeat(N, f)` | T = N · f | CostMul(N, cost(f)) |
-| Arithmetic descent (n/2) | T(n) = T(n/2) + f(n) | Master theorem case: Θ(f(n) · log n) or Θ(n^{log_b a}) |
+| Arithmetic descent (n/b) | T(n) = aT(n/b) + f(n) | Master theorem: case 1: Θ(n^{log_b a}) if f ∈ O(n^{log_b a - ε}); case 2: Θ(n^{log_b a} · log n) if f ∈ Θ(n^{log_b a}); case 3: Θ(f(n)) if f ∈ Ω(n^{log_b a + ε}) |
 
 For mutual recursion (SCCs), the shared decreasing measure determines
 the recurrence. Parser SCCs (token position advances) → fold over
@@ -1470,8 +1471,10 @@ in time.
 
 **Concrete examples for early implementation:**
 
-1. **Binary tree search** — descend with arithmetic halving:
+1. **Binary tree search** — single-branch arithmetic descent (NOT catamorphism):
    T(n) = T(n/2) + O(1) → Θ(log n) by Master theorem (a=1, b=2, f=O(1))
+   Note: `descend(tree, f)` would visit all nodes (Θ(n)). BST search
+   selects one branch — lowered to `repeat(height, ...)`, not `descend`.
 
 2. **Merge sort** — descend with merge:
    T(n) = 2T(n/2) + O(n) → Θ(n log n) by Master theorem (a=2, b=2, f=O(n))
