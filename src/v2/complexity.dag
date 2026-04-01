@@ -1286,6 +1286,13 @@ fn max_path_self_calls_with_cont(body: Node, func_name: String, continue_calls: 
       // Self-calls inside a forEach body are bounded by the iteration.
       // They do NOT contribute to the recursion branching factor.
       // Only count calls in the collection expression (not the body).
+      //
+      // Soundness note: this exclusion is correct for path-counting (the
+      // branching factor). However, self_calls_have_descending_witness
+      // DOES recurse into the forEach body via the `_ => children` arm,
+      // so recursive self-calls inside forEach bodies are still checked
+      // for descent witnesses. A negative test should verify this
+      // (ROADMAP regression test: forEach body containing self-calls).
       max_path_self_calls_with_cont(body: foreach_collection(texpr: body), func_name: func_name, continue_calls: 0) + continue_calls
 
     ExprLet =>
@@ -1857,27 +1864,38 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
         Div => expr_descending_witness_source(expr: binop_left(texpr: expr), descending_witness_names: descending_witness_names)
         _ => none
       }
-    ExprFieldAccess { summary: _ } =>
-      // Sound by Decidability Invariant Part 1: all .dag values are
-      // finitely and acyclically constructed (no parent pointers, no
-      // mutable references), so field access always returns a strict
-      // substructure of the containing value.
-      expr_descending_witness_source(expr: field_access_base(texpr: expr), descending_witness_names: descending_witness_names)
-    ExprMethodCall { method_semantics: ms } =>
-      // Only algebra-classified methods (structurally resolved through
-      // the algebra registry) are trusted as descent witnesses. This
-      // excludes user-defined functions that happen to share the name.
-      match ms {
-        Some { value: AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } } =>
-          if md.name == "first" || md.name == "last" {
-            expr_descending_witness_source(expr: method_receiver(texpr: expr), descending_witness_names: descending_witness_names)
-          } else { none }
-        _ => none
-      }
+    // ExprFieldAccess and ExprMethodCall are NOT treated as descent
+    // witnesses without resolved recursive-field facts. Although .dag
+    // values are acyclically constructed (Decidability Invariant Part 1),
+    // field access on `x` is only a valid RECURSION descent witness when
+    // the accessed field is a proven recursive child position of x's type.
+    // `x.metadata` (Int field) or `x.sibling_payload` (non-recursive
+    // field) are substructures of x but do not prove that the recursion
+    // measure decreases. Treating arbitrary field access as descent would
+    // accept unsound programs like `f(match x { A(child) => child, B(_) => x })`.
+    //
+    // Resolution path (ROADMAP §I1): complexity should consume resolved
+    // descent witnesses owned by resolve/infer — specifically,
+    // RecursiveVariantFieldWitness facts that identify which fields of
+    // each type are recursive child positions. When those facts are
+    // threaded into expr_descending_witness_source, ExprFieldAccess on a
+    // proven recursive field and ExprMethodCall(first/last) on a
+    // collection of proven recursive children can be re-enabled as
+    // StructuralChildDescent witnesses (distinct from ArithmeticDescent).
     _ => none
   }
 }
 
+// Soundness note on witness propagation through control flow:
+//
+// This function propagates descent witness names through let-bindings.
+// It does NOT propagate through ExprIf or ExprMatch branches because
+// "either branch yields a witness" is unsound: `if cond { n - 1 } else { n }`
+// would be accepted as descent when only some execution paths actually descend.
+// Similarly, `match x { A(child) => child, B(_) => x }` has a non-descending
+// arm. For ExprIf/ExprMatch to propagate witnesses, ALL branches must yield
+// descent from the same parameter — a requirement that is not yet enforced.
+// This is tracked in ROADMAP §I1.
 fn collect_descending_witness_names(body: Node, descending_witness_names: Map<String, String>) -> Map<String, String> {
   match body.expr_data {
     ExprLet =>
@@ -2248,6 +2266,18 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
     match classify_parser_scc_recursion_pattern(members: members, func_index: func_index) {
       Some { value: parser_pattern } => parser_pattern
       None =>
+        // Soundness requirement: SCC-wide linearity via arithmetic descent
+        // requires BOTH single-call paths AND proven descent on EVERY cycle
+        // edge. The current check is conservative in that it requires every
+        // member to have at most one call to any SCC peer AND that call must
+        // have arithmetic descent. However, this is the mutual-recursion
+        // analogue of the fib_like soundness concern: ping-pong identity
+        // passes with occasional decrease (A calls B with n, B calls A with
+        // n-1) could still produce exponential branching if not every edge
+        // strictly descends. The single-path requirement (max_path <= 1)
+        // prevents branching, but a shared structural measure on every cycle
+        // edge — or a real frontier/cache witness for finite-key SCCs — is
+        // the fully sound design target (ROADMAP §I2).
         let all_arithmetic = members |> all(name =>
           match map_get(func_index, name) {
             Some { value: entry } =>

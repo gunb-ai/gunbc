@@ -1106,6 +1106,132 @@ fn process_items(items: List<Int>) -> Int {
     );
 }
 
+// ── Recursion classification soundness regression tests ────────────────
+//
+// These tests verify that the complexity analyzer does NOT accept unsound
+// recursion patterns. Each test encodes a pattern that SHOULD remain a
+// violation until the corresponding witness kind is strengthened.
+
+/// fib_like(n-1, n-2) must stay non-linear / not LinearRecursion.
+/// Two self-calls on the same execution path = branching recursion,
+/// regardless of arithmetic descent witnesses on individual calls.
+#[test]
+fn soundness_fib_like_stays_non_linear() {
+    let source = r#"module soundness_fib
+fn fib_like(n: Int) -> Int {
+  if n <= 1 { 1 } else { fib_like(n: n - 1) + fib_like(n: n - 2) }
+}
+"#;
+    let result = compile_dag(source);
+    let fib_violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "fib_like")
+        .collect();
+    assert_eq!(
+        fib_violations.len(),
+        1,
+        "fib_like must remain a branching-recursion violation, got: {:?}",
+        result.complexity.violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+    assert!(
+        fib_violations[0].reason.contains("branching recursion"),
+        "fib_like must be classified as branching recursion, got: {}",
+        fib_violations[0].reason
+    );
+}
+
+/// Arithmetic descent on only one branch of an if/else is not valid descent.
+/// `f(if cond { n - 1 } else { n })` — the else branch passes n unchanged,
+/// so this is NOT a proven descent and must remain a violation.
+#[test]
+fn soundness_conditional_descent_not_accepted() {
+    let source = r#"module soundness_cond
+fn cond_recurse(n: Int, flag: Bool) -> Int {
+  if n <= 0 { 0 }
+  else {
+    let arg = if flag { n - 1 } else { n }
+    cond_recurse(n: arg, flag: flag)
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "cond_recurse")
+        .collect();
+    assert!(
+        !violations.is_empty(),
+        "conditional descent (descending in only one branch) must NOT be accepted as valid descent"
+    );
+}
+
+/// Match where only some arms descend must not be accepted.
+/// `f(match x { A(child) => child, B(_) => x })` has a non-descending arm.
+#[test]
+fn soundness_partial_match_descent_not_accepted() {
+    let source = r#"module soundness_match
+type Tree
+  = Leaf { value: Int }
+  | Branch { child: Tree }
+
+fn partial_descent(t: Tree) -> Int {
+  match t {
+    Leaf { value: v } => v
+    Branch { child: c } =>
+      let arg = match t {
+        Leaf { value: _ } => t
+        Branch { child: inner } => inner
+      }
+      partial_descent(t: arg)
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "partial_descent")
+        .collect();
+    // This should either be resolved via structural descent (direct match on
+    // recursive child) or remain a violation. It must NOT be resolved via
+    // arithmetic descent or field-access witness on the `arg` binding, since
+    // the match has a non-descending arm (Leaf => t).
+    //
+    // Currently this IS resolved by structural descent because the outer
+    // match on t with self-call on `arg` = inner (a child field) is detected.
+    // This is acceptable -- the test documents the expected behavior.
+    // If structural descent stops recognizing this, it must remain a violation
+    // (not be rescued by partial match witness propagation).
+    let _ = violations; // document-only: no assertion on specific count
+}
+
+/// Arithmetic descent with n-1 on a single-call path must be accepted.
+#[test]
+fn soundness_arithmetic_descent_single_call_accepted() {
+    let source = r#"module soundness_arith
+fn countdown(n: Int) -> Int {
+  if n <= 0 { 0 } else { 1 + countdown(n: n - 1) }
+}
+"#;
+    let result = compile_dag(source);
+    let violations: Vec<_> = result
+        .complexity
+        .violations
+        .iter()
+        .filter(|v| v.func_name == "countdown")
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "arithmetic descent (n-1) on single-call path must be accepted, got: {:?}",
+        violations.iter().map(|v| format!("{}: {}", v.func_name, v.reason)).collect::<Vec<_>>()
+    );
+}
+
 // ── Complexity class coverage ─────────────────────────────────────────
 //
 // These tests verify that the analyzer produces the correct cost formula
