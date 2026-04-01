@@ -199,8 +199,9 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
         return error_type_rendering(label.to_string());
     }
 
-    // Callable: function type (structural — has params, or named "Callable" for zero-param fns)
-    if !n.params.is_empty() || n.name == "Callable" {
+    // V2: Only named Callable enters callable path — generic types with params (FreeMonoid<T>)
+    // fall through to connective dispatch where build_conj_rendering handles them.
+    if n.name == "Callable" {
         let param_renderings: Vec<Rc<TypeRendering>> = n.params.iter().cloned().map(|p| {
             build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
         }).collect();
@@ -435,11 +436,15 @@ fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
             error_label: String::new(),
         })
     } else if !n.name.is_empty() {
+        // V10: Carry generic type params (FreeMonoid<T>, PartialFunction<K,V>)
+        let generic = n.params.iter().cloned().map(|p| {
+            build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
+        }).collect::<Vec<_>>();
         Rc::new(TypeRendering {
             type_name: n.name.clone(),
             element: None, key: None, value: None, params: vec![],
             return_type: None, inner: None,
-            generic_args: vec![],
+            generic_args: generic,
             shared, boxed,
             is_tuple: false, is_error: false, error_label: String::new(),
         })

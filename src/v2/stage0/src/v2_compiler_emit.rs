@@ -1644,10 +1644,23 @@ pub fn emit_node_type_conj_rc(
         } else {
             if (n.name.clone() != "".to_string()) {
                 let mapped = emit_primitive_type(n.name.clone(), target.clone());
-                if emit_map_has(rc_types.clone(), n.name.clone()) {
-                    wrap_shared_type(target.clone(), mapped.clone())
+                // V10: Generic type params: FreeMonoid<T>, PartialFunction<K,V>, etc.
+                let with_generics = if !n.params.is_empty() {
+                    let generic_strs: Vec<String> = n.params.iter().cloned().map(|p| {
+                        emit_node_type_rc(param_node_type_expr(p), target.clone(), rc_types.clone())
+                    }).collect();
+                    let generic_str = generic_strs.join(", ");
+                    match target.clone() {
+                        RenderTarget::Python => format!("{}[{}]", mapped, generic_str),
+                        _ => format!("{}<{}>", mapped, generic_str),
+                    }
                 } else {
                     mapped.clone()
+                };
+                if emit_map_has(rc_types.clone(), n.name.clone()) {
+                    wrap_shared_type(target.clone(), with_generics.clone())
+                } else {
+                    with_generics.clone()
                 }
             } else {
                 {
