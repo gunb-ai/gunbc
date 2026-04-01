@@ -646,16 +646,61 @@ fn emit_map_has(m: Map<String, Bool>, key: String) -> Bool {
   }
 }
 
-// Bridge placeholder type names: higher-order template parameters that
-// exist only during algebra resolution. Importing modules must not see
-// these as ambient user-facing types.
-//
-// BRIDGE(L1-Tier2.5): these names duplicate AlgebraTypeTemplate parameter
-// names from std/algebra.dag. Migration path: extract placeholder names
-// from the AlgebraFieldTemplate param_types/return_type trees (walk for
-// NamedTemplate { name } variants) to build this set structurally at
-// startup, then delete this hardcoded list. Blocked on: computed data
-// declarations or an init-time fold over template lists.
-fn is_bridge_placeholder_type_name(name: String) -> Bool {
-  name == "T" || name == "K" || name == "V" || name == "MappedElement" || name == "FoldAccumulator"
+// Collect NamedTemplate names from an AlgebraTypeTemplate tree.
+fn collect_named_templates(template: AlgebraTypeTemplate, acc: Map<String, Bool>) -> Map<String, Bool> {
+  match template {
+    ReceiverSelf => acc
+    ReceiverElement => acc
+    ReceiverKey => acc
+    ReceiverValue => acc
+    NamedTemplate { name: n } => map_insert(acc, n, true)
+    ReceiverCollectionOf { element: inner } => collect_named_templates(template: inner, acc: acc)
+    ListOf { element: inner } => collect_named_templates(template: inner, acc: acc)
+    OptionalOf { inner: inner } => collect_named_templates(template: inner, acc: acc)
+    TupleOf { first: f, second: s } =>
+      let acc2 = collect_named_templates(template: f, acc: acc)
+      collect_named_templates(template: s, acc: acc2)
+  }
+}
+
+// Collect all NamedTemplate names from a list of AlgebraFieldTemplates.
+fn collect_field_template_names(templates: List<AlgebraFieldTemplate>, acc: Map<String, Bool>) -> Map<String, Bool> {
+  templates |> fold(init: acc, f: (a, t) =>
+    let a2 = t.param_types |> fold(init: a, f: (pa, pt) => collect_named_templates(template: pt, acc: pa))
+    collect_named_templates(template: t.return_type, acc: a2)
+  )
+}
+
+// Build the full set of bridge placeholder type names structurally from
+// algebra templates and type parameters. NamedTemplate names from field
+// templates that don't correspond to concrete types are placeholders
+// (e.g. FoldAccumulator, MappedElement). Algebra generic type parameters
+// (T, K, V from FreeMonoid<T>, PartialFunction<K, V>) are always
+// placeholders regardless of template content.
+fn bridge_placeholder_type_names() -> Map<String, Bool> {
+  let type_params = map_insert(map_insert(map_insert(empty_map(), "T", true), "K", true), "V", true)
+  let n1 = collect_field_template_names(templates: partial_function_templates(), acc: empty_map())
+  let n2 = collect_field_template_names(templates: free_monoid_collection_templates(), acc: n1)
+  let n3 = collect_field_template_names(templates: free_monoid_scalar_templates(), acc: n2)
+  let n4 = collect_field_template_names(templates: boolean_algebra_collection_templates(), acc: n3)
+  let n5 = collect_field_template_names(templates: boolean_algebra_templates(), acc: n4)
+  let n6 = collect_field_template_names(templates: approximate_field_templates(), acc: n5)
+  let all_template_names = collect_field_template_names(templates: ordered_ring_templates(), acc: n6)
+  let concrete_types = kernel_algebra_profile |> map_keys |> fold(init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, true)
+  )
+  let concrete_types = map_insert(map_insert(concrete_types, "Char", true), "Ordering", true)
+  all_template_names |> map_keys |> fold(init: type_params, f: (acc, name) =>
+    match map_get(concrete_types, name) {
+      Some { value: _ } => acc
+      None => map_insert(acc, name, true)
+    }
+  )
+}
+
+fn is_bridge_placeholder(placeholder_names: Map<String, Bool>, name: String) -> Bool {
+  match map_get(placeholder_names, name) {
+    Some { value: _ } => true
+    None => false
+  }
 }

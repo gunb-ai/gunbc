@@ -1857,6 +1857,23 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
         Div => expr_descending_witness_source(expr: binop_left(texpr: expr), descending_witness_names: descending_witness_names)
         _ => none
       }
+    ExprFieldAccess { summary: _ } =>
+      // Sound by Decidability Invariant Part 1: all .dag values are
+      // finitely and acyclically constructed (no parent pointers, no
+      // mutable references), so field access always returns a strict
+      // substructure of the containing value.
+      expr_descending_witness_source(expr: field_access_base(texpr: expr), descending_witness_names: descending_witness_names)
+    ExprMethodCall { method_semantics: ms } =>
+      // Only algebra-classified methods (structurally resolved through
+      // the algebra registry) are trusted as descent witnesses. This
+      // excludes user-defined functions that happen to share the name.
+      match ms {
+        Some { value: AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } } =>
+          if md.name == "first" || md.name == "last" {
+            expr_descending_witness_source(expr: method_receiver(texpr: expr), descending_witness_names: descending_witness_names)
+          } else { none }
+        _ => none
+      }
     _ => none
   }
 }
@@ -2045,6 +2062,15 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else {
     // path_calls == 1, not structural descent, no proven descent.
+    // Remaining witness gaps (313→0 path):
+    //   (c) type-normalization: normalize_access_type_node and family
+    //       recurse on node.children |> first (child-node descent).
+    //       The expr_descending_witness_source extension handles field
+    //       access / method chains; let-binding propagation through
+    //       if/match optionals is the remaining gap.
+    //   (d) cache/frontier: resolve_callback_cost cycle terminates by
+    //       finite key space (function names) + placeholder cache.
+    //       Needs a dedicated finite-frontier witness, not descent.
     UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
   }
 }
@@ -2233,6 +2259,16 @@ fn classify_scc_recursion_pattern(members: List<String>, func_index: Map<String,
         if all_arithmetic {
           LinearRecursion { iteration_var: concat("n_", scc_label(members: members)) }
         } else {
+          // Remaining SCC witness gaps (313→0 path):
+          //   (a) parser SCC: parse_type_expr / parse_callable_type_expr
+          //       family needs token/cursor progress proved across SCC
+          //       edges. Infrastructure exists in classify_parser_scc_
+          //       recursion_pattern; gap is ProgressUnknown edges for
+          //       specific parser helper chains.
+          //   (b) block/tree-walker SCC: emit_rust_block_stmts,
+          //       emit_py_block_stmts, emit_go_block_stmts,
+          //       infer_block_stmts — need a shared statement-tail /
+          //       child-node descent proof for block-processing SCCs.
           UnresolvableRecursion { reason: concat("non-descending mutual recursion in ", scc_label(members: members)) }
         }
     }

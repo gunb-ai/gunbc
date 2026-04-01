@@ -484,9 +484,15 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
 *Tier 2 — factor `enrich_kernel_type` (modest compiler change):*
 - [x] `enrich_kernel_type` calls `.dag` function in `std/algebra.dag`
   (`algebra_templates_for_profile` moved to `std/algebra.dag`)
-- [ ] Delete `intrinsic_method_index()` /
-  `runtime_bridge_method_index()`
-- [ ] ~60 string branches → structural algebra queries
+- [x] Delete `intrinsic_method_index()` /
+  `runtime_bridge_method_index()` — deleted 2026-03-28; 48 string
+  branches replaced by algebra registry (enrich_kernel_type) +
+  Tier 0 lookup_structural_method. See `04_method.dag` tombstones.
+- [x] ~60 string branches → structural algebra queries — 48 classification
+  branches deleted. Remaining ~12 sites read `method_def.name` from the
+  structural algebra field node (emit rendering, inference refinement,
+  complexity cost shape). These are structural-authority reads, not raw
+  string classification.
 
 *Tier 2.5 — algebra bridge fidelity (no new infra, modeling only):*
 
@@ -498,17 +504,27 @@ read them. This tier is a prerequisite for early coercion implementation.
   → `BooleanAlgebraCollectionProfile`. Added `BooleanAlgebraCollectionProfile`
   variant, `boolean_algebra_collection_templates()`, and updated
   `KERNEL_ALGEBRA_PROFILE` for `Set`/`NonEmptySet` in both `.dag` and stage0 Rust.
-- [ ] Fix carrier-changing type loss in `free_monoid_collection_templates`:
-  `map`/`flat_map`/`fold` param_types and return_types are `ReceiverSelf`
-  but should express the higher-order function parameter structure (e.g.,
-  `fold` takes `fn(Acc, T) -> Acc` and returns `Acc`, not `Self`). The
-  `FreeMonoid<T>` declaration already models this correctly.
+- [x] Fix carrier-changing type loss in `free_monoid_collection_templates`:
+  `map`/`flat_map` return_type changed from `ReceiverSelf` to
+  `ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } }`;
+  `fold` param_types changed to `[NamedTemplate { name: "FoldAccumulator" }]`
+  and return_type to `NamedTemplate { name: "FoldAccumulator" }`.
+  Same fix applied to `boolean_algebra_collection_templates`.
 - [ ] Same issue in `partial_function_templates`: parallel authority for
   `PartialFunction` operations including emitter-only alias `emit_map_has`
   that doesn't exist on the carrier algebra.
-- [ ] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replace
-  hardcoded name checks (`"T"`, `"K"`, `"V"`, `"MappedElement"`,
-  `"FoldAccumulator"`) with structural detection from algebra templates.
+- [ ] Add `CallableOf` variant to `AlgebraTypeTemplate` so `map`/`flat_map`/
+  `fold` param_types can express their callback shape (`fn(T) -> U`,
+  `fn(Acc, T) -> Acc`) instead of relying on downstream `refine_collection_
+  result_type`. Required for full modeling faithfulness.
+- [x] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replaced
+  hardcoded name checks with structural detection: `collect_named_templates`
+  walks AlgebraTypeTemplate trees for NamedTemplate names,
+  `bridge_placeholder_type_names` combines type parameter names (T, K, V)
+  with non-concrete NamedTemplate names from all algebra profiles.
+  `is_bridge_placeholder_type_name` now delegates to the structural set.
+- [ ] Derive T/K/V type parameter names from algebra type declarations
+  instead of hardcoding. Requires accessor on algebra profile data.
 
 *Tier 3 — full structural algebra (requires FF-9):*
 - [ ] FF-9: import-driven source resolution (compiler discovers
@@ -929,7 +945,13 @@ rule before we harden I1/I2 further.
 - [ ] Type-normalization recursion proof: discharge
   `normalize_access_type_node` and its downstream family
   (`node_type_shape`, `node_type_compatible`, `node_type_equals`,
-  `node_type_deps`) with a fail-closed structural measure
+  `node_type_deps`) with a fail-closed structural measure.
+  **Progress:** `expr_descending_witness_source` extended to recognize
+  `ExprFieldAccess` chains and single-element extraction methods (first,
+  last) as structural descent. `skip`/`take` excluded — not
+  unconditionally shrinking (`skip(0)`, `take(length(xs))`). Remaining: propagate descent
+  witness through if/match optional extraction (let x = if ... {
+  param.children |> first } else { none }; match x { Some => ... }).
 - [ ] Cache/frontier SCC proof: finish `resolve_callback_cost` and any
   remaining finite-key SCCs with a real frontier witness rather than a
   placeholder cycle explanation
