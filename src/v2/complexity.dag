@@ -1863,10 +1863,12 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
       // the same parameter (child-node descent).
       expr_descending_witness_source(expr: field_access_base(texpr: expr), descending_witness_names: descending_witness_names)
     ExprMethodCall { method_semantics: _ } =>
-      // param.children |> first, param.children |> skip(n) — child
-      // extraction from a descending collection preserves descent.
+      // param.children |> first — single-element extraction from a
+      // descending collection is unconditionally smaller.
+      // skip/take are NOT safe unconditional witnesses: skip(0) and
+      // take(length(xs)) preserve the original size.
       let mn = expr_method_name(texpr: expr)
-      if mn == "first" || mn == "last" || mn == "skip" || mn == "take" {
+      if mn == "first" || mn == "last" {
         expr_descending_witness_source(expr: method_receiver(texpr: expr), descending_witness_names: descending_witness_names)
       } else { none }
     ExprCall { call_semantics: _ } =>

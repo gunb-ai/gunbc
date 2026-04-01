@@ -941,8 +941,9 @@ rule before we harden I1/I2 further.
   (`node_type_shape`, `node_type_compatible`, `node_type_equals`,
   `node_type_deps`) with a fail-closed structural measure.
   **Progress:** `expr_descending_witness_source` extended to recognize
-  `ExprFieldAccess` chains and child-extraction methods (first, last,
-  skip, take) as structural descent. Remaining: propagate descent
+  `ExprFieldAccess` chains and single-element extraction methods (first,
+  last) as structural descent. `skip`/`take` excluded — not
+  unconditionally shrinking (`skip(0)`, `take(length(xs))`). Remaining: propagate descent
   witness through if/match optional extraction (let x = if ... {
   param.children |> first } else { none }; match x { Some => ... }).
 - [ ] Cache/frontier SCC proof: finish `resolve_callback_cost` and any
