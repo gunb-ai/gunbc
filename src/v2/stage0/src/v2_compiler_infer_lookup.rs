@@ -294,6 +294,27 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
     }
 }
 
+pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<Node>> {
+    {
+        let normed = normalize_access_type_node(type_node.clone());
+        let resolved = resolve_scrutinee_type_node(env.clone(), normed.clone());
+        let map_type = normalize_access_type_node(resolved.clone());
+        if node_is_map(map_type.clone()) {
+            if ((map_type.children.clone().len() as i64) >= 1) {
+                match map_type.children.first().cloned() {
+                    Some(key_type) => Some(key_type.clone()),
+                    None => Some(leaf_node("String".to_string())),
+                }
+            } else {
+                // Bare Map with no type params — all .dag maps are String-keyed
+                Some(leaf_node("String".to_string()))
+            }
+        } else {
+            None
+        }
+    }
+}
+
 pub fn field_summary_for_type(
     base_type: Rc<Node>,
     env: Rc<TypeEnv>,

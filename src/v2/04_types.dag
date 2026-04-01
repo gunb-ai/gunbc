@@ -162,7 +162,10 @@ fn nominal_type_ref(name: String) -> Node {
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> Node {
   match base.children |> enumerate |> filter(pair => pair.first == child_index) |> map(pair => pair.second) |> first {
     Some { value: child } => child
-    None => error_type
+    None =>
+      // Bare Map (no children) — default key type to String (.dag maps are String-keyed)
+      if base.name == "Map" && child_index == 0 { string_type }
+      else { error_type }
   }
 }
 

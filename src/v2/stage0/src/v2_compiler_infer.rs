@@ -123,7 +123,7 @@ pub use crate::v2_compiler_infer_items::{
 };
 pub use crate::v2_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, map_value_type_in_env, resolve_known_method_node,
+    lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env, resolve_known_method_node,
     resolve_scrutinee_type_node, KnownMethodResolution,
 };
 pub use crate::v2_compiler_infer_method::{infer_builtin_call_type, resolve_builtin_call_type};
@@ -1846,6 +1846,64 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                                     resolve_builtin_call_type(func_name.clone())
                                                 }
                                             }
+                                        } else if (func_name.clone() == "map_keys".to_string()) {
+                                            match typed_args.clone().first().cloned() {
+                                                Some(receiver_arg) => match (*rt_node(arg_value(
+                                                    receiver_arg.clone(),
+                                                )))
+                                                .clone()
+                                                {
+                                                    NodeType::Typed {
+                                                        node: receiver_type,
+                                                        ..
+                                                    } => match map_key_type_in_env(
+                                                        receiver_type.clone(),
+                                                        scope.type_env.clone(),
+                                                    ) {
+                                                        Some(key_type) => {
+                                                            container_node("List".to_string(), key_type.clone())
+                                                        }
+                                                        None => resolve_builtin_call_type(
+                                                            func_name.clone(),
+                                                        ),
+                                                    },
+                                                    _ => {
+                                                        resolve_builtin_call_type(func_name.clone())
+                                                    }
+                                                },
+                                                None => {
+                                                    resolve_builtin_call_type(func_name.clone())
+                                                }
+                                            }
+                                        } else if (func_name.clone() == "map_values".to_string()) {
+                                            match typed_args.clone().first().cloned() {
+                                                Some(receiver_arg) => match (*rt_node(arg_value(
+                                                    receiver_arg.clone(),
+                                                )))
+                                                .clone()
+                                                {
+                                                    NodeType::Typed {
+                                                        node: receiver_type,
+                                                        ..
+                                                    } => match map_value_type_in_env(
+                                                        receiver_type.clone(),
+                                                        scope.type_env.clone(),
+                                                    ) {
+                                                        Some(value_type) => {
+                                                            container_node("List".to_string(), value_type.clone())
+                                                        }
+                                                        None => resolve_builtin_call_type(
+                                                            func_name.clone(),
+                                                        ),
+                                                    },
+                                                    _ => {
+                                                        resolve_builtin_call_type(func_name.clone())
+                                                    }
+                                                },
+                                                None => {
+                                                    resolve_builtin_call_type(func_name.clone())
+                                                }
+                                            }
                                         } else {
                                             resolve_builtin_call_type(func_name.clone())
                                         };
@@ -2024,7 +2082,22 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 );
                 let base_result_type = match method_resolution.result_type.clone() {
                     Some(rt) => rt.clone(),
-                    None => recv_rt.clone(),
+                    None => {
+                        // Fallback: check if method is a builtin function used via pipe (x |> map_keys).
+                        if (method_name.clone() == "map_keys".to_string()) {
+                            match map_key_type_in_env(recv_rt.clone(), scope.type_env.clone()) {
+                                Some(key_type) => container_node("List".to_string(), key_type.clone()),
+                                None => recv_rt.clone(),
+                            }
+                        } else if (method_name.clone() == "map_values".to_string()) {
+                            match map_value_type_in_env(recv_rt.clone(), scope.type_env.clone()) {
+                                Some(value_type) => container_node("List".to_string(), value_type.clone()),
+                                None => recv_rt.clone(),
+                            }
+                        } else {
+                            recv_rt.clone()
+                        }
+                    }
                 };
                 let result_type = refine_collection_result_type(
                     method_resolution.semantics.clone(),

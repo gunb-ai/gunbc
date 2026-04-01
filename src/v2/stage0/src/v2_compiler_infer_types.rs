@@ -960,10 +960,17 @@ pub fn algebra_child_or_placeholder(
     placeholder: String,
 ) -> Rc<Node> {
     let _ = placeholder;
-    base.children
-        .get(child_index as usize)
-        .cloned()
-        .unwrap_or_else(|| error_type_node())
+    match base.children.get(child_index as usize).cloned() {
+        Some(child) => child,
+        None => {
+            // Bare Map (no children) — default key type to String (.dag maps are String-keyed)
+            if base.name == "Map" && child_index == 0 {
+                leaf_node("String".to_string())
+            } else {
+                error_type_node()
+            }
+        }
+    }
 }
 
 pub fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Rc<Node>) -> Rc<Node> {
