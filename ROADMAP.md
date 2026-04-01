@@ -121,6 +121,77 @@ Next passes:
 4. Bootstrap D: wire the owned bootstrap entrypoint plus the CI diff gate, then forbid manual stage0 edits.
 5. Resume broader Lane 1 / Lane 2 work only after A-D are stable.
 
+### Compiler development vs compiler usage
+
+Two distinct workflows. The compiler is a living system — compiler
+development is continuous, not a one-time bootstrap.
+
+**Compiler usage (stable binary):**
+```
+User installs gunbc binary (built once from committed stage0)
+User writes .dag programs
+gunbc compile project/ --target rust → working Rust code
+gunbc compile project/ --target python → working Python code
+```
+No regeneration. No cargo. No Rust knowledge needed. The binary is
+the product. It updates when the compiler team ships a new version.
+
+**Compiler development (bootstrap loop):**
+```
+Developer edits src/v2/*.dag (compiler source)
+  ↓
+gunbc-dev build
+  ├─ stage0 (committed Rust) compiles .dag → stage1 (new Rust)
+  ├─ cargo check stage1 (must pass — 0 errors)
+  ├─ stage1 compiles .dag → stage2 (fixed point check)
+  ├─ diff stage1 stage2 (must be empty)
+  └─ stage1 replaces stage0 (regeneration)
+  ↓
+Commit includes updated stage0 (generated, not hand-edited)
+CI verifies: regenerate → diff → empty
+```
+The `gunbc-dev build` command owns the entire loop. It is the
+single entrypoint for compiler development. Developers never run
+`regenerate-stage0.sh` manually — the build tool does it.
+
+**Why the committed binary approach works for continuous development:**
+- Every commit is self-contained: clone repo, `cargo build -p v2-compiler`, you have a working compiler
+- No external bootstrap compiler needed
+- The bootstrap binary (stage0) is Rust — cargo builds it on any platform
+- CI gate ensures stage0 is always in sync with .dag source
+- Rolling forward is safe: each commit's stage0 can compile the next commit's .dag
+
+**Transition off Rust/cargo entirely:**
+
+The current bootstrap medium is Rust (stage0 is Rust, cargo builds
+it). This is not permanent. The path off Rust:
+
+1. **Current:** .dag → Rust → cargo → binary
+2. **M5-full:** .dag → {Rust, Go, Python, ...} → language toolchain → binary
+3. **Self-hosted build:** .dag compiler compiles its own build system from .dag source
+4. **Post-Rust:** .dag → native code (LLVM/Cranelift) directly, no Rust intermediate
+
+Step 3 is the key transition: the .dag build system is itself a .dag
+program. It knows how to invoke the target language's toolchain
+(rustc, go build, gcc) because that's modeled as a language extdep.
+The build process is:
+```
+stage0 binary (committed, any language)
+  compiles .dag build system → build binary
+  compiles .dag compiler → compiler binary
+  build binary orchestrates: test, package, ship
+```
+
+Step 4 is optional — Rust/Go as intermediate targets may be
+sufficient indefinitely. The decision depends on whether the
+intermediate compilation step becomes a bottleneck.
+
+**Stability contract for compiler developers:**
+- Editing `dsl/` (std library, extdeps, user programs): stage0 unchanged, no rebuild needed
+- Editing `src/v2/*.dag` (compiler source): automatic regeneration via `gunbc-dev build`
+- Editing `dsl/extdeps/languages/*/emit.dag` (emission rules): stage0 unchanged unless the compiler imports the file
+- Adding a new target language: stage0 unchanged (new language = new extdep data)
+
 ---
 
 ## Critical Path
