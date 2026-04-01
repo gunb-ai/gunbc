@@ -79,7 +79,7 @@ import v2.compiler.infer_types {
   map_node, bare_map_node,
   callable_inferred,
   normalize_access_type_node,
-  is_bridge_placeholder_type_name,
+  bridge_placeholder_type_names, is_bridge_placeholder,
   node_type_shape, node_type_compatible, node_type_equals, prefer_specific_type,
   node_type_deps,
   method_receiver_element_node,
@@ -2064,6 +2064,7 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 // =========================================================================
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> BuildTypeEnvResult {
+  let placeholder_names = bridge_placeholder_type_names()
   // Seed the kernel with primitive types so they resolve even when
   // std.types is not in the compilation set (e.g., in isolated tests).
   let zero_span = make_span(start: 0, end: 0)
@@ -2119,7 +2120,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   // but importing modules must not see them as ambient user-facing types.
   let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
     fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-      if is_bridge_placeholder_type_name(name: name) {
+      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
         bacc
       } else {
         match map_get(env.bindings, name) {
@@ -2134,7 +2135,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       Some { value: typed_parent } =>
         if imp.module_path == "std.types" {
           fold(typed_parent.type_env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-            if is_bridge_placeholder_type_name(name: name) {
+            if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
               bacc
             } else {
               match map_get(typed_parent.type_env.bindings, name) {
@@ -2263,6 +2264,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 // Used by the per-module profile test to isolate whether OOM is in
 // merge+cycles vs type resolution.
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> BuildTypeEnvResult {
+  let placeholder_names = bridge_placeholder_type_names()
   let zero_span = make_span(start: 0, end: 0)
   let source_index = map_get(source_indices, module.module.span.file)
   let kernel_bindings = fold(
@@ -2290,7 +2292,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   // Mirror the same std.types-only placeholder filtering in the unresolved path.
   let std_import_bindings = fold(std_types_parent_env, init: empty_map(), f: (acc, env) =>
     fold(env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-      if is_bridge_placeholder_type_name(name: name) {
+      if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
         bacc
       } else {
         match map_get(env.bindings, name) {
@@ -2305,7 +2307,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
       Some { value: typed_parent } =>
         if imp.module_path == "std.types" {
           fold(typed_parent.type_env.bindings |> map_keys, init: acc, f: (bacc, name) =>
-            if is_bridge_placeholder_type_name(name: name) {
+            if is_bridge_placeholder(placeholder_names: placeholder_names, name: name) {
               bacc
             } else {
               match map_get(typed_parent.type_env.bindings, name) {

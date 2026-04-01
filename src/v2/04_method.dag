@@ -1,9 +1,9 @@
-// v2 method classification -- maps method names to typed method semantics.
+// v2 method helpers -- builtin call type inference and type constructors.
 //
-// String-to-enum classification for intrinsic methods, runtime bridge
-// methods, and builtin function calls. Each classifier returns a typed
-// enum variant so downstream code (inference, emit) can match structurally
-// instead of comparing strings.
+// Intrinsic/bridge method classification was deleted 2026-03-28 (48 string
+// branches replaced by algebra registry + Tier 0 lookup_structural_method).
+// What remains: builtin_function_registry for free-function call syntax and
+// type constructor helpers used by inference.
 //
 // Dependency: v2.compiler.infer_types (Node constructors)
 
@@ -23,31 +23,12 @@ import v2.compiler.infer_types {
 }
 
 // =========================================================================
-// Intrinsic method classification
-// =========================================================================
-
-// classify_reconciled_intrinsic_method and classify_runtime_bridge_method
-// DELETED (2026-03-28). 48 string branches replaced by algebra registry
-// (enrich_kernel_type) + emit-prep reclassification via index maps.
-// Methods now resolve structurally through Tier 0 lookup_structural_method.
-
-// =========================================================================
-// Method return type inference
-// =========================================================================
-
-// infer_intrinsic_method_type_node DELETED (2026-03-28).
-// Return types now come from algebra field + substitute_algebra_result
-// in resolve_known_method_node. The algebra registry provides base types;
-// substitute_algebra_result maps self_type→receiver_type and handles
-// Optional wrapping. refine_collection_result_type specializes polymorphic
-// cases (map, flat_map, fold) using typed callback args.
-
-// infer_runtime_bridge_method_type_node DELETED (2026-03-28).
-// Same as infer_intrinsic_method_type_node — replaced by algebra field
-// return types + substitute_algebra_result.
-
-// =========================================================================
 // Builtin call type inference
+//
+// Method classification (intrinsic/bridge) and method return type inference
+// were deleted 2026-03-28. Methods resolve structurally through Tier 0
+// lookup_structural_method; return types come from algebra fields +
+// substitute_algebra_result + refine_collection_result_type.
 // =========================================================================
 
 fn type_variable_node(id: String) -> Node {
