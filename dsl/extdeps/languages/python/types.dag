@@ -95,10 +95,10 @@ data python_algebra_inhabitants: List<InhabitantDecl> = [
 
 // =========================================================================
 // Optional: T | None (PEP 604)
+//
+// Authority: typing_optional and none_literal below. No separate optional
+// declarations — they would duplicate the existing syntax facts.
 // =========================================================================
-
-data python_optional_template: String = "Optional[\{0\}]"
-data python_none_expr: String = "None"
 
 
 // =========================================================================

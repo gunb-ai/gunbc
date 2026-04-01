@@ -106,10 +106,10 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
 
 // =========================================================================
 // Optional: *T (pointer, nil = absent)
+//
+// Authority: pointer_template and nil_literal below. No separate optional
+// declarations — Go optional IS pointer indirection.
 // =========================================================================
-
-data go_optional_template: String = "*\{0\}"
-data go_nil_expr: String = "nil"
 
 
 // =========================================================================
