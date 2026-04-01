@@ -1286,7 +1286,7 @@ with strictly lower cost exists using the same primitives."
 | Repeated list append: `fold(items, f: (acc, x) => concat(acc, [x]))` | O(n²) | `list_push(acc, x)` | O(n) | fold body concats single-element list |
 | Sort + extract: `sort(list) \|> first` | O(n log n) | `fold(list, min)` | O(n) | sort followed by single-element access |
 | Nested find: `list \|> map(x => other \|> find(...))` | O(n×m) | Build index, then lookup | O(n+m) | nested collection scan in map/fold body |
-| Loop-invariant computation: `fold(items, f: (acc, x) => let k = expensive_pure(constant) ...)` | ×cost(f) | Hoist before fold | O(1) | pure call with loop-invariant args inside fold |
+| Loop-invariant computation: `fold(items, f: (acc, x) => let k = expensive_pure(constant) ...)` | n × (cost(k) + cost(rest)) | Hoist before fold: `let k = ...; fold(items, f: (acc, x) => ... k ...)` | cost(k) + n × cost(rest) | pure call with loop-invariant args inside fold |
 
 **Design:** The cost comparator runs after complexity analysis. For
 each function with proven cost, it pattern-matches the cost structure
@@ -1471,10 +1471,13 @@ in time.
 
 **Concrete examples for early implementation:**
 
-1. **Binary tree search** — single-branch arithmetic descent (NOT catamorphism):
-   T(n) = T(n/2) + O(1) → Θ(log n) by Master theorem (a=1, b=2, f=O(1))
-   Note: `descend(tree, f)` would visit all nodes (Θ(n)). BST search
-   selects one branch — lowered to `repeat(height, ...)`, not `descend`.
+1. **Binary tree search** — single-branch descent on tree height (NOT catamorphism):
+   Cost: Θ(height). For balanced trees, height = Θ(log n) so cost = Θ(log n).
+   For degenerate trees, height = n so cost = Θ(n). A refinement type
+   (BalancedTree<T>) would express the Θ(log n) guarantee structurally.
+   Lowered to `repeat(height, ...)`, not `descend` — descend visits all nodes (Θ(n)).
+   Master theorem applies only to the balanced case: T(n) = T(n/2) + O(1),
+   a=1, b=2, case 2 → Θ(log n).
 
 2. **Merge sort** — descend with merge:
    T(n) = 2T(n/2) + O(n) → Θ(n log n) by Master theorem (a=2, b=2, f=O(n))
@@ -1482,8 +1485,11 @@ in time.
 3. **Matrix multiply (naive)** — triple nested fold:
    T(n) = n · n · n · O(1) = Θ(n³)
 
-4. **Hash table lookup** — CostConst(1) amortized, CostSum(n) worst:
-   Amortized O(1), worst O(n). Potential Φ = load_factor × n.
+4. **Dynamic array insertion** — amortized via potential function:
+   Worst O(n) when resize triggers, amortized O(1).
+   Potential Φ = 2·size - capacity. Insert without resize: actual O(1),
+   Φ increases by 2. Insert with resize (double capacity): actual O(n),
+   Φ drops by n - 2. Amortized â = c + ΔΦ = O(1) in both cases.
 
 5. **Accumulator scan detection** — fold with inner scan:
    T(n) = Σ_{i=1}^{n} i = n(n+1)/2 = Θ(n²)
