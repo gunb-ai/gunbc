@@ -679,14 +679,13 @@ fn collect_field_template_names(templates: List<AlgebraFieldTemplate>, acc: Map<
 // placeholders regardless of template content.
 fn bridge_placeholder_type_names() -> Map<String, Bool> {
   let type_params = map_insert(map_insert(map_insert(empty_map(), "T", true), "K", true), "V", true)
-  let all_template_names =
-    collect_field_template_names(templates: ordered_ring_templates(), acc:
-    collect_field_template_names(templates: approximate_field_templates(), acc:
-    collect_field_template_names(templates: boolean_algebra_templates(), acc:
-    collect_field_template_names(templates: boolean_algebra_collection_templates(), acc:
-    collect_field_template_names(templates: free_monoid_scalar_templates(), acc:
-    collect_field_template_names(templates: free_monoid_collection_templates(), acc:
-    collect_field_template_names(templates: partial_function_templates(), acc: empty_map())))))))
+  let n1 = collect_field_template_names(templates: partial_function_templates(), acc: empty_map())
+  let n2 = collect_field_template_names(templates: free_monoid_collection_templates(), acc: n1)
+  let n3 = collect_field_template_names(templates: free_monoid_scalar_templates(), acc: n2)
+  let n4 = collect_field_template_names(templates: boolean_algebra_collection_templates(), acc: n3)
+  let n5 = collect_field_template_names(templates: boolean_algebra_templates(), acc: n4)
+  let n6 = collect_field_template_names(templates: approximate_field_templates(), acc: n5)
+  let all_template_names = collect_field_template_names(templates: ordered_ring_templates(), acc: n6)
   let concrete_types = kernel_algebra_profile |> map_keys |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, true)
   )
