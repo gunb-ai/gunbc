@@ -498,11 +498,12 @@ read them. This tier is a prerequisite for early coercion implementation.
   → `BooleanAlgebraCollectionProfile`. Added `BooleanAlgebraCollectionProfile`
   variant, `boolean_algebra_collection_templates()`, and updated
   `KERNEL_ALGEBRA_PROFILE` for `Set`/`NonEmptySet` in both `.dag` and stage0 Rust.
-- [ ] Fix carrier-changing type loss in `free_monoid_collection_templates`:
-  `map`/`flat_map`/`fold` param_types and return_types are `ReceiverSelf`
-  but should express the higher-order function parameter structure (e.g.,
-  `fold` takes `fn(Acc, T) -> Acc` and returns `Acc`, not `Self`). The
-  `FreeMonoid<T>` declaration already models this correctly.
+- [x] Fix carrier-changing type loss in `free_monoid_collection_templates`:
+  `map`/`flat_map` return_type changed from `ReceiverSelf` to
+  `ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } }`;
+  `fold` param_types changed to `[NamedTemplate { name: "FoldAccumulator" }]`
+  and return_type to `NamedTemplate { name: "FoldAccumulator" }`.
+  Same fix applied to `boolean_algebra_collection_templates`.
 - [ ] Same issue in `partial_function_templates`: parallel authority for
   `PartialFunction` operations including emitter-only alias `emit_map_has`
   that doesn't exist on the carrier algebra.
