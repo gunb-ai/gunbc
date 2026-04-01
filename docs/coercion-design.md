@@ -6,6 +6,80 @@
 **Dissolves:** `rust_type_map`, `rust_container_templates`, `build_rc_types`,
 `emit_node_type_rc`, TypeRendering (E0c)
 
+---
+
+## Open Questions
+
+**OQ-1: Shared coercion vocabulary type location.**
+Each language file currently defines its own `InhabitantDecl` with
+language-specific field names (`rust_template`, `python_template`,
+`go_template`). Should there be a single shared `InhabitantDecl` in
+`std/coercion.dag` with a generic `target_template` field? A shared type
+enforces schema consistency across languages; per-language types allow
+language-specific metadata (e.g. Rust's `is_copy`, Python's `import_path`).
+Candidate resolution: shared base type + per-language extension fields.
+
+**OQ-2: Scalar vs collection FreeMonoid disambiguation.**
+String is `FreeMonoid<Char>` and List is `FreeMonoid<T>`. The inhabitant
+table has both arity-0 (String → `String`) and arity-1 (List → `Vec<{0}>`)
+for FreeMonoid. How does the compiler distinguish which inhabitant to apply?
+Arity alone works today, but breaks if someone writes `type Chars = FreeMonoid<Char>`
+(arity 1, but conceptually scalar). Options: (a) arity is sufficient and
+`Chars` correctly coerces to `Vec<char>`, (b) add a `scalar: Bool` flag
+to InhabitantDecl, (c) resolve through the checkpoint table first (String
+hits the checkpoint before reaching the algebra level).
+
+**OQ-3: NonEmptyList / NonEmptySet representation.**
+These are refinements of List/Set with a non-empty constraint. Currently
+they have separate container template entries (`non_empty_list`, `non_empty_set`).
+Should they be modeled as: (a) separate algebra inhabitants (current approach),
+(b) refinements of their base container type (NonEmptyList = List where non_empty),
+or (c) a `NonEmpty<C>` wrapper algebra? Option (b) is cleanest algebraically
+but requires the compiler to handle refinement-of-container coercion.
+
+**OQ-4: Callable context decision algorithm.**
+`CallableRepr` has owned/shared/static templates, but the design doesn't
+specify how the compiler chooses between them. Proposed rule:
+- Struct field → `shared_template` (stored, needs Rc for sharing)
+- Function parameter → `static_template` if monomorphic, `impl Fn` if generic
+- Data declaration → `static_template` (known at compile time)
+- Return type → `owned_template` (caller owns the closure)
+Does this cover all cases? What about closures that capture mutable state?
+
+**OQ-5: Operation coercion data model.**
+Category 8 (algebraic operation coercion — e.g. `FreeMonoid.map` →
+`.iter().map(f).collect()`) is described in the design doc but has no
+corresponding data declarations in `types.dag`. Should operation templates
+live alongside type inhabitants in `types.dag`, in a separate
+`operations.dag`, or remain in `emit.dag`? The algebra definitions in
+`std/algebra.dag` already list operations per algebra — the question is
+where the per-language rendering templates for those operations live.
+
+**OQ-6: Refinement validation emission strategy.**
+Refinements coerce to their base type + validation, but the design doesn't
+specify WHEN validation is emitted. Options:
+- Constructor-time: newtype wrapper with validating `new()` → safest but verbose
+- Assignment-time: `debug_assert!` at binding sites → lighter but only in debug
+- Boundary-time: validate at module/function entry points → compromise
+- Never (trust the type checker): .dag already proved the constraint → no runtime cost
+The choice may vary per target language and per optimization level.
+
+**OQ-7: TypeRendering (E0c) coexistence.**
+TypeRendering is being implemented on `keen-lynx-513` as a stepping stone.
+Should the coercion inhabitant declarations be designed to coexist with
+TypeRendering during the transition? Specifically: can `build_type_rendering`
+read from `InhabitantDecl` data instead of hardcoded container/primitive
+maps, so TypeRendering dissolves incrementally into coercion rather than
+requiring a big-bang replacement?
+
+**OQ-8: Property-based test generation.**
+The `CoercionTest` declarations use example-based assertions. Should the
+compiler also generate property-based tests (proptest / quickcheck style)
+from the algebra laws? E.g., for OrderedRing: `proptest!(|(a: i64, b: i64, c: i64)| assert_eq!((a.wrapping_add(b)).wrapping_add(c), a.wrapping_add(b.wrapping_add(c))))`
+This would give stronger coverage but introduces a test framework dependency.
+
+---
+
 ## Core Thesis
 
 Type rendering is coercion. The compiler walks a .dag type composition tree
