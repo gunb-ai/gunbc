@@ -79,6 +79,7 @@ pub struct TypeSummary {
     pub field_summaries: HashMap<String, Rc<FieldSummary>>,
     pub field_type_map: HashMap<String, String>,
     pub variant_name_set: HashMap<String, bool>,
+    pub generic_param_names: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,10 +93,6 @@ pub struct EmitGraphInfo {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
     pub recursive_type_set: HashMap<String, bool>,
     pub fielded_variants: HashMap<String, bool>,
-    /// Maps type names to their generic parameter names (e.g. "FreeMonoid" → ["T"]).
-    /// Used to recover generic params for self-referential field types where
-    /// the resolved Node carries a bare name without type arguments.
-    pub type_params: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +117,6 @@ pub struct TypeRendering {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitInfoBuildState {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
-    pub type_params: HashMap<String, Vec<String>>,
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
@@ -128,7 +124,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: <HashMap<_, _>>::new(),
     recursive_type_set: <HashMap<_, _>>::new(),
     fielded_variants: <HashMap<_, _>>::new(),
-    type_params: <HashMap<_, _>>::new(),
 })
 }
 
@@ -359,9 +354,11 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                     })
         } else {
             // Check if this is a generic type whose params were lost (self-referential fields)
-            match emit_info.type_params.get(&n.name) {
-                Some(param_names) if !param_names.is_empty() => {
-                    let generic: Vec<Rc<TypeRendering>> = param_names.iter().map(|pn| {
+            let gpn = emit_info.type_summaries.get(&n.name)
+                .map(|s| s.generic_param_names.clone())
+                .unwrap_or_default();
+            if !gpn.is_empty() {
+                    let generic: Vec<Rc<TypeRendering>> = gpn.iter().map(|pn| {
                         leaf_type_rendering(pn.clone())
                     }).collect();
                     Rc::new(TypeRendering {
@@ -372,14 +369,12 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                         shared, boxed: false,
                         is_tuple: false, is_error: false, error_label: String::new(),
                     })
-                }
-                _ => {
+            } else {
                     if shared {
                         leaf_type_rendering_shared(n.name.clone())
                     } else {
                         leaf_type_rendering(n.name.clone())
                     }
-                }
             }
         }
     } else {
@@ -510,10 +505,9 @@ fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
             }).collect()
         } else {
             // Recover generic params from type definition (self-referential fields)
-            match emit_info.type_params.get(&n.name) {
-                Some(param_names) => param_names.iter().map(|pn| leaf_type_rendering(pn.clone())).collect(),
-                None => vec![],
-            }
+            emit_info.type_summaries.get(&n.name)
+                .map(|s| s.generic_param_names.iter().map(|pn| leaf_type_rendering(pn.clone())).collect())
+                .unwrap_or_default()
         };
         Rc::new(TypeRendering {
             type_name: n.name.clone(),
@@ -727,6 +721,7 @@ pub fn build_type_summary(item: Rc<Node>) -> Option<Rc<TypeSummary>> {
         if ((node_has_structure(item.clone()) == false) || (item.transport.clone() != None)) {
             return None
 }
+let gpn: Vec<String> = item.params.iter().map(|p| param_node_name(p.clone())).collect();
 if node_is_product(item.clone()) {
             Some(Rc::new(TypeSummary {
     name: item.name.clone(),
@@ -734,6 +729,7 @@ if node_is_product(item.clone()) {
     field_summaries: build_struct_field_summaries(item.children.clone()),
     field_type_map: build_field_type_map(item.children.clone()),
     variant_name_set: <HashMap<_, _>>::new(),
+    generic_param_names: gpn,
 }))
 } else {
             {
@@ -746,6 +742,7 @@ Some(Rc::new(TypeSummary {
     field_summaries: build_enum_field_summaries(item.children.clone()),
     field_type_map: <HashMap<_, _>>::new(),
     variant_name_set: item.children.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc, child| v2_rt::map_insert(acc, child.name.clone(), true)),
+    generic_param_names: gpn,
 }))
 }
 }
@@ -763,6 +760,7 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     field_summaries: build_struct_field_summaries(variant.children.clone()),
     field_type_map: build_field_type_map(variant.children.clone()),
     variant_name_set: <HashMap<_, _>>::new(),
+    generic_param_names: vec![],
 }))
 } else {
             acc.clone()
@@ -770,15 +768,8 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     _ => state.type_summaries.clone(),
 };
 let next_summaries = v2_rt::map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
-let next_type_params = if !item.params.is_empty() {
-    let param_names: Vec<String> = item.params.iter().map(|p| param_node_name(p.clone())).collect();
-    v2_rt::map_insert(state.type_params.clone(), item.name.clone(), param_names)
-} else {
-    state.type_params.clone()
-};
 Rc::new(EmitInfoBuildState {
     type_summaries: next_summaries.clone(),
-    type_params: next_type_params,
 })
 },
     None => state.clone(),

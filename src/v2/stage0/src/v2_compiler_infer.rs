@@ -4963,7 +4963,6 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
     {
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: <HashMap<_, _>>::new(),
-            type_params: <HashMap<_, _>>::new(),
         });
         let built = modules.clone().iter().cloned().fold(
             init.clone(),
@@ -4990,7 +4989,6 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: fielded,
-            type_params: built.type_params.clone(),
         })
     }
 }

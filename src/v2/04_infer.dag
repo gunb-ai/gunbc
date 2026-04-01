@@ -2821,8 +2821,7 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
 
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
-    type_summaries: empty_map(),
-    type_params: empty_map()
+    type_summaries: empty_map()
   }
   let built = modules |> fold(init: init, f: (state, typed_module) =>
     typed_module.items |> fold(init: state, f: (inner_state, item) =>
@@ -2836,8 +2835,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
-    fielded_variants: fielded,
-    type_params: built.type_params
+    fielded_variants: fielded
   }
 }
 

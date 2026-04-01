@@ -61,6 +61,7 @@ type TypeSummary {
   field_summaries: Map<String, FieldSummary>
   field_type_map: Map<String, String>
   variant_name_set: Map<String, Bool>
+  generic_param_names: List<String>
 }
 
 // EmitGraphInfo: the reconcile→emit boundary contract.
@@ -86,10 +87,6 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keyed by variant name → true if variant has children.
   fielded_variants: Map<String, Bool>
-  // Maps type names to their generic parameter names (e.g. "FreeMonoid" → ["T"]).
-  // Used by build_type_rendering to recover generic params for self-referential
-  // field types where the resolved Node carries a bare name without type arguments.
-  type_params: Map<String, List<String>>
 }
 
 // TypeRendering: structural descriptor for type rendering.
@@ -117,7 +114,6 @@ type TypeRendering {
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
-  type_params: Map<String, List<String>>
 }
 
 // =========================================================================
@@ -128,8 +124,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_map(),
-    fielded_variants: empty_map(),
-    type_params: empty_map()
+    fielded_variants: empty_map()
   }
 }
 
@@ -377,6 +372,7 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   if item.connective == NoConnective || item.transport != none {
     return none
   }
+  let gpn = item.params |> map(p => param_node_name(n: p))
   let is_product = item.connective == Conj
   if is_product {
     Some { value: TypeSummary {
@@ -384,7 +380,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(children: item.children),
       field_type_map: build_field_type_map(children: item.children),
-      variant_name_set: empty_map()
+      variant_name_set: empty_map(),
+      generic_param_names: gpn
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
@@ -393,7 +390,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children),
       field_type_map: empty_map(),
-      variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, child.name, true))
+      variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, child.name, true)),
+      generic_param_names: gpn
     } }
   }
 }
@@ -412,20 +410,16 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(children: variant.children),
                 field_type_map: build_field_type_map(children: variant.children),
-                variant_name_set: empty_map()
+                variant_name_set: empty_map(),
+                generic_param_names: []
               })
             } else { acc }
           )
         _ => state.type_summaries
       }
       let next_summaries = map_insert(with_variants, summary.name, summary)
-      let next_type_params = if item.params |> count > 0 {
-        let param_names = item.params |> map(p => param_node_name(n: p))
-        map_insert(state.type_params, item.name, param_names)
-      } else { state.type_params }
       EmitInfoBuildState {
-        type_summaries: next_summaries,
-        type_params: next_type_params
+        type_summaries: next_summaries
       }
     None => state
   }
