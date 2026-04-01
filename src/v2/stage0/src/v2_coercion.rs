@@ -214,35 +214,42 @@ pub fn go_callable() -> CallableRepr {
 }
 
 // =========================================================================
-// Registry construction
+// Registry construction — built once per target, indexed at startup
 // =========================================================================
 
 use crate::v2_compiler_emit::RenderTarget;
 
-pub fn registry_for_target(target: &RenderTarget) -> CoercionRegistry {
+lazy_static::lazy_static! {
+    static ref RUST_REGISTRY: CoercionRegistry = CoercionRegistry::new(
+        rust_checkpoints(), rust_inhabitants(), rust_callable(),
+        "Option<{0}>".into(),
+    );
+    static ref PYTHON_REGISTRY: CoercionRegistry = CoercionRegistry::new(
+        python_checkpoints(), python_inhabitants(), python_callable(),
+        "Optional[{0}]".into(),
+    );
+    static ref GO_REGISTRY: CoercionRegistry = CoercionRegistry::new(
+        go_checkpoints(), go_inhabitants(), go_callable(),
+        "*{0}".into(),
+    );
+    static ref DAG_REGISTRY: CoercionRegistry = CoercionRegistry::new(
+        vec![], vec![],
+        CallableRepr {
+            template: "fn({params}) -> {return}".into(),
+            param_separator: ", ".into(),
+            return_separator: " -> ".into(),
+            import_path: None,
+        },
+        "{0}?".into(),
+    );
+}
+
+pub fn registry_for_target(target: &RenderTarget) -> &'static CoercionRegistry {
     match target {
-        RenderTarget::Rust => CoercionRegistry::new(
-            rust_checkpoints(), rust_inhabitants(), rust_callable(),
-            "Option<{0}>".into(),
-        ),
-        RenderTarget::Python => CoercionRegistry::new(
-            python_checkpoints(), python_inhabitants(), python_callable(),
-            "Optional[{0}]".into(),
-        ),
-        RenderTarget::Go => CoercionRegistry::new(
-            go_checkpoints(), go_inhabitants(), go_callable(),
-            "*{0}".into(),
-        ),
-        RenderTarget::Dag => CoercionRegistry::new(
-            vec![], vec![],
-            CallableRepr {
-                template: "fn({params}) -> {return}".into(),
-                param_separator: ", ".into(),
-                return_separator: " -> ".into(),
-                import_path: None,
-            },
-            "{0}?".into(),
-        ),
+        RenderTarget::Rust => &RUST_REGISTRY,
+        RenderTarget::Python => &PYTHON_REGISTRY,
+        RenderTarget::Go => &GO_REGISTRY,
+        RenderTarget::Dag => &DAG_REGISTRY,
     }
 }
 

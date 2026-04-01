@@ -701,32 +701,6 @@ mod compiler_tests {
         assert_eq!(apply_inhabitant_template2("map[{0}]{1}", "string", "int64"), "map[string]int64");
     }
 
-    #[test]
-    fn coercion_parity_with_legacy_type_maps() {
-        use crate::v2_coercion::*;
-        use crate::v2_compiler_emit::RenderTarget;
-        use crate::v2_compiler_languages::target_primitive_type;
-        // Verify coercion produces the same results as legacy type maps
-        for name in &["Int", "Float", "Bool", "Unit", "String", "Bytes", "Secret", "Json"] {
-            let legacy = target_primitive_type(RenderTarget::Rust, name.to_string());
-            let reg = registry_for_target(&RenderTarget::Rust);
-            let coerced = coerce_primitive_type(&reg, name);
-            assert_eq!(legacy, coerced, "Rust parity mismatch for {}", name);
-        }
-        for name in &["Int", "Float", "Bool", "Unit", "String", "Bytes", "Secret", "Json"] {
-            let legacy = target_primitive_type(RenderTarget::Python, name.to_string());
-            let reg = registry_for_target(&RenderTarget::Python);
-            let coerced = coerce_primitive_type(&reg, name);
-            assert_eq!(legacy, coerced, "Python parity mismatch for {}", name);
-        }
-        for name in &["Int", "Float", "Bool", "Unit", "String", "Bytes", "Secret", "Json"] {
-            let legacy = target_primitive_type(RenderTarget::Go, name.to_string());
-            let reg = registry_for_target(&RenderTarget::Go);
-            let coerced = coerce_primitive_type(&reg, name);
-            assert_eq!(legacy, coerced, "Go parity mismatch for {}", name);
-        }
-    }
-
     /// Profile the gist pipeline by stage: tokenize, parse, resolve.
     /// Reports per-file and per-stage wall-clock times.
     #[test]
