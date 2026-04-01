@@ -157,6 +157,17 @@ declaration keywords, assignment syntax, lambda syntax, null-coalescing,
 string interpolation, container syntax, indentation, lint/formatting rules).
 Type coercion is data-driven; the full backend is broader.
 
+**Transitional state:** This document describes the target architecture.
+The compiler is currently in a transitional identity model: checkpoint
+and inhabitant keys are strings (`dag_name`, `algebra`), not declaration
+edges. M4/Lane 1 is dissolving string identity into structural
+declaration-backed facts; M4/Lane 2 is deleting `Node.name`. The
+coercion algorithm described here is designed for the post-M4 world
+where identity flows from declarations, but the initial implementation
+(M5-early, via E0c `TypeRendering`) will use the transitional string
+keys until Lane 1 completes. The algorithm shape is the same; only the
+key resolution mechanism changes.
+
 ## The Coercion Model
 
 ```
@@ -909,19 +920,23 @@ resolve(Map<String, List<Int?>>, English):
 | SPICE | **COMPILE ERROR** | — |
 | English | `mapping from text to list of optional integers` | `empty mapping` |
 
-**Optionality interpretation:** In `.dag`, `?` is a cardinality annotation
-on binding sites, not a type constructor (`constructors.dag`: "Cardinality
-is orthogonal to constructors... annotation on the binding, not a type
-wrapper"). `Optional<T>` does not exist as a standalone type. `List<Int?>`
-means the list's element positions have optional cardinality — each slot
-may hold an `Int` or be absent. The coercion engine handles this
-structurally: resolve the base type (`Int` → `i64`), then wrap in the
-target's optional template (`Option<i64>`, `int | None`, `*int64`), then
-wrap in the container template. This is cardinality propagating through
-composition, not a type constructor sneaking in through a side door. The
-`algebraic-type-spec.md` rule — "emit reads cardinality from bindings,
-not type-node names" — holds: the coercion engine reads the cardinality
-annotation at the element binding site, not a type named `Optional`.
+**Optionality interpretation:** `.dag` lists are dense (`FreeMonoid`
+preserves ordering and has no holes). A `List<Int?>` is NOT a sparse
+sequence with absent positions — every index `0..n-1` is occupied. The
+`?` means each element's VALUE is nullable: denotationally `List<Int | Unit>`
+where `Unit` represents null/absent. This is consistent with
+`constructors.dag` ("Cardinality is orthogonal to constructors... annotation
+on the binding, not a type wrapper") and `algebraic-type-spec.md`
+("`T?` = cardinality Optional on the binding site, `Optional<T>` does not
+exist as a type constructor").
+
+Concretely: the list has exactly `n` elements. Each element binding has
+optional cardinality, meaning the value at that position is either an `Int`
+or null. The coercion engine resolves this structurally: coerce the base
+type (`Int` → `i64`), wrap in the target's nullable template
+(`Option<i64>`, `int | None`, `*int64`), then wrap in the container
+template (`Vec<Option<i64>>`). The resulting target type is a dense
+collection of nullable values, not a partial-index map or sparse sequence.
 
 ---
 
@@ -1027,7 +1042,12 @@ sharing, ownership, or derive decisions — just algebraic/structural facts.
 | `metadata` | `Map<String, Json>` | PartialFunction → HashMap, String/Json → checkpoint | `HashMap<String, serde_json::Value>` |
 | `last_login` | `Timestamp?` | optional + refinement → Int → checkpoint | `Option<i64>` |
 | `friends` | `List<Int>` | FreeMonoid → Vec, Int → checkpoint | `Vec<i64>` |
-| `on_update` | `fn(UserProfile) -> Unit` | callable (static: struct field) | `fn(UserProfile) -> ()` |
+| `on_update` | `fn(UserProfile) -> Unit` | callable base template | `fn(UserProfile) -> ()` |
+
+Phase 1 produces the BASE callable type from `CallableRepr.template`.
+For `on_update`, this is the bare function type — context-dependent
+wrapping (struct field → `Rc<dyn Fn>`, parameter → `impl Fn`, etc.)
+happens in Phase 2 based on `ValueContext`.
 
 **Cross-target coercion (pure types, no sharing):**
 
@@ -1044,6 +1064,8 @@ sharing, ownership, or derive decisions — just algebraic/structural facts.
 
 This is the coercion engine's output. Every cell is determined by the
 type's algebraic or structural facts. No language-specific heuristics.
+Note: `on_update` shows the base callable template; Rust context wrapping
+is applied in Phase 2.
 
 #### Phase 2: ValueContext rendering effects (downstream from coercion)
 
@@ -1054,9 +1076,17 @@ language-specific rendering policy. This is "emission is translation"
 **Rust — ValueContext analysis:**
 ```
 UserProfile:
-  has_fn_fields = true  (on_update is fn pointer)
-    → skip PartialEq, Debug derives (fn pointers don't impl these)
+  has_fn_fields = true  (on_update is a callable field)
+    → skip PartialEq, Debug derives (dyn Fn doesn't impl these)
     → derive only: Clone, Serialize, Deserialize
+
+  callable context:
+    on_update: fn(UserProfile) -> Unit
+      context = struct field (stored callable)
+      → Rc<dyn Fn(UserProfile)>  (shared closure, per Category 4)
+      (If this were a data declaration → fn(UserProfile) -> (),
+       a noncapturing static function pointer. The .dag type is
+       the same; the rendering depends on ValueContext.)
 
   per-field is_copy:
     id: i64              → Copy (checkpoint declares is_copy: true)
@@ -1066,7 +1096,7 @@ UserProfile:
     metadata: HashMap<...> → !Copy → Rc<HashMap<...>>
     last_login: Option<i64> → Copy (Option<Copy> = Copy)
     friends: Vec<i64>    → !Copy → Rc<Vec<i64>>
-    on_update: fn(...)   → Copy (fn pointers are Copy)
+    on_update: Rc<dyn Fn(...)> → !Copy → already Rc
 ```
 
 **Rust output (coercion + ValueContext combined):**
@@ -1083,7 +1113,7 @@ pub struct UserProfile {
     pub metadata: Rc<HashMap<String, serde_json::Value>>,
     pub last_login: Option<i64>,
     pub friends: Rc<Vec<i64>>,
-    pub on_update: fn(UserProfile) -> (),
+    pub on_update: Rc<dyn Fn(UserProfile)>,
 }
 ```
 
@@ -1357,10 +1387,13 @@ To build a sequence from a seed and a list of integers:
   then combine it with the given items.
 ```
 
-The key: type template, identity expression, and operation rendering are all
-declared on the same `FreeMonoid` inhabitant. No separate catalog for operations,
-no separate table for identity literals. One algebra → one authority → three
-rendered forms. If any of the three is missing, the compiler fails closed.
+The key: type template and identity expression come from the `FreeMonoid`
+`InhabitantDecl`. Operation rendering comes from `FreeMonoid`'s operation
+identity in `std/algebra.dag` plus the per-language rendering attached to
+that operation. These are not literally one record holding all three facts,
+but they form a single algebraic authority chain — no parallel catalogs,
+no free-standing operation tables. If any link in the chain is missing
+(no inhabitant, no operation rendering), the compiler fails closed.
 
 ---
 
