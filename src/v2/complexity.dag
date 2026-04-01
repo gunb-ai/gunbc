@@ -1946,7 +1946,16 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
             expr_descending_witness_source(expr: arg_value(n: arg_node), descending_witness_names: descending_witness_names)
           None => none
         }
-      } else { none }
+      } else {
+        // Generic: any function call whose argument is a witness
+        // propagates that witness (accessor/helper functions).
+        expr.children |> fold(init: none, f: (acc, arg_node) =>
+          match acc {
+            Some { value: _ } => acc
+            None => expr_descending_witness_source(expr: arg_value(n: arg_node), descending_witness_names: descending_witness_names)
+          }
+        )
+      }
     _ => none
   }
 }
@@ -2042,12 +2051,13 @@ fn recursive_measure_param_names(body: Node, params: List<Node>) -> Map<String, 
       )
       map_merge(scrut_names, arm_names)
     ExprLet =>
+      let direct_param_refs = condition_param_names(expr: let_value(texpr: body), param_set: param_set)
       let value_names = recursive_measure_param_names(body: let_value(texpr: body), params: params)
       let body_names = match let_body(texpr: body) {
         Some { value: b } => recursive_measure_param_names(body: b, params: params)
         None => empty_map()
       }
-      map_merge(value_names, body_names)
+      map_merge(map_merge(direct_param_refs, value_names), body_names)
     ExprBlock =>
       body.children |> fold(init: empty_map(), f: (acc, stmt) =>
         map_merge(acc, recursive_measure_param_names(body: stmt, params: params))

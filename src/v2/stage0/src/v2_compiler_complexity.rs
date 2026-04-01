@@ -2035,7 +2035,15 @@ pub fn expr_descending_witness_source(
                     None => None,
                 }
             } else {
-                None
+                expr.children.iter().cloned().fold(None, |acc: Option<String>, arg_node| {
+                    match acc {
+                        Some(_) => acc,
+                        None => expr_descending_witness_source(
+                            arg_value(arg_node.clone()),
+                            descending_witness_names.clone(),
+                        ),
+                    }
+                })
             }
         }
         _ => None,
@@ -2166,12 +2174,16 @@ pub fn recursive_measure_param_names(body: Rc<Node>, params: Vec<Rc<Node>>) -> R
             Rc::new(v2_rt::map_merge((*scrut_names).clone(), arm_names.clone()))
         }
         ExprData::ExprLet { .. } => {
+            let direct_param_refs = condition_param_names(let_value(body.clone()), param_set.clone());
             let value_names = recursive_measure_param_names(let_value(body.clone()), params.clone());
             let body_names = match let_body(body.clone()) {
                 Some(let_tail) => recursive_measure_param_names(let_tail.clone(), params.clone()),
                 None => Rc::new(<HashMap<_, _>>::new()),
             };
-            Rc::new(v2_rt::map_merge((*value_names).clone(), (*body_names).clone()))
+            Rc::new(v2_rt::map_merge(
+                v2_rt::map_merge((*direct_param_refs).clone(), (*value_names).clone()),
+                (*body_names).clone(),
+            ))
         },
         ExprData::ExprBlock { .. } => Rc::new(body.children.clone().iter().cloned().fold(<HashMap<String, String>>::new(), |acc, stmt| {
             v2_rt::map_merge(acc.clone(), (*recursive_measure_param_names(stmt.clone(), params.clone())).clone())
