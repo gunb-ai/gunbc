@@ -337,6 +337,7 @@ type AlgebraProfile
   = OrderedRingProfile
   | ApproximateFieldProfile
   | BooleanAlgebraProfile
+  | BooleanAlgebraCollectionProfile
   | FreeMonoidScalarProfile
   | FreeMonoidCollectionProfile
   | PartialFunctionProfile
@@ -364,9 +365,9 @@ data kernel_algebra_profile: Map<String, AlgebraProfile> = {
   "Bool": BooleanAlgebraProfile,
   "String": FreeMonoidScalarProfile,
   "List": FreeMonoidCollectionProfile,
-  "Set": FreeMonoidCollectionProfile,
+  "Set": BooleanAlgebraCollectionProfile,
   "NonEmptyList": FreeMonoidCollectionProfile,
-  "NonEmptySet": FreeMonoidCollectionProfile,
+  "NonEmptySet": BooleanAlgebraCollectionProfile,
   "Map": PartialFunctionProfile
 }
 
@@ -400,6 +401,30 @@ fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
     { name: "complement", param_types: [ReceiverSelf], return_type: ReceiverSelf },
     { name: "top", param_types: [], return_type: ReceiverSelf },
     { name: "bottom", param_types: [], return_type: ReceiverSelf }
+  ]
+}
+
+// Set<A> inhabits BooleanAlgebra<A> applied pointwise: union = join,
+// intersect = meet, diff = meet(a, complement(b)), member = element test.
+// Unlike FreeMonoid collections, sets have no positional operations
+// (append, sort_by, enumerate, reverse) — only algebraic + iteration ops.
+fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "union", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
+    { name: "intersect", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
+    { name: "diff", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
+    { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" } },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" } },
+    { name: "filter", param_types: [ReceiverSelf], return_type: ReceiverSelf },
+    { name: "map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
+    { name: "flat_map", param_types: [ReceiverSelf], return_type: ReceiverSelf },
+    { name: "fold", param_types: [ReceiverSelf], return_type: ReceiverSelf },
+    { name: "any", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
+    { name: "all", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },
+    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
+    { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement } },
+    { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } }
   ]
 }
 

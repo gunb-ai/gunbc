@@ -12,13 +12,15 @@ module v2.compiler.infer_types
 import std.types { SourceSpan }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
-  BooleanAlgebraProfile, FreeMonoidScalarProfile,
+  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
+  FreeMonoidScalarProfile,
   FreeMonoidCollectionProfile, PartialFunctionProfile,
   AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
   NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
   ordered_ring_templates, approximate_field_templates, boolean_algebra_templates,
+  boolean_algebra_collection_templates,
   free_monoid_scalar_templates, free_monoid_collection_templates,
   partial_function_templates
 }
@@ -201,6 +203,7 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
     OrderedRingProfile => ordered_ring_templates()
     ApproximateFieldProfile => approximate_field_templates()
     BooleanAlgebraProfile => boolean_algebra_templates()
+    BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates()
     FreeMonoidScalarProfile => free_monoid_scalar_templates()
     FreeMonoidCollectionProfile => free_monoid_collection_templates()
     PartialFunctionProfile => partial_function_templates()
