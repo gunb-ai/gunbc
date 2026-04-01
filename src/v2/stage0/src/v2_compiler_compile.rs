@@ -101,7 +101,7 @@ pub use crate::v2_std_core::{
     record_lit_type_name, resource_use_name, resource_use_resource, BinOpKind, CallSemantics,
     Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LambdaSemantics, LiteralValue,
-    MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile,
+    MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, Token,
     UnaryOpKind, VarBindingKind,
 };
 

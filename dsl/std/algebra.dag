@@ -431,7 +431,7 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
     { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf },
     { name: "empty", param_types: [], return_type: ReceiverSelf },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } },
-    { name: "chars", param_types: [ReceiverSelf], return_type: ListOf { element: NamedTemplate { name: "Char" } } },
+    { name: "chars", param_types: [ReceiverSelf], return_type: ListOf { element: NamedTemplate { name: "Int" } } },
     { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ListOf { element: ReceiverSelf } },
     { name: "join", param_types: [ListOf { element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf },
     { name: "contains", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" } },

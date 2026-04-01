@@ -235,6 +235,15 @@ If an inference failure reaches the emitter, the emitter should
 `compile_error!` — but the real fix is always upstream, in the stage
 that failed to resolve the fact.
 
+**No warnings.** Every diagnostic is either an error (compilation
+stops or emitted code is structurally wrong) or absent (compilation
+succeeds). There is no warning severity. A condition that is wrong
+enough to report is wrong enough to fail. Warnings create a class of
+"known-bad but tolerated" state that erodes invariants over time — if
+the compiler knows something is wrong, it must refuse to proceed, not
+annotate and continue. If a condition is truly harmless, it is not a
+diagnostic. If it is harmful, it is an error.
+
 **Corollary:** emitted code should never fail to compile due to
 errors the compiler could have caught. If `cargo check` on emitted
 Rust finds type mismatches, those are emission bugs — the compiler

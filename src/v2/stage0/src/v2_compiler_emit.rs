@@ -74,7 +74,7 @@ use crate::v2_std_core::BinOpKind::NullCoalesce;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v2_compiler_infer::{build_params_scope, extend_scope, InferScope};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeRendering, build_type_rendering, leaf_type_rendering};
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
@@ -90,7 +90,7 @@ use crate::v2_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCase
 pub use crate::v2_compiler_languages::{
     language_spec_for_target, target_container_template, target_keyword,
     target_primitive_type, test_conventions_for_target, wrap_shared_type, LanguageSpec,
-    ReservedWordStrategy, SharingStrategy, TestNameStyle,
+    ReservedWordStrategy, SharingStrategy, TestConventions, TestNameStyle,
 };
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;
@@ -1334,6 +1334,21 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
     }
 }
 
+// V6: Callable type rendering as a named function.
+// TODO: Read callable syntax from LanguageSpec (callable_type_template)
+// once the spec supports richer templates for variable-arity constructs.
+pub fn emit_callable_type(param_str: String, return_str: String, target: RenderTarget) -> String {
+    match target {
+        RenderTarget::Go => {
+            let suffix = if !return_str.is_empty() { format!(" {}", return_str) } else { String::new() };
+            format!("func({}){}", param_str, suffix)
+        }
+        RenderTarget::Python => format!("Callable[[{}], {}]", param_str, return_str),
+        RenderTarget::Rust => format!("Rc<dyn Fn({}) -> {}>", param_str, return_str),
+        _ => format!("Fn({}) -> {}", param_str, return_str),
+    }
+}
+
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
     emit_node_type_rc(n.clone(), target.clone(), <HashMap<_, _>>::new())
 }
@@ -1363,7 +1378,7 @@ pub fn emit_node_type_rc(
                 );
             }
         }
-        if ((n.name.clone() == "Callable".to_string()) && ((n.params.clone().len() as i64) > 0)) {
+        if (n.name.clone() == "Callable".to_string()) {
             {
                 let param_types = {
                     let mut __result = Vec::new();
@@ -1629,10 +1644,23 @@ pub fn emit_node_type_conj_rc(
         } else {
             if (n.name.clone() != "".to_string()) {
                 let mapped = emit_primitive_type(n.name.clone(), target.clone());
-                if emit_map_has(rc_types.clone(), n.name.clone()) {
-                    wrap_shared_type(target.clone(), mapped.clone())
+                // V10: Generic type params: FreeMonoid<T>, PartialFunction<K,V>, etc.
+                let with_generics = if !n.params.is_empty() {
+                    let generic_strs: Vec<String> = n.params.iter().cloned().map(|p| {
+                        emit_node_type_rc(param_node_type_expr(p), target.clone(), rc_types.clone())
+                    }).collect();
+                    let generic_str = generic_strs.join(", ");
+                    match target.clone() {
+                        RenderTarget::Python => format!("{}[{}]", mapped, generic_str),
+                        _ => format!("{}<{}>", mapped, generic_str),
+                    }
                 } else {
                     mapped.clone()
+                };
+                if emit_map_has(rc_types.clone(), n.name.clone()) {
+                    wrap_shared_type(target.clone(), with_generics.clone())
+                } else {
+                    with_generics.clone()
                 }
             } else {
                 {
@@ -1715,6 +1743,117 @@ pub fn emit_node_type_disj_rc(
                 "__EMIT_BUG_ANONYMOUS_DISJ__".to_string()
             }
         }
+    }
+}
+
+pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
+    // V1: Fail-closed on error — never produce a valid-looking type for errors
+    if tr.is_error {
+        return match target {
+            RenderTarget::Rust => format!("compile_error!(\"unresolved {} type reached emit\")", tr.error_label),
+            _ => format!("__EMIT_ERROR_{}__", tr.error_label),
+        };
+    }
+
+    // Callable: params non-empty or return_type set
+    if !tr.params.is_empty() || tr.return_type.is_some() {
+        let param_strs: Vec<String> = tr.params.iter().cloned().map(|p| {
+            render_type(p, target.clone())
+        }).collect();
+        let param_str = param_strs.join(", ");
+        let ret_str = match &tr.return_type {
+            Some(rt) => render_type(rt.clone(), target.clone()),
+            None => match target {
+                RenderTarget::Go => "".to_string(),
+                RenderTarget::Python => "None".to_string(),
+                _ => "()".to_string(),
+            },
+        };
+        return emit_callable_type(param_str, ret_str, target);
+    }
+
+    // V4: Tuple — structural flag, not name check
+    if tr.is_tuple {
+        let first_str = tr.element.as_ref().map_or_else(
+            || render_type_error("MISSING_TUPLE_FIRST", target.clone()),
+            |f| render_type(f.clone(), target.clone())
+        );
+        let second_str = tr.value.as_ref().map_or_else(
+            || render_type_error("MISSING_TUPLE_SECOND", target.clone()),
+            |s| render_type(s.clone(), target.clone())
+        );
+        return match target {
+            RenderTarget::Go => format!("struct{{ First {}; Second {} }}", first_str, second_str),
+            RenderTarget::Python => format!("Tuple[{}, {}]", first_str, second_str),
+            _ => format!("({}, {})", first_str, second_str),
+        };
+    }
+
+    // V10: Generic args — named generic types like FreeMonoid<T>
+    if !tr.generic_args.is_empty() {
+        let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+        let arg_strs: Vec<String> = tr.generic_args.iter().cloned().map(|a| render_type(a, target.clone())).collect();
+        let args_str = arg_strs.join(", ");
+        let generic = match target {
+            RenderTarget::Python => format!("{}[{}]", base, args_str),
+            _ => format!("{}<{}>", base, args_str),
+        };
+        return if tr.shared { wrap_shared_type(target.clone(), generic) } else { generic };
+    }
+
+    // Keyed container: key AND value set
+    if tr.key.is_some() && tr.value.is_some() {
+        let key_str = tr.key.as_ref().map_or_else(
+            || render_type_error("MISSING_MAP_KEY", target.clone()),
+            |k| render_type(k.clone(), target.clone())
+        );
+        let val_str = tr.value.as_ref().map_or_else(
+            || render_type_error("MISSING_MAP_VALUE", target.clone()),
+            |v| render_type(v.clone(), target.clone())
+        );
+        let map_str = emit_map_type(key_str, val_str, target.clone());
+        return if tr.shared { wrap_shared_type(target, map_str) } else { map_str };
+    }
+
+    // Element container: element set
+    if tr.element.is_some() {
+        let inner_str = tr.element.as_ref().map_or_else(
+            || render_type_error("MISSING_ELEMENT", target.clone()),
+            |e| render_type(e.clone(), target.clone())
+        );
+        let container_str = emit_container(to_snake(tr.type_name.clone()), inner_str, target.clone());
+        return if tr.shared { wrap_shared_type(target, container_str) } else { container_str };
+    }
+
+    // Wrapper: inner set (Optional, Refined)
+    if tr.inner.is_some() {
+        let inner_str = tr.inner.as_ref().map_or_else(
+            || render_type_error("MISSING_INNER", target.clone()),
+            |i| render_type(i.clone(), target.clone())
+        );
+        return if tr.type_name == "optional" {
+            emit_container("optional".to_string(), inner_str, target)
+        } else {
+            inner_str
+        };
+    }
+
+    // Leaf / named type
+    let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+    let boxed_str = if tr.boxed {
+        match target {
+            RenderTarget::Rust => format!("Box<{}>", base),
+            _ => base,
+        }
+    } else { base };
+    if tr.shared { wrap_shared_type(target, boxed_str) } else { boxed_str }
+}
+
+// V7: Fail-closed helper for missing edges — produces compile_error!, not "_"
+fn render_type_error(label: &str, target: RenderTarget) -> String {
+    match target {
+        RenderTarget::Rust => format!("compile_error!(\"TypeRendering: missing {} edge\")", label),
+        _ => format!("__EMIT_BUG_{}__", label),
     }
 }
 
@@ -2390,35 +2529,37 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
     }
 }
 
+// emit_let_binding: untyped fallback — every call site should migrate to emit_let_binding_typed.
+// Remaining callers are in expression emission paths that don't yet have the inferred type
+// threaded through. Each is a boundary sufficiency gap to close.
 pub fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
+    emit_let_binding_typed(name, value, None, target)
+}
+
+// emit_let_binding_typed: the correct emission path.
+// Every binding carries a type claim that the target language verifies.
+// type_annotation = None means the emitter couldn't determine the type — a modeling bug.
+pub fn emit_let_binding_typed(name: String, value: String, type_annotation: Option<String>, target: RenderTarget) -> String {
     match target.clone() {
-        RenderTarget::Rust => v2_rt::concat(
-            v2_rt::concat(
-                v2_rt::concat(
-                    v2_rt::concat(
-                        "let ".to_string(),
-                        emit_ident(name.clone(), RenderTarget::Rust),
-                    ),
-                    " = ".to_string(),
-                ),
-                value.clone(),
-            ),
-            ";".to_string(),
-        ),
-        RenderTarget::Go => v2_rt::concat(
-            v2_rt::concat(
-                emit_ident(name.clone(), RenderTarget::Go),
-                " := ".to_string(),
-            ),
-            value.clone(),
-        ),
-        RenderTarget::Python => v2_rt::concat(
-            v2_rt::concat(
-                emit_ident(name.clone(), RenderTarget::Python),
-                " = ".to_string(),
-            ),
-            value.clone(),
-        ),
+        RenderTarget::Rust => {
+            let type_suffix = match type_annotation.clone() {
+                Some(ty) => format!(": {}", ty),
+                None => String::new(),
+            };
+            format!("let {}{} = {};", emit_ident(name.clone(), RenderTarget::Rust), type_suffix, value)
+        },
+        RenderTarget::Go => {
+            match type_annotation.clone() {
+                Some(ty) => format!("var {} {} = {}", emit_ident(name.clone(), RenderTarget::Go), ty, value),
+                None => format!("{} := {}", emit_ident(name.clone(), RenderTarget::Go), value),
+            }
+        },
+        RenderTarget::Python => {
+            match type_annotation.clone() {
+                Some(ty) => format!("{}: {} = {}", emit_ident(name.clone(), RenderTarget::Python), ty, value),
+                None => format!("{} = {}", emit_ident(name.clone(), RenderTarget::Python), value),
+            }
+        },
         RenderTarget::Dag => v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat("let ".to_string(), name.clone()),
