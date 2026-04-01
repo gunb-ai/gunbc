@@ -1192,20 +1192,30 @@ patterns resolves these. Once lowering is complete, `CostUnknown`
 becomes structurally unreachable — not just validated away, but
 impossible to construct.
 
-**No cyclic graphs.** `.dag` is DAG by definition. Every data
-structure is a directed acyclic graph. Cycles are unrepresentable:
-- Values are immutable — no back-edges via mutation
-- Recursive types use structural descent (catamorphism) — the
-  recursion follows the tree, never revisits nodes
-- Self-referential type fields are indirection markers (Box/Rc),
-  not actual cycles in the data
-- The compiler's own IR is a DAG — module dependency is topologically
-  sorted, type resolution is acyclic
+**Acyclic expressions, not acyclic data.** Data can represent cycles
+(adjacency maps, parent pointers, back-edges as IDs). Expressions
+over that data are acyclic — every computation terminates because
+iteration is bounded by the finite container, not by following
+logical edges.
 
-Cyclic data structures (doubly-linked lists, circular buffers, general
-graphs with back-edges) are not expressible. Programs that need cycle
-representations model them as adjacency maps (`Map<NodeId, List<NodeId>>`)
-— the map is a DAG, the logical graph has cycles only in interpretation.
+```
+// Data represents a cycle: A → B → C → A
+data graph: Map<String, List<String>> = { "A": ["B"], "B": ["C"], "C": ["A"] }
+
+// Expression is acyclic: fold over MAP ENTRIES (finite container),
+// not "follow edges until you stop" (unbounded graph traversal)
+fn reachable(g: Map<String, List<String>>, start: String) -> Set<String> {
+  map_keys(g) |> fold(init: { frontier: [start], seen: empty_set() }, ...)
+  // bounded by |map_keys(g)|, not by graph topology
+}
+```
+
+The distinction: `.dag` is DAG in its **expressions** (every
+computation has a finite cost), not necessarily in its **data**
+(values can represent arbitrary graph topologies via ID-based
+adjacency). Iteration always walks the container (Map, List, Set),
+never follows logical back-edges. Cycles in interpretation are fine;
+cycles in evaluation are structurally impossible.
 
 ### Cost comparator — refuse to compile suboptimal code
 
