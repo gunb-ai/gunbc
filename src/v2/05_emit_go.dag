@@ -91,7 +91,7 @@ import v2.compiler.emit {
   TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_primitive_type, emit_container, emit_map_type,
   emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr,
+  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
   emit_string_literal, escape_go_interp_text, escape_string_literal_body,
   empty_emit_scope, module_emit_scope,
   scope_after_expr,
@@ -765,7 +765,8 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
     emit_cast: expr => emit_go_expr_cast(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_for_each: expr => emit_go_expr_for_each(expr: expr, registry: registry, scope: scope, depth: depth),
     emit_index: expr => emit_go_expr_index(expr: expr, registry: registry, scope: scope, depth: depth),
-    emit_slice: expr => emit_go_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth))
+    emit_slice: expr => emit_go_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth),
+    emit_bin_op: expr => emit_default_bin_op(texpr: expr, target: Go, recurse: child => emit_go_typed_expr(texpr: child, registry: registry, scope: scope, depth: 0, fuel: fuel - 1), wrap_result: result => if result == "" { "" } else { concat(prefix, result) }))
 }
 
 fn emit_go_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope) -> String {

@@ -2686,24 +2686,8 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   } else if needs_as_str {
     concat("match ", scrut_str, ".as_str() {\n", arms_str, "\n}")
   } else if needs_string_from {
-    // Mix of string lits + Bind: emit lits as String::from(), no .as_str().
-    // Re-emit arms with string-from rendering.
-    let sf_arm_strs = arms |> map(arm =>
-      let pat = arm_pattern(n: arm)
-      let pat_str = match pat {
-        LitPattern { value: v } => match v {
-          LitStr { value: s } => concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"")
-          _ => rust_literal_for_pattern(value: v)
-        }
-        _ => emit_pattern(pattern: pat, rc_types: rc_types, scrut_type: scrut_type, source_index: scope.type_env.source_index, emit_info: emit_info)
-      }
-      let body_str = emit_typed_expr(texpr: arm_body(n: arm), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      let guard_str = match arm_guard(n: arm) {
-        Some { value: g } => concat(" if ", emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024))
-        None => ""
-      }
-      concat("    ", pat_str, guard_str, " => ", body_str, ",")
-    )
+    // Mix of string lits + Bind: use string_from_mode to emit ref-guard patterns.
+    let sf_arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: true))
     let sf_arms_str = sf_arm_strs |> join(separator: "\n")
     concat("match ", scrut_str, " {\n", sf_arms_str, "\n}")
   } else {
@@ -2711,13 +2695,23 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
   }
 }
 
-fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node) -> String {
+fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, scrut_type: String, match_result_type: Node, string_from_mode: Bool) -> String {
   let arm_pat = arm_pattern(n: arm)
   let arm_g = arm_guard(n: arm)
   let arm_b = arm_body(n: arm)
   let si = scope.type_env.source_index
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, rc_types: rc_types, emit_info: emit_info)
-  let pat_str = if rc_analysis.needs_rc_pattern {
+  // In string_from_mode, LitStr patterns use ref-guard syntax: ref __s if __s == "..."
+  // This avoids .as_str() on the scrutinee which would make Bind arms receive &str instead of String.
+  let pat_str = if string_from_mode {
+    match arm_pat {
+      LitPattern { value: v } => match v {
+        LitStr { value: s } => concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"")
+        _ => rust_literal_for_pattern(value: v)
+      }
+      _ => emit_pattern(pattern: arm_pat, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
+    }
+  } else if rc_analysis.needs_rc_pattern {
     emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
   } else {
     emit_pattern(pattern: arm_pat, rc_types: rc_types, scrut_type: scrut_type, source_index: si, emit_info: emit_info)
@@ -3697,10 +3691,11 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     }
     } else {
       let val_str = emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
-      // Rc wrapping is always the caller's responsibility.
-      // emit_typed_record_lit no longer wraps in Rc, so we always wrap here when needed.
-      let wrap_start = if needs_rc { "Rc::new(" } else { "" }
-      let wrap_end = if needs_rc { ")" } else { "" }
+      // Record literals are already Rc-wrapped by emit_rust_expr_record_lit.
+      // Only add Rc::new() for non-record expressions to avoid double-wrapping.
+      let is_record = match value.expr_data { ExprRecordLit { parent_enum: _ } => true  _ => false }
+      let wrap_start = if needs_rc && !is_record { "Rc::new(" } else { "" }
+      let wrap_end = if needs_rc && !is_record { ")" } else { "" }
       concat(rust_visibility_prefix(), "fn ", fn_name, "() -> ", ty_str, " {\n",
         "    ", wrap_start, val_str, wrap_end, "\n",
         "}")

@@ -3919,8 +3919,11 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 } else {
                     {
                         let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
-let wrap_start = if needs_rc { "Rc::new(".to_string() } else { "".to_string() };
-let wrap_end = if needs_rc { ")".to_string() } else { "".to_string() };
+// Record literals are already Rc-wrapped by emit_rust_expr_record_lit.
+// Only add Rc::new() for non-record expressions to avoid double-wrapping.
+let is_record = matches!((*value.expr_data.clone()).clone(), ExprData::ExprRecordLit { .. });
+let wrap_start = if needs_rc && !is_record { "Rc::new(".to_string() } else { "".to_string() };
+let wrap_end = if needs_rc && !is_record { ")".to_string() } else { "".to_string() };
 let body = v2_rt::concat(v2_rt::concat(wrap_start.clone(), val_str.clone()), wrap_end.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), v2_rt::concat(" {\n    ".to_string(), body.clone())), "\n}".to_string())
 }
