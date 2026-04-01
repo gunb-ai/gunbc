@@ -74,7 +74,7 @@ use crate::v2_std_core::BinOpKind::NullCoalesce;
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v2_compiler_infer::{build_params_scope, extend_scope, InferScope};
-pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
+pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeRendering, build_type_rendering, leaf_type_rendering};
 pub use crate::v2_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v2_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
@@ -1716,6 +1716,79 @@ pub fn emit_node_type_disj_rc(
             }
         }
     }
+}
+
+pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
+    // Callable: params non-empty
+    if !tr.params.is_empty() {
+        let param_strs: Vec<String> = tr.params.iter().cloned().map(|p| {
+            render_type(p, target.clone())
+        }).collect();
+        let param_str = param_strs.join(", ");
+        let ret_str = match &tr.return_type {
+            Some(rt) => render_type(rt.clone(), target.clone()),
+            None => match target {
+                RenderTarget::Go => "".to_string(),
+                RenderTarget::Python => "None".to_string(),
+                _ => "()".to_string(),
+            },
+        };
+        return match target {
+            RenderTarget::Go => {
+                let suffix = if !ret_str.is_empty() { format!(" {}", ret_str) } else { String::new() };
+                format!("func({}){}", param_str, suffix)
+            }
+            RenderTarget::Python => format!("Callable[[{}], {}]", param_str, ret_str),
+            RenderTarget::Rust => format!("Rc<dyn Fn({}) -> {}>", param_str, ret_str),
+            _ => format!("Fn({}) -> {}", param_str, ret_str),
+        };
+    }
+
+    // Tuple: element (first) + value (second) set, type_name == "Tuple"
+    if tr.type_name == "Tuple" && tr.element.is_some() && tr.value.is_some() {
+        let first_str = tr.element.as_ref().map_or("_".to_string(), |f| render_type(f.clone(), target.clone()));
+        let second_str = tr.value.as_ref().map_or("_".to_string(), |s| render_type(s.clone(), target.clone()));
+        return match target {
+            RenderTarget::Go => format!("struct{{ First {}; Second {} }}", first_str, second_str),
+            RenderTarget::Python => format!("Tuple[{}, {}]", first_str, second_str),
+            _ => format!("({}, {})", first_str, second_str),
+        };
+    }
+
+    // Keyed container: key AND value set
+    if tr.key.is_some() && tr.value.is_some() {
+        let key_str = tr.key.as_ref().map_or("_".to_string(), |k| render_type(k.clone(), target.clone()));
+        let val_str = tr.value.as_ref().map_or("_".to_string(), |v| render_type(v.clone(), target.clone()));
+        let map_str = emit_map_type(key_str, val_str, target.clone());
+        return if tr.shared { wrap_shared_type(target, map_str) } else { map_str };
+    }
+
+    // Element container: element set
+    if tr.element.is_some() {
+        let inner_str = tr.element.as_ref().map_or("_".to_string(), |e| render_type(e.clone(), target.clone()));
+        let container_str = emit_container(to_snake(tr.type_name.clone()), inner_str, target.clone());
+        return if tr.shared { wrap_shared_type(target, container_str) } else { container_str };
+    }
+
+    // Wrapper: inner set (Optional, Refined)
+    if tr.inner.is_some() {
+        let inner_str = tr.inner.as_ref().map_or("_".to_string(), |i| render_type(i.clone(), target.clone()));
+        return if tr.type_name == "optional" {
+            emit_container("optional".to_string(), inner_str, target)
+        } else {
+            inner_str
+        };
+    }
+
+    // Leaf / named type
+    let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+    let boxed_str = if tr.boxed {
+        match target {
+            RenderTarget::Rust => format!("Box<{}>", base),
+            _ => base,
+        }
+    } else { base };
+    if tr.shared { wrap_shared_type(target, boxed_str) } else { boxed_str }
 }
 
 pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {
