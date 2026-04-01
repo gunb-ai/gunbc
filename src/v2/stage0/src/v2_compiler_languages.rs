@@ -273,30 +273,28 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
 }
 
 pub fn target_primitive_type(target: RenderTarget, name: String) -> String {
-    match target.clone() {
-    RenderTarget::Rust => match v2_rt::lookup(&RUST_TYPE_MAP, name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => name.clone(),
-},
-    RenderTarget::Go => match v2_rt::lookup(&GO_TYPE_MAP, name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => name.clone(),
-},
-    RenderTarget::Python => match v2_rt::lookup(&PYTHON_TYPE_MAP, name.clone()) {
-    Some(mapped) => mapped.clone(),
-    None => name.clone(),
-},
-    RenderTarget::Dag => name.clone(),
-}
+    let registry = crate::v2_coercion::registry_for_target(&target);
+    crate::v2_coercion::coerce_primitive_type(&registry, &name)
 }
 
 pub fn target_container_template(target: RenderTarget, kind: String) -> Option<String> {
+    // Legacy container templates include sharing wrapping (Rc<...> in Rust)
+    // baked into the template. These will be replaced by bare algebra inhabitant
+    // templates when the old emit_node_type_rc path is fully removed (E0c completion).
     match target.clone() {
     RenderTarget::Rust => v2_rt::lookup(&RUST_CONTAINER_TEMPLATES, kind.clone()),
     RenderTarget::Go => v2_rt::lookup(&GO_CONTAINER_TEMPLATES, kind.clone()),
     RenderTarget::Python => v2_rt::lookup(&PYTHON_CONTAINER_TEMPLATES, kind.clone()),
     RenderTarget::Dag => None,
 }
+}
+
+/// Coercion-based container template: returns bare algebra inhabitant templates
+/// without sharing wrapping. Used by the TypeRendering path where shared/boxed
+/// flags are applied separately by render_type.
+pub fn target_container_template_bare(target: RenderTarget, kind: String) -> Option<String> {
+    let registry = crate::v2_coercion::registry_for_target(&target);
+    crate::v2_coercion::coerce_container_template(&registry, &kind)
 }
 
 pub fn scaffold_for_target(target: RenderTarget) -> Rc<ProjectScaffold> {
