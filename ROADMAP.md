@@ -120,6 +120,77 @@ Next passes:
 4. Bootstrap D: wire the owned bootstrap entrypoint plus the CI diff gate, then forbid manual stage0 edits.
 5. Resume broader Lane 1 / Lane 2 work only after A-D are stable.
 
+### Compiler development vs compiler usage
+
+Two distinct workflows. The compiler is a living system — compiler
+development is continuous, not a one-time bootstrap.
+
+**Compiler usage (stable binary):**
+```
+User installs gunbc binary (built once from committed stage0)
+User writes .dag programs
+gunbc compile project/ --target rust → working Rust code
+gunbc compile project/ --target python → working Python code
+```
+No regeneration. No cargo. No Rust knowledge needed. The binary is
+the product. It updates when the compiler team ships a new version.
+
+**Compiler development (bootstrap loop):**
+```
+Developer edits src/v2/*.dag (compiler source)
+  ↓
+gunbc-dev build
+  ├─ stage0 (committed Rust) compiles .dag → stage1 (new Rust)
+  ├─ cargo check stage1 (must pass — 0 errors)
+  ├─ stage1 compiles .dag → stage2 (fixed point check)
+  ├─ diff stage1 stage2 (must be empty)
+  └─ stage1 replaces stage0 (regeneration)
+  ↓
+Commit includes updated stage0 (generated, not hand-edited)
+CI verifies: regenerate → diff → empty
+```
+The `gunbc-dev build` command owns the entire loop. It is the
+single entrypoint for compiler development. Developers never run
+`regenerate-stage0.sh` manually — the build tool does it.
+
+**Why the committed binary approach works for continuous development:**
+- Every commit is self-contained: clone repo, `cargo build -p v2-compiler`, you have a working compiler
+- No external bootstrap compiler needed
+- The bootstrap binary (stage0) is Rust — cargo builds it on any platform
+- CI gate ensures stage0 is always in sync with .dag source
+- Rolling forward is safe: each commit's stage0 can compile the next commit's .dag
+
+**Transition off Rust/cargo entirely:**
+
+The current bootstrap medium is Rust (stage0 is Rust, cargo builds
+it). This is not permanent. The path off Rust:
+
+1. **Current:** .dag → Rust → cargo → binary
+2. **M5-full:** .dag → {Rust, Go, Python, ...} → language toolchain → binary
+3. **Self-hosted build:** .dag compiler compiles its own build system from .dag source
+4. **Post-Rust:** .dag → native code (LLVM/Cranelift) directly, no Rust intermediate
+
+Step 3 is the key transition: the .dag build system is itself a .dag
+program. It knows how to invoke the target language's toolchain
+(rustc, go build, gcc) because that's modeled as a language extdep.
+The build process is:
+```
+stage0 binary (committed, any language)
+  compiles .dag build system → build binary
+  compiles .dag compiler → compiler binary
+  build binary orchestrates: test, package, ship
+```
+
+Step 4 is optional — Rust/Go as intermediate targets may be
+sufficient indefinitely. The decision depends on whether the
+intermediate compilation step becomes a bottleneck.
+
+**Stability contract for compiler developers:**
+- Editing `dsl/` (std library, extdeps, user programs): stage0 unchanged, no rebuild needed
+- Editing `src/v2/*.dag` (compiler source): automatic regeneration via `gunbc-dev build`
+- Editing `dsl/extdeps/languages/*/emit.dag` (emission rules): stage0 unchanged unless the compiler imports the file
+- Adding a new target language: stage0 unchanged (new language = new extdep data)
+
 ---
 
 ## Critical Path
@@ -1191,6 +1262,247 @@ reports `O(max_int × per_step)`.
 - `is_unknown_cost` is one line, not ten
 - Complexity gate: 313 → 0 without suppression or ratchet
 - Cost algebra: one cost rule per primitive, composition closed
+
+### Bounded by construction — no unbounded expressions
+
+Every expression in `.dag` has a finite cost. This is not validated —
+it is structurally impossible to write an unbounded expression. The
+language has no primitive for unbounded computation, and composition
+of bounded primitives is closed (bounded + bounded = bounded).
+
+**Current state:** recursive syntax is sugar that the compiler lowers
+to bounded primitives (`fold`, `descend`, `repeat`). The 311
+violations are analyzer gaps — the programs ARE bounded, the analyzer
+can't prove it yet. Fixing the analyzer to recognize all descent
+patterns resolves these. Once lowering is complete, `CostUnknown`
+becomes structurally unreachable — not just validated away, but
+impossible to construct.
+
+**Cyclic relations, acyclic values, bounded traversals.** See
+INVARIANTS.md §Strict Forward Progress for the full formulation.
+Summary: cyclic domains are expressible via acyclic encodings
+(adjacency maps). Direct cyclic values are not. Traversals over
+cyclic relations must be justified by an explicit finite measure
+(|V|, |E|, frontier size).
+
+### Cost comparator — refuse to compile suboptimal code
+
+After every function has a proven tight bound, the compiler can detect
+known-suboptimal patterns and refuse to compile them. This is not a
+linter — it is a provable statement: "an equivalent implementation
+with strictly lower cost exists using the same primitives."
+
+**Known suboptimal patterns (O(n²) → O(n) or O(n log n)):**
+
+| Pattern | Cost | Optimal | Cost | Detection |
+|---------|------|---------|------|-----------|
+| Membership check in fold accumulator: `acc \|> any(x => x == item)` | O(n²) | `map_get(seen, item) != none` with `Map<T, Bool>` | O(n log n) | fold body scans growing accumulator |
+| String concat in loop: `fold(items, init: "", f: (acc, s) => concat(acc, s))` | O(n²) | `join(items, separator)` | O(n) | fold body concats to accumulator string |
+| Repeated list append: `fold(items, f: (acc, x) => concat(acc, [x]))` | O(n²) | `list_push(acc, x)` | O(n) | fold body concats single-element list |
+| Sort + extract: `sort(list) \|> first` | O(n log n) | `fold(list, min)` | O(n) | sort followed by single-element access |
+| Nested find: `list \|> map(x => other \|> find(...))` | O(n×m) | Build index, then lookup | O(n+m) | nested collection scan in map/fold body |
+| Loop-invariant computation: `fold(items, f: (acc, x) => let k = expensive_pure(constant) ...)` | ×cost(f) | Hoist before fold | O(1) | pure call with loop-invariant args inside fold |
+
+**Design:** The cost comparator runs after complexity analysis. For
+each function with proven cost, it pattern-matches the cost structure
+against the suboptimal pattern table. If a match is found AND a
+strictly cheaper alternative exists:
+
+1. The alternative must use the same primitives (no new language
+   features required)
+2. The alternative must produce identical output (semantic
+   equivalence)
+3. The cost improvement must be strict (O(n²) → O(n), not O(n) →
+   O(n) with better constant)
+
+When all three hold, compilation fails with a diagnostic that shows
+the suboptimal pattern and the suggested fix. The developer can then
+choose the optimal implementation.
+
+**Space-time tradeoff awareness:** O(n²) time + O(1) space is NOT
+always worse than O(n) time + O(n) space. The comparator only refuses
+when the alternative is strictly better in ALL dimensions, or when
+the time improvement dominates (e.g., O(n²) → O(n log n) with same
+space). Ambiguous tradeoffs are allowed — the developer makes the
+call.
+
+**Example: binary tree search (O(log n))**
+
+```
+type Tree<T> = Leaf | Branch { value: T, left: Tree<T>, right: Tree<T> }
+
+fn search(tree: Tree<Int>, target: Int) -> Bool {
+  match tree {
+    Leaf => false
+    Branch { value: v, left: l, right: r } =>
+      if target == v { true }
+      else if target < v { search(tree: l, target: target) }
+      else { search(tree: r, target: target) }
+  }
+}
+// Compiler lowers to: repeat(height(tree), ...) with single-branch selection
+// NOT descend(tree, f) — descend is a catamorphism that visits ALL nodes (O(n)).
+// BST search follows ONE branch per level — arithmetic descent on tree height.
+// Cost: O(height) — which is O(log n) for balanced trees, O(n) for degenerate.
+// A refinement type (BalancedTree<T>) would express the O(log n) guarantee.
+```
+
+**Example: accumulator scan detection**
+
+```
+// REJECTED: O(n²) — fold body scans growing accumulator
+fn unique(items: List<String>) -> List<String> {
+  items |> fold(init: [], f: (acc, item) =>
+    if acc |> any(a => a == item) { acc }
+    else { list_push(acc, item) }
+  )
+}
+// Diagnostic: "fold accumulator scanned with `any` — O(n²).
+//   Use Map<String, Bool> for O(n log n) membership."
+
+// ACCEPTED: O(n log n) — Map lookup is O(log n)
+fn unique(items: List<String>) -> List<String> {
+  let result = items |> fold(init: { seen: empty_map(), out: [] }, f: (acc, item) =>
+    if map_get(acc.seen, item) != none { acc }
+    else { { seen: map_insert(acc.seen, item, true), out: list_push(acc.out, item) } }
+  )
+  result.out
+}
+```
+
+### Cost algebra extensions
+
+### Mathematical foundations
+
+The cost algebra is a **semiring** (C, ⊕, ⊗, 0, 1) where:
+- C = the set of cost expressions (symbolic, not numeric)
+- ⊕ = CostAdd (sequential composition: f; g costs f + g)
+- ⊗ = CostMul (nested composition: loop of f costs n × f)
+- 0 = CostConst(0) (free operation)
+- 1 = CostConst(1) (unit-cost operation)
+- CostMax = join operation (conditional: if-then-else takes the max branch)
+
+This is a **polynomial cost semiring** over symbolic size variables,
+extended with bounded summation (CostSum) and logarithmic terms
+(CostLog). The semiring laws guarantee that cost composition is
+associative, commutative (for ⊕), and distributes correctly.
+Unlike a tropical semiring (which uses min/+), this algebra uses
++/× because we are computing total cost, not shortest paths.
+
+**Current CostExpr variants and their formal semantics:**
+
+| Variant | Formal definition | Function class |
+|---------|------------------|----------------|
+| `CostConst(c)` | f(n) = c | Θ(1) |
+| `CostAdd(f, g)` | f(n) + g(n) | max class of f, g |
+| `CostMul(f, g)` | f(n) · g(n) | product of classes |
+| `CostMax(f, g)` | max(f(n), g(n)) | max class of f, g |
+| `CostSum(i, N, f)` | Σ_{i=0}^{N} f(i) | depends on f: Σ1=N, Σi=N², Σlog=N·log |
+| `CostLog(b, n)` | log_b(n) | Θ(log n) |
+| `CostUnknown(r)` | ⊥ (bottom) | analysis failure — structurally eliminated |
+
+**Expressible function classes (current):**
+- Θ(1), Θ(log n), Θ(n), Θ(n log n), Θ(n²), Θ(n² log n), Θ(n³)
+- Arbitrary polynomial-logarithmic: Θ(n^a · log^b n) for constant a, b
+- Multi-variable: Θ(n · m), Θ(n · m · log k)
+
+**Planned extensions — new CostExpr variants:**
+
+| Variant | Formal definition | Function class | Use case |
+|---------|------------------|----------------|----------|
+| `CostPow(n, k)` | n^k for constant k ∈ ℕ | Θ(n^k) | Explicit polynomial degree (matrix multiply Θ(n³), naive sort Θ(n²)) |
+| `CostSqrt(n)` | n^(1/2) | Θ(√n) | Trial division, block decomposition, Mo's algorithm O((n+q)√n) |
+| `CostExp(b, n)` | b^n for constant b | Θ(b^n) | Detect and REJECT — exponential cost is a compilation error |
+
+**Recurrence resolution:** Recursive cost follows from the bounded
+iteration primitives. Each primitive declares a recurrence:
+
+| Primitive | Recurrence | Closed form |
+|-----------|-----------|-------------|
+| `fold(collection, f)` | T(n) = Σ_{i=1}^{n} f(element_i) | CostSum(i, \|collection\|, cost(f)) |
+| `descend(tree, f)` | T(n) = Σ_{children} T(child) + f(node) | CostSum over tree structure |
+| `repeat(N, f)` | T = N · f | CostMul(N, cost(f)) |
+| Arithmetic descent (n/b) | T(n) = aT(n/b) + f(n) | Master theorem: case 1: Θ(n^{log_b a}) if f ∈ O(n^{log_b a - ε}); case 2: Θ(n^{log_b a} · log n) if f ∈ Θ(n^{log_b a}); case 3: Θ(f(n)) if f ∈ Ω(n^{log_b a + ε}) |
+
+For mutual recursion (SCCs), the shared decreasing measure determines
+the recurrence. Parser SCCs (token position advances) → fold over
+tokens. Tree-walker SCCs (children shrink) → descend over tree.
+
+**Amortized analysis via potential functions:**
+
+```
+CostAmortized { 
+  worst_case: CostExpr,      — single-operation worst case
+  amortized: CostExpr,       — per-operation amortized cost
+  potential: PotentialFn      — Φ: State → ℝ⁺ (potential function)
+}
+
+// The amortized cost satisfies:
+// â_i = c_i + Φ(s_{i+1}) - Φ(s_i)
+// where c_i is actual cost, Φ is potential, s_i is state after op i
+// Total actual cost ≤ Σ â_i + Φ(s_0) - Φ(s_n)
+```
+
+Use cases: dynamic array append (worst O(n), amortized O(1) with
+Φ = 2·size - capacity), splay tree (worst O(n), amortized O(log n)
+with Φ = Σ log(subtree_size)).
+
+**Space complexity as a peer dimension:**
+
+The `FunctionSummary` already has `work: CostExpr` and `span: CostExpr`.
+Adding `space: CostExpr` makes it a three-dimensional cost vector:
+
+```
+type CostVector {
+  work: CostExpr       — total operations (time)
+  span: CostExpr       — critical path length (parallel time)  
+  space: CostExpr      — peak memory usage
+}
+```
+
+This enables the cost comparator to reason about Pareto optimality:
+a program is suboptimal only if another program dominates it in ALL
+dimensions. O(n²) time + O(1) space is NOT dominated by O(n) time +
+O(n) space — the developer chooses the tradeoff.
+
+**Asymptotic notation — both O and Θ:**
+
+The analyzer should produce Θ (tight) bounds, not just O (upper).
+`Conservative` certainty means O but not Θ — valid but not tight.
+`Proven` means Θ — exact asymptotic behavior. The target: every
+function has a Proven Θ bound. O-only is a modeling deficit.
+
+| Notation | Meaning | Status |
+|----------|---------|--------|
+| Θ(f) | Tight: grows as f | Target for all functions |
+| O(f) | Upper: grows no faster than f | `Conservative` — acceptable interim |
+| Ω(f) | Lower: grows no slower than f | Needed for optimality proofs |
+| o(f) | Strict upper: grows strictly slower | Needed for suboptimality detection |
+
+The cost comparator needs both O and Ω: to prove g is strictly better
+than f, show f ∈ Ω(h) and g ∈ o(h) for some h. Example: f ∈ Θ(n²)
+and g ∈ Θ(n log n) — since n log n ∈ o(n²), g strictly dominates f
+in time.
+
+**Concrete examples for early implementation:**
+
+1. **Binary tree search** — single-branch arithmetic descent (NOT catamorphism):
+   T(n) = T(n/2) + O(1) → Θ(log n) by Master theorem (a=1, b=2, f=O(1))
+   Note: `descend(tree, f)` would visit all nodes (Θ(n)). BST search
+   selects one branch — lowered to `repeat(height, ...)`, not `descend`.
+
+2. **Merge sort** — descend with merge:
+   T(n) = 2T(n/2) + O(n) → Θ(n log n) by Master theorem (a=2, b=2, f=O(n))
+
+3. **Matrix multiply (naive)** — triple nested fold:
+   T(n) = n · n · n · O(1) = Θ(n³)
+
+4. **Hash table lookup** — CostConst(1) amortized, CostSum(n) worst:
+   Amortized O(1), worst O(n). Potential Φ = load_factor × n.
+
+5. **Accumulator scan detection** — fold with inner scan:
+   T(n) = Σ_{i=1}^{n} i = n(n+1)/2 = Θ(n²)
+   Optimal: T(n) = Σ_{i=1}^{n} O(log n) = Θ(n log n) with Set
 
 **Unified Sequence (Seq\<T>).** Ordered collections share FreeMonoid
 algebra; access pattern determines representation. Mixed access = type
