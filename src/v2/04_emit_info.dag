@@ -135,9 +135,12 @@ fn leaf_type_rendering(name: String) -> TypeRendering {
     params: [],
     return_type: none,
     inner: none,
+    generic_args: [],
     shared: false,
     boxed: false,
-    has_fn_fields: false
+    is_tuple: false,
+    is_error: false,
+    error_label: ""
   }
 }
 
@@ -150,9 +153,12 @@ fn leaf_type_rendering_shared(name: String) -> TypeRendering {
     params: [],
     return_type: none,
     inner: none,
+    generic_args: [],
     shared: true,
     boxed: false,
-    has_fn_fields: false
+    is_tuple: false,
+    is_error: false,
+    error_label: ""
   }
 }
 

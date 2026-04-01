@@ -9,7 +9,7 @@
 
 module v2.compiler.infer_types
 
-import std.types { SourceSpan }
+import std.types { SourceSpan, is_container_type }
 import std.algebra {
   AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
   BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
@@ -83,7 +83,7 @@ fn rt_type(n: Node) -> Node {
 // =========================================================================
 
 fn node_is_collection(n: Node) -> Bool {
-  (n.children |> count) > 0 && n.connective == NoConnective
+  (n.children |> count) > 0 && n.connective == NoConnective && is_container_type(name: n.name)
 }
 
 fn node_is_keyed_collection(n: Node) -> Bool {
