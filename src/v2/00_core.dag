@@ -307,7 +307,8 @@ type CompilerDiagnostic
   | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
   | ParseError         { message: String, span: SourceSpan }
   | InternalError      { message: String, span: SourceSpan }
-  | OwnershipWarning   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
+  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
+  | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -333,7 +334,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     MissingAnnotation  { fn_name: _, what: _, span: s }        => s
     ParseError         { message: _, span: s }                 => s
     InternalError      { message: _, span: s }                 => s
-    OwnershipWarning   { binding: _, fn_name: _, consumers: _, span: s } => s
+    OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
+    VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
   }
 }
 
@@ -352,15 +354,13 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
     ParseError         { message: m, span: _ }                    => m
     InternalError      { message: m, span: _ }                    => m
-    OwnershipWarning   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
+    OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
+    VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
   }
 }
 
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
-  match d {
-    OwnershipWarning { binding: _, fn_name: _, consumers: _, span: _ } => false
-    _ => true
-  }
+  true
 }
 
 fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {

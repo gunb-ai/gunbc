@@ -15,7 +15,7 @@ module v2.compiler.compile
 
 import v2.std.core {
   CompileResult, TextFile, SourceSpan,
-  ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipWarning, no_span,
+  ErrorNode, CompilerDiagnostic, is_error_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
   Connective, NoConnective, Cardinality,
   resource_use_name, resource_use_resource,
   param_node_name, param_node_type_expr, param_node_default_value, param_node_span,
@@ -119,7 +119,7 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
     proof.decisions |> flat_map(decision =>
       match decision {
         SharedError { binding: binding, consumer_count: count, sites: sites } =>
-          [make_error_node(diagnostic: OwnershipWarning { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
+          [make_error_node(diagnostic: OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
         _ => []
       }
     )
@@ -653,7 +653,7 @@ fn serialize_typed_module(module: TypedModule) -> String {
 }
 
 fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
-  let severity = if is_error_diagnostic(d: diagnostic.diagnostic) { "error" } else { "warning" }
+  let severity = "error"
   concat(
     "{\"severity\": ", json_quote(s: severity),
     ", \"message\": ", json_quote(s: diagnostic_to_message(d: diagnostic.diagnostic)),
@@ -841,6 +841,19 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       // Stage 6: Ownership analysis.
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
+
+      // Gate: ownership errors block emission (Early Detection invariant).
+      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      if ownership_errors |> count > 0 {
+        return PipelineResult {
+          files: [],
+          diagnostics: concat(frontend.diagnostics, norm_diags, all_infer_diags, ownership_diags),
+          complexity: complexity,
+          ownership: ownership,
+          artifact_plan: empty_artifact_plan(),
+          newline_indices: newline_indices
+        }
+      }
 
       // Stage 7: Default artifact planning for the current single-artifact flow.
       let artifact_plan = default_artifact_plan(

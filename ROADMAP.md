@@ -199,8 +199,8 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
   `lookup_in_scope` is a pure lookup with no synthesis.
 - [x] `try_unwrap` clone fallback: ownership analysis
   (`ownership.dag`) already proves fallbacks unnecessary.
-  Diagnostics wired into pipeline. Hard-error gate deferred
-  until ownership violations are promoted from warnings.
+  Diagnostics wired into pipeline. Ownership violations promoted
+  to errors (`OwnershipViolation`); no warning severity remains.
 
 *Codegen correctness (pre-existing, not new in this PR):*
 - Primitive type lowering, algebraic types, callable type, async fn
@@ -478,10 +478,12 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
   types and all 6 template data tables to `dsl/std/algebra.dag`
 - [x] `00_core.dag` re-imports from `std.types` for backward compat
 - [x] `04_types.dag` imports from `std.algebra`
-- [ ] Convert per-profile field builders to `.dag` functions
+- [x] Convert per-profile field builders to `.dag` functions
+  (`algebra_templates_for_profile` moved to `std/algebra.dag`)
 
 *Tier 2 — factor `enrich_kernel_type` (modest compiler change):*
-- [ ] `enrich_kernel_type` calls `.dag` function in `std/algebra.dag`
+- [x] `enrich_kernel_type` calls `.dag` function in `std/algebra.dag`
+  (`algebra_templates_for_profile` moved to `std/algebra.dag`)
 - [ ] Delete `intrinsic_method_index()` /
   `runtime_bridge_method_index()`
 - [ ] ~60 string branches → structural algebra queries
@@ -492,12 +494,10 @@ Informed by the coercion design ([docs/coercion-design.md](docs/coercion-design.
 algebra inhabitants must be correct before `build_type_rendering` can
 read them. This tier is a prerequisite for early coercion implementation.
 
-- [ ] Fix `Set`/`NonEmptySet` profile: `FreeMonoidCollectionProfile`
-  → `BooleanAlgebraCollectionProfile` (or split). The `std/algebra.dag`
-  denotation says sets inhabit `BooleanAlgebra<A>`, but the bridge maps
-  them to `FreeMonoidCollectionProfile` which gives them list operations
-  (append, sort_by, fold) instead of set operations (union, intersect,
-  diff, member). New profile + template list needed.
+- [x] Fix `Set`/`NonEmptySet` profile: `FreeMonoidCollectionProfile`
+  → `BooleanAlgebraCollectionProfile`. Added `BooleanAlgebraCollectionProfile`
+  variant, `boolean_algebra_collection_templates()`, and updated
+  `KERNEL_ALGEBRA_PROFILE` for `Set`/`NonEmptySet` in both `.dag` and stage0 Rust.
 - [ ] Fix carrier-changing type loss in `free_monoid_collection_templates`:
   `map`/`flat_map`/`fold` param_types and return_types are `ReceiverSelf`
   but should express the higher-order function parameter structure (e.g.,
