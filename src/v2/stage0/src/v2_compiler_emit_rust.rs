@@ -2378,7 +2378,7 @@ pub fn emit_rust_fold_method_call(fold_accumulator_type: Option<Rc<Node>>, resul
 let acc_type_node = match fold_accumulator_type.clone() {
     Some(acc_type) => {
                 let acc_children_have_unit = ({ let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if ((c.name.clone() == "Unit".to_string()) || (c.name.clone() == "".to_string())) { __found = true; break; } } __found } || { let mut __found = false; for c in acc_type.children.clone().iter().cloned() { if { let mut __found = false; for gc in c.children.clone().iter().cloned() { if ((gc.name.clone() == "Unit".to_string()) || (gc.name.clone() == "".to_string())) { __found = true; break; } } __found } { __found = true; break; } } __found });
-if (node_is_map(acc_type.clone()) && (((acc_type.children.clone().len() as i64) == 0) || acc_children_have_unit.clone())) {
+if ((node_is_map(acc_type.clone()) || (crate::v2_std_core::is_container_type(acc_type.name.clone()) && acc_type.children.clone().is_empty())) && (((acc_type.children.clone().len() as i64) == 0) || acc_children_have_unit.clone())) {
                     match contextual_acc_type.clone() {
     Some(concrete_type) => concrete_type.clone(),
     None => acc_type.clone(),

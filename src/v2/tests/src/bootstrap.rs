@@ -258,7 +258,14 @@ fn stage0_compile_accepts_dag_target() {
 //   - Tuple rendering in build_type_rendering (connective-independent)
 //   - Vec<()> annotation skip when fold/flat_map init has Unit elements
 //   Remaining 13: sort_by lambda inference, fold empty_map sentinels, kahn fold
-const EMITTED_RUST_ERROR_RATCHET: usize = 13;
+// 2026-04-01: 13 → 12 via fold/sort_by inference propagation:
+//   - Bare container (Map{}) detected as incomplete in fold refinement
+//   - list_push/map_insert refinement extended for Unit-element receivers
+//   - list_push builtin fallback uses item type when receiver is Error/Dynamic
+//   - Emit: bare container fallback to contextual accumulator type
+//   - receiver_is_map extended for bare Map{} (0 children)
+//   Remaining 12: 8 E0425 (cross-module import, pre-existing), 4 E0282 (Map<K,List<Unit>> fold)
+const EMITTED_RUST_ERROR_RATCHET: usize = 12;
 
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check

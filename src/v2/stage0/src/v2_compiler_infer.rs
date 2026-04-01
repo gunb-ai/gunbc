@@ -1184,7 +1184,8 @@ pub fn refine_collection_result_type(
 ) -> Rc<Node> {
     {
         let receiver_type_name = receiver_type.name.clone();
-        let receiver_is_map = node_is_map(receiver_type.clone());
+        let receiver_is_map = node_is_map(receiver_type.clone())
+            || (receiver_type.name == "Map" && receiver_type.children.is_empty());
         let method_name = if (semantics.clone() == None) {
             None
         } else {
@@ -1260,8 +1261,10 @@ pub fn refine_collection_result_type(
                         };
                         let acc_has_incomplete_element = match fold_acc.clone() {
                             Some(ref at) => {
+                                // Bare container with no type params (e.g. empty_map() → Map{})
+                                let is_bare_container = crate::v2_std_core::is_container_type(at.name.clone()) && at.children.is_empty();
                                 let elem = for_each_element_type_node(at.clone());
-                                elem.name == "Unit" || elem.name == "Dynamic" || elem.name == "Error" || elem.name.is_empty()
+                                is_bare_container || elem.name == "Unit" || elem.name == "Dynamic" || elem.name == "Error" || elem.name.is_empty()
                             },
                             None => false,
                         };
@@ -1291,9 +1294,14 @@ pub fn refine_collection_result_type(
                             None => fallback.clone(),
                         }
                     } else {
+                        let list_push_receiver_incomplete = (receiver_type.children.clone().len() as i64) == 0
+                            || match receiver_type.children.clone().first() {
+                                Some(c) => c.name == "Unit" || c.name == "Dynamic" || c.name == "Error" || c.name.is_empty(),
+                                None => false,
+                            };
                         if ((method_name_is(method_name.clone(), "list_push".to_string())
                             && ((typed_args.clone().len() as i64) >= 1))
-                            && ((receiver_type.children.clone().len() as i64) == 0))
+                            && list_push_receiver_incomplete)
                         {
                             match typed_args.clone().first().cloned() {
                                 Some(item_arg) => {
@@ -1308,8 +1316,13 @@ pub fn refine_collection_result_type(
                                 None => fallback.clone(),
                             }
                         } else {
+                            let map_insert_receiver_incomplete = (receiver_type.children.clone().len() as i64) == 0
+                                || match receiver_type.children.clone().iter().cloned().skip(1).collect::<Vec<_>>().first() {
+                                    Some(v) => v.name == "Unit" || v.name == "Dynamic" || v.name == "Error" || v.name.is_empty(),
+                                    None => false,
+                                };
                             if (((method_name_is(method_name.clone(), "map_insert".to_string())
-                                && ((receiver_type.children.clone().len() as i64) == 0))
+                                && map_insert_receiver_incomplete)
                                 && receiver_is_map.clone())
                                 && ((typed_args.clone().len() as i64) >= 2))
                             {
@@ -1959,6 +1972,23 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                                 None => {
                                                     resolve_builtin_call_type(func_name.clone())
                                                 }
+                                            }
+                                        } else if (func_name.clone() == "list_push".to_string()) {
+                                            // list_push(receiver, item) → List<ItemType>
+                                            // When receiver is Error/Dynamic (e.g. from map_get on bare Map),
+                                            // use the item arg's type to build the list element type.
+                                            match typed_args.clone().iter().cloned().skip(1).collect::<Vec<_>>().first().cloned() {
+                                                Some(item_arg) => match (*rt_node(arg_value(item_arg.clone()))).clone() {
+                                                    NodeType::Typed { node: item_type, .. } => {
+                                                        if item_type.name != "Dynamic" && item_type.name != "Error" && !item_type.name.is_empty() {
+                                                            container_node("List".to_string(), item_type.clone())
+                                                        } else {
+                                                            resolve_builtin_call_type(func_name.clone())
+                                                        }
+                                                    },
+                                                    _ => resolve_builtin_call_type(func_name.clone()),
+                                                },
+                                                None => resolve_builtin_call_type(func_name.clone()),
                                             }
                                         } else {
                                             resolve_builtin_call_type(func_name.clone())
