@@ -505,11 +505,15 @@ fn build_disj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
     let shared = is_type_shared(&n.name, &emit_info, &rc_types);
     let boxed = is_recursive_needs_box(&n.name, &emit_info, &rc_types);
     if !n.name.is_empty() {
+        // RC-1: Carry generic params for Disj types (same as Conj V10 fix)
+        let generic = n.params.iter().cloned().map(|p| {
+            build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
+        }).collect::<Vec<_>>();
         Rc::new(TypeRendering {
             type_name: n.name.clone(),
             element: None, key: None, value: None, params: vec![],
             return_type: None, inner: None,
-            generic_args: vec![],
+            generic_args: generic,
             shared, boxed,
             is_tuple: false, is_error: false, error_label: String::new(),
         })
