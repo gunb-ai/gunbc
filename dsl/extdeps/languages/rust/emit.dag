@@ -159,7 +159,8 @@ data rt_functions: Map<String, Bool> = {
   "map_merge": true, "list_concat": true, "str_eq": true,
   "filesystem_read": true, "list_push": true, "map_get": true,
   "map_keys": true, "map_values": true,
-  "parse_int": true, "map_contains_key": true, "map_has": true
+  "parse_int": true, "map_contains_key": true, "map_has": true,
+  "reverse": true, "replace": true
 }
 
 data rt_ref_map_functions: Map<String, Bool> = {

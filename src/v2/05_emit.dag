@@ -1577,7 +1577,8 @@ fn emit_shared_expr(
   emit_cast: fn(Node) -> String,
   emit_for_each: fn(Node) -> String,
   emit_index: fn(Node) -> String,
-  emit_slice: fn(Node) -> String
+  emit_slice: fn(Node) -> String,
+  emit_bin_op: fn(Node) -> String
 ) -> String {
   match texpr.expr_data {
     ExprLiteral { value: v } =>
@@ -1600,17 +1601,8 @@ fn emit_shared_expr(
       emit_let(texpr)
     ExprRecordLit { parent_enum: _ } =>
       emit_record_lit(texpr)
-    ExprBinOp { op: op } =>
-      let left = binop_left(texpr: texpr)
-      let right = binop_right(texpr: texpr)
-      let left_str = recurse(left)
-      let right_str = recurse(right)
-      if is_null_coalesce(op: op) {
-        wrap_result(emit_null_coalesce(l_str: left_str, r_str: right_str, target: target))
-      } else {
-        let op_str = emit_bin_op_symbol(op: op, target: target)
-        wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
-      }
+    ExprBinOp { op: _ } =>
+      emit_bin_op(texpr)
     ExprUnaryOp { op: op } =>
       let operand = unaryop_operand(texpr: texpr)
       wrap_result(emit_unary_op(op: op, operand_str: recurse(operand), target: target))
@@ -1635,5 +1627,23 @@ fn emit_shared_expr(
       let ret_val = return_value(texpr: texpr)
       wrap_result(emit_return(value: recurse(ret_val), target: target))
     NoExprData => wrap_result("")
+  }
+}
+
+// Default BinOp handler for languages without special BinOp rendering (Go, Python).
+fn emit_default_bin_op(texpr: Node, target: RenderTarget, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
+  match texpr.expr_data {
+    ExprBinOp { op: op } =>
+      let left = binop_left(texpr: texpr)
+      let right = binop_right(texpr: texpr)
+      let left_str = recurse(left)
+      let right_str = recurse(right)
+      if is_null_coalesce(op: op) {
+        wrap_result(emit_null_coalesce(l_str: left_str, r_str: right_str, target: target))
+      } else {
+        let op_str = emit_bin_op_symbol(op: op, target: target)
+        wrap_result(concat("(", left_str, " ", op_str, " ", right_str, ")"))
+      }
+    _ => wrap_result(emit_error_expr(message: "emit_default_bin_op expected ExprBinOp", target: target))
   }
 }

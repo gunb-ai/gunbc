@@ -1859,7 +1859,16 @@ pub fn emit_rust_expr_record_lit(expr: Rc<Node>, registry: HashMap<String, Rc<It
     ExprData::ExprRecordLit { parent_enum: parent_enum, .. } => {
     let tn = record_lit_type_name(expr.clone());
         let fs = expr.children.clone();
-emit_typed_record_lit(tn.clone(), fs.clone(), parent_enum.clone(), rt_type(expr.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())
+let raw = emit_typed_record_lit(tn.clone(), fs.clone(), parent_enum.clone(), rt_type(expr.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+// Rc wrapping: emit_typed_record_lit produces raw struct expressions.
+// Check if the record's effective type needs Rc wrapping.
+let rc_name = match parent_enum.clone() {
+    Some(en) => en.clone(),
+    None => match tn.clone() { Some(n) => n.clone(), None => "".to_string() },
+};
+if (rc_name != "".to_string()) && emit_map_has(rc_types.clone(), rc_name.clone()) {
+    v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw.clone()), ")".to_string())
+} else { raw.clone() }
 },
     _ => emit_error_expr("emit_rust_expr_record_lit expected ExprRecordLit".to_string(), RenderTarget::Rust),
 }
@@ -1936,17 +1945,18 @@ emit_typed_slice(b.clone(), s.clone(), e.clone(), registry.clone(), scope.clone(
 }
 }
 
+pub fn emit_rust_expr_bin_op(expr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprBinOp { ref op, .. } => {
+            emit_typed_bin_op(op.clone(), binop_left(expr.clone()), binop_right(expr.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())
+        }
+        _ => emit_error_expr("emit_rust_expr_bin_op expected ExprBinOp".to_string(), RenderTarget::Rust),
+    }
+}
+
 pub fn emit_typed_expr(texpr: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        // Intercept BinOp for Rust-specific handling (Optional comparisons, string .as_str()).
-        match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprBinOp { ref op, .. } => {
-                emit_typed_bin_op(op.clone(), binop_left(texpr.clone()), binop_right(texpr.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())
-            }
-            _ => {
-        emit_shared_expr(texpr.clone(), RenderTarget::Rust, scope.type_env.source_index.clone(), |result| result.clone(), |child| emit_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_var(expr.clone(), registry.clone(), rc_types.clone(), emit_info.clone(), scope.type_env.source_index.clone()), |expr| emit_rust_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()))
-            }
-        }
+        emit_shared_expr(texpr.clone(), RenderTarget::Rust, scope.type_env.source_index.clone(), |result| result.clone(), |child| emit_typed_expr(child.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_var(expr.clone(), registry.clone(), rc_types.clone(), emit_info.clone(), scope.type_env.source_index.clone()), |expr| emit_rust_expr_field_access(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_call(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_method_call(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_match(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_if(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_let(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_record_lit(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_string_interp(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_block(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_cast(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_for_each(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_index(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_slice(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()), |expr| emit_rust_expr_bin_op(expr.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()))
     })
 }
 
@@ -2716,7 +2726,7 @@ let match_result_type = match arms.clone().first().cloned() {
     Some(first_arm) => rt_type(arm_body(first_arm.clone())),
     None => leaf_node("Dynamic".to_string()),
 };
-let arm_strs = { let mut __result = Vec::new(); for arm in arms.clone().iter().cloned() { __result.push(emit_typed_match_arm(arm.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone())); } __result };
+let arm_strs = { let mut __result = Vec::new(); for arm in arms.clone().iter().cloned() { __result.push(emit_typed_match_arm(arm.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone(), false)); } __result };
 let arms_str = arm_strs.clone().join(&"
 ".to_string());
 let needs_as_str = (all_arms_are_string_lit(arms.clone()) && ((arms.clone().len() as i64) > 0));
@@ -2735,23 +2745,8 @@ if rc_match.needs_option_deref.clone() {
 ".to_string()), arms_str.clone()), "
 }".to_string())
 } else if has_string_lit_with_bind(&arms) {
-                    // Mix of string lits + Bind: emit lits as ref guard patterns.
-                    let sf_arm_strs: Vec<String> = arms.iter().map(|arm| {
-                        let pat = arm_pattern(arm.clone());
-                        let pat_str = match (*pat.clone()).clone() {
-                            MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
-                                LiteralValue::LitStr { value: s, .. } => format!("ref __s if __s == \"{}\"", escape_string_literal_body(s.clone())),
-                                _ => rust_literal_for_pattern(v.clone()),
-                            },
-                            _ => emit_pattern(scope.type_env.source_index.clone(), pat.clone(), emit_info.clone(), rc_types.clone(), scrut_type.clone()),
-                        };
-                        let body_str = emit_typed_expr(arm_body(arm.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
-                        let guard_str = match arm_guard(arm.clone()) {
-                            Some(g) => format!(" if {}", emit_typed_expr(g.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())),
-                            None => "".to_string(),
-                        };
-                        format!("    {}{} => {},", pat_str, guard_str, body_str)
-                    }).collect();
+                    // Mix of string lits + Bind: use string_from_mode to emit ref-guard patterns.
+                    let sf_arm_strs: Vec<String> = { let mut __result = Vec::new(); for arm in arms.clone().iter().cloned() { __result.push(emit_typed_match_arm(arm.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone(), scrut_type.clone(), match_result_type.clone(), true)); } __result };
                     let sf_arms_str = sf_arm_strs.join("\n");
                     format!("match {} {{\n{}\n}}", scrut_str, sf_arms_str)
 } else {
@@ -2764,14 +2759,24 @@ if rc_match.needs_option_deref.clone() {
 }
 }
 
-pub fn emit_typed_match_arm(arm: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>, scrut_type: String, match_result_type: Rc<Node>) -> String {
+pub fn emit_typed_match_arm(arm: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>, scrut_type: String, match_result_type: Rc<Node>, string_from_mode: bool) -> String {
     {
         let si = scope.type_env.source_index.clone();
 let arm_pat = arm_pattern(arm.clone());
 let arm_g = arm_guard(arm.clone());
 let arm_b = arm_body(arm.clone());
 let rc_analysis = analyze_rc_pattern(si.clone(), arm_pat.clone(), scrut_type.clone(), emit_info.clone(), rc_types.clone());
-let pat_str = if rc_analysis.needs_rc_pattern.clone() {
+// In string_from_mode, LitStr patterns use ref-guard syntax: ref __s if __s == "..."
+// This avoids .as_str() on the scrutinee which would make Bind arms receive &str instead of String.
+let pat_str = if string_from_mode {
+            match (*arm_pat.clone()).clone() {
+                MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
+                    LiteralValue::LitStr { value: s, .. } => format!("ref __s if __s == \"{}\"", escape_string_literal_body(s.clone())),
+                    _ => rust_literal_for_pattern(v.clone()),
+                },
+                _ => emit_pattern(si.clone(), arm_pat.clone(), emit_info.clone(), rc_types.clone(), scrut_type.clone()),
+            }
+} else if rc_analysis.needs_rc_pattern.clone() {
             emit_pattern_rc_aware(si.clone(), arm_pat.clone(), rc_analysis.clone(), emit_info.clone(), rc_types.clone(), scrut_type.clone())
 } else {
             emit_pattern(si.clone(), arm_pat.clone(), emit_info.clone(), rc_types.clone(), scrut_type.clone())
@@ -2997,7 +3002,17 @@ let corrected_parent = match expected_type.clone() {
 },
     None => pe.clone(),
 };
-emit_typed_record_lit(tn.clone(), inner_fields.clone(), corrected_parent.clone(), rt_type(field_value.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())
+{ let raw = emit_typed_record_lit(tn.clone(), inner_fields.clone(), corrected_parent.clone(), rt_type(field_value.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+// Rc wrapping: emit_typed_record_lit produces raw struct expressions.
+let rc_name = match corrected_parent.clone() {
+    Some(en) => en.clone(),
+    None => variant_name.clone(),
+};
+if rc_name != "" && v2_rt::map_contains_key(&rc_types, rc_name.clone()) {
+    v2_rt::concat("Rc::new(".to_string(), v2_rt::concat(raw.clone(), ")".to_string()))
+} else {
+    raw.clone()
+} }
 },
     None => emit_typed_expr(field_value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
 }
@@ -3904,9 +3919,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 } else {
                     {
                         let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
-let is_record = matches!((*value.expr_data.clone()).clone(), ExprData::ExprRecordLit { .. });
-let wrap_start = if needs_rc && !is_record { "Rc::new(".to_string() } else { "".to_string() };
-let wrap_end = if needs_rc && !is_record { ")".to_string() } else { "".to_string() };
+let wrap_start = if needs_rc { "Rc::new(".to_string() } else { "".to_string() };
+let wrap_end = if needs_rc { ")".to_string() } else { "".to_string() };
 let body = v2_rt::concat(v2_rt::concat(wrap_start.clone(), val_str.clone()), wrap_end.clone());
 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), "fn ".to_string()), fn_name.clone()), "() -> ".to_string()), ty_str.clone()), v2_rt::concat(" {\n    ".to_string(), body.clone())), "\n}".to_string())
 }

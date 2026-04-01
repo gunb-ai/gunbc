@@ -1900,12 +1900,15 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
   }
 }
 
-fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, fuel: Int) -> String {
-  // Intercept BinOp for Rust-specific handling (Optional comparisons, string .as_str()).
-  match texpr.expr_data {
+fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo) -> String {
+  match expr.expr_data {
     ExprBinOp { op: op } =>
-      emit_typed_bin_op(op: op, left: binop_left(texpr: texpr), right: binop_right(texpr: texpr), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
-    _ =>
+      emit_typed_bin_op(op: op, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
+    _ => emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: Rust)
+  }
+}
+
+fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, rc_types: Map<String, Bool>, emit_info: EmitGraphInfo, fuel: Int) -> String {
   emit_shared_expr(
     texpr: texpr,
     target: Rust,
@@ -1925,8 +1928,8 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
     emit_cast: expr => emit_rust_expr_cast(expr: expr, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info),
     emit_for_each: expr => emit_rust_expr_for_each(expr: expr, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info),
     emit_index: expr => emit_rust_expr_index(expr: expr, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info),
-    emit_slice: expr => emit_rust_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info))
-  }
+    emit_slice: expr => emit_rust_expr_slice(expr: expr, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info),
+    emit_bin_op: expr => emit_rust_expr_bin_op(expr: expr, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info))
 }
 
 // Clone Var/FieldAccess arguments to prevent move issues in closures.
@@ -2668,7 +2671,7 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
     Some { value: first_arm } => rt_type(n: arm_body(n: first_arm))
     None => type_variable_node(id: "match_result")
   }
-  let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type))
+  let arm_strs = arms |> map(arm => emit_typed_match_arm(arm: arm, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
   let arms_str = arm_strs |> join(separator: "\n")
   // RC5: If scrutinee is Option<Rc<T>>, use .as_deref().cloned() to get Option<T>.
   // If scrutinee is Rc<T>, use (*s).clone() to get owned T.
