@@ -102,9 +102,12 @@ type TypeRendering {
   params: List<TypeRendering>         // fn(THESE, ...) -> ...
   return_type: TypeRendering?         // fn(...) -> THIS
   inner: TypeRendering?               // Optional<THIS>, Refined<THIS>
+  generic_args: List<TypeRendering>   // FreeMonoid<THIS>, PartialFunction<THIS, THIS>
   shared: Bool                        // needs Rc/pointer/GC wrapper
   boxed: Bool                         // recursive indirection (Box in Rust)
-  has_fn_fields: Bool                 // suppress PartialEq/Debug derives
+  is_tuple: Bool                      // structural tuple (not name-derived)
+  is_error: Bool                      // inference failure — emit must fail-closed
+  error_label: String                 // diagnostic context for the error
 }
 
 type EmitInfoBuildState {

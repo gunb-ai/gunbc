@@ -1719,8 +1719,16 @@ pub fn emit_node_type_disj_rc(
 }
 
 pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
-    // Callable: params non-empty
-    if !tr.params.is_empty() {
+    // V1: Fail-closed on error — never produce a valid-looking type for errors
+    if tr.is_error {
+        return match target {
+            RenderTarget::Rust => format!("compile_error!(\"unresolved {} type reached emit\")", tr.error_label),
+            _ => format!("__EMIT_ERROR_{}__", tr.error_label),
+        };
+    }
+
+    // Callable: params non-empty or return_type set
+    if !tr.params.is_empty() || tr.return_type.is_some() {
         let param_strs: Vec<String> = tr.params.iter().cloned().map(|p| {
             render_type(p, target.clone())
         }).collect();
@@ -1733,6 +1741,7 @@ pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
                 _ => "()".to_string(),
             },
         };
+        // V6: TODO — should read callable_type_template from LanguageSpec
         return match target {
             RenderTarget::Go => {
                 let suffix = if !ret_str.is_empty() { format!(" {}", ret_str) } else { String::new() };
@@ -1744,10 +1753,16 @@ pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
         };
     }
 
-    // Tuple: element (first) + value (second) set, type_name == "Tuple"
-    if tr.type_name == "Tuple" && tr.element.is_some() && tr.value.is_some() {
-        let first_str = tr.element.as_ref().map_or("_".to_string(), |f| render_type(f.clone(), target.clone()));
-        let second_str = tr.value.as_ref().map_or("_".to_string(), |s| render_type(s.clone(), target.clone()));
+    // V4: Tuple — structural flag, not name check
+    if tr.is_tuple {
+        let first_str = tr.element.as_ref().map_or_else(
+            || render_type_error("MISSING_TUPLE_FIRST", target.clone()),
+            |f| render_type(f.clone(), target.clone())
+        );
+        let second_str = tr.value.as_ref().map_or_else(
+            || render_type_error("MISSING_TUPLE_SECOND", target.clone()),
+            |s| render_type(s.clone(), target.clone())
+        );
         return match target {
             RenderTarget::Go => format!("struct{{ First {}; Second {} }}", first_str, second_str),
             RenderTarget::Python => format!("Tuple[{}, {}]", first_str, second_str),
@@ -1755,24 +1770,48 @@ pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
         };
     }
 
+    // V10: Generic args — named generic types like FreeMonoid<T>
+    if !tr.generic_args.is_empty() {
+        let base = emit_primitive_type(tr.type_name.clone(), target.clone());
+        let arg_strs: Vec<String> = tr.generic_args.iter().cloned().map(|a| render_type(a, target.clone())).collect();
+        let args_str = arg_strs.join(", ");
+        let generic = match target {
+            RenderTarget::Python => format!("{}[{}]", base, args_str),
+            _ => format!("{}<{}>", base, args_str),
+        };
+        return if tr.shared { wrap_shared_type(target.clone(), generic) } else { generic };
+    }
+
     // Keyed container: key AND value set
     if tr.key.is_some() && tr.value.is_some() {
-        let key_str = tr.key.as_ref().map_or("_".to_string(), |k| render_type(k.clone(), target.clone()));
-        let val_str = tr.value.as_ref().map_or("_".to_string(), |v| render_type(v.clone(), target.clone()));
+        let key_str = tr.key.as_ref().map_or_else(
+            || render_type_error("MISSING_MAP_KEY", target.clone()),
+            |k| render_type(k.clone(), target.clone())
+        );
+        let val_str = tr.value.as_ref().map_or_else(
+            || render_type_error("MISSING_MAP_VALUE", target.clone()),
+            |v| render_type(v.clone(), target.clone())
+        );
         let map_str = emit_map_type(key_str, val_str, target.clone());
         return if tr.shared { wrap_shared_type(target, map_str) } else { map_str };
     }
 
     // Element container: element set
     if tr.element.is_some() {
-        let inner_str = tr.element.as_ref().map_or("_".to_string(), |e| render_type(e.clone(), target.clone()));
+        let inner_str = tr.element.as_ref().map_or_else(
+            || render_type_error("MISSING_ELEMENT", target.clone()),
+            |e| render_type(e.clone(), target.clone())
+        );
         let container_str = emit_container(to_snake(tr.type_name.clone()), inner_str, target.clone());
         return if tr.shared { wrap_shared_type(target, container_str) } else { container_str };
     }
 
     // Wrapper: inner set (Optional, Refined)
     if tr.inner.is_some() {
-        let inner_str = tr.inner.as_ref().map_or("_".to_string(), |i| render_type(i.clone(), target.clone()));
+        let inner_str = tr.inner.as_ref().map_or_else(
+            || render_type_error("MISSING_INNER", target.clone()),
+            |i| render_type(i.clone(), target.clone())
+        );
         return if tr.type_name == "optional" {
             emit_container("optional".to_string(), inner_str, target)
         } else {
@@ -1789,6 +1828,14 @@ pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
         }
     } else { base };
     if tr.shared { wrap_shared_type(target, boxed_str) } else { boxed_str }
+}
+
+// V7: Fail-closed helper for missing edges — produces compile_error!, not "_"
+fn render_type_error(label: &str, target: RenderTarget) -> String {
+    match target {
+        RenderTarget::Rust => format!("compile_error!(\"TypeRendering: missing {} edge\")", label),
+        _ => format!("__EMIT_BUG_{}__", label),
+    }
 }
 
 pub fn is_type_alias_return_node(n: Rc<Node>) -> bool {

@@ -96,15 +96,20 @@ pub struct EmitGraphInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeRendering {
     pub type_name: String,
-    pub element: Option<Rc<TypeRendering>>,
-    pub key: Option<Rc<TypeRendering>>,
-    pub value: Option<Rc<TypeRendering>>,
-    pub params: Vec<Rc<TypeRendering>>,
-    pub return_type: Option<Rc<TypeRendering>>,
-    pub inner: Option<Rc<TypeRendering>>,
-    pub shared: bool,
-    pub boxed: bool,
-    pub has_fn_fields: bool,
+    // Named structural edges
+    pub element: Option<Rc<TypeRendering>>,       // List<THIS>, Set<THIS>
+    pub key: Option<Rc<TypeRendering>>,            // Map<THIS, V>
+    pub value: Option<Rc<TypeRendering>>,          // Map<K, THIS>
+    pub params: Vec<Rc<TypeRendering>>,            // fn(THESE) -> ...
+    pub return_type: Option<Rc<TypeRendering>>,    // fn(...) -> THIS
+    pub inner: Option<Rc<TypeRendering>>,          // Optional<THIS>, Refined<THIS>
+    pub generic_args: Vec<Rc<TypeRendering>>,      // V10: FreeMonoid<THIS>, PartialFunction<THIS, THIS>
+    // Structural flags (not name-derived)
+    pub shared: bool,                              // needs Rc/pointer/GC
+    pub boxed: bool,                               // recursive indirection
+    pub is_tuple: bool,                            // V4: structural tuple, not name check
+    pub is_error: bool,                            // V1: inference failure — emit must fail-closed
+    pub error_label: String,                       // V1: diagnostic context for the error
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -129,9 +134,30 @@ pub fn leaf_type_rendering(name: String) -> Rc<TypeRendering> {
         params: vec![],
         return_type: None,
         inner: None,
+        generic_args: vec![],
         shared: false,
         boxed: false,
-        has_fn_fields: false,
+        is_tuple: false,
+        is_error: false,
+        error_label: String::new(),
+    })
+}
+
+pub fn error_type_rendering(label: String) -> Rc<TypeRendering> {
+    Rc::new(TypeRendering {
+        type_name: String::new(),
+        element: None,
+        key: None,
+        value: None,
+        params: vec![],
+        return_type: None,
+        inner: None,
+        generic_args: vec![],
+        shared: false,
+        boxed: false,
+        is_tuple: false,
+        is_error: true,
+        error_label: label,
     })
 }
 
@@ -144,9 +170,12 @@ pub fn leaf_type_rendering_shared(name: String) -> Rc<TypeRendering> {
         params: vec![],
         return_type: None,
         inner: None,
+        generic_args: vec![],
         shared: true,
         boxed: false,
-        has_fn_fields: false,
+        is_tuple: false,
+        is_error: false,
+        error_label: String::new(),
     })
 }
 
@@ -161,13 +190,13 @@ fn is_recursive_needs_box(name: &str, emit_info: &EmitGraphInfo, rc_types: &Hash
 }
 
 pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
-    // Error/TypeVariable sentinel
+    // V1: Error/TypeVariable — fail-closed, not fabricated leaf names
     let n_is_error = n.inferred.as_ref().map_or(false, |i| is_compiler_error(Rc::new((**i).clone())));
     // stage0: TypeVariable variant does not exist; n_is_type_var is always false.
     let n_is_type_var = false;
     if (n_is_type_var || n_is_error) && n.children.is_empty() {
-        let label = if n_is_error { "__ERROR__" } else { "__TYPE_VAR__" };
-        return leaf_type_rendering(label.to_string());
+        let label = if n_is_error { "CompilerError" } else { "TypeVariable" };
+        return error_type_rendering(label.to_string());
     }
 
     // Callable: function type (structural — has params, or named "Callable" for zero-param fns)
@@ -189,10 +218,13 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
             params: param_renderings,
             return_type: Some(ret_rendering),
             inner: None,
+            generic_args: vec![],
             shared: false,
             boxed: false,
-            has_fn_fields: false,
-        });
+            is_tuple: false,
+            is_error: false,
+            error_label: String::new(),
+            });
     }
 
     // Optional: wrap inner type
@@ -209,10 +241,13 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
             params: vec![],
             return_type: None,
             inner: Some(inner_rendering),
+            generic_args: vec![],
             shared: false,
             boxed: false,
-            has_fn_fields: false,
-        });
+            is_tuple: false,
+            is_error: false,
+            error_label: String::new(),
+            });
     }
 
     // Dispatch on connective
@@ -244,10 +279,13 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 params: vec![],
                 return_type: None,
                 inner: None,
+                generic_args: vec![],
                 shared,
                 boxed: false,
-                has_fn_fields: false,
-            })
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
         } else if bare_is_collection {
             Rc::new(TypeRendering {
                 type_name: n.name.clone(),
@@ -257,10 +295,13 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 params: vec![],
                 return_type: None,
                 inner: None,
+                generic_args: vec![],
                 shared,
                 boxed: false,
-                has_fn_fields: false,
-            })
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
         } else if !n.params.is_empty() && n.params.len() == 1 {
             // Bare generic type with one param (e.g., FreeMonoid<T>) — render as container if template exists
             let param_r = build_type_rendering(
@@ -275,10 +316,13 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 params: vec![],
                 return_type: None,
                 inner: None,
+                generic_args: vec![],
                 shared,
                 boxed: false,
-                has_fn_fields: false,
-            })
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
         } else {
             if shared {
                 leaf_type_rendering_shared(n.name.clone())
@@ -305,10 +349,13 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 params: vec![],
                 return_type: None,
                 inner: None,
+                generic_args: vec![],
                 shared,
                 boxed: false,
-                has_fn_fields: false,
-            })
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
         } else if n.children.len() == 1 {
             let child_r = n.children.first().map_or_else(
                 || leaf_type_rendering("__MISSING_ELEMENT__".to_string()),
@@ -322,10 +369,13 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 params: vec![],
                 return_type: None,
                 inner: None,
+                generic_args: vec![],
                 shared,
                 boxed: false,
-                has_fn_fields: false,
-            })
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
         } else {
             if shared {
                 leaf_type_rendering_shared(n.name.clone())
@@ -348,7 +398,11 @@ fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                     element: None, key: None, value: None, params: vec![],
                     return_type: None,
                     inner: Some(base_r),
-                    shared: false, boxed: false, has_fn_fields: false,
+                    generic_args: vec![],
+                    shared: false, boxed: false,
+                    is_tuple: false,
+                    is_error: false,
+                    error_label: String::new(),
                 })
             }
             None => leaf_type_rendering("Refined".to_string()),
@@ -376,14 +430,20 @@ fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
             params: vec![],
             return_type: None,
             inner: None,
-            shared: false, boxed: false, has_fn_fields: false,
+            generic_args: vec![],
+            shared: false, boxed: false,
+            is_tuple: true,
+            is_error: false,
+            error_label: String::new(),
         })
     } else if !n.name.is_empty() {
         Rc::new(TypeRendering {
             type_name: n.name.clone(),
             element: None, key: None, value: None, params: vec![],
             return_type: None, inner: None,
-            shared, boxed, has_fn_fields: false,
+            generic_args: vec![],
+            shared, boxed,
+            is_tuple: false, is_error: false, error_label: String::new(),
         })
     } else {
         // Anonymous product
@@ -426,7 +486,11 @@ fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 value: Some(second_r),
                 params: vec![],
                 return_type: None, inner: None,
-                shared: false, boxed: false, has_fn_fields: false,
+                generic_args: vec![],
+                shared: false, boxed: false,
+                is_tuple: true,
+                is_error: false,
+                error_label: String::new(),
             })
         }
     }
@@ -440,7 +504,9 @@ fn build_disj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
             type_name: n.name.clone(),
             element: None, key: None, value: None, params: vec![],
             return_type: None, inner: None,
-            shared, boxed, has_fn_fields: false,
+            generic_args: vec![],
+            shared, boxed,
+            is_tuple: false, is_error: false, error_label: String::new(),
         })
     } else {
         leaf_type_rendering("__ANON_DISJ__".to_string())

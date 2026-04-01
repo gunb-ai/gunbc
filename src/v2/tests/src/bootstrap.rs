@@ -327,6 +327,19 @@ fn bootstrap_stage0_to_stage1() {
     } else {
         error_count
     };
+    // DIAGNOSTIC
+    let mut in_err = false;
+    for line in check_stderr.lines() {
+        if line.starts_with("error[") {
+            eprintln!("D: {}", &line[..line.len().min(300)]);
+            in_err = true;
+        } else if in_err && line.contains("--> ") {
+            eprintln!("D:   {}", line.trim());
+            in_err = false;
+        } else if in_err && (line.contains("expected") || line.contains("found")) {
+            eprintln!("D:   {}", line.trim());
+        } else { in_err = false; }
+    }
     // Categorize errors for diagnosis
     let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in check_stderr.lines() {

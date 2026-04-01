@@ -883,9 +883,10 @@ let inner = let_body(body.clone());
 let val_str = emit_typed_expr(v.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
 let tco_let_type_ann = if v.inferred.is_some() {
     let rt = rt_type(v.clone());
-    let ty = render_type(build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone()), RenderTarget::Rust);
-    if !ty.is_empty() && ty != "()" && !ty.starts_with("compile_error") && !ty.contains("__") {
-        Some(ty)
+    let tr = build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone());
+    if !tr.is_error {
+        let ty = render_type(tr, RenderTarget::Rust);
+        if !ty.is_empty() && ty != "()" { Some(ty) } else { None }
     } else { None }
 } else { None };
 let let_line = emit_let_binding_typed(n.clone(), val_str.clone(), tco_let_type_ann.clone(), RenderTarget::Rust);
@@ -2823,12 +2824,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
-// Always emit type annotation on let bindings for downstream Rust type checking
+// V8: Annotation validity from TypeRendering.is_error, not string-matching
 let type_ann = if value.inferred.is_some() {
     let rt = rt_type(value.clone());
-    let ty = render_type(build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone()), RenderTarget::Rust);
-    if !ty.is_empty() && ty != "()" && !ty.starts_with("compile_error") && !ty.contains("__") {
-        Some(ty)
+    let tr = build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone());
+    if !tr.is_error {
+        let ty = render_type(tr, RenderTarget::Rust);
+        if !ty.is_empty() && ty != "()" { Some(ty) } else { None }
     } else { None }
 } else { None };
 let let_line = emit_let_binding_typed(name.clone(), val_str.clone(), type_ann.clone(), RenderTarget::Rust);
@@ -3293,9 +3295,10 @@ if is_param.clone() {
 } else {
             let tco_init_type_ann = if v.inferred.is_some() {
                 let rt = rt_type(v.clone());
-                let ty = render_type(build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone()), RenderTarget::Rust);
-                if !ty.is_empty() && ty != "()" && !ty.starts_with("compile_error") && !ty.contains("__") {
-                    Some(ty)
+                let tr = build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone());
+                if !tr.is_error {
+                    let ty = render_type(tr, RenderTarget::Rust);
+                    if !ty.is_empty() && ty != "()" { Some(ty) } else { None }
                 } else { None }
             } else { None };
             emit_let_binding_typed(n.clone(), val_str.clone(), tco_init_type_ann, RenderTarget::Rust)
