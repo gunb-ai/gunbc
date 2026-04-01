@@ -91,6 +91,10 @@ pub struct EmitGraphInfo {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
     pub recursive_type_set: HashMap<String, bool>,
     pub fielded_variants: HashMap<String, bool>,
+    /// Maps type names to their generic parameter names (e.g. "FreeMonoid" → ["T"]).
+    /// Used to recover generic params for self-referential field types where
+    /// the resolved Node carries a bare name without type arguments.
+    pub type_params: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,6 +126,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: <HashMap<_, _>>::new(),
     recursive_type_set: <HashMap<_, _>>::new(),
     fielded_variants: <HashMap<_, _>>::new(),
+    type_params: <HashMap<_, _>>::new(),
 })
 }
 
@@ -253,6 +258,32 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
             });
     }
 
+    // Tuple: structural, regardless of connective
+    if n.name == "Tuple" {
+        let first_r = n.children.first().map_or_else(
+            || leaf_type_rendering("__MISSING_TUPLE_FIRST__".to_string()),
+            |c| {
+                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
+                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
+            }
+        );
+        let second_r = n.children.iter().skip(1).next().map_or_else(
+            || leaf_type_rendering("__MISSING_TUPLE_SECOND__".to_string()),
+            |c| {
+                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
+                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
+            }
+        );
+        return Rc::new(TypeRendering {
+            type_name: "Tuple".to_string(),
+            element: Some(first_r), key: None, value: Some(second_r),
+            params: vec![], return_type: None, inner: None,
+            generic_args: vec![],
+            shared: false, boxed: false,
+            is_tuple: true, is_error: false, error_label: String::new(),
+        });
+    }
+
     // Dispatch on connective
     let is_conj = n.connective == Some(crate::v2_std_core::Connective::Conj);
     let is_disj = n.connective == Some(crate::v2_std_core::Connective::Disj);
@@ -325,10 +356,28 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 error_label: String::new(),
                     })
         } else {
-            if shared {
-                leaf_type_rendering_shared(n.name.clone())
-            } else {
-                leaf_type_rendering(n.name.clone())
+            // Check if this is a generic type whose params were lost (self-referential fields)
+            match emit_info.type_params.get(&n.name) {
+                Some(param_names) if !param_names.is_empty() => {
+                    let generic: Vec<Rc<TypeRendering>> = param_names.iter().map(|pn| {
+                        leaf_type_rendering(pn.clone())
+                    }).collect();
+                    Rc::new(TypeRendering {
+                        type_name: n.name.clone(),
+                        element: None, key: None, value: None,
+                        params: vec![], return_type: None, inner: None,
+                        generic_args: generic,
+                        shared, boxed: false,
+                        is_tuple: false, is_error: false, error_label: String::new(),
+                    })
+                }
+                _ => {
+                    if shared {
+                        leaf_type_rendering_shared(n.name.clone())
+                    } else {
+                        leaf_type_rendering(n.name.clone())
+                    }
+                }
             }
         }
     } else {
@@ -378,7 +427,21 @@ fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
                 error_label: String::new(),
                     })
         } else {
-            if shared {
+            // Non-container type with multiple children: treat children as generic args
+            // (e.g. PartialFunction<K, V> where children are [K_node, V_node])
+            let generic: Vec<Rc<TypeRendering>> = n.children.iter().map(|c| {
+                build_type_rendering(c.clone(), emit_info.clone(), rc_types.clone())
+            }).collect();
+            if !generic.is_empty() {
+                Rc::new(TypeRendering {
+                    type_name: n.name.clone(),
+                    element: None, key: None, value: None,
+                    params: vec![], return_type: None, inner: None,
+                    generic_args: generic,
+                    shared, boxed: false,
+                    is_tuple: false, is_error: false, error_label: String::new(),
+                })
+            } else if shared {
                 leaf_type_rendering_shared(n.name.clone())
             } else {
                 leaf_type_rendering(n.name.clone())
@@ -439,9 +502,17 @@ fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
         })
     } else if !n.name.is_empty() {
         // V10: Carry generic type params (FreeMonoid<T>, PartialFunction<K,V>)
-        let generic = n.params.iter().cloned().map(|p| {
-            build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
-        }).collect::<Vec<_>>();
+        let generic: Vec<Rc<TypeRendering>> = if !n.params.is_empty() {
+            n.params.iter().cloned().map(|p| {
+                build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
+            }).collect()
+        } else {
+            // Recover generic params from type definition (self-referential fields)
+            match emit_info.type_params.get(&n.name) {
+                Some(param_names) => param_names.iter().map(|pn| leaf_type_rendering(pn.clone())).collect(),
+                None => vec![],
+            }
+        };
         Rc::new(TypeRendering {
             type_name: n.name.clone(),
             element: None, key: None, value: None, params: vec![],

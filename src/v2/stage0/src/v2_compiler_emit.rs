@@ -90,7 +90,7 @@ use crate::v2_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCase
 pub use crate::v2_compiler_languages::{
     language_spec_for_target, target_container_template, target_keyword,
     target_primitive_type, test_conventions_for_target, wrap_shared_type, LanguageSpec,
-    ReservedWordStrategy, SharingStrategy, TestNameStyle,
+    ReservedWordStrategy, SharingStrategy, TestConventions, TestNameStyle,
 };
 use crate::v2_std_core::LiteralValue::*;
 use crate::v2_std_core::UnaryOpKind::*;

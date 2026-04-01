@@ -54,7 +54,8 @@ import v2.std.core {
 
 import v2.compiler.artifact { RenderTarget, Python }
 import v2.compiler.languages {
-  scaffold_for_target, serialization_for_target, test_conventions_for_target
+  scaffold_for_target, serialization_for_target,
+  TestConventions, test_conventions_for_target
 }
 import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 import v2.compiler.infer_types { for_each_element_type_node, rt_type }

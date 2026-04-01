@@ -67,6 +67,7 @@ import extdeps.languages.rust.emit {
 }
 import v2.compiler.languages {
   scaffold_for_target, serialization_for_target,
+  TestConventions,
   test_conventions_for_target, top_level_visibility_for_target,
   is_value_type, is_string_like, target_primitive_type
 }

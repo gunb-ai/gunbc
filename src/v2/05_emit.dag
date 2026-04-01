@@ -71,7 +71,7 @@ import v2.compiler.infer_emit_info { TypeSummary, EmitGraphInfo, TypeRendering }
 import v2.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 import v2.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
-  LanguageSpec,
+  LanguageSpec, TestConventions,
   ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
   ImportRule,
   TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,

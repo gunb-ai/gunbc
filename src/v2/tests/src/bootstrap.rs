@@ -252,7 +252,13 @@ fn stage0_compile_accepts_dag_target() {
 //   E0425 (541): generics — emitter generates `T` without type param declaration
 //   E0433+E0405 (404): serde — emitter generates serde code, stage0 lacks serde dep
 //   E0220+E0277 (140): downstream trait/type errors from above
-const EMITTED_RUST_ERROR_RATCHET: usize = 880;
+// 2026-04-01: 880 → 13 via structural emission fixes:
+//   - TestConventions/Token/Tuple imports added to .dag source
+//   - type_params recovery for self-referential generic fields
+//   - Tuple rendering in build_type_rendering (connective-independent)
+//   - Vec<()> annotation skip when fold/flat_map init has Unit elements
+//   Remaining 13: sort_by lambda inference, fold empty_map sentinels, kahn fold
+const EMITTED_RUST_ERROR_RATCHET: usize = 13;
 
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check

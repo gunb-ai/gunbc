@@ -45,7 +45,7 @@ use crate::v2_std_core::UnaryOpKind::*;
 pub use crate::v2_compiler_artifact::{RenderTarget};
 use crate::v2_compiler_artifact::RenderTarget::{Rust};
 pub use crate::extdeps_languages_rust_emit::{RT_BRIDGE_FUNCTION_NAMES, RT_FUNCTIONS, RT_REF_MAP_FUNCTIONS};
-pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, test_conventions_for_target, top_level_visibility_for_target};
+pub use crate::v2_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, test_conventions_for_target, top_level_visibility_for_target};
 pub use crate::v2_compiler_runtime_rust::{rust_runtime_source};
 pub use crate::v2_compiler_infer_env::{TypeEnv, TypeBinding, authored_name};
 pub use crate::v2_compiler_infer_types::{normalize_access_type_node, for_each_element_type_node, node_is_optional, node_is_map, node_is_container, is_int_type_node, is_string_type_node, is_bool_type_node, is_float_type_node, rt_type, emit_map_has};
@@ -2824,13 +2824,17 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
-// V8: Annotation validity from TypeRendering.is_error, not string-matching
+// V8: Annotation validity from TypeRendering.is_error, not string-matching.
+// When the inferred element type is Unit (from incomplete fold/flat_map inference
+// on empty init), the annotation is structurally wrong — omit it so Rust infers
+// the correct type from the actual values in the collection.
 let type_ann = if value.inferred.is_some() {
     let rt = rt_type(value.clone());
     let tr = build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone());
     if !tr.is_error {
-        let ty = render_type(tr, RenderTarget::Rust);
-        if !ty.is_empty() && ty != "()" { Some(ty) } else { None }
+        let ty = render_type(tr.clone(), RenderTarget::Rust);
+        let has_unit_element = ty.contains("Vec<()>") || ty.contains("HashMap<String, ()>");
+        if !ty.is_empty() && ty != "()" && !has_unit_element { Some(ty) } else { None }
     } else { None }
 } else { None };
 let let_line = emit_let_binding_typed(name.clone(), val_str.clone(), type_ann.clone(), RenderTarget::Rust);

@@ -84,7 +84,9 @@ mod compiler_tests {
             "dsl/extdeps/languages/go/emit.dag",
             "dsl/extdeps/languages/python/emit.dag",
             "dsl/extdeps/languages/rust/emit.dag",
+            "dsl/extdeps/languages/dag/syntax.dag",
             "dsl/std/algebra.dag",
+            "dsl/std/syntax.dag",
             "dsl/std/types.dag",
         ];
         let root = workspace_root();
@@ -421,10 +423,13 @@ mod compiler_tests {
             .spawn(|| {
                 let sources = self_compile_sources();
 
+                // Enable bootstrap mode: complexity diagnostics don't gate emission.
+                crate::v2_compiler_compile::BOOTSTRAP_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
                 let result = crate::v2_compiler_compile::compile_sources(
                     sources,
                     crate::v2_compiler_artifact::RenderTarget::Rust,
                 );
+                crate::v2_compiler_compile::BOOTSTRAP_MODE.store(false, std::sync::atomic::Ordering::Relaxed);
 
                 if result.files.is_empty() {
                     eprintln!("self-compile-cargo-check: 0 files emitted (resolve errors gate emission), skipping cargo check");
