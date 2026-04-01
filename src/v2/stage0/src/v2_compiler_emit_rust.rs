@@ -3008,8 +3008,8 @@ let rc_name = match corrected_parent.clone() {
     Some(en) => en.clone(),
     None => variant_name.clone(),
 };
-if rc_name != "" && v2_rt::map_contains_key(&rc_types, rc_name.clone()) {
-    v2_rt::concat("Rc::new(".to_string(), v2_rt::concat(raw.clone(), ")".to_string()))
+if (rc_name != "".to_string()) && emit_map_has(rc_types.clone(), rc_name.clone()) {
+    v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw.clone()), ")".to_string())
 } else {
     raw.clone()
 } }
