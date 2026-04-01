@@ -26,7 +26,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 28 errors | 0 | Down from 8658→99→28. TypeRendering + always-annotate-let + inference fixes. PR #277 |
+| Bootstrap emitted Rust (B) | 12 errors | 0 | Down from 8658→99→12. TypeRendering + always-annotate-let + inference fixes. PR #277. Two independent categories remaining (8 imports + 4 inference) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -36,28 +36,42 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
-## Active: Bootstrap B → 0 (28 errors remaining)
+## Active: Bootstrap B → 0 (12 errors remaining)
 
 TypeRendering infrastructure landed. Always-annotate let bindings
-enforced. 10 reviewer violations resolved. Error count: 99 → 28
-(71 fixed). PR #277.
+enforced. 10 reviewer violations resolved. Fold inference improved.
+Error count: 99 → 12 (87 fixed). PR #277.
 
-**Remaining 28 errors (7 root causes):**
+**Remaining 12 errors (2 independent categories):**
 
-| RC | Errors | Status |
-|----|--------|--------|
-| TestConventions import | 7 | Needs cross-module import in emitted files |
-| Token import | 2 | Same pattern as TestConventions |
-| Generic self-ref fields | 5 | FreeMonoid\<T>.empty drops \<T> — inference doesn't carry params |
-| Vec\<()> inference gap | 5 | Fold with init: [] — need bidirectional type unification |
-| () vs String/ErrorNode | 2 | Context-specific inference mismatches |
-| E0282 closures | 6 | Cascades from Vec\<()> — fix that first |
-| Tuple as type param | 1 | build_disj_rendering generic_args — FIXED (RC-1) |
+### Category A: Cross-module imports (8 E0425) — separate branch
 
-**Reviewer-flagged structural debt (this PR):**
+Functions from `dsl/std/algebra.dag` (e.g., `partial_function_templates`,
+`free_monoid_collection_templates`) used in `04_types.dag` and
+`complexity.dag` but not in the emitted import lists. Previously
+masked by `compile_error!` sentinels; revealed when fold inference
+fixes resolved the sentinels. Same pattern as TestConventions/Token
+fix: add functions to `.dag` import statements + stage0 `pub use`.
+
+Files: `src/v2/04_types.dag`, `src/v2/complexity.dag`, and their
+stage0 counterparts. No overlap with Category B.
+
+### Category B: Nested collection bidirectional inference (4 E0282) — separate branch
+
+`Map<String, List<Unit>>` fold accumulators where the inner
+`List<Unit>` comes from empty `[]` literals inside struct fields.
+The single-pass inference pipeline resolves struct fields top-down
+but can't propagate the actual element type from downstream fold
+body back into the struct's list field type. Needs field-level
+bidirectional type unification.
+
+Files: `src/v2/stage0/src/v2_compiler_infer.rs` (fold inference
+path). No overlap with Category A.
+
+**Reviewer-flagged structural debt (tracked, not blocking merge):**
 
 - `find_struct_by_fields`: heuristic name match → needs record literal
-  inference to carry struct name from boundary (boundary sufficiency)
+  inference to carry struct name from boundary (M2 boundary sufficiency)
 - Fold refinement magic names (Unit/Dynamic/Error) → needs bidirectional
   fold type unification in inference (M2 boundary sufficiency)
 - `with()` string-keyed branch → needs algebra operation registry
