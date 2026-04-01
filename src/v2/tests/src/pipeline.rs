@@ -3876,3 +3876,102 @@ fn empty_batch() -> Batch {
         content
     );
 }
+
+// ── M2 Boundary Sufficiency: Higher-Order Method Type Propagation ────
+
+#[test]
+fn map_preserves_element_type() {
+    let source = "\
+module test_map_type
+type Item { name: String, cost: Int }
+fn names(items: List<Item>) -> List<String> {
+  items |> map(i => i.name)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn filter_preserves_struct_element_type() {
+    let source = "\
+module test_filter_struct
+type Item { name: String, cost: Int }
+fn expensive(items: List<Item>) -> List<Item> {
+  items |> filter(i => i.cost > 100)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_to_different_type() {
+    let source = "\
+module test_fold_diff
+type Item { name: String, cost: Int }
+fn total_cost(items: List<Item>) -> Int {
+  items |> fold(init: 0, f: (acc, i) => acc + i.cost)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn duplicate_variant_names_across_enums_dont_collide() {
+    let source = "\
+module test_dup_variants
+type Color = Red | Blue | Green
+type Signal = Red | Yellow | Green
+
+fn pick_color() -> Color { Blue }
+fn pick_signal() -> Signal { Yellow }
+fn use_both(c: Color, s: Signal) -> String {
+  let c_str = match c {
+    Red => \"red\"
+    Blue => \"blue\"
+    Green => \"green\"
+  }
+  let s_str = match s {
+    Red => \"stop\"
+    Yellow => \"caution\"
+    Green => \"go\"
+  }
+  concat(c_str, s_str)
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_dup_variants.rs");
+    assert!(
+        content.contains("Color::") && content.contains("Signal::"),
+        "both Color:: and Signal:: qualifiers should appear in match arms, got:\n{}",
+        content
+    );
+}
+
+#[test]
+fn emit_struct_field_from_child_routes_through_emit_node_type_rc() {
+    let source = "\
+module test_struct_field_emit
+type Inner { x: Int, y: String }
+type Outer { data: Inner, label: String }
+fn make() -> Outer {
+  Outer { data: Inner { x: 1, y: \"hi\" }, label: \"test\" }
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_struct_field_emit.rs");
+    assert!(
+        content.contains("Rc<Inner>"),
+        "struct field type should be rendered as Rc<Inner> via emit_node_type_rc, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("label: String"),
+        "String field should not be Rc-wrapped, got:\n{}",
+        content
+    );
+}
