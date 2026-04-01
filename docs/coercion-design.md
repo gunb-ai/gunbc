@@ -537,3 +537,600 @@ extdeps/languages/go/types.dag      ← Go data instances (same schema)
 
 No per-language type families. No schema drift. One authority for the
 coercion vocabulary; per-language files are pure data.
+
+---
+
+## Appendix A: End-to-End Coercion Walks
+
+This appendix works through complete coercion examples — from `.dag` source
+through the type composition tree, through the resolution algorithm, to
+target language output. Each example shows the DAG node structure, the
+resolution walk at every node, and the final emitted type in every target.
+
+---
+
+### A.1: Sidecast — Same Algebra, Different Representation
+
+A sidecast moves between inhabitants of the same algebra. `List<Int>` is
+`FreeMonoid<Int>` in `.dag`. Each target language has a different inhabitant
+for `FreeMonoid`, so the coercion is a sidecast from the algebraic identity
+to the target-specific representation.
+
+**.dag source:**
+```
+fn double_all(items: List<Int>) -> List<Int> {
+  items |> map(x => x * 2)
+}
+```
+
+**Type composition DAG for `List<Int>`:**
+```
+              List<Int>
+              │
+              ├─ algebra: FreeMonoid<T>   (from std/types.dag: List<T> = FreeMonoid<T>)
+              │
+              └─ type param [0]: Int
+                                  │
+                                  └─ algebra: OrderedRing<Word64>
+                                     checkpoint: Rust→"i64", Python→"int", Go→"int64"
+```
+
+**Resolution walk (Rust):**
+```
+resolve(List<Int>, Rust):
+  1. CHECKPOINT: "List" in rust_type_checkpoints? NO
+  2. ALGEBRA: List inhabits FreeMonoid (from std/types.dag)
+     FreeMonoid in rust_algebra_inhabitants? YES → template "Vec<{0}>", arity 1
+     Recurse into type param [0]:
+       resolve(Int, Rust):
+         1. CHECKPOINT: "Int" in rust_type_checkpoints? YES → "i64"
+         DONE → "i64"
+     Apply template: "Vec<{0}>" with {0}="i64" → "Vec<i64>"
+  DONE → "Vec<i64>"
+```
+
+**Resolution walk (SPICE):**
+```
+resolve(List<Int>, SPICE):
+  1. CHECKPOINT: "List" in spice_type_checkpoints? NO
+  2. ALGEBRA: List inhabits FreeMonoid
+     FreeMonoid in spice_algebra_inhabitants? NO
+  5. FAIL → COMPILE ERROR:
+     "No SPICE inhabitant for algebra FreeMonoid.
+      Add an inhabitant to extdeps/languages/spice/types.dag."
+```
+
+**All targets:**
+
+| Target | `List<Int>` | `items |> map(f)` | Notes |
+|--------|-------------|-------------------|-------|
+| Rust | `Vec<i64>` | `items.iter().map(f).collect()` | FreeMonoid → Vec |
+| Python | `list[int]` | `[f(x) for x in items]` | FreeMonoid → list |
+| Go | `[]int64` | `for _, x := range items { ... }` | FreeMonoid → slice |
+| SPICE | **ERROR** | — | No FreeMonoid inhabitant |
+| English | `list of integers` | `apply f to each item` | FreeMonoid → "list of" |
+
+The sidecast: `FreeMonoid<Int>` is the single algebraic identity. `Vec<i64>`,
+`list[int]`, `[]int64` are all different inhabitants of the same algebra.
+Moving between them is a sidecast — the structure is preserved, only the
+representation changes.
+
+---
+
+### A.2: Downcast — Refinement Narrowing
+
+A downcast narrows a type through refinement. The composition tree has
+refinement nodes that add constraints.
+
+**.dag source:**
+```
+type NonNegativeInt = Int where range(min: 0)
+type Port = NonNegativeInt where range(min: 1, max: 65535)
+
+fn connect(host: String, port: Port) -> Unit { ... }
+```
+
+**Type composition DAG for `Port`:**
+```
+              Port
+              │
+              ├─ refinement of: NonNegativeInt
+              │                 │
+              │                 ├─ refinement of: Int
+              │                 │                 │
+              │                 │                 └─ algebra: OrderedRing<Word64>
+              │                 │                    checkpoint: Rust→"i64"
+              │                 │
+              │                 └─ predicate: range(min: 0)
+              │
+              └─ predicate: range(min: 1, max: 65535)
+```
+
+**Resolution walk (Rust):**
+```
+resolve(Port, Rust):
+  1. CHECKPOINT: "Port" in rust_type_checkpoints? NO
+  2. ALGEBRA: Port has no direct algebra
+  4. REFINEMENT: Port refines NonNegativeInt
+     resolve(NonNegativeInt, Rust):
+       1. CHECKPOINT: "NonNegativeInt" in rust_type_checkpoints? NO
+       2. ALGEBRA: NonNegativeInt has no direct algebra
+       4. REFINEMENT: NonNegativeInt refines Int
+          resolve(Int, Rust):
+            1. CHECKPOINT: "Int" in rust_type_checkpoints? YES → "i64"
+            DONE → "i64"
+       DONE → "i64" (with validation: x >= 0)
+     DONE → "i64" (with validation: 1 <= x <= 65535)
+  Refinement Contract:
+    Compile-time provable (literal 443)? → erased, bare "i64"
+    Runtime input (user-provided)? → Port::new(x) → Result<Port, ValidationError>
+```
+
+**All targets:**
+
+| Target | `Port` (proven) | `Port` (unproven) | Validation |
+|--------|-----------------|-------------------|------------|
+| Rust | `i64` | `Port::new(x)?` returns `Result<Port, _>` | Boundary constructor |
+| Python | `int` | `Port(x)` raises `ValueError` | `__init__` guard |
+| Go | `int64` | `NewPort(x)` returns `(Port, error)` | Constructor |
+| SPICE | `real` | `real` (constraints in `.param` bounds) | Simulator limits |
+| English | `port number` | `port number (1–65535)` | Prose constraint |
+
+The downcast: `Int` → `NonNegativeInt` → `Port`. Each step narrows the
+value set. The target type is always the base type's coercion (`i64`).
+The refinement predicates become validation obligations at named boundaries.
+
+---
+
+### A.3: Upcast — Widening to Base Type
+
+An upcast widens a refined type to its base. Always safe — no validation needed.
+
+**.dag source:**
+```
+fn port_to_int(p: Port) -> Int { p }
+fn stringify(n: Int) -> String { int_to_string(n) }
+
+// Upcast chain: Port → NonNegativeInt → Int (always valid)
+fn example(p: Port) -> String {
+  stringify(p)  // Port <: Int, upcast is implicit
+}
+```
+
+**Resolution:** `Port` and `Int` both coerce to `i64` in Rust. The upcast
+is invisible at the target level — both types have the same representation.
+The .dag type checker proves `Port <: Int` (every port is an integer), so
+no runtime check is needed.
+
+| Target | `port_to_int(p: Port) -> Int` | Notes |
+|--------|-------------------------------|-------|
+| Rust | `fn port_to_int(p: i64) -> i64 { p }` | Same type, identity |
+| Python | `def port_to_int(p: int) -> int: return p` | Same type |
+| Go | `func portToInt(p int64) int64 { return p }` | Same type |
+
+---
+
+### A.4: Deep Composition — `Map<String, List<Int?>>`
+
+This is the stress test: three algebra layers plus an optional annotation.
+
+**.dag source:**
+```
+type QueryResults = Map<String, List<Int?>>
+
+fn empty_results() -> QueryResults { {} }
+fn lookup(results: QueryResults, key: String) -> List<Int?> {
+  match map_get(results, key) {
+    Some { value: vs } => vs
+    None => []
+  }
+}
+```
+
+**Type composition DAG:**
+```
+Map<String, List<Int?>>
+│
+├─ algebra: PartialFunction<K, V>     (from std/types.dag: Map<K,V> = PartialFunction<K,V>)
+│
+├─ type param [0] (K): String
+│                       │
+│                       └─ checkpoint: Rust→"String", Python→"str", Go→"string"
+│
+└─ type param [1] (V): List<Int?>
+                        │
+                        ├─ algebra: FreeMonoid<T>
+                        │
+                        └─ type param [0]: Int?
+                                           │
+                                           ├─ cardinality: Optional
+                                           │
+                                           └─ base: Int
+                                                    │
+                                                    └─ checkpoint: Rust→"i64", Python→"int", Go→"int64"
+```
+
+**Resolution walk (Rust) — full trace:**
+```
+resolve(Map<String, List<Int?>>, Rust):
+  1. CHECKPOINT: "Map" in rust_type_checkpoints? NO
+  2. ALGEBRA: Map inhabits PartialFunction (from std/types.dag)
+     PartialFunction in rust_algebra_inhabitants? YES
+       → template "HashMap<{0}, {1}>", arity 2
+
+     Recurse into [0] (K = String):
+       resolve(String, Rust):
+         1. CHECKPOINT: "String" in rust_type_checkpoints? YES → "String"
+         DONE → "String"
+
+     Recurse into [1] (V = List<Int?>):
+       resolve(List<Int?>, Rust):
+         1. CHECKPOINT: "List" in rust_type_checkpoints? NO
+         2. ALGEBRA: List inhabits FreeMonoid
+            FreeMonoid in rust_algebra_inhabitants? YES
+              → template "Vec<{0}>", arity 1
+
+            Recurse into [0] (T = Int?):
+              resolve(Int?, Rust):
+                OPTIONAL: cardinality = Optional, base = Int
+                  resolve(Int, Rust):
+                    1. CHECKPOINT: "Int" → "i64"
+                    DONE → "i64"
+                Apply optional: "Option<{0}>" with {0}="i64" → "Option<i64>"
+                DONE → "Option<i64>"
+
+            Apply template: "Vec<{0}>" with {0}="Option<i64>"
+            DONE → "Vec<Option<i64>>"
+
+     Apply template: "HashMap<{0}, {1}>" with {0}="String", {1}="Vec<Option<i64>>"
+     DONE → "HashMap<String, Vec<Option<i64>>>"
+```
+
+**Resolution walk (Python):**
+```
+resolve(Map<String, List<Int?>>, Python):
+  Map → PartialFunction → "dict[{0}, {1}]"
+    [0]: String → checkpoint → "str"
+    [1]: List<Int?> → FreeMonoid → "list[{0}]"
+           [0]: Int? → Optional → "int | None"   (PEP 604)
+                → "list[int | None]"
+    → "dict[str, list[int | None]]"
+```
+
+**Resolution walk (Go):**
+```
+resolve(Map<String, List<Int?>>, Go):
+  Map → PartialFunction → "map[{0}]{1}"
+    [0]: String → checkpoint → "string"
+    [1]: List<Int?> → FreeMonoid → "[]{0}"
+           [0]: Int? → Optional → "*int64"  (pointer for nil = absent)
+                → "[]*int64"
+    → "map[string][]*int64"
+```
+
+**Resolution walk (SPICE):**
+```
+resolve(Map<String, List<Int?>>, SPICE):
+  Map → PartialFunction → NO INHABITANT
+  FAIL → COMPILE ERROR:
+    "No SPICE inhabitant for algebra PartialFunction.
+     SPICE has no keyed data structures — partial functions are
+     not representable in circuit description languages."
+```
+
+**Resolution walk (English):**
+```
+resolve(Map<String, List<Int?>>, English):
+  Map → PartialFunction → "mapping from {0} to {1}"
+    [0]: String → checkpoint → "text"
+    [1]: List<Int?> → FreeMonoid → "list of {0}"
+           [0]: Int? → Optional → "optional integer"
+                → "list of optional integers"
+    → "mapping from text to list of optional integers"
+```
+
+**All targets:**
+
+| Target | `Map<String, List<Int?>>` | `empty_results()` |
+|--------|---------------------------|-------------------|
+| Rust | `HashMap<String, Vec<Option<i64>>>` | `HashMap::new()` |
+| Python | `dict[str, list[int \| None]]` | `{}` |
+| Go | `map[string][]*int64` | `nil` |
+| SPICE | **COMPILE ERROR** | — |
+| English | `mapping from text to list of optional integers` | `empty mapping` |
+
+---
+
+### A.5: Deep Composition — `List<Map<String, Set<String>>>`
+
+Three different algebra inhabitants nested: FreeMonoid wrapping PartialFunction
+wrapping BooleanAlgebra.
+
+**.dag source:**
+```
+type TagIndex = List<Map<String, Set<String>>>
+
+fn merge_indices(a: TagIndex, b: TagIndex) -> TagIndex {
+  concat(a, b)
+}
+```
+
+**Type composition DAG:**
+```
+List<Map<String, Set<String>>>
+│
+├─ FreeMonoid<T>
+│
+└─ [0]: Map<String, Set<String>>
+         │
+         ├─ PartialFunction<K, V>
+         │
+         ├─ [0] K: String → checkpoint
+         │
+         └─ [1] V: Set<String>
+                    │
+                    ├─ BooleanAlgebra<A>
+                    │
+                    └─ [0] A: String → checkpoint
+```
+
+**All targets (resolved):**
+
+| Target | `List<Map<String, Set<String>>>` |
+|--------|----------------------------------|
+| Rust | `Vec<HashMap<String, BTreeSet<String>>>` |
+| Python | `list[dict[str, set[str]]]` |
+| Go | `[]map[string]map[string]struct{}` |
+| SPICE | **ERROR** (FreeMonoid) |
+| English | `list of mappings from text to sets of text` |
+
+**Sharing effect (Rust):**
+
+The fully coerced type is `Vec<HashMap<String, BTreeSet<String>>>`. None of
+these are Copy. In a shared context (struct field, multiple references):
+
+```rust
+pub struct SearchEngine {
+    pub indices: Rc<Vec<HashMap<String, BTreeSet<String>>>>,
+    //           ^^^ sharing applied at outermost level only
+    //               inner types are owned by the outer container
+}
+```
+
+ValueContext determines the wrapping: `is_constant = false`, type is `!Copy`
+→ `Rc<T>`. The `Rc` wraps the outermost type; inner containers are owned
+values within the outer `Vec`.
+
+---
+
+### A.6: Struct with Mixed Complexity — Full Service Type
+
+A realistic service definition combining all coercion categories.
+
+**.dag source:**
+```
+type Email = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
+type Timestamp = Int where range(min: 0)
+
+type UserProfile {
+  id: Int
+  name: String
+  email: Email
+  tags: Set<String>
+  metadata: Map<String, Json>
+  last_login: Timestamp?
+  friends: List<Int>
+  on_update: fn(UserProfile) -> Unit
+}
+```
+
+**Per-field resolution (Rust):**
+
+| Field | .dag type | Resolution path | Rust type |
+|-------|-----------|-----------------|-----------|
+| `id` | `Int` | checkpoint | `i64` |
+| `name` | `String` | checkpoint | `String` |
+| `email` | `Email` | refinement → String → checkpoint | `String` |
+| `tags` | `Set<String>` | BooleanAlgebra → BTreeSet, String → checkpoint | `BTreeSet<String>` |
+| `metadata` | `Map<String, Json>` | PartialFunction → HashMap, String/Json → checkpoint | `HashMap<String, serde_json::Value>` |
+| `last_login` | `Timestamp?` | optional + refinement → Int → checkpoint | `Option<i64>` |
+| `friends` | `List<Int>` | FreeMonoid → Vec, Int → checkpoint | `Vec<i64>` |
+| `on_update` | `fn(UserProfile) -> Unit` | callable (static: struct field) | `fn(UserProfile) -> ()` |
+
+**Rust output (with sharing and derives):**
+
+```rust
+use std::collections::{BTreeSet, HashMap};
+
+// ValueContext: has_fn_fields = true → skip PartialEq, Debug
+// fields: tags, metadata, friends are !Copy → Rc in shared context
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct UserProfile {
+    pub id: i64,                                        // Copy
+    pub name: Rc<String>,                               // !Copy → Rc
+    pub email: Rc<String>,                              // refinement erased, !Copy → Rc
+    pub tags: Rc<BTreeSet<String>>,                     // !Copy → Rc
+    pub metadata: Rc<HashMap<String, serde_json::Value>>, // !Copy → Rc
+    pub last_login: Option<i64>,                        // Option<Copy> = Copy
+    pub friends: Rc<Vec<i64>>,                          // !Copy → Rc
+    pub on_update: fn(UserProfile) -> (),               // fn pointer, Copy
+}
+```
+
+**Python output:**
+
+```python
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+@dataclass
+class UserProfile:
+    id: int
+    name: str
+    email: str                              # refinement erased
+    tags: set[str]
+    metadata: dict[str, dict]               # Json → dict
+    last_login: int | None                  # optional + refinement erased
+    friends: list[int]
+    on_update: Callable[[UserProfile], None] # single callable form
+```
+
+**Go output:**
+
+```go
+type UserProfile struct {
+    ID        int64                          // exported (uppercase)
+    Name      string
+    Email     string                         // refinement erased
+    Tags      map[string]struct{}            // BooleanAlgebra → map[A]struct{}
+    Metadata  map[string]interface{}         // Json → interface{}
+    LastLogin *int64                         // optional + refinement → *int64
+    Friends   []int64
+    OnUpdate  func(UserProfile)             // single func form
+}
+```
+
+**English output:**
+
+```
+User Profile:
+  id: integer
+  name: text
+  email: email address (text matching email pattern)
+  tags: set of text
+  metadata: mapping from text to structured data
+  last login: optional timestamp (non-negative integer)
+  friends: list of integers
+  on update: function taking a user profile, returning nothing
+```
+
+**SPICE output (partial):**
+
+```
+ERROR: No SPICE inhabitant for algebra FreeMonoid.
+  Field 'friends' has type List<Int> which requires FreeMonoid.
+  SPICE cannot represent ordered sequences.
+
+ERROR: No SPICE inhabitant for algebra PartialFunction.
+  Field 'metadata' has type Map<String, Json> which requires PartialFunction.
+
+ERROR: No SPICE inhabitant for algebra BooleanAlgebra (collection).
+  Field 'tags' has type Set<String> which requires BooleanAlgebra.
+
+SPICE can represent:
+  id: real
+  name: (no String inhabitant — ERROR)
+  ...
+```
+
+SPICE correctly fails on every field that requires an algebra it can't
+represent. The errors are specific and actionable — they name the field,
+the type, the algebra, and what's missing.
+
+---
+
+### A.7: Sidecast Between Language Targets
+
+The same `.dag` value can be serialized and deserialized across targets
+because the algebraic identity is preserved. This is the interop story.
+
+**.dag source:**
+```
+data config: Map<String, List<Int>> = {
+  "primes": [2, 3, 5, 7, 11],
+  "fibonacci": [1, 1, 2, 3, 5, 8]
+}
+```
+
+**Resolution (same for all targets):**
+```
+Map<String, List<Int>>
+  → PartialFunction<String, FreeMonoid<Int>>
+  → each target applies its own inhabitants
+```
+
+**Target representations of the same value:**
+
+| Target | Type | Value |
+|--------|------|-------|
+| Rust | `HashMap<String, Vec<i64>>` | `{("primes".into(), vec![2,3,5,7,11]), ...}` |
+| Python | `dict[str, list[int]]` | `{"primes": [2,3,5,7,11], "fibonacci": [1,1,2,3,5,8]}` |
+| Go | `map[string][]int64` | `map[string][]int64{"primes": {2,3,5,7,11}, ...}` |
+| English | `mapping from text to lists of integers` | `"primes" maps to the list 2, 3, 5, 7, 11; ...` |
+
+The JSON serialization is identical across all targets:
+```json
+{"primes": [2, 3, 5, 7, 11], "fibonacci": [1, 1, 2, 3, 5, 8]}
+```
+
+This is the sidecast property: the algebraic structure (PartialFunction
+containing FreeMonoid containing OrderedRing) is preserved through
+serialization. Any target that has inhabitants for all three algebras
+can round-trip the data.
+
+**Sharing effect:** This is `data` (constant). `ValueContext.is_constant = true`.
+No `Rc` wrapping in Rust. The emitter generates a constructor function:
+
+```rust
+pub fn config() -> HashMap<String, Vec<i64>> {
+    let mut m = HashMap::new();
+    m.insert("primes".into(), vec![2, 3, 5, 7, 11]);
+    m.insert("fibonacci".into(), vec![1, 1, 2, 3, 5, 8]);
+    m
+}
+```
+
+Not `lazy_static! { static ref CONFIG: Rc<HashMap<...>> = ... }` — which
+would cause E0277 Send/Sync.
+
+---
+
+### A.8: Programmatic Coercion — User-Defined Algebra Types
+
+When a programmer defines a new type as inhabiting an algebra, coercion
+applies automatically.
+
+**.dag source:**
+```
+// User defines a type that inhabits an existing algebra
+type Seq<T> = FreeMonoid<T>
+type Lookup<K, V> = PartialFunction<K, V>
+type Flags<A> = BooleanAlgebra<A>
+
+// These compose exactly like List, Map, Set
+type Registry = Lookup<String, Seq<Flags<Int>>>
+```
+
+**Resolution walk (Rust):**
+```
+resolve(Registry, Rust):
+  Registry = Lookup<String, Seq<Flags<Int>>>
+  1. CHECKPOINT: "Registry" not in checkpoints
+  2. Lookup = PartialFunction<K,V>
+     PartialFunction → "HashMap<{0}, {1}>"
+       [0] K = String → checkpoint → "String"
+       [1] V = Seq<Flags<Int>>
+           Seq = FreeMonoid<T>
+           FreeMonoid → "Vec<{0}>"
+             [0] T = Flags<Int>
+                 Flags = BooleanAlgebra<A>
+                 BooleanAlgebra → "BTreeSet<{0}>"
+                   [0] A = Int → checkpoint → "i64"
+                 → "BTreeSet<i64>"
+             → "Vec<BTreeSet<i64>>"
+       → "HashMap<String, Vec<BTreeSet<i64>>>"
+```
+
+**All targets:**
+
+| Target | `Lookup<String, Seq<Flags<Int>>>` |
+|--------|-----------------------------------|
+| Rust | `HashMap<String, Vec<BTreeSet<i64>>>` |
+| Python | `dict[str, list[set[int]]]` |
+| Go | `map[string][]map[int64]struct{}` |
+| English | `mapping from text to list of sets of integers` |
+
+The programmer never wrote a type checkpoint or inhabitant for `Seq`,
+`Lookup`, or `Flags`. The coercion engine resolved them through their
+algebra definitions. New algebra aliases compose freely — that's the
+payoff of algebra-keyed inhabitants over name-keyed container templates.
