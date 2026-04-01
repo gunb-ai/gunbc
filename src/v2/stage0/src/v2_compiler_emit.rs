@@ -2463,10 +2463,16 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
     }
 }
 
+// emit_let_binding: untyped fallback — every call site should migrate to emit_let_binding_typed.
+// Remaining callers are in expression emission paths that don't yet have the inferred type
+// threaded through. Each is a boundary sufficiency gap to close.
 pub fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
     emit_let_binding_typed(name, value, None, target)
 }
 
+// emit_let_binding_typed: the correct emission path.
+// Every binding carries a type claim that the target language verifies.
+// type_annotation = None means the emitter couldn't determine the type — a modeling bug.
 pub fn emit_let_binding_typed(name: String, value: String, type_annotation: Option<String>, target: RenderTarget) -> String {
     match target.clone() {
         RenderTarget::Rust => {
@@ -2476,20 +2482,18 @@ pub fn emit_let_binding_typed(name: String, value: String, type_annotation: Opti
             };
             format!("let {}{} = {};", emit_ident(name.clone(), RenderTarget::Rust), type_suffix, value)
         },
-        RenderTarget::Go => v2_rt::concat(
-            v2_rt::concat(
-                emit_ident(name.clone(), RenderTarget::Go),
-                " := ".to_string(),
-            ),
-            value.clone(),
-        ),
-        RenderTarget::Python => v2_rt::concat(
-            v2_rt::concat(
-                emit_ident(name.clone(), RenderTarget::Python),
-                " = ".to_string(),
-            ),
-            value.clone(),
-        ),
+        RenderTarget::Go => {
+            match type_annotation.clone() {
+                Some(ty) => format!("var {} {} = {}", emit_ident(name.clone(), RenderTarget::Go), ty, value),
+                None => format!("{} := {}", emit_ident(name.clone(), RenderTarget::Go), value),
+            }
+        },
+        RenderTarget::Python => {
+            match type_annotation.clone() {
+                Some(ty) => format!("{}: {} = {}", emit_ident(name.clone(), RenderTarget::Python), ty, value),
+                None => format!("{} = {}", emit_ident(name.clone(), RenderTarget::Python), value),
+            }
+        },
         RenderTarget::Dag => v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat("let ".to_string(), name.clone()),
