@@ -289,18 +289,44 @@ ratchet if 311 < 316 (current code has `DIAG_RATCHET = 316`, observed
 All three derived maps must be kept in sync manually because `.dag`
 doesn't support computed data declarations yet.
 
-**Design:** Since computed data declarations aren't available, the
-cleanest intermediate fix is to:
+**Invariant constraint (No duplicate representations):** Adding comments
+and tests to keep derived maps in sync still leaves the duplicate
+authorities in place. The test catches drift but doesn't prevent it.
 
-1. Add a comment block at each derived map explicitly listing which
-   registry entries it should contain (making manual sync auditable).
-2. Add a source-audit test that verifies the derived maps are consistent
-   with `rt_function_registry` — parse both sections, extract the name
-   lists, and assert they match.
+**Design:** Replace the three derived `data` maps with `fn` helpers
+that walk `rt_function_registry` at call time. This eliminates the
+duplicate data entirely — the registry is the single authority and
+the functions derive from it:
 
-**Longer-term:** When computed data declarations land (ROADMAP
-"Exploratory Directions"), `rt_functions` et al. become
-`data rt_functions = rt_function_registry |> fold(...)`.
+```dag
+fn is_rt_function(name: String) -> Bool {
+  rt_function_registry |> any(entry => entry.name == name)
+}
+
+fn rt_bridge_name(name: String) -> String {
+  match rt_function_registry |> filter(e => e.name == name) |> first {
+    Some { value: entry } => entry.bridge_name
+    None => name
+  }
+}
+
+fn rt_passes_by_ref(name: String) -> Bool {
+  match rt_function_registry |> filter(e => e.name == name) |> first {
+    Some { value: entry } => entry.passes_by_ref
+    None => false
+  }
+}
+```
+
+This eliminates `rt_functions`, `rt_ref_map_functions`, and
+`rt_bridge_function_names` as separate data declarations. The cost
+is O(n) per lookup instead of O(1), but `n ≈ 27` and these are called
+during emit (not in a hot loop).
+
+**Interim step (landed):** A source-audit test
+(`rt_functions_map_consistent_with_registry`) catches drift while the
+duplicate data still exists. This is the bridge until the functions
+above replace the maps.
 
 ### Files Changed
 
@@ -532,44 +558,57 @@ The fold accumulator type is currently set from the `init` expression
 only (via `extract_fold_init_info`). If init is `empty_map()`, the acc
 type is `Map<String, Unit>`.
 
-Fix: after inferring the fold body lambda, extract its return type and
-use it to refine the accumulator type if the init type was incomplete
-(has Unit children / type variables).
+**Invariant constraint (Heuristics indicate lost structure):** The fix
+must NOT check for "Unit children" as a heuristic to decide whether
+refinement is needed — that would replicate the emit-layer workaround
+(IV-7/IV-8) at the inference layer. Instead, the inference engine should
+structurally track whether a type's parameters are fully resolved.
+
+Fix: introduce an `is_fully_resolved(type_node: Node) -> Bool` predicate
+that structurally checks whether all type parameter slots are bound to
+concrete types (no type variables, no error types). When `!is_fully_resolved`,
+the fold body's return type provides the missing structure:
 
 ```dag
 // In infer_method_args_with_fold, after inferring fold body:
 let body_return_type = ... // extract from inferred lambda
-let refined_acc = if acc_type_has_unit_children(fold_acc_type) {
+let refined_acc = if !is_fully_resolved(fold_acc_type) {
   prefer_specific_type(left: fold_acc_type, right: body_return_type)
 } else {
   fold_acc_type
 }
 ```
 
+The `is_fully_resolved` predicate is a structural fact (walks the type
+tree for unresolved slots), not a heuristic (checking for specific
+sentinel names like "Unit").
+
 **Phase 3: Lambda multi-param expected types**
 
 For `sort_by((a, b) => compare(a, b))`, the lambda has 2 params. Current
-code: last param gets element type, first gets `type_variable`. Fix:
-when the `expected` is a non-callable element type and the lambda has
-exactly 2 params, assign element type to BOTH params (since sort_by's
-comparator takes `(T, T) -> Int`).
+code: last param gets element type, first gets `type_variable`.
 
-```dag
-// In ExprLambda expected handling:
-} else if lam_params |> count == 2 && is_sort_by_context {
-  // Both params get element type for sort_by comparators
-  extend_scope(scope: scope, name: first_param, resolved: exp)
-  extend_scope(scope: acc, name: second_param, resolved: exp)
-} else {
-  // Existing: last param gets element type
-}
-```
+**Invariant constraint (Heuristics indicate lost structure):** Guessing
+comparator context from "2 params + non-callable expected" is shape-based
+heuristic. The method's algebra template already declares the callback
+signature: `sort_by` takes `fn(T, T) -> Ordering`. The fix must use
+this structural fact, not infer context from arity.
 
-The "is_sort_by_context" detection could be structural (expected carries
-some marker) or the simpler fix: when expected is not callable and there
-are exactly 2 params, assume both should get the element type (since
-the only 2-param non-callable lambda context in the language is
-comparison).
+Fix: when `infer_method_args_with_fold` processes a method whose algebra
+template declares a callable `param_type` (not just `ReceiverSelf`),
+build a full **callable `expected`** with the correct parameter types
+— the same mechanism already used for `fold`. This way `sort_by`'s
+callback gets `expected: Callable(T, T) -> Ordering` and `ExprLambda`'s
+existing callable-expected handler threads both params correctly.
+
+This requires the algebra templates to express callable parameter
+structure (currently `sort_by` has `param_types: [ReceiverSelf]` which
+doesn't capture the `fn(T, T) -> Int` shape). The template type system
+needs a `CallableOf` variant or the method templates need to express
+higher-order function signatures directly. This is the same
+"carrier-changing type loss" issue noted in Item 2's Tier 2.5
+discussion — the algebra templates must model lambda signatures
+structurally, not collapse them to `ReceiverSelf`.
 
 ### Files Changed
 
@@ -616,25 +655,33 @@ emitter encounters the resolved type, it renders the name literally.
 
 ### Design
 
-The fix is in the Rust emitter's type rendering. When emitting a type
-node whose name is `FreeMonoid`, substitute the appropriate Rust
-container type:
+**Invariant constraint (Emission is translation, not decision-making):**
+The fix must NOT be a hardcoded `if name == "FreeMonoid" { "Vec" }` in
+the emitter — that makes emission decide type representation from a name,
+which violates the emission invariant.
 
-```dag
-// In emit_node_type_* or emit_inferred (05_emit_rust.dag):
-let rendered_name = if name == "FreeMonoid" { "Vec" } else { name }
-```
+The correct fix is **upstream in resolution**: type alias resolution
+should normalize `FreeMonoid<T>` back to `List<T>` (the user-facing
+name) before the type reaches emit. The resolver already follows
+parameterized aliases (`resolve_node_bounded` in `04_resolve.dag`);
+the issue is that the resolved node preserves the *target* name
+(`FreeMonoid`) instead of the *user* name (`List`). The one-line fix
+is to keep `name: type_name` (the original user name) on the resolved
+node — which `resolve_node_bounded` already does (line ~368:
+`let resolved_node = Node { name: type_name, ... }`). The bug is
+likely that some path bypasses this normalization.
 
-Alternatively, fix at the resolve level: type alias resolution should
-normalize `FreeMonoid<T>` back to `List<T>` before it reaches emit. This
-is more principled but touches the resolver.
+Alternatively, if the algebra type definition should never appear as a
+user-visible type name at all, `FreeMonoid` and `PartialFunction` should
+be treated as internal algebra names during `enrich_kernel_type` and
+never propagated to the type graph that emit sees.
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/v2/05_emit_rust.dag` | Add FreeMonoid → Vec mapping in type rendering |
-| OR `src/v2/04_resolve.dag` | Normalize FreeMonoid aliases during resolution |
+| `src/v2/04_resolve.dag` | Ensure alias resolution preserves user name, not target name |
+| OR `src/v2/04_types.dag` | Prevent algebra-internal names from entering the type graph |
 
 ### Dependencies
 
@@ -642,8 +689,8 @@ None. Can fix independently.
 
 ### Risk
 
-Low. Two-line change in emitter. Must verify no other algebra type names
-leak through (check `PartialFunction` → `BTreeMap` mapping exists).
+Low. Must verify the fix doesn't break alias chains for other
+parameterized types.
 
 ---
 
