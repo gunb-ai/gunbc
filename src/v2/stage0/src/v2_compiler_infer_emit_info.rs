@@ -170,8 +170,8 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
         return leaf_type_rendering(label.to_string());
     }
 
-    // Callable: function type (structural — has params)
-    if !n.params.is_empty() {
+    // Callable: function type (structural — has params, or named "Callable" for zero-param fns)
+    if !n.params.is_empty() || n.name == "Callable" {
         let param_renderings: Vec<Rc<TypeRendering>> = n.params.iter().cloned().map(|p| {
             build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
         }).collect();
@@ -230,8 +230,11 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
 fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
     let shared = is_type_shared(&n.name, &emit_info, &rc_types);
     if n.children.is_empty() {
-        let bare_is_map = node_is_keyed_collection(n.clone());
-        let bare_is_collection = node_is_element_collection(n.clone());
+        // Bare nodes may be keyed collections or element collections by NAME
+        // even without children (e.g., empty_map() produces a Map node with 0 children)
+        let bare_is_map = node_is_keyed_collection(n.clone()) || n.name == "Map" || n.name == "PartialFunction";
+        let bare_is_collection = node_is_element_collection(n.clone())
+            || n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet";
         if bare_is_map {
             Rc::new(TypeRendering {
                 type_name: n.name.clone(),

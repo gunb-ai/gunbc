@@ -1363,7 +1363,7 @@ pub fn emit_node_type_rc(
                 );
             }
         }
-        if ((n.name.clone() == "Callable".to_string()) && ((n.params.clone().len() as i64) > 0)) {
+        if (n.name.clone() == "Callable".to_string()) {
             {
                 let param_types = {
                     let mut __result = Vec::new();
@@ -2464,20 +2464,18 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
 }
 
 pub fn emit_let_binding(name: String, value: String, target: RenderTarget) -> String {
+    emit_let_binding_typed(name, value, None, target)
+}
+
+pub fn emit_let_binding_typed(name: String, value: String, type_annotation: Option<String>, target: RenderTarget) -> String {
     match target.clone() {
-        RenderTarget::Rust => v2_rt::concat(
-            v2_rt::concat(
-                v2_rt::concat(
-                    v2_rt::concat(
-                        "let ".to_string(),
-                        emit_ident(name.clone(), RenderTarget::Rust),
-                    ),
-                    " = ".to_string(),
-                ),
-                value.clone(),
-            ),
-            ";".to_string(),
-        ),
+        RenderTarget::Rust => {
+            let type_suffix = match type_annotation.clone() {
+                Some(ty) => format!(": {}", ty),
+                None => String::new(),
+            };
+            format!("let {}{} = {};", emit_ident(name.clone(), RenderTarget::Rust), type_suffix, value)
+        },
         RenderTarget::Go => v2_rt::concat(
             v2_rt::concat(
                 emit_ident(name.clone(), RenderTarget::Go),

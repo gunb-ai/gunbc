@@ -56,7 +56,7 @@ pub use crate::v2_compiler_infer_service::{is_typed_service_call_receiver, extra
 pub use crate::v2_compiler_infer::{InferScope, build_params_scope, extend_scope, build_emit_graph_info, expr_span};
 pub use crate::v2_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary, TypeRendering, lookup_emit_type_summary, TypeRepr, variant_belongs_to_enum, is_known_variant, is_enum_in_summaries, find_variant_parent, build_type_rendering};
 use crate::v2_compiler_infer_emit_info::TypeRepr::{StructRepr, EnumRepr};
-pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, render_type, emit_ident, emit_let_binding, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, service_uses_transport, service_has_rest_auth, extract_modifier_names};
+pub use crate::v2_compiler_emit::{EmitResult, BlockEmitState, TestProjection, TcoFrame, TcoReassignInput, InterpPart, TypedItemKind, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, emit_node_type_rc, render_type, emit_ident, emit_let_binding, emit_let_binding_typed, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_string_literal, emit_simple_expr, escape_rust_interp_text, escape_string_literal_body, module_emit_scope, scope_after_expr, lookup_item, unique_strings, has_nested_records_node, emit_data_value_json, escape_json_string, module_to_filename, make_indent, to_string, to_string_helper, to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char, capitalize_first, sanitize_service_name, service_var_name, test_function_name, apply_type_template1, apply_type_template2, is_null_coalesce, is_type_alias_return_node, is_service_item, has_service_items, typed_named_arg_matches, order_typed_call_args, classify_typed_item, has_mock_prefix, extract_test_projections, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, service_fallback_transport, effective_operation_transport, service_uses_transport, service_has_rest_auth, extract_modifier_names};
 use crate::v2_compiler_emit::TypedItemKind::{TypedItemTypeDef, TypedItemTypeAlias, TypedItemTypeDecl, TypedItemFunction, TypedItemDataDef, TypedItemServiceDef, TypedItemResourceDef, TypedItemExternFunc};
 
 pub fn rust_source_root() -> String {
@@ -2428,7 +2428,7 @@ pub fn emit_rust_sort_by_method_call(receiver: Rc<Node>, args: Vec<Rc<Node>>, re
     Some(InferredNode::Resolved { node: rt, .. }) => {
         let resolved = rt.clone();
         let elem = for_each_element_type_node(resolved.clone());
-        if ((elem.name.clone() != "".to_string()) && (elem.name.clone() != "Dynamic".to_string())) {
+        if ((elem.name.clone() != "".to_string()) && (elem.name.clone() != "Dynamic".to_string()) && (elem.name.clone() != "Error".to_string())) {
             render_type(build_type_rendering(elem.clone(), emit_info.clone(), rc_types.clone()), RenderTarget::Rust)
         } else { "_".to_string() }
     },
@@ -2816,7 +2816,15 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_typed_let(name: String, value: Rc<Node>, body: Option<Rc<Node>>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let val_str = emit_typed_expr(value.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
-let let_line = emit_let_binding(name.clone(), val_str.clone(), RenderTarget::Rust);
+// Always emit type annotation on let bindings for downstream Rust type checking
+let type_ann = if value.inferred.is_some() {
+    let rt = rt_type(value.clone());
+    let ty = render_type(build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone()), RenderTarget::Rust);
+    if !ty.is_empty() && ty != "()" && !ty.starts_with("compile_error") && !ty.contains("Error") && !ty.contains("__") {
+        Some(ty)
+    } else { None }
+} else { None };
+let let_line = emit_let_binding_typed(name.clone(), val_str.clone(), type_ann.clone(), RenderTarget::Rust);
 match body.clone() {
     Some(bd) => {
             let next_scope = extend_scope(scope.clone(), name.clone(), rt_type(value.clone()));
