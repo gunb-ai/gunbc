@@ -3013,6 +3013,22 @@ if (rc_name != "".to_string()) && emit_map_has(rc_types.clone(), rc_name.clone()
 }
 }
 
+// Rescue struct name for anonymous record literals by matching field names against type_summaries
+pub fn find_struct_by_fields(fields: Vec<Rc<Node>>, emit_info: Rc<EmitGraphInfo>) -> Option<String> {
+    if fields.is_empty() { return None; }
+    let field_names: Vec<String> = fields.iter().map(|f| field_init_node_name(f.clone())).collect();
+    let field_count = field_names.len();
+    for (name, summary) in emit_info.type_summaries.iter() {
+        if matches!(summary.repr.as_ref(), TypeRepr::StructRepr)
+            && summary.field_summaries.len() == field_count
+            && field_names.iter().all(|fn_| summary.field_summaries.contains_key(fn_))
+        {
+            return Some(name.clone());
+        }
+    }
+    None
+}
+
 pub fn emit_typed_record_lit(type_name: Option<String>, fields: Vec<Rc<Node>>, parent_enum: Option<String>, resolved_type: Rc<Node>, registry: HashMap<String, Rc<ItemInfo>>, scope: Rc<InferScope>, depth: i64, rc_types: HashMap<String, bool>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
         let struct_name = explicit_record_struct_name(type_name.clone(), resolved_type.clone(), rc_types.clone());
@@ -3024,6 +3040,18 @@ match qualified_name.clone() {
     None => {
             let is_product = node_is_product(resolved_type.clone());
 if (is_product.clone() && (resolved_type.name.clone() == "".to_string())) {
+                // Before generating a tuple, try to find a matching struct by field names.
+                let rescued_name = if (fields.clone().len() as i64) > 1 {
+                    find_struct_by_fields(fields.clone(), emit_info.clone())
+                } else { None };
+                match rescued_name {
+                    Some(sn) => {
+                        let raw = emit_typed_record_lit(Some(sn.clone()), fields.clone(), parent_enum.clone(), resolved_type.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
+                        if emit_map_has(rc_types.clone(), sn.clone()) {
+                            format!("Rc::new({})", raw)
+                        } else { raw }
+                    },
+                    None => {
                 if ((fields.clone().len() as i64) == 1) {
                     match fields.clone().first().cloned() {
     Some(f) => emit_typed_expr(field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
@@ -3035,6 +3063,8 @@ if (is_product.clone() && (resolved_type.name.clone() == "".to_string())) {
 v2_rt::concat(v2_rt::concat("(".to_string(), vals.clone().join(&", ".to_string())), ")".to_string())
 }
 }
+                    },
+                }
 } else {
                 "compile_error!(\"cannot resolve anonymous record type in emitter\")".to_string()
 }
