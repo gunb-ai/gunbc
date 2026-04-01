@@ -461,9 +461,12 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
 - [ ] Same issue in `partial_function_templates`: parallel authority for
   `PartialFunction` operations including emitter-only alias `emit_map_has`
   that doesn't exist on the carrier algebra.
-- [ ] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replace
-  hardcoded name checks (`"T"`, `"K"`, `"V"`, `"MappedElement"`,
-  `"FoldAccumulator"`) with structural detection from algebra templates.
+- [x] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replaced
+  hardcoded name checks with structural detection: `collect_named_templates`
+  walks AlgebraTypeTemplate trees for NamedTemplate names,
+  `bridge_placeholder_type_names` combines type parameter names (T, K, V)
+  with non-concrete NamedTemplate names from all algebra profiles.
+  `is_bridge_placeholder_type_name` now delegates to the structural set.
 
 *Tier 3 — full structural algebra (requires FF-9):*
 - [ ] FF-9: import-driven source resolution (compiler discovers
