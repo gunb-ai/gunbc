@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use crate::v2_rt;
+use crate::v2_std_core::param_node_name;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
@@ -119,6 +120,7 @@ pub struct TypeRendering {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmitInfoBuildState {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
+    pub type_params: HashMap<String, Vec<String>>,
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
@@ -770,8 +772,15 @@ pub fn add_emit_item_summary(state: Rc<EmitInfoBuildState>, item: Rc<Node>) -> R
     _ => state.type_summaries.clone(),
 };
 let next_summaries = v2_rt::map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
+let next_type_params = if !item.params.is_empty() {
+    let param_names: Vec<String> = item.params.iter().map(|p| param_node_name(p.clone())).collect();
+    v2_rt::map_insert(state.type_params.clone(), item.name.clone(), param_names)
+} else {
+    state.type_params.clone()
+};
 Rc::new(EmitInfoBuildState {
     type_summaries: next_summaries.clone(),
+    type_params: next_type_params,
 })
 },
     None => state.clone(),

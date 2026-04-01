@@ -18,7 +18,8 @@ import v2.std.core {
   FieldSummary,
   with_required_cardinality,
   Connective, Conj, NoConnective,
-  CardOptional
+  CardOptional,
+  param_node_name
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
@@ -116,6 +117,7 @@ type TypeRendering {
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
+  type_params: Map<String, List<String>>
 }
 
 // =========================================================================
@@ -401,8 +403,6 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
     Some { value: summary } =>
       // Add per-variant summaries for enums so is_optional_struct_field can look up
       // individual variant field types (e.g. VariantPattern.parent_enum).
-      // Add per-variant summaries for enums so is_optional_struct_field can look up
-      // individual variant field types (e.g. VariantPattern.parent_enum).
       let with_variants = match summary.repr {
         EnumRepr { unit_only: _ } =>
           fold(item.children, init: state.type_summaries, f: (acc, variant) =>
@@ -419,8 +419,13 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
         _ => state.type_summaries
       }
       let next_summaries = map_insert(with_variants, summary.name, summary)
+      let next_type_params = if item.params |> count > 0 {
+        let param_names = item.params |> map(p => param_node_name(n: p))
+        map_insert(state.type_params, item.name, param_names)
+      } else { state.type_params }
       EmitInfoBuildState {
-        type_summaries: next_summaries
+        type_summaries: next_summaries,
+        type_params: next_type_params
       }
     None => state
   }

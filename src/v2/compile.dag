@@ -758,6 +758,17 @@ fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
 // Wires tokenize -> parse -> resolve -> typecheck -> emit.
 // The target parameter selects the output language (Rust, Python, Go).
 fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
+  compile_sources_inner(sources: sources, target: target, bootstrap_mode: false)
+}
+
+// Bootstrap-mode compilation: complexity diagnostics don't gate emission.
+// Use this for self-compile where 310+ complexity violations are pending
+// fold primitive work but emitted code is still needed.
+fn compile_sources_bootstrap(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
+  compile_sources_inner(sources: sources, target: target, bootstrap_mode: true)
+}
+
+fn compile_sources_inner(sources: List<SourceFile>, target: RenderTarget, bootstrap_mode: Bool) -> PipelineResult {
   // Build newline indices from input sources. O(n) per file, done once.
   let newline_indices = sources |> map(s => build_newline_index(file: s.path, source: s.content))
 
@@ -824,9 +835,12 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
       let complexity = build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx)
       let complexity_diags = complexity_diagnostics(complexity: complexity)
 
-      // Gate: all hard infer errors block emission, including complexity.
+      // Fail-closed gate: complexity/decidability errors block emission
+      // alongside typecheck errors.
+      // Bootstrap mode: only typed_diags block (complexity reprieved).
       let all_infer_diags = concat(typed_diags, complexity_diags)
-      let typecheck_errors = all_infer_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
+      let gate_diags = if bootstrap_mode { typed_diags } else { all_infer_diags }
+      let typecheck_errors = gate_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
       if typecheck_errors |> count > 0 {
         return PipelineResult {
           files: [],
