@@ -27,7 +27,7 @@ import v2.std.core {
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
   ExprErrorKind, ExprData, MatchPattern, field_binding_name, field_binding_pattern,
   arg_name, arg_value, arm_pattern, arm_guard, arm_body, field_init_node_name, field_init_node_value,
-  LiteralValue, BinOp, UnaryOpKind, StringPart, Node,
+  LiteralValue, BinOp, UnaryOpKind, StringPart, Node, Token,
   NewlineIndex, build_newline_index,
   field_access_field, expr_call_func, lambda_param_names, record_lit_type_name, foreach_variable, expr_method_name
 }

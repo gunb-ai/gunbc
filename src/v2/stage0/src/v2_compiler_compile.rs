@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Bootstrap mode: when true, complexity diagnostics don't block emission.
-/// Set by the binary's main.rs when compiling the full .dag source tree.
+/// Deprecated global — callers should use compile_sources_with_options instead.
+/// Kept only for backward compatibility with main.rs binary entrypoint.
 pub static BOOTSTRAP_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -101,7 +102,7 @@ pub use crate::v2_std_core::{
     record_lit_type_name, resource_use_name, resource_use_resource, BinOpKind, CallSemantics,
     Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
     FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LambdaSemantics, LiteralValue,
-    MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile,
+    MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, Token,
     UnaryOpKind, VarBindingKind,
 };
 
@@ -1664,6 +1665,17 @@ pub fn resolve_sources(sources: Vec<Rc<SourceFile>>) -> Rc<CompileResult> {
 }
 
 pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc<PipelineResult> {
+    let bootstrap = BOOTSTRAP_MODE.load(std::sync::atomic::Ordering::Relaxed);
+    compile_sources_inner(sources, target, bootstrap)
+}
+
+/// Bootstrap-mode compilation: complexity diagnostics don't gate emission.
+/// Use this instead of toggling the global BOOTSTRAP_MODE flag.
+pub fn compile_sources_bootstrap(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc<PipelineResult> {
+    compile_sources_inner(sources, target, true)
+}
+
+fn compile_sources_inner(sources: Vec<Rc<SourceFile>>, target: RenderTarget, bootstrap_mode: bool) -> Rc<PipelineResult> {
     {
         // Build newline indices from input sources. O(n) per file, done once.
         let newline_indices: Vec<Rc<NewlineIndex>> = {
@@ -1745,7 +1757,7 @@ pub fn compile_sources(sources: Vec<Rc<SourceFile>>, target: RenderTarget) -> Rc
                 // emission alongside typecheck errors.
                 // Bootstrap mode: only typed_diags block (complexity reprieved).
                 let all_infer_diags = v2_rt::concat(typed_diags.clone(), complexity_diags.clone());
-                let gate_diags = if BOOTSTRAP_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+                let gate_diags = if bootstrap_mode {
                     typed_diags.clone()
                 } else {
                     all_infer_diags.clone()

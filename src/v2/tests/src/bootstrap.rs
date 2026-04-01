@@ -252,7 +252,25 @@ fn stage0_compile_accepts_dag_target() {
 //   E0425 (541): generics — emitter generates `T` without type param declaration
 //   E0433+E0405 (404): serde — emitter generates serde code, stage0 lacks serde dep
 //   E0220+E0277 (140): downstream trait/type errors from above
-const EMITTED_RUST_ERROR_RATCHET: usize = 880;
+// 2026-04-01: 880 → 13 via structural emission fixes:
+//   - TestConventions/Token/Tuple imports added to .dag source
+//   - type_params recovery for self-referential generic fields
+//   - Tuple rendering in build_type_rendering (connective-independent)
+//   - Vec<()> annotation skip when fold/flat_map init has Unit elements
+//   Remaining 13: sort_by lambda inference, fold empty_map sentinels, kahn fold
+// 2026-04-01: 13 → 12 via fold/sort_by inference propagation:
+//   - Bare container (Map{}) detected as incomplete in fold refinement
+//   - list_push/map_insert refinement extended for Unit-element receivers
+//   - list_push builtin fallback uses item type when receiver is Error/Dynamic
+//   - Emit: bare container fallback to contextual accumulator type
+//   - receiver_is_map extended for bare Map{} (0 children)
+//   Remaining 12: 8 E0425 (cross-module import, pre-existing), 4 E0282 (Map<K,List<Unit>> fold)
+// 2026-04-01: 12 → 5 via invariant review fixes:
+//   - 7 E0425 resolved: added algebra template function imports to 04_types.dag
+//     (partial_function_templates, free_monoid_collection_templates, etc.)
+//   - EmitGraphInfo.type_params added to 04_emit_info.dag (was stage0-only)
+//   Remaining 5: 1 E0425 (field_access_base), 4 E0282 (Map<K,List<Unit>> fold)
+const EMITTED_RUST_ERROR_RATCHET: usize = 5;
 
 #[test]
 #[ignore] // Expensive: builds binary + runs full compile + cargo check
@@ -352,6 +370,8 @@ fn bootstrap_stage0_to_stage1() {
             eprintln!("  {}", &s[..s.len().min(200)]);
         }
     }
+    // To debug, uncomment:
+    // eprintln!("\n=== FULL CARGO CHECK STDERR ===\n{}\n=== END ===", check_stderr);
 
     assert!(
         error_count <= EMITTED_RUST_ERROR_RATCHET,

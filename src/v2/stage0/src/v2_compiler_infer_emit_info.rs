@@ -48,11 +48,11 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, node_has_structure, node_is_product, with_required_cardinality};
+pub use crate::v2_std_core::{Node, InferredNode, FieldAccessStyle, FieldValueShape, FieldSummary, node_has_structure, node_is_product, with_required_cardinality, is_compiler_error, param_node_type_expr};
 use crate::v2_std_core::InferredNode::{Resolved};
 use crate::v2_std_core::FieldAccessStyle::{StoredField, EnumAccessor, TupleFirst, TupleSecond};
 use crate::v2_std_core::FieldValueShape::{PlainValue, OptionalValue};
-pub use crate::v2_compiler_infer_types::{node_is_optional, normalize_access_type_node, rt_type, child_inferred_or_name, node_type_equals};
+pub use crate::v2_compiler_infer_types::{node_is_optional, normalize_access_type_node, rt_type, child_inferred_or_name, node_type_equals, node_is_collection, node_is_keyed_collection, node_is_element_collection};
 use TypeRepr::*;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +91,29 @@ pub struct EmitGraphInfo {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
     pub recursive_type_set: HashMap<String, bool>,
     pub fielded_variants: HashMap<String, bool>,
+    /// Maps type names to their generic parameter names (e.g. "FreeMonoid" → ["T"]).
+    /// Used to recover generic params for self-referential field types where
+    /// the resolved Node carries a bare name without type arguments.
+    pub type_params: HashMap<String, Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeRendering {
+    pub type_name: String,
+    // Named structural edges
+    pub element: Option<Rc<TypeRendering>>,       // List<THIS>, Set<THIS>
+    pub key: Option<Rc<TypeRendering>>,            // Map<THIS, V>
+    pub value: Option<Rc<TypeRendering>>,          // Map<K, THIS>
+    pub params: Vec<Rc<TypeRendering>>,            // fn(THESE) -> ...
+    pub return_type: Option<Rc<TypeRendering>>,    // fn(...) -> THIS
+    pub inner: Option<Rc<TypeRendering>>,          // Optional<THIS>, Refined<THIS>
+    pub generic_args: Vec<Rc<TypeRendering>>,      // V10: FreeMonoid<THIS>, PartialFunction<THIS, THIS>
+    // Structural flags (not name-derived)
+    pub shared: bool,                              // needs Rc/pointer/GC
+    pub boxed: bool,                               // recursive indirection
+    pub is_tuple: bool,                            // V4: structural tuple, not name check
+    pub is_error: bool,                            // V1: inference failure — emit must fail-closed
+    pub error_label: String,                       // V1: diagnostic context for the error
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,7 +126,482 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: <HashMap<_, _>>::new(),
     recursive_type_set: <HashMap<_, _>>::new(),
     fielded_variants: <HashMap<_, _>>::new(),
+    type_params: <HashMap<_, _>>::new(),
 })
+}
+
+pub fn leaf_type_rendering(name: String) -> Rc<TypeRendering> {
+    Rc::new(TypeRendering {
+        type_name: name,
+        element: None,
+        key: None,
+        value: None,
+        params: vec![],
+        return_type: None,
+        inner: None,
+        generic_args: vec![],
+        shared: false,
+        boxed: false,
+        is_tuple: false,
+        is_error: false,
+        error_label: String::new(),
+    })
+}
+
+pub fn error_type_rendering(label: String) -> Rc<TypeRendering> {
+    Rc::new(TypeRendering {
+        type_name: String::new(),
+        element: None,
+        key: None,
+        value: None,
+        params: vec![],
+        return_type: None,
+        inner: None,
+        generic_args: vec![],
+        shared: false,
+        boxed: false,
+        is_tuple: false,
+        is_error: true,
+        error_label: label,
+    })
+}
+
+pub fn leaf_type_rendering_shared(name: String) -> Rc<TypeRendering> {
+    Rc::new(TypeRendering {
+        type_name: name,
+        element: None,
+        key: None,
+        value: None,
+        params: vec![],
+        return_type: None,
+        inner: None,
+        generic_args: vec![],
+        shared: true,
+        boxed: false,
+        is_tuple: false,
+        is_error: false,
+        error_label: String::new(),
+    })
+}
+
+fn is_type_shared(name: &str, _emit_info: &EmitGraphInfo, rc_types: &HashMap<String, bool>) -> bool {
+    v2_rt::map_has(rc_types, name.to_string())
+}
+
+fn is_recursive_needs_box(name: &str, emit_info: &EmitGraphInfo, rc_types: &HashMap<String, bool>) -> bool {
+    let is_recursive = v2_rt::map_has(&emit_info.recursive_type_set, name.to_string());
+    let is_shared = is_type_shared(name, emit_info, rc_types);
+    is_recursive && !is_shared
+}
+
+pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
+    // V1: Error/TypeVariable — fail-closed, not fabricated leaf names
+    let n_is_error = n.inferred.as_ref().map_or(false, |i| is_compiler_error(Rc::new((**i).clone())));
+    // stage0: TypeVariable variant does not exist; n_is_type_var is always false.
+    let n_is_type_var = false;
+    // Sentinel names from incomplete inference — these are not real types
+    let n_is_sentinel = n.name == "Error" || n.name == "Dynamic";
+    if (n_is_type_var || n_is_error || n_is_sentinel) && n.children.is_empty() {
+        let label = if n_is_error { "CompilerError" } else if n_is_sentinel { &n.name } else { "TypeVariable" };
+        return error_type_rendering(label.to_string());
+    }
+
+    // V2: Only named Callable enters callable path — generic types with params (FreeMonoid<T>)
+    // fall through to connective dispatch where build_conj_rendering handles them.
+    if n.name == "Callable" {
+        let param_renderings: Vec<Rc<TypeRendering>> = n.params.iter().cloned().map(|p| {
+            build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
+        }).collect();
+        let ret_rendering = match n.inferred.as_deref() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                build_type_rendering(rt.clone(), emit_info.clone(), rc_types.clone())
+            }
+            _ => leaf_type_rendering("Unit".to_string()),
+        };
+        return Rc::new(TypeRendering {
+            type_name: String::new(),
+            element: None,
+            key: None,
+            value: None,
+            params: param_renderings,
+            return_type: Some(ret_rendering),
+            inner: None,
+            generic_args: vec![],
+            shared: false,
+            boxed: false,
+            is_tuple: false,
+            is_error: false,
+            error_label: String::new(),
+            });
+    }
+
+    // Optional: wrap inner type
+    if n.return_cardinality == crate::v2_std_core::Cardinality::CardOptional {
+        let inner_rendering = build_type_rendering(
+            with_required_cardinality(n.clone()),
+            emit_info.clone(), rc_types.clone()
+        );
+        return Rc::new(TypeRendering {
+            type_name: "optional".to_string(),
+            element: None,
+            key: None,
+            value: None,
+            params: vec![],
+            return_type: None,
+            inner: Some(inner_rendering),
+            generic_args: vec![],
+            shared: false,
+            boxed: false,
+            is_tuple: false,
+            is_error: false,
+            error_label: String::new(),
+            });
+    }
+
+    // Tuple: structural, regardless of connective
+    if n.name == "Tuple" {
+        let first_r = n.children.first().map_or_else(
+            || leaf_type_rendering("__MISSING_TUPLE_FIRST__".to_string()),
+            |c| {
+                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
+                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
+            }
+        );
+        let second_r = n.children.iter().skip(1).next().map_or_else(
+            || leaf_type_rendering("__MISSING_TUPLE_SECOND__".to_string()),
+            |c| {
+                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
+                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
+            }
+        );
+        return Rc::new(TypeRendering {
+            type_name: "Tuple".to_string(),
+            element: Some(first_r), key: None, value: Some(second_r),
+            params: vec![], return_type: None, inner: None,
+            generic_args: vec![],
+            shared: false, boxed: false,
+            is_tuple: true, is_error: false, error_label: String::new(),
+        });
+    }
+
+    // Dispatch on connective
+    let is_conj = n.connective == Some(crate::v2_std_core::Connective::Conj);
+    let is_disj = n.connective == Some(crate::v2_std_core::Connective::Disj);
+    if !is_conj && !is_disj {
+        build_leaf_rendering(n, emit_info, rc_types)
+    } else if is_conj {
+        build_conj_rendering(n, emit_info, rc_types)
+    } else {
+        build_disj_rendering(n, emit_info, rc_types)
+    }
+}
+
+fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
+    let shared = is_type_shared(&n.name, &emit_info, &rc_types);
+    if n.children.is_empty() {
+        // V5: Container identity from data authority, not inline name checks
+        let bare_is_map = node_is_keyed_collection(n.clone()) || is_known_keyed_container_name(&n.name);
+        let bare_is_collection = node_is_element_collection(n.clone()) || is_known_element_container_name(&n.name);
+        if bare_is_map {
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                element: None,
+                key: Some(leaf_type_rendering("_".to_string())),
+                value: Some(leaf_type_rendering("_".to_string())),
+                params: vec![],
+                return_type: None,
+                inner: None,
+                generic_args: vec![],
+                shared,
+                boxed: false,
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
+        } else if bare_is_collection {
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                element: Some(leaf_type_rendering("_".to_string())),
+                key: None,
+                value: None,
+                params: vec![],
+                return_type: None,
+                inner: None,
+                generic_args: vec![],
+                shared,
+                boxed: false,
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
+        } else if !n.params.is_empty() && n.params.len() == 1 {
+            // Bare generic type with one param (e.g., FreeMonoid<T>) — render as container if template exists
+            let param_r = build_type_rendering(
+                param_node_type_expr(n.params[0].clone()),
+                emit_info.clone(), rc_types.clone()
+            );
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                element: Some(param_r),
+                key: None,
+                value: None,
+                params: vec![],
+                return_type: None,
+                inner: None,
+                generic_args: vec![],
+                shared,
+                boxed: false,
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
+        } else {
+            // Check if this is a generic type whose params were lost (self-referential fields)
+            match emit_info.type_params.get(&n.name) {
+                Some(param_names) if !param_names.is_empty() => {
+                    let generic: Vec<Rc<TypeRendering>> = param_names.iter().map(|pn| {
+                        leaf_type_rendering(pn.clone())
+                    }).collect();
+                    Rc::new(TypeRendering {
+                        type_name: n.name.clone(),
+                        element: None, key: None, value: None,
+                        params: vec![], return_type: None, inner: None,
+                        generic_args: generic,
+                        shared, boxed: false,
+                        is_tuple: false, is_error: false, error_label: String::new(),
+                    })
+                }
+                _ => {
+                    if shared {
+                        leaf_type_rendering_shared(n.name.clone())
+                    } else {
+                        leaf_type_rendering(n.name.clone())
+                    }
+                }
+            }
+        }
+    } else {
+        let is_map = node_is_keyed_collection(n.clone());
+        if is_map {
+            let key_r = n.children.first().map_or_else(
+                || leaf_type_rendering("__MISSING_MAP_KEY__".to_string()),
+                |kn| build_type_rendering(kn.clone(), emit_info.clone(), rc_types.clone())
+            );
+            let val_r = n.children.iter().skip(1).next().map_or_else(
+                || leaf_type_rendering("__MISSING_MAP_VALUE__".to_string()),
+                |vn| build_type_rendering(vn.clone(), emit_info.clone(), rc_types.clone())
+            );
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                element: None,
+                key: Some(key_r),
+                value: Some(val_r),
+                params: vec![],
+                return_type: None,
+                inner: None,
+                generic_args: vec![],
+                shared,
+                boxed: false,
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
+        } else if n.children.len() == 1 {
+            let child_r = n.children.first().map_or_else(
+                || leaf_type_rendering("__MISSING_ELEMENT__".to_string()),
+                |child| build_type_rendering(child.clone(), emit_info.clone(), rc_types.clone())
+            );
+            Rc::new(TypeRendering {
+                type_name: n.name.clone(),
+                element: Some(child_r),
+                key: None,
+                value: None,
+                params: vec![],
+                return_type: None,
+                inner: None,
+                generic_args: vec![],
+                shared,
+                boxed: false,
+                is_tuple: false,
+                is_error: false,
+                error_label: String::new(),
+                    })
+        } else {
+            // Non-container type with multiple children: treat children as generic args
+            // (e.g. PartialFunction<K, V> where children are [K_node, V_node])
+            let generic: Vec<Rc<TypeRendering>> = n.children.iter().map(|c| {
+                build_type_rendering(c.clone(), emit_info.clone(), rc_types.clone())
+            }).collect();
+            if !generic.is_empty() {
+                Rc::new(TypeRendering {
+                    type_name: n.name.clone(),
+                    element: None, key: None, value: None,
+                    params: vec![], return_type: None, inner: None,
+                    generic_args: generic,
+                    shared, boxed: false,
+                    is_tuple: false, is_error: false, error_label: String::new(),
+                })
+            } else if shared {
+                leaf_type_rendering_shared(n.name.clone())
+            } else {
+                leaf_type_rendering(n.name.clone())
+            }
+        }
+    }
+}
+
+fn build_conj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
+    let shared = is_type_shared(&n.name, &emit_info, &rc_types);
+    let boxed = is_recursive_needs_box(&n.name, &emit_info, &rc_types);
+    if n.name == "Refined" {
+        match n.children.first() {
+            Some(base) => {
+                let base_r = build_type_rendering(base.clone(), emit_info.clone(), rc_types.clone());
+                Rc::new(TypeRendering {
+                    type_name: "Refined".to_string(),
+                    element: None, key: None, value: None, params: vec![],
+                    return_type: None,
+                    inner: Some(base_r),
+                    generic_args: vec![],
+                    shared: false, boxed: false,
+                    is_tuple: false,
+                    is_error: false,
+                    error_label: String::new(),
+                })
+            }
+            None => leaf_type_rendering("Refined".to_string()),
+        }
+    } else if n.name == "Tuple" {
+        let first_r = n.children.first().map_or_else(
+            || leaf_type_rendering("__MISSING_TUPLE_FIRST__".to_string()),
+            |c| {
+                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
+                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
+            }
+        );
+        let second_r = n.children.iter().skip(1).next().map_or_else(
+            || leaf_type_rendering("__MISSING_TUPLE_SECOND__".to_string()),
+            |c| {
+                let resolved = if c.inferred.is_some() { rt_type(c.clone()) } else { c.clone() };
+                build_type_rendering(resolved, emit_info.clone(), rc_types.clone())
+            }
+        );
+        Rc::new(TypeRendering {
+            type_name: "Tuple".to_string(),
+            element: Some(first_r),
+            key: None,
+            value: Some(second_r),
+            params: vec![],
+            return_type: None,
+            inner: None,
+            generic_args: vec![],
+            shared: false, boxed: false,
+            is_tuple: true,
+            is_error: false,
+            error_label: String::new(),
+        })
+    } else if !n.name.is_empty() {
+        // V10: Carry generic type params (FreeMonoid<T>, PartialFunction<K,V>)
+        let generic: Vec<Rc<TypeRendering>> = if !n.params.is_empty() {
+            n.params.iter().cloned().map(|p| {
+                build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
+            }).collect()
+        } else {
+            // Recover generic params from type definition (self-referential fields)
+            match emit_info.type_params.get(&n.name) {
+                Some(param_names) => param_names.iter().map(|pn| leaf_type_rendering(pn.clone())).collect(),
+                None => vec![],
+            }
+        };
+        Rc::new(TypeRendering {
+            type_name: n.name.clone(),
+            element: None, key: None, value: None, params: vec![],
+            return_type: None, inner: None,
+            generic_args: generic,
+            shared, boxed,
+            is_tuple: false, is_error: false, error_label: String::new(),
+        })
+    } else {
+        // Anonymous product
+        if n.children.len() == 1 {
+            match n.children.first() {
+                Some(field_node) => {
+                    if field_node.inferred.is_some() {
+                        build_type_rendering(rt_type(field_node.clone()), emit_info, rc_types)
+                    } else {
+                        leaf_type_rendering("__ANON_PRODUCT_MISSING_INFERRED__".to_string())
+                    }
+                }
+                None => leaf_type_rendering("__ANON_PRODUCT_EMPTY__".to_string()),
+            }
+        } else {
+            let first_r = n.children.first().map_or_else(
+                || leaf_type_rendering("__ANON_FIRST_MISSING__".to_string()),
+                |c| {
+                    if c.inferred.is_some() {
+                        build_type_rendering(rt_type(c.clone()), emit_info.clone(), rc_types.clone())
+                    } else {
+                        leaf_type_rendering("__ANON_FIELD_MISSING__".to_string())
+                    }
+                }
+            );
+            let second_r = n.children.iter().skip(1).next().map_or_else(
+                || leaf_type_rendering("__ANON_SECOND_MISSING__".to_string()),
+                |c| {
+                    if c.inferred.is_some() {
+                        build_type_rendering(rt_type(c.clone()), emit_info.clone(), rc_types.clone())
+                    } else {
+                        leaf_type_rendering("__ANON_FIELD_MISSING__".to_string())
+                    }
+                }
+            );
+            Rc::new(TypeRendering {
+                type_name: "Tuple".to_string(),
+                element: Some(first_r),
+                key: None,
+                value: Some(second_r),
+                params: vec![],
+                return_type: None, inner: None,
+                generic_args: vec![],
+                shared: false, boxed: false,
+                is_tuple: true,
+                is_error: false,
+                error_label: String::new(),
+            })
+        }
+    }
+}
+
+fn build_disj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
+    let shared = is_type_shared(&n.name, &emit_info, &rc_types);
+    let boxed = is_recursive_needs_box(&n.name, &emit_info, &rc_types);
+    if !n.name.is_empty() {
+        // RC-1: Carry generic params for Disj types (same as Conj V10 fix)
+        let generic = n.params.iter().cloned().map(|p| {
+            build_type_rendering(param_node_type_expr(p), emit_info.clone(), rc_types.clone())
+        }).collect::<Vec<_>>();
+        Rc::new(TypeRendering {
+            type_name: n.name.clone(),
+            element: None, key: None, value: None, params: vec![],
+            return_type: None, inner: None,
+            generic_args: generic,
+            shared, boxed,
+            is_tuple: false, is_error: false, error_label: String::new(),
+        })
+    } else {
+        leaf_type_rendering("__ANON_DISJ__".to_string())
+    }
+}
+
+// V5: Container identity from coercion data authority.
+// Derived from algebra inhabitants in dsl/extdeps/languages/*/types.dag:
+// arity-2 algebras → keyed containers, arity-1 algebras → element containers.
+pub fn is_known_keyed_container_name(name: &str) -> bool {
+    crate::v2_coercion::COERCION_KEYED_CONTAINER_NAMES.contains(&name)
+}
+
+pub fn is_known_element_container_name(name: &str) -> bool {
+    crate::v2_coercion::COERCION_ELEMENT_CONTAINER_NAMES.contains(&name)
 }
 
 pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String) -> Option<Rc<TypeSummary>> {

@@ -35,6 +35,7 @@ pub mod v2_compiler_emit_go;
 pub mod v2_compiler_emit_python;
 pub mod v2_compiler_emit_rust;
 pub mod v2_compiler_compile;
+pub mod v2_coercion;
 pub mod v2_rt;
 
 #[cfg(test)]
