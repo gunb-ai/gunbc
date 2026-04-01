@@ -442,9 +442,15 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
 
 *Tier 2 — factor `enrich_kernel_type` (modest compiler change):*
 - [ ] `enrich_kernel_type` calls `.dag` function in `std/algebra.dag`
-- [ ] Delete `intrinsic_method_index()` /
-  `runtime_bridge_method_index()`
-- [ ] ~60 string branches → structural algebra queries
+- [x] Delete `intrinsic_method_index()` /
+  `runtime_bridge_method_index()` — deleted 2026-03-28; 48 string
+  branches replaced by algebra registry (enrich_kernel_type) +
+  Tier 0 lookup_structural_method. See `04_method.dag` tombstones.
+- [x] ~60 string branches → structural algebra queries — 48 classification
+  branches deleted. Remaining ~12 sites read `method_def.name` from the
+  structural algebra field node (emit rendering, inference refinement,
+  complexity cost shape). These are structural-authority reads, not raw
+  string classification.
 
 *Tier 2.5 — algebra bridge fidelity (no new infra, modeling only):*
 - [ ] Fix `Set`/`NonEmptySet` profile: `FreeMonoidCollectionProfile`

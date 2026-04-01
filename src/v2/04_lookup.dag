@@ -318,11 +318,8 @@ fn resolve_known_method_node(receiver: Node, receiver_type: Node, method_name: S
   // Tier 0: Structural field lookup for ALL types (including collections).
   // The algebra registry (enrich_kernel_type) provides fields for kernel
   // types; user-defined types have their own structural children.
-  //
-  // Emit-prep reclassification: when Tier 0 finds a method, check the
-  // intrinsic/bridge indexes to tag with the correct MethodSemantics
-  // for emit. Return types from the algebra field are substituted with
-  // concrete types from the receiver (e.g., bare "List" → List<Int>).
+  // Return types from the algebra field are substituted with concrete
+  // types from the receiver (e.g., bare "List" → List<Int>).
   let tier0_result = lookup_structural_method(receiver_type: receiver_type, method_name: method_name)
   match tier0_result {
     Some { value: mfr } =>
