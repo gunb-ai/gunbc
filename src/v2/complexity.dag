@@ -42,7 +42,7 @@ import v2.std.core {
   match_scrutinee, match_arm_nodes,
   method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value,
   expr_call_func, expr_var_name, field_access_field,
-  LiteralValue, LitNull
+  LiteralValue, LitNull, LitInt
 }
 
 // =========================================================================
@@ -1871,9 +1871,82 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
         Some { value: AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } } =>
           if md.name == "first" || md.name == "last" {
             expr_descending_witness_source(expr: method_receiver(texpr: expr), descending_witness_names: descending_witness_names)
+          } else if md.name == "skip" {
+            // skip(N) for N >= 1 produces a strictly smaller collection.
+            // skip(0) is identity so excluded; skip of a variable is not
+            // provably positive so also excluded.
+            let skip_arg_is_positive = match method_arg_nodes(texpr: expr) |> first {
+              Some { value: arg_node } =>
+                match arg_value(n: arg_node).expr_data {
+                  ExprLiteral { value: lit } =>
+                    match lit {
+                      LitInt { value: n } => n >= 1
+                      _ => false
+                    }
+                  _ => false
+                }
+              None => false
+            }
+            if skip_arg_is_positive {
+              expr_descending_witness_source(expr: method_receiver(texpr: expr), descending_witness_names: descending_witness_names)
+            } else { none }
           } else { none }
         _ => none
       }
+    ExprIf =>
+      // Either branch being a descent witness suffices: recursive calls
+      // only occur on paths where the value IS a descent, and the other
+      // branch (typically none) leads to a base case.
+      let then_source = expr_descending_witness_source(expr: if_then_branch(texpr: expr), descending_witness_names: descending_witness_names)
+      match then_source {
+        Some { value: _ } => then_source
+        None =>
+          match if_else_branch(texpr: expr) {
+            Some { value: eb } => expr_descending_witness_source(expr: eb, descending_witness_names: descending_witness_names)
+            None => none
+          }
+      }
+    ExprMatch =>
+      // If the scrutinee is a descent witness, extracting from it via
+      // pattern matching also descends. Fallback: check arm bodies.
+      let scrut_source = expr_descending_witness_source(expr: match_scrutinee(texpr: expr), descending_witness_names: descending_witness_names)
+      match scrut_source {
+        Some { value: _ } => scrut_source
+        None =>
+          match_arm_nodes(texpr: expr) |> fold(init: none, f: (acc, arm_node) =>
+            match acc {
+              Some { value: _ } => acc
+              None => expr_descending_witness_source(expr: arm_body(n: arm_node), descending_witness_names: descending_witness_names)
+            }
+          )
+      }
+    ExprCall { call_semantics: _ } =>
+      // Free-function forms of known descent operations (skip, first, last).
+      let func = expr_call_func(texpr: expr)
+      if func == "skip" {
+        match expr.children |> first {
+          Some { value: list_arg } =>
+            let skip_positive = match expr.children |> skip(1) |> first {
+              Some { value: count_arg } =>
+                match arg_value(n: count_arg).expr_data {
+                  ExprLiteral { value: lit } =>
+                    match lit { LitInt { value: n } => n >= 1  _ => false }
+                  _ => false
+                }
+              None => false
+            }
+            if skip_positive {
+              expr_descending_witness_source(expr: arg_value(n: list_arg), descending_witness_names: descending_witness_names)
+            } else { none }
+          None => none
+        }
+      } else if func == "first" || func == "last" {
+        match expr.children |> first {
+          Some { value: arg_node } =>
+            expr_descending_witness_source(expr: arg_value(n: arg_node), descending_witness_names: descending_witness_names)
+          None => none
+        }
+      } else { none }
     _ => none
   }
 }
@@ -1895,6 +1968,34 @@ fn collect_descending_witness_names(body: Node, descending_witness_names: Map<St
     ExprBlock =>
       body.children |> fold(init: descending_witness_names, f: (acc, stmt) =>
         collect_descending_witness_names(body: stmt, descending_witness_names: acc)
+      )
+
+    ExprMatch =>
+      // Propagate descent witness from scrutinee to arm pattern bindings.
+      // When match scrutinee is a known descent witness and an arm
+      // destructures it (VariantPattern or Bind), the extracted value
+      // is also a descent from the same source parameter.
+      let scrut = match_scrutinee(texpr: body)
+      let scrut_source = expr_descending_witness_source(expr: scrut, descending_witness_names: descending_witness_names)
+      match_arm_nodes(texpr: body) |> fold(init: descending_witness_names, f: (acc, arm_node) =>
+        let arm_witnesses = match scrut_source {
+          Some { value: source_param } =>
+            match arm_pattern(n: arm_node) {
+              VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
+                bindings |> fold(init: acc, f: (inner, fb) =>
+                  match field_binding_pattern(n: fb) {
+                    Bind { name: binding_name } =>
+                      map_insert(inner, binding_name, source_param)
+                    _ => inner
+                  }
+                )
+              Bind { name: binding_name } =>
+                map_insert(acc, binding_name, source_param)
+              _ => acc
+            }
+          None => acc
+        }
+        collect_descending_witness_names(body: arm_body(n: arm_node), descending_witness_names: arm_witnesses)
       )
 
     _ =>
@@ -1941,10 +2042,12 @@ fn recursive_measure_param_names(body: Node, params: List<Node>) -> Map<String, 
       )
       map_merge(scrut_names, arm_names)
     ExprLet =>
-      match let_body(texpr: body) {
+      let value_names = recursive_measure_param_names(body: let_value(texpr: body), params: params)
+      let body_names = match let_body(texpr: body) {
         Some { value: b } => recursive_measure_param_names(body: b, params: params)
         None => empty_map()
       }
+      map_merge(value_names, body_names)
     ExprBlock =>
       body.children |> fold(init: empty_map(), f: (acc, stmt) =>
         map_merge(acc, recursive_measure_param_names(body: stmt, params: params))
@@ -1997,15 +2100,31 @@ fn self_calls_have_descending_witness(body: Node, func_name: String, params: Lis
         )
         arg_shape_ok && witness_ok
       } else { true }
-      own_ok
-      && (body.children |> all(child =>
-        self_calls_have_descending_witness(
-          body: child,
-          func_name: func_name,
-          params: params,
-          descending_witness_names: descending_witness_names
-        )
-      ))
+      let children_ok = body.children |> all(child =>
+        match arg_value(n: child).expr_data {
+          ExprLambda => true
+          _ => self_calls_have_descending_witness(
+            body: child,
+            func_name: func_name,
+            params: params,
+            descending_witness_names: descending_witness_names
+          )
+        }
+      )
+      own_ok && children_ok
+
+    ExprMethodCall { method_semantics: _ } =>
+      let recv_ok = self_calls_have_descending_witness(body: method_receiver(texpr: body), func_name: func_name, params: params, descending_witness_names: descending_witness_names)
+      let args_ok = method_arg_nodes(texpr: body) |> all(arg_node =>
+        match arg_value(n: arg_node).expr_data {
+          ExprLambda => true
+          _ => self_calls_have_descending_witness(body: arg_value(n: arg_node), func_name: func_name, params: params, descending_witness_names: descending_witness_names)
+        }
+      )
+      recv_ok && args_ok
+
+    ExprForEach =>
+      self_calls_have_descending_witness(body: foreach_collection(texpr: body), func_name: func_name, params: params, descending_witness_names: descending_witness_names)
 
     _ =>
       body.children |> all(child =>
@@ -2052,14 +2171,15 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
     // in arms on destructured children. Total work = |tree| × per-node,
     // not k^depth. Classify as LinearRecursion (catamorphism).
     LinearRecursion { iteration_var: concat("n_", func_name) }
-  } else if path_calls > 1 {
-    DivideAndConquer { split_factor: path_calls }
   } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
     || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
     {
-    // path_calls == 1, not structural descent, but at least one
-    // self-call arg is param - expr or param / expr. Proven descent.
+    // All self-calls have a proven descent witness. Even with multiple
+    // calls on one path (e.g., recursing on key + value children), total
+    // work is bounded by the input tree size: O(|tree|), not O(k^depth).
     LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else if path_calls > 1 {
+    DivideAndConquer { split_factor: path_calls }
   } else {
     // path_calls == 1, not structural descent, no proven descent.
     // Remaining witness gaps (313→0 path):
@@ -2118,17 +2238,38 @@ fn bounded_scc_cost(pattern: RecursionPattern, raw_cost: CostExpr, members: List
 }
 
 fn collect_local_call_edges_in_expr(caller: String, body: Node, local_func_set: Map<String, Bool>) -> List<CallEdge> {
-  let this_edges = match body.expr_data {
+  match body.expr_data {
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: body)
-      if set_has(m: local_func_set, key: callee) { [CallEdge { caller: caller, callee: callee }] }
-      else { [] }
-    _ => []
+      let this_edges = if set_has(m: local_func_set, key: callee) {
+        [CallEdge { caller: caller, callee: callee }]
+      } else { [] }
+      let arg_edges = body.children |> flat_map(child =>
+        match arg_value(n: child).expr_data {
+          ExprLambda => []
+          _ => collect_local_call_edges_in_expr(caller: caller, body: child, local_func_set: local_func_set)
+        }
+      )
+      concat(this_edges, arg_edges)
+
+    ExprMethodCall { method_semantics: _ } =>
+      let recv_edges = collect_local_call_edges_in_expr(caller: caller, body: method_receiver(texpr: body), local_func_set: local_func_set)
+      let arg_edges = method_arg_nodes(texpr: body) |> flat_map(arg_node =>
+        match arg_value(n: arg_node).expr_data {
+          ExprLambda => []
+          _ => collect_local_call_edges_in_expr(caller: caller, body: arg_value(n: arg_node), local_func_set: local_func_set)
+        }
+      )
+      concat(recv_edges, arg_edges)
+
+    ExprForEach =>
+      collect_local_call_edges_in_expr(caller: caller, body: foreach_collection(texpr: body), local_func_set: local_func_set)
+
+    _ =>
+      body.children |> flat_map(child =>
+        collect_local_call_edges_in_expr(caller: caller, body: child, local_func_set: local_func_set)
+      )
   }
-  let child_edges = body.children |> flat_map(child =>
-    collect_local_call_edges_in_expr(caller: caller, body: child, local_func_set: local_func_set)
-  )
-  concat(this_edges, child_edges)
 }
 
 fn build_call_graph(func_entries: List<FuncEntry>) -> CallGraph {

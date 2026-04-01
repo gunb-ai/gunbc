@@ -53,7 +53,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, SourceSpan, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, SourceSpan, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_field, field_access_base, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::BinOpKind;
@@ -1915,6 +1915,129 @@ pub fn expr_descending_witness_source(
             ),
             _ => None,
         },
+        ExprData::ExprFieldAccess { .. } => {
+            expr_descending_witness_source(
+                field_access_base(expr.clone()),
+                descending_witness_names.clone(),
+            )
+        }
+        ExprData::ExprMethodCall { method_semantics: ms, .. } => {
+            match ms {
+                Some(ms_rc) => match (*ms_rc).clone() {
+                    MethodSemantics::AlgebraMethodSemantics { method_def: md, .. } => {
+                        if md.name == "first" || md.name == "last" {
+                            expr_descending_witness_source(
+                                method_receiver(expr.clone()),
+                                descending_witness_names.clone(),
+                            )
+                        } else if md.name == "skip" {
+                            let args = method_arg_nodes(expr.clone());
+                            let has_positive_skip_arg = match args.first().cloned() {
+                                Some(arg_node) => {
+                                    let val = arg_value(arg_node.clone());
+                                    match (*val.expr_data.clone()).clone() {
+                                        ExprData::ExprLiteral { value } => {
+                                            matches!(&*value, crate::v2_std_core::LiteralValue::LitInt { value: n } if *n >= 1)
+                                        }
+                                        _ => false,
+                                    }
+                                }
+                                None => false,
+                            };
+                            if has_positive_skip_arg {
+                                expr_descending_witness_source(
+                                    method_receiver(expr.clone()),
+                                    descending_witness_names.clone(),
+                                )
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                },
+                None => None,
+            }
+        }
+        ExprData::ExprIf { .. } => {
+            let then_source = expr_descending_witness_source(
+                if_then_branch(expr.clone()),
+                descending_witness_names.clone(),
+            );
+            match then_source {
+                Some(_) => then_source,
+                None => match if_else_branch(expr.clone()) {
+                    Some(eb) => expr_descending_witness_source(
+                        eb.clone(),
+                        descending_witness_names.clone(),
+                    ),
+                    None => None,
+                },
+            }
+        }
+        ExprData::ExprMatch { .. } => {
+            let scrut_source = expr_descending_witness_source(
+                match_scrutinee(expr.clone()),
+                descending_witness_names.clone(),
+            );
+            match scrut_source {
+                Some(_) => scrut_source,
+                None => {
+                    let arms = match_arm_nodes(expr.clone());
+                    arms.iter().cloned().fold(None, |acc: Option<String>, arm_node| {
+                        match acc {
+                            Some(_) => acc,
+                            None => expr_descending_witness_source(
+                                arm_body(arm_node.clone()),
+                                descending_witness_names.clone(),
+                            ),
+                        }
+                    })
+                }
+            }
+        }
+        ExprData::ExprCall { .. } => {
+            let func = expr_call_func(expr.clone());
+            if func == "skip" {
+                match expr.children.first().cloned() {
+                    Some(list_arg) => {
+                        let skip_positive = match expr.children.iter().skip(1).next().cloned() {
+                            Some(count_arg) => {
+                                let val = arg_value(count_arg.clone());
+                                match (*val.expr_data.clone()).clone() {
+                                    ExprData::ExprLiteral { value } => {
+                                        matches!(&*value, crate::v2_std_core::LiteralValue::LitInt { value: n } if *n >= 1)
+                                    }
+                                    _ => false,
+                                }
+                            }
+                            None => false,
+                        };
+                        if skip_positive {
+                            expr_descending_witness_source(
+                                arg_value(list_arg.clone()),
+                                descending_witness_names.clone(),
+                            )
+                        } else {
+                            None
+                        }
+                    }
+                    None => None,
+                }
+            } else if func == "first" || func == "last" {
+                match expr.children.first().cloned() {
+                    Some(arg_node) => expr_descending_witness_source(
+                        arg_value(arg_node.clone()),
+                        descending_witness_names.clone(),
+                    ),
+                    None => None,
+                }
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -1957,6 +2080,36 @@ pub fn collect_descending_witness_names(
                 (*collect_descending_witness_names(
                     stmt.clone(),
                     Rc::new(acc.clone()),
+                )).clone()
+            }))
+        }
+        ExprData::ExprMatch { .. } => {
+            let scrut = match_scrutinee(body.clone());
+            let scrut_source = expr_descending_witness_source(
+                scrut.clone(),
+                descending_witness_names.clone(),
+            );
+            let arms = match_arm_nodes(body.clone());
+            Rc::new(arms.iter().cloned().fold((*descending_witness_names).clone(), |acc, arm_node| {
+                let mut arm_witnesses = acc.clone();
+                if let Some(ref source_param) = scrut_source {
+                    match (*arm_pattern(arm_node.clone())).clone() {
+                        crate::v2_std_core::MatchPattern::VariantPattern { field_bindings: bindings, .. } => {
+                            for fb in bindings.iter().cloned() {
+                                if let crate::v2_std_core::MatchPattern::Bind { name: binding_name } = (*field_binding_pattern(fb.clone())).clone() {
+                                    arm_witnesses = v2_rt::map_insert(arm_witnesses, binding_name, source_param.clone());
+                                }
+                            }
+                        }
+                        crate::v2_std_core::MatchPattern::Bind { name: binding_name } => {
+                            arm_witnesses = v2_rt::map_insert(arm_witnesses, binding_name, source_param.clone());
+                        }
+                        _ => {}
+                    }
+                }
+                (*collect_descending_witness_names(
+                    arm_body(arm_node.clone()),
+                    Rc::new(arm_witnesses),
                 )).clone()
             }))
         }
@@ -2012,9 +2165,13 @@ pub fn recursive_measure_param_names(body: Rc<Node>, params: Vec<Rc<Node>>) -> R
             });
             Rc::new(v2_rt::map_merge((*scrut_names).clone(), arm_names.clone()))
         }
-        ExprData::ExprLet { .. } => match let_body(body.clone()) {
-            Some(let_tail) => recursive_measure_param_names(let_tail.clone(), params.clone()),
-            None => Rc::new(<HashMap<_, _>>::new()),
+        ExprData::ExprLet { .. } => {
+            let value_names = recursive_measure_param_names(let_value(body.clone()), params.clone());
+            let body_names = match let_body(body.clone()) {
+                Some(let_tail) => recursive_measure_param_names(let_tail.clone(), params.clone()),
+                None => Rc::new(<HashMap<_, _>>::new()),
+            };
+            Rc::new(v2_rt::map_merge((*value_names).clone(), (*body_names).clone()))
         },
         ExprData::ExprBlock { .. } => Rc::new(body.children.clone().iter().cloned().fold(<HashMap<String, String>>::new(), |acc, stmt| {
             v2_rt::map_merge(acc.clone(), (*recursive_measure_param_names(stmt.clone(), params.clone())).clone())
@@ -2089,15 +2246,46 @@ pub fn self_calls_have_descending_witness(
             } else {
                 true
             };
-            own_ok
-                && body.children.clone().iter().cloned().all(|child| {
-                    self_calls_have_descending_witness(
+            let children_ok = body.children.clone().iter().cloned().all(|child| {
+                match (*arg_value(child.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => true,
+                    _ => self_calls_have_descending_witness(
                         child,
                         func_name.clone(),
                         params.clone(),
                         descending_witness_names.clone(),
-                    )
-                })
+                    ),
+                }
+            });
+            own_ok && children_ok
+        }
+        ExprData::ExprMethodCall { .. } => {
+            let recv_ok = self_calls_have_descending_witness(
+                method_receiver(body.clone()),
+                func_name.clone(),
+                params.clone(),
+                descending_witness_names.clone(),
+            );
+            let args_ok = method_arg_nodes(body.clone()).iter().cloned().all(|arg_node| {
+                match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => true,
+                    _ => self_calls_have_descending_witness(
+                        arg_value(arg_node.clone()),
+                        func_name.clone(),
+                        params.clone(),
+                        descending_witness_names.clone(),
+                    ),
+                }
+            });
+            recv_ok && args_ok
+        }
+        ExprData::ExprForEach { .. } => {
+            self_calls_have_descending_witness(
+                foreach_collection(body.clone()),
+                func_name.clone(),
+                params.clone(),
+                descending_witness_names.clone(),
+            )
         }
         _ => body.children.clone().iter().cloned().all(|child| {
             self_calls_have_descending_witness(
@@ -2172,10 +2360,6 @@ pub fn classify_recursion_pattern(
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
-    } else if (path_calls.clone() > 1) {
-        Rc::new(RecursionPattern::DivideAndConquer {
-            split_factor: path_calls.clone(),
-        })
     } else if self_calls_have_descending_witness(
             body.clone(),
             func_name.clone(),
@@ -2191,6 +2375,10 @@ pub fn classify_recursion_pattern(
         {
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if (path_calls.clone() > 1) {
+        Rc::new(RecursionPattern::DivideAndConquer {
+            split_factor: path_calls.clone(),
         })
     } else {
         Rc::new(RecursionPattern::UnresolvableRecursion {
@@ -2255,21 +2443,49 @@ pub fn bounded_scc_cost(pattern: Rc<RecursionPattern>, raw_cost: Rc<CostExpr>, m
 }
 
 pub fn collect_local_call_edges_in_expr(caller: String, body: Rc<Node>, local_func_set: HashMap<String, bool>) -> Vec<Rc<CallEdge>> {
-    let this_edges = match (*body.expr_data.clone()).clone() {
+    match (*body.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let callee = expr_call_func(body.clone());
-            if set_has(local_func_set.clone(), callee.clone()) {
+            let this_edges = if set_has(local_func_set.clone(), callee.clone()) {
                 vec![Rc::new(CallEdge { caller: caller.clone(), callee: callee.clone() })]
             } else {
                 vec![]
-            }
+            };
+            let arg_edges: Vec<Rc<CallEdge>> = body.children.clone().iter().cloned().flat_map(|child| {
+                match (*arg_value(child.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => vec![],
+                    _ => collect_local_call_edges_in_expr(caller.clone(), child.clone(), local_func_set.clone()),
+                }
+            }).collect();
+            v2_rt::concat(this_edges, arg_edges)
         }
-        _ => vec![],
-    };
-    let child_edges = body.children.clone().iter().cloned().flat_map(|child| {
-        collect_local_call_edges_in_expr(caller.clone(), child.clone(), local_func_set.clone())
-    }).collect::<Vec<_>>();
-    v2_rt::concat(this_edges.clone(), child_edges.clone())
+        ExprData::ExprMethodCall { .. } => {
+            let recv_edges = collect_local_call_edges_in_expr(
+                caller.clone(),
+                method_receiver(body.clone()),
+                local_func_set.clone(),
+            );
+            let arg_edges: Vec<Rc<CallEdge>> = method_arg_nodes(body.clone()).iter().cloned().flat_map(|arg_node| {
+                match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprLambda { .. } => vec![],
+                    _ => collect_local_call_edges_in_expr(caller.clone(), arg_value(arg_node.clone()), local_func_set.clone()),
+                }
+            }).collect();
+            v2_rt::concat(recv_edges, arg_edges)
+        }
+        ExprData::ExprForEach { .. } => {
+            collect_local_call_edges_in_expr(
+                caller.clone(),
+                foreach_collection(body.clone()),
+                local_func_set.clone(),
+            )
+        }
+        _ => {
+            body.children.clone().iter().cloned().flat_map(|child| {
+                collect_local_call_edges_in_expr(caller.clone(), child.clone(), local_func_set.clone())
+            }).collect()
+        }
+    }
 }
 
 pub fn build_call_graph(func_entries: Vec<Rc<FuncEntry>>) -> Rc<CallGraph> {
