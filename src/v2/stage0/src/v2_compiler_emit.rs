@@ -1334,6 +1334,21 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
     }
 }
 
+// V6: Callable type rendering as a named function.
+// TODO: Read callable syntax from LanguageSpec (callable_type_template)
+// once the spec supports richer templates for variable-arity constructs.
+pub fn emit_callable_type(param_str: String, return_str: String, target: RenderTarget) -> String {
+    match target {
+        RenderTarget::Go => {
+            let suffix = if !return_str.is_empty() { format!(" {}", return_str) } else { String::new() };
+            format!("func({}){}", param_str, suffix)
+        }
+        RenderTarget::Python => format!("Callable[[{}], {}]", param_str, return_str),
+        RenderTarget::Rust => format!("Rc<dyn Fn({}) -> {}>", param_str, return_str),
+        _ => format!("Fn({}) -> {}", param_str, return_str),
+    }
+}
+
 pub fn emit_node_type(n: Rc<Node>, target: RenderTarget) -> String {
     emit_node_type_rc(n.clone(), target.clone(), <HashMap<_, _>>::new())
 }
@@ -1741,16 +1756,7 @@ pub fn render_type(tr: Rc<TypeRendering>, target: RenderTarget) -> String {
                 _ => "()".to_string(),
             },
         };
-        // V6: TODO — should read callable_type_template from LanguageSpec
-        return match target {
-            RenderTarget::Go => {
-                let suffix = if !ret_str.is_empty() { format!(" {}", ret_str) } else { String::new() };
-                format!("func({}){}", param_str, suffix)
-            }
-            RenderTarget::Python => format!("Callable[[{}], {}]", param_str, ret_str),
-            RenderTarget::Rust => format!("Rc<dyn Fn({}) -> {}>", param_str, ret_str),
-            _ => format!("Fn({}) -> {}", param_str, ret_str),
-        };
+        return emit_callable_type(param_str, ret_str, target);
     }
 
     // V4: Tuple — structural flag, not name check

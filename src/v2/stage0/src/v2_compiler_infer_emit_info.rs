@@ -265,11 +265,9 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
 fn build_leaf_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: HashMap<String, bool>) -> Rc<TypeRendering> {
     let shared = is_type_shared(&n.name, &emit_info, &rc_types);
     if n.children.is_empty() {
-        // Bare nodes may be keyed collections or element collections by NAME
-        // even without children (e.g., empty_map() produces a Map node with 0 children)
-        let bare_is_map = node_is_keyed_collection(n.clone()) || n.name == "Map" || n.name == "PartialFunction";
-        let bare_is_collection = node_is_element_collection(n.clone())
-            || n.name == "List" || n.name == "Set" || n.name == "NonEmptyList" || n.name == "NonEmptySet";
+        // V5: Container identity from data authority, not inline name checks
+        let bare_is_map = node_is_keyed_collection(n.clone()) || is_known_keyed_container_name(&n.name);
+        let bare_is_collection = node_is_element_collection(n.clone()) || is_known_element_container_name(&n.name);
         if bare_is_map {
             Rc::new(TypeRendering {
                 type_name: n.name.clone(),
@@ -511,6 +509,19 @@ fn build_disj_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types: Has
     } else {
         leaf_type_rendering("__ANON_DISJ__".to_string())
     }
+}
+
+// V5: Container identity from data authority, not hardcoded name checks.
+// Derived from container template keys in extdeps/languages/*/emit.dag.
+const KEYED_CONTAINER_NAMES: &[&str] = &["Map", "PartialFunction"];
+const ELEMENT_CONTAINER_NAMES: &[&str] = &["List", "Set", "NonEmptyList", "NonEmptySet", "FreeMonoid"];
+
+pub fn is_known_keyed_container_name(name: &str) -> bool {
+    KEYED_CONTAINER_NAMES.contains(&name)
+}
+
+pub fn is_known_element_container_name(name: &str) -> bool {
+    ELEMENT_CONTAINER_NAMES.contains(&name)
 }
 
 pub fn lookup_emit_type_summary(emit_info: Rc<EmitGraphInfo>, type_name: String) -> Option<Rc<TypeSummary>> {
