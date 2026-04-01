@@ -1192,30 +1192,12 @@ patterns resolves these. Once lowering is complete, `CostUnknown`
 becomes structurally unreachable — not just validated away, but
 impossible to construct.
 
-**Acyclic expressions, not acyclic data.** Data can represent cycles
-(adjacency maps, parent pointers, back-edges as IDs). Expressions
-over that data are acyclic — every computation terminates because
-iteration is bounded by the finite container, not by following
-logical edges.
-
-```
-// Data represents a cycle: A → B → C → A
-data graph: Map<String, List<String>> = { "A": ["B"], "B": ["C"], "C": ["A"] }
-
-// Expression is acyclic: fold over MAP ENTRIES (finite container),
-// not "follow edges until you stop" (unbounded graph traversal)
-fn reachable(g: Map<String, List<String>>, start: String) -> Set<String> {
-  map_keys(g) |> fold(init: { frontier: [start], seen: empty_set() }, ...)
-  // bounded by |map_keys(g)|, not by graph topology
-}
-```
-
-The distinction: `.dag` is DAG in its **expressions** (every
-computation has a finite cost), not necessarily in its **data**
-(values can represent arbitrary graph topologies via ID-based
-adjacency). Iteration always walks the container (Map, List, Set),
-never follows logical back-edges. Cycles in interpretation are fine;
-cycles in evaluation are structurally impossible.
+**Cyclic relations, acyclic values, bounded traversals.** See
+INVARIANTS.md §Strict Forward Progress for the full formulation.
+Summary: cyclic domains are expressible via acyclic encodings
+(adjacency maps). Direct cyclic values are not. Traversals over
+cyclic relations must be justified by an explicit finite measure
+(|V|, |E|, frontier size).
 
 ### Cost comparator — refuse to compile suboptimal code
 
@@ -1228,7 +1210,7 @@ with strictly lower cost exists using the same primitives."
 
 | Pattern | Cost | Optimal | Cost | Detection |
 |---------|------|---------|------|-----------|
-| Membership check in fold accumulator: `acc \|> any(x => x == item)` | O(n²) | `set_member(acc_set, item)` | O(n log n) | fold body scans growing accumulator |
+| Membership check in fold accumulator: `acc \|> any(x => x == item)` | O(n²) | `map_get(seen, item) != none` with `Map<T, Bool>` | O(n log n) | fold body scans growing accumulator |
 | String concat in loop: `fold(items, init: "", f: (acc, s) => concat(acc, s))` | O(n²) | `join(items, separator)` | O(n) | fold body concats to accumulator string |
 | Repeated list append: `fold(items, f: (acc, x) => concat(acc, [x]))` | O(n²) | `list_push(acc, x)` | O(n) | fold body concats single-element list |
 | Sort + extract: `sort(list) \|> first` | O(n log n) | `fold(list, min)` | O(n) | sort followed by single-element access |
@@ -1289,13 +1271,13 @@ fn unique(items: List<String>) -> List<String> {
   )
 }
 // Diagnostic: "fold accumulator scanned with `any` — O(n²).
-//   Use Set for O(n log n): set_insert + set_to_list."
+//   Use Map<String, Bool> for O(n log n) membership."
 
-// ACCEPTED: O(n log n) — Set membership is O(log n)
+// ACCEPTED: O(n log n) — Map lookup is O(log n)
 fn unique(items: List<String>) -> List<String> {
-  let result = items |> fold(init: { seen: empty_set(), out: [] }, f: (acc, item) =>
-    if set_member(acc.seen, item) { acc }
-    else { { seen: set_insert(acc.seen, item), out: list_push(acc.out, item) } }
+  let result = items |> fold(init: { seen: empty_map(), out: [] }, f: (acc, item) =>
+    if map_get(acc.seen, item) != none { acc }
+    else { { seen: map_insert(acc.seen, item, true), out: list_push(acc.out, item) } }
   )
   result.out
 }
@@ -1305,18 +1287,20 @@ fn unique(items: List<String>) -> List<String> {
 
 ### Mathematical foundations
 
-The cost algebra is a **cost semiring** (C, ⊕, ⊗, 0, 1) where:
-- C = the set of cost expressions
+The cost algebra is a **semiring** (C, ⊕, ⊗, 0, 1) where:
+- C = the set of cost expressions (symbolic, not numeric)
 - ⊕ = CostAdd (sequential composition: f; g costs f + g)
 - ⊗ = CostMul (nested composition: loop of f costs n × f)
 - 0 = CostConst(0) (free operation)
 - 1 = CostConst(1) (unit-cost operation)
-- CostMax = join in the semiring lattice (conditional: if-then-else)
+- CostMax = join operation (conditional: if-then-else takes the max branch)
 
-This is a **tropical semiring** extended with summation (CostSum) and
-logarithmic terms (CostLog). The semiring laws guarantee that cost
-composition is associative, commutative (for ⊕), and distributes
-correctly.
+This is a **polynomial cost semiring** over symbolic size variables,
+extended with bounded summation (CostSum) and logarithmic terms
+(CostLog). The semiring laws guarantee that cost composition is
+associative, commutative (for ⊕), and distributes correctly.
+Unlike a tropical semiring (which uses min/+), this algebra uses
++/× because we are computing total cost, not shortest paths.
 
 **Current CostExpr variants and their formal semantics:**
 
