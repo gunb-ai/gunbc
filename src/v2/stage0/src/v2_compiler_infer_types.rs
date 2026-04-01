@@ -251,6 +251,7 @@ pub enum AlgebraProfile {
     OrderedRingProfile,
     ApproximateFieldProfile,
     BooleanAlgebraProfile,
+    BooleanAlgebraCollectionProfile,
     FreeMonoidScalarProfile,
     FreeMonoidCollectionProfile,
     PartialFunctionProfile,
@@ -264,9 +265,9 @@ lazy_static::lazy_static! {
         m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
         m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
         m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-        m.insert("Set".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
+        m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
         m.insert("NonEmptyList".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
-        m.insert("NonEmptySet".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
+        m.insert("NonEmptySet".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
         m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
         m
     };
@@ -505,6 +506,103 @@ pub fn boolean_algebra_templates() -> Vec<AlgebraFieldTemplate> {
             name: "bottom".to_string(),
             param_types: vec![],
             return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+    ]
+}
+
+pub fn boolean_algebra_collection_templates() -> Vec<AlgebraFieldTemplate> {
+    vec![
+        AlgebraFieldTemplate {
+            name: "union".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "intersect".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "diff".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverSelf,
+            ],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "member".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverElement,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "contains".to_string(),
+            param_types: vec![
+                AlgebraTypeTemplate::ReceiverSelf,
+                AlgebraTypeTemplate::ReceiverElement,
+            ],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "filter".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "map".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "flat_map".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "fold".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::ReceiverSelf,
+        },
+        AlgebraFieldTemplate {
+            name: "any".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "all".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "count".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            },
+        },
+        AlgebraFieldTemplate {
+            name: "length".to_string(),
+            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "Int".to_string(),
+            },
         },
     ]
 }
@@ -1017,6 +1115,7 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Vec<AlgebraFiel
         AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
         AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
         AlgebraProfile::BooleanAlgebraProfile => boolean_algebra_templates(),
+        AlgebraProfile::BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates(),
         AlgebraProfile::FreeMonoidScalarProfile => free_monoid_scalar_templates(),
         AlgebraProfile::FreeMonoidCollectionProfile => free_monoid_collection_templates(),
         AlgebraProfile::PartialFunctionProfile => partial_function_templates(),
