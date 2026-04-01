@@ -906,21 +906,12 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if bare_is_collection {
       emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
-    } else if has_container_template && param_count > 0 {
-      // Generic type with a container template but no resolved children.
-      // Thread type parameters from the declaration (e.g., FreeMonoid<T> → Vec<T>).
+    } else if has_container_template && param_count == 1 {
+      // Single-param generic with a container template (e.g., FreeMonoid<T> → Vec<T>).
       let param_strs = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
-      if param_count == 1 {
-        match param_strs |> first {
-          Some { value: inner } => emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
-          None => emit_primitive_type(name: n.name, target: target)
-        }
-      } else if param_count >= 2 {
-        let k = match param_strs |> first { Some { value: s } => s  None => "_" }
-        let v = match skip(param_strs, 1) |> first { Some { value: s } => s  None => "_" }
-        emit_map_type(key_type: k, val_type: v, target: target)
-      } else {
-        emit_primitive_type(name: n.name, target: target)
+      match param_strs |> first {
+        Some { value: inner } => emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
+        None => emit_primitive_type(name: n.name, target: target)
       }
     } else {
       emit_primitive_type(name: n.name, target: target)
