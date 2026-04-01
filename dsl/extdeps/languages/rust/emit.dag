@@ -17,7 +17,8 @@ module extdeps.languages.rust.emit
 // Ref: Rust Reference 10.1 "Types"
 data rust_type_map: Map<String, String> = {
   "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
-  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
+  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value",
+  "Char": "char"
 }
 
 // -- Keyword/operator translation ----------------------------------------
