@@ -64,10 +64,10 @@ type SymbolId
   | Spinner8
   | Spinner9
   // Status indicators (general purpose)
-  | Success
-  | Failure
-  | Warning
-  | Info
+  | StatusSuccess
+  | StatusFailure
+  | StatusWarning
+  | StatusInfo
   // Data type indicators
   | DataList
   | DataMap
@@ -138,10 +138,10 @@ data standard_symbols: List<SymbolEntry> = [
   { id: Spinner9,         emoji: "/",   unicode: "/",   ascii: "/",   color: Active  },
 
   // Status indicators
-  { id: Success,          emoji: "OK",   unicode: "v",    ascii: "OK",   color: Success },
-  { id: Failure,          emoji: "FAIL", unicode: "x",    ascii: "FAIL", color: Error   },
-  { id: Warning,          emoji: "WARN", unicode: "!",    ascii: "WARN", color: Warning },
-  { id: Info,             emoji: "INFO", unicode: "i",    ascii: "INFO", color: Info    },
+  { id: StatusSuccess,    emoji: "OK",   unicode: "v",    ascii: "OK",   color: Success },
+  { id: StatusFailure,    emoji: "FAIL", unicode: "x",    ascii: "FAIL", color: Error   },
+  { id: StatusWarning,    emoji: "WARN", unicode: "!",    ascii: "WARN", color: Warning },
+  { id: StatusInfo,       emoji: "INFO", unicode: "i",    ascii: "INFO", color: Info    },
 
   // Data type indicators
   { id: DataList,         emoji: "[L]",  unicode: "=",    ascii: "[L]",  color: Default },
