@@ -90,7 +90,7 @@ import v2.compiler.infer_types {
   enrich_kernel_type
 }
 import v2.compiler.infer_method {
-  infer_builtin_call_type, resolve_builtin_call_type
+  infer_builtin_call_type, resolve_builtin_call_type, list_of_element
 }
 import v2.compiler.infer_cycle { detect_type_cycles_kahn }
 import v2.compiler.infer_env {
@@ -140,7 +140,7 @@ import v2.compiler.infer_lookup {
   resolve_known_method_node, resolve_scrutinee_type_node,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node,
-  map_value_type_in_env,
+  map_value_type_in_env, map_key_type_in_env,
   lookup_in_scope, lookup_func_sig
 }
 import v2.compiler.infer_access {
@@ -1156,6 +1156,32 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 }
               None => resolve_builtin_call_type(name: func_name)
             }
+          } else if func_name == "map_keys" {
+            match typed_args |> first {
+              Some { value: receiver_arg } =>
+                match rt_node(n: arg_value(n: receiver_arg)) {
+                  Typed { node: receiver_type } =>
+                    match map_key_type_in_env(type_node: receiver_type, env: scope.type_env) {
+                      Some { value: key_type } => list_of_element(element: key_type)
+                      None => resolve_builtin_call_type(name: func_name)
+                    }
+                  _ => resolve_builtin_call_type(name: func_name)
+                }
+              None => resolve_builtin_call_type(name: func_name)
+            }
+          } else if func_name == "map_values" {
+            match typed_args |> first {
+              Some { value: receiver_arg } =>
+                match rt_node(n: arg_value(n: receiver_arg)) {
+                  Typed { node: receiver_type } =>
+                    match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
+                      Some { value: value_type } => list_of_element(element: value_type)
+                      None => resolve_builtin_call_type(name: func_name)
+                    }
+                  _ => resolve_builtin_call_type(name: func_name)
+                }
+              None => resolve_builtin_call_type(name: func_name)
+            }
           } else {
             resolve_builtin_call_type(name: func_name)
           }
@@ -1256,7 +1282,20 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       )
       let base_result_type = match method_resolution.result_type {
         Some { value: rt } => rt
-        None => recv_rt
+        None =>
+          // Fallback: check if method is a builtin function used via pipe (x |> map_keys).
+          // Extract return type from receiver to avoid returning unresolved type variables.
+          if method_name == "map_keys" {
+            match map_key_type_in_env(type_node: recv_rt, env: scope.type_env) {
+              Some { value: key_type } => list_of_element(element: key_type)
+              None => recv_rt
+            }
+          } else if method_name == "map_values" {
+            match map_value_type_in_env(type_node: recv_rt, env: scope.type_env) {
+              Some { value: value_type } => list_of_element(element: value_type)
+              None => recv_rt
+            }
+          } else { recv_rt }
       }
       let result_type = refine_collection_result_type(semantics: method_resolution.semantics, typed_args: typed_mc_args, receiver_type: recv_rt, fallback: base_result_type)
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
@@ -2464,15 +2503,13 @@ fn build_module_context(contributions: List<ItemContribution>,
     if is_coproduct {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         match map_get(vacc, child.name) {
-          Some { value: prev } =>
-            // Ambiguous: prefer explicitly imported enum over ambient.
-            let prev_is_imported = resolved_imports |> any(imp =>
-              imp.specific_names |> any(n => n == prev.resolved.name)
-            )
+          Some { value: _ } =>
+            // Ambiguous: only replace if current enum is explicitly imported.
+            // Avoids accessing prev.resolved.name (inference gap on bare Map value type).
             let curr_is_imported = resolved_imports |> any(imp =>
               imp.specific_names |> any(n => n == binding.resolved.name)
             )
-            if curr_is_imported && prev_is_imported == false {
+            if curr_is_imported {
               map_insert(vacc, child.name, TypeBinding {
                 name: child.name,
                 resolved: binding.resolved
