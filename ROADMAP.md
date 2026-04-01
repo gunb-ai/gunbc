@@ -18,7 +18,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 
 | Metric | Value | Target | Notes |
 |--------|-------|--------|-------|
-| .dag files | 90 | — | `dsl/` (+3 transport extdeps) |
+| .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
@@ -26,7 +26,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
 | Bootstrap emitted Rust (B) | 11 errors | 0 | Down from 8658→419→367→11. Type cascade (6, deferred M4), inference leaks (3), FreeMonoid generics (2) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
-| L1 ratchet | 22 | 0 | Down from 70; #253 landed structural algebra authority; 22 after review fixes |
+| L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
@@ -257,6 +257,64 @@ Acceptance criteria:
   LanguageSpec data, no emission-side debugging
 - [ ] `rc_types` authority derived from ValueContext (is_constant →
   no wrap) instead of heuristic type_summary scan
+
+*Type rendering boundary (E0c — resolution→emit type parameterization):*
+
+The resolution→emit boundary doesn't carry type parameterization for
+resolved generic types. `emit_node_type_rc` dispatches on structural
+shape (connective, children count, params count) which is ambiguous —
+a named Conj could be a struct definition, a resolved alias, or a
+self-referential field type. Emit compensates with name-based fallbacks
+that silently produce wrong output for any type not in a hardcoded list.
+
+Evidence: `FreeMonoid<T>` field `empty: FreeMonoid<T>` emits as
+`Rc<FreeMonoid>` (missing `<T>`). Resolution expands the alias to a
+structural Conj, stripping type params. Container templates exist
+(`"free_monoid": "Vec<{0}>"`) but dispatch never reaches them. This
+class of bug would silently affect every new backend.
+
+Six escape hatches in the type rendering pipeline:
+
+| Escape hatch | What it fabricates | Structural fix |
+|---|---|---|
+| `emit_node_type_conj_rc` named catch-all | Bare type name for generic Conj (e.g. `FreeMonoid` without `<T>`) | `TypeRendering` descriptor — Conj nodes carry rendering intent |
+| `emit_node_type_leaf_rc` bare name | Unrecognized type name emitted literally | Fail-closed: `compile_error!` for types without rendering annotation |
+| `emit_primitive_type` pass-through | Any name not in type map emitted as-is | Exhaustive type map or fail-closed on miss |
+| `rt_type` → `unit_type` on inference failure | `()` for unresolved field types | Fail-closed: emit refuses error-typed fields |
+| `_` placeholders in bare containers | `Vec<_>` / `HashMap<_, _>` (invalid in struct fields) | Complete type params from resolution, not placeholders |
+| No type-ref vs type-def distinction | Resolution-expanded Conj treated as type reference | `TypeRendering` or nominal references for field types |
+
+Proposed fix: `TypeRendering` descriptor precomputed at the
+resolution→emit boundary, parallel to `ValueContext`:
+
+```
+type TypeRendering
+  = PrimitiveRendering { rust_name: String }
+  | ContainerRendering { template_key: String, args: List<TypeRendering> }
+  | MapRendering { key: TypeRendering, value: TypeRendering }
+  | ProductRendering { name: String, type_params: List<String> }
+  | CoproductRendering { name: String, type_params: List<String> }
+  | CallableRendering { params: List<TypeRendering>, return_type: TypeRendering }
+  | OptionalRendering { inner: TypeRendering }
+  | TupleRendering { elements: List<TypeRendering> }
+```
+
+Emit becomes a trivial match on `TypeRendering × LanguageSpec`. No
+heuristics, no name checking, no connective inspection. Each variant
+is unambiguous. Adding a backend means adding one rendering function
+per variant — no discovery of how resolution shapes nodes. The
+container template system already has the data; `TypeRendering` is the
+structural routing that connects resolved types to templates.
+
+Acceptance:
+- [ ] `TypeRendering` type defined in `04_emit_info.dag`
+- [ ] `build_type_rendering(n: Node, type_env: TypeEnv) -> TypeRendering`
+  precomputed for every field type and function return type
+- [ ] `emit_node_type_rc` replaced by `emit_type_rendering(tr: TypeRendering, target, rc_types)`
+  — trivial match, no `node_is_collection` / `emit_primitive_type` fallbacks
+- [ ] `emit_primitive_type` deleted or made fail-closed (no pass-through)
+- [ ] `rt_type` returns `TypeRendering | RenderError` not `Node | unit_type`
+- [ ] Adding SPICE/English target requires zero changes to type rendering dispatch
 
 *Bootstrap:*
 - [x] Bootstrap A: front-end/bootstrap diagnostic gates back to a trustworthy green baseline
@@ -900,10 +958,10 @@ compatibility, and language rendering.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 315 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 315 are indirect-recursion complexity violations) |
+| Self-compile diagnostics | 310 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 310 are indirect-recursion complexity violations) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
-| L1 type knowledge | 22 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 315; resolves when fold primitive lands) |
+| L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
+| Complexity violations | 310 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 310; resolves when fold primitive lands) |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
@@ -912,10 +970,11 @@ compatibility, and language rendering.
 
 | Gate | Command |
 |------|---------|
-| Unit tests | `cargo test --workspace --exclude v2-compiler-tests` |
-| Clippy | `cargo clippy --all-targets -- -D warnings` |
+| Clippy | `cargo clippy --workspace -- -D warnings` |
 | V2 compiler tests | `cargo test -p v2-compiler-tests` |
-| Scrambled-name | `cargo test -p v2-compiler-tests scrambled_name` |
+| Full DSL compiles | `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored` |
+| Diagnostic ratchet | `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored` |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` |
 
 ### Required Before Merge (Tier 3)
 

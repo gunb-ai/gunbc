@@ -536,16 +536,7 @@ fn emit_py_pattern(pattern: MatchPattern, source_index: NewlineIndex?) -> String
     Bind { name: n } => emit_ident(name: n, target: Python)
     LitPattern { value: v } => emit_literal(value: v, target: Python)
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
-      if fbs |> count == 0 {
-        concat(n, "()")
-      } else {
-        let binding_strs = fbs |> map(fb =>
-          let pat_str = emit_py_pattern(pattern: field_binding_pattern(n: fb), source_index: source_index)
-          concat(emit_ident(name: authored_name_at(source_index: source_index, node: fb), target: Python), "=", pat_str)
-        )
-        let bindings_str = binding_strs |> join(separator: ", ")
-        concat(n, "(", bindings_str, ")")
-      }
+      emit_py_variant_pattern(name: n, field_bindings: fbs, source_index: source_index)
     Wildcard => "_"
   }
 }

@@ -3026,6 +3026,172 @@ fn broken(xs: List<Int>) -> List<String> {
     );
 }
 
+// ── Higher-order method instantiation tests ─────────────────────────────
+//
+// These verify that the inference engine correctly threads element types
+// into lambda parameters and resolves result types for collection methods.
+
+#[test]
+fn map_with_identity_lambda_compiles() {
+    let source = r#"module map_identity
+
+fn id_list(xs: List<Int>) -> List<Int> {
+  xs |> map(x => x)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn filter_preserves_collection_type() {
+    let source = r#"module filter_preserve
+
+fn positives(xs: List<Int>) -> List<Int> {
+  xs |> filter(x => x > 0)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_to_int_accumulator() {
+    let source = r#"module fold_sum
+
+fn sum(xs: List<Int>) -> Int {
+  xs |> fold(init: 0, f: (acc, x) => acc + x)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn any_returns_bool() {
+    let source = r#"module any_bool
+
+fn has_positive(xs: List<Int>) -> Bool {
+  xs |> any(x => x > 0)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn all_returns_bool() {
+    let source = r#"module all_bool
+
+fn all_positive(xs: List<Int>) -> Bool {
+  xs |> all(x => x > 0)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn count_returns_int() {
+    let source = r#"module count_int
+
+fn len(xs: List<Int>) -> Int {
+  xs |> count
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn chained_filter_map_fold() {
+    let source = r#"module chain_test
+
+fn count_positive_strings(xs: List<Int>) -> String {
+  xs |> filter(x => x > 0) |> fold(init: "", f: (acc, x) => concat(acc, x |> to_string))
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+// ── Keyed-collection access tests ───────────────────────────────────────
+
+#[test]
+fn map_get_returns_optional() {
+    let source = r#"module map_get_test
+
+fn find(m: Map<String, Int>, key: String) -> Int {
+  match m |> get(key) {
+    Some { value: v } => v
+    None => 0
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_has_returns_bool() {
+    let source = r#"module map_has_test
+
+fn exists(m: Map<String, Int>, key: String) -> Bool {
+  m |> has(key)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_insert_preserves_map_type() {
+    let source = r#"module map_insert_test
+
+fn add_entry(m: Map<String, Int>, key: String, val: Int) -> Map<String, Int> {
+  m |> map_insert(key, val)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_keys_returns_list() {
+    let source = r#"module map_keys_test
+
+fn all_keys(m: Map<String, Int>) -> List<String> {
+  m |> keys
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_values_returns_list() {
+    let source = r#"module map_values_test
+
+fn all_values(m: Map<String, Int>) -> List<Int> {
+  m |> values
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn map_merge_preserves_type() {
+    let source = r#"module map_merge_test
+
+fn combine(a: Map<String, Int>, b: Map<String, Int>) -> Map<String, Int> {
+  a |> map_merge(b)
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
 #[test]
 fn higher_order_placeholders_are_not_user_visible_types() {
     let source = r#"module placeholder_escape

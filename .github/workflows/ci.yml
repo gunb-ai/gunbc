@@ -48,3 +48,12 @@ jobs:
 
       - name: Test
         run: cargo test -p v2-compiler-tests
+
+      - name: Full DSL Compiles
+        run: cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored --nocapture
+
+      - name: Diagnostic Ratchet
+        run: cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored --nocapture
+
+      - name: L1 Type Knowledge Ratchet
+        run: scripts/l1-ratchet.sh --check

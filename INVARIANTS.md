@@ -418,8 +418,9 @@ the majority of all recurring violations:
 | `List<String>` fact storage | Copied string lists that go stale | `List<Node>` edges to definitions |
 | Error sentinels in `Node` | Fabricated valid-looking error output | Typed wrappers (`InferredNode` pattern) at every boundary |
 | Hand-editable generated code | Parallel implementations that diverge | Committed binary + regenerate→diff→empty CI gate |
+| Raw `Node` in type rendering | Shape-based heuristic dispatch (connective/children guessing) | `TypeRendering` descriptor — precomputed, unambiguous, fail-closed |
 
-Eliminating these five surfaces makes the invariants self-enforcing.
+Eliminating these six surfaces makes the invariants self-enforcing.
 The invariants become properties of the API, not rules you have to
 remember.
 

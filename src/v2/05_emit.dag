@@ -895,12 +895,24 @@ fn emit_node_type_leaf_rc(n: Node, target: RenderTarget, rc_types: Map<String, B
   if n.children |> count == 0 {
     // Bare container nodes (from empty_map(), etc.) need container templates
     // even without children — emit with "_" placeholders.
+    // Also handles generic types like FreeMonoid<T> / PartialFunction<K,V>
+    // that arrive as bare leaves when type parameters haven't been substituted.
     let bare_is_map = node_is_keyed_collection(n: n)
     let bare_is_collection = node_is_element_collection(n: n)
+    let has_map_template = target_container_template(target: target, kind: "map") != none
+    let has_container_template = target_container_template(target: target, kind: to_snake(name: n.name)) != none
+    let param_count = n.params |> count
     let base = if bare_is_map {
       emit_map_type(key_type: "_", val_type: "_", target: target)
     } else if bare_is_collection {
       emit_container(kind: to_snake(name: n.name), inner: "_", target: target)
+    } else if has_container_template && param_count == 1 {
+      // Single-param generic with a container template (e.g., FreeMonoid<T> → Vec<T>).
+      let param_strs = n.params |> map(p => emit_node_type_rc(n: param_node_type_expr(n: p), target: target, rc_types: rc_types))
+      match param_strs |> first {
+        Some { value: inner } => emit_container(kind: to_snake(name: n.name), inner: inner, target: target)
+        None => emit_primitive_type(name: n.name, target: target)
+      }
     } else {
       emit_primitive_type(name: n.name, target: target)
     }
