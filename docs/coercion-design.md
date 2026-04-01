@@ -909,6 +909,20 @@ resolve(Map<String, List<Int?>>, English):
 | SPICE | **COMPILE ERROR** | — |
 | English | `mapping from text to list of optional integers` | `empty mapping` |
 
+**Optionality interpretation:** In `.dag`, `?` is a cardinality annotation
+on binding sites, not a type constructor (`constructors.dag`: "Cardinality
+is orthogonal to constructors... annotation on the binding, not a type
+wrapper"). `Optional<T>` does not exist as a standalone type. `List<Int?>`
+means the list's element positions have optional cardinality — each slot
+may hold an `Int` or be absent. The coercion engine handles this
+structurally: resolve the base type (`Int` → `i64`), then wrap in the
+target's optional template (`Option<i64>`, `int | None`, `*int64`), then
+wrap in the container template. This is cardinality propagating through
+composition, not a type constructor sneaking in through a side door. The
+`algebraic-type-spec.md` rule — "emit reads cardinality from bindings,
+not type-node names" — holds: the coercion engine reads the cardinality
+annotation at the element binding site, not a type named `Optional`.
+
 ---
 
 ### A.5: Deep Composition — `List<Map<String, Set<String>>>`
@@ -975,7 +989,10 @@ values within the outer `Vec`.
 
 ### A.6: Struct with Mixed Complexity — Full Service Type
 
-A realistic service definition combining all coercion categories.
+A realistic service definition combining all coercion categories. Presented
+in two phases: first pure type coercion (what each field becomes in the
+target), then contextual rendering effects (sharing, derives) applied
+downstream from the facts.
 
 **.dag source:**
 ```
@@ -994,9 +1011,14 @@ type UserProfile {
 }
 ```
 
+#### Phase 1: Pure field-type coercion
+
+Each field resolves independently through the coercion algorithm. No
+sharing, ownership, or derive decisions — just algebraic/structural facts.
+
 **Per-field resolution (Rust):**
 
-| Field | .dag type | Resolution path | Rust type |
+| Field | .dag type | Resolution path | Coerced type |
 |-------|-----------|-----------------|-----------|
 | `id` | `Int` | checkpoint | `i64` |
 | `name` | `String` | checkpoint | `String` |
@@ -1007,56 +1029,95 @@ type UserProfile {
 | `friends` | `List<Int>` | FreeMonoid → Vec, Int → checkpoint | `Vec<i64>` |
 | `on_update` | `fn(UserProfile) -> Unit` | callable (static: struct field) | `fn(UserProfile) -> ()` |
 
-**Rust output (with sharing and derives):**
+**Cross-target coercion (pure types, no sharing):**
+
+| Field | Rust | Python | Go |
+|-------|------|--------|----|
+| `id` | `i64` | `int` | `int64` |
+| `name` | `String` | `str` | `string` |
+| `email` | `String` | `str` | `string` |
+| `tags` | `BTreeSet<String>` | `set[str]` | `map[string]struct{}` |
+| `metadata` | `HashMap<String, serde_json::Value>` | `dict[str, dict]` | `map[string]interface{}` |
+| `last_login` | `Option<i64>` | `int \| None` | `*int64` |
+| `friends` | `Vec<i64>` | `list[int]` | `[]int64` |
+| `on_update` | `fn(UserProfile) -> ()` | `Callable[[UserProfile], None]` | `func(UserProfile)` |
+
+This is the coercion engine's output. Every cell is determined by the
+type's algebraic or structural facts. No language-specific heuristics.
+
+#### Phase 2: ValueContext rendering effects (downstream from coercion)
+
+After coercion resolves the target types, `ValueContext` applies
+language-specific rendering policy. This is "emission is translation"
+— the emitter reads precomputed facts, it doesn't make decisions.
+
+**Rust — ValueContext analysis:**
+```
+UserProfile:
+  has_fn_fields = true  (on_update is fn pointer)
+    → skip PartialEq, Debug derives (fn pointers don't impl these)
+    → derive only: Clone, Serialize, Deserialize
+
+  per-field is_copy:
+    id: i64              → Copy (checkpoint declares is_copy: true)
+    name: String         → !Copy → Rc<String>
+    email: String        → !Copy → Rc<String>
+    tags: BTreeSet<...>  → !Copy → Rc<BTreeSet<String>>
+    metadata: HashMap<...> → !Copy → Rc<HashMap<...>>
+    last_login: Option<i64> → Copy (Option<Copy> = Copy)
+    friends: Vec<i64>    → !Copy → Rc<Vec<i64>>
+    on_update: fn(...)   → Copy (fn pointers are Copy)
+```
+
+**Rust output (coercion + ValueContext combined):**
 
 ```rust
 use std::collections::{BTreeSet, HashMap};
 
-// ValueContext: has_fn_fields = true → skip PartialEq, Debug
-// fields: tags, metadata, friends are !Copy → Rc in shared context
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct UserProfile {
-    pub id: i64,                                        // Copy
-    pub name: Rc<String>,                               // !Copy → Rc
-    pub email: Rc<String>,                              // refinement erased, !Copy → Rc
-    pub tags: Rc<BTreeSet<String>>,                     // !Copy → Rc
-    pub metadata: Rc<HashMap<String, serde_json::Value>>, // !Copy → Rc
-    pub last_login: Option<i64>,                        // Option<Copy> = Copy
-    pub friends: Rc<Vec<i64>>,                          // !Copy → Rc
-    pub on_update: fn(UserProfile) -> (),               // fn pointer, Copy
+    pub id: i64,
+    pub name: Rc<String>,
+    pub email: Rc<String>,
+    pub tags: Rc<BTreeSet<String>>,
+    pub metadata: Rc<HashMap<String, serde_json::Value>>,
+    pub last_login: Option<i64>,
+    pub friends: Rc<Vec<i64>>,
+    pub on_update: fn(UserProfile) -> (),
 }
 ```
 
-**Python output:**
+**Python — no ValueContext effects.** Python is GC; no sharing wrapping,
+no Copy/!Copy distinction. The Phase 1 coerced types are the final output:
 
 ```python
-from dataclasses import dataclass, field
-from typing import Callable, Optional
+from dataclasses import dataclass
+from typing import Callable
 
 @dataclass
 class UserProfile:
     id: int
     name: str
-    email: str                              # refinement erased
+    email: str
     tags: set[str]
-    metadata: dict[str, dict]               # Json → dict
-    last_login: int | None                  # optional + refinement erased
+    metadata: dict[str, dict]
+    last_login: int | None
     friends: list[int]
-    on_update: Callable[[UserProfile], None] # single callable form
+    on_update: Callable[[UserProfile], None]
 ```
 
-**Go output:**
+**Go — no ValueContext effects.** Go is GC; Phase 1 types are final:
 
 ```go
 type UserProfile struct {
-    ID        int64                          // exported (uppercase)
+    ID        int64
     Name      string
-    Email     string                         // refinement erased
-    Tags      map[string]struct{}            // BooleanAlgebra → map[A]struct{}
-    Metadata  map[string]interface{}         // Json → interface{}
-    LastLogin *int64                         // optional + refinement → *int64
+    Email     string
+    Tags      map[string]struct{}
+    Metadata  map[string]interface{}
+    LastLogin *int64
     Friends   []int64
-    OnUpdate  func(UserProfile)             // single func form
+    OnUpdate  func(UserProfile)
 }
 ```
 
@@ -1074,7 +1135,7 @@ User Profile:
   on update: function taking a user profile, returning nothing
 ```
 
-**SPICE output (partial):**
+**SPICE output (partial — fails closed):**
 
 ```
 ERROR: No SPICE inhabitant for algebra FreeMonoid.
@@ -1086,16 +1147,12 @@ ERROR: No SPICE inhabitant for algebra PartialFunction.
 
 ERROR: No SPICE inhabitant for algebra BooleanAlgebra (collection).
   Field 'tags' has type Set<String> which requires BooleanAlgebra.
-
-SPICE can represent:
-  id: real
-  name: (no String inhabitant — ERROR)
-  ...
 ```
 
-SPICE correctly fails on every field that requires an algebra it can't
-represent. The errors are specific and actionable — they name the field,
-the type, the algebra, and what's missing.
+The two-phase structure matches the invariant: coercion resolves target
+types from algebraic/structural facts (Phase 1). Rendering policy — sharing,
+derives, naming conventions — is applied downstream from `ValueContext`
+(Phase 2). The emitter never makes type decisions; it reads them.
 
 ---
 
@@ -1204,3 +1261,189 @@ The programmer never wrote a type checkpoint or inhabitant for `Seq`,
 `Lookup`, or `Flags`. The coercion engine resolved them through their
 algebra definitions. New algebra aliases compose freely — that's the
 payoff of algebra-keyed inhabitants over name-keyed container templates.
+
+---
+
+### A.9: Unified Authority — Type, Identity, and Operation from One Algebra
+
+The previous examples prove type coercion. This example proves that the
+same algebra declaration is the single authority for three things: the
+target type, the identity/empty literal, and operation rendering. All three
+come from `FreeMonoid`'s `InhabitantDecl` and its operation identity in
+`std/algebra.dag`.
+
+**.dag source:**
+```
+fn build_sequence(seed: Int, items: List<Int>) -> List<Int> {
+  let start = []                    // identity element (empty FreeMonoid)
+  let base = append(start, seed)    // FreeMonoid.append operation
+  concat(base, items)               // FreeMonoid.concat operation
+}
+```
+
+**Three facts, one authority (Rust):**
+
+```
+Authority: InhabitantDecl { algebra: FreeMonoid, template: "Vec<{0}>", identity_expr: "Vec::new()" }
+
+1. TYPE coercion:
+   List<Int> → FreeMonoid<Int> → "Vec<{0}>" with Int→"i64"
+   → Vec<i64>
+
+2. IDENTITY literal:
+   [] → FreeMonoid identity → identity_expr → Vec::new()
+
+3. OPERATION rendering (from std/algebra.dag operation identity):
+   append(xs, x) → FreeMonoid.append → { let mut v = xs; v.push(x); v }
+   concat(xs, ys) → FreeMonoid.concat → { let mut v = xs; v.extend(ys); v }
+```
+
+**Rust output:**
+```rust
+fn build_sequence(seed: i64, items: Vec<i64>) -> Vec<i64> {
+    let start: Vec<i64> = Vec::new();
+    let mut base = start;
+    base.push(seed);
+    let mut result = base;
+    result.extend(items);
+    result
+}
+```
+
+**Python — same three facts, different inhabitants:**
+```
+Authority: InhabitantDecl { algebra: FreeMonoid, template: "list[{0}]", identity_expr: "[]" }
+
+1. TYPE: list[int]
+2. IDENTITY: []
+3. OPERATIONS: append → xs + [x], concat → xs + ys
+```
+
+```python
+def build_sequence(seed: int, items: list[int]) -> list[int]:
+    start: list[int] = []
+    base = start + [seed]
+    return base + items
+```
+
+**Go — same three facts, different inhabitants:**
+```
+Authority: InhabitantDecl { algebra: FreeMonoid, template: "[]{0}", identity_expr: "nil" }
+
+1. TYPE: []int64
+2. IDENTITY: nil (empty slice)
+3. OPERATIONS: append → append(xs, x), concat → append(xs, ys...)
+```
+
+```go
+func buildSequence(seed int64, items []int64) []int64 {
+    start := []int64(nil)
+    base := append(start, seed)
+    return append(base, items...)
+}
+```
+
+**English — same three facts:**
+```
+1. TYPE: list of integers
+2. IDENTITY: empty list
+3. OPERATIONS: append → "add seed to the list", concat → "combine base with items"
+```
+
+```
+To build a sequence from a seed and a list of integers:
+  start with an empty list,
+  add the seed to the list,
+  then combine it with the given items.
+```
+
+The key: type template, identity expression, and operation rendering are all
+declared on the same `FreeMonoid` inhabitant. No separate catalog for operations,
+no separate table for identity literals. One algebra → one authority → three
+rendered forms. If any of the three is missing, the compiler fails closed.
+
+---
+
+### A.10: Mixed Structural and Algebraic — `List<Point>`
+
+The previous examples compose algebras inside algebras. This example composes
+a structural product (no algebra) inside an algebra container, proving the
+same recursive algorithm handles both without a second mechanism.
+
+**.dag source:**
+```
+type Point { x: Int, y: Int }
+type Shape = Circle { center: Point, radius: Float }
+           | Rect { top_left: Point, bottom_right: Point }
+
+type Canvas = Map<String, List<Shape>>
+```
+
+**Type composition DAG for `Canvas`:**
+```
+Map<String, List<Shape>>
+│
+├─ algebra: PartialFunction<K, V>
+│
+├─ [0] K: String → checkpoint
+│
+└─ [1] V: List<Shape>
+         │
+         ├─ algebra: FreeMonoid<T>
+         │
+         └─ [0] T: Shape
+                    │
+                    ├─ NO checkpoint, NO algebra → STRUCTURAL (coproduct)
+                    │
+                    ├─ variant Circle { center: Point, radius: Float }
+                    │                    │              │
+                    │                    │              └─ checkpoint
+                    │                    │
+                    │                    └─ Point: STRUCTURAL (product)
+                    │                        ├─ x: Int → checkpoint
+                    │                        └─ y: Int → checkpoint
+                    │
+                    └─ variant Rect { top_left: Point, bottom_right: Point }
+                                      │                 │
+                                      └─ Point ─────────┘  (same structural product)
+```
+
+**Resolution walk (Rust):**
+```
+resolve(Canvas, Rust):
+  Canvas = Map<String, List<Shape>>
+  Map → PartialFunction → "HashMap<{0}, {1}>"
+    [0] String → checkpoint → "String"
+    [1] List<Shape> → FreeMonoid → "Vec<{0}>"
+          [0] Shape →
+            NO checkpoint. NO algebra.
+            → STRUCTURAL: coproduct → CoproductRendering
+              variant Circle:
+                center: Point → STRUCTURAL: product → ProductRendering
+                  x: Int → checkpoint → "i64"
+                  y: Int → checkpoint → "i64"
+                → struct Point { x: i64, y: i64 }
+                radius: Float → checkpoint → "f64"
+              variant Rect:
+                top_left: Point → (same as above)
+                bottom_right: Point → (same as above)
+              → enum Shape { Circle { center: Point, radius: f64 },
+                             Rect { top_left: Point, bottom_right: Point } }
+          → "Vec<Shape>"
+    → "HashMap<String, Vec<Shape>>"
+```
+
+**All targets:**
+
+| Target | `Point` | `Shape` | `Canvas` |
+|--------|---------|---------|----------|
+| Rust | `struct Point { x: i64, y: i64 }` | `enum Shape { Circle {...}, Rect {...} }` | `HashMap<String, Vec<Shape>>` |
+| Python | `@dataclass Point: x: int; y: int` | `Shape = Circle \| Rect` | `dict[str, list[Shape]]` |
+| Go | `type Point struct { X, Y int64 }` | `type Shape interface {...}` | `map[string][]Shape` |
+| English | `point (x: integer, y: integer)` | `shape: circle or rectangle` | `mapping from text to list of shapes` |
+
+The structural types (`Point`, `Shape`) fall through to `ProductRendering`
+and `CoproductRendering` — no inhabitant declarations needed, no algebra
+lookups. The algebra containers (`Map`, `List`) resolve through their
+inhabitants as usual. One recursive algorithm, no mode switch between
+algebraic and structural types.
