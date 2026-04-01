@@ -18,7 +18,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 
 | Metric | Value | Target | Notes |
 |--------|-------|--------|-------|
-| .dag files | 90 | — | `dsl/` (+3 transport extdeps) |
+| .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
@@ -26,7 +26,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
 | Bootstrap emitted Rust (B) | 11 errors | 0 | Down from 8658→419→367→11. Type cascade (6, deferred M4), inference leaks (3), FreeMonoid generics (2) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
-| L1 ratchet | 22 | 0 | Down from 70; #253 landed structural algebra authority; 22 after review fixes |
+| L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
@@ -900,10 +900,10 @@ compatibility, and language rendering.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 315 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 315 are indirect-recursion complexity violations) |
+| Self-compile diagnostics | 310 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 310 are indirect-recursion complexity violations) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
-| L1 type knowledge | 22 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 315; resolves when fold primitive lands) |
+| L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
+| Complexity violations | 310 | 0 | `strict_complexity_violation_count -- --ignored` (27 root functions × indirect recursion → 310; resolves when fold primitive lands) |
 | Emitted Rust errors | 880 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
@@ -912,10 +912,11 @@ compatibility, and language rendering.
 
 | Gate | Command |
 |------|---------|
-| Unit tests | `cargo test --workspace --exclude v2-compiler-tests` |
-| Clippy | `cargo clippy --all-targets -- -D warnings` |
+| Clippy | `cargo clippy --workspace -- -D warnings` |
 | V2 compiler tests | `cargo test -p v2-compiler-tests` |
-| Scrambled-name | `cargo test -p v2-compiler-tests scrambled_name` |
+| Full DSL compiles | `cargo test -p v2-compiler-tests full_dsl_compiles -- --ignored` |
+| Diagnostic ratchet | `cargo test -p v2-compiler-tests strict_compile_diagnostic_count -- --ignored` |
+| L1 ratchet | `scripts/l1-ratchet.sh --check` |
 
 ### Required Before Merge (Tier 3)
 
