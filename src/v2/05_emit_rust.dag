@@ -756,7 +756,23 @@ fn emit_struct_from_children(name: String, type_params: String, children: List<N
 fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>, rc_types: Map<String, Bool>, env: TypeEnv) -> String {
   // Struct fields use Rc-wrapped types for consistency with function signatures.
   let rt_child = rt_type(n: child)
-  let ty = emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
+  // Fix self-referential Conj types: when a field's resolved type is a full
+  // type definition (Conj with many children), render Name<Params> from the
+  // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
+  let ty = if rt_child.connective == Conj && rt_child.name != "" && rt_child.children |> count > 2 {
+    let binding = lookup_type(env: env, name: rt_child.name)
+    if binding != none && binding.value.resolved.params |> count > 0 {
+      let base = emit_primitive_type(name: rt_child.name, target: Rust)
+      let param_names = binding.value.resolved.params |> map(p => authored_name_at(source_index: env.source_index, node: p))
+      let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
+      if emit_map_has(m: rc_types, key: rt_child.name) { wrap_shared_type(target: Rust, inner: with_params) }
+      else { with_params }
+    } else {
+      emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
+    }
+  } else {
+    emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
+  }
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, rc_types: rc_types) {
     concat("Box<", ty, ">")
   } else { ty }

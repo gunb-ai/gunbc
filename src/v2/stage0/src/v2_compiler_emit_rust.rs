@@ -673,7 +673,29 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_struct_field_from_child(child: Rc<Node>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>, env: Rc<TypeEnv>) -> String {
     {
         let rt_child = rt_type(child.clone());
-let ty = emit_node_type_rc(rt_child.clone(), RenderTarget::Rust, rc_types.clone());
+// Fix self-referential Conj types: when a field's resolved type is a full
+// type definition (Conj with many children), render Name<Params> from the
+// TypeEnv's binding params instead of letting the Conj renderer emit bare name.
+let ty = if rt_child.connective.clone() == Some(Connective::Conj) && rt_child.name != "" && (rt_child.children.len() as i64) > 2 {
+    if let Some(binding) = v2_rt::map_get(&env.bindings, rt_child.name.clone()) {
+        if !binding.resolved.params.is_empty() {
+            let base = crate::v2_compiler_emit::emit_primitive_type(rt_child.name.clone(), RenderTarget::Rust);
+            let param_names: Vec<String> = binding.resolved.params.iter().map(|p| p.name.clone()).collect();
+            let with_params = v2_rt::concat(v2_rt::concat(base, "<".to_string()), v2_rt::concat(param_names.join(", "), ">".to_string()));
+            if emit_map_has(rc_types.clone(), rt_child.name.clone()) {
+                crate::v2_compiler_emit::wrap_shared_type(RenderTarget::Rust, with_params)
+            } else {
+                with_params
+            }
+        } else {
+            emit_node_type_rc(rt_child.clone(), RenderTarget::Rust, rc_types.clone())
+        }
+    } else {
+        emit_node_type_rc(rt_child.clone(), RenderTarget::Rust, rc_types.clone())
+    }
+} else {
+    emit_node_type_rc(rt_child.clone(), RenderTarget::Rust, rc_types.clone())
+};
 let final_ty = if needs_box_wrapping(rt_child.clone(), recursive_types.clone(), rc_types.clone()) {
             v2_rt::concat(v2_rt::concat("Box<".to_string(), ty.clone()), ">".to_string())
 } else {

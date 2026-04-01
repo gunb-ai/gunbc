@@ -1464,6 +1464,9 @@ pub fn emit_node_type_leaf_rc(
     rc_types: HashMap<String, bool>,
 ) -> String {
     if ((n.children.clone().len() as i64) == 0) {
+        if n.name == "FreeMonoid" || n.name == "PartialFunction" {
+            eprintln!("[DEBUG emit_type] {}: children=0, going to bare leaf path", n.name);
+        }
         {
             let base = if (n.name.clone() == "Map".to_string()) {
                 emit_map_type("_".to_string(), "_".to_string(), target.clone())
@@ -1516,9 +1519,14 @@ pub fn emit_node_type_leaf_rc(
                         None => "__EMIT_BUG_MISSING_CONTAINER_ELEMENT__".to_string(),
                     };
                     let is_container = node_is_collection(n.clone());
+                    if n.name == "FreeMonoid" {
+                        eprintln!("[DEBUG emit_type] FreeMonoid: children={}, is_container={}, inner={}", n.children.len(), is_container, inner);
+                    }
                     if is_container {
                         let container_kind = to_snake(n.name.clone());
-                        emit_container(container_kind.clone(), inner.clone(), target.clone())
+                        let result = emit_container(container_kind.clone(), inner.clone(), target.clone());
+                        if n.name == "FreeMonoid" { eprintln!("[DEBUG] container result for FreeMonoid: '{}'", result); }
+                        result
                     } else {
                         // Non-container generic type (e.g., FreeMonoid<T>): emit as Name<Inner>
                         let base = emit_primitive_type(n.name.clone(), target.clone());
@@ -1534,6 +1542,9 @@ pub fn emit_node_type_leaf_rc(
                     }
                 }
             } else {
+                if n.name == "PartialFunction" || n.name == "FreeMonoid" {
+                    eprintln!("[DEBUG emit_type] {}: children={}, falling to bare name", n.name, n.children.len());
+                }
                 n.name.clone()
             }
         }
