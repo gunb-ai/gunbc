@@ -1293,23 +1293,133 @@ fn unique(items: List<String>) -> List<String> {
 
 ### Cost algebra extensions
 
-Current algebra: `CostConst`, `CostAdd`, `CostMul`, `CostMax`,
-`CostSum` (bounded summation), `CostLog`. Supports O(1) through
-O(n^k × log^j n) — all polynomial-logarithmic classes.
+### Mathematical foundations
 
-**Planned additions:**
+The cost algebra is a **cost semiring** (C, ⊕, ⊗, 0, 1) where:
+- C = the set of cost expressions
+- ⊕ = CostAdd (sequential composition: f; g costs f + g)
+- ⊗ = CostMul (nested composition: loop of f costs n × f)
+- 0 = CostConst(0) (free operation)
+- 1 = CostConst(1) (unit-cost operation)
+- CostMax = join in the semiring lattice (conditional: if-then-else)
 
-| Shape | CostExpr variant | Use case |
-|-------|-----------------|----------|
-| O(√n) | `CostSqrt { argument: SizeExpr }` | Trial division, block decomposition, Mo's algorithm |
-| O(n^k) for constant k | `CostPow { base: SizeExpr, exponent: Int }` | Matrix multiply O(n³), naive sort O(n²) |
-| Amortized O(1) | `CostAmortized { worst: CostExpr, amortized: CostExpr }` | Dynamic array append, splay tree |
+This is a **tropical semiring** extended with summation (CostSum) and
+logarithmic terms (CostLog). The semiring laws guarantee that cost
+composition is associative, commutative (for ⊕), and distributes
+correctly.
 
-**Space complexity as peer dimension:** `space: CostExpr` peer to
-`work` and `span`. Currently `output_size` is unpopulated. When space
-is tracked, the cost comparator can reason about space-time tradeoffs
-and avoid rejecting O(n²) time + O(1) space when the O(n) alternative
-requires O(n) space.
+**Current CostExpr variants and their formal semantics:**
+
+| Variant | Formal definition | Function class |
+|---------|------------------|----------------|
+| `CostConst(c)` | f(n) = c | Θ(1) |
+| `CostAdd(f, g)` | f(n) + g(n) | max class of f, g |
+| `CostMul(f, g)` | f(n) · g(n) | product of classes |
+| `CostMax(f, g)` | max(f(n), g(n)) | max class of f, g |
+| `CostSum(i, N, f)` | Σ_{i=0}^{N} f(i) | depends on f: Σ1=N, Σi=N², Σlog=N·log |
+| `CostLog(b, n)` | log_b(n) | Θ(log n) |
+| `CostUnknown(r)` | ⊥ (bottom) | analysis failure — structurally eliminated |
+
+**Expressible function classes (current):**
+- Θ(1), Θ(log n), Θ(n), Θ(n log n), Θ(n²), Θ(n² log n), Θ(n³)
+- Arbitrary polynomial-logarithmic: Θ(n^a · log^b n) for constant a, b
+- Multi-variable: Θ(n · m), Θ(n · m · log k)
+
+**Planned extensions — new CostExpr variants:**
+
+| Variant | Formal definition | Function class | Use case |
+|---------|------------------|----------------|----------|
+| `CostPow(n, k)` | n^k for constant k ∈ ℕ | Θ(n^k) | Explicit polynomial degree (matrix multiply Θ(n³), naive sort Θ(n²)) |
+| `CostSqrt(n)` | n^(1/2) | Θ(√n) | Trial division, block decomposition, Mo's algorithm O((n+q)√n) |
+| `CostExp(b, n)` | b^n for constant b | Θ(b^n) | Detect and REJECT — exponential cost is a compilation error |
+
+**Recurrence resolution:** Recursive cost follows from the bounded
+iteration primitives. Each primitive declares a recurrence:
+
+| Primitive | Recurrence | Closed form |
+|-----------|-----------|-------------|
+| `fold(collection, f)` | T(n) = Σ_{i=1}^{n} f(element_i) | CostSum(i, \|collection\|, cost(f)) |
+| `descend(tree, f)` | T(n) = Σ_{children} T(child) + f(node) | CostSum over tree structure |
+| `repeat(N, f)` | T = N · f | CostMul(N, cost(f)) |
+| Arithmetic descent (n/2) | T(n) = T(n/2) + f(n) | Master theorem case: Θ(f(n) · log n) or Θ(n^{log_b a}) |
+
+For mutual recursion (SCCs), the shared decreasing measure determines
+the recurrence. Parser SCCs (token position advances) → fold over
+tokens. Tree-walker SCCs (children shrink) → descend over tree.
+
+**Amortized analysis via potential functions:**
+
+```
+CostAmortized { 
+  worst_case: CostExpr,      — single-operation worst case
+  amortized: CostExpr,       — per-operation amortized cost
+  potential: PotentialFn      — Φ: State → ℝ⁺ (potential function)
+}
+
+// The amortized cost satisfies:
+// â_i = c_i + Φ(s_{i+1}) - Φ(s_i)
+// where c_i is actual cost, Φ is potential, s_i is state after op i
+// Total actual cost ≤ Σ â_i + Φ(s_0) - Φ(s_n)
+```
+
+Use cases: dynamic array append (worst O(n), amortized O(1) with
+Φ = 2·size - capacity), splay tree (worst O(n), amortized O(log n)
+with Φ = Σ log(subtree_size)).
+
+**Space complexity as a peer dimension:**
+
+The `FunctionSummary` already has `work: CostExpr` and `span: CostExpr`.
+Adding `space: CostExpr` makes it a three-dimensional cost vector:
+
+```
+type CostVector {
+  work: CostExpr       — total operations (time)
+  span: CostExpr       — critical path length (parallel time)  
+  space: CostExpr      — peak memory usage
+}
+```
+
+This enables the cost comparator to reason about Pareto optimality:
+a program is suboptimal only if another program dominates it in ALL
+dimensions. O(n²) time + O(1) space is NOT dominated by O(n) time +
+O(n) space — the developer chooses the tradeoff.
+
+**Asymptotic notation — both O and Θ:**
+
+The analyzer should produce Θ (tight) bounds, not just O (upper).
+`Conservative` certainty means O but not Θ — valid but not tight.
+`Proven` means Θ — exact asymptotic behavior. The target: every
+function has a Proven Θ bound. O-only is a modeling deficit.
+
+| Notation | Meaning | Status |
+|----------|---------|--------|
+| Θ(f) | Tight: grows as f | Target for all functions |
+| O(f) | Upper: grows no faster than f | `Conservative` — acceptable interim |
+| Ω(f) | Lower: grows no slower than f | Needed for optimality proofs |
+| o(f) | Strict upper: grows strictly slower | Needed for suboptimality detection |
+
+The cost comparator needs both O and Ω: to prove g is strictly better
+than f, show f ∈ Ω(h) and g ∈ o(h) for some h. Example: f ∈ Θ(n²)
+and g ∈ Θ(n log n) — since n log n ∈ o(n²), g strictly dominates f
+in time.
+
+**Concrete examples for early implementation:**
+
+1. **Binary tree search** — descend with arithmetic halving:
+   T(n) = T(n/2) + O(1) → Θ(log n) by Master theorem (a=1, b=2, f=O(1))
+
+2. **Merge sort** — descend with merge:
+   T(n) = 2T(n/2) + O(n) → Θ(n log n) by Master theorem (a=2, b=2, f=O(n))
+
+3. **Matrix multiply (naive)** — triple nested fold:
+   T(n) = n · n · n · O(1) = Θ(n³)
+
+4. **Hash table lookup** — CostConst(1) amortized, CostSum(n) worst:
+   Amortized O(1), worst O(n). Potential Φ = load_factor × n.
+
+5. **Accumulator scan detection** — fold with inner scan:
+   T(n) = Σ_{i=1}^{n} i = n(n+1)/2 = Θ(n²)
+   Optimal: T(n) = Σ_{i=1}^{n} O(log n) = Θ(n log n) with Set
 
 **Unified Sequence (Seq\<T>).** Ordered collections share FreeMonoid
 algebra; access pattern determines representation. Mixed access = type
