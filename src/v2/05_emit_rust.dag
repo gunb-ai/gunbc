@@ -1253,20 +1253,10 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
     let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
       Some { value: true } => true
       _ =>
-        // Also check with the display-qualified name and scan all keys
+        // Strict: also check display-qualified name. No suffix scanning.
         match map_get(emit_info.fielded_variants, qualified) {
           Some { value: true } => true
-          _ =>
-            // Scan all fielded_variants for any key ending with ::VariantName
-            let target_key_suffix = concat("::", name)
-            map_keys(emit_info.fielded_variants) |> any(k =>
-              string_length(s: k) >= string_length(s: target_key_suffix)
-                && substring(s: k, start: string_length(s: k) - string_length(s: target_key_suffix), end: string_length(s: k)) == target_key_suffix
-                && match map_get(emit_info.fielded_variants, k) {
-                  Some { value: true } => true
-                  _ => false
-                }
-            )
+          _ => false
         }
     }
     if is_fielded { concat(qualified, " { .. }") } else { qualified }
@@ -1435,20 +1425,10 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
     let is_fielded = match map_get(emit_info.fielded_variants, fielded_key) {
       Some { value: true } => true
       _ =>
-        // Also check with the display-qualified name and scan all keys
+        // Strict: also check display-qualified name. No suffix scanning.
         match map_get(emit_info.fielded_variants, qualified) {
           Some { value: true } => true
-          _ =>
-            // Scan all fielded_variants for any key ending with ::VariantName
-            let target_key_suffix = concat("::", name)
-            map_keys(emit_info.fielded_variants) |> any(k =>
-              string_length(s: k) >= string_length(s: target_key_suffix)
-                && substring(s: k, start: string_length(s: k) - string_length(s: target_key_suffix), end: string_length(s: k)) == target_key_suffix
-                && match map_get(emit_info.fielded_variants, k) {
-                  Some { value: true } => true
-                  _ => false
-                }
-            )
+          _ => false
         }
     }
     if is_fielded { concat(qualified, " { .. }") } else { qualified }

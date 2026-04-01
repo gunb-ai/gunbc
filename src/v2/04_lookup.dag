@@ -20,7 +20,7 @@ import v2.std.core {
   FieldSummary,
   with_optional_cardinality, with_required_cardinality,
   Connective, Conj, Disj, NoConnective,
-  string_type,
+
   CardOptional
 }
 import v2.compiler.infer_types {
@@ -196,15 +196,10 @@ fn map_key_type_in_env(type_node: Node, env: TypeEnv) -> Node? {
   let normed = normalize_access_type_node(n: type_node)
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = normalize_access_type_node(n: resolved)
-  if node_is_keyed_collection(n: map_type) {
-    if map_type.children |> count >= 1 {
-      match map_type.children |> first {
-        Some { value: key_type } => Some { value: key_type }
-        None => Some { value: string_type }
-      }
-    } else {
-      // Bare Map with no type params — all .dag maps are String-keyed
-      Some { value: string_type }
+  if node_is_keyed_collection(n: map_type) && map_type.children |> count >= 1 {
+    match map_type.children |> first {
+      Some { value: key_type } => Some { value: key_type }
+      None => none
     }
   } else {
     none

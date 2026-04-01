@@ -962,14 +962,7 @@ pub fn algebra_child_or_placeholder(
     let _ = placeholder;
     match base.children.get(child_index as usize).cloned() {
         Some(child) => child,
-        None => {
-            // Bare Map (no children) — default key type to String (.dag maps are String-keyed)
-            if base.name == "Map" && child_index == 0 {
-                leaf_node("String".to_string())
-            } else {
-                error_type_node()
-            }
-        }
+        None => error_type_node(),
     }
 }
 
