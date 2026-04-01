@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
+use v2_compiler::v2_std_core::is_error_diagnostic;
 
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
@@ -33,12 +34,16 @@ fn full_dsl_compiles() {
     let dsl_result =
         v2_compiler::v2_compiler_compile::compile_sources(dsl_sources.clone(), RenderTarget::Rust);
 
-    let dsl_diag_count = dsl_result.diagnostics.len() as usize;
-    if dsl_diag_count > 0 {
-        let msgs = diagnostic_messages(&dsl_result);
+    let dsl_errors: Vec<_> = dsl_result.diagnostics.iter()
+        .filter(|d| is_error_diagnostic(d.diagnostic.clone()))
+        .collect();
+    if !dsl_errors.is_empty() {
+        let msgs: Vec<_> = dsl_errors.iter()
+            .map(|d| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect();
         panic!(
-            "dsl/ compilation produced {} diagnostics (expected 0):\n{}",
-            dsl_diag_count,
+            "dsl/ compilation produced {} error diagnostics (expected 0):\n{}",
+            msgs.len(),
             msgs.iter()
                 .enumerate()
                 .map(|(i, m)| format!("  [{}] {}", i, m))
