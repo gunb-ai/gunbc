@@ -59,19 +59,36 @@ algebra field → law assertion. Hand-written tests reserved for exceptional cas
 
 ## Resolved Questions (cont.)
 
-**RQ-9 (was OQ-1): Law metadata in std/algebra.dag.**
-Resolved: the laws are not metadata — they ARE the algebras. The current
-`std/algebra.dag` declares operations as fields and laws as comments. This
-inverts the priority. The faithful model: an algebra is defined BY its axioms;
-operations are what you need to witness the laws. The resolution:
-- Each algebra in `std/algebra.dag` gets a companion law declaration using
-  the existing `data` construct (no new language features):
-  `data monoid_laws: List<AlgebraLaw> = [...]`
-- Laws are first-class `.dag` data: `{ name: "associativity", forall: ["a","b","c"], ... }`
-- Test generation reads law data, not comments. An `InhabitantDecl` without
-  corresponding law verification is an unproven claim.
-- Operations remain as type fields (they are what laws quantify over), but
-  laws are the defining content that gives the algebra its identity.
+**RQ-9 (was OQ-1): Algebra laws in std/algebra.dag.**
+Resolved: laws are `.dag` functions, not metadata annotations. The `.dag`
+language IS the meta-language for modeling facts — adding a string-based
+annotation layer (`assertion: "op(op(a,b),c) == ..."`) would introduce a
+meta-meta-language, another dimension of intersubjectivity. Instead, laws
+are modeled as computable predicates using the language's own constructs:
+
+```
+fn is_associative<T>(op: fn(T, T) -> T, a: T, b: T, c: T) -> Bool {
+  op(op(a, b), c) == op(a, op(b, c))
+}
+
+fn has_left_identity<T>(op: fn(T, T) -> T, identity: T, a: T) -> Bool {
+  op(identity, a) == a
+}
+
+fn has_right_identity<T>(op: fn(T, T) -> T, identity: T, a: T) -> Bool {
+  op(a, identity) == a
+}
+```
+
+These are structural declarations. The compiler can type-check them, compile
+them to target-language test assertions, and apply them to any inhabitant by
+substituting concrete operations. No `AlgebraLaw` metadata type. No string
+assertions. The `.dag` language models the mathematical facts directly.
+
+Test generation: for each `InhabitantDecl` D, look up the law predicates for
+D's algebra, compile each to the target language with the inhabitant's concrete
+types/operations substituted, and generate property-based tests. An
+`InhabitantDecl` without corresponding law verification is an unproven theorem.
 
 **RQ-10 (was OQ-2): TypeRendering variant coverage.**
 Resolved: coverage follows from the grounding fact. TypeRendering variants
@@ -133,6 +150,15 @@ of `OrderedRing` is its axiom set, not the string "OrderedRing". M4/Lane 1's
 goal of replacing string keys with declaration edges is really about ensuring
 that identity flows from facts (the axioms at that declaration site) rather
 than from names (which are arbitrary labels for human convenience).
+
+**Modeling facts IS the language — no meta-language on top.** The `.dag`
+language is itself the meta-language for formalizing intersubjective programmer
+agreements. Adding annotations or metadata on top of `.dag` would create a
+meta-meta-language — another dimension of intersubjectivity ("annotate this
+to fix this concept I don't like"). When a fact needs structural representation,
+define a proper `.dag` structure with proper transforms. Algebraic laws are
+`.dag` functions, not string annotations. Type facts are `.dag` data fields,
+not comments or decorators.
 
 **Dependency on external facts is the starting point, not an afterthought.**
 Every new construct should begin by identifying the fact it models. For
