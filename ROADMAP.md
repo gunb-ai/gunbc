@@ -24,7 +24,7 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 11 errors | 0 | Down from 8658→419→367→11. Type cascade (6, deferred M4), inference leaks (3), FreeMonoid generics (2) |
+| Bootstrap emitted Rust (B) | 101 errors | 0 | Down from 8658→419→367→0→101 (merge regression). Type annotations (73), mismatched types (17), Callable scope (9), other (2) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -323,6 +323,50 @@ Acceptance:
 - [ ] Bootstrap C: regenerate stage0 with `regenerate-stage0.sh`
 - [ ] Bootstrap D: owned bootstrap entrypoint in repo
 - [ ] CI-verified regeneration (regenerate + diff = empty)
+
+*Boundary sufficiency / zero guess paths (M2 hardening):*
+
+Gate stronger than "Bootstrap B = 0": no correctness-affecting fallback
+remains on the bootstrap-critical path. The resolution→emit boundary
+must carry enough structure for emit to be a pure translation — every
+place emit guesses from names or shape is a place a new backend can
+silently go wrong.
+
+Three blocker classes:
+
+1. **Fabricated parameterization** — parameterized types reaching infer
+   without bound children. `algebra_child_or_placeholder` and
+   `map_key_type_in_env` are fail-closed (return `error_type`/`none`)
+   but should be deleted behind a normalization/resolve gate. Bare
+   `Map` without `<K,V>` is the canonical case.
+   - [x] Fallbacks converted to fail-closed (`error_type` not `string_type`)
+   - [ ] Incomplete parameterized types rejected at normalization, not infer
+   - [ ] `algebra_child_or_placeholder` error_type fallback deleted
+
+2. **Inference propagation** — expected types not flowing far enough.
+   `resolve_builtin_call_type` → `unit_type`, fold accumulators
+   under-resolved, higher-order method templates collapse callable
+   structure into `ReceiverSelf`.
+   - [x] `expected` parameter threaded to `infer_expr` (41 sites)
+   - [x] ExprLambda uses `expected` for param typing
+   - [ ] Thread `expected` to all formal params, not just callable ones
+   - [ ] Refine fold accumulators structurally via `is_fully_resolved`
+   - [ ] Model higher-order signatures explicitly for `sort_by`/`fold`
+
+3. **Structural ownership and identity** — variant constructors must
+   use structural resolved facts, not name-based stand-ins. Variant
+   suffix scanning is M2 correctness with M4 deletion trigger: fix
+   now by carrying explicit owner facts, let M4 identity dissolution
+   remove remaining surface area.
+   - [x] Variant lookup is structural (not suffix scanning)
+   - [x] `emit_field_value_with_context` Rc-wraps record fields correctly
+   - [ ] Explicit parent-enum ownership facts through resolve/infer/emit
+
+Acceptance: no fabricated type args for parameterized types, no
+generic/wrong fallback return types when extraction fails, no
+suffix/name scans to recover ownership, no raw-node guessing in type
+rendering once E0c lands. Fallback count promoted into CI alongside
+existing emitted-Rust/bootstrap fixed-point gates.
 
 *User experience:*
 - [x] `dsl/examples/weather/` committed example project
