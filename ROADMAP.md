@@ -794,8 +794,10 @@ M4 completion or full language plugin extraction.
   `is_known_element_container_name`) derived from inhabitant arity
 - [x] `target_container_template_bare` provides algebra-based bare templates
   for the TypeRendering path (no sharing wrapping baked in)
-- [x] 8 coercion registry tests: checkpoint resolution, cross-language
-  inhabitants, is_copy data, template application, legacy parity
+- [x] Per-language registries built once via `lazy_static` singletons
+  (`RUST_REGISTRY`, `PYTHON_REGISTRY`, etc.) — O(1) per lookup
+- [x] 7 coercion registry tests: checkpoint resolution, cross-language
+  inhabitants, is_copy data, template application
 - [ ] `build_type_rendering` reads `TypeCheckpoint` data for primitives
   (currently reads through `target_primitive_type` → coercion registry;
   needs direct integration for fail-closed contract)
