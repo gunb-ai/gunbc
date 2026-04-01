@@ -17,7 +17,8 @@ module extdeps.languages.rust.emit
 // Ref: Rust Reference 10.1 "Types"
 data rust_type_map: Map<String, String> = {
   "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
-  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
+  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value",
+  "Callable": "String"
 }
 
 // -- Keyword/operator translation ----------------------------------------
@@ -73,15 +74,15 @@ data rust_value_types: List<String> = ["Int", "Bool", "Float"]
 data rust_string_types: List<String> = ["String", "Secret"]
 
 // -- Derives --------------------------------------------------------------
-// Ref: Rust derive macros. Serde removed — compilation cost (372 derives)
-// outweighs benefit for the self-hosting use case. Add back when the DAG
-// backend needs serialization.
-data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq)]"
+// Ref: Rust derive macros. Serde required for data defs with nested
+// records (emitted via serde_json::from_value). serde is already a
+// dependency so derives are free at the margin.
+data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
 // Copy variant: value-semantic types that don't need Rc wrapping.
-data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq)]"
-data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq)]"
+data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
+data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
 // Copy variant: simple enums (all-unit variants).
-data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq)]"
+data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
 data rust_serde_tag: String = ""
 // {0} = field key name
 data rust_serde_rename_template: String = ""
@@ -134,7 +135,9 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "map_values",         bridge_name: "map_values",       passes_by_ref: true },
   { name: "parse_int",          bridge_name: "parse_int",        passes_by_ref: false },
   { name: "map_contains_key",   bridge_name: "map_contains_key", passes_by_ref: true },
-  { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true }
+  { name: "map_has",            bridge_name: "map_has",          passes_by_ref: true },
+  { name: "reverse",            bridge_name: "reverse",          passes_by_ref: false },
+  { name: "replace",            bridge_name: "replace",          passes_by_ref: false }
 ]
 
 // Helper functions: O(1) lookup via indexed maps built from the registry.
@@ -157,7 +160,8 @@ data rt_functions: Map<String, Bool> = {
   "map_merge": true, "list_concat": true, "str_eq": true,
   "filesystem_read": true, "list_push": true, "map_get": true,
   "map_keys": true, "map_values": true,
-  "parse_int": true, "map_contains_key": true, "map_has": true
+  "parse_int": true, "map_contains_key": true, "map_has": true,
+  "reverse": true, "replace": true
 }
 
 data rt_ref_map_functions: Map<String, Bool> = {

@@ -24,7 +24,7 @@ import v2.std.core {
   Cardinality, Required, CardOptional,
   make_param_node, param_node_name, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
-  make_variant_node, variant_node_name, variant_node_fields, leaf_node,
+  make_variant_node, variant_node_name, variant_node_fields, leaf_node, leaf_node_with_span,
   ExprData, NoExprData,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
@@ -37,8 +37,8 @@ import v2.std.core {
   Bind, LitPattern, VariantPattern, Wildcard,
   LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull,
   ExprErrorKind, ParseRecoveryError,
-  BinOpKind, Add, Sub, Mul, Div, Mod,
-  BinEq, BinNe, BinLt, BinGt, BinLe, BinGe, BinAnd, BinOr, NullCoalesce,
+  BinOp, Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   UnaryOpKind, Not, Neg,
   StringPart, Text, Interpolation,
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
@@ -1091,7 +1091,7 @@ fn parse_import_names(tokens: List<Token>, state: ParserState) -> NamesResult {
 // or distinguishing parsed names from synthetic ones), only this
 // function changes — not every lambda/import call site.
 fn parsed_name_leaf(name: String, span: SourceSpan) -> Node {
-  leaf_node(name: name, span: span)
+  leaf_node_with_span(name: name, span: span)
 }
 
 fn parse_import_names_acc(tokens: List<Token>, state: ParserState, acc: List<Node>) -> NamesResult {
@@ -3628,7 +3628,7 @@ fn infix_bp(tokens: List<Token>, state: ParserState) -> BindingPower? {
   }
 }
 
-fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOpKind? {
+fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
   let matching = ops |> filter(op => op.symbol == symbol)
   if matching |> count > 0 {
     first(matching).value.binop

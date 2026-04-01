@@ -31,7 +31,7 @@ import v2.std.core {
   StringPart, Text, Interpolation,
   LiteralValue,
   TextFile, SourceSpan,
-  BinOpKind, UnaryOpKind, NullCoalesce,
+  BinOp, UnaryOpKind, NullCoalesce,
   DeclaredFuncSig,
   lambda_param_names_at, record_lit_type_name,
   arm_body, arm_pattern, arm_guard,
@@ -755,7 +755,7 @@ fn emit_string_literal(s: String, suffix: String) -> String {
 }
 
 // Check if a binary op is null coalesce (shared across all backends).
-fn is_null_coalesce(op: BinOpKind) -> Bool {
+fn is_null_coalesce(op: BinOp) -> Bool {
   match op {
     NullCoalesce => true
     _ => false
@@ -806,11 +806,11 @@ fn emit_literal(value: LiteralValue, target: RenderTarget) -> String {
   }
 }
 
-fn emit_bin_op_symbol(op: BinOpKind, target: RenderTarget) -> String {
+fn emit_bin_op_symbol(op: BinOp, target: RenderTarget) -> String {
   match op {
     Add => "+"  Sub => "-"  Mul => "*"  Div => emit_keyword(key: "div", target: target)  Mod => "%"
-    BinEq => "=="  BinNe => "!="  BinLt => "<"  BinGt => ">"  BinLe => "<="  BinGe => ">="
-    BinAnd => emit_keyword(key: "and", target: target)  BinOr => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
+    Eq => "=="  Ne => "!="  Lt => "<"  Gt => ">"  Le => "<="  Ge => ">="
+    And => emit_keyword(key: "and", target: target)  Or => emit_keyword(key: "or", target: target)  NullCoalesce => "??"
   }
 }
 

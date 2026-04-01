@@ -20,7 +20,7 @@ import v2.std.core {
   MatchPattern, LiteralValue, field_binding_pattern,
   TextFile, SourceSpan,
   resource_use_resource,
-  BinOpKind, NullCoalesce,
+  BinOp, NullCoalesce,
   UnaryOpKind, StringPart,
   DeclaredFuncSig,
   transport_has_auth, transport_auth_header_name,
@@ -777,7 +777,7 @@ fn emit_py_typed_index(base: Node, index: Node, registry: Map<String, ItemInfo>,
   concat(base_str, "[", index_str, "]")
 }
 
-fn emit_py_typed_slice(base: Node, start: Node, end: Node?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_slice(base: Node, start: Node, end: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let base_str = emit_py_typed_expr(texpr: base, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let start_str = emit_py_typed_expr(texpr: start, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let end_str = emit_py_typed_expr(texpr: end, registry: registry, scope: scope, depth: depth, fuel: 1024)
@@ -933,7 +933,7 @@ fn emit_py_typed_record_lit(type_name: String?, fields: List<Node>, registry: Ma
 }
 
 
-fn emit_py_typed_bin_op(op: BinOpKind, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
+fn emit_py_typed_bin_op(op: BinOp, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let l_str = emit_py_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, fuel: 1024)
   let r_str = emit_py_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, fuel: 1024)
   if is_null_coalesce(op: op) {

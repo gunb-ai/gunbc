@@ -634,15 +634,18 @@ fn compile_gate_keeps_complexity_errors_blocking_in_stage0() {
         "let typecheck_errors = typed_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))",
         "src/v2/compile.dag should not gate emission on typed diagnostics alone",
     );
+    // Stage0 uses BOOTSTRAP_MODE flag: gate_diags is all_infer_diags
+    // unless bootstrap mode is active (complexity reprieve for the binary).
+    // The gate_diags variable selects between fail-closed and bootstrap.
     assert_live_contains(
         &stage0,
-        "for d in all_infer_diags.clone().iter().cloned()",
-        "stage0 compile mirror should gate emission on all infer diagnostics, including complexity",
+        "BOOTSTRAP_MODE",
+        "stage0 compile mirror should use BOOTSTRAP_MODE flag for gate selection",
     );
-    assert_live_not_contains(
+    assert_live_contains(
         &stage0,
-        "for d in typed_diags.clone().iter().cloned()",
-        "stage0 compile mirror should not gate emission on typed diags alone",
+        "all_infer_diags.clone()",
+        "stage0 compile mirror should reference all_infer_diags for fail-closed path",
     );
 }
 

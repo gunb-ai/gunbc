@@ -22,9 +22,9 @@ Invariant enforcement: [INVARIANTS.md](INVARIANTS.md)
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
 | Self-compile diagnostics | 0 | 0 | Green |
 | Files emitted | 40 | — | Rust target |
-| `full_dsl_compiles` | PASSES (0 diag) | 0 | 90 dsl + 29 v2 files, M1 complete |
+| `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 419 errors | 0 | Down from 8658. Remaining: CodegenBackend import (192), algebra fn-field derives (71), downstream (114), misc (42) |
+| Bootstrap emitted Rust (B) | 11 errors | 0 | Down from 8658→419→367→11. Type cascade (6, deferred M4), inference leaks (3), FreeMonoid generics (2) |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 22 | 0 | Down from 70; #253 landed structural algebra authority; 22 after review fixes |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -85,6 +85,31 @@ M1 (every .dag compiles)
              └→ M6 (parse-emit symmetry)
                  └→ M7 (dissolve structural bridges)
 ```
+
+---
+
+## Design Direction: .dag Model Convergence
+
+Post-bootstrap priority. The .dag model must converge to a minimal,
+non-overlapping set of files where each concept traces to an external
+authority (spec, standard, Wikipedia article).
+
+**Current violations:**
+
+| Concept | Duplicated in | Authority | Fix |
+|---------|--------------|-----------|-----|
+| BinOp / BinOpKind | `std/syntax.dag`, `00_core.dag` | Ring theory (arithmetic), total order (comparison), Boolean algebra (logic) | Unify; dissolve into `std/algebra.dag` operations |
+| LiteralKind / LiteralValue | `std/syntax.dag`, `00_core.dag` | Grammar (keyword literals) vs IR (all literal forms) | Keep both — different concepts. LiteralKind = grammar subset |
+| ItemForm, OperatorSpec, SyntaxSpec | `std/syntax.dag`, `languages.dag` | Language grammar (BNF) | **FIXED**: `languages.dag` imports from `std.syntax` |
+| NullCoalesce | `00_core.dag` as BinOpKind | Language design choice | Stays in syntax — not algebra |
+
+**Principle:** foundational `.dag` files (algebra, syntax, types) should
+be referenceable to external authorities — specs, standards, Wikipedia.
+At this level, concepts should be standard and agreed-upon. Higher up,
+users have their own domain models (boutique/application-level) that
+interact with the standard language infrastructure. The boundary matters:
+if a concept belongs to a standard, it should trace to one. If it's
+user-owned domain logic, it lives in user `.dag` files.
 
 ---
 
