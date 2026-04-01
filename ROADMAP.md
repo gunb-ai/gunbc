@@ -453,11 +453,12 @@ instead of hardcoding them. Includes FF-9 as prerequisite.
   them to `FreeMonoidCollectionProfile` which gives them list operations
   (append, sort_by, fold) instead of set operations (union, intersect,
   diff, member). New profile + template list needed.
-- [ ] Fix carrier-changing type loss in `free_monoid_collection_templates`:
-  `map`/`flat_map`/`fold` param_types and return_types are `ReceiverSelf`
-  but should express the higher-order function parameter structure (e.g.,
-  `fold` takes `fn(Acc, T) -> Acc` and returns `Acc`, not `Self`). The
-  `FreeMonoid<T>` declaration already models this correctly.
+- [x] Fix carrier-changing type loss in `free_monoid_collection_templates`:
+  `map`/`flat_map` return_type changed from `ReceiverSelf` to
+  `ReceiverCollectionOf { element: NamedTemplate { name: "MappedElement" } }`;
+  `fold` param_types changed to `[NamedTemplate { name: "FoldAccumulator" }]`
+  and return_type to `NamedTemplate { name: "FoldAccumulator" }`.
+  Same fix applied to `boolean_algebra_collection_templates`.
 - [ ] Same issue in `partial_function_templates`: parallel authority for
   `PartialFunction` operations including emitter-only alias `emit_map_has`
   that doesn't exist on the carrier algebra.
