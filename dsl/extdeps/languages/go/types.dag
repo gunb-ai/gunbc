@@ -40,7 +40,9 @@ type TypeCheckpoint {
 }
 
 type SharingStrategy {
-  wrapper_template: String
+  pointer_template: String
+  size_threshold_bytes: Int
+  reference_types: List<String>
 }
 
 type CallableRepr {
@@ -114,7 +116,7 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
   // This is structurally correct: map[A]struct{} is isomorphic to A → Bool
   // (the set-theoretic definition), just with Go's type system limitations.
   { algebra: "BooleanAlgebra",
-    go_template: "map[\{0\}]struct\{\}",
+    go_template: "map[\{0\}]struct{}",
     arity: 1,
     zero_value: "nil",
     import_path: none },
@@ -148,15 +150,34 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
 
 
 // =========================================================================
-// Sharing strategy: identity (GC handles everything)
+// Sharing strategy
 //
-// Go has garbage collection. Like Python, no explicit sharing wrapper.
-// Large structs may use pointers (*T) for performance, but this is
-// an optimization, not a correctness requirement.
+// Go has GC, but sharing is NOT identity. Go has value semantics for
+// structs: assignment copies the entire struct. For small value types
+// (int64, bool, float64) this is fine. For large structs or structs
+// passed to goroutines, pointer indirection (*T) is required for:
+//   1. Avoiding expensive copies of large value types
+//   2. Shared mutation across goroutine boundaries
+//   3. Interface satisfaction (methods on *T vs T)
+//
+// Reference types (slices, maps, channels) already contain an internal
+// pointer — they do NOT need *T wrapping. The sharing strategy must
+// distinguish these from value types.
+//
+// COMPARISON:
+//   Rust:   Rc<T> for shared ownership of non-Copy types
+//   Python: identity (all values are references)
+//   Go:     *T for large value types; identity for reference types
+//
+// This prevents FF-8 (bare-copy of large value types) by making the
+// sharing decision explicit in the coercion declaration rather than
+// leaving it to ad-hoc emitter logic.
 // =========================================================================
 
 data go_sharing: SharingStrategy = SharingStrategy {
-  wrapper_template: "\{0\}"
+  pointer_template: "*\{0\}",
+  size_threshold_bytes: 64,
+  reference_types: ["slice", "map", "chan", "func", "interface"]
 }
 
 
@@ -191,22 +212,9 @@ data go_callable: CallableRepr = CallableRepr {
 // Retained Go type system facts
 // =========================================================================
 
-type GoZeroValue {
-  dag_name: String
-  go_name: String
-  zero_value: String
-}
-
-data go_primitives: List<GoZeroValue> = [
-  { dag_name: "Int",    go_name: "int64",       zero_value: "0" },
-  { dag_name: "Float",  go_name: "float64",     zero_value: "0.0" },
-  { dag_name: "Bool",   go_name: "bool",        zero_value: "false" },
-  { dag_name: "Unit",   go_name: "struct{}",    zero_value: "struct{}{}" },
-  { dag_name: "String", go_name: "string",      zero_value: "\"\"" },
-  { dag_name: "Bytes",  go_name: "[]byte",      zero_value: "nil" },
-  { dag_name: "Secret", go_name: "string",      zero_value: "\"\"" },
-  { dag_name: "Json",   go_name: "interface{}", zero_value: "nil" }
-]
+// GoZeroValue and go_primitives deleted: their facts are now the
+// sole province of TypeCheckpoint (go_type_checkpoints above).
+// TypeCheckpoint.zero_value replaces GoZeroValue.zero_value.
 
 data pointer_template: String = "*\{0\}"
 data address_of_template: String = "&\{value\}"

@@ -652,105 +652,22 @@ data rust_fn_field_excluded_derives: List<String> = ["PartialEq", "Debug"]
 //      All three levels must compose without information loss.
 // =========================================================================
 
-data rust_coercion_tests: List<CoercionTest> = [
-  // --- OrderedRing (i64) law tests ---
-  { inhabitant_algebra: "OrderedRing",
-    description: "additive identity: a + 0 == a",
-    rust_assertion: "assert_eq!(a + 0i64, a);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "OrderedRing",
-    description: "additive associativity: (a + b) + c == a + (b + c)",
-    rust_assertion: "assert_eq!((a + b) + c, a + (b + c));",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "OrderedRing",
-    description: "additive inverse: a + (-a) == 0",
-    rust_assertion: "assert_eq!(a + (-a), 0i64);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "OrderedRing",
-    description: "multiplicative identity: a * 1 == a",
-    rust_assertion: "assert_eq!(a * 1i64, a);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "OrderedRing",
-    description: "distributivity: a * (b + c) == a*b + a*c",
-    rust_assertion: "assert_eq!(a * (b + c), a * b + a * c);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "OrderedRing",
-    description: "order antisymmetry: !(a < b && b < a)",
-    rust_assertion: "assert!(!(a < b && b < a));",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "OrderedRing",
-    description: "overflow boundary: i64::MAX wraps or panics",
-    rust_assertion: "// i64::MAX + 1 panics in debug, wraps in release",
-    category: Boundary },
-
-  // --- FreeMonoid (Vec<T>) law tests ---
-  { inhabitant_algebra: "FreeMonoid",
-    description: "left identity: concat(empty, xs) == xs",
-    rust_assertion: "assert_eq!([Vec::<i64>::new(), xs.clone()].concat(), xs);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "FreeMonoid",
-    description: "right identity: concat(xs, empty) == xs",
-    rust_assertion: "assert_eq!([xs.clone(), Vec::<i64>::new()].concat(), xs);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "FreeMonoid",
-    description: "associativity: concat(concat(a,b),c) == concat(a,concat(b,c))",
-    rust_assertion: "assert_eq!([[a.clone(),b.clone()].concat(),c.clone()].concat(), [a.clone(),[b.clone(),c.clone()].concat()].concat());",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "FreeMonoid",
-    description: "length homomorphism: len(concat(a,b)) == len(a) + len(b)",
-    rust_assertion: "assert_eq!([a.clone(),b.clone()].concat().len(), a.len() + b.len());",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "FreeMonoid",
-    description: "empty boundary: empty Vec has length 0",
-    rust_assertion: "assert_eq!(Vec::<i64>::new().len(), 0);",
-    category: Boundary },
-
-  // --- BooleanAlgebra (BTreeSet<T>) law tests ---
-  { inhabitant_algebra: "BooleanAlgebra",
-    description: "join identity: union(s, empty) == s",
-    rust_assertion: "assert_eq!(s.union(&BTreeSet::new()).cloned().collect::<BTreeSet<_>>(), s);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "BooleanAlgebra",
-    description: "meet idempotent: intersect(s, s) == s",
-    rust_assertion: "assert_eq!(s.intersection(&s).cloned().collect::<BTreeSet<_>>(), s);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "BooleanAlgebra",
-    description: "absorption: union(s, intersect(s, t)) == s",
-    rust_assertion: "let meet = s.intersection(&t).cloned().collect::<BTreeSet<_>>(); assert_eq!(s.union(&meet).cloned().collect::<BTreeSet<_>>(), s);",
-    category: AlgebraLaw },
-
-  // --- PartialFunction (HashMap<K,V>) law tests ---
-  { inhabitant_algebra: "PartialFunction",
-    description: "empty lookup: get from empty map returns None",
-    rust_assertion: "assert_eq!(HashMap::<String,i64>::new().get(&\"key\".to_string()), None);",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "PartialFunction",
-    description: "insert-lookup: get(insert(m,k,v), k) == Some(v)",
-    rust_assertion: "let mut m = HashMap::new(); m.insert(k.clone(), v); assert_eq!(m.get(&k), Some(&v));",
-    category: AlgebraLaw },
-  { inhabitant_algebra: "PartialFunction",
-    description: "insert-overwrite: second insert replaces first",
-    rust_assertion: "let mut m = HashMap::new(); m.insert(k.clone(), v1); m.insert(k.clone(), v2); assert_eq!(m.get(&k), Some(&v2));",
-    category: AlgebraLaw },
-
-  // --- Coercion refusal tests ---
-  // These verify the FAIL-CLOSED contract: attempting to use an algebra
-  // without a Rust inhabitant MUST produce a compile error.
-  { inhabitant_algebra: "_MISSING_ALGEBRA_",
-    description: "missing inhabitant: compiling a type that requires an undeclared algebra fails",
-    rust_assertion: "// COMPILE ERROR expected: no Rust inhabitant for algebra _MISSING_ALGEBRA_",
-    category: CoercionRefusal },
-
-  // --- Composition tests ---
-  { inhabitant_algebra: "PartialFunction",
-    description: "nested coercion: Map<String, List<Int>> → HashMap<String, Vec<i64>>",
-    rust_assertion: "let m: HashMap<String, Vec<i64>> = HashMap::new(); assert_eq!(m.len(), 0);",
-    category: RoundTrip },
-  { inhabitant_algebra: "FreeMonoid",
-    description: "nested coercion: List<Map<String, Bool>> → Vec<HashMap<String, bool>>",
-    rust_assertion: "let v: Vec<HashMap<String, bool>> = Vec::new(); assert_eq!(v.len(), 0);",
-    category: RoundTrip }
-]
+// Test obligations are NOT hand-authored data — they are derived by the
+// compiler from the algebra definitions in std/algebra.dag crossed with
+// the inhabitant declarations above. The algorithm:
+//
+//   for each InhabitantDecl D:
+//     A = lookup_algebra(D.algebra) in std/algebra.dag
+//     for each field F in A:
+//       emit law test using D.identity_expr and D.rust_template
+//     emit boundary tests from D.identity_expr and type bounds
+//     emit round-trip test (serialize → deserialize = identity)
+//
+//   for each algebra A with NO InhabitantDecl:
+//     emit refusal test: compile "type T = A<Int>" → expect error
+//
+// See docs/coercion-design.md for the full algorithm and worked examples
+// of generated test assertions per algebra.
 
 
 // =========================================================================
@@ -763,29 +680,10 @@ type OwnershipKind
   | MutRef
   | RawPtr
 
-type CopySemantics
-  = IsCopy
-  | IsNotCopy
-
-type RustPrimitiveInfo {
-  dag_name: String
-  rust_name: String
-  copy: CopySemantics
-  default_value: String?
-}
-
-// Legacy primitive table — superceded by rust_type_checkpoints above.
-// Retained for backward compatibility during transition.
-data rust_primitives: List<RustPrimitiveInfo> = [
-  { dag_name: "Int",    rust_name: "i64",              copy: IsCopy,    default_value: "0" },
-  { dag_name: "Float",  rust_name: "f64",              copy: IsCopy,    default_value: "0.0" },
-  { dag_name: "Bool",   rust_name: "bool",             copy: IsCopy,    default_value: "false" },
-  { dag_name: "Unit",   rust_name: "()",               copy: IsCopy,    default_value: "()" },
-  { dag_name: "String", rust_name: "String",           copy: IsNotCopy, default_value: "String::new()" },
-  { dag_name: "Bytes",  rust_name: "Vec<u8>",          copy: IsNotCopy, default_value: "Vec::new()" },
-  { dag_name: "Secret", rust_name: "String",           copy: IsNotCopy, default_value: null },
-  { dag_name: "Json",   rust_name: "serde_json::Value", copy: IsNotCopy, default_value: "serde_json::Value::Null" }
-]
+// CopySemantics and RustPrimitiveInfo deleted: their facts are now the
+// sole province of TypeCheckpoint (rust_type_checkpoints above).
+// TypeCheckpoint.is_copy replaces CopySemantics; TypeCheckpoint.default_expr
+// replaces RustPrimitiveInfo.default_value.
 
 
 // =========================================================================

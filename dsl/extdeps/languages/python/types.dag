@@ -199,27 +199,10 @@ type PythonTypeKind
   = DynamicType
   | AnnotatedType
 
-type PythonMutability
-  = Immutable
-  | Mutable
-
-type PythonPrimitiveInfo {
-  dag_name: String
-  python_name: String
-  mutability: PythonMutability
-  falsy_value: String
-}
-
-data python_primitives: List<PythonPrimitiveInfo> = [
-  { dag_name: "Int",    python_name: "int",   mutability: Immutable, falsy_value: "0" },
-  { dag_name: "Float",  python_name: "float", mutability: Immutable, falsy_value: "0.0" },
-  { dag_name: "Bool",   python_name: "bool",  mutability: Immutable, falsy_value: "False" },
-  { dag_name: "Unit",   python_name: "None",  mutability: Immutable, falsy_value: "None" },
-  { dag_name: "String", python_name: "str",   mutability: Immutable, falsy_value: "\"\"" },
-  { dag_name: "Bytes",  python_name: "bytes", mutability: Immutable, falsy_value: "b\"\"" },
-  { dag_name: "Secret", python_name: "str",   mutability: Immutable, falsy_value: "\"\"" },
-  { dag_name: "Json",   python_name: "dict",  mutability: Mutable,   falsy_value: "{}" }
-]
+// PythonMutability and PythonPrimitiveInfo deleted: their facts are now the
+// sole province of TypeCheckpoint (python_type_checkpoints above).
+// Python scalars are immutable; Json (dict) is mutable — this is implicit
+// in Python's type system and does not require a separate enum.
 
 data dataclass_decorator: String = "@dataclass"
 data dataclass_import: String = "from dataclasses import dataclass, field"
