@@ -118,7 +118,7 @@ pub fn rt_string_ops() -> String {
 }
 
 pub fn rt_collection_ops() -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
 ".to_string(), "    table.get(&key).cloned()
 ".to_string()), "}
 
@@ -158,6 +158,14 @@ pub fn rt_collection_ops() -> String {
 
 ".to_string()), "pub fn map_has<V>(m: &HashMap<String, V>, key: String) -> bool {
 ".to_string()), "    m.contains_key(&key)
+".to_string()), "}
+
+".to_string()), "pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
+".to_string()), "    let mut v = (*list).clone(); v.reverse(); Rc::new(v)
+".to_string()), "}
+
+".to_string()), "pub fn replace(s: String, from: String, to: String) -> String {
+".to_string()), "    s.replace(&from, &to)
 ".to_string()), "}
 
 ".to_string())
@@ -321,17 +329,6 @@ pub fn rt_filesystem() -> String {
 ".to_string())
 }
 
-pub fn rt_extra_ops() -> String {
-    let mut s = String::new();
-    s.push_str("pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {\n");
-    s.push_str("    let mut v = (*list).clone(); v.reverse(); Rc::new(v)\n");
-    s.push_str("}\n\n");
-    s.push_str("pub fn replace(s: String, from: String, to: String) -> String {\n");
-    s.push_str("    s.replace(&from, &to)\n");
-    s.push_str("}\n\n");
-    s
-}
-
 pub fn rust_runtime_source() -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rt_header(), rt_concat_trait()), rt_string_ops()), rt_collection_ops()), rt_extra_ops()), rt_rc_container_ops()), rt_scanner_ops()), rt_unicode_ops()), rt_filesystem())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rt_header(), rt_concat_trait()), rt_string_ops()), rt_collection_ops()), rt_rc_container_ops()), rt_scanner_ops()), rt_unicode_ops()), rt_filesystem())
 }

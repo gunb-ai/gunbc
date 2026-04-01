@@ -17,8 +17,7 @@ module extdeps.languages.rust.emit
 // Ref: Rust Reference 10.1 "Types"
 data rust_type_map: Map<String, String> = {
   "String": "String", "Int": "i64", "Float": "f64", "Bool": "bool",
-  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value",
-  "Callable": "String"
+  "Bytes": "Vec<u8>", "Unit": "()", "Secret": "String", "Json": "serde_json::Value"
 }
 
 // -- Keyword/operator translation ----------------------------------------
@@ -160,8 +159,7 @@ data rt_functions: Map<String, Bool> = {
   "map_merge": true, "list_concat": true, "str_eq": true,
   "filesystem_read": true, "list_push": true, "map_get": true,
   "map_keys": true, "map_values": true,
-  "parse_int": true, "map_contains_key": true, "map_has": true,
-  "reverse": true, "replace": true
+  "parse_int": true, "map_contains_key": true, "map_has": true
 }
 
 data rt_ref_map_functions: Map<String, Bool> = {

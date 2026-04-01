@@ -60,7 +60,6 @@ lazy_static::lazy_static! {
         __m.insert("Unit".to_string(), "()".to_string());
         __m.insert("Secret".to_string(), "String".to_string());
         __m.insert("Json".to_string(), "serde_json::Value".to_string());
-        __m.insert("Callable".to_string(), "String".to_string());
         __m
     };
 }
@@ -88,8 +87,8 @@ lazy_static::lazy_static! {
         __m.insert("non_empty_set".to_string(), "Rc<NonEmptyBTreeSet<{0}>>".to_string());
         __m.insert("optional".to_string(), "Option<{0}>".to_string());
         __m.insert("map".to_string(), "Rc<HashMap<{0}, {1}>>".to_string());
-        __m.insert("free_monoid".to_string(), "Rc<Vec<{0}>>".to_string());
-        __m.insert("partial_function".to_string(), "Rc<HashMap<{0}, {1}>>".to_string());
+        __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
+        __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
         __m.insert("boolean_algebra".to_string(), "bool".to_string());
         __m
     };
@@ -168,8 +167,6 @@ lazy_static::lazy_static! {
         __m.insert("parse_int".to_string(), true);
         __m.insert("map_contains_key".to_string(), true);
         __m.insert("map_has".to_string(), true);
-        __m.insert("reverse".to_string(), true);
-        __m.insert("replace".to_string(), true);
         __m
     };
 }

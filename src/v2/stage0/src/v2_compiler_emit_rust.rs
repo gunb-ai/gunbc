@@ -2533,11 +2533,18 @@ pub fn emit_rust_get_method_call(receiver: Rc<Node>, args: Vec<Rc<Node>>, regist
     Some(a) => emit_typed_expr(arg_value(a.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone()),
     None => "compile_error!(\"get method missing index\")".to_string(),
 };
-// Distinguish Map.get (key lookup) from List.get (index access)
+// Distinguish Map.get (key lookup) from List.get (index access).
+// Guard: if receiver type is unresolved, don't fabricate list indexing.
+let receiver_resolved = match receiver.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { .. }) => true,
+    _ => false,
+};
 if is_map_typed_expr(receiver.clone()) {
     format!("v2_rt::map_get(&{}, {})", recv_str, index_str)
-} else {
+} else if receiver_resolved {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(recv_str.clone(), ".get((".to_string()), index_str.clone()), ") as usize).cloned()".to_string())
+} else {
+    "compile_error!(\"get: receiver type unresolved\")".to_string()
 }
 }
 
@@ -2645,6 +2652,8 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(var_name.c
         let recv_str = emit_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str.clone()), ".iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>())".to_string())
     } else if method_name == "chars" {
+        // TODO: should be a runtime bridge function (v2_rt::chars) instead of hardcoded Rust lowering.
+        // No chars() function exists in runtime_rust.dag yet; add one and route through generic bridge.
         let recv_str = emit_typed_expr(receiver.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone());
         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), recv_str.clone()), ".chars().map(|c| c as i64).collect::<Vec<_>>())".to_string())
     } else if method_name == "string_contains" {
@@ -3057,12 +3066,9 @@ let record_parent_enum = match parent_enum.clone() {
     Some(en) => en.clone(),
     None => "".to_string(),
 };
-let needs_rc = ((emit_map_has(rc_types.clone(), tn.clone()) || emit_map_has(rc_types.clone(), resolved_type.name.clone())) || emit_map_has(rc_types.clone(), record_parent_enum.clone()));
-if needs_rc.clone() {
-                            v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), empty_raw.clone()), ")".to_string())
-} else {
-                            empty_raw.clone()
-}
+// Rc wrapping is the caller's responsibility (data_decl_body, emit_typed_expr, etc.).
+// emit_typed_record_lit produces raw struct expressions.
+empty_raw.clone()
 }
 } else {
                     {
@@ -3082,16 +3088,9 @@ let fields_str = all_field_strs.clone().join(&"
 let raw = v2_rt::concat(v2_rt::concat(v2_rt::concat(display_tn.clone(), " {
 ".to_string()), fields_str.clone()), "
 }".to_string());
-let record_parent_enum = match parent_enum.clone() {
-    Some(en) => en.clone(),
-    None => "".to_string(),
-};
-let needs_rc = ((emit_map_has(rc_types.clone(), tn.clone()) || emit_map_has(rc_types.clone(), resolved_type.name.clone())) || emit_map_has(rc_types.clone(), record_parent_enum.clone()));
-if needs_rc.clone() {
-                            v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw.clone()), ")".to_string())
-} else {
-                            raw.clone()
-}
+// Rc wrapping is the caller's responsibility (data_decl_body, emit_typed_expr, etc.).
+// emit_typed_record_lit produces raw struct expressions.
+raw.clone()
 }
 }
 }
