@@ -205,28 +205,27 @@ pub struct BlockInferState {
     pub typed_stmts: Vec<Rc<Node>>,
 }
 
-/// Scan remaining statements in a block for a record lit that uses `var_name`
-/// as a field init value.  When found, return the expected field type from the
-/// struct definition so the let-binding can be re-inferred with bidirectional
-/// context.  This is a targeted lookahead — not a general backward-flow pass.
-fn scan_expected_type_for_let(
-    var_name: &str,
-    remaining: &[Rc<Node>],
+/// Single-pass scan of a block's statements to build a map from variable
+/// name → expected type.  For each record-lit with a known struct type,
+/// any field whose init value is a plain ExprVar gets an entry mapping
+/// that variable name to the struct field's declared type.  O(statements × fields),
+/// computed once per block, not per let-binding.
+fn build_field_expected_map(
+    stmts: &[Rc<Node>],
     scope: &InferScope,
-) -> Option<Rc<Node>> {
-    for stmt in remaining.iter() {
-        if let Some(expected) = scan_expected_in_expr(var_name, stmt, scope) {
-            return Some(expected);
-        }
+) -> HashMap<String, Rc<Node>> {
+    let mut map: HashMap<String, Rc<Node>> = HashMap::new();
+    for stmt in stmts.iter() {
+        collect_field_expectations(stmt, scope, &mut map);
     }
-    None
+    map
 }
 
-fn scan_expected_in_expr(
-    var_name: &str,
+fn collect_field_expectations(
     expr: &Node,
     scope: &InferScope,
-) -> Option<Rc<Node>> {
+    out: &mut HashMap<String, Rc<Node>>,
+) {
     match (*expr.expr_data).clone() {
         ExprData::ExprRecordLit { .. } => {
             let tn = record_lit_type_name(Rc::new(expr.clone()));
@@ -246,33 +245,23 @@ fn scan_expected_in_expr(
                     for fi in expr.children.iter() {
                         let fi_val = field_init_node_value(fi.clone());
                         if let ExprData::ExprVar { .. } = (*fi_val.expr_data).clone() {
-                            if expr_var_name(fi_val.clone()) == var_name {
-                                let fi_name = field_init_node_name(fi.clone());
-                                return lookup_field_type_node(sn.clone(), fi_name);
+                            let var_name = expr_var_name(fi_val.clone());
+                            let fi_name = field_init_node_name(fi.clone());
+                            if let Some(field_type) = lookup_field_type_node(sn.clone(), fi_name) {
+                                out.entry(var_name).or_insert(field_type);
                             }
                         }
                     }
                 }
             }
-            None
-        }
-        ExprData::ExprLet => {
-            let val = let_value(Rc::new(expr.clone()));
-            if let Some(found) = scan_expected_in_expr(var_name, &val, scope) {
-                return Some(found);
+            for child in expr.children.iter() {
+                collect_field_expectations(child, scope, out);
             }
-            if let Some(body) = let_body(Rc::new(expr.clone())) {
-                return scan_expected_in_expr(var_name, &body, scope);
-            }
-            None
         }
         _ => {
             for child in expr.children.iter() {
-                if let Some(found) = scan_expected_in_expr(var_name, child, scope) {
-                    return Some(found);
-                }
+                collect_field_expectations(child, scope, out);
             }
-            None
         }
     }
 }
@@ -284,6 +273,7 @@ pub fn infer_block_stmts(
     mut diag_chunks: Vec<Vec<Rc<ErrorNode>>>,
     mut last_type: Rc<Node>,
 ) -> Rc<BlockInferState> {
+    let field_expected = build_field_expected_map(&remaining, &scope);
     loop {
         match remaining.clone().first().cloned() {
             None => {
@@ -298,10 +288,7 @@ pub fn infer_block_stmts(
                 let lookahead_expected: Option<Rc<Node>> = match (*stmt.expr_data).clone() {
                     ExprData::ExprLet => {
                         let let_name = let_binding_name(stmt.clone());
-                        let rest: Vec<Rc<Node>> = remaining.iter().skip(1).cloned().collect();
-                        let result = scan_expected_type_for_let(&let_name, &rest, &scope);
-                        
-                        result
+                        field_expected.get(&let_name).cloned()
                     }
                     _ => None,
                 };
