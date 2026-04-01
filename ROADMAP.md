@@ -513,12 +513,21 @@ read them. This tier is a prerequisite for early coercion implementation.
 - [ ] Same issue in `partial_function_templates`: parallel authority for
   `PartialFunction` operations including emitter-only alias `emit_map_has`
   that doesn't exist on the carrier algebra.
+- [ ] Add `CallableOf` variant to `AlgebraTypeTemplate` so `map`/`flat_map`/
+  `fold` param_types can express their callback shape (`fn(T) -> U`,
+  `fn(Acc, T) -> Acc`) instead of relying on downstream `refine_collection_
+  result_type`. Required for full modeling faithfulness.
 - [x] Delete `is_bridge_placeholder_type_name` in `04_types.dag` — replaced
   hardcoded name checks with structural detection: `collect_named_templates`
   walks AlgebraTypeTemplate trees for NamedTemplate names,
   `bridge_placeholder_type_names` combines type parameter names (T, K, V)
   with non-concrete NamedTemplate names from all algebra profiles.
   `is_bridge_placeholder_type_name` now delegates to the structural set.
+- [ ] Derive T/K/V type parameter names from algebra type declarations
+  instead of hardcoding. Requires accessor on algebra profile data.
+- [ ] Cache `bridge_placeholder_type_names()` result (currently rebuilds
+  on every call). Stage0 `thread_local!` pattern like
+  `builtin_function_registry`.
 
 *Tier 3 — full structural algebra (requires FF-9):*
 - [ ] FF-9: import-driven source resolution (compiler discovers

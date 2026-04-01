@@ -1858,28 +1858,22 @@ fn expr_descending_witness_source(expr: Node, descending_witness_names: Map<Stri
         _ => none
       }
     ExprFieldAccess { summary: _ } =>
-      // param.children, param.field — structural subpart of param.
-      // If the base is a witness variable, field access descends from
-      // the same parameter (child-node descent).
+      // Sound by Decidability Invariant Part 1: all .dag values are
+      // finitely and acyclically constructed (no parent pointers, no
+      // mutable references), so field access always returns a strict
+      // substructure of the containing value.
       expr_descending_witness_source(expr: field_access_base(texpr: expr), descending_witness_names: descending_witness_names)
-    ExprMethodCall { method_semantics: _ } =>
-      // param.children |> first — single-element extraction from a
-      // descending collection is unconditionally smaller.
-      // skip/take are NOT safe unconditional witnesses: skip(0) and
-      // take(length(xs)) preserve the original size.
-      let mn = expr_method_name(texpr: expr)
-      if mn == "first" || mn == "last" {
-        expr_descending_witness_source(expr: method_receiver(texpr: expr), descending_witness_names: descending_witness_names)
-      } else { none }
-    ExprCall { call_semantics: _ } =>
-      // first(param.children) — pipe desugaring as function call.
-      let fn_name = expr_call_func(texpr: expr)
-      if fn_name == "first" || fn_name == "last" {
-        match expr.children |> first {
-          Some { value: arg } => expr_descending_witness_source(expr: arg_value(n: arg), descending_witness_names: descending_witness_names)
-          None => none
-        }
-      } else { none }
+    ExprMethodCall { method_semantics: ms } =>
+      // Only algebra-classified methods (structurally resolved through
+      // the algebra registry) are trusted as descent witnesses. This
+      // excludes user-defined functions that happen to share the name.
+      match ms {
+        Some { value: AlgebraMethodSemantics { method_def: md, fold_accumulator_type: _ } } =>
+          if md.name == "first" || md.name == "last" {
+            expr_descending_witness_source(expr: method_receiver(texpr: expr), descending_witness_names: descending_witness_names)
+          } else { none }
+        _ => none
+      }
     _ => none
   }
 }
