@@ -493,3 +493,15 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" } }
   ]
 }
+
+fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
+  match profile {
+    OrderedRingProfile => ordered_ring_templates()
+    ApproximateFieldProfile => approximate_field_templates()
+    BooleanAlgebraProfile => boolean_algebra_templates()
+    BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates()
+    FreeMonoidScalarProfile => free_monoid_scalar_templates()
+    FreeMonoidCollectionProfile => free_monoid_collection_templates()
+    PartialFunctionProfile => partial_function_templates()
+  }
+}

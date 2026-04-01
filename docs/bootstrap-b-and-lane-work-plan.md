@@ -48,6 +48,10 @@ or FreeMonoid generic threading areas until the parallel work merges.
 
 ## 1. L1 Tier 1 Remaining: Per-Profile Field Builders → `.dag` Functions
 
+> **Status: DONE (2026-04-01).** Per-profile builders are `.dag` functions
+> in `std/algebra.dag`. `algebra_templates_for_profile` dispatcher also moved
+> to `std/algebra.dag`. `04_types.dag` imports the dispatcher.
+
 ### What
 
 Convert the six per-profile `data` template lists in `dsl/std/algebra.dag`
@@ -144,6 +148,10 @@ Can land on `main` independently.
 ---
 
 ## 2. L1 Tier 2.5: Fix Set/NonEmptySet Algebra Profile
+
+> **Status: DONE (2026-04-01).** `BooleanAlgebraCollectionProfile` added
+> with `boolean_algebra_collection_templates()`. `Set`/`NonEmptySet` updated
+> in both `.dag` and stage0 Rust `KERNEL_ALGEBRA_PROFILE`.
 
 ### What
 

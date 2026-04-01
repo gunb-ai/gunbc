@@ -4,6 +4,34 @@ This document governs the engineering invariants for the entire
 codebase: the v1 Rust compiler (`src/v1/`), the v2 self-hosted
 compiler (`src/v2/`), and the DSL source (`dsl/`).
 
+## Modeling Faithfulness Invariant
+
+The compiler and the `.dag` source share one governing principle:
+every construct must be grounded in an identifiable external fact
+(axiom, specification, standard, or structural derivation). Constructs
+without factual grounding are not valid authorities in this codebase.
+
+Full modeling guidelines: [`MODELING.md`](MODELING.md).
+
+**The compiler's role:** enforce faithfulness mechanically. When the
+compiler encounters a type, coercion, or structural claim for which no
+grounding fact is declared, it must produce a diagnostic error. Silent
+defaults, fabrication fallbacks, and placeholder emissions are violations
+of this invariant — they allow ungrounded claims to propagate through
+the pipeline as if they were facts.
+
+**Annotations are not facts.** When a structural gap requires new
+information, the fix is to extend `.dag` structure (types, edges,
+functions), not to add metadata or annotations. The `.dag` language is
+the meta-language for expressing intersubjective agreements; there is
+no meta-language above it.
+
+This invariant is upstream of all others. Performance invariants assume
+the model is faithful. Decidability proofs assume the structures are
+well-grounded. Sustainability rules assume facts have single authorities.
+If the modeling is unfaithful, the downstream invariants are protecting
+the wrong thing.
+
 ## Performance Invariant
 
 Performance is a correctness property for this repo, not a cleanup pass
@@ -846,10 +874,11 @@ Classified as invariant violations:
   (`Dynamic` matches anything, plus same-name/same-connective/same-child-count
   fallback) that hide missing earlier normalization. This violates "No
   fallbacks that fabricate" / "Explicit boundary contracts."
-- Reconcile downgrades semantic gaps to `Warning`
-  (`access_error` / `inference_error`), and `compile_sources` gates only
-  on `Error`, so emit still runs on known inference/access gaps. This is
-  a warning-permissive boundary rather than a fail-closed one.
+- ~~Reconcile downgrades semantic gaps to `Warning`~~
+  **FIXED (2026-04-01).** `OwnershipWarning` renamed to `OwnershipViolation`,
+  `VariantCollisionWarning` renamed to `VariantCollision`, both promoted to
+  errors. `is_error_diagnostic` now always returns `true`. No warning
+  severity remains in the compiler.
 
 Not invariant violations by themselves:
 
@@ -973,13 +1002,12 @@ error state is encoded as:
 - `LitNull` with `return_type: none` (37 sites across parser/reconcile/emit)
 - `Dynamic` type name (universal compat in `node_type_equals`)
 - `<error:*>` strings detected by `string_contains` (2 check sites, 4 production sites)
-- `Warning` severity for semantic errors (`access_error`, `inference_error`)
+- ~~`Warning` severity for semantic errors (`access_error`, `inference_error`)~~ **FIXED (2026-04-01).** All diagnostics are now errors; `is_error_diagnostic` always returns `true`.
 
 The fix: make error a structural variant — either an `ExprError` in ExprData
 or a flag on Node — so downstream phases can test `is_error(node)` without
 string parsing. Emit skips error nodes (or emits `compile_error!()`) instead
-of translating fabricated values. Reconcile promotes `access_error` /
-`inference_error` to Error severity so `compile_sources` gates correctly.
+of translating fabricated values.
 
 Parser LitNull recovery (23 sites in `02_parse.dag`) is a separate concern —
 parser error recovery that produces dummy nodes with attached error
@@ -995,7 +1023,7 @@ recognize these as error nodes and try to process them normally.
 | C-5 | `<error:*>` detection via string_contains | 2 check | `04_reconcile.dag:900`, `05_emit_rust.dag:1473` |
 | C-6 | `<error:unknown_*>` sentinels in emit | 2 | `05_emit_rust.dag:1766,2117` |
 | C-7 | Dynamic as universal compatibility | multiple | `node_type_equals` in `04_reconcile.dag:901+`; `extend_scope_for_lambda` in `05_emit_rust.dag:1959` |
-| C-8 | Warning severity for semantic errors | 2 helpers | `access_error` / `inference_error` at `04_reconcile.dag:1236,1245`; `compile_sources` gates on Error only |
+| C-8 | ~~Warning severity for semantic errors~~ | **FIXED** | `OwnershipWarning` → `OwnershipViolation`, `VariantCollisionWarning` → `VariantCollision`; `is_error_diagnostic` always returns `true` (2026-04-01) |
 | C-9 | Empty node / empty string fabrication | 2 | `05_emit_rust.dag:819` (empty Node for missing field), `05_emit_rust.dag:3368` (LitNull → "") |
 | C-10 | `Rc::try_unwrap` clone fallback (v1) | 1 | `fn_codegen.rs:3783` — blocked on Track D ownership proof |
 

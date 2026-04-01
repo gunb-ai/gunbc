@@ -2126,7 +2126,7 @@ fn strict_complexity_violation_count() {
     // analyzer produces ?O(?), the bug is in the analyzer (it cannot
     // see the bound that structurally exists), not in the program."
     // The ratchet tracks the analyzer gap honestly. The violations
-    // remain errors (not downgraded to warnings). The ratchet only
+    // remain errors (all diagnostics are errors). The ratchet only
     // moves down, never up, until I1/I2 resolve them to 0.
     const COMPLEXITY_RATCHET: usize = 315;
     assert!(

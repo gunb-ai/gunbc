@@ -176,6 +176,12 @@ pub struct ModuleContext {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct VariantFoldState {
+    pub locals: HashMap<String, Rc<TypeBinding>>,
+    pub collision_errors: Vec<Rc<ErrorNode>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -4426,46 +4432,55 @@ pub fn build_module_context(
             <HashMap<_, _>>::new(),
             vec![],
         );
-        // Phase 2: explicitly imported enums overwrite ambient variants.
-        let all_variant_candidates = v2_rt::map_values(&env.bindings.clone())
+        let imported_enum_names: HashMap<String, bool> = resolved_imports.iter().cloned().fold(
+            <HashMap<_, _>>::new(),
+            |acc: HashMap<String, bool>, imp: Rc<ResolvedImport>| {
+                imp.specific_names.iter().cloned().fold(acc,
+                    |inner: HashMap<String, bool>, n: String| v2_rt::map_insert(inner, n, true))
+            });
+        let variant_fold = v2_rt::map_values(&env.bindings.clone())
             .iter().cloned().fold(
-                <HashMap<String, Rc<TypeBinding>>>::new(),
-                |acc: HashMap<String, Rc<TypeBinding>>, binding: Rc<TypeBinding>| {
+                VariantFoldState { locals: <HashMap<_, _>>::new(), collision_errors: vec![] },
+                |acc: VariantFoldState, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
-                        let enum_name = binding.resolved.name.clone();
-                        let curr_is_imported = resolved_imports.iter().any(|imp| {
-                            imp.specific_names.iter().any(|n| *n == enum_name)
-                        });
+                        let curr_is_imported = imported_enum_names.contains_key(&binding.resolved.name);
                         binding.resolved.clone().children.clone().iter().cloned().fold(
                             acc.clone(),
-                            |vacc: HashMap<String, Rc<TypeBinding>>, child: Rc<Node>| {
-                                match v2_rt::map_get(&vacc, child.name.clone()) {
+                            |vacc: VariantFoldState, child: Rc<Node>| {
+                                match v2_rt::map_get(&vacc.locals, child.name.clone()) {
                                     Some(prev) => {
-                                        // Check if previous binding was also from an imported enum
-                                        let prev_enum_name = prev.resolved.name.clone();
-                                        let prev_is_imported = if !prev_enum_name.is_empty() {
-                                            resolved_imports.iter().any(|imp| {
-                                                imp.specific_names.iter().any(|n| *n == prev_enum_name)
-                                            })
-                                        } else { false };
+                                        let prev_is_imported = imported_enum_names.contains_key(&prev.resolved.name);
                                         if curr_is_imported && prev_is_imported {
-                                            // Both imported — ambiguous variant name is a compile error.
-                                            // Keep first-write-wins (deterministic), add diagnostic below.
-                                            // The collision is recorded; the module diagnostic accumulator
-                                            // picks it up.
-                                            vacc.clone()
+                                            let mut w = vacc.collision_errors.clone();
+                                            w.push(make_error_node(
+                                                Rc::new(CompilerDiagnostic::VariantCollision {
+                                                    variant: child.name.clone(),
+                                                    enum1: prev.resolved.name.clone(),
+                                                    enum2: binding.resolved.name.clone(),
+                                                    span: no_span(),
+                                                }),
+                                                module_name.clone(),
+                                            ));
+                                            VariantFoldState { locals: vacc.locals.clone(), collision_errors: w }
                                         } else if curr_is_imported {
-                                            v2_rt::map_insert(vacc.clone(), child.name.clone(),
-                                                Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
+                                            VariantFoldState {
+                                                locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
+                                                    Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
+                                                collision_errors: vacc.collision_errors.clone(),
+                                            }
                                         } else { vacc.clone() }
                                     }
-                                    None => v2_rt::map_insert(vacc.clone(), child.name.clone(),
-                                        Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
+                                    None => VariantFoldState {
+                                        locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
+                                            Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
+                                        collision_errors: vacc.collision_errors.clone(),
+                                    }
                                 }
                             })
                     } else { acc.clone() }
                 });
-        let imported_variant_locals = all_variant_candidates;
+        let imported_variant_locals = variant_fold.locals.clone();
+        let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals = variant_locals_from_items(
             local.resolved_items.clone(),
             imported_variant_locals.clone(),
@@ -4494,36 +4509,6 @@ pub fn build_module_context(
                     v2_rt::map_insert(acc.clone(), binding.name.clone(), binding.clone())
                 },
             );
-        // O1: Detect variant name collisions between imported enums → compile error
-        let collision_diagnostics: Vec<Rc<ErrorNode>> = {
-            let mut collisions = Vec::new();
-            // Track which variant names appear in multiple imported enums
-            let mut seen: HashMap<String, String> = HashMap::new(); // variant_name → first_enum_name
-            for binding in v2_rt::map_values(&env.bindings) {
-                if !node_is_coproduct(binding.resolved.clone()) { continue; }
-                let enum_name = binding.resolved.name.clone();
-                let is_imported = resolved_imports.iter().any(|imp| {
-                    imp.specific_names.iter().any(|n| *n == enum_name)
-                });
-                if !is_imported { continue; }
-                for child in binding.resolved.children.iter() {
-                    match seen.get(&child.name) {
-                        Some(prev_enum) => {
-                            collisions.push(make_error_node(
-                                Rc::new(CompilerDiagnostic::InternalError {
-                                    message: format!("ambiguous variant '{}': imported from both '{}' and '{}'",
-                                        child.name, prev_enum, enum_name),
-                                    span: child.span.clone(),
-                                }),
-                                module_name.clone(),
-                            ));
-                        }
-                        None => { seen.insert(child.name.clone(), enum_name.clone()); }
-                    }
-                }
-            }
-            collisions
-        };
         Rc::new(ModuleContext {
             resolved_items: local.resolved_items.clone(),
             func_env: resolve_result.func_env.clone(),
@@ -4541,7 +4526,7 @@ pub fn build_module_context(
                     },
                     resolve_result.diagnostics.clone(),
                 ),
-                collision_diagnostics,
+                variant_collision_errors.clone(),
             ),
         })
     }

@@ -19,10 +19,7 @@ import std.algebra {
   NamedTemplate, ReceiverCollectionOf, ListOf, OptionalOf, TupleOf,
   AlgebraFieldTemplate,
   kernel_algebra_profile,
-  ordered_ring_templates, approximate_field_templates, boolean_algebra_templates,
-  boolean_algebra_collection_templates,
-  free_monoid_scalar_templates, free_monoid_collection_templates,
-  partial_function_templates
+  algebra_templates_for_profile
 }
 import v2.std.core {
   Node, make_param_node, param_node_type_expr,
@@ -195,18 +192,6 @@ fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Node) -> Node
     algebra_method_field(name: template.name, param_types: param_types, return_type: return_type)
   } else {
     algebra_value_field(name: template.name, type_node: return_type)
-  }
-}
-
-fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
-  match profile {
-    OrderedRingProfile => ordered_ring_templates()
-    ApproximateFieldProfile => approximate_field_templates()
-    BooleanAlgebraProfile => boolean_algebra_templates()
-    BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates()
-    FreeMonoidScalarProfile => free_monoid_scalar_templates()
-    FreeMonoidCollectionProfile => free_monoid_collection_templates()
-    PartialFunctionProfile => partial_function_templates()
   }
 }
 

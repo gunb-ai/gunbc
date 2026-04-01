@@ -1,13 +1,20 @@
-// extdeps/languages/go/types.dag -- "What is the Go type system?"
+// extdeps/languages/go/types.dag -- Go coercion data.
 //
-// Value types, pointer types, zero values, interfaces, and struct
-// embedding as specified in the Go Language Specification.
+// Declares which Go types inhabit which .dag algebraic structures.
+// Go has garbage collection (like Python) but uses pointer types for
+// optional values (like Rust uses Option<T>).
+//
+// FAIL-CLOSED CONTRACT: Missing inhabitant = compile error.
+//
+// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
+// This file instantiates data only — no local type families.
 //
 // Ref: The Go Programming Language Specification (go.dev/ref/spec)
 //      Effective Go (go.dev/doc/effective_go)
+//      std/algebra.dag, std/coercion.dag
 //
 // Consumers:
-//   v2/05_emit_go.dag -- type emission, struct definition, interface satisfaction
+//   v2/05_emit_go.dag -- coercion engine reads inhabitants
 
 module extdeps.languages.go.types
 
@@ -16,68 +23,132 @@ import std.languages {
   TypeDefinitionSyntax
 }
 
-// -- Zero values -----------------------------------------------------
-// Ref: Go Spec "The zero value"
-//
-// Every Go variable is initialized to its zero value when declared
-// without an explicit initializer. There is no "uninitialized" state.
-
-type GoZeroValue {
-  dag_name: String                     // DAG abstract name
-  go_name: String                      // Go concrete type
-  zero_value: String                   // Zero value expression
+import std.coercion {
+  TypeCheckpoint, InhabitantDecl, CallableRepr
 }
 
-data go_primitives: List<GoZeroValue> = [
-  { dag_name: "Int",    go_name: "int64",       zero_value: "0" },
-  { dag_name: "Float",  go_name: "float64",     zero_value: "0.0" },
-  { dag_name: "Bool",   go_name: "bool",        zero_value: "false" },
-  { dag_name: "Unit",   go_name: "struct{}",    zero_value: "struct{}{}" },
-  { dag_name: "String", go_name: "string",      zero_value: "\"\"" },
-  { dag_name: "Bytes",  go_name: "[]byte",      zero_value: "nil" },
-  { dag_name: "Secret", go_name: "string",      zero_value: "\"\"" },
-  { dag_name: "Json",   go_name: "interface{}", zero_value: "nil" }
+
+// =========================================================================
+// Type checkpoints
+//
+// Go has value types (int64, bool, float64) and reference types (slices,
+// maps, channels). is_copy is none — Go has no Copy trait; the value vs
+// reference distinction is structural and handled by the emitter via
+// ValueContext, not by a declared flag.
+// =========================================================================
+
+data go_type_checkpoints: List<TypeCheckpoint> = [
+  { dag_name: "Int",    target_type: "int64",       default_expr: "0",          is_copy: none },
+  { dag_name: "Float",  target_type: "float64",     default_expr: "0.0",        is_copy: none },
+  { dag_name: "Bool",   target_type: "bool",        default_expr: "false",      is_copy: none },
+  { dag_name: "Unit",   target_type: "struct{}",    default_expr: "struct{}{}", is_copy: none },
+  { dag_name: "String", target_type: "string",      default_expr: "\"\"",       is_copy: none },
+  { dag_name: "Bytes",  target_type: "[]byte",      default_expr: "nil",        is_copy: none },
+  { dag_name: "Secret", target_type: "string",      default_expr: "\"\"",       is_copy: none },
+  { dag_name: "Json",   target_type: "interface{}", default_expr: "nil",        is_copy: none }
 ]
 
-// -- Pointer types ---------------------------------------------------
-// Ref: Go Spec "Pointer types"
+
+// =========================================================================
+// Algebra inhabitants
 //
-// Go uses pointer types (*T) for optional values and to avoid copying
-// large structs. A nil pointer represents an absent value.
+// CROSS-LANGUAGE COMPARISON:
+//   FreeMonoid     → []T (Go) vs Vec<T> (Rust) vs list[T] (Python)
+//   BooleanAlgebra → map[A]struct{} (Go) vs BTreeSet<A> (Rust) vs set[A] (Python)
+//   PartialFunction→ map[K]V (Go) vs HashMap<K,V> (Rust) vs dict[K,V] (Python)
+//
+// Go has no native set type. map[T]struct{} is idiomatic: isomorphic to
+// A → Bool (the set-theoretic definition).
+// =========================================================================
+
+data go_algebra_inhabitants: List<InhabitantDecl> = [
+  // FreeMonoid<T> → []T (Go slice)
+  { algebra: "FreeMonoid",
+    template: "[]\{0\}",
+    arity: 1,
+    identity_expr: "nil",
+    import_path: none,
+    is_copy: none },
+
+  // BooleanAlgebra<A> → map[A]struct{}
+  { algebra: "BooleanAlgebra",
+    template: "map[\{0\}]struct{}",
+    arity: 1,
+    identity_expr: "nil",
+    import_path: none,
+    is_copy: none },
+
+  // PartialFunction<K,V> → map[K]V
+  { algebra: "PartialFunction",
+    template: "map[\{0\}]\{1\}",
+    arity: 2,
+    identity_expr: "nil",
+    import_path: none,
+    is_copy: none },
+
+  // OrderedRing → int64
+  { algebra: "OrderedRing",
+    template: "int64",
+    arity: 0,
+    identity_expr: "0",
+    import_path: none,
+    is_copy: none },
+
+  // ApproximateField → float64
+  { algebra: "ApproximateField",
+    template: "float64",
+    arity: 0,
+    identity_expr: "0.0",
+    import_path: none,
+    is_copy: none }
+]
+
+
+// =========================================================================
+// Optional: *T (pointer, nil = absent)
+//
+// Authority: pointer_template and nil_literal below. No separate optional
+// declarations — Go optional IS pointer indirection.
+// =========================================================================
+
+
+// =========================================================================
+// Callable: func(T) U
+//
+// Go functions are first-class. No owned/shared/static distinction —
+// all callable types are `func`. Simpler than Rust's fn/Fn/FnMut/FnOnce.
+// =========================================================================
+
+data go_callable: CallableRepr = CallableRepr {
+  template: "func(\{params\}) \{return\}",
+  param_separator: ", ",
+  return_separator: " ",
+  import_path: none
+}
+
+
+// =========================================================================
+// Sharing
+//
+// Go has GC but value semantics for structs. The value-vs-reference
+// distinction (large structs → *T, slices/maps/channels → identity) is
+// derived from ValueContext at emit time, not from a declared config.
+// See INVARIANTS.md "Emission is translation, not decision-making."
+// =========================================================================
+
+
+// =========================================================================
+// Retained Go type system facts
+// =========================================================================
 
 data pointer_template: String = "*\{0\}"
 data address_of_template: String = "&\{value\}"
 data nil_literal: String = "nil"
-
-// -- Visibility ------------------------------------------------------
-// Ref: Go Spec "Exported identifiers"
-//
-// An identifier is exported if its first character is uppercase (Unicode
-// category Lu). No visibility keyword exists.
-
 data visibility_by_case: Bool = true
-
-// -- Struct embedding ------------------------------------------------
-// Ref: Go Spec "Struct types" -- embedded fields
-//
-// Go has no inheritance. A struct may embed another type by declaring a
-// field with no explicit name; the embedded type's methods and fields
-// are promoted.
-
 data embedded_field_syntax: String = "\{type\}"
-
-// -- Interface types -------------------------------------------------
-// Ref: Go Spec "Interface types"
-//
-// An interface defines a method set. A type satisfies an interface
-// implicitly -- no "implements" declaration.
-
 data empty_interface: String = "interface{}"
-data any_type: String = "any"          // Go 1.18+ alias for interface{}
+data any_type: String = "any"
 data interface_def_template: String = "type \{name\} interface \{\n\{methods\}\n\}"
-
-// -- Numeric types ---------------------------------------------------
-// Ref: Go Spec "Numeric types"
 
 data integer_types: List<String> = [
   "int", "int8", "int16", "int32", "int64",
@@ -86,13 +157,4 @@ data integer_types: List<String> = [
 
 data float_types: List<String> = ["float32", "float64"]
 
-// -- Type conversions ------------------------------------------------
-// Ref: Go Spec "Conversions"
-//
-// Go has no implicit type conversions. All conversions are explicit
-// with function-call syntax: Type(expr).
-
 data type_conversion_template: String = "\{type\}(\{expr\})"
-
-// Emission-facing maps (go_type_map, go_keywords, go_container_templates)
-// now live in extdeps.languages.go.emit -- single source of truth.
