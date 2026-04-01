@@ -4390,9 +4390,21 @@ pub fn build_module_context(
                             acc.clone(),
                             |vacc: HashMap<String, Rc<TypeBinding>>, child: Rc<Node>| {
                                 match v2_rt::map_get(&vacc, child.name.clone()) {
-                                    Some(_prev) => {
-                                        // Ambiguous: only replace if current enum is imported.
-                                        if curr_is_imported {
+                                    Some(prev) => {
+                                        // Check if previous binding was also from an imported enum
+                                        let prev_enum_name = prev.resolved.name.clone();
+                                        let prev_is_imported = if !prev_enum_name.is_empty() {
+                                            resolved_imports.iter().any(|imp| {
+                                                imp.specific_names.iter().any(|n| *n == prev_enum_name)
+                                            })
+                                        } else { false };
+                                        if curr_is_imported && prev_is_imported {
+                                            // Both imported — ambiguous variant name is a compile error.
+                                            // Keep first-write-wins (deterministic), add diagnostic below.
+                                            // The collision is recorded; the module diagnostic accumulator
+                                            // picks it up.
+                                            vacc.clone()
+                                        } else if curr_is_imported {
                                             v2_rt::map_insert(vacc.clone(), child.name.clone(),
                                                 Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() }))
                                         } else { vacc.clone() }
@@ -4432,6 +4444,36 @@ pub fn build_module_context(
                     v2_rt::map_insert(acc.clone(), binding.name.clone(), binding.clone())
                 },
             );
+        // O1: Detect variant name collisions between imported enums → compile error
+        let collision_diagnostics: Vec<Rc<ErrorNode>> = {
+            let mut collisions = Vec::new();
+            // Track which variant names appear in multiple imported enums
+            let mut seen: HashMap<String, String> = HashMap::new(); // variant_name → first_enum_name
+            for binding in v2_rt::map_values(&env.bindings) {
+                if !node_is_coproduct(binding.resolved.clone()) { continue; }
+                let enum_name = binding.resolved.name.clone();
+                let is_imported = resolved_imports.iter().any(|imp| {
+                    imp.specific_names.iter().any(|n| *n == enum_name)
+                });
+                if !is_imported { continue; }
+                for child in binding.resolved.children.iter() {
+                    match seen.get(&child.name) {
+                        Some(prev_enum) => {
+                            collisions.push(make_error_node(
+                                Rc::new(CompilerDiagnostic::InternalError {
+                                    message: format!("ambiguous variant '{}': imported from both '{}' and '{}'",
+                                        child.name, prev_enum, enum_name),
+                                    span: child.span.clone(),
+                                }),
+                                module_name.clone(),
+                            ));
+                        }
+                        None => { seen.insert(child.name.clone(), enum_name.clone()); }
+                    }
+                }
+            }
+            collisions
+        };
         Rc::new(ModuleContext {
             resolved_items: local.resolved_items.clone(),
             func_env: resolve_result.func_env.clone(),
@@ -4439,14 +4481,17 @@ pub fn build_module_context(
             locals: all_locals.clone(),
             item_registry: local.item_registry.clone(),
             diagnostics: v2_rt::concat(
-                {
-                    let mut __result = Vec::new();
-                    for c in local.diag_chunks.clone().iter().cloned() {
-                        __result.extend(c.clone());
-                    }
-                    __result
-                },
-                resolve_result.diagnostics.clone(),
+                v2_rt::concat(
+                    {
+                        let mut __result = Vec::new();
+                        for c in local.diag_chunks.clone().iter().cloned() {
+                            __result.extend(c.clone());
+                        }
+                        __result
+                    },
+                    resolve_result.diagnostics.clone(),
+                ),
+                collision_diagnostics,
             ),
         })
     }
