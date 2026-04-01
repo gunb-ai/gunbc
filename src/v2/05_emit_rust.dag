@@ -1971,9 +1971,9 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         if value_type_str != "" {
           concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
         } else {
-          "Rc::new(HashMap::new())"
+          "compile_error!(\"empty_map: value type unresolved\")"
         }
-      _ => "Rc::new(HashMap::new())"
+      _ => "compile_error!(\"empty_map: return type unresolved\")"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info)
@@ -2333,10 +2333,10 @@ fn emit_rust_fold_method_call(fold_accumulator_type: Node?, result_type: Inferre
             if value_type_str != "" {
               concat("v2_rt::rc_empty_map::<", value_type_str, ">()")
             } else {
-              "Rc::new(HashMap::new())"
+              "compile_error!(\"fold empty_map: value type unresolved\")"
             }
           } else if init_func == "empty_map" {
-            "Rc::new(HashMap::new())"
+            "compile_error!(\"fold empty_map: accumulator type unresolved\")"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, rc_types: rc_types, emit_info: emit_info, fuel: 1024)
           }

@@ -1986,12 +1986,12 @@ pub fn emit_typed_call_expr(func: String, args: Vec<Rc<Node>>, inferred: Option<
             Some(InferredNode::Resolved { node: ret_type, .. }) => {
                 let value_type_str = rust_empty_map_value_type_str(ret_type.clone(), rc_types.clone());
                 if value_type_str.is_empty() {
-                    "Rc::new(HashMap::new())".to_string()
+                    "compile_error!(\"empty_map: value type unresolved\")".to_string()
                 } else {
                     format!("v2_rt::rc_empty_map::<{}>()", value_type_str)
                 }
             }
-            _ => "Rc::new(HashMap::new())".to_string(),
+            _ => "compile_error!(\"empty_map: return type unresolved\")".to_string(),
         }
     } else {
         emit_typed_call(func.clone(), args.clone(), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())
@@ -2417,14 +2417,14 @@ let init_str = match args.clone().first().cloned() {
                 {
                     let value_type_str = rust_empty_map_value_type_str(acc_type_node.clone(), rc_types.clone());
 if value_type_str.is_empty() {
-                        "Rc::new(HashMap::new())".to_string()
+                        "compile_error!(\"fold empty_map: value type unresolved\")".to_string()
 } else {
                         format!("v2_rt::rc_empty_map::<{}>()", value_type_str)
 }
 }
 } else {
                 if (init_func.clone() == "empty_map".to_string()) {
-                    "Rc::new(HashMap::new())".to_string()
+                    "compile_error!(\"fold empty_map: accumulator type unresolved\")".to_string()
 } else {
                     emit_typed_expr(arg_value(init_arg.clone()), registry.clone(), scope.clone(), depth.clone(), rc_types.clone(), emit_info.clone())
 }
