@@ -194,8 +194,10 @@ pub fn build_type_rendering(n: Rc<Node>, emit_info: Rc<EmitGraphInfo>, rc_types:
     let n_is_error = n.inferred.as_ref().map_or(false, |i| is_compiler_error(Rc::new((**i).clone())));
     // stage0: TypeVariable variant does not exist; n_is_type_var is always false.
     let n_is_type_var = false;
-    if (n_is_type_var || n_is_error) && n.children.is_empty() {
-        let label = if n_is_error { "CompilerError" } else { "TypeVariable" };
+    // Sentinel names from incomplete inference — these are not real types
+    let n_is_sentinel = n.name == "Error" || n.name == "Dynamic";
+    if (n_is_type_var || n_is_error || n_is_sentinel) && n.children.is_empty() {
+        let label = if n_is_error { "CompilerError" } else if n_is_sentinel { &n.name } else { "TypeVariable" };
         return error_type_rendering(label.to_string());
     }
 

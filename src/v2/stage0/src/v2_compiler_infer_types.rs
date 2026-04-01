@@ -536,7 +536,7 @@ pub fn free_monoid_scalar_templates() -> Vec<AlgebraFieldTemplate> {
             param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
             return_type: AlgebraTypeTemplate::ListOf {
                 element: Box::new(AlgebraTypeTemplate::NamedTemplate {
-                    name: "Char".to_string(),
+                    name: "Int".to_string(),
                 }),
             },
         },

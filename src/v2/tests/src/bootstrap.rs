@@ -352,6 +352,8 @@ fn bootstrap_stage0_to_stage1() {
             eprintln!("  {}", &s[..s.len().min(200)]);
         }
     }
+    // To debug, uncomment:
+    // eprintln!("\n=== FULL CARGO CHECK STDERR ===\n{}\n=== END ===", check_stderr);
 
     assert!(
         error_count <= EMITTED_RUST_ERROR_RATCHET,

@@ -1239,7 +1239,9 @@ pub fn refine_collection_result_type(
                     receiver_type.clone()
                 } else {
                     if method_name_is(method_name.clone(), "fold".to_string()) {
-                        // fold returns the accumulator type, not the lambda body type.
+                        // fold returns the accumulator type.  When the init value
+                        // has incomplete type (e.g. empty list → List<Unit>),
+                        // refine from the lambda body's return type instead.
                         let fold_acc = match semantics.clone() {
                             Some(s) => match (*s).clone() {
                                 MethodSemantics::AlgebraMethodSemantics {
@@ -1250,8 +1252,36 @@ pub fn refine_collection_result_type(
                             },
                             None => None,
                         };
-                        match fold_acc {
-                            Some(acc_type) => acc_type.clone(),
+                        let acc_has_incomplete_element = match fold_acc.clone() {
+                            Some(ref at) => {
+                                let elem = for_each_element_type_node(at.clone());
+                                elem.name == "Unit" || elem.name == "Dynamic" || elem.name == "Error" || elem.name.is_empty()
+                            },
+                            None => false,
+                        };
+                        let lambda_body_type = match {
+                            let mut __result = Vec::new();
+                            for a in typed_args.clone().iter().cloned() {
+                                if is_lambda_expr(arg_value(a.clone())) {
+                                    __result.push(a);
+                                }
+                            }
+                            __result
+                        }.first().cloned() {
+                            Some(lambda_arg) => Some(rt_type(arg_value(lambda_arg.clone()))),
+                            None => None,
+                        };
+                        match fold_acc.clone() {
+                            Some(acc_type) => {
+                                if acc_has_incomplete_element {
+                                    match lambda_body_type {
+                                        Some(lbt) if lbt.name != "Unit" && lbt.name != "Error" && lbt.name != "Dynamic" => lbt.clone(),
+                                        _ => acc_type.clone(),
+                                    }
+                                } else {
+                                    acc_type.clone()
+                                }
+                            },
                             None => fallback.clone(),
                         }
                     } else {
@@ -1896,6 +1926,26 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                                             func_name.clone(),
                                                         ),
                                                     },
+                                                    _ => {
+                                                        resolve_builtin_call_type(func_name.clone())
+                                                    }
+                                                },
+                                                None => {
+                                                    resolve_builtin_call_type(func_name.clone())
+                                                }
+                                            }
+                                        } else if (func_name.clone() == "with".to_string()) {
+                                            // `with` returns the receiver's type (struct update)
+                                            match typed_args.clone().first().cloned() {
+                                                Some(receiver_arg) => match (*rt_node(arg_value(
+                                                    receiver_arg.clone(),
+                                                )))
+                                                .clone()
+                                                {
+                                                    NodeType::Typed {
+                                                        node: receiver_type,
+                                                        ..
+                                                    } => receiver_type.clone(),
                                                     _ => {
                                                         resolve_builtin_call_type(func_name.clone())
                                                     }
