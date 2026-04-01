@@ -1,13 +1,17 @@
-// extdeps/languages/go/types.dag -- "What is the Go type system?"
+// extdeps/languages/go/types.dag -- Go algebra inhabitants and coercion declarations.
 //
-// Value types, pointer types, zero values, interfaces, and struct
-// embedding as specified in the Go Language Specification.
+// Go counterpart to rust/types.dag. Declares which Go types inhabit which
+// .dag algebraic structures. Go has garbage collection (like Python) but
+// uses pointer types for optional values (like Rust uses Option<T>).
+//
+// FAIL-CLOSED CONTRACT: Same as Rust and Python.
 //
 // Ref: The Go Programming Language Specification (go.dev/ref/spec)
 //      Effective Go (go.dev/doc/effective_go)
+//      std/algebra.dag (algebraic structure definitions)
 //
 // Consumers:
-//   v2/05_emit_go.dag -- type emission, struct definition, interface satisfaction
+//   v2/05_emit_go.dag -- coercion engine reads inhabitants for type rendering
 
 module extdeps.languages.go.types
 
@@ -16,16 +20,181 @@ import std.languages {
   TypeDefinitionSyntax
 }
 
-// -- Zero values -----------------------------------------------------
-// Ref: Go Spec "The zero value"
+
+// =========================================================================
+// Coercion vocabulary
+// =========================================================================
+
+type InhabitantDecl {
+  algebra: String
+  go_template: String
+  arity: Int
+  zero_value: String?
+  import_path: String?
+}
+
+type TypeCheckpoint {
+  dag_name: String
+  go_type: String
+  zero_value: String
+}
+
+type SharingStrategy {
+  wrapper_template: String
+}
+
+type CallableRepr {
+  template: String
+  param_separator: String
+  return_arrow: String
+}
+
+type CoercionTest {
+  inhabitant_algebra: String
+  description: String
+  go_assertion: String
+}
+
+
+// =========================================================================
+// Named type checkpoints
 //
-// Every Go variable is initialized to its zero value when declared
-// without an explicit initializer. There is no "uninitialized" state.
+// Go has value types and reference types. Small types (int64, bool, float64)
+// are value types (copied on assignment). Slices, maps, and channels are
+// reference types (header copied, underlying data shared).
+// =========================================================================
+
+data go_type_checkpoints: List<TypeCheckpoint> = [
+  { dag_name: "Int",    go_type: "int64",       zero_value: "0" },
+  { dag_name: "Float",  go_type: "float64",     zero_value: "0.0" },
+  { dag_name: "Bool",   go_type: "bool",        zero_value: "false" },
+  { dag_name: "Unit",   go_type: "struct{}",    zero_value: "struct{}{}" },
+  { dag_name: "String", go_type: "string",      zero_value: "\"\"" },
+  { dag_name: "Bytes",  go_type: "[]byte",      zero_value: "nil" },
+  { dag_name: "Secret", go_type: "string",      zero_value: "\"\"" },
+  { dag_name: "Json",   go_type: "interface{}", zero_value: "nil" }
+]
+
+
+// =========================================================================
+// Algebra inhabitants
+//
+// COMPARISON WITH RUST AND PYTHON:
+//   FreeMonoid → []T (Go) vs Vec<T> (Rust) vs list[T] (Python)
+//   BooleanAlgebra → map[A]struct{} (Go) vs BTreeSet<A> (Rust) vs set[A] (Python)
+//   PartialFunction → map[K]V (Go) vs HashMap<K,V> (Rust) vs dict[K,V] (Python)
+//
+// Go's interesting case: no native set type. Sets are idiomatically
+// represented as map[T]struct{} (map with zero-size values). This is the
+// correct BooleanAlgebra inhabitant for Go — it has the right operations
+// (key lookup = membership, key addition = union element, etc.) even
+// though the syntax is unusual.
+// =========================================================================
+
+data go_algebra_inhabitants: List<InhabitantDecl> = [
+  // FreeMonoid<T> → []T (Go slice)
+  // Go slices are the canonical ordered sequence.
+  //   concat → append(a, b...)
+  //   empty  → nil or []T{}
+  //   map    → manual for loop (no builtin map)
+  //   fold   → manual for loop
+  { algebra: "FreeMonoid",
+    go_template: "[]\{0\}",
+    arity: 1,
+    zero_value: "nil",
+    import_path: none },
+
+  // BooleanAlgebra<A> → map[A]struct{}
+  // Go has no native set type. map[A]struct{} is idiomatic:
+  //   member    → _, ok := s[x]; ok
+  //   union     → for k := range t { s[k] = struct{}{} }
+  //   intersect → manual loop
+  //   diff      → manual loop
+  //
+  // This is structurally correct: map[A]struct{} is isomorphic to A → Bool
+  // (the set-theoretic definition), just with Go's type system limitations.
+  { algebra: "BooleanAlgebra",
+    go_template: "map[\{0\}]struct\{\}",
+    arity: 1,
+    zero_value: "nil",
+    import_path: none },
+
+  // PartialFunction<K,V> → map[K]V
+  // Go maps are the canonical keyed partial function.
+  //   lookup → v, ok := m[k]
+  //   insert → m[k] = v
+  //   merge  → for k, v := range other { m[k] = v }
+  //   keys   → manual loop to collect keys
+  { algebra: "PartialFunction",
+    go_template: "map[\{0\}]\{1\}",
+    arity: 2,
+    zero_value: "nil",
+    import_path: none },
+
+  // OrderedRing → int64
+  { algebra: "OrderedRing",
+    go_template: "int64",
+    arity: 0,
+    zero_value: "0",
+    import_path: none },
+
+  // ApproximateField → float64
+  { algebra: "ApproximateField",
+    go_template: "float64",
+    arity: 0,
+    zero_value: "0.0",
+    import_path: none }
+]
+
+
+// =========================================================================
+// Sharing strategy: identity (GC handles everything)
+//
+// Go has garbage collection. Like Python, no explicit sharing wrapper.
+// Large structs may use pointers (*T) for performance, but this is
+// an optimization, not a correctness requirement.
+// =========================================================================
+
+data go_sharing: SharingStrategy = SharingStrategy {
+  wrapper_template: "\{0\}"
+}
+
+
+// =========================================================================
+// Optional: *T (pointer, nil = absent)
+//
+// Go uses nil pointers for optional values. This is fundamentally different
+// from Rust's Option<T> (sum type) and Python's T | None (union type).
+// Go's nil is a valid pointer value, not a separate variant.
+// =========================================================================
+
+data go_optional_template: String = "*\{0\}"
+data go_nil_expr: String = "nil"
+
+
+// =========================================================================
+// Callable: func(T) U
+//
+// Go functions are first-class. No special syntax for closures vs
+// function pointers — they're all `func` types. This is simpler than
+// Rust's fn/Fn/FnMut/FnOnce distinction.
+// =========================================================================
+
+data go_callable: CallableRepr = CallableRepr {
+  template: "func(\{params\}) \{return\}",
+  param_separator: ", ",
+  return_arrow: " "
+}
+
+
+// =========================================================================
+// Retained Go type system facts
+// =========================================================================
 
 type GoZeroValue {
-  dag_name: String                     // DAG abstract name
-  go_name: String                      // Go concrete type
-  zero_value: String                   // Zero value expression
+  dag_name: String
+  go_name: String
+  zero_value: String
 }
 
 data go_primitives: List<GoZeroValue> = [
@@ -39,45 +208,14 @@ data go_primitives: List<GoZeroValue> = [
   { dag_name: "Json",   go_name: "interface{}", zero_value: "nil" }
 ]
 
-// -- Pointer types ---------------------------------------------------
-// Ref: Go Spec "Pointer types"
-//
-// Go uses pointer types (*T) for optional values and to avoid copying
-// large structs. A nil pointer represents an absent value.
-
 data pointer_template: String = "*\{0\}"
 data address_of_template: String = "&\{value\}"
 data nil_literal: String = "nil"
-
-// -- Visibility ------------------------------------------------------
-// Ref: Go Spec "Exported identifiers"
-//
-// An identifier is exported if its first character is uppercase (Unicode
-// category Lu). No visibility keyword exists.
-
 data visibility_by_case: Bool = true
-
-// -- Struct embedding ------------------------------------------------
-// Ref: Go Spec "Struct types" -- embedded fields
-//
-// Go has no inheritance. A struct may embed another type by declaring a
-// field with no explicit name; the embedded type's methods and fields
-// are promoted.
-
 data embedded_field_syntax: String = "\{type\}"
-
-// -- Interface types -------------------------------------------------
-// Ref: Go Spec "Interface types"
-//
-// An interface defines a method set. A type satisfies an interface
-// implicitly -- no "implements" declaration.
-
 data empty_interface: String = "interface{}"
-data any_type: String = "any"          // Go 1.18+ alias for interface{}
+data any_type: String = "any"
 data interface_def_template: String = "type \{name\} interface \{\n\{methods\}\n\}"
-
-// -- Numeric types ---------------------------------------------------
-// Ref: Go Spec "Numeric types"
 
 data integer_types: List<String> = [
   "int", "int8", "int16", "int32", "int64",
@@ -86,13 +224,4 @@ data integer_types: List<String> = [
 
 data float_types: List<String> = ["float32", "float64"]
 
-// -- Type conversions ------------------------------------------------
-// Ref: Go Spec "Conversions"
-//
-// Go has no implicit type conversions. All conversions are explicit
-// with function-call syntax: Type(expr).
-
 data type_conversion_template: String = "\{type\}(\{expr\})"
-
-// Emission-facing maps (go_type_map, go_keywords, go_container_templates)
-// now live in extdeps.languages.go.emit -- single source of truth.

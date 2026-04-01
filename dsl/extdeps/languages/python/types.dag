@@ -1,17 +1,19 @@
-// extdeps/languages/python/types.dag -- "What is the Python type system?"
+// extdeps/languages/python/types.dag -- Python algebra inhabitants and coercion declarations.
 //
-// Duck typing, type hints (PEP 484), dataclasses (PEP 557),
-// enums, and value semantics as specified in the Python Language
-// Reference and typing module documentation.
+// Python counterpart to rust/types.dag. Declares which Python types inhabit
+// which .dag algebraic structures. The key difference from Rust: Python has
+// garbage collection, so sharing is identity (no wrapper needed).
+//
+// FAIL-CLOSED CONTRACT: Same as Rust. Missing inhabitant = compile error.
+// Python's GC means sharing is free, but type coercion is still mandatory.
 //
 // Ref: Python Language Reference (docs.python.org/3/reference)
 //      PEP 484 "Type Hints"
 //      PEP 557 "Data Classes"
-//      PEP 613 "TypeAlias"
-//      PEP 604 "Union types with X | Y"
+//      std/algebra.dag (algebraic structure definitions)
 //
 // Consumers:
-//   v2/05_emit_python.dag -- type emission, class generation, decorator usage
+//   v2/05_emit_python.dag -- coercion engine reads inhabitants for type rendering
 
 module extdeps.languages.python.types
 
@@ -20,27 +22,192 @@ import std.languages {
   TypeDefinitionSyntax, LiteralSyntax
 }
 
-// -- Type system model -----------------------------------------------
-// Ref: Python Reference 3 "Data model"
 
-// Python is dynamically typed. Type hints are optional annotations
-// checked by external tools (mypy, pyright), not the runtime.
+// =========================================================================
+// Coercion vocabulary (shared with Rust — same types, different instances)
+// =========================================================================
+
+type InhabitantDecl {
+  algebra: String
+  python_template: String
+  arity: Int
+  identity_expr: String?
+  import_path: String?
+}
+
+type TypeCheckpoint {
+  dag_name: String
+  python_type: String
+  falsy_value: String
+}
+
+// Python sharing strategy: identity. GC handles everything.
+// No wrappers, no clone, no reference counting at the language level.
+type SharingStrategy {
+  wrapper_template: String
+}
+
+type CallableRepr {
+  template: String
+  param_separator: String
+  return_arrow: String
+  import_path: String
+}
+
+type CoercionTest {
+  inhabitant_algebra: String
+  description: String
+  python_assertion: String
+}
+
+
+// =========================================================================
+// Named type checkpoints
+//
+// Same purpose as Rust checkpoints. Python's type system is dynamically
+// typed at runtime but statically annotated for mypy/pyright.
+//
+// KEY DIFFERENCE: Python has no Copy/Move distinction. All values are
+// references to objects on the GC heap. "Copying" is rebinding.
+// =========================================================================
+
+data python_type_checkpoints: List<TypeCheckpoint> = [
+  { dag_name: "Int",    python_type: "int",   falsy_value: "0" },
+  { dag_name: "Float",  python_type: "float", falsy_value: "0.0" },
+  { dag_name: "Bool",   python_type: "bool",  falsy_value: "False" },
+  { dag_name: "Unit",   python_type: "None",  falsy_value: "None" },
+  { dag_name: "String", python_type: "str",   falsy_value: "\"\"" },
+  { dag_name: "Bytes",  python_type: "bytes", falsy_value: "b\"\"" },
+  { dag_name: "Secret", python_type: "str",   falsy_value: "\"\"" },
+  { dag_name: "Json",   python_type: "dict",  falsy_value: "{}" }
+]
+
+
+// =========================================================================
+// Algebra inhabitants
+//
+// COMPARISON WITH RUST:
+//   FreeMonoid → list (Python) vs Vec<T> (Rust)
+//   BooleanAlgebra → set (Python) vs BTreeSet<T> (Rust)
+//   PartialFunction → dict (Python) vs HashMap<K,V> (Rust)
+//
+// Python's collection types are mutable by default. The .dag value semantics
+// mean "copy on write" — Python achieves this via GC (rebinding creates a
+// new reference, not a deep copy). This is semantically correct but
+// operationally different from Rust's Rc<T>.
+// =========================================================================
+
+data python_algebra_inhabitants: List<InhabitantDecl> = [
+  // FreeMonoid<T> → list[T]
+  // Python lists are the canonical ordered sequence.
+  //   concat → a + b (list concatenation)
+  //   empty  → []
+  //   map    → [f(x) for x in xs]
+  //   fold   → functools.reduce(f, xs, init)
+  { algebra: "FreeMonoid",
+    python_template: "list[\{0\}]",
+    arity: 1,
+    identity_expr: "[]",
+    import_path: none },
+
+  // BooleanAlgebra<A> → set[A]
+  // Python sets have native union/intersection/difference.
+  //   union     → a | b  (or a.union(b))
+  //   intersect → a & b  (or a.intersection(b))
+  //   diff      → a - b  (or a.difference(b))
+  //   member    → x in s
+  //
+  // NOTE: This is CORRECT algebra mapping. Rust had the bug of mapping
+  // Set to FreeMonoid (list operations). Python gets it right by using
+  // set, which natively supports BooleanAlgebra operations.
+  { algebra: "BooleanAlgebra",
+    python_template: "set[\{0\}]",
+    arity: 1,
+    identity_expr: "set()",
+    import_path: none },
+
+  // PartialFunction<K,V> → dict[K,V]
+  // Python dicts are the canonical keyed partial function.
+  //   lookup → d.get(k)  (returns None if missing)
+  //   insert → d[k] = v  (or {**d, k: v} for immutable style)
+  //   merge  → {**a, **b}
+  //   keys   → list(d.keys())
+  { algebra: "PartialFunction",
+    python_template: "dict[\{0\}, \{1\}]",
+    arity: 2,
+    identity_expr: "{}",
+    import_path: none },
+
+  // OrderedRing → int
+  { algebra: "OrderedRing",
+    python_template: "int",
+    arity: 0,
+    identity_expr: "0",
+    import_path: none },
+
+  // ApproximateField → float
+  { algebra: "ApproximateField",
+    python_template: "float",
+    arity: 0,
+    identity_expr: "0.0",
+    import_path: none }
+]
+
+
+// =========================================================================
+// Sharing strategy: identity (GC handles everything)
+//
+// This is the fundamental difference from Rust. Python never needs Rc<T>
+// or any wrapper. The GC tracks references. "Sharing" is just binding
+// another name to the same object.
+//
+// COMPARISON:
+//   Rust:   let x = Rc::new(vec![1, 2, 3]); let y = x.clone();
+//   Python: x = [1, 2, 3]; y = x   # same object, GC-tracked
+// =========================================================================
+
+data python_sharing: SharingStrategy = SharingStrategy {
+  wrapper_template: "\{0\}"
+}
+
+
+// =========================================================================
+// Optional: T | None (PEP 604)
+// =========================================================================
+
+data python_optional_template: String = "Optional[\{0\}]"
+data python_none_expr: String = "None"
+
+
+// =========================================================================
+// Callable: Callable[[T], U] (typing module)
+// =========================================================================
+
+data python_callable: CallableRepr = CallableRepr {
+  template: "Callable[[\{params\}], \{return\}]",
+  param_separator: ", ",
+  return_arrow: ", ",
+  import_path: "from typing import Callable"
+}
+
+
+// =========================================================================
+// Retained Python type system facts
+// =========================================================================
+
 type PythonTypeKind
-  = DynamicType                        // no annotation, duck-typed
-  | AnnotatedType                      // type hint present, checked by mypy
+  = DynamicType
+  | AnnotatedType
 
-// "Which types are mutable?"
-// Ref: Python Reference 3 "Data model" -- mutable vs immutable
 type PythonMutability
-  = Immutable                          // str, int, float, bool, tuple, frozenset, bytes
-  | Mutable                            // list, dict, set, bytearray, user objects
+  = Immutable
+  | Mutable
 
-// Primitive type facts with mutability.
 type PythonPrimitiveInfo {
-  dag_name: String                     // DAG abstract name
-  python_name: String                  // Python concrete type
+  dag_name: String
+  python_name: String
   mutability: PythonMutability
-  falsy_value: String                  // what value is falsy
+  falsy_value: String
 }
 
 data python_primitives: List<PythonPrimitiveInfo> = [
@@ -54,65 +221,24 @@ data python_primitives: List<PythonPrimitiveInfo> = [
   { dag_name: "Json",   python_name: "dict",  mutability: Mutable,   falsy_value: "{}" }
 ]
 
-// -- Dataclass model -------------------------------------------------
-// Ref: PEP 557 "Data Classes" (Python 3.7+)
-
-// "How does Python define structured data?"
-// @dataclass decorator auto-generates __init__, __repr__, __eq__.
 data dataclass_decorator: String = "@dataclass"
 data dataclass_import: String = "from dataclasses import dataclass, field"
-
-// Dataclass field with default value.
 data field_default_template: String = "field(default=\{value\})"
 data field_default_factory_template: String = "field(default_factory=\{factory\})"
-
-// -- Enum model ------------------------------------------------------
-// Ref: Python enum module (docs.python.org/3/library/enum.html)
-
 data enum_import: String = "from enum import Enum, auto"
 data enum_class_template: String = "class \{name\}(Enum):\n\{variants\}"
 data enum_auto_value: String = "auto()"
-
-// -- Union / Optional types ------------------------------------------
-// Ref: PEP 604 "Allow writing union types as X | Y" (Python 3.10+)
-
-// Python 3.10+ union syntax: X | Y instead of Union[X, Y].
 data union_syntax: String = "\{a\} | \{b\}"
 data optional_syntax: String = "\{type\} | None"
-
-// Pre-3.10 syntax (typing module).
 data typing_optional: String = "Optional[\{type\}]"
 data typing_union: String = "Union[\{types\}]"
 data typing_import: String = "from typing import Optional, Union"
-
-// -- Type alias ------------------------------------------------------
-// Ref: PEP 613 "TypeAlias" (Python 3.10+)
-
 data type_alias_template: String = "\{name\} = \{type\}"
-
-// -- Generic types ---------------------------------------------------
-// Ref: PEP 484, typing module
-
 data generic_param_template: String = "[\{params\}]"
 data typing_generic_import: String = "from typing import Generic, TypeVar"
-
-// -- None handling ---------------------------------------------------
-// Ref: Python Reference 3 "Data model"
-
 data none_literal: String = "None"
 data none_check_template: String = "\{expr\} is None"
 data none_not_check_template: String = "\{expr\} is not None"
-
-// -- Pass statement --------------------------------------------------
-// Ref: Python Reference 7.4 "The pass statement"
-
 data pass_statement: String = "pass"
-
-// -- Type checking tools ---------------------------------------------
-// The canonical type checkers for Python type hints.
-
 data type_checker: String = "mypy"
 data type_checker_strict: String = "mypy --strict"
-
-// Emission-facing maps (python_type_map, python_keywords, python_container_templates)
-// now live in extdeps.languages.python.emit -- single source of truth.

@@ -1,13 +1,26 @@
-// extdeps/languages/rust/types.dag -- "What is the Rust type system?"
+// extdeps/languages/rust/types.dag -- Rust algebra inhabitants and coercion declarations.
 //
-// Ownership, borrowing, lifetimes, trait bounds, and value semantics
-// as specified in The Rust Reference and The Rustonomicon.
+// This file declares which Rust types inhabit which algebraic structures
+// from std/algebra.dag. Type coercion is a sidecast: same algebra,
+// different representation. The compiler walks the .dag type composition
+// tree and sidecasts at the first level Rust declares an inhabitant for.
+//
+// FAIL-CLOSED CONTRACT: If this file does not declare an inhabitant for
+// an algebra, the compiler REFUSES to emit code for any .dag type that
+// requires that algebra. Missing inhabitant = compile error.
+//
+// This replaces the ad-hoc string maps (rust_type_map, rust_container_templates)
+// in emit.dag with structured declarations that the compiler can verify
+// and from which it can generate exhaustive tests.
 //
 // Ref: The Rust Reference (doc.rust-lang.org/reference)
 //      The Rustonomicon (doc.rust-lang.org/nomicon)
+//      std/algebra.dag (algebraic structure definitions)
 //
 // Consumers:
-//   v2/05_emit_rust.dag -- type emission, parameter passing, derive macros
+//   v2/05_emit.dag       -- coercion engine reads inhabitants for type rendering
+//   v2/05_emit_rust.dag  -- Rust-specific coercion effects (Rc, derives)
+//   test generation       -- algebra law tests generated from declarations
 
 module extdeps.languages.rust.types
 
@@ -16,31 +29,753 @@ import std.languages {
   TypeDefinitionSyntax, LiteralSyntax
 }
 
-// -- Ownership model -------------------------------------------------
-// Ref: Rust Reference 10 "Ownership"
 
-type OwnershipKind
-  = Owned                              // T -- sole owner, dropped at scope exit
-  | SharedRef                          // &T -- immutable borrow
-  | MutRef                             // &mut T -- exclusive mutable borrow
-  | RawPtr                             // *const T / *mut T -- unsafe, no borrow rules
+// =========================================================================
+// PART 1: Coercion vocabulary
+//
+// These types model the coercion system itself. They are the schema for
+// inhabitant declarations — what information the compiler needs to
+// mechanically coerce .dag types into Rust types.
+// =========================================================================
 
-// "Which types are Copy?"
-// Ref: Rust Reference 10.1.2 "Copy and Clone"
-// Copy types are passed by value without move semantics.
-// All others are moved on assignment/pass.
-type CopySemantics
-  = IsCopy                             // i64, f64, bool, (), char, &T
-  | IsNotCopy                          // String, Vec, HashMap, Box, user structs
-
-// Primitive type annotations with their value semantics.
-type RustPrimitiveInfo {
-  dag_name: String                     // DAG abstract name (e.g. "Int")
-  rust_name: String                    // Rust concrete type (e.g. "i64")
-  copy: CopySemantics                  // pass-by-value or pass-by-move
-  default_value: String?               // default initializer if applicable
+// An algebra inhabitant declaration: "this Rust type inhabits this .dag algebra."
+//
+// The compiler reads these to resolve type coercion. For each .dag type T:
+//   1. Look up T's algebra (from std/algebra.dag inhabitation)
+//   2. Find the InhabitantDecl where algebra == T's algebra name
+//   3. Apply rust_template with T's type parameters substituted
+//   4. If no match → compile error (fail-closed)
+//
+// Fields:
+//   algebra       — name of the std/algebra.dag type this inhabits
+//   rust_template — Rust type expression. {0}, {1} are positional type params.
+//                   For monomorphic types (arity 0), this is the literal type.
+//   arity         — number of type parameters. 0 = leaf, 1 = Vec<{0}>, 2 = HashMap<{0},{1}>
+//   is_copy       — Rust Copy trait. Copy types skip Rc wrapping and .clone() calls.
+//   identity_expr — Rust expression for the algebra's identity element (Monoid.identity,
+//                   Ring.zero, BooleanAlgebra.bottom). Used for empty collection literals,
+//                   default values, and fold initializers.
+//   std_import    — Rust `use` path needed for this type (none for prelude types).
+type InhabitantDecl {
+  algebra: String
+  rust_template: String
+  arity: Int
+  is_copy: Bool
+  identity_expr: String?
+  std_import: String?
 }
 
+// Named type checkpoint: "this exact .dag type name maps to this Rust type."
+//
+// Distinct from algebra inhabitants. A checkpoint says "I know Int → i64"
+// without needing to resolve through OrderedRing<Word64>. Checkpoints are
+// checked FIRST; algebra inhabitants are the fallback for types the language
+// doesn't explicitly name.
+//
+// This is the structured replacement for rust_type_map in emit.dag.
+type TypeCheckpoint {
+  dag_name: String
+  rust_type: String
+  is_copy: Bool
+  default_expr: String?
+}
+
+// Sharing strategy: how .dag value semantics map to Rust move semantics.
+//
+// .dag has value semantics: every binding is an independent copy. Rust has
+// move semantics: values are moved on assignment. To reconcile this, the
+// coercion wraps non-Copy types in a shared pointer.
+//
+// Sharing is a COERCION EFFECT — it's applied after type coercion, not
+// during it. The coerced type Vec<i64> becomes Rc<Vec<i64>> when it
+// appears in a context that requires sharing (struct fields, multiple
+// references, etc.).
+//
+// Historical bug: lazy_static + Rc on constant data → E0277 Send/Sync.
+// The sharing effect was applied uniformly instead of being gated on
+// ValueContext. The fix: constants (is_constant = true) skip sharing.
+type SharingStrategy {
+  wrapper_template: String
+  box_template: String
+  exempt_predicate: String
+}
+
+// Callable type representation: how .dag function types coerce to Rust.
+//
+// .dag function types (fn(T) -> U) must coerce to Rust callable types.
+// The representation depends on context:
+//   - Owned closure: Box<dyn Fn(T) -> U>  (heap-allocated, owned)
+//   - Shared closure: Rc<dyn Fn(T) -> U>  (reference-counted)
+//   - Static function: fn(T) -> U          (function pointer, Copy)
+//
+// Historical bug: Callable type emitted as bare "String" via type_map
+// fallback. No proper callable inhabitant existed, so 9 errors in
+// std_algebra.rs resulted from unresolved Callable references.
+type CallableRepr {
+  owned_template: String
+  shared_template: String
+  static_template: String
+  param_separator: String
+  return_arrow: String
+}
+
+// Coercion test obligation: what must hold for an inhabitant to be valid.
+//
+// Every InhabitantDecl generates these test obligations mechanically.
+// The compiler can emit Rust test functions that verify the algebra laws
+// hold for the declared Rust type.
+type CoercionTest {
+  inhabitant_algebra: String
+  description: String
+  rust_assertion: String
+  category: TestCategory
+}
+
+type TestCategory
+  = AlgebraLaw
+  | RoundTrip
+  | Boundary
+  | CoercionRefusal
+
+
+// =========================================================================
+// PART 2: Named type checkpoints (replaces rust_type_map)
+//
+// COERCION CATEGORY 1: Primitive scalar coercion
+// .dag abstract type → Rust concrete type (direct name match)
+//
+// The compiler tries these FIRST before falling through to algebra
+// inhabitants. This handles the common case efficiently and provides
+// explicit control over which Rust type represents each .dag primitive.
+//
+// WORKED EXAMPLE: Int → i64
+//   .dag source:  fn add(a: Int, b: Int) -> Int { a + b }
+//   Checkpoint:   "Int" → "i64"
+//   Rust output:  fn add(a: i64, b: i64) -> i64 { a + b }
+//
+//   Without checkpoint (algebra fallback):
+//     Int inhabits OrderedRing → Rust inhabitant for OrderedRing is i64
+//     Same result, but slower resolution.
+//
+//   With MISSING checkpoint AND missing OrderedRing inhabitant:
+//     COMPILE ERROR: "No Rust type for .dag type Int (algebra: OrderedRing)"
+//
+// HISTORICAL CONTEXT: This data replaces rust_type_map in emit.dag.
+// The old map was an untyped Map<String, String> with no link to algebras,
+// no copy semantics, and no default expressions. When a type wasn't in
+// the map, emit_primitive_type passed it through as-is — silent fallback.
+// =========================================================================
+
+data rust_type_checkpoints: List<TypeCheckpoint> = [
+  // --- Scalars ---
+  // Int inhabits OrderedRing<Word64>.
+  // Rust's i64 is a 64-bit signed integer: arithmetic emerges from Ring.
+  // Ref: Rust Reference "Integer types"
+  { dag_name: "Int",    rust_type: "i64",    is_copy: true,  default_expr: "0" },
+
+  // Float inhabits ApproximateField<Word64>.
+  // Rust's f64 is IEEE 754 double: division emerges from Field.
+  // "Approximate" because floating-point breaks exact associativity.
+  // Ref: Rust Reference "Floating-point types"
+  { dag_name: "Float",  rust_type: "f64",    is_copy: true,  default_expr: "0.0" },
+
+  // Bool inhabits BooleanAlgebra<{True, False}>.
+  // Rust's bool: and/or/not emerge from Lattice.
+  // Ref: Rust Reference "Boolean type"
+  { dag_name: "Bool",   rust_type: "bool",   is_copy: true,  default_expr: "false" },
+
+  // Unit is the terminal object (zero-field product, single inhabitant).
+  // Ref: Rust Reference "Unit type"
+  { dag_name: "Unit",   rust_type: "()",     is_copy: true,  default_expr: "()" },
+
+  // String inhabits FreeMonoid<Char>.
+  // Rust's String: concat/length emerge from Monoid.
+  // NOT Copy — heap-allocated, variable-length.
+  // Ref: Rust Reference "String type"
+  { dag_name: "String", rust_type: "String", is_copy: false, default_expr: "String::new()" },
+
+  // --- Opaque kernel types ---
+  // These have no algebraic structure in std/algebra.dag.
+  // They map to Rust types by direct checkpoint only.
+  { dag_name: "Bytes",  rust_type: "Vec<u8>",              is_copy: false, default_expr: "Vec::new()" },
+  { dag_name: "Secret", rust_type: "String",               is_copy: false, default_expr: none },
+  { dag_name: "Json",   rust_type: "serde_json::Value",    is_copy: false, default_expr: "serde_json::Value::Null" }
+]
+
+
+// =========================================================================
+// PART 3: Algebra inhabitants (replaces rust_container_templates)
+//
+// COERCION CATEGORY 2: Parameterized container coercion
+// .dag algebraic structure → Rust parameterized type
+//
+// When the compiler encounters a .dag type that isn't in the checkpoint
+// table, it resolves through the type's algebra. If T inhabits FreeMonoid<A>,
+// the compiler looks for a FreeMonoid inhabitant here and applies it.
+//
+// WORKED EXAMPLE: List<Int> → Vec<i64>
+//   .dag source:  fn lengths(items: List<String>) -> List<Int>
+//   Resolution:   List<T> = FreeMonoid<T> (from std/types.dag)
+//   Inhabitant:   FreeMonoid → "Vec<{0}>" (arity 1)
+//   Inner coerce: String → "String" (checkpoint), Int → "i64" (checkpoint)
+//   Rust output:  fn lengths(items: Vec<String>) -> Vec<i64>
+//   Sharing:      fn lengths(items: &Rc<Vec<String>>) -> Rc<Vec<i64>>
+//                 (non-Copy → Rc wrapped in shared context)
+//
+// WORKED EXAMPLE: Map<String, List<Int>> → HashMap<String, Vec<i64>>
+//   .dag source:  data index: Map<String, List<Int>> = { ... }
+//   Resolution:   Map<K,V> = PartialFunction<K,V> (from std/types.dag)
+//   Inhabitant:   PartialFunction → "HashMap<{0}, {1}>" (arity 2)
+//   Inner coerce: String → "String", List<Int> → Vec<i64> (recursive)
+//   Rust output:  HashMap<String, Vec<i64>>
+//   Sharing:      ValueContext.is_constant = true → no Rc (const data)
+//
+// WORKED EXAMPLE: Set<String> → BTreeSet<String>
+//   .dag source:  fn unique(items: List<String>) -> Set<String>
+//   Resolution:   Set<A> inhabits BooleanAlgebra<A> (from std/types.dag)
+//   Inhabitant:   BooleanAlgebra → "std::collections::BTreeSet<{0}>" (arity 1)
+//   Rust output:  fn unique(items: &Rc<Vec<String>>) -> Rc<BTreeSet<String>>
+//
+//   HISTORICAL BUG THIS PREVENTS:
+//   Set/NonEmptySet were mapped to FreeMonoidCollectionProfile, which gave
+//   them list operations (append, sort_by, fold) instead of set operations
+//   (union, intersect, diff). With separate algebra inhabitants, Set
+//   traces to BooleanAlgebra and gets BTreeSet — which has the correct
+//   operation surface.
+//
+// CHECKPOINT MODEL:
+// .dag types compose from primitives (Bit → BitWord<64> → Int).
+// Each language checkpoints at the level it cares about. Rust says
+// "I know Int → i64" and skips the intermediate composition stack.
+//
+// If a .dag user defines:
+//   type Seq<T> = FreeMonoid<T>
+// Rust has no checkpoint for "Seq", but FreeMonoid has an inhabitant
+// (Vec<{0}>). So Seq<Int> → Vec<i64> via the algebra level.
+//
+// If a .dag user defines:
+//   type Matrix<T> = SomeNewAlgebra<T>
+// and Rust has no inhabitant for SomeNewAlgebra → COMPILE ERROR.
+// Not silent degradation. Not a bare type name passed through.
+// A hard error telling the developer: "Rust has no representation
+// for algebra SomeNewAlgebra. Add an inhabitant declaration to
+// extdeps/languages/rust/types.dag."
+// =========================================================================
+
+data rust_algebra_inhabitants: List<InhabitantDecl> = [
+  // --- FreeMonoid<T> inhabitants ---
+  // FreeMonoid is the algebra of ordered sequences: concat + empty + positional access.
+  //
+  // Rust's Vec<T> is the canonical FreeMonoid inhabitant:
+  //   concat → .extend() / [a, b].concat()
+  //   empty  → Vec::new()
+  //   length → .len()
+  //   index  → v[i]
+  //   map    → .iter().map(f).collect()
+  //   fold   → .iter().fold(init, f)
+  //
+  // Test obligations (algebra laws for FreeMonoid):
+  //   assert_eq!(vec![].into_iter().chain(xs.clone()).collect::<Vec<_>>(), xs);  // left identity
+  //   assert_eq!(xs.clone().into_iter().chain(vec![]).collect::<Vec<_>>(), xs);  // right identity
+  //   assert_eq!(a.len() + b.len(), [a.clone(), b.clone()].concat().len());     // length homomorphism
+  { algebra: "FreeMonoid",
+    rust_template: "Vec<\{0\}>",
+    arity: 1,
+    is_copy: false,
+    identity_expr: "Vec::new()",
+    std_import: none },
+
+  // --- BooleanAlgebra<A> inhabitants ---
+  // BooleanAlgebra is the algebra of sets: union (join) + intersect (meet) + complement.
+  //
+  // Rust's BTreeSet<A> is the collection inhabitant:
+  //   union      → .union(&other).cloned().collect()
+  //   intersect  → .intersection(&other).cloned().collect()
+  //   diff       → .difference(&other).cloned().collect()
+  //   member     → .contains(&x)
+  //   complement → (universe - self) (requires universe knowledge)
+  //
+  // BTreeSet chosen over HashSet because BTreeSet requires Ord (not Hash),
+  // which is derivable for all .dag types. HashSet would require Hash,
+  // which is not derivable for types containing f64.
+  //
+  // HISTORICAL BUG THIS PREVENTS:
+  // Set<A> was previously mapped to FreeMonoidCollectionProfile, giving
+  // sets list operations like append and sort_by. With BooleanAlgebra
+  // as the algebra key, the inhabitant is BTreeSet and operations are
+  // union/intersect/diff — correct by construction.
+  //
+  // Test obligations (BooleanAlgebra laws):
+  //   assert_eq!(s.union(&BTreeSet::new()), s);           // join identity
+  //   assert_eq!(s.intersection(&s), s);                   // meet idempotent
+  //   assert!(s.union(&complement_s).is_superset(&univ));  // complement
+  { algebra: "BooleanAlgebra",
+    rust_template: "std::collections::BTreeSet<\{0\}>",
+    arity: 1,
+    is_copy: false,
+    identity_expr: "BTreeSet::new()",
+    std_import: "use std::collections::BTreeSet;" },
+
+  // --- PartialFunction<K,V> inhabitants ---
+  // PartialFunction is the algebra of keyed partial functions: lookup + insert + merge.
+  //
+  // Rust's HashMap<K,V> is the inhabitant:
+  //   lookup → .get(&k).cloned()
+  //   insert → .insert(k, v) (returns previous if any)
+  //   merge  → .extend(other.into_iter())
+  //   keys   → .keys().cloned().collect()
+  //   has    → .contains_key(&k)
+  //
+  // Test obligations (PartialFunction laws):
+  //   assert_eq!(m.get(&k), None);                         // empty lookup
+  //   let mut m2 = m.clone(); m2.insert(k, v);
+  //   assert_eq!(m2.get(&k), Some(&v));                    // insert-lookup
+  //   assert_eq!(HashMap::new().len(), 0);                 // empty size
+  { algebra: "PartialFunction",
+    rust_template: "HashMap<\{0\}, \{1\}>",
+    arity: 2,
+    is_copy: false,
+    identity_expr: "HashMap::new()",
+    std_import: "use std::collections::HashMap;" },
+
+  // --- OrderedRing inhabitants ---
+  // OrderedRing is the algebra of integers: add + mul + negate + compare.
+  // This is the algebra-level fallback for Int. Normally the checkpoint
+  // table handles Int → i64 directly. This inhabitant exists so that
+  // ANY type defined as inhabiting OrderedRing coerces to i64 in Rust.
+  //
+  // Example: type Counter = OrderedRing<Word64> (hypothetical user type)
+  //   → coerces to i64 via this inhabitant, not via checkpoint.
+  //
+  // Test obligations (OrderedRing laws):
+  //   assert_eq!(a + (b + c), (a + b) + c);   // add associativity
+  //   assert_eq!(a + 0, a);                     // add identity
+  //   assert_eq!(a + (-a), 0);                  // add inverse
+  //   assert_eq!(a * (b + c), a*b + a*c);       // distributivity
+  //   assert!(!(a < b && b < a));                // order antisymmetry
+  { algebra: "OrderedRing",
+    rust_template: "i64",
+    arity: 0,
+    is_copy: true,
+    identity_expr: "0i64",
+    std_import: none },
+
+  // --- ApproximateField inhabitants ---
+  // ApproximateField extends OrderedRing with division (reciprocal).
+  // "Approximate" because IEEE 754 breaks exact associativity.
+  //
+  // Test obligations (Field laws, approximate):
+  //   assert!((a + (b + c) - ((a + b) + c)).abs() < EPSILON);  // ~associativity
+  //   assert_eq!(a * 1.0, a);                                   // mul identity
+  //   assert!((a * (1.0 / a) - 1.0).abs() < EPSILON);          // ~reciprocal (a != 0)
+  { algebra: "ApproximateField",
+    rust_template: "f64",
+    arity: 0,
+    is_copy: true,
+    identity_expr: "0.0f64",
+    std_import: none }
+]
+
+
+// =========================================================================
+// PART 4: Optional coercion
+//
+// COERCION CATEGORY 3: Nullable/optional type coercion
+// .dag T? → Rust Option<T>
+//
+// Optional is structural, not algebraic — it's a cardinality annotation
+// (0 or 1 values) rather than an algebraic structure from std/algebra.dag.
+// But it still needs a coercion declaration because each language represents
+// optionality differently:
+//   Rust:   Option<T>     (sum type, no null)
+//   Python: T | None      (nullable, PEP 604)
+//   Go:     *T            (nil pointer)
+//
+// WORKED EXAMPLE: field with optional type
+//   .dag source:  type User { name: String, email: Email? }
+//   Resolution:   email has cardinality Optional, base type Email
+//   Checkpoint:   Email → String (refinement coercion)
+//   Optional:     Option<String>
+//   Rust output:  pub struct User { pub name: String, pub email: Option<String> }
+//
+// Test obligations:
+//   assert_eq!(None::<String>, None);                      // none identity
+//   assert_eq!(Some("hello".to_string()).unwrap(), "hello"); // some unwrap
+//   assert!(None::<i64>.is_none());                         // none predicate
+// =========================================================================
+
+data rust_optional_template: String = "Option<\{0\}>"
+data rust_none_expr: String = "None"
+data rust_some_template: String = "Some(\{0\})"
+
+
+// =========================================================================
+// PART 5: Callable coercion
+//
+// COERCION CATEGORY 4: Function type coercion
+// .dag fn(T) -> U → Rust callable type
+//
+// Function types in .dag are first-class: a field can have type fn(T) -> U.
+// Rust represents these differently depending on context:
+//   - Static function pointer: fn(T) -> U         (known at compile time, Copy)
+//   - Owned closure:           Box<dyn Fn(T) -> U> (heap-allocated, can capture)
+//   - Shared closure:          Rc<dyn Fn(T) -> U>  (reference-counted)
+//
+// HISTORICAL BUG THIS PREVENTS:
+// Callable was mapped to "String" in rust_type_map as a hack. This caused
+// 9 E0425 errors in std_algebra.rs — algebra method fields have type
+// Callable as a bare leaf node, and the type_map entry produced "String"
+// which is semantically wrong. With proper callable coercion:
+//   - Algebra method fields → fn pointer or Rc<dyn Fn> based on context
+//   - ValueContext.has_fn_fields → skip PartialEq/Debug derives
+//   - No silent fallback to "String"
+//
+// WORKED EXAMPLE: algebra method field
+//   .dag source:  type Monoid<T> { op: fn(T, T) -> T, identity: T }
+//   Field type:   fn(T, T) -> T
+//   Callable:     static_template → "fn(T, T) -> T" (known function signature)
+//   Rust output:  pub struct Monoid<T> { pub op: fn(T, T) -> T, pub identity: T }
+//
+// WORKED EXAMPLE: higher-order function parameter
+//   .dag source:  fn map<T, U>(items: List<T>, f: fn(T) -> U) -> List<U>
+//   Param type:   fn(T) -> U
+//   Callable:     owned_template → "impl Fn(T) -> U" (generic bound)
+//   Rust output:  fn map<T, U>(items: &[T], f: impl Fn(&T) -> U) -> Vec<U>
+//
+// WORKED EXAMPLE: stored closure
+//   .dag source:  type Handler { callback: fn(String) -> Bool }
+//   Field type:   fn(String) -> Bool
+//   Callable:     shared_template → "Rc<dyn Fn(String) -> bool>" (stored, shared)
+//   Rust output:  pub struct Handler { pub callback: Rc<dyn Fn(String) -> bool> }
+//   Effect:       ValueContext.has_fn_fields = true → skip PartialEq derive
+// =========================================================================
+
+data rust_callable: CallableRepr = CallableRepr {
+  owned_template: "Box<dyn Fn(\{params\}) -> \{return\}>",
+  shared_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+  static_template: "fn(\{params\}) -> \{return\}",
+  param_separator: ", ",
+  return_arrow: " -> "
+}
+
+
+// =========================================================================
+// PART 6: Sharing strategy (Rc wrapping)
+//
+// COERCION CATEGORY 5: Ownership/sharing coercion
+// .dag value semantics → Rust move semantics + Rc wrapping
+//
+// .dag has value semantics: let x = y copies y. Rust has move semantics:
+// let x = y moves y (y is consumed). To bridge this, non-Copy types are
+// wrapped in Rc<T> (reference-counted pointer) so copies become cheap
+// reference increments.
+//
+// Sharing is a COERCION EFFECT — applied AFTER type coercion:
+//   1. Coerce .dag type to Rust type:  List<Int> → Vec<i64>
+//   2. Apply sharing:                  Vec<i64> → Rc<Vec<i64>>
+//   3. Recursive types also get Box:   Tree → Box<Tree> (indirection)
+//
+// CRITICAL DISTINCTION (ValueContext × sharing):
+//   ConstantData       → const/static/lazy_static (NO Rc — data is global, immutable)
+//   RuntimeValue       → Rc<T> (shared ownership)
+//   SpecificationWitness → not emitted / phantom (algebra ops, not runtime data)
+//   CallableValue      → fn/Box<dyn Fn>/Rc<dyn Fn> (per CallableRepr)
+//
+// HISTORICAL BUG THIS PREVENTS:
+// lazy_static + Rc for constant data → E0277 Send/Sync. Rc is !Send+!Sync,
+// so putting Rc<T> inside a lazy_static (which requires Sync) is a type
+// error. The fix: constants skip Rc wrapping because they don't need
+// shared ownership — they're compile-time data.
+//
+// WORKED EXAMPLE: runtime struct field
+//   .dag source:  type Config { items: List<String> }
+//   Coerce:       List<String> → Vec<String>
+//   Share:        Vec<String> is !Copy → Rc<Vec<String>>
+//   Rust output:  pub struct Config { pub items: Rc<Vec<String>> }
+//
+// WORKED EXAMPLE: constant data declaration
+//   .dag source:  data keywords: Map<String, Bool> = { "if": true, "else": true }
+//   Coerce:       Map<String, Bool> → HashMap<String, bool>
+//   Share:        ValueContext.is_constant = true → NO Rc
+//   Rust output:  pub fn keywords() -> HashMap<String, bool> { ... }
+//   NOT:          lazy_static! { static ref KEYWORDS: Rc<HashMap<...>> = ... }
+//
+// WORKED EXAMPLE: type with function fields
+//   .dag source:  type Ring<T> { add: fn(T,T) -> T, zero: T }
+//   Coerce:       fn(T,T) -> T → callable repr
+//   Share:        ValueContext.has_fn_fields = true → skip PartialEq, skip Debug
+//   Rust output:  pub struct Ring<T> { pub add: fn(T,T) -> T, pub zero: T }
+//                 // NO #[derive(PartialEq)] — fn pointers don't impl PartialEq
+// =========================================================================
+
+data rust_sharing: SharingStrategy = SharingStrategy {
+  wrapper_template: "Rc<\{0\}>",
+  box_template: "Box<\{0\}>",
+  exempt_predicate: "is_copy"
+}
+
+
+// =========================================================================
+// PART 7: Refinement coercion
+//
+// COERCION CATEGORY 6: Refinement type coercion
+// .dag refined type → Rust base type + validation
+//
+// .dag refinements narrow a base type with predicates:
+//   type NonNegativeInt = Int where range(min: 0)
+//   type Email = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
+//
+// In Rust, refined types coerce to their base type (i64, String) with
+// validation generated as runtime assertions or constructor guards.
+//
+// WORKED EXAMPLE: NonNegativeInt → i64
+//   .dag source:  fn count(items: List<String>) -> NonNegativeInt
+//   Resolution:   NonNegativeInt = Int where range(min: 0)
+//   Base coerce:  Int → i64 (checkpoint)
+//   Rust output:  fn count(items: &Rc<Vec<String>>) -> i64
+//   Validation:   debug_assert!(result >= 0);  // or newtype with constructor
+//
+// WORKED EXAMPLE: Email → String
+//   .dag source:  type User { email: Email }
+//   Resolution:   Email = String where pattern(...)
+//   Base coerce:  String → String (checkpoint)
+//   Rust output:  pub struct User { pub email: String }
+//   Validation:   Regex check in constructor or From impl
+//
+// Test obligations (for every refinement):
+//   - Valid values pass: Email("user@example.com") succeeds
+//   - Invalid values rejected: Email("not-an-email") fails
+//   - Base type accepts all: String accepts "not-an-email"
+//   - Subtype holds: passing Email where String expected always works
+//   - Supertype fails: passing String where Email expected may fail
+//
+// DESIGN NOTE: Refinement coercion is a widening — information is lost.
+// The Rust type i64 doesn't carry the range(min: 0) constraint. This is
+// acceptable because .dag's type checker already verified the constraint.
+// The runtime guard is defense-in-depth, not primary safety.
+// =========================================================================
+
+// Refinement types coerce through their base type's checkpoint.
+// No additional data declaration needed — the compiler resolves the
+// refinement chain automatically:
+//   NonNegativeInt → Int → i64 (via checkpoint)
+//   Email → String → String (via checkpoint)
+//   Url → String → String (via checkpoint)
+
+
+// =========================================================================
+// PART 8: Structural coercion (Product / Coproduct)
+//
+// COERCION CATEGORY 7: Record and enum type coercion
+// .dag Product (struct) → Rust struct
+// .dag Coproduct (enum) → Rust enum
+//
+// User-defined types that aren't algebraic inhabitants coerce structurally:
+// Products become structs, Coproducts become enums, and each field/variant
+// is recursively coerced.
+//
+// WORKED EXAMPLE: struct coercion
+//   .dag source:  type Point { x: Int, y: Int }
+//   Structure:    Product with fields [x: Int, y: Int]
+//   Coerce:       struct, each field coerced: Int → i64
+//   Rust output:  #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+//                 pub struct Point { pub x: i64, pub y: i64 }
+//   Sharing:      All fields are Copy → struct is Copy-eligible
+//
+// WORKED EXAMPLE: enum coercion
+//   .dag source:  type Color = Red | Green | Blue
+//   Structure:    Coproduct with unit variants [Red, Green, Blue]
+//   Coerce:       enum, unit variants (no fields)
+//   Rust output:  #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+//                 pub enum Color { Red, Green, Blue }
+//   Sharing:      All-unit enum → Copy, no Rc needed
+//
+// WORKED EXAMPLE: enum with fields
+//   .dag source:  type Shape = Circle { radius: Float } | Rect { w: Float, h: Float }
+//   Structure:    Coproduct with fielded variants
+//   Coerce:       enum, each variant's fields coerced: Float → f64
+//   Rust output:  pub enum Shape {
+//                   Circle { radius: f64 },
+//                   Rect { w: f64, h: f64 },
+//                 }
+//   Sharing:      Fielded enum → !Copy → Rc<Shape> in shared context
+//
+// Test obligations (structural coercion):
+//   - Round-trip: serialize → deserialize produces equal value
+//   - Pattern match exhaustiveness: all variants covered
+//   - Field access: each field is accessible and correctly typed
+// =========================================================================
+
+// Structural coercion needs derive strategy data.
+data rust_struct_derives: List<String> = ["Debug", "Clone", "PartialEq", "Serialize", "Deserialize"]
+data rust_struct_derives_copy: List<String> = ["Debug", "Clone", "Copy", "PartialEq", "Serialize", "Deserialize"]
+data rust_enum_derives: List<String> = ["Debug", "Clone", "PartialEq", "Serialize", "Deserialize"]
+data rust_enum_derives_copy: List<String> = ["Debug", "Clone", "Copy", "PartialEq", "Serialize", "Deserialize"]
+
+// Derive suppression: types with fn fields can't derive PartialEq or Debug
+// because fn pointers don't implement those traits.
+data rust_fn_field_excluded_derives: List<String> = ["PartialEq", "Debug"]
+
+
+// =========================================================================
+// PART 9: Test generation from coercion declarations
+//
+// Every inhabitant declaration generates test obligations. These are not
+// aspirational — they are the mechanically derivable tests that MUST pass
+// for the coercion to be trustworthy. The compiler generates these tests
+// from the declarations in this file.
+//
+// TEST GENERATION STRATEGY:
+//
+// For each InhabitantDecl:
+//   1. ALGEBRA LAW TESTS — verify the Rust type satisfies the algebra's axioms.
+//      Generated from the algebra definition in std/algebra.dag.
+//      Each field of the algebra type becomes a law assertion.
+//
+//   2. ROUND-TRIP TESTS — verify coercion doesn't lose information.
+//      .dag value → Rust value → serialized → deserialized → .dag value
+//      The round-trip must be identity for all representable values.
+//
+//   3. BOUNDARY TESTS — verify edge cases for each algebra.
+//      Generated from the algebra's identity elements and type bounds.
+//      For OrderedRing: MAX + 1 (overflow), MIN - 1, 0 * x, etc.
+//      For FreeMonoid: empty collection, single element, large collection.
+//
+//   4. COERCION REFUSAL TESTS — verify missing inhabitants fail loudly.
+//      For each algebra WITHOUT a declared inhabitant, verify that
+//      attempting to compile a .dag type requiring that algebra produces
+//      a compile error. This is the fail-closed contract test.
+//
+//   5. COERCION COMPOSITION TESTS — verify nested coercion works.
+//      Map<String, List<Int>> must coerce correctly through:
+//        PartialFunction → HashMap, FreeMonoid → Vec, Int → i64
+//      All three levels must compose without information loss.
+// =========================================================================
+
+data rust_coercion_tests: List<CoercionTest> = [
+  // --- OrderedRing (i64) law tests ---
+  { inhabitant_algebra: "OrderedRing",
+    description: "additive identity: a + 0 == a",
+    rust_assertion: "assert_eq!(a + 0i64, a);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "OrderedRing",
+    description: "additive associativity: (a + b) + c == a + (b + c)",
+    rust_assertion: "assert_eq!((a + b) + c, a + (b + c));",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "OrderedRing",
+    description: "additive inverse: a + (-a) == 0",
+    rust_assertion: "assert_eq!(a + (-a), 0i64);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "OrderedRing",
+    description: "multiplicative identity: a * 1 == a",
+    rust_assertion: "assert_eq!(a * 1i64, a);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "OrderedRing",
+    description: "distributivity: a * (b + c) == a*b + a*c",
+    rust_assertion: "assert_eq!(a * (b + c), a * b + a * c);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "OrderedRing",
+    description: "order antisymmetry: !(a < b && b < a)",
+    rust_assertion: "assert!(!(a < b && b < a));",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "OrderedRing",
+    description: "overflow boundary: i64::MAX wraps or panics",
+    rust_assertion: "// i64::MAX + 1 panics in debug, wraps in release",
+    category: Boundary },
+
+  // --- FreeMonoid (Vec<T>) law tests ---
+  { inhabitant_algebra: "FreeMonoid",
+    description: "left identity: concat(empty, xs) == xs",
+    rust_assertion: "assert_eq!([Vec::<i64>::new(), xs.clone()].concat(), xs);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "FreeMonoid",
+    description: "right identity: concat(xs, empty) == xs",
+    rust_assertion: "assert_eq!([xs.clone(), Vec::<i64>::new()].concat(), xs);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "FreeMonoid",
+    description: "associativity: concat(concat(a,b),c) == concat(a,concat(b,c))",
+    rust_assertion: "assert_eq!([[a.clone(),b.clone()].concat(),c.clone()].concat(), [a.clone(),[b.clone(),c.clone()].concat()].concat());",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "FreeMonoid",
+    description: "length homomorphism: len(concat(a,b)) == len(a) + len(b)",
+    rust_assertion: "assert_eq!([a.clone(),b.clone()].concat().len(), a.len() + b.len());",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "FreeMonoid",
+    description: "empty boundary: empty Vec has length 0",
+    rust_assertion: "assert_eq!(Vec::<i64>::new().len(), 0);",
+    category: Boundary },
+
+  // --- BooleanAlgebra (BTreeSet<T>) law tests ---
+  { inhabitant_algebra: "BooleanAlgebra",
+    description: "join identity: union(s, empty) == s",
+    rust_assertion: "assert_eq!(s.union(&BTreeSet::new()).cloned().collect::<BTreeSet<_>>(), s);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "BooleanAlgebra",
+    description: "meet idempotent: intersect(s, s) == s",
+    rust_assertion: "assert_eq!(s.intersection(&s).cloned().collect::<BTreeSet<_>>(), s);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "BooleanAlgebra",
+    description: "absorption: union(s, intersect(s, t)) == s",
+    rust_assertion: "let meet = s.intersection(&t).cloned().collect::<BTreeSet<_>>(); assert_eq!(s.union(&meet).cloned().collect::<BTreeSet<_>>(), s);",
+    category: AlgebraLaw },
+
+  // --- PartialFunction (HashMap<K,V>) law tests ---
+  { inhabitant_algebra: "PartialFunction",
+    description: "empty lookup: get from empty map returns None",
+    rust_assertion: "assert_eq!(HashMap::<String,i64>::new().get(&\"key\".to_string()), None);",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "PartialFunction",
+    description: "insert-lookup: get(insert(m,k,v), k) == Some(v)",
+    rust_assertion: "let mut m = HashMap::new(); m.insert(k.clone(), v); assert_eq!(m.get(&k), Some(&v));",
+    category: AlgebraLaw },
+  { inhabitant_algebra: "PartialFunction",
+    description: "insert-overwrite: second insert replaces first",
+    rust_assertion: "let mut m = HashMap::new(); m.insert(k.clone(), v1); m.insert(k.clone(), v2); assert_eq!(m.get(&k), Some(&v2));",
+    category: AlgebraLaw },
+
+  // --- Coercion refusal tests ---
+  // These verify the FAIL-CLOSED contract: attempting to use an algebra
+  // without a Rust inhabitant MUST produce a compile error.
+  { inhabitant_algebra: "_MISSING_ALGEBRA_",
+    description: "missing inhabitant: compiling a type that requires an undeclared algebra fails",
+    rust_assertion: "// COMPILE ERROR expected: no Rust inhabitant for algebra _MISSING_ALGEBRA_",
+    category: CoercionRefusal },
+
+  // --- Composition tests ---
+  { inhabitant_algebra: "PartialFunction",
+    description: "nested coercion: Map<String, List<Int>> → HashMap<String, Vec<i64>>",
+    rust_assertion: "let m: HashMap<String, Vec<i64>> = HashMap::new(); assert_eq!(m.len(), 0);",
+    category: RoundTrip },
+  { inhabitant_algebra: "FreeMonoid",
+    description: "nested coercion: List<Map<String, Bool>> → Vec<HashMap<String, bool>>",
+    rust_assertion: "let v: Vec<HashMap<String, bool>> = Vec::new(); assert_eq!(v.len(), 0);",
+    category: RoundTrip }
+]
+
+
+// =========================================================================
+// PART 10: Ownership model (retained from original types.dag)
+// =========================================================================
+
+type OwnershipKind
+  = Owned
+  | SharedRef
+  | MutRef
+  | RawPtr
+
+type CopySemantics
+  = IsCopy
+  | IsNotCopy
+
+type RustPrimitiveInfo {
+  dag_name: String
+  rust_name: String
+  copy: CopySemantics
+  default_value: String?
+}
+
+// Legacy primitive table — superceded by rust_type_checkpoints above.
+// Retained for backward compatibility during transition.
 data rust_primitives: List<RustPrimitiveInfo> = [
   { dag_name: "Int",    rust_name: "i64",              copy: IsCopy,    default_value: "0" },
   { dag_name: "Float",  rust_name: "f64",              copy: IsCopy,    default_value: "0.0" },
@@ -52,66 +787,31 @@ data rust_primitives: List<RustPrimitiveInfo> = [
   { dag_name: "Json",   rust_name: "serde_json::Value", copy: IsNotCopy, default_value: "serde_json::Value::Null" }
 ]
 
-// -- Reference passing -----------------------------------------------
-// Ref: Rust Reference 8.2.4 "Borrow expressions"
-//
-// "How does Rust pass parameters?"
-// Copy types: by value. Non-copy types: by shared reference (&T).
-// Emitter uses this to decide param signatures.
+
+// =========================================================================
+// PART 11: Additional Rust type system facts (retained from original)
+// =========================================================================
 
 data pass_copy_by_value: Bool = true
 data pass_non_copy_by_ref: Bool = true
 data ref_prefix: String = "&"
 data mut_ref_prefix: String = "&mut "
 
-// -- Derive macros ---------------------------------------------------
-// Ref: Rust Reference 19.2 "Derive macros"
-
-// Standard derives for generated struct/enum types.
-data struct_derives: List<String> = ["Debug", "Clone", "PartialEq", "Serialize", "Deserialize"]
-
-// Derives for service client structs (no Serialize/Deserialize).
-data service_derives: List<String> = ["Debug", "Clone"]
-
-// -- Serde attributes ------------------------------------------------
-// Ref: serde.rs/attributes.html (serde 1.x)
-
-// Tag encoding for enums: serde represents variants with a discriminant field.
-data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"
-
-// Field renaming attribute template.
-data serde_rename_template: String = "#[serde(rename = \"\{key\}\")]"
-
-// -- Smart pointer types ---------------------------------------------
-// Ref: Rust Reference 11 "Special types and traits"
-
 type SmartPointerKind
-  = BoxPtr                             // Box<T> -- heap-allocated, single owner
-  | RcPtr                              // Rc<T> -- reference-counted, single-thread
-  | ArcPtr                             // Arc<T> -- reference-counted, thread-safe
+  = BoxPtr
+  | RcPtr
+  | ArcPtr
 
 data box_template: String = "Box<\{0\}>"
 data rc_template: String = "Rc<\{0\}>"
 data arc_template: String = "Arc<\{0\}>"
 
-// -- Trait bounds ----------------------------------------------------
-// Ref: Rust Reference 10.1.1 "Trait and lifetime bounds"
-
 data common_trait_bounds: List<String> = [
-  "Clone",
-  "Debug",
-  "Send",
-  "Sync",
-  "Serialize",
-  "Deserialize"
+  "Clone", "Debug", "Send", "Sync", "Serialize", "Deserialize"
 ]
 
-// Generic constraint syntax: where clauses.
 data where_clause_template: String = "where\n    \{constraints\}"
 data trait_bound_template: String = "\{type\}: \{bound\}"
-
-// -- Numeric types ---------------------------------------------------
-// Ref: Rust Reference 8.2.1 "Literal expressions"
 
 data integer_types: List<String> = [
   "i8", "i16", "i32", "i64", "i128", "isize",
@@ -120,9 +820,7 @@ data integer_types: List<String> = [
 
 data float_types: List<String> = ["f32", "f64"]
 
-// Cast syntax: valid only between numeric primitives.
-// Ref: Rust Reference 8.2.13 "Type cast expressions"
 data numeric_cast_template: String = "\{expr\} as \{type\}"
 
-// Emission-facing maps (rust_type_map, rust_keywords, rust_container_templates)
-// now live in extdeps.languages.rust.emit -- single source of truth.
+data serde_enum_tag_attribute: String = "#[serde(tag = \"_variant\")]"
+data serde_rename_template: String = "#[serde(rename = \"\{key\}\")]"
