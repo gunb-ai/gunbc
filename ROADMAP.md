@@ -26,7 +26,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
-| Bootstrap emitted Rust (B) | 99 errors | 0 | Down from 8658→419→367→0→101→94→99. TypeRendering landed (E0c Phase 1-3), 5 regressions to fix |
+| Bootstrap emitted Rust (B) | 28 errors | 0 | Down from 8658→99→28. TypeRendering + always-annotate-let + inference fixes. PR #277 |
 | Stage0 regeneration (C) | RED | GREEN | Blocked on B=0; stage0 emits 40 files but output doesn't compile yet |
 | L1 ratchet | 21 | 0 | Down from 70→22→21; Set/NonEmptySet profile fix + algebra fn conversion |
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
@@ -36,82 +36,36 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 
 ---
 
-## Active: Bootstrap B → 0 (99 errors remaining)
+## Active: Bootstrap B → 0 (28 errors remaining)
 
-TypeRendering infrastructure landed (E0c Phase 1-3). All type-position
-`emit_node_type_rc` call sites replaced with `render_type(build_type_rendering(...))`.
-Error count: 94 → 99 (7 regressions introduced, 2 pre-existing fixed).
+TypeRendering infrastructure landed. Always-annotate let bindings
+enforced. 10 reviewer violations resolved. Error count: 99 → 28
+(71 fixed). PR #277.
 
-**Five independent work items** — each is a separate branch, no file
-conflicts. All edits are in `src/v2/stage0/src/` (stage0 Rust).
+**Remaining 28 errors (7 root causes):**
 
-### B-1: Fix TypeRendering regressions (7 errors → 0)
+| RC | Errors | Status |
+|----|--------|--------|
+| TestConventions import | 7 | Needs cross-module import in emitted files |
+| Token import | 2 | Same pattern as TestConventions |
+| Generic self-ref fields | 5 | FreeMonoid\<T>.empty drops \<T> — inference doesn't carry params |
+| Vec\<()> inference gap | 5 | Fold with init: [] — need bidirectional type unification |
+| () vs String/ErrorNode | 2 | Context-specific inference mismatches |
+| E0282 closures | 6 | Cascades from Vec\<()> — fix that first |
+| Tuple as type param | 1 | build_disj_rendering generic_args — FIXED (RC-1) |
 
-**Files:** `v2_compiler_infer_emit_info.rs` (build_type_rendering),
-`v2_compiler_emit.rs` (render_type)
+**Reviewer-flagged structural debt (this PR):**
 
-5× E0425 `Error` type — `build_disj_rendering` produces a leaf with
-`shared: false` for some Disj types that `emit_node_type_rc` was
-wrapping in `Rc<>`. Debug: check what Node shape produces the `Error`
-type at `v2_compiler_resolve.rs:405` and why `is_type_shared` returns
-false for it.
-
-2× E0107 missing generics — `FreeMonoid` and `PartialFunction`
-emitted without `<T>`. Debug: these are generic struct types where
-`build_conj_rendering` produces a bare leaf instead of a
-GenericRendering with params. Check if the Node has type params that
-`build_conj_rendering` ignores.
-
-### B-2: Callable type rendering (9 errors → 0)
-
-**Files:** `v2_compiler_infer_emit_info.rs` (build_leaf_rendering or
-build_type_rendering)
-
-9× E0425 `Callable` in `std_algebra.rs` — algebra method fields have
-type `Callable` as a bare leaf Node (no params populated). The
-original code mapped `"Callable"` → `"String"` in the type_map.
-`build_type_rendering` classifies them as leaves, and `render_type`
-feeds them through `emit_primitive_type` which returns `"String"` if
-the type_map entry exists. Verify the type_map path works end-to-end
-for Callable; if not, add a special case in `build_leaf_rendering`
-when `n.name == "Callable"` and params are empty.
-
-### B-3: Empty collection type annotations (est. ~20 of the 73 E0282)
-
-**Files:** `v2_compiler_emit.rs` (emit_list_lit_expr),
-`v2_compiler_emit_rust.rs` (fold/map emission)
-
-Rust can't infer element types for `Rc::new(vec![])` and
-`HashMap::new()`. Fix: when emitting empty collections, use the
-expected type from the context (available via the TypeRendering of the
-target binding or return type) to annotate: `Rc::new(Vec::<i64>::new())`
-or `let x: Rc<Vec<i64>> = Rc::new(vec![])`.
-
-This requires passing the expected TypeRendering to `emit_list_lit_expr`
-and `emit_map_lit_expr` call sites. Independent of B-1/B-2.
-
-### B-4: Lambda param type annotations (est. ~35 of the 73 E0282 + 1 E0631)
-
-**Files:** `v2_compiler_emit_rust.rs` (lambda_param_type_strs,
-emit_typed_fold_lambda, collection_element_type)
-
-Lambda params emitted with `_` fallback when `LambdaSemantics` is
-missing. Fix: use `build_type_rendering` on the expected callable type
-to extract param types, then `render_type` each param. Replaces
-`semantics: none` + `fallback_types: ["_"]` with structural type
-rendering.
-
-Independent of B-1/B-2/B-3. The `emit_info` parameter is already
-threaded to all these functions.
-
-### B-5: Type mismatch diagnosis (10 E0308)
-
-**Files:** various — need per-error diagnosis
-
-7× in `std_algebra.rs` (algebra template instantiation), 3× in
-`v2_compiler_infer.rs` (if/else branch types). These may be
-pre-existing or may improve after B-1/B-2. Diagnose after B-1 and B-2
-land to see which remain.
+- `find_struct_by_fields`: heuristic name match → needs record literal
+  inference to carry struct name from boundary (boundary sufficiency)
+- Fold refinement magic names (Unit/Dynamic/Error) → needs bidirectional
+  fold type unification in inference (M2 boundary sufficiency)
+- `with()` string-keyed branch → needs algebra operation registry
+  (M4 Lane 1, algebra-driven builtin operations)
+- TypeRendering mixes backend policy (shared/boxed) with diagnostics
+  (is_error) → dissolves into coercion engine (M5)
+- Codepoint carrier: chars() returns List\<Int> but should model
+  codepoints explicitly → algebra design (M4 Tier 2.5)
 
 ---
 
