@@ -1847,6 +1847,16 @@ pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
             {
                 TypedItemKind::TypedItemTypeAlias
             } else {
+                // Bare leaf declarations that fail is_type_alias_return_node (e.g., Unit).
+                // These are type-system declarations handled by the type map.
+                if ((((((item_has_structure.clone() == false) && (item.body.clone() == None))
+                    && ((item.params.clone().len() as i64) == 0))
+                    && (item.transport.clone() == None))
+                    && ((item.children.clone().len() as i64) == 0))
+                    && !is_type_alias_return_node(rt_type(item.clone())))
+                {
+                    TypedItemKind::TypedItemTypeDecl
+                } else {
                 if ((item.body.clone() != None) && (item.type_annotation.clone() == None)) {
                     TypedItemKind::TypedItemFunction
                 } else {
@@ -1883,6 +1893,7 @@ pub fn classify_typed_item(item: Rc<Node>) -> TypedItemKind {
                             }
                         }
                     }
+                }
                 }
             }
         };

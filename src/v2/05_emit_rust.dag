@@ -760,15 +760,18 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Map<String, Bool>,
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
   let ty = if rt_child.connective == Conj && rt_child.name != "" && rt_child.children |> count > 2 {
-    let binding = lookup_type(env: env, name: rt_child.name)
-    if binding != none && binding.value.resolved.params |> count > 0 {
-      let base = emit_primitive_type(name: rt_child.name, target: Rust)
-      let param_names = binding.value.resolved.params |> map(p => authored_name_at(source_index: env.source_index, node: p))
-      let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
-      if emit_map_has(m: rc_types, key: rt_child.name) { wrap_shared_type(target: Rust, inner: with_params) }
-      else { with_params }
-    } else {
-      emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
+    match map_get(env.bindings, rt_child.name) {
+      Some { value: binding } =>
+        if binding.resolved.params |> count > 0 {
+          let base = target_primitive_type(target: Rust, name: rt_child.name)
+          let param_names = binding.resolved.params |> map(p => authored_name_at(source_index: env.source_index, node: p))
+          let with_params = concat(base, "<", param_names |> join(separator: ", "), ">")
+          if emit_map_has(m: rc_types, key: rt_child.name) { concat("Rc<", with_params, ">") }
+          else { with_params }
+        } else {
+          emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
+        }
+      None => emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
     }
   } else {
     emit_node_type_rc(n: rt_child, target: Rust, rc_types: rc_types)
