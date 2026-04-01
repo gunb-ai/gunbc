@@ -178,7 +178,7 @@ pub struct ModuleContext {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantFoldState {
     pub locals: HashMap<String, Rc<TypeBinding>>,
-    pub warnings: Vec<Rc<ErrorNode>>,
+    pub collision_errors: Vec<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -4384,7 +4384,7 @@ pub fn build_module_context(
         );
         let variant_fold = v2_rt::map_values(&env.bindings.clone())
             .iter().cloned().fold(
-                VariantFoldState { locals: <HashMap<_, _>>::new(), warnings: vec![] },
+                VariantFoldState { locals: <HashMap<_, _>>::new(), collision_errors: vec![] },
                 |acc: VariantFoldState, binding: Rc<TypeBinding>| {
                     if node_is_coproduct(binding.resolved.clone()) {
                         let enum_name = binding.resolved.name.clone();
@@ -4399,10 +4399,10 @@ pub fn build_module_context(
                                         let prev_is_imported = resolved_imports.iter().any(|imp| {
                                             imp.specific_names.iter().any(|n| *n == prev.resolved.name)
                                         });
-                                        let next_warnings = if curr_is_imported && prev_is_imported {
-                                            let mut w = vacc.warnings.clone();
+                                        let next_errors = if curr_is_imported && prev_is_imported {
+                                            let mut w = vacc.collision_errors.clone();
                                             w.push(make_error_node(
-                                                Rc::new(CompilerDiagnostic::VariantCollisionWarning {
+                                                Rc::new(CompilerDiagnostic::VariantCollision {
                                                     variant: child.name.clone(),
                                                     enum1: prev.resolved.name.clone(),
                                                     enum2: binding.resolved.name.clone(),
@@ -4411,26 +4411,26 @@ pub fn build_module_context(
                                                 module_name.clone(),
                                             ));
                                             w
-                                        } else { vacc.warnings.clone() };
+                                        } else { vacc.collision_errors.clone() };
                                         if curr_is_imported {
                                             VariantFoldState {
                                                 locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
                                                     Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
-                                                warnings: next_warnings,
+                                                collision_errors: next_errors,
                                             }
-                                        } else { VariantFoldState { locals: vacc.locals.clone(), warnings: next_warnings } }
+                                        } else { VariantFoldState { locals: vacc.locals.clone(), collision_errors: next_errors } }
                                     }
                                     None => VariantFoldState {
                                         locals: v2_rt::map_insert(vacc.locals.clone(), child.name.clone(),
                                             Rc::new(TypeBinding { name: child.name.clone(), resolved: binding.resolved.clone() })),
-                                        warnings: vacc.warnings.clone(),
+                                        collision_errors: vacc.collision_errors.clone(),
                                     }
                                 }
                             })
                     } else { acc.clone() }
                 });
         let imported_variant_locals = variant_fold.locals.clone();
-        let variant_collision_warnings = variant_fold.warnings.clone();
+        let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals = variant_locals_from_items(
             local.resolved_items.clone(),
             imported_variant_locals.clone(),
@@ -4476,7 +4476,7 @@ pub fn build_module_context(
                     },
                     resolve_result.diagnostics.clone(),
                 ),
-                variant_collision_warnings.clone(),
+                variant_collision_errors.clone(),
             ),
         })
     }

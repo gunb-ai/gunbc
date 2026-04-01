@@ -222,7 +222,7 @@ pub fn ownership_diagnostics(proofs: Vec<Rc<OwnershipProof>>) -> Vec<Rc<ErrorNod
                             sites: sites,
                             ..
                         } => vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::OwnershipWarning {
+                            Rc::new(CompilerDiagnostic::OwnershipViolation {
                                 binding: binding.clone(),
                                 fn_name: proof.func_name.clone(),
                                 consumers: count.clone(),
@@ -1388,11 +1388,7 @@ pub fn serialize_typed_module(module: Rc<TypedModule>) -> String {
 
 pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
     {
-        let severity = if is_error_diagnostic(diagnostic.diagnostic.clone()) {
-            "error".to_string()
-        } else {
-            "warning".to_string()
-        };
+        let severity = "error".to_string();
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(

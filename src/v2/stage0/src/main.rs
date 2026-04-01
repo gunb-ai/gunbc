@@ -10,7 +10,7 @@ use v2_compiler::v2_compiler_compile;
 use v2_compiler::v2_compiler_compile::PipelineResult;
 use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_std_core::{
-    is_error_diagnostic, diagnostic_to_message, diagnostic_to_span,
+    diagnostic_to_message, diagnostic_to_span,
     byte_to_line_col, source_line_at, NewlineIndex,
 };
 
@@ -297,7 +297,7 @@ fn render_one_diagnostic(
     index_map: &HashMap<String, Rc<NewlineIndex>>,
     indent: &str,
 ) {
-    let severity = if is_error_diagnostic(d.diagnostic.clone()) { "error" } else { "warning" };
+    let severity = "error";
     let message = diagnostic_to_message(d.diagnostic.clone());
     let span = diagnostic_to_span(d.diagnostic.clone());
 

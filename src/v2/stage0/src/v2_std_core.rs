@@ -1764,13 +1764,13 @@ pub enum CompilerDiagnostic {
         message: String,
         span: Rc<SourceSpan>,
     },
-    OwnershipWarning {
+    OwnershipViolation {
         binding: String,
         fn_name: String,
         consumers: i64,
         span: Rc<SourceSpan>,
     },
-    VariantCollisionWarning {
+    VariantCollision {
         variant: String,
         enum1: String,
         enum2: String,
@@ -1804,8 +1804,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::MissingAnnotation { span, .. } => span.clone(),
         CompilerDiagnostic::ParseError { span, .. } => span.clone(),
         CompilerDiagnostic::InternalError { span, .. } => span.clone(),
-        CompilerDiagnostic::OwnershipWarning { span, .. } => span.clone(),
-        CompilerDiagnostic::VariantCollisionWarning { span, .. } => span.clone(),
+        CompilerDiagnostic::OwnershipViolation { span, .. } => span.clone(),
+        CompilerDiagnostic::VariantCollision { span, .. } => span.clone(),
     }
 }
 
@@ -1862,7 +1862,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         }
         CompilerDiagnostic::ParseError { message, .. } => message.clone(),
         CompilerDiagnostic::InternalError { message, .. } => message.clone(),
-        CompilerDiagnostic::OwnershipWarning {
+        CompilerDiagnostic::OwnershipViolation {
             binding,
             fn_name,
             consumers,
@@ -1871,7 +1871,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             "ownership: binding '{}' in '{}' has {} consumers",
             binding, fn_name, consumers
         ),
-        CompilerDiagnostic::VariantCollisionWarning {
+        CompilerDiagnostic::VariantCollision {
             variant,
             enum1,
             enum2,
@@ -1884,11 +1884,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    !matches!(
-        &*d,
-        CompilerDiagnostic::OwnershipWarning { .. }
-            | CompilerDiagnostic::VariantCollisionWarning { .. }
-    )
+    let _ = d;
+    true
 }
 
 pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {

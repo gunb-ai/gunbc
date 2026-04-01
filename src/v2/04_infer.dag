@@ -40,7 +40,7 @@ import v2.std.core {
   NodeType, Typed, InferError, InferVariable, Untyped,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, VariantCollisionWarning,
+  InternalError, VariantCollision,
   resource_use_name, resource_use_resource,
   kernel_type_set, is_kernel_type,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -168,7 +168,7 @@ type ModuleContext {
 
 type VariantFoldState {
   locals: Map<String, TypeBinding>
-  warnings: List<ErrorNode>
+  collision_errors: List<ErrorNode>
 }
 
 type InferScope {
@@ -2503,39 +2503,38 @@ fn build_module_context(contributions: List<ItemContribution>,
   // Disambiguation: when a variant name appears in multiple enums (e.g. Rust
   // in both RenderTarget and CodegenBackend), prefer the enum explicitly named
   // in this module's imports over ambient std.types injection.
-  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), warnings: [] }, f: (acc, binding) =>
+  let variant_fold = fold(env.bindings |> map_values, init: VariantFoldState { locals: empty_map(), collision_errors: [] }, f: (acc, binding) =>
     let is_coproduct = binding.resolved.connective == Disj
     if is_coproduct {
       fold(binding.resolved.children, init: acc, f: (vacc, child) =>
         match map_get(vacc.locals, child.name) {
           Some { value: prev } =>
-            // Ambiguous: only replace if current enum is explicitly imported.
             let curr_is_imported = resolved_imports |> any(imp =>
               imp.specific_names |> any(n => n == binding.resolved.name)
             )
             let prev_is_imported = resolved_imports |> any(imp =>
               imp.specific_names |> any(n => n == prev.resolved.name)
             )
-            let next_warnings = if curr_is_imported && prev_is_imported {
-              list_push(vacc.warnings, make_error_node(diagnostic: VariantCollisionWarning { variant: child.name, enum1: prev.resolved.name, enum2: binding.resolved.name, span: no_span() }, module_name: module_name))
-            } else { vacc.warnings }
+            let next_errors = if curr_is_imported && prev_is_imported {
+              list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: child.name, enum1: prev.resolved.name, enum2: binding.resolved.name, span: no_span() }, module_name: module_name))
+            } else { vacc.collision_errors }
             if curr_is_imported {
               VariantFoldState {
                 locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),
-                warnings: next_warnings
+                collision_errors: next_errors
               }
-            } else { VariantFoldState { locals: vacc.locals, warnings: next_warnings } }
+            } else { VariantFoldState { locals: vacc.locals, collision_errors: next_errors } }
           None =>
             VariantFoldState {
               locals: map_insert(vacc.locals, child.name, TypeBinding { name: child.name, resolved: binding.resolved }),
-              warnings: vacc.warnings
+              collision_errors: vacc.collision_errors
             }
         }
       )
     } else { acc }
   )
   let imported_variant_locals = variant_fold.locals
-  let variant_collision_warnings = variant_fold.warnings
+  let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals)
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
@@ -2564,7 +2563,7 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: merged_scope.svc_registry,
     locals: all_locals,
     item_registry: local.item_registry,
-    diagnostics: concat(concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics), variant_collision_warnings)
+    diagnostics: concat(concat(flat_map(local.diag_chunks, c => c), resolve_result.diagnostics), variant_collision_errors)
   }
 }
 
