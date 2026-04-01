@@ -1,19 +1,19 @@
-// extdeps/languages/python/types.dag -- Python algebra inhabitants and coercion declarations.
+// extdeps/languages/python/types.dag -- Python coercion data.
 //
-// Python counterpart to rust/types.dag. Declares which Python types inhabit
-// which .dag algebraic structures. The key difference from Rust: Python has
-// garbage collection, so sharing is identity (no wrapper needed).
+// Declares which Python types inhabit which .dag algebraic structures.
+// Python has garbage collection, so sharing is identity (no wrapper).
 //
-// FAIL-CLOSED CONTRACT: Same as Rust. Missing inhabitant = compile error.
-// Python's GC means sharing is free, but type coercion is still mandatory.
+// FAIL-CLOSED CONTRACT: Missing inhabitant = compile error.
+//
+// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
+// This file instantiates data only — no local type families.
 //
 // Ref: Python Language Reference (docs.python.org/3/reference)
-//      PEP 484 "Type Hints"
-//      PEP 557 "Data Classes"
-//      std/algebra.dag (algebraic structure definitions)
+//      PEP 484 "Type Hints", PEP 557 "Data Classes"
+//      std/algebra.dag, std/coercion.dag
 //
 // Consumers:
-//   v2/05_emit_python.dag -- coercion engine reads inhabitants for type rendering
+//   v2/05_emit_python.dag -- coercion engine reads inhabitants
 
 module extdeps.languages.python.types
 
@@ -22,64 +22,27 @@ import std.languages {
   TypeDefinitionSyntax, LiteralSyntax
 }
 
-
-// =========================================================================
-// Coercion vocabulary (shared with Rust — same types, different instances)
-// =========================================================================
-
-type InhabitantDecl {
-  algebra: String
-  python_template: String
-  arity: Int
-  identity_expr: String?
-  import_path: String?
-}
-
-type TypeCheckpoint {
-  dag_name: String
-  python_type: String
-  falsy_value: String
-}
-
-// Python sharing strategy: identity. GC handles everything.
-// No wrappers, no clone, no reference counting at the language level.
-type SharingStrategy {
-  wrapper_template: String
-}
-
-type CallableRepr {
-  template: String
-  param_separator: String
-  return_arrow: String
-  import_path: String
-}
-
-type CoercionTest {
-  inhabitant_algebra: String
-  description: String
-  python_assertion: String
+import std.coercion {
+  TypeCheckpoint, InhabitantDecl, CallableRepr
 }
 
 
 // =========================================================================
-// Named type checkpoints
+// Type checkpoints
 //
-// Same purpose as Rust checkpoints. Python's type system is dynamically
-// typed at runtime but statically annotated for mypy/pyright.
-//
-// KEY DIFFERENCE: Python has no Copy/Move distinction. All values are
-// references to objects on the GC heap. "Copying" is rebinding.
+// Python has no Copy/Move distinction. All values are references to
+// objects on the GC heap. is_copy is none for all entries.
 // =========================================================================
 
 data python_type_checkpoints: List<TypeCheckpoint> = [
-  { dag_name: "Int",    python_type: "int",   falsy_value: "0" },
-  { dag_name: "Float",  python_type: "float", falsy_value: "0.0" },
-  { dag_name: "Bool",   python_type: "bool",  falsy_value: "False" },
-  { dag_name: "Unit",   python_type: "None",  falsy_value: "None" },
-  { dag_name: "String", python_type: "str",   falsy_value: "\"\"" },
-  { dag_name: "Bytes",  python_type: "bytes", falsy_value: "b\"\"" },
-  { dag_name: "Secret", python_type: "str",   falsy_value: "\"\"" },
-  { dag_name: "Json",   python_type: "dict",  falsy_value: "{}" }
+  { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none },
+  { dag_name: "Float",  target_type: "float", default_expr: "0.0",    is_copy: none },
+  { dag_name: "Bool",   target_type: "bool",  default_expr: "False",  is_copy: none },
+  { dag_name: "Unit",   target_type: "None",  default_expr: "None",   is_copy: none },
+  { dag_name: "String", target_type: "str",   default_expr: "\"\"",   is_copy: none },
+  { dag_name: "Bytes",  target_type: "bytes", default_expr: "b\"\"",  is_copy: none },
+  { dag_name: "Secret", target_type: "str",   default_expr: "\"\"",   is_copy: none },
+  { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none }
 ]
 
 
@@ -87,88 +50,47 @@ data python_type_checkpoints: List<TypeCheckpoint> = [
 // Algebra inhabitants
 //
 // COMPARISON WITH RUST:
-//   FreeMonoid → list (Python) vs Vec<T> (Rust)
+//   FreeMonoid     → list (Python) vs Vec<T> (Rust)
 //   BooleanAlgebra → set (Python) vs BTreeSet<T> (Rust)
-//   PartialFunction → dict (Python) vs HashMap<K,V> (Rust)
-//
-// Python's collection types are mutable by default. The .dag value semantics
-// mean "copy on write" — Python achieves this via GC (rebinding creates a
-// new reference, not a deep copy). This is semantically correct but
-// operationally different from Rust's Rc<T>.
+//   PartialFunction→ dict (Python) vs HashMap<K,V> (Rust)
 // =========================================================================
 
 data python_algebra_inhabitants: List<InhabitantDecl> = [
-  // FreeMonoid<T> → list[T]
-  // Python lists are the canonical ordered sequence.
-  //   concat → a + b (list concatenation)
-  //   empty  → []
-  //   map    → [f(x) for x in xs]
-  //   fold   → functools.reduce(f, xs, init)
   { algebra: "FreeMonoid",
-    python_template: "list[\{0\}]",
+    template: "list[\{0\}]",
     arity: 1,
     identity_expr: "[]",
-    import_path: none },
+    import_path: none,
+    is_copy: none },
 
-  // BooleanAlgebra<A> → set[A]
-  // Python sets have native union/intersection/difference.
-  //   union     → a | b  (or a.union(b))
-  //   intersect → a & b  (or a.intersection(b))
-  //   diff      → a - b  (or a.difference(b))
-  //   member    → x in s
-  //
-  // NOTE: This is CORRECT algebra mapping. Rust had the bug of mapping
-  // Set to FreeMonoid (list operations). Python gets it right by using
-  // set, which natively supports BooleanAlgebra operations.
   { algebra: "BooleanAlgebra",
-    python_template: "set[\{0\}]",
+    template: "set[\{0\}]",
     arity: 1,
     identity_expr: "set()",
-    import_path: none },
+    import_path: none,
+    is_copy: none },
 
-  // PartialFunction<K,V> → dict[K,V]
-  // Python dicts are the canonical keyed partial function.
-  //   lookup → d.get(k)  (returns None if missing)
-  //   insert → d[k] = v  (or {**d, k: v} for immutable style)
-  //   merge  → {**a, **b}
-  //   keys   → list(d.keys())
   { algebra: "PartialFunction",
-    python_template: "dict[\{0\}, \{1\}]",
+    template: "dict[\{0\}, \{1\}]",
     arity: 2,
     identity_expr: "{}",
-    import_path: none },
+    import_path: none,
+    is_copy: none },
 
-  // OrderedRing → int
   { algebra: "OrderedRing",
-    python_template: "int",
+    template: "int",
     arity: 0,
     identity_expr: "0",
-    import_path: none },
+    import_path: none,
+    is_copy: none },
 
-  // ApproximateField → float
   { algebra: "ApproximateField",
-    python_template: "float",
+    template: "float",
     arity: 0,
     identity_expr: "0.0",
-    import_path: none }
+    import_path: none,
+    is_copy: none }
 ]
-
-
-// =========================================================================
-// Sharing strategy: identity (GC handles everything)
-//
-// This is the fundamental difference from Rust. Python never needs Rc<T>
-// or any wrapper. The GC tracks references. "Sharing" is just binding
-// another name to the same object.
-//
-// COMPARISON:
-//   Rust:   let x = Rc::new(vec![1, 2, 3]); let y = x.clone();
-//   Python: x = [1, 2, 3]; y = x   # same object, GC-tracked
-// =========================================================================
-
-data python_sharing: SharingStrategy = SharingStrategy {
-  wrapper_template: "\{0\}"
-}
 
 
 // =========================================================================
@@ -181,14 +103,25 @@ data python_none_expr: String = "None"
 
 // =========================================================================
 // Callable: Callable[[T], U] (typing module)
+//
+// Python has no owned/shared/static distinction. GC handles everything.
 // =========================================================================
 
 data python_callable: CallableRepr = CallableRepr {
   template: "Callable[[\{params\}], \{return\}]",
   param_separator: ", ",
-  return_arrow: ", ",
+  return_separator: ", ",
   import_path: "from typing import Callable"
 }
+
+
+// =========================================================================
+// Sharing
+//
+// Python has GC. Sharing is structural identity — no wrapper needed.
+// The emitter knows this from the target language, not from a declared
+// SharingStrategy config surface.
+// =========================================================================
 
 
 // =========================================================================
@@ -198,11 +131,6 @@ data python_callable: CallableRepr = CallableRepr {
 type PythonTypeKind
   = DynamicType
   | AnnotatedType
-
-// PythonMutability and PythonPrimitiveInfo deleted: their facts are now the
-// sole province of TypeCheckpoint (python_type_checkpoints above).
-// Python scalars are immutable; Json (dict) is mutable — this is implicit
-// in Python's type system and does not require a separate enum.
 
 data dataclass_decorator: String = "@dataclass"
 data dataclass_import: String = "from dataclasses import dataclass, field"

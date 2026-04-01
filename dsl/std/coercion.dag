@@ -1,0 +1,84 @@
+// std/coercion.dag -- Shared coercion vocabulary.
+//
+// Single authority for coercion schema types. Per-language files
+// (extdeps/languages/*/types.dag) import these types and instantiate
+// data. This prevents schema drift across language targets.
+//
+// IDENTITY NOTE (M4/Lane 1):
+// dag_name and algebra fields are currently String-keyed. This is the
+// transitional form. M4/Lane 1 will replace these with edges to
+// declaration nodes — structural identity rather than proxy strings.
+// The resolution phase converts these strings to resolved declaration
+// identity at startup; after that point, no semantic decision uses
+// string equality on type or algebra names.
+//
+// Consumers:
+//   extdeps/languages/rust/types.dag    -- Rust inhabitant data
+//   extdeps/languages/python/types.dag  -- Python inhabitant data
+//   extdeps/languages/go/types.dag      -- Go inhabitant data
+//   v2/05_emit.dag                      -- coercion engine
+//   docs/coercion-design.md             -- design specification
+
+module std.coercion
+
+// TypeCheckpoint: "this exact .dag type name maps to this target type."
+//
+// Checkpoints are the fast path — checked FIRST before algebra resolution.
+// They handle the common case (Int → i64, String → str, etc.) without
+// needing to trace through the algebra composition stack.
+//
+// Per-language files instantiate List<TypeCheckpoint> with their mappings.
+//
+// Fields:
+//   dag_name     — .dag type name (String until M4 gives us declaration edges)
+//   target_type  — target language type expression
+//   default_expr — default/zero/falsy value expression (none if no default)
+//   is_copy      — Rust-specific: Copy trait status. none for GC languages
+//                  where the distinction does not exist.
+type TypeCheckpoint {
+  dag_name: String
+  target_type: String
+  default_expr: String?
+  is_copy: Bool?
+}
+
+// InhabitantDecl: "this target type inhabits this .dag algebra."
+//
+// When no TypeCheckpoint matches, the compiler resolves through the type's
+// algebra (from std/algebra.dag) and applies the matching InhabitantDecl.
+//
+// Fields:
+//   algebra       — algebra name from std/algebra.dag (String until M4)
+//   template      — target type template. {0}, {1} are positional type params.
+//   arity         — number of type parameters. 0 = leaf, 1 = Vec<{0}>, etc.
+//   identity_expr — algebra identity element in target language (Monoid.identity,
+//                   Ring.zero, etc.). Used for empty literals and fold init.
+//   import_path   — import/use statement needed for this type (none if prelude)
+//   is_copy       — Rust-specific: Copy trait. none for GC languages.
+type InhabitantDecl {
+  algebra: String
+  template: String
+  arity: Int
+  identity_expr: String?
+  import_path: String?
+  is_copy: Bool?
+}
+
+// CallableRepr: how .dag function types render in the target language.
+//
+// This is the BASE callable rendering. Context-dependent wrapping (Rust's
+// Box<dyn Fn>/Rc<dyn Fn> distinction) is derived from ValueContext at emit
+// time, not declared here. The template captures the language's syntax for
+// a plain function type.
+//
+// Fields:
+//   template         — function type template ({params} and {return} placeholders)
+//   param_separator  — separator between parameters (", " in most languages)
+//   return_separator — separator before return type (" -> ", " ", etc.)
+//   import_path      — import needed for the callable type annotation (none if builtin)
+type CallableRepr {
+  template: String
+  param_separator: String
+  return_separator: String
+  import_path: String?
+}

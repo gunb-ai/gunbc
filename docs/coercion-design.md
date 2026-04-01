@@ -3,80 +3,73 @@
 **Status:** Design sketch (no compiler changes)
 **Branch:** `design/coercion-inhabitants`
 **Depends on:** M2 (working Rust codegen), TypeRendering (E0c), Lane 1 Tier 3
-**Dissolves:** `rust_type_map`, `rust_container_templates`, `build_rc_types`,
-`emit_node_type_rc`, TypeRendering (E0c)
+**Feeds into:** TypeRendering (E0c) — coercion data is consumed by `build_type_rendering`
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-**OQ-1: Shared coercion vocabulary type location.**
-Each language file currently defines its own `InhabitantDecl` with
-language-specific field names (`rust_template`, `python_template`,
-`go_template`). Should there be a single shared `InhabitantDecl` in
-`std/coercion.dag` with a generic `target_template` field? A shared type
-enforces schema consistency across languages; per-language types allow
-language-specific metadata (e.g. Rust's `is_copy`, Python's `import_path`).
-Candidate resolution: shared base type + per-language extension fields.
+**RQ-1 (was OQ-1): Shared coercion vocabulary.**
+Resolved: shared types live in `std/coercion.dag`. Per-language files import
+`TypeCheckpoint`, `InhabitantDecl`, `CallableRepr` and instantiate data only.
+Language-specific extension fields (Rust's `is_copy`) are optional fields on
+the shared types — `none` for languages where the concept doesn't exist.
 
-**OQ-2: Scalar vs collection FreeMonoid disambiguation.**
-String is `FreeMonoid<Char>` and List is `FreeMonoid<T>`. The inhabitant
-table has both arity-0 (String → `String`) and arity-1 (List → `Vec<{0}>`)
-for FreeMonoid. How does the compiler distinguish which inhabitant to apply?
-Arity alone works today, but breaks if someone writes `type Chars = FreeMonoid<Char>`
-(arity 1, but conceptually scalar). Options: (a) arity is sufficient and
-`Chars` correctly coerces to `Vec<char>`, (b) add a `scalar: Bool` flag
-to InhabitantDecl, (c) resolve through the checkpoint table first (String
-hits the checkpoint before reaching the algebra level).
+**RQ-2 (was OQ-2): Scalar vs collection FreeMonoid.**
+Resolved: checkpoint-first. `String` hits the checkpoint table before algebra
+resolution. `FreeMonoid<Char>` as a user type correctly coerces to `Vec<char>`
+via the algebra inhabitant — this is correct, not a bug. No `scalar: Bool` flag.
 
-**OQ-3: NonEmptyList / NonEmptySet representation.**
-These are refinements of List/Set with a non-empty constraint. Currently
-they have separate container template entries (`non_empty_list`, `non_empty_set`).
-Should they be modeled as: (a) separate algebra inhabitants (current approach),
-(b) refinements of their base container type (NonEmptyList = List where non_empty),
-or (c) a `NonEmpty<C>` wrapper algebra? Option (b) is cleanest algebraically
-but requires the compiler to handle refinement-of-container coercion.
+**RQ-3 (was OQ-3): NonEmptyList / NonEmptySet.**
+Resolved: refinements of their base containers, not separate inhabitant families.
+`NonEmptyList<T>` = `List<T> where non_empty`. The coerced type is `Vec<T>`;
+the non-empty constraint is a refinement validation obligation (see Refinement
+Contract below). Separate inhabitants would grow the authority surface.
 
-**OQ-4: Callable context decision algorithm.**
-`CallableRepr` has owned/shared/static templates, but the design doesn't
-specify how the compiler chooses between them. Proposed rule:
-- Struct field → `shared_template` (stored, needs Rc for sharing)
-- Function parameter → `static_template` if monomorphic, `impl Fn` if generic
-- Data declaration → `static_template` (known at compile time)
-- Return type → `owned_template` (caller owns the closure)
-Does this cover all cases? What about closures that capture mutable state?
+**RQ-4 (was OQ-4): Callable context decisions.**
+Resolved: derive from ValueContext + resolved capture/ownership facts. The
+shared `CallableRepr` declares the base syntax (`fn(T) -> U` in Rust,
+`Callable[[T], U]` in Python, `func(T) U` in Go). Context-dependent wrapping
+(Rust's `Box<dyn Fn>` for owned closures, `Rc<dyn Fn>` for stored closures)
+is applied by the emitter based on ValueContext, not declared as template
+variants in the data.
 
-**OQ-5: Operation coercion data model.**
-Category 8 (algebraic operation coercion — e.g. `FreeMonoid.map` →
-`.iter().map(f).collect()`) is described in the design doc but has no
-corresponding data declarations in `types.dag`. Should operation templates
-live alongside type inhabitants in `types.dag`, in a separate
-`operations.dag`, or remain in `emit.dag`? The algebra definitions in
-`std/algebra.dag` already list operations per algebra — the question is
-where the per-language rendering templates for those operations live.
+**RQ-5 (was OQ-5): Operation coercion.**
+Resolved: attach per-language operation renderings to algebra operation identity
+from `std/algebra.dag`. Do NOT create a second free-form operation catalog.
+Types first, operations second. Operation templates reference the algebra
+operation's declaration identity, preventing parallel authorities.
 
-**OQ-6: Refinement validation emission strategy.**
-Refinements coerce to their base type + validation, but the design doesn't
-specify WHEN validation is emitted. Options:
-- Constructor-time: newtype wrapper with validating `new()` → safest but verbose
-- Assignment-time: `debug_assert!` at binding sites → lighter but only in debug
-- Boundary-time: validate at module/function entry points → compromise
-- Never (trust the type checker): .dag already proved the constraint → no runtime cost
-The choice may vary per target language and per optimization level.
+**RQ-6 (was OQ-6): Refinement validation.**
+Resolved: one contract. See "Refinement Contract" section below.
 
-**OQ-7: TypeRendering (E0c) coexistence.**
-TypeRendering is being implemented on `keen-lynx-513` as a stepping stone.
-Should the coercion inhabitant declarations be designed to coexist with
-TypeRendering during the transition? Specifically: can `build_type_rendering`
-read from `InhabitantDecl` data instead of hardcoded container/primitive
-maps, so TypeRendering dissolves incrementally into coercion rather than
-requiring a big-bang replacement?
+**RQ-7 (was OQ-7): TypeRendering coexistence.**
+Resolved: TypeRendering IS the migration boundary. `build_type_rendering` reads
+inhabitant data from `std/coercion.dag` instances. Coercion feeds TypeRendering
+rather than replacing it. This matches the roadmap and deletes the current
+heuristic type rendering path without a big-bang rewrite.
 
-**OQ-8: Property-based test generation.**
-The `CoercionTest` declarations use example-based assertions. Should the
-compiler also generate property-based tests (proptest / quickcheck style)
-from the algebra laws? E.g., for OrderedRing: `proptest!(|(a: i64, b: i64, c: i64)| assert_eq!((a.wrapping_add(b)).wrapping_add(c), a.wrapping_add(b.wrapping_add(c))))`
-This would give stronger coverage but introduces a test framework dependency.
+**RQ-8 (was OQ-8): Property-based test generation.**
+Resolved: auto-generate refusal tests for every missing inhabitant. Auto-generate
+positive law tests ONLY from explicit law metadata in `std/algebra.dag` — each
+algebra field → law assertion. Hand-written tests reserved for exceptional cases.
+`CoercionTest` as a manual per-language table is deleted.
+
+---
+
+## Remaining Open Questions
+
+**OQ-1: Law metadata in std/algebra.dag.**
+The test generation algorithm requires each algebra to declare its laws explicitly
+(e.g., `is_associative`, `has_identity`, `is_commutative`). Currently
+`std/algebra.dag` declares operations but not law metadata. What is the minimal
+law annotation surface needed to auto-generate correct positive tests?
+
+**OQ-2: TypeRendering variant coverage.**
+The roadmap's E0c defines `TypeRendering` variants (`PrimitiveRendering`,
+`ContainerRendering`, `MapRendering`, etc.). Does the set of `InhabitantDecl`
+entries in a language file need to cover every `TypeRendering` variant, or can
+some variants be structurally derived without an explicit inhabitant?
 
 ---
 
@@ -85,9 +78,14 @@ This would give stronger coverage but introduces a test framework dependency.
 Type rendering is coercion. The compiler walks a .dag type composition tree
 and sidecasts to the target language's type at the first level the language
 declares an inhabitant for. Each language declares its algebra inhabitants
-as .dag extdep data. The compiler sidecasts mechanically. Adding a new
-language = declaring inhabitants + sharing strategy. No emission logic.
-Fail-loud when no inhabitant exists.
+as .dag extdep data. The compiler sidecasts mechanically. Fail-loud when
+no inhabitant exists.
+
+**Scope of this design:** This covers the type-coercion slice of language
+backends. The full backend still requires `LanguageSpec` (statement terminators,
+declaration keywords, assignment syntax, lambda syntax, null-coalescing,
+string interpolation, container syntax, indentation, lint/formatting rules).
+Type coercion is data-driven; the full backend is broader.
 
 ## The Coercion Model
 
@@ -126,12 +124,29 @@ For each .dag type T in target language L:
    YES → coerce each field/variant recursively. DONE.
 
 4. REFINEMENT: Is T a refinement of base type B?
-   YES → coerce B (recursively). Add validation. DONE.
+   YES → coerce B (recursively). Attach validation per Refinement Contract. DONE.
 
 5. FAIL: No coercion path found.
    → COMPILE ERROR: "Language L has no representation for type T
      (algebra: A). Add an inhabitant to extdeps/languages/L/types.dag."
 ```
+
+### Identity Model (transitional)
+
+The resolution algorithm currently keys on `T.name` (String) for checkpoints
+and `algebra` (String) for inhabitants. This is the proxy identity model
+that M4/Lane 1 is dissolving. The correct end state:
+
+1. Resolution phase (at startup) converts `dag_name` strings to declaration
+   node references — structural identity, not string equality.
+2. After resolution, no semantic decision in the emitter or coercion engine
+   uses `T.name` or string comparison. All decisions flow from resolved
+   declaration edges.
+3. The `String` fields in `TypeCheckpoint` and `InhabitantDecl` are the
+   transitional form. M4/Lane 1 Tier 3 replaces them with `Node` edges
+   to actual `.dag` type declarations.
+
+The shared schema in `std/coercion.dag` documents this explicitly.
 
 ## Coercion Categories
 
@@ -174,38 +189,6 @@ expressions, and silent pass-through on miss.
 | `Bool` | `BooleanAlgebra<{True,False}>` | and/or/not from Lattice |
 | `String` | `FreeMonoid<Char>` | concat/length from Monoid |
 | `Unit` | Terminal object | Single inhabitant, zero fields |
-
-**Test obligations per primitive:**
-
-For `Int → i64` (OrderedRing):
-```rust
-// ALGEBRA LAW: additive identity
-assert_eq!(a + 0i64, a);
-// ALGEBRA LAW: additive associativity
-assert_eq!((a + b) + c, a + (b + c));
-// ALGEBRA LAW: additive inverse
-assert_eq!(a.wrapping_add(-a), 0); // wrapping to avoid overflow UB
-// ALGEBRA LAW: multiplicative identity
-assert_eq!(a * 1i64, a);
-// ALGEBRA LAW: distributivity
-assert_eq!(a * (b + c), a * b + a * c); // subject to overflow
-// BOUNDARY: overflow
-assert!(i64::MAX.checked_add(1).is_none());
-// BOUNDARY: zero annihilation
-assert_eq!(0i64 * any_value, 0);
-```
-
-For `Bool → bool` (BooleanAlgebra):
-```rust
-// ALGEBRA LAW: complement involution
-assert_eq!(!(!a), a);
-// ALGEBRA LAW: De Morgan
-assert_eq!(!(a && b), !a || !b);
-assert_eq!(!(a || b), !a && !b);
-// ALGEBRA LAW: identity
-assert_eq!(a && true, a);
-assert_eq!(a || false, a);
-```
 
 ---
 
@@ -252,69 +235,6 @@ With algebra-keyed inhabitants:
 - `FreeMonoid<T>` → `Vec<T>` (list operations: append, map, fold)
 - `BooleanAlgebra<A>` → `BTreeSet<A>` (set operations: union, intersect, diff)
 
-The algebra identity is the authority. A set is NOT a list that happens
-to have unique elements — it's a fundamentally different algebraic object
-with different operations.
-
-**Test obligations per container:**
-
-For `FreeMonoid → Vec<T>`:
-```rust
-// ALGEBRA LAW: left identity (concat with empty)
-assert_eq!([Vec::<i64>::new(), xs.clone()].concat(), xs);
-// ALGEBRA LAW: right identity
-assert_eq!([xs.clone(), vec![]].concat(), xs);
-// ALGEBRA LAW: associativity
-let ab_c = [[a.clone(), b.clone()].concat(), c.clone()].concat();
-let a_bc = [a.clone(), [b.clone(), c.clone()].concat()].concat();
-assert_eq!(ab_c, a_bc);
-// ALGEBRA LAW: length homomorphism
-assert_eq!([a.clone(), b.clone()].concat().len(), a.len() + b.len());
-// FUNCTORIAL LAW: map identity
-let mapped: Vec<i64> = xs.iter().map(|x| *x).collect();
-assert_eq!(mapped, xs);
-// FUNCTORIAL LAW: map composition
-let fg: Vec<i64> = xs.iter().map(|x| g(f(*x))).collect();
-let f_then_g: Vec<i64> = xs.iter().map(f).map(g).collect();
-assert_eq!(fg, f_then_g);
-```
-
-For `BooleanAlgebra → BTreeSet<A>`:
-```rust
-// ALGEBRA LAW: join identity
-let result: BTreeSet<_> = s.union(&BTreeSet::new()).cloned().collect();
-assert_eq!(result, s);
-// ALGEBRA LAW: meet idempotent
-let result: BTreeSet<_> = s.intersection(&s).cloned().collect();
-assert_eq!(result, s);
-// ALGEBRA LAW: absorption
-let meet: BTreeSet<_> = s.intersection(&t).cloned().collect();
-let result: BTreeSet<_> = s.union(&meet).cloned().collect();
-assert_eq!(result, s);
-// ALGEBRA LAW: commutativity
-let st: BTreeSet<_> = s.union(&t).cloned().collect();
-let ts: BTreeSet<_> = t.union(&s).cloned().collect();
-assert_eq!(st, ts);
-```
-
-For `PartialFunction → HashMap<K,V>`:
-```rust
-// ALGEBRA LAW: empty lookup
-assert_eq!(HashMap::<String, i64>::new().get("key"), None);
-// ALGEBRA LAW: insert-lookup roundtrip
-let mut m = HashMap::new();
-m.insert("key".to_string(), 42i64);
-assert_eq!(m.get("key"), Some(&42));
-// ALGEBRA LAW: insert-overwrite
-m.insert("key".to_string(), 99i64);
-assert_eq!(m.get("key"), Some(&99));
-// ALGEBRA LAW: merge preserves keys
-let mut a = HashMap::new(); a.insert("a".to_string(), 1i64);
-let mut b = HashMap::new(); b.insert("b".to_string(), 2i64);
-a.extend(b);
-assert_eq!(a.len(), 2);
-```
-
 ---
 
 ### Category 3: Optional Coercion
@@ -323,41 +243,11 @@ assert_eq!(a.len(), 2);
 
 **Mechanism:** Structural (cardinality annotation, not algebraic)
 
-**.dag source:**
-```
-type User { name: String, email: Email? }
-```
-
-**Resolution path:**
-```
-email: Email?
-  → cardinality = Optional, base = Email
-  → Email is refinement of String → "String" (checkpoint)
-  → Optional template: "Option<{0}>" → Option<String>
-```
-
-**Target outputs:**
-
-| Language | T? representation | None literal | Pattern match |
-|----------|-------------------|-------------|---------------|
-| Rust | `Option<T>` | `None` | `match x { Some(v) => ..., None => ... }` |
-| Python | `T \| None` | `None` | `if x is not None: ...` |
-| Go | `*T` | `nil` | `if x != nil { ... }` |
-| English | `optional T` | `absent` | `if present: ...` |
-
-**Test obligations:**
-```rust
-// ROUND-TRIP: Some wraps and unwraps
-assert_eq!(Some(42i64).unwrap(), 42);
-// ROUND-TRIP: None is None
-assert!(None::<i64>.is_none());
-// PATTERN: exhaustive match
-match opt {
-    Some(v) => { /* v is accessible */ },
-    None => { /* handled */ },
-}
-// No third case exists — compiler enforces exhaustiveness.
-```
+| Language | T? representation | None literal |
+|----------|-------------------|-------------|
+| Rust | `Option<T>` | `None` |
+| Python | `T \| None` | `None` |
+| Go | `*T` | `nil` |
 
 ---
 
@@ -365,7 +255,8 @@ match opt {
 
 **What:** .dag function type → target language callable type
 
-**Mechanism:** Context-dependent (owned/shared/static)
+**Mechanism:** Base callable template from `CallableRepr`, context-dependent
+wrapping derived from ValueContext at emit time.
 
 **.dag source:**
 ```
@@ -375,48 +266,23 @@ type Monoid<T> {
 }
 ```
 
-**Resolution path:**
-```
-op: fn(T, T) -> T
-  → CallableRepr
-  → Context: struct field, stored → shared_template
-  → "Rc<dyn Fn(T, T) -> T>"
-  → ValueContext.has_fn_fields = true → skip PartialEq/Debug derives
-```
+**Base rendering:** `CallableRepr.template` gives the bare function type syntax.
+For Rust: `fn(T, T) -> T`. For Python: `Callable[[T, T], T]`. For Go: `func(T, T) T`.
+
+**Context-dependent wrapping (Rust only, derived from ValueContext):**
+- Struct field + stored → `Rc<dyn Fn(T, T) -> T>` (shared closure)
+- Function parameter → `impl Fn(T) -> U` (generic bound)
+- Data declaration → `fn(T) -> U` (static, known at compile time)
+- Return type → `Box<dyn Fn(T) -> U>` (owned closure)
+
+These are NOT declared as template variants. They are emitter decisions
+derived from `ValueContext.has_fn_fields`, capture analysis, and resolved
+ownership facts — matching "emission is translation, not decision-making."
 
 **The Callable → "String" bug this prevents:**
 
-The old code had `"Callable": "String"` in `rust_type_map`. When algebra
-method fields had type `Callable` (a bare leaf node with no params), the
-type_map returned "String". This caused 9 E0425 errors in std_algebra.rs
-because the emitted Rust code referenced a type `Callable` that didn't exist.
-
-With proper callable coercion:
-- Function-typed fields get the correct Rust representation
-- The representation varies by context (owned/shared/static)
-- `has_fn_fields` is detectable → derives are adjusted
-
-**Target outputs:**
-
-| Language | fn(T) -> U (parameter) | fn(T) -> U (stored) |
-|----------|----------------------|---------------------|
-| Rust | `impl Fn(T) -> U` | `Rc<dyn Fn(T) -> U>` |
-| Python | `Callable[[T], U]` | `Callable[[T], U]` |
-| Go | `func(T) U` | `func(T) U` |
-
-**Test obligations:**
-```rust
-// ROUND-TRIP: calling a coerced function produces expected result
-let f: fn(i64, i64) -> i64 = |a, b| a + b;
-assert_eq!(f(2, 3), 5);
-// STORED: Rc-wrapped closure is callable
-let f: Rc<dyn Fn(i64) -> i64> = Rc::new(|x| x * 2);
-assert_eq!(f(21), 42);
-// COMPOSITION: function composition through coercion
-let f: fn(i64) -> i64 = |x| x + 1;
-let g: fn(i64) -> i64 = |x| x * 2;
-assert_eq!(g(f(3)), 8);
-```
+The old code had `"Callable": "String"` in `rust_type_map`. Algebra method
+fields with type `Callable` produced "String", causing 9 E0425 errors.
 
 ---
 
@@ -424,84 +290,30 @@ assert_eq!(g(f(3)), 8);
 
 **What:** .dag value semantics → target language memory model
 
-**Mechanism:** Coercion EFFECT applied after type coercion, gated on ValueContext
+**Mechanism:** Coercion EFFECT applied after type coercion, derived from
+ValueContext — NOT from a declared `SharingStrategy` configuration surface.
 
-**.dag source:**
-```
-type Config {
-  items: List<String>
-  max_retries: Int
-}
-data default_config: Config = Config { items: [], max_retries: 3 }
-```
+**Sharing decisions are structural facts, not language config:**
 
-**Resolution path for struct field (`items`):**
-```
-items: List<String>
-  → coerce: Vec<String>
-  → ValueContext: runtime struct field (is_constant = false)
-  → sharing: Vec<String> is !Copy → Rc<Vec<String>>
-```
+| Fact | Source | Decision |
+|------|--------|----------|
+| `ValueContext.is_constant = true` | Resolved graph | No Rc (const data) |
+| `ValueContext.has_fn_fields = true` | Resolved graph | Skip PartialEq/Debug derives |
+| `is_copy = true` (from checkpoint/inhabitant) | Coercion data | No Rc (value semantics) |
+| Target language has GC | LanguageSpec | No wrapper needed |
+| Recursive type | Structural analysis | Box<T> for indirection |
+| Otherwise (Rust, non-Copy, runtime) | Default | Rc<T> wrapping |
 
-**Resolution path for data declaration (`default_config`):**
-```
-default_config: Config
-  → coerce: Config struct
-  → ValueContext: constant data (is_constant = true)
-  → sharing: SKIPPED (constant data, no Rc)
-  → Rust: pub fn default_config() -> Config { ... }
-```
+Previous design had `SharingStrategy` as a per-language config type with
+`wrapper_template`, `exempt_predicate`, `size_threshold_bytes`, and
+`reference_types: List<String>`. Those were new heuristic side tables —
+exactly the kind of mini-language the invariants say not to maintain.
+Deleted in favor of structural derivation from ValueContext.
 
 **The lazy_static + Rc bug this prevents:**
 
-When constant data declarations (like `data keywords = { ... }`) were
-wrapped in `Rc<T>` and placed in `lazy_static!`, Rust produced E0277:
-`Rc<T>` doesn't implement `Send + Sync`, which `lazy_static!` requires.
-
-The fix: ValueContext distinguishes constant data from runtime values.
-Constants skip Rc wrapping entirely.
-
-**The Rc<dyn Fn> → PartialEq bug this prevents:**
-
-When a struct has function-typed fields (like algebra witnesses), wrapping
-in `Rc<dyn Fn>` and adding `#[derive(PartialEq)]` fails because function
-types don't implement `PartialEq`. The fix: `has_fn_fields` in ValueContext
-suppresses the derive.
-
-**Target sharing strategies:**
-
-| Language | Sharing mechanism | Exempt types | Effect on constants |
-|----------|------------------|-------------|-------------------|
-| Rust | `Rc<T>` | Copy types (i64, bool, f64, ()) | No wrap, `const`/`static` |
-| Python | identity (GC) | all (GC handles sharing) | Module-level variable |
-| Go | `*T` for large structs | small value types | Package-level `var` |
-| English | N/A | all | Inline text |
-| SPICE | wire sharing | N/A | `.param` declaration |
-
-**Test obligations:**
-```rust
-// SHARING: Rc clone is cheap reference increment
-let v: Rc<Vec<i64>> = Rc::new(vec![1, 2, 3]);
-let v2 = v.clone(); // Rc reference increment, not deep copy
-assert_eq!(Rc::strong_count(&v), 2);
-assert_eq!(*v, *v2);
-// CONSTANT: no Rc for constant data
-fn keywords() -> HashMap<String, bool> {
-    // Direct construction, no Rc, no lazy_static
-    let mut m = HashMap::new();
-    m.insert("if".to_string(), true);
-    m
-}
-// FN_FIELDS: struct with fn fields skips PartialEq
-// This should compile (no PartialEq derive):
-struct Monoid<T> {
-    op: fn(T, T) -> T,
-    identity: T,
-}
-// This should NOT compile (PartialEq derive on fn field):
-// #[derive(PartialEq)]
-// struct Bad { f: fn() -> () }  // E0369
-```
+Constants skip Rc wrapping because `ValueContext.is_constant = true`.
+No policy string needed — the fact is already in the graph.
 
 ---
 
@@ -511,52 +323,33 @@ struct Monoid<T> {
 
 **Mechanism:** Chain through refinement to base type checkpoint
 
-**.dag source:**
-```
-type NonNegativeInt = Int where range(min: 0)
-type Email = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
-fn process(count: NonNegativeInt, contact: Email) -> Unit { ... }
-```
+### Refinement Contract
 
-**Resolution path:**
-```
-NonNegativeInt
-  → refinement of Int, predicate: range(min: 0)
-  → base: Int → "i64" (checkpoint)
-  → Rust: i64 (predicate preserved as runtime validation)
+One authoritative contract (not per-target emitter discretion):
 
-Email
-  → refinement of String, predicate: pattern(...)
-  → base: String → "String" (checkpoint)
-  → Rust: String (pattern preserved as runtime validation)
-```
+1. **Compile-time proven refinements → erased.** If the .dag type checker
+   can prove the refinement holds (e.g., a literal `5` satisfies
+   `NonNegativeInt`), the refinement erases to the base type with no
+   runtime cost. The proof is the authority.
+
+2. **Unproven refinements → explicit boundary constructor.** If the .dag
+   type checker cannot prove the refinement (e.g., user input flowing
+   into `NonNegativeInt`), validation happens at a **named constructor
+   boundary** — not at ad-hoc assignment sites, not as `debug_assert!`
+   that disappears in release builds.
+
+   The constructor is the single place where unvalidated base values
+   enter the refined type. This matches INVARIANTS.md: "illegal states
+   made unrepresentable at the right boundary" and "errors surfaced
+   where the owning stage can see them."
 
 **Target outputs:**
 
-| Language | NonNegativeInt | Email | Validation style |
-|----------|---------------|-------|-----------------|
-| Rust | `i64` | `String` | `debug_assert!(x >= 0)` or newtype |
-| Python | `int` | `str` | `assert x >= 0` or `@validator` |
-| Go | `int64` | `string` | `if x < 0 { return err }` |
-
-**Test obligations:**
-```rust
-// VALID: value satisfying refinement succeeds
-let count: i64 = 5; // NonNegativeInt
-debug_assert!(count >= 0); // passes
-
-// INVALID: value violating refinement fails
-let bad_count: i64 = -1; // should fail NonNegativeInt check
-// debug_assert!(bad_count >= 0); // panics
-
-// SUBTYPE: refined value usable as base type
-fn takes_int(x: i64) { /* ... */ }
-let count: i64 = 5; // NonNegativeInt
-takes_int(count); // always valid: NonNegativeInt <: Int
-
-// SUPERTYPE REJECTION: base value NOT usable as refined type without check
-// takes_nonneg(arbitrary_int) → must validate first
-```
+| Language | Proven refinement | Unproven refinement |
+|----------|-------------------|---------------------|
+| Rust | `i64` (erased) | `NonNegativeInt::new(x)?` (constructor) |
+| Python | `int` (erased) | `NonNegativeInt(x)` (constructor with `assert`) |
+| Go | `int64` (erased) | `NewNonNegativeInt(x)` (constructor returning error) |
 
 ---
 
@@ -564,56 +357,8 @@ takes_int(count); // always valid: NonNegativeInt <: Int
 
 **What:** .dag user-defined types → target language structs and enums
 
-**Mechanism:** Recursive structural traversal
-
-**.dag source:**
-```
-type Shape
-  = Circle { radius: Float }
-  | Rect { w: Float, h: Float }
-  | Point
-```
-
-**Resolution path:**
-```
-Shape = Coproduct [Circle, Rect, Point]
-  → Rust enum
-  → Circle: Product {radius: Float}
-      → radius: Float → f64 (checkpoint, Copy)
-  → Rect: Product {w: Float, h: Float}
-      → w, h: Float → f64
-  → Point: unit variant (no fields)
-  → enum has fielded variants → !Copy → Rc in shared context
-```
-
-**Rust output:**
-```rust
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum Shape {
-    Circle { radius: f64 },
-    Rect { w: f64, h: f64 },
-    Point,
-}
-```
-
-**Test obligations:**
-```rust
-// EXHAUSTIVE MATCH: all variants covered
-match shape {
-    Shape::Circle { radius } => { assert!(radius >= 0.0); },
-    Shape::Rect { w, h } => { assert!(w >= 0.0 && h >= 0.0); },
-    Shape::Point => { /* unit */ },
-}
-// ROUND-TRIP: serialize → deserialize = identity
-let s = Shape::Circle { radius: 3.14 };
-let json = serde_json::to_string(&s).unwrap();
-let s2: Shape = serde_json::from_str(&json).unwrap();
-assert_eq!(s, s2);
-// FIELD ACCESS: each field correctly typed
-let Shape::Rect { w, h } = shape else { panic!() };
-let area: f64 = w * h; // f64 arithmetic works
-```
+**Mechanism:** Recursive structural traversal. Each field/variant is
+recursively coerced. Derive strategy data is per-language.
 
 ---
 
@@ -621,80 +366,44 @@ let area: f64 = w * h; // f64 arithmetic works
 
 **What:** .dag algebra method calls → target language expressions
 
-**Mechanism:** Algebra inhabitant × operation → target expression template
+**Mechanism:** Per-language operation renderings attached to algebra operation
+identity from `std/algebra.dag`. NOT a separate free-form operation catalog.
 
-When a .dag expression calls an algebra method (like `list.map(f)` or
-`a + b`), the compiler must coerce the operation to the target language's
-concrete syntax. This is operation coercion, distinct from type coercion.
+When a .dag expression calls `items |> map(f)`:
+1. Resolve `items: List<Int>` → `FreeMonoid<Int>`
+2. `map` is `FreeMonoid.map` (algebra operation identity)
+3. Look up the target language's rendering for `FreeMonoid.map`
+4. Apply: `items.iter().map(f).collect::<Vec<_>>()`
 
-**.dag source:**
-```
-fn double_all(items: List<Int>) -> List<Int> {
-  items |> map(x => x * 2)
-}
-```
+**The parallel authority risk:**
 
-**Resolution:**
-```
-items |> map(f)
-  → items: List<Int> → FreeMonoid<Int>
-  → map is FreeMonoid.map
-  → Rust inhabitant for FreeMonoid is Vec<T>
-  → Vec.map → .iter().map(f).collect::<Vec<_>>()
-  → Rust: items.iter().map(|x| x * 2).collect::<Vec<_>>()
-```
+If operation templates become a free-standing catalog separate from
+`std/algebra.dag` operation declarations, they recreate the same
+"parallel authority" problem the roadmap calls out in
+`free_monoid_collection_templates` and `partial_function_templates`.
 
-**Operation mapping table (Rust):**
+**The performance risk:**
 
-| Algebra | .dag operation | Rust expression |
-|---------|---------------|-----------------|
-| OrderedRing | `a + b` | `a + b` |
-| OrderedRing | `negate(a)` | `-a` |
-| OrderedRing | `compare(a, b)` | `a.cmp(&b)` |
-| FreeMonoid | `concat(a, b)` | `[a, b].concat()` |
-| FreeMonoid | `xs.map(f)` | `xs.iter().map(f).collect()` |
-| FreeMonoid | `xs.fold(init, f)` | `xs.iter().fold(init, f)` |
-| FreeMonoid | `xs.filter(p)` | `xs.iter().filter(p).cloned().collect()` |
-| FreeMonoid | `xs.length` | `xs.len()` |
-| BooleanAlgebra | `s.union(t)` | `s.union(&t).cloned().collect()` |
-| BooleanAlgebra | `s.intersect(t)` | `s.intersection(&t).cloned().collect()` |
-| BooleanAlgebra | `s.member(x)` | `s.contains(&x)` |
-| PartialFunction | `m.lookup(k)` | `m.get(&k).cloned()` |
-| PartialFunction | `m.insert(k, v)` | `{ let mut m2 = m.clone(); m2.insert(k, v); m2 }` |
-| PartialFunction | `m.keys` | `m.keys().cloned().collect()` |
+Operation templates that bake in clone-heavy expressions
+(`.cloned().collect()`, `m.clone(); m.insert(...)`) may violate the
+performance invariant by hardcoding conservative copying instead of
+exploiting source guarantees around purity, fan-out, and shared ownership.
+Operation renderings should be parameterized by ownership context, not
+hard-coded as worst-case copies.
 
 ---
 
 ## Fail-Closed Contract
 
-The fail-closed contract is the safety backbone of the coercion system.
-It states:
-
 > **If a target language does not declare an inhabitant for an algebra,
 > compiling any .dag type that requires that algebra for that target
 > MUST produce a compile error.**
-
-### Why this matters at scale
-
-Silent fallback is lethal for a multi-target compiler. If Rust silently
-emits a bare type name when no inhabitant is found, the developer discovers
-the bug as a Rust compiler error — far from the root cause. Worse, if the
-bare name happens to match an existing Rust type, the code compiles but
-behaves incorrectly.
-
-Evidence from the current codebase:
-1. `emit_node_type_leaf_rc` emits unrecognized names literally → silently
-   wrong output for any type not in a hardcoded list
-2. `emit_primitive_type` passes through unknown names → any typo in the
-   type_map produces a bare string in the output
-3. `_` placeholders in bare containers → `Vec<_>` emitted in struct fields,
-   which is invalid Rust but was only caught downstream
 
 ### How to test it
 
 For each algebra A in std/algebra.dag:
 - If this language file declares an inhabitant for A: generate algebra
-  law tests (positive tests)
+  law tests (positive tests, from explicit law metadata in the algebra)
 - If this language file does NOT declare an inhabitant for A: generate
   a coercion refusal test (negative test)
 
@@ -706,16 +415,7 @@ ERROR: No <LANGUAGE> inhabitant for algebra <ALGEBRA>.
        Add an inhabitant declaration to extdeps/languages/<LANGUAGE>/types.dag.
 ```
 
-This ensures:
-1. The error message is actionable (tells you where to fix it)
-2. The error is loud (compile error, not warning)
-3. New algebras are fail-closed by default (no inhabitant = error)
-4. Adding a new algebra to std/algebra.dag immediately forces every
-   language to either declare an inhabitant or accept the compile error
-
 ### Cross-language completeness matrix
-
-The compiler can generate this matrix from the inhabitant declarations:
 
 | Algebra | Rust | Python | Go | SPICE | English |
 |---------|------|--------|-----|-------|---------|
@@ -727,167 +427,113 @@ The compiler can generate this matrix from the inhabitant declarations:
 | FreeMonoid (collection) | `Vec<T>` | `list[T]` | `[]T` | — (ERROR) | `list of T` |
 | PartialFunction | `HashMap<K,V>` | `dict[K,V]` | `map[K]V` | — (ERROR) | `mapping` |
 
-Every `— (ERROR)` cell is a test case: compiling List<Int> for SPICE MUST
-produce a compile error because SPICE has no FreeMonoid collection inhabitant.
-
 ---
 
 ## Test Generation Strategy
 
-### Per-declaration test generation
-
-Every `InhabitantDecl` in `types.dag` generates a test suite. The compiler
-reads the algebra definition from `std/algebra.dag`, matches it with the
-inhabitant declaration, and emits test functions.
-
-**Algorithm:**
+### Positive tests: from explicit law metadata
 
 ```
 for each InhabitantDecl D in language L:
   A = lookup_algebra(D.algebra) in std/algebra.dag
 
-  // 1. Algebra law tests
-  for each field F in A:
-    if F is a binary operation (arity 2, returns Self):
-      emit associativity test
-      emit identity test (if A.identity exists)
-      emit commutativity test (if A is Commutative*)
-    if F is a unary operation (arity 1, returns Self):
-      emit involution test (if applicable)
-    if F is a predicate (returns Bool):
-      emit reflexivity / antisymmetry / transitivity as applicable
+  for each law declared in A (from explicit law metadata):
+    emit law test using D.identity_expr and D.template
+    e.g., Monoid associativity → assert_eq!((a ⊕ b) ⊕ c, a ⊕ (b ⊕ c))
 
-  // 2. Identity element tests
-  if D.identity_expr is not none:
-    emit "assert_eq!(op(identity, x), x)" for each binary op
-
-  // 3. Boundary tests
-  emit overflow/underflow test (for numeric types)
-  emit empty collection test (for container types)
-  emit single-element test (for container types)
-
-  // 4. Round-trip tests
-  emit ".dag value → Rust value → serialize → deserialize → compare"
-
-  // 5. Composition tests
-  for each pair (D1, D2) where D2's type appears inside D1:
-    emit nested coercion test (e.g., Vec<HashMap<String, i64>>)
+  emit round-trip test (serialize → deserialize = identity)
+  emit boundary tests from D.identity_expr and type bounds
 ```
 
-### Negative test generation (coercion refusal)
+Positive law tests are generated ONLY from explicit law metadata in
+`std/algebra.dag`. Generating associativity/identity/etc. from field shape
+alone is a heuristic — the algebra must explicitly declare what laws it
+promises. Hand-written tests are reserved for exceptional cases.
+
+### Negative tests: refusal (auto-generated for every missing inhabitant)
 
 ```
 for each algebra A in std/algebra.dag:
   if language L has NO InhabitantDecl for A:
-    emit test that compiles "type T = A<Int>" for target L
+    emit test: compile "type T = A<Int>" for target L
     assert compiler output contains error diagnostic
-    assert error message mentions A by name
-    assert error message suggests adding inhabitant to L/types.dag
 ```
 
-### Test coverage guarantee
-
-The test generation is EXHAUSTIVE over the cross product:
-- Every algebra × every language = either a law test suite OR a refusal test
-- Every checkpoint × every language = a round-trip test
-- Every pair of composable inhabitants = a composition test
-
-No inhabitant declaration exists without a test. No algebra exists without
-either a test or a documented refusal. This is the "every coercion we define
-should be able to easily generate end-to-end comprehensive testing" requirement.
+Refusal tests are exhaustive and fully automatic.
 
 ---
 
-## Dissolution Path
+## TypeRendering as Migration Boundary
 
-When the coercion engine (M5) lands, the following current infrastructure
-dissolves into it:
+TypeRendering (E0c) is the normalized boundary between resolution and emit.
+Coercion data **feeds** TypeRendering — it does not replace it.
 
-| Current | Dissolves into | Mechanism |
-|---------|---------------|-----------|
-| `rust_type_map` | `rust_type_checkpoints` | Structured type with Copy/default |
-| `rust_container_templates` | `rust_algebra_inhabitants` | Keyed by algebra, not container name |
-| `build_rc_types` | `rust_sharing` | Single SharingStrategy declaration |
-| `emit_node_type_rc` | `coerce_type` + `apply_sharing` | Walk type tree, sidecast, apply effect |
-| `emit_primitive_type` | `resolve_checkpoint` | Lookup in type checkpoint table |
-| `TypeRendering` (E0c) | `coerce_type` | TypeRendering's named edges ARE the algebra relationships |
-| `emit_container` | algebra inhabitant template application | `apply_type_template(inhabitant.rust_template, inner_types)` |
-| `kernel_algebra_profile` | algebra inhabitant lookup | Profile = "which algebra does this type inhabit?" |
+**Migration path:**
 
-The E0c TypeRendering struct maps directly:
-```
-TypeRendering.element  → FreeMonoid<THIS>
-TypeRendering.key      → PartialFunction<THIS, V>
-TypeRendering.value    → PartialFunction<K, THIS>
-TypeRendering.params   → Callable params
-TypeRendering.return_type → Callable return
-TypeRendering.inner    → Optional<THIS>
-TypeRendering.shared   → SharingStrategy applied
-TypeRendering.boxed    → recursive indirection
-```
+1. `build_type_rendering` reads from `InhabitantDecl` and `TypeCheckpoint`
+   data instead of hardcoded container/primitive maps.
+2. TypeRendering's named edges (`element`, `key`, `value`, `params`,
+   `return_type`, `inner`, `shared`, `boxed`) ARE the algebraic
+   relationships, resolved through inhabitant declarations.
+3. The emitter consumes `TypeRendering × LanguageSpec` — pure translation.
+4. Current heuristic type rendering (node shape guessing) dissolves
+   incrementally as `build_type_rendering` gains inhabitant-backed
+   resolution.
 
-When coercion replaces TypeRendering, every named edge becomes an algebraic
-relationship resolved through inhabitant declarations instead of structural
-pattern matching.
+This is incremental. No big-bang rewrite.
+
+**What dissolves into TypeRendering + coercion data:**
+
+| Current | Feeds into | Mechanism |
+|---------|-----------|-----------|
+| `rust_type_map` | `TypeCheckpoint` → `build_type_rendering` | Structured checkpoint with Copy/default |
+| `rust_container_templates` | `InhabitantDecl` → `build_type_rendering` | Keyed by algebra, not container name |
+| `build_rc_types` | ValueContext × `is_copy` | Structural derivation, not name-based |
+| `emit_node_type_rc` | `TypeRendering` match | Pure translation from resolved descriptor |
+| `emit_primitive_type` | `TypeCheckpoint` lookup | Fail-closed, no pass-through |
+| `emit_container` | `InhabitantDecl` template application | `apply_template(D.template, inner_types)` |
 
 ---
 
 ## New Language Burden
 
-Adding a new target language requires:
+Adding a new target language requires, for the **type coercion slice:**
 
 1. Create `dsl/extdeps/languages/<name>/types.dag`
-2. Declare `TypeCheckpoint` entries for primitives the language knows
-3. Declare `InhabitantDecl` entries for each algebra the language supports
-4. Declare a `SharingStrategy` (or identity for GC languages)
-5. Declare a `CallableRepr`
+2. Import `TypeCheckpoint`, `InhabitantDecl`, `CallableRepr` from `std/coercion.dag`
+3. Declare checkpoint entries for primitives the language knows
+4. Declare inhabitant entries for each algebra the language supports
+5. Declare a `CallableRepr` for function type syntax
+6. Declare optional rendering templates
 
-The compiler immediately:
-- Generates law tests for every declared inhabitant
-- Generates refusal tests for every undeclared algebra
-- Reports the coverage matrix showing what works and what doesn't
+The compiler immediately generates refusal tests for every undeclared algebra.
 
-Start minimal: declare only primitives. Get compile errors for containers.
-Add container inhabitants. Get compile errors for callables. Add callable
-repr. The compile errors GUIDE the implementation.
+**What this does NOT cover:** The full language backend also requires
+`LanguageSpec` declarations: statement terminators, declaration keywords,
+assignment syntax, lambda syntax, null-coalescing, string interpolation,
+tuple/container syntax, indentation width, per-`ValueContext` templates,
+and lint/formatting rules. Type coercion is one slice of the backend,
+not the whole thing.
 
-Example for a hypothetical SPICE target:
+---
+
+## Schema Architecture
 
 ```
-// dsl/extdeps/languages/spice/types.dag
-module extdeps.languages.spice.types
+std/coercion.dag            ← shared types (single authority)
+  TypeCheckpoint
+  InhabitantDecl
+  CallableRepr
 
-data spice_type_checkpoints: List<TypeCheckpoint> = [
-  { dag_name: "Int",    rust_type: "real",    is_copy: true, default_expr: "0" },
-  { dag_name: "Float",  rust_type: "real",    is_copy: true, default_expr: "0.0" },
-  { dag_name: "Bool",   rust_type: "wire",    is_copy: true, default_expr: "0" }
-  // String: NOT declared → compile error for any .dag type using String
-  // List: NOT declared → compile error for any .dag List type
-]
+extdeps/languages/rust/types.dag    ← Rust data instances
+  import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr }
+  data rust_type_checkpoints: List<TypeCheckpoint> = [...]
+  data rust_algebra_inhabitants: List<InhabitantDecl> = [...]
+  data rust_callable: CallableRepr = ...
 
-data spice_algebra_inhabitants: List<InhabitantDecl> = [
-  { algebra: "OrderedRing", rust_template: "real", arity: 0,
-    is_copy: true, identity_expr: "0", std_import: none }
-  // FreeMonoid: NOT declared → error for List/String
-  // PartialFunction: NOT declared → error for Map
-  // BooleanAlgebra: NOT declared → error for Set
-]
-
-data spice_sharing: SharingStrategy = SharingStrategy {
-  wrapper_template: "{0}",  // SPICE is wire-level, no sharing overhead
-  box_template: "{0}",
-  exempt_predicate: "true"  // everything is exempt (no heap)
-}
+extdeps/languages/python/types.dag  ← Python data instances (same schema)
+extdeps/languages/go/types.dag      ← Go data instances (same schema)
 ```
 
-Compiling a .dag program that uses `List<Int>` for SPICE:
-```
-ERROR: No SPICE inhabitant for algebra FreeMonoid.
-       SPICE has no collection types — ordered sequences are not
-       representable in circuit description languages.
-       Add an inhabitant to extdeps/languages/spice/types.dag
-       or remove List usage from the .dag source.
-```
-
-This is correct behavior. SPICE genuinely cannot represent collections.
-The error message is accurate and actionable.
+No per-language type families. No schema drift. One authority for the
+coercion vocabulary; per-language files are pure data.
