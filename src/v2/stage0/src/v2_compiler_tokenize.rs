@@ -1097,29 +1097,35 @@ pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
         false
     } else {
         {
-            let next = char_at_ref(source.as_ref(), (pos.clone() + 1));
-            let can_start_expr = ((((((is_ident_start(next.clone()) || is_digit(next.clone()))
-                || (next.clone() == "\"".to_string()))
-                || (next.clone() == "[".to_string()))
-                || (next.clone() == "(".to_string()))
-                || (next.clone() == "!".to_string()))
-                || (next.clone() == "-".to_string()));
+            let immediate = char_at_ref(source.as_ref(), (pos.clone() + 1));
+            let skipped_ws =
+                (immediate.clone() == " ".to_string()) || (immediate.clone() == "\t".to_string());
+            let next_pos = if skipped_ws {
+                skip_horizontal_ws_ref(source.as_ref(), (pos.clone() + 1))
+            } else {
+                (pos.clone() + 1)
+            };
+            let next = char_at_ref(source.as_ref(), next_pos.clone());
+            let can_start_expr = ((!skipped_ws) && is_ident_start(next.clone()))
+                || is_digit(next.clone())
+                || (next.clone() == "\"".to_string())
+                || (next.clone() == "[".to_string())
+                || (next.clone() == "(".to_string())
+                || (next.clone() == "!".to_string())
+                || (next.clone() == "-".to_string());
             if (can_start_expr == false) {
                 false
             } else if (next.clone() == "\"".to_string()) {
-                match find_string_literal_end(source.clone(), (pos.clone() + 2)) {
-                    Some(end_quote) => interpolation_has_valid_end(
-                        source.clone(),
-                        (end_quote.clone() + 1),
-                        0,
-                        0,
-                        0,
-                        false,
-                    ),
+                match find_string_literal_end(source.clone(), (next_pos.clone() + 1)) {
+                    Some(end_quote) => {
+                        let after_quote =
+                            skip_horizontal_ws_ref(source.as_ref(), (end_quote.clone() + 1));
+                        (char_at_ref(source.as_ref(), after_quote.clone()) == "}".to_string())
+                    }
                     None => false,
                 }
             } else {
-                interpolation_has_valid_end(source.clone(), (pos.clone() + 1), 0, 0, 0, false)
+                interpolation_has_valid_end(source.clone(), next_pos.clone(), 0, 0, 0, false)
             }
         }
     }

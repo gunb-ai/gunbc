@@ -205,6 +205,20 @@ fn fold_returns_accumulator_type() {
 }
 
 #[test]
+fn fold_accepts_structural_accumulator_subtypes() {
+    let source = "module fold_width_test\n\ntype Entry { label: String  color: Int }\n\nfn pick(items: List<Entry>) -> String {\n  let found = fold(items, init: { label: \"default\" }, f: (acc, e) => e)\n  found.label\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn fold_recursive_accumulator_callback_does_not_overflow() {
+    let source = "module fold_recursive_test\n\ntype Tree = Leaf { value: Int } | Branch { left: Tree  right: Tree }\n\nfn seed() -> Tree {\n  Leaf { value: 0 }\n}\n\nfn pick(items: List<Tree>) -> Tree {\n  fold(items, init: seed(), f: (acc, item) => item)\n}\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+}
+
+#[test]
 fn node_binding_scoped_in_func_body() {
     // Regression: node bindings must be in scope for subsequent statements.
     // Root cause was stage0 parse_node_decl setting name: "" instead of the binding name.

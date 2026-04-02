@@ -167,7 +167,7 @@ fn drop_last(stack: List<Int>) -> List<Int> {
 fn string_interpolation_accepts_literal_expression_starts() {
     let source = r#"module interp_literal_starts
 fn demo() -> String {
-  "{1} {"x"} {[1, 2]}"
+  "{1} { "x" } { [1, 2] }"
 }"#;
     assert_parses(
         source,
@@ -415,6 +415,11 @@ fn typecheck_parses_strict() {
 #[test]
 fn emit_parses_strict() {
     assert_parses_strict("src/v2/05_emit.dag");
+}
+
+#[test]
+fn emit_python_parses_strict() {
+    assert_parses_strict("src/v2/05_emit_python.dag");
 }
 
 #[test]
