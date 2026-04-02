@@ -22,7 +22,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 |--------|-------|--------|-------|
 | .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 0 | 0 | Green |
+| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 316 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
@@ -1085,7 +1085,7 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-04-01):** 53 root functions → 315 complexity
+**Current state (2026-04-01):** 27 root functions → 315 complexity
 violations, ratcheted. This branch landed the first real proof
 infrastructure:
 - direct recursion is fail-closed on the actual measured parameter
