@@ -65,7 +65,8 @@ pub use crate::v2_std_core::{
     node_has_structure, node_is_coproduct, node_is_product, operation_modifier_name,
     param_node_default_value, param_node_name, param_node_type_expr, record_lit_type_name,
     return_value, transport_has_auth, unaryop_operand, with_required_cardinality, BinOpKind,
-    authored_name_at, Connective, DeclaredFuncSig, ErrorNode, ExprData, InferredNode, LiteralValue,
+    expr_var_name_at, expr_call_func_at, let_binding_name_at,
+    Connective, DeclaredFuncSig, ErrorNode, ExprData, InferredNode, LiteralValue,
     NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
 };
 
@@ -256,7 +257,7 @@ pub fn emit_simple_expr(expr: Rc<Node>, target: RenderTarget, source_index: Opti
                 message: message, ..
             } => emit_error_expr(message.clone(), target.clone()),
             ExprData::ExprVar { .. } => {
-                let n = authored_name_at(source_index.clone(), expr.clone());
+                let n = expr_var_name_at(expr.clone(), source_index.clone());
                 emit_ident(n.clone(), target.clone())
             }
             ExprData::ExprFieldAccess { .. } => {
@@ -530,7 +531,7 @@ pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let si = scope.type_env.source_index.clone();
-            let name = authored_name_at(si.clone(), texpr.clone());
+            let name = let_binding_name_at(texpr.clone(), si.clone());
             let ch = texpr.children.clone();
             let has_body = ((ch.clone().len() as i64) > 1);
             if (has_body.clone() == false) {
@@ -778,7 +779,7 @@ pub fn emit_data_value_json(value: Rc<Node>, source_index: Option<Rc<NewlineInde
                 )
             }
             ExprData::ExprVar { .. } => {
-                let n = authored_name_at(source_index.clone(), value.clone());
+                let n = expr_var_name_at(value.clone(), source_index.clone());
                 v2_rt::concat(
                     v2_rt::concat("\"".to_string(), escape_json_string(n.clone())),
                     "\"".to_string(),
@@ -2103,7 +2104,7 @@ pub enum FuncBodyShape {
 pub fn classify_func_body(body: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<FuncBodyShape> {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprLet => {
-            let n = authored_name_at(source_index.clone(), body.clone());
+            let n = let_binding_name_at(body.clone(), source_index.clone());
             let v = let_value(body.clone());
             let rest = let_body(body.clone());
             Rc::new(FuncBodyShape::FuncBodyLet {
@@ -2150,7 +2151,7 @@ pub enum TcoExprShape {
 pub fn classify_tco_expr(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> Rc<TcoExprShape> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            let f = authored_name_at(source_index.clone(), texpr.clone());
+            let f = expr_call_func_at(texpr.clone(), source_index.clone());
             let a = texpr.children.clone();
             Rc::new(TcoExprShape::TcoCall {
                 func: f.clone(),
@@ -2176,7 +2177,7 @@ pub fn classify_tco_expr(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>
             })
         }
         ExprData::ExprLet => {
-            let n = authored_name_at(source_index.clone(), texpr.clone());
+            let n = let_binding_name_at(texpr.clone(), source_index.clone());
             let v = let_value(texpr.clone());
             let bd = let_body(texpr.clone());
             Rc::new(TcoExprShape::TcoLet {
@@ -2325,7 +2326,7 @@ pub fn emit_shared_tco_expr(
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let si = frame.scope.type_env.source_index.clone();
-            let f = authored_name_at(si.clone(), frame.expr.clone());
+            let f = expr_call_func_at(frame.expr.clone(), si.clone());
             if (f.clone() == fn_name.clone()) {
                 {
                     let a = frame.expr.clone().children.clone();
@@ -2351,7 +2352,7 @@ pub fn is_tco_candidate(texpr: Rc<Node>, func_name: String, source_index: Option
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                let f = authored_name_at(source_index.clone(), texpr.clone());
+                let f = expr_call_func_at(texpr.clone(), source_index.clone());
                 (f.clone() == func_name.clone())
             }
             ExprData::ExprIf => {

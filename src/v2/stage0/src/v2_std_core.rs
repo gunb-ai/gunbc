@@ -582,6 +582,9 @@ pub fn let_binding_name(texpr: Rc<Node>) -> String {
 pub fn foreach_variable(texpr: Rc<Node>) -> String {
     texpr.name.clone()
 }
+pub fn foreach_variable_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, texpr)
+}
 pub fn lambda_param_names(texpr: Rc<Node>) -> Vec<String> {
     texpr
         .children
@@ -984,6 +987,34 @@ pub fn authored_name_at(source_index: Option<Rc<NewlineIndex>>, node: Rc<Node>) 
     }
 }
 
+pub fn expr_var_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, texpr)
+}
+
+pub fn expr_call_func_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, texpr)
+}
+
+pub fn let_binding_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, texpr)
+}
+
+pub fn param_node_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, n)
+}
+
+pub fn resource_use_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, n)
+}
+
+pub fn field_binding_name_at(n: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, n)
+}
+
+pub fn expr_method_name_at(texpr: Rc<Node>, source_index: Option<Rc<NewlineIndex>>) -> String {
+    authored_name_at(source_index, texpr)
+}
+
 pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
@@ -1274,6 +1305,13 @@ pub fn string_interp_parts(texpr: Rc<Node>) -> Vec<Rc<Node>> {
     texpr.children.clone()
 }
 
+// Transport property name constants — single authority for config keys.
+pub fn transport_url_key() -> String { "base_url".to_string() }
+pub fn transport_path_key() -> String { "base_path".to_string() }
+pub fn transport_auth_token_key() -> String { "auth_token".to_string() }
+pub fn transport_auth_header_key() -> String { "auth_header".to_string() }
+pub fn transport_auth_scheme_key() -> String { "auth_scheme".to_string() }
+
 pub fn make_transport_node(
     name: String,
     properties: Vec<Rc<Node>>,
@@ -1313,7 +1351,7 @@ pub fn rest_transport_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
-        let url_field = make_field_init_node("base_url".to_string(), base_url.clone(), no_span());
+        let url_field = make_field_init_node(transport_url_key(), base_url.clone(), no_span());
         let props = v2_rt::concat(
             v2_rt::concat(vec![url_field.clone()], auth_props.clone()),
             headers.clone(),
@@ -1333,7 +1371,7 @@ pub fn shell_transport_node(
 pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     {
         let path_field =
-            make_field_init_node("base_path".to_string(), base_path.clone(), no_span());
+            make_field_init_node(transport_path_key(), base_path.clone(), no_span());
         make_transport_node(
             "file".to_string(),
             vec![path_field.clone()],
@@ -1380,11 +1418,11 @@ pub fn find_property_string(props: Vec<Rc<Node>>, prop_name: String) -> Option<S
 // Use direct string literals instead.
 
 pub fn is_config_reserved_key(name: String) -> bool {
-    (name.clone() == "base_url".to_string())
-        || (name.clone() == "base_path".to_string())
-        || (name.clone() == "auth_scheme".to_string())
-        || (name.clone() == "auth_header".to_string())
-        || (name.clone() == "auth_token".to_string())
+    (name.clone() == transport_url_key())
+        || (name.clone() == transport_path_key())
+        || (name.clone() == transport_auth_scheme_key())
+        || (name.clone() == transport_auth_header_key())
+        || (name.clone() == transport_auth_token_key())
 }
 
 // transport_kind_name, transport_kind, is_transport_kind — dissolved.
@@ -1416,19 +1454,19 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> String {
 }
 
 pub fn transport_base_url(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), "base_url".to_string())
+    find_property(t.properties.clone(), transport_url_key())
 }
 
 pub fn transport_auth_token(t: Rc<Node>) -> Option<Rc<Node>> {
-    find_property(t.properties.clone(), "auth_token".to_string())
+    find_property(t.properties.clone(), transport_auth_token_key())
 }
 
 pub fn transport_auth_header_name(t: Rc<Node>) -> Option<String> {
-    find_property_string(t.properties.clone(), "auth_header".to_string())
+    find_property_string(t.properties.clone(), transport_auth_header_key())
 }
 
 pub fn transport_has_auth(t: Rc<Node>) -> bool {
-    match find_property(t.properties.clone(), "auth_token".to_string()) {
+    match find_property(t.properties.clone(), transport_auth_token_key()) {
         Some(_) => true,
         None => false,
     }

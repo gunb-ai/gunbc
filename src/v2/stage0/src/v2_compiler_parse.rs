@@ -47,6 +47,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
+use crate::v2_compiler_infer_types::error_type_node;
 use crate::v2_std_core::BinOpKind::{
     Add, BinAnd, BinEq, BinGe, BinGt, BinLe, BinLt, BinNe, BinOr, Div, Mod, Mul, NullCoalesce, Sub,
 };
@@ -77,7 +78,7 @@ use crate::v2_std_core::TokenShape::{
 };
 use crate::v2_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v2_std_core::{
-    arg_name, arg_value,
+    arg_name, arg_value, is_compiler_error,
     expr_var_name, field_binding_name, field_binding_pattern, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name, field_node_type_expr,
     file_transport_node, import_node, leaf_node, leaf_node_with_span, local_transport_node,
@@ -2309,8 +2310,8 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
     if (ch.inferred.clone() != None) {
         match (*rt_node(ch.clone())).clone() {
             NodeType::Typed { node: rt, .. } => rt.clone(),
-            NodeType::InferError { .. } => leaf_type_node("Unit".to_string(), ch.span.clone()),
-            NodeType::Untyped => leaf_type_node("Unit".to_string(), ch.span.clone()),
+            NodeType::InferError { .. } => error_type_node(),
+            NodeType::Untyped => error_type_node(),
         }
     } else {
         leaf_type_node("".to_string(), ch.span.clone())
@@ -2333,6 +2334,14 @@ pub fn node_inferred_to_outputs(rt: Rc<Node>) -> Vec<Rc<Node>> {
             }
             __result
         }
+        .into_iter()
+        .filter(|f| {
+            match field_node_type_expr(f.clone()).inferred.clone() {
+                Some(inf) => !is_compiler_error(inf),
+                None => true,
+            }
+        })
+        .collect()
     } else {
         vec![make_field_node(
             "value".to_string(),
