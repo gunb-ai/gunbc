@@ -6224,8 +6224,11 @@ pub fn modifiers_to_props(modifiers: Rc<Vec<OperationModifier>>, span: Rc<Source
 
 pub fn status_expr_to_str(expr: Rc<Node>) -> String {
     match (*expr.expr_data.clone()).clone() {
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitInt { value: n, .. } = value.as_ref() else { unreachable!() }; int_to_string(n.clone()) },
-    ExprData::ExprLiteral { ref value, .. } => { let LiteralValue::LitStr { value: s, .. } = value.as_ref() else { unreachable!() }; s.clone() },
+    ExprData::ExprLiteral { ref value, .. } => match value.as_ref() {
+        LiteralValue::LitInt { value: n, .. } => int_to_string(n.clone()),
+        LiteralValue::LitStr { value: s, .. } => s.clone(),
+        _ => "_".to_string(),
+    },
     ExprData::ExprVar { .. } => expr_var_name(expr.clone()),
     _ => "_".to_string(),
 }
