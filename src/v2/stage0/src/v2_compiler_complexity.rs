@@ -363,6 +363,12 @@ pub struct DescentCheckAcc {
     pub vars: HashMap<String, bool>,
 }
 
+#[derive(Debug, Clone)]
+pub struct EvidenceBlockAcc {
+    pub evidence: Option<DescentEvidence>,
+    pub vars: HashMap<String, bool>,
+}
+
 // Structural classification of list methods relevant to descent proofs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ListMethodKind {
@@ -2278,7 +2284,6 @@ pub fn collect_evidence_incremental(
     check_child: bool,
     check_list: bool,
 ) -> Option<DescentEvidence> {
-    let dbg = func_name == "normalize_access_type_node";
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprLambda { .. } => None,
@@ -2295,16 +2300,10 @@ pub fn collect_evidence_incremental(
             let next_vars = if is_direct || is_var || is_option {
                 v2_rt::map_insert(vars.clone(), let_binding_name(body.clone()), true)
             } else { vars.clone() };
-            if dbg {
-                eprintln!("  INC let {}: d={} v={} o={} nv={:?}", let_binding_name(body.clone()), is_direct, is_var, is_option, next_vars.keys().collect::<Vec<_>>());
-            }
             let body_ev = match let_body(body.clone()) {
                 Some(b) => collect_evidence_incremental(b, func_name.clone(), param_name.clone(), next_vars, check_child, check_list),
                 None => None,
             };
-            if dbg {
-                eprintln!("  INC let {} result: val_ev={:?} body_ev={:?}", let_binding_name(body.clone()), val_ev, body_ev);
-            }
             merge_optional_evidence(val_ev, body_ev)
         }
         ExprData::ExprMatch { .. } => {
@@ -2328,20 +2327,7 @@ pub fn collect_evidence_incremental(
                         _ => vars.clone(),
                     }
                 } else { vars.clone() };
-                let arm_body_node = arm_body(arm_node.clone());
-                if dbg {
-                    eprintln!("  INC match arm: sd={}, pat={}, av={:?}, body.ed={:?}",
-                        scrut_is_descent,
-                        match (*arm_pattern(arm_node.clone())).clone() {
-                            MatchPattern::VariantPattern { name, .. } => name,
-                            MatchPattern::Bind { name } => format!("bind:{}", name),
-                            _ => "other".into(),
-                        },
-                        arm_vars.keys().collect::<Vec<_>>(),
-                        &*arm_body_node.expr_data);
-                }
-                let arm_ev = collect_evidence_incremental(arm_body_node, func_name.clone(), param_name.clone(), arm_vars, check_child, check_list);
-                if dbg { eprintln!("  INC arm_ev={:?}", arm_ev); }
+                let arm_ev = collect_evidence_incremental(arm_body(arm_node.clone()), func_name.clone(), param_name.clone(), arm_vars, check_child, check_list);
                 merge_optional_evidence(acc, arm_ev)
             });
             merge_optional_evidence(scrut_ev, arms_ev)
@@ -2375,6 +2361,33 @@ pub fn collect_evidence_incremental(
                 merge_optional_evidence(acc, ce)
             });
             merge_optional_evidence(own_evidence, child_evidence)
+        }
+        ExprData::ExprBlock { .. } => {
+            // Thread vars through block statements sequentially (flat let-bindings).
+            let result = body.children.iter().fold(
+                EvidenceBlockAcc { evidence: None, vars: vars.clone() },
+                |acc, stmt| {
+                    let stmt_ev = collect_evidence_incremental(stmt.clone(), func_name.clone(), param_name.clone(), acc.vars.clone(), check_child, check_list);
+                    let next_vars = match (*stmt.expr_data.clone()).clone() {
+                        ExprData::ExprLet { .. } => {
+                            let val = let_value(stmt.clone());
+                            let is_direct = (check_child && is_child_descent_expr(val.clone(), param_name.clone()))
+                                || (check_list && is_list_shrink_expr(val.clone(), param_name.clone()));
+                            let is_var = match &*val.expr_data {
+                                ExprData::ExprVar { .. } => set_has(acc.vars.clone(), expr_var_name(val.clone())),
+                                _ => false,
+                            };
+                            let is_option = is_if_option_descent(val.clone(), param_name.clone(), acc.vars.clone(), check_child, check_list);
+                            if is_direct || is_var || is_option {
+                                v2_rt::map_insert(acc.vars.clone(), let_binding_name(stmt.clone()), true)
+                            } else { acc.vars.clone() }
+                        }
+                        _ => acc.vars.clone(),
+                    };
+                    EvidenceBlockAcc { evidence: merge_optional_evidence(acc.evidence, stmt_ev), vars: next_vars }
+                },
+            );
+            result.evidence
         }
         _ => {
             body.children.iter().fold(None, |acc: Option<DescentEvidence>, child| {
@@ -2440,29 +2453,23 @@ pub fn classify_recursion_pattern(
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })
     } else {
-        // path_calls > 1 always gets DivideAndConquer (a VIOLATION pattern) until
-        // we have a disjoint-children proof.
-        if path_calls > 1 {
-            Rc::new(RecursionPattern::DivideAndConquer {
-                split_factor: path_calls,
-            })
-        } else {
-            // T2: Try unified proof constructor first (single-call only)
-            let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone());
-            if func_name == "normalize_access_type_node" {
-                let pname = param_node_name(params[0].clone());
-                let ev = try_dimension_for_param(body.clone(), func_name.clone(), pname.clone(), true, false);
-                let opt = is_if_option_descent(
-                    body.clone(), pname.clone(), <HashMap<_,_>>::new(), true, false);
-                eprintln!("DEBUG nat: pname={}, ev={:?}, proof={}, opt={}", pname, ev, proof.is_some(), opt);
+        // Try proof constructor FIRST — if ALL self-calls descend on children,
+        // the function is O(n) regardless of path_calls, because children are
+        // disjoint subtrees (each node visited at most once).
+        let proof = construct_termination_proof(func_name.clone(), body.clone(), params.clone());
+        match proof {
+            Some(_) => {
+                Rc::new(RecursionPattern::LinearRecursion {
+                    iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+                })
             }
-            match proof {
-                Some(_) => {
-                    Rc::new(RecursionPattern::LinearRecursion {
-                        iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+            None => {
+                if path_calls > 1 {
+                    Rc::new(RecursionPattern::DivideAndConquer {
+                        split_factor: path_calls,
                     })
-                }
-                None => {
+                } else {
+                    // Fall back to old classifiers for single-call patterns
                     let initial_witnesses = (*recursive_measure_param_names(body.clone(), params.clone())).clone();
                     let descending_witness_names = collect_descending_witness_names(
                         body.clone(),

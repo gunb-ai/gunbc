@@ -352,6 +352,12 @@ type DescentCheckAcc {
   vars: Map<String, Bool>
 }
 
+// Accumulator for incremental evidence collection in block statements.
+type EvidenceBlockAcc {
+  evidence: DescentEvidence?
+  vars: Map<String, Bool>
+}
+
 // Structural classification of list methods relevant to descent proofs.
 // Replaces raw method-name string dispatch with a closed enum.
 type ListMethodKind
@@ -2342,6 +2348,28 @@ fn collect_evidence_incremental(body: Node, func_name: String, param_name: Strin
         merge_optional_evidence(a: acc, b: ce)
       )
       merge_optional_evidence(a: own_evidence, b: child_evidence)
+    ExprBlock =>
+      // Thread vars through block statements sequentially (flat let-bindings).
+      let result = body.children |> fold(init: EvidenceBlockAcc { evidence: none, vars: vars }, f: (acc, stmt) =>
+        let stmt_ev = collect_evidence_incremental(body: stmt, func_name: func_name, param_name: param_name, vars: acc.vars, check_child: check_child, check_list: check_list)
+        let next_vars = match stmt.expr_data {
+          ExprLet =>
+            let val = let_value(texpr: stmt)
+            let is_direct = (check_child && is_child_descent_expr(expr: val, param_name: param_name))
+              || (check_list && is_list_shrink_expr(expr: val, param_name: param_name))
+            let is_var = match val.expr_data {
+              ExprVar { binding_kind: _ } => set_has(m: acc.vars, key: expr_var_name(texpr: val))
+              _ => false
+            }
+            let is_option = is_if_option_descent(val: val, param_name: param_name, vars: acc.vars, check_child: check_child, check_list: check_list)
+            if is_direct || is_var || is_option {
+              map_insert(acc.vars, let_binding_name(texpr: stmt), true)
+            } else { acc.vars }
+          _ => acc.vars
+        }
+        EvidenceBlockAcc { evidence: merge_optional_evidence(a: acc.evidence, b: stmt_ev), vars: next_vars }
+      )
+      result.evidence
     _ =>
       body.children |> fold(init: none, f: (acc, child) =>
         let ce = collect_evidence_incremental(body: child, func_name: func_name, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
@@ -2380,19 +2408,18 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
   if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else {
-    // path_calls > 1 always gets DivideAndConquer (a VIOLATION pattern) until we
-    // have a disjoint-children proof. The proof constructor may prove descent, but
-    // descent alone does not prove the calls target disjoint subtrees.
-    if path_calls > 1 {
-      DivideAndConquer { split_factor: path_calls }
-    } else {
-      // T2: Try unified proof constructor first (single-call only)
-      let proof = construct_termination_proof(func_name: func_name, body: body, params: params)
-      match proof {
-        Some { value: _ } =>
-          LinearRecursion { iteration_var: concat("n_", func_name) }
-        None =>
-          // Fall back to old classifiers for patterns not yet in proof constructor
+    // Try proof constructor FIRST — if ALL self-calls descend on children,
+    // the function is O(n) regardless of path_calls, because children are
+    // disjoint subtrees (each node visited at most once).
+    let proof = construct_termination_proof(func_name: func_name, body: body, params: params)
+    match proof {
+      Some { value: _ } =>
+        LinearRecursion { iteration_var: concat("n_", func_name) }
+      None =>
+        if path_calls > 1 {
+          DivideAndConquer { split_factor: path_calls }
+        } else {
+          // Fall back to old classifiers for single-call patterns
           let initial_witnesses = recursive_measure_param_names(body: body, params: params)
           let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
           if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
@@ -2402,7 +2429,7 @@ fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>,
           } else {
             UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
           }
-      }
+        }
     }
   }
 }
@@ -2601,20 +2628,6 @@ fn collect_scc_child_edges(body: Node, caller: String, param_name: String, desce
         collect_scc_child_edges(body: child, caller: caller, param_name: param_name, descent_vars: descent_vars, target_set: target_set)
       )
   }
-}
-
-// CX-3: Find the first Node-typed parameter in a function's param list.
-// Returns the param name, or none if no Node param exists.
-fn find_node_param_name(params: List<Node>) -> String? {
-  // Heuristic: the Node param is typically named "texpr", "n", "body",
-  // "remaining", "expr", or similar. Since we can't check types at this
-  // stage, try each param and return the first one where descent vars
-  // or accessor calls reference it.
-  // Simple approach: return the first param that isn't obviously non-Node
-  // (not named "accum", "indent", "emit_info", etc.)
-  // Actually: just return all params — the descent check will fail-closed
-  // for non-Node params.
-  none
 }
 
 // CX-3: SCC container-child descent proof. Every cycle through the SCC
