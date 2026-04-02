@@ -244,10 +244,6 @@ fn main() {
                 std::process::exit(1);
             };
 
-            // Bootstrap mode: complexity diagnostics don't block emission.
-            // The full .dag source tree has ~308 complexity violations (pending
-            // fold primitive). Tests use compile_sources directly (fail-closed).
-            v2_compiler_compile::BOOTSTRAP_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
             let result = v2_compiler_compile::compile_sources(sources, render_target);
 
             std::fs::create_dir_all(format!("{}/src", output_dir))

@@ -205,6 +205,72 @@ pub struct BlockInferState {
     pub typed_stmts: Vec<Rc<Node>>,
 }
 
+/// Single-pass scan of a block's statements to build a map from variable
+/// name → expected type.  For each record-lit with a known struct type,
+/// any field whose init value is a plain ExprVar gets an entry mapping
+/// that variable name to the struct field's declared type.  O(statements × fields),
+/// computed once per block, not per let-binding.
+fn build_field_expected_map(
+    stmts: &[Rc<Node>],
+    scope: &InferScope,
+) -> HashMap<String, Rc<Node>> {
+    let mut map: HashMap<String, Rc<Node>> = HashMap::new();
+    for stmt in stmts.iter() {
+        collect_field_expectations(stmt, scope, &mut map);
+    }
+    map
+}
+
+fn collect_field_expectations(
+    expr: &Node,
+    scope: &InferScope,
+    out: &mut HashMap<String, Rc<Node>>,
+) {
+    match (*expr.expr_data).clone() {
+        ExprData::ExprRecordLit { .. } => {
+            let tn = record_lit_type_name(Rc::new(expr.clone()));
+            if let Some(ref type_name) = tn {
+                let type_lookup = lookup_type(scope.type_env.clone(), type_name.clone());
+                let struct_node = match type_lookup {
+                    Some(sn) => Some(sn),
+                    None => {
+                        let ll = lookup_in_scope(scope.locals.clone(), type_name.clone());
+                        match ll {
+                            Some(local_node) => lookup_type_for(scope.type_env.clone(), local_node),
+                            None => None,
+                        }
+                    }
+                };
+                if let Some(sn) = struct_node {
+                    for fi in expr.children.iter() {
+                        let fi_val = field_init_node_value(fi.clone());
+                        if let ExprData::ExprVar { .. } = (*fi_val.expr_data).clone() {
+                            let var_name = expr_var_name(fi_val.clone());
+                            let fi_name = field_init_node_name(fi.clone());
+                            if let Some(field_type) = lookup_field_type_node(sn.clone(), fi_name) {
+                                match out.get(&var_name) {
+                                    None => { out.insert(var_name, field_type); }
+                                    Some(existing) if existing.name == field_type.name
+                                        && existing.children.len() == field_type.children.len() => {}
+                                    Some(_) => { out.remove(&var_name); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for child in expr.children.iter() {
+                collect_field_expectations(child, scope, out);
+            }
+        }
+        _ => {
+            for child in expr.children.iter() {
+                collect_field_expectations(child, scope, out);
+            }
+        }
+    }
+}
+
 pub fn infer_block_stmts(
     mut remaining: Vec<Rc<Node>>,
     mut scope: Rc<InferScope>,
@@ -212,6 +278,7 @@ pub fn infer_block_stmts(
     mut diag_chunks: Vec<Vec<Rc<ErrorNode>>>,
     mut last_type: Rc<Node>,
 ) -> Rc<BlockInferState> {
+    let field_expected = build_field_expected_map(&remaining, &scope);
     loop {
         match remaining.clone().first().cloned() {
             None => {
@@ -223,7 +290,14 @@ pub fn infer_block_stmts(
                 });
             }
             Some(stmt) => {
-                let stmt_result = infer_expr(stmt.clone(), scope.clone(), None);
+                let lookahead_expected: Option<Rc<Node>> = match (*stmt.expr_data).clone() {
+                    ExprData::ExprLet => {
+                        let let_name = let_binding_name(stmt.clone());
+                        field_expected.get(&let_name).cloned()
+                    }
+                    _ => None,
+                };
+                let stmt_result = infer_expr(stmt.clone(), scope.clone(), lookahead_expected);
                 let stmt_typed = stmt_result.typed.clone();
                 let stmt_diags = stmt_result.diagnostics.clone();
                 let stmt_rt = rt_type(stmt_typed.clone());
@@ -1402,6 +1476,67 @@ pub fn refine_collection_result_type(
     }
 }
 
+fn is_incomplete_type_name(name: &str) -> bool {
+    name == "Unit" || name == "Dynamic" || name == "Error" || name.is_empty()
+}
+
+fn type_has_incomplete_nested(n: &Node) -> bool {
+    for c in n.children.iter() {
+        if is_incomplete_type_name(&c.name) {
+            return true;
+        }
+        if type_has_incomplete_nested(c) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Unify an inferred type with an expected type by replacing incomplete
+/// placeholders (Unit/Dynamic/Error/"") in the inferred tree with
+/// corresponding nodes from the expected tree. Both trees must share the
+/// same top-level container name (e.g. both are "Map") for unification
+/// to proceed; otherwise the inferred type is returned unchanged.
+pub fn unify_incomplete_type(inferred: Rc<Node>, expected: Rc<Node>) -> Rc<Node> {
+    if is_incomplete_type_name(&inferred.name) && !is_incomplete_type_name(&expected.name) {
+        return expected;
+    }
+    if inferred.name != expected.name {
+        return inferred;
+    }
+    // Bare container (e.g. empty_map() → Map with 0 children) adopts
+    // the expected container's children wholesale.
+    if inferred.children.is_empty() && !expected.children.is_empty() {
+        return Rc::new(Node {
+            children: expected.children.clone(),
+            ..(*inferred).clone()
+        });
+    }
+    if inferred.children.len() != expected.children.len() {
+        return inferred;
+    }
+    if inferred.children.is_empty() {
+        return inferred;
+    }
+    let unified_children: Vec<Rc<Node>> = inferred
+        .children
+        .iter()
+        .zip(expected.children.iter())
+        .map(|(ic, ec)| unify_incomplete_type(ic.clone(), ec.clone()))
+        .collect();
+    if unified_children
+        .iter()
+        .zip(inferred.children.iter())
+        .all(|(u, i)| Rc::ptr_eq(u, i))
+    {
+        return inferred;
+    }
+    Rc::new(Node {
+        children: unified_children,
+        ..(*inferred).clone()
+    })
+}
+
 pub fn infer_arg_with_element_type(
     arg: Rc<Node>,
     element_type: Rc<Node>,
@@ -1845,6 +1980,10 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                             }
                         } else {
                             if (func_name.clone() == "empty_map".to_string()) {
+                                let empty_map_type = match expected.clone() {
+                                    Some(ref exp) if exp.name == "Map" && !exp.children.is_empty() => exp.clone(),
+                                    _ => bare_map_node(),
+                                };
                                 Rc::new(InferResult {
                                     typed: make_named_expr_node(
                                         func_name.clone(),
@@ -1853,7 +1992,7 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                                         }),
                                         typed_arg_nodes.clone(),
                                         Some(Rc::new(InferredNode::Resolved {
-                                            node: bare_map_node(),
+                                            node: empty_map_type.clone(),
                                         })),
                                         span.clone(),
                                     ),
@@ -2125,13 +2264,25 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                     2,
                     scope.clone(),
                 );
-                let fold_acc_type = match fold_info.clone() {
+                let fold_acc_type_raw = match fold_info.clone() {
                     Some(fi) => match (*rt_node(arg_value(fi.typed_arg.clone()))).clone() {
                         NodeType::Typed { node: rt, .. } => rt.clone(),
                         NodeType::InferError { .. } => error_type_node(),
                         NodeType::Untyped => error_type_node(),
                     },
                     None => error_type_node(),
+                };
+                let fold_acc_type = if fold_info.is_some() {
+                    match expected.clone() {
+                        Some(ref exp) if (crate::v2_std_core::is_container_type(fold_acc_type_raw.name.clone()) && fold_acc_type_raw.children.is_empty())
+                            || type_has_incomplete_nested(&fold_acc_type_raw) =>
+                        {
+                            unify_incomplete_type(fold_acc_type_raw.clone(), exp.clone())
+                        }
+                        _ => fold_acc_type_raw.clone(),
+                    }
+                } else {
+                    fold_acc_type_raw.clone()
                 };
                 let mc_arg_infer_results = infer_method_args_with_fold(
                     mc_method_name.clone(),
@@ -2430,7 +2581,8 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                 let span = texpr.span.clone();
                 let let_value = let_value(texpr.clone());
                 let let_body = let_body(texpr.clone());
-                let val_result = infer_expr(let_value.clone(), scope.clone(), None);
+                
+                let val_result = infer_expr(let_value.clone(), scope.clone(), expected.clone());
                 let val_typed = val_result.typed.clone();
                 let val_diags = val_result.diagnostics.clone();
                 let val_type = rt_type(val_typed.clone());
@@ -2509,7 +2661,12 @@ pub fn infer_expr(texpr: Rc<Node>, scope: Rc<InferScope>, expected: Option<Rc<No
                         None => leaf_node("Unit".to_string()),
                     }
                 } else {
-                    leaf_node("Unit".to_string())
+                    match expected.clone() {
+                        Some(ref exp) if exp.name == "List" && !exp.children.is_empty() => {
+                            exp.children.first().cloned().unwrap_or_else(|| leaf_node("Unit".to_string()))
+                        }
+                        _ => leaf_node("Unit".to_string()),
+                    }
                 };
                 let ll_texpr = make_expr_node(
                     Rc::new(ExprData::ExprListLit),
@@ -4985,25 +5142,10 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
             },
         );
         let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
-        // Collect generic type parameter names from type definitions
-        let type_params: HashMap<String, Vec<String>> = modules.iter().cloned().fold(
-            <HashMap<_, _>>::new(),
-            |acc: HashMap<String, Vec<String>>, m: Rc<TypedModule>| {
-                m.items.iter().cloned().fold(acc, |inner: HashMap<String, Vec<String>>, item: Rc<Node>| {
-                    if !item.params.is_empty() {
-                        let param_names: Vec<String> = item.params.iter().map(|p| param_node_name(p.clone())).collect();
-                        v2_rt::map_insert(inner, item.name.clone(), param_names)
-                    } else {
-                        inner
-                    }
-                })
-            },
-        );
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: fielded,
-            type_params,
         })
     }
 }

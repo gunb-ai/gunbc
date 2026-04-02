@@ -18,7 +18,8 @@ import v2.std.core {
   FieldSummary,
   with_required_cardinality,
   Connective, Conj, NoConnective,
-  CardOptional
+  CardOptional,
+  param_node_name
 }
 import v2.compiler.infer_types {
   normalize_access_type_node,
@@ -60,6 +61,7 @@ type TypeSummary {
   field_summaries: Map<String, FieldSummary>
   field_type_map: Map<String, String>
   variant_name_set: Map<String, Bool>
+  generic_param_names: List<String>
 }
 
 // EmitGraphInfo: the reconcile→emit boundary contract.
@@ -370,6 +372,7 @@ fn build_type_summary(item: Node) -> TypeSummary? {
   if item.connective == NoConnective || item.transport != none {
     return none
   }
+  let gpn = item.params |> map(p => param_node_name(n: p))
   let is_product = item.connective == Conj
   if is_product {
     Some { value: TypeSummary {
@@ -377,7 +380,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(children: item.children),
       field_type_map: build_field_type_map(children: item.children),
-      variant_name_set: empty_map()
+      variant_name_set: empty_map(),
+      generic_param_names: gpn
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
@@ -386,7 +390,8 @@ fn build_type_summary(item: Node) -> TypeSummary? {
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children),
       field_type_map: empty_map(),
-      variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, child.name, true))
+      variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, child.name, true)),
+      generic_param_names: gpn
     } }
   }
 }
@@ -394,8 +399,6 @@ fn build_type_summary(item: Node) -> TypeSummary? {
 fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuildState {
   match build_type_summary(item: item) {
     Some { value: summary } =>
-      // Add per-variant summaries for enums so is_optional_struct_field can look up
-      // individual variant field types (e.g. VariantPattern.parent_enum).
       // Add per-variant summaries for enums so is_optional_struct_field can look up
       // individual variant field types (e.g. VariantPattern.parent_enum).
       let with_variants = match summary.repr {
@@ -407,7 +410,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node) -> EmitInfoBuild
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(children: variant.children),
                 field_type_map: build_field_type_map(children: variant.children),
-                variant_name_set: empty_map()
+                variant_name_set: empty_map(),
+                generic_param_names: []
               })
             } else { acc }
           )
