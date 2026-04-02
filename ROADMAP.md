@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 315 | 0 | Ratcheted at 315 in code. Direct + mutual recursion fail-closed. Unsound ExprFieldAccess/ExprMethodCall witnesses reverted (2026-04-01). Next drop needs parser/block/type-normalization witness work with resolved structural facts |
+| Complexity violations | 315 | 0 | 51 root functions → 315 errors (ratcheted). **Analyzer-language mismatch:** proof model targets variant-field recursion but language uses container-child recursion (Node.children + accessors). Unsound witnesses reverted. See Exploratory Directions for CX lane redesign plan. |
 
 ---
 
@@ -211,6 +211,15 @@ M1 (every .dag compiles)
                  └→ M5-full (language plugin extraction)
                      └→ M6 (parse-emit symmetry)
                          └→ M7 (dissolve structural bridges)
+
+  SIDEBAR (parallel, not blocking):
+  CX: complexity analyzer redesign (I1/I2)
+      CX-0: delete dead infrastructure (RecursiveVariantFieldWitness)
+      CX-1: container-child descent proof
+      CX-2: catamorphism proof (multi-call on disjoint children)
+      CX-3: SCC container-child descent
+      CX-4: parser if-progress merging
+      CX-5: delete BOOTSTRAP_MODE bypass
 ```
 
 **Coercion implementation parallelism:** The coercion design is complete
@@ -286,7 +295,8 @@ diagnostics. Generic fn syntax already supported by stage0 parser.
 - [x] Mutual recursion detection — SCC analysis now fail-closes
   indirect recursion, accepts bounded mutual descent, and keeps
   helper-into-cycle callers out of the violation set. Remaining work:
-  richer SCC witnesses for parser/block/cache roots (ratchet 313)
+  analyzer redesign to target container-child recursion model (ratchet 255,
+  see I1/I2 in Exploratory Directions)
 
 *Container sharing (FF-8):*
 - [x] Add `SharingStrategy.wrap_template` to `LanguageSpec`
@@ -569,7 +579,7 @@ existing emitted-Rust/bootstrap fixed-point gates.
 
 | Bridge | Delete trigger | Latest milestone |
 |--------|---------------|-----------------|
-| `COMPLEXITY_RATCHET = 0` | Fail-closed compilation → 0 violations | M2 (done — wired into pipeline) |
+| `COMPLEXITY_RATCHET = 0` | Analyzer redesign (I1/I2) proves all patterns → 0 violations | Exploratory Directions (CX lane sidebar, not blocking M2) |
 | Ambient/manual stage0 maintenance | `regenerate-stage0.sh` green + CI diff gate | M2 |
 
 ---
@@ -815,13 +825,15 @@ Different functions, no conflict.
   source-audit grep needed to enforce as invariant)
 - [ ] Unknown complexity stays fail-closed; no steady-state `O(?)`
   success output — `is_unknown_class` / `cost_contains_unknown`
-  provide structural detection; end-to-end gating in violation
-  path needs wiring
+  provide structural detection; end-to-end gating wired but bypassed
+  by `BOOTSTRAP_MODE` (delete bypass after CX lane I1/I2 lands)
 - [ ] Mutual-recursion cycle errors: `complexity.dag:1579` returns
   only `violations`, omitting the cycle-error diagnostics that
   `detect_mutual_recursion_names` previously supplied. Verify that
   mutual-recursion cycles produce fail-closed diagnostics in the
   pipeline output, not silent omission.
+- [ ] Delete `RecursiveVariantFieldWitness` and variant-field descent
+  infrastructure — dead code, fires on zero real types (audit 2026-04-01)
 - [x] `ClassProduct` formatting parenthesizes additive children
   (already done: `parenthesize_additive_cost` pre-existing)
 - [x] Source-audit parity checks use `live_source` /
@@ -1018,12 +1030,20 @@ variable-argument functions all desugar to the same concept.
 | Primitive | Bound | DAG representation |
 |-----------|-------|-------------------|
 | `fold(collection, init, f)` | \|collection\| | Bounded traversal of a finite structure |
-| `descend(tree, f)` | \|tree\| | Bottom-up catamorphism over an inductive type |
+| `descend(tree, f)` | \|tree\| | Bottom-up catamorphism over an inductive type (**not yet implemented** — see CX lane) |
 | `repeat(N, init, f)` | N (explicit) | Counted iteration, N up to 2^63 - 1 |
 
 Every iteration in the language collapses to one of these. No
 fourth primitive. No special cases. The cost algebra has one rule
 per primitive and composition is closed.
+
+**Implementation status:** `fold` and `repeat` exist and the analyzer
+handles them. `descend` is conceptual only — no compiler implementation.
+The CX lane targets container-child recursion (the actual pattern) rather
+than variant-field recursion (the assumed pattern). The analyzer proves
+the same bound without requiring a `descend` surface primitive — it
+recognizes the catamorphism directly from accessor-mediated child
+recursion on Node.
 
 **Surface sugar → primitive mapping:**
 
@@ -1056,10 +1076,13 @@ to the developer and meaningful to the compiler.
 for readability. The compiler verifies the recursion is bounded and
 lowers to a primitive:
 
-1. **Match on a recursive union, recurse on variant fields** → `descend`.
-   The compiler knows which fields are recursive from the type
-   definition. Verification is mechanical: self-call argument is a
-   field the type marks as recursive.
+1. **Match on discriminant, recurse on children via accessors** → `descend`.
+   The compiler knows accessor functions return sub-children of Node
+   (closed-world set defined in `00_core.dag`). Verification is
+   mechanical: self-call argument is an accessor result applied to the
+   matched parameter. For user-defined recursive unions (future), same
+   principle: self-call argument is a variant field the type marks as
+   recursive.
 
 2. **Recurse with advancing position** → `fold`. The compiler
    verifies the position argument increases monotonically (or the
@@ -1085,219 +1108,137 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-04-01):** 27 root functions → 315 complexity
-violations, ratcheted. This branch landed the first real proof
-infrastructure:
+**Current state (2026-04-01):** 51 root functions → 315 complexity
+violations (ratcheted). Existing infrastructure:
 - direct recursion is fail-closed on the actual measured parameter
 - SCC ownership is explicit, so callers into a cycle do not inherit the
   cycle's violation
 - parser progress is parse-owned via typed helper identities
-- recursive-field facts are structural witnesses, not concatenated keys
 - unsound `ExprFieldAccess`/`ExprMethodCall` witness arms reverted
-  (soundness audit W-1, W-2); complexity must consume resolved witnesses
+  (soundness audit W-1, W-2)
 
-The remaining blockers are no longer "mutual recursion is missing";
-they are specific witness gaps:
-(a) parser SCC progress for the `parse_type_expr` family,
-(b) block/tree-walker SCC descent for emit/infer,
-(c) type-normalization self-recursion (requires StructuralChildDescent
-    witnesses from resolve/infer, not expression-shape heuristics), and
-(d) a few cache/dispatcher SCCs. Those are the path from 315 → 0.
+**Audit finding (2026-04-01):** The remaining 315 violations trace to a
+structural mismatch between the analyzer's proof model and the language's
+actual recursion model:
 
-#### Implementation plan
+- **The analyzer assumes variant-field recursion.** `RecursiveVariantFieldWitness`,
+  `structural_param_from_body`, `is_structural_descent_with_param` — all require
+  type T with variant V containing field F of type T, match on T, recurse on
+  pattern bindings from F.
+- **The language uses container-child recursion.** Node has `children: List<Node>`
+  and `expr_data: ExprData` as discriminant. Programs match on `node.expr_data`,
+  recurse on accessor results (`match_scrutinee`, `arm_body`, `if_condition`, etc.)
+  which return elements of `node.children`.
+- **Zero types in the compiler's .dag source have recursive variant fields.**
+  The variant-field proof path fires on zero real functions.
+  `RecursiveVariantFieldWitness` is dead infrastructure.
+- **The `descend` primitive does not exist.** INVARIANTS.md lists it as one of
+  three iteration primitives, but no compiler implementation exists.
+- **BOOTSTRAP_MODE bypasses the complexity gate.** `compile.dag` correctly
+  gates emission on complexity violations, but `stage0/main.rs` sets
+  `BOOTSTRAP_MODE = true` unconditionally, bypassing the gate. The 255
+  violations are hard errors being silently let through.
+- **Review found 9 soundness issues** in the proof patches on the investigation
+  branch. The ratchet drop 315→255 was built on unsound heuristic proofs
+  (fresh-substructure name check, match witness scope leak, single-member
+  finite frontier). That branch should not merge.
 
-Three work items, in dependency order. Each is independently
-testable — the ratchet drops after each one lands.
+#### CX lane: complexity analyzer redesign (parallel sidebar)
 
-**Critical parallel cleanup (authority / bridge dissolution).**
+This work runs on its own branch, parallel to the main roadmap. It does
+not block M2/M3/M4/E0c.
 
-Recent mainline work has a clear pattern: declaration data moved out of
-the compiler, semantic lookups moved from source-text/name recovery to
-structural accessors, and complexity class authority moved from strings
-to `CostExpr`. The recursion/progress proof path should follow the same
-rule before we harden I1/I2 further.
+**Lane rule:** CX branches only touch `complexity.dag` and its stage0
+mirror (`v2_compiler_complexity.rs`), plus the ratchet test. No emission,
+inference, parse, or core changes. Lane exclusivity is structural.
 
-- [x] Replace `recursive_variant_fields: Map<String, Bool>` with a
-  structural recursion witness owned by inference/env (variant-local
-  witness or direct edge), and thread it through imported/unresolved/final
-  envs so there is one authority
-- [x] Replace `ParserWitnessCall { callee: String }` with a typed parser
-  helper identity so parser progress is not name-driven
-- [ ] Move structural descent proof ownership out of `complexity.dag`:
-  complexity should consume a resolved descent witness, not recover it
-  from encoded keys, raw names, or match-shape heuristics
-- [x] Acceptance: recursion/progress proofs no longer depend on
-  `split(\"::\")`, concatenated field keys, or raw parser-helper-name
-  strings
-- [x] Acceptance: stage0/source parity stays green after the witness
-  refactor
-- [ ] Acceptance: fixed-point regeneration stays green after the witness
-  refactor
+**Design constraint:** No dual IR. The analyzer reads what the language
+provides: `Node.children`, `Node.expr_data`, accessor function identities
+(closed-world set from `00_core.dag`). No invented representations.
 
-**Next branch after PR #270 merge (313 → 0 path).**
+**What to keep** (~1,500 lines of `complexity.dag`):
+- Cost algebra types: `SizeExpr`, `CostExpr`, `CostShape`, `Certainty`
+- Cost evaluation: `cost_of_expr`, `get_or_compute_summary`, `cost_of_method_by_shape`
+- Graph infrastructure: `build_call_graph`, Tarjan's SCC, `dfs_finish_order`
+- Path counting: `max_path_self_calls_with_cont` (correctly handles branch mutual exclusion)
+- Reporting: `simplify_cost`, `normalize_asymptotic`, `classify_complexity`, `build_complexity_report`
 
-- [ ] Parser SCC witness completion: prove token/cursor progress across
-  the `parse_type_expr` / `parse_callable_type_expr` / block-expression
-  SCC instead of falling back to generic non-descending mutual recursion
-- [ ] Block/tree-walker SCC witness completion: add one shared
-  statement-tail / child-node descent proof and apply it to
-  `emit_rust_block_stmts`, `emit_py_block_stmts`, `emit_go_block_stmts`,
-  `infer_block_stmts`, `emit_*_tco_if`, and `emit_node_type_rc`
-- [ ] Type-normalization recursion proof: discharge
-  `normalize_access_type_node` and its downstream family
-  (`node_type_shape`, `node_type_compatible`, `node_type_equals`,
-  `node_type_deps`) with a fail-closed structural measure.
-  **Reverted (2026-04-01):** `ExprFieldAccess` and `ExprMethodCall`
-  (first/last) arms in `expr_descending_witness_source` removed as
-  unsound — field access is only a valid descent witness when the
-  accessed field is a proven recursive child position, not for
-  arbitrary fields (metadata, sibling payloads, measure-neutral
-  fields). The correct path: resolve/infer must own
-  `StructuralChildDescent` witnesses that identify which fields of
-  each type are recursive positions, and complexity consumes those
-  rather than recovering them from expression shape. See §Witness
-  soundness audit below.
-- [ ] Cache/frontier SCC proof: finish `resolve_callback_cost` and any
-  remaining finite-key SCCs with a real frontier witness rather than a
-  placeholder cycle explanation
-- [ ] Parser contract tests: pin `range(...)` integer-literal behavior
-  with one negative-literal test if supported and one explicit rejection
-  test for computed expressions
-- [ ] Re-lock regeneration only after the root witnesses move:
-  `./scripts/regenerate-stage0.sh && git diff --exit-code src/v2/stage0/`
-- [ ] Boundary cleanup follow-up: replace raw `.name` equality in
-  `collect_item_recursive_variant_fields` with resolved structural
-  recursive-type identity
-- [ ] Boundary cleanup follow-up: stop copying module recursion facts
-  into every `FuncEntry`; keep one module-owned authority for complexity
-- [ ] Emitter cleanup follow-up: route Python `VariantPattern` emission
-  through `emit_py_variant_pattern` instead of keeping a parallel inline
-  implementation
+**What to delete** (~350 lines):
+- `RecursiveVariantFieldWitness` coupling and variant-field descent functions
+- `recursive_variant_fields` threading through `RecursionContext` and `FuncEntry`
+
+**What to rebuild** (proof model, simpler than current):
+- `classify_recursion_pattern` — new dispatcher with correct proof order
+- Container-child descent proof — replaces variant-field descent
+- Catamorphism proof — replaces branching-rejection-with-no-recovery
 
 **Witness soundness audit (2026-04-01).**
 
 Review identified five classes of unsound witness propagation. The
 governing principle: complexity should consume resolved descent
 witnesses owned by resolve/infer, not recover them from expression
-shape, names, or helper-call patterns. Each class below has the same
-root cause as the generic `ExprCall` catch-all that was already deleted.
+shape, names, or helper-call patterns.
 
 | # | Class | Status | What's unsound | Fix |
 |---|-------|--------|---------------|-----|
-| W-1 | `ExprFieldAccess` in `expr_descending_witness_source` | **FIXED (2026-04-01)** | Any field access propagated descent, but `x.metadata` is not smaller than `x` | Removed arm; re-enable only with `StructuralChildDescent` witness from resolve/infer |
-| W-2 | `ExprMethodCall` (first/last) in `expr_descending_witness_source` | **FIXED (2026-04-01)** | Collection extraction treated as descent without proving the collection holds recursive children | Removed arm; same re-enable path as W-1 |
-| W-3 | `ExprIf`/`ExprMatch` in witness propagation | **Safe** (not propagated) | If either branch yielded a witness, it would be unsound (`if cond { n-1 } else { n }`) | `collect_descending_witness_names` does not propagate through if/match; soundness comment added |
-| W-4 | Pattern-binding witness promotion | **Not applicable** | `add_pattern_witnesses` does not exist in this codebase; pattern bindings do not auto-promote to witnesses | If added, must restrict to resolved recursive positions |
-| W-5 | SCC `all_arithmetic` classification | **Documented** | `max_path <= 1 && scc_calls_have_arithmetic_descent` is necessary but not sufficient for full soundness; needs shared structural measure on every cycle edge | Soundness comment added in `classify_scc_recursion_pattern`; design target: §I2 |
+| W-1 | `ExprFieldAccess` in `expr_descending_witness_source` | **FIXED** | Any field access propagated descent, but `x.metadata` is not smaller than `x` | Removed arm; CX-1 re-enables via accessor identity |
+| W-2 | `ExprMethodCall` (first/last) in `expr_descending_witness_source` | **FIXED** | Collection extraction treated as descent without proving the collection holds recursive children | Removed arm; CX-1 re-enables via accessor identity |
+| W-3 | `ExprIf`/`ExprMatch` in witness propagation | **Safe** (not propagated) | If either branch yielded a witness, it would be unsound (`if cond { n-1 } else { n }`) | `collect_descending_witness_names` does not propagate through if/match |
+| W-4 | Pattern-binding witness promotion | **Not applicable** | Pattern bindings do not auto-promote to witnesses | If added, must restrict to resolved recursive positions |
+| W-5 | SCC `all_arithmetic` classification | **Documented** | `max_path <= 1 && scc_calls_have_arithmetic_descent` necessary but not sufficient | Design target: CX-3 |
 
-Witness kind taxonomy (design target, not yet implemented):
-- `ArithmeticDescent(param)` — valid only for single-recursion classification
-- `StructuralChildDescent { source_param, recursive_edge }` — can justify
-  multi-call linearity only when recursive calls are on proven disjoint
-  recursive children owned by resolve/infer
-
-Regression tests added:
+Regression tests (on main):
 - `soundness_fib_like_stays_non_linear` — branching recursion stays violation
 - `soundness_conditional_descent_not_accepted` — if/else partial descent rejected
 - `soundness_partial_match_descent_not_accepted` — match partial descent documented
 - `soundness_arithmetic_descent_single_call_accepted` — valid single-call descent works
 
-**I1: `descend` primitive for recursive unions.**
+**CX-0: Delete dead infrastructure.** Remove variant-field descent model.
+~350 lines deleted. No behavior change (fires on zero types).
 
-The compiler already knows which types are recursive
-(`recursive_type_set` in `TypeEnv`). The missing piece is knowing
-which *fields* of each variant are the recursive positions.
+**CX-1: Container-child descent proof.** Recognize when a function
+matches on `param.expr_data` and recurses on accessor results applied
+to `param`. Accessor functions are pure projections into `node.children`
+(closed-world set). Classify as `LinearRecursion`. Expected: ~80
+violations resolved.
 
-What exists:
-- `recursive_type_set` tracks recursive type names (in `04_env.dag`)
-- `classify_recursion_pattern` proves direct self-recursion is bounded
-  (in `complexity.dag`, checks `is_structural_descent` and
-  `has_arithmetic_descent`)
-- `CostSum` in the cost algebra already represents bounded iteration
-- `iteration.dag` declares `descend` conceptually but no compiler
-  implementation exists
+**CX-2: Catamorphism proof.** When multiple self-calls in the same arm
+operate on different accessor results from the same node, classify as
+catamorphism (`LinearRecursion`), not `DivideAndConquer`. Today the
+analyzer immediately produces `CostUnknown` with zero recovery. Expected:
+~40 violations resolved.
 
-What's needed:
-1. At resolve time, for each recursive union type, record which
-   variant fields are recursive positions (field type == parent type).
-   This is a small addition to `TypeEnv` or `TypeBinding` — a
-   `recursive_fields: Map<String, List<String>>` keyed by variant name.
-2. In `classify_recursion_pattern`, when a function matches on a
-   recursive union and self-calls receive recursive fields: classify
-   as `LinearRecursion` (same as today's `is_structural_descent`,
-   but using type-definition knowledge instead of heuristic child
-   analysis).
-3. The cost algebra already produces `CostSum` for linear recursion.
-   No cost algebra changes needed.
+**CX-3: SCC container-child descent.** Extend CX-1/CX-2 to SCC members.
+Expected: ~25 violations resolved.
 
-Blocked on: nothing. All prerequisite infrastructure exists.
+**CX-4: Parser if-progress merging.** When both branches of an
+if-expression return parser state with `ProgressStrict`, the merged
+result is `ProgressStrict`. Expected: 60 violations resolved.
 
-Test: `strict_complexity_violation_count` drops. The 53 manual
-`CostExpr` traversals in `complexity.dag` and the `ExprData` tree
-walkers in emit/infer become provably bounded. Expected reduction:
-tree-walker root functions (emit_typed_expr, infer_expr,
-simplify_cost, format_cost_inner, etc.) resolve → ~200 violations
-eliminated.
+**CX-5: Delete BOOTSTRAP_MODE bypass.** Once ratchet reaches 0, delete
+the `BOOTSTRAP_MODE` flag. `compile.dag` gate becomes authoritative.
 
-**I2: SCC analysis for mutual recursion.**
-
-What exists:
-- SCC construction and ownership filtering exist in `complexity.dag`
-- Mutual recursion fail-closes when no shared decreasing measure is
-  found, bounded arithmetic mutual descent is accepted, and callers into
-  the SCC are excluded from the cycle's violation set
-- Parser helper progress is modeled in `02_parse.dag` and consumed by
-  complexity, rather than guessed from helper-name strings
-
-What's needed:
-1. For each SCC with >1 function, find the shared decreasing measure.
-   Three remaining cases:
-   - All functions pass children of a recursive union → `descend`
-     (tree walkers / block emitters / infer walkers)
-   - All functions advance a position in a collection → `fold`
-     (parsers like parse_type_expr ↔ parse_callable_type_expr)
-   - Functions thread through a cache with finite keys → `fold`
-     over the key set (complexity SCC: cost_of_expr ↔
-     get_or_compute_summary)
-2. Replace the remaining placeholder-cycle `CostUnknown` with the proven
-   `CostSum` for the SCC's bound.
-3. Once the shared witnesses are authoritative, delete any leftover
-   fallback logic that compensates for missing SCC proofs.
-
-Blocked on: a stronger `descend` witness for recursive unions and a
-shared parser-progress witness across parser SCCs.
-
-Test: parser + block-emitter + cache SCC roots disappear; 313 approaches
-0 without suppression.
-
-**I3: `while` surface sugar.**
+**I3: `while` surface sugar.** (Independent of CX lane.)
 
 What's needed:
 1. Tokenizer: add `while` keyword.
 2. Parser: `while <expr> { <body> }` desugars to
    `ExprForEach` with a synthetic `repeat(max_int)` range, or a
-   new `ExprRepeat` node that the rest of the pipeline handles
-   like `ExprForEach`. Design choice: reuse existing `ExprForEach`
-   (less pipeline change) or add `ExprRepeat` (cleaner separation).
+   new `ExprRepeat` node.
 3. Complexity: `repeat(N)` already has cost `CostSum { upper: N }`.
-   `while(true)` gets `CostSum { upper: max_int }`.
-4. Emit: each target renders its native loop. Rust: `for _ in 0..N`.
-   Python: `for _ in range(N)`. Go: `for i := 0; i < N; i++`.
+4. Emit: each target renders its native loop.
 
-Blocked on: nothing. Independent of I1/I2. Could land first as a
-standalone language feature.
+Blocked on: nothing. Could land first as a standalone language feature.
 
-Test: `while(true)` compiles, emits working target code, complexity
-reports `O(max_int × per_step)`.
-
-**Acceptance criteria (all three landed):**
-- Recursive functions on recursive unions lower to `descend`
-- Mutual recursion SCCs verified and lowered to `descend`/`fold`
-- `while` keyword desugars to `repeat(max_int, ...)`
-- `complexity.dag` uses fold/descend instead of 53 manual traversals
-- `is_unknown_cost` is one line, not ten
-- Complexity gate: 313 → 0 without suppression or ratchet
-- Cost algebra: one cost rule per primitive, composition closed
+**Acceptance criteria (CX lane complete):**
+- Container-child descent proven for all Node tree walkers
+- Catamorphism proof: multi-call arms on disjoint children → O(n)
+- No dual IR: analyzer reads Node.children, Node.expr_data, accessor
+  function identities — nothing invented
+- Variant-field proof infrastructure deleted
+- Complexity gate: 255 → 0 without suppression or ratchet
+- `BOOTSTRAP_MODE` complexity bypass deleted
+- Targeted negative tests for each proof rule (no global-ratchet-only validation)
 
 ### Bounded by construction — no unbounded expressions
 
@@ -1586,10 +1527,10 @@ the first level the language recognizes.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs) |
+| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations from analyzer-language mismatch) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (COMPLEXITY_RATCHET in pipeline.rs) |
+| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (51 root functions; resolves with CX lane analyzer redesign) |
 | Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
