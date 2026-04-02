@@ -74,11 +74,13 @@ fn synthesize_optional_some_variant(scrut: Node) -> Node {
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
-  let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
-  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
-  if n_is_type_var {
+  // Check node name, not inferred field. Nodes like Optional.Some.value have
+  // inferred: TypeVariable but are structurally valid pattern subjects.
+  // Only nodes explicitly named "Dynamic" or "Error" (bridge sentinel names)
+  // should be treated as unresolved/error subjects.
+  if n.name == "Dynamic" {
     PatternDynamic { span: n.span }
-  } else if n_is_error {
+  } else if n.name == "Error" {
     PatternLookupBlocked
   } else {
     PatternResolved { node: n }

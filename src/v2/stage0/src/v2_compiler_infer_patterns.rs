@@ -151,22 +151,14 @@ some_node.clone()
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
     {
-        let n_is_error: bool = if (n.inferred.clone() != None) {
-            is_compiler_error(n.inferred.clone().clone().unwrap())
-} else {
-            false
-};
-let n_is_type_var: bool = if (n.inferred.clone() != None) {
-            is_type_variable(n.inferred.clone().clone().unwrap())
-} else {
-            false
-};
-if n_is_type_var.clone() {
+        // Check node name, not inferred field. Nodes like Optional.Some.value have
+        // inferred: TypeVariable but are structurally valid pattern subjects.
+        if (n.name.clone().as_str() == "Dynamic") {
             Rc::new(PatternSubject::PatternDynamic {
     span: n.span.clone(),
 })
 } else {
-            if n_is_error.clone() {
+            if (n.name.clone().as_str() == "Error") {
                 Rc::new(PatternSubject::PatternLookupBlocked)
 } else {
                 Rc::new(PatternSubject::PatternResolved {
