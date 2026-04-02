@@ -783,25 +783,34 @@ fn method_arg_expected_type(receiver_type: Node, method_name: String, arg_index:
   }
 }
 
-fn type_matches_expected_shape(actual: Node, expected: Node, placeholder_names: Map<String, Bool>) -> Bool {
+fn type_matches_expected_shape(actual: Node, expected: Node, placeholder_names: Map<String, Bool>, env: TypeEnv, module_name: String) -> Bool {
   if is_bridge_placeholder(placeholder_names: placeholder_names, name: expected.name) {
     true
-  } else if actual.name != expected.name || actual.return_cardinality != expected.return_cardinality {
-    false
-  } else if expected.children |> count == 0 {
-    true
-  } else if actual.children |> count != expected.children |> count {
-    false
   } else {
-    actual.children |> enumerate |> all(pair =>
-      let idx = pair.first
-      let actual_child = pair.second
-      let expected_child = expected.children |> skip(idx) |> first
-      match expected_child {
-        Some { value: exp_child } => type_matches_expected_shape(actual: actual_child, expected: exp_child, placeholder_names: placeholder_names)
-        None => false
-      }
-    )
+    if actual.name != expected.name || actual.return_cardinality != expected.return_cardinality {
+      false
+    } else if expected.children |> count == 0 {
+      true
+    } else if actual.children |> count != expected.children |> count {
+      false
+    } else {
+      actual.children |> enumerate |> all(pair =>
+        let idx = pair.first
+        let actual_child = pair.second
+        let expected_child = expected.children |> skip(idx) |> first
+        match expected_child {
+          Some { value: exp_child } =>
+            type_matches_expected_shape(
+              actual: actual_child,
+              expected: exp_child,
+              placeholder_names: placeholder_names,
+              env: env,
+              module_name: module_name
+            )
+          None => false
+        }
+      )
+    }
   }
 }
 
@@ -825,7 +834,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span()),
         make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span())
       ]
-      let fold_callable = callable_node(func_params: fold_params, ret: fold_acc_type)
+      let fold_callable = resolved_callable_type(func_params: fold_params, ret: fold_acc_type)
       let ar = infer_expr(texpr: arg_value(n: a), scope: scope, expected: Some { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(name: arg_name(n: a), value: ar.typed, span: a.span), diagnostics: ar.diagnostics }
     } else {
@@ -1254,7 +1263,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           // Built-in: empty_map() → Map
           let inferred_map_type = match expected {
             Some { value: exp } =>
-              if exp.name == "Map" || node_is_keyed_collection(n: exp) { exp } else { bare_map_node() }
+              if node_is_keyed_collection(n: exp) || node_type_equals(left: exp, right: bare_map_node()) { exp } else { bare_map_node() }
             None => bare_map_node()
           }
           InferResult {
@@ -1717,7 +1726,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let callable_return_diags = if expected != none && expected.value.params |> count > 0 {
         let exp = expected.value
         let expected_ret = callable_inferred(n: exp)
-        if type_matches_expected_shape(actual: rt_type(n: body_typed), expected: expected_ret, placeholder_names: placeholder_names) {
+        if type_matches_expected_shape(
+          actual: rt_type(n: body_typed),
+          expected: expected_ret,
+          placeholder_names: placeholder_names,
+          env: scope.type_env,
+          module_name: scope.module_name
+        ) {
           []
         } else {
           [inference_error(message: "lambda callback return type mismatch", span: span, module_name: scope.module_name)]

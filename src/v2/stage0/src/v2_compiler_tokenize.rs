@@ -953,18 +953,174 @@ pub fn scan_string_body(
     }
 }
 
+pub fn find_string_literal_end(source: Rc<SourceRef>, pos: i64) -> Option<i64> {
+    if (pos.clone() >= string_length_ref(source.as_ref())) {
+        None
+    } else {
+        let ch = char_at_ref(source.as_ref(), pos.clone());
+        if (ch.clone() == "\\".to_string()) {
+            if ((pos.clone() + 1) < string_length_ref(source.as_ref())) {
+                find_string_literal_end(source.clone(), (pos.clone() + 2))
+            } else {
+                None
+            }
+        } else if (ch.clone() == "\"".to_string()) {
+            Some(pos.clone())
+        } else if (ch.clone() == "\n".to_string()) {
+            None
+        } else {
+            find_string_literal_end(source.clone(), (pos.clone() + 1))
+        }
+    }
+}
+
+pub fn interpolation_has_valid_end(
+    source: Rc<SourceRef>,
+    pos: i64,
+    paren_depth: i64,
+    bracket_depth: i64,
+    brace_depth: i64,
+    saw_top_level_comma: bool,
+) -> bool {
+    if (pos.clone() >= string_length_ref(source.as_ref())) {
+        false
+    } else {
+        let ch = char_at_ref(source.as_ref(), pos.clone());
+        if (ch.clone() == "\n".to_string()) {
+            false
+        } else if (ch.clone() == "\"".to_string()) {
+            match find_string_literal_end(source.clone(), (pos.clone() + 1)) {
+                Some(end_quote) => interpolation_has_valid_end(
+                    source.clone(),
+                    (end_quote.clone() + 1),
+                    paren_depth.clone(),
+                    bracket_depth.clone(),
+                    brace_depth.clone(),
+                    saw_top_level_comma,
+                ),
+                None => false,
+            }
+        } else if (ch.clone() == "(".to_string()) {
+            interpolation_has_valid_end(
+                source.clone(),
+                (pos.clone() + 1),
+                (paren_depth.clone() + 1),
+                bracket_depth.clone(),
+                brace_depth.clone(),
+                saw_top_level_comma,
+            )
+        } else if (ch.clone() == ")".to_string()) {
+            if (paren_depth.clone() > 0) {
+                interpolation_has_valid_end(
+                    source.clone(),
+                    (pos.clone() + 1),
+                    (paren_depth.clone() - 1),
+                    bracket_depth.clone(),
+                    brace_depth.clone(),
+                    saw_top_level_comma,
+                )
+            } else {
+                false
+            }
+        } else if (ch.clone() == "[".to_string()) {
+            interpolation_has_valid_end(
+                source.clone(),
+                (pos.clone() + 1),
+                paren_depth.clone(),
+                (bracket_depth.clone() + 1),
+                brace_depth.clone(),
+                saw_top_level_comma,
+            )
+        } else if (ch.clone() == "]".to_string()) {
+            if (bracket_depth.clone() > 0) {
+                interpolation_has_valid_end(
+                    source.clone(),
+                    (pos.clone() + 1),
+                    paren_depth.clone(),
+                    (bracket_depth.clone() - 1),
+                    brace_depth.clone(),
+                    saw_top_level_comma,
+                )
+            } else {
+                false
+            }
+        } else if (ch.clone() == "{".to_string()) {
+            interpolation_has_valid_end(
+                source.clone(),
+                (pos.clone() + 1),
+                paren_depth.clone(),
+                bracket_depth.clone(),
+                (brace_depth.clone() + 1),
+                saw_top_level_comma,
+            )
+        } else if (ch.clone() == "}".to_string()) {
+            if (brace_depth.clone() > 0) {
+                interpolation_has_valid_end(
+                    source.clone(),
+                    (pos.clone() + 1),
+                    paren_depth.clone(),
+                    bracket_depth.clone(),
+                    (brace_depth.clone() - 1),
+                    saw_top_level_comma,
+                )
+            } else {
+                (((paren_depth.clone() == 0) && (bracket_depth.clone() == 0))
+                    && (saw_top_level_comma == false))
+            }
+        } else if (((ch.clone() == ",".to_string()) && (paren_depth.clone() == 0))
+            && (bracket_depth.clone() == 0))
+            && (brace_depth.clone() == 0)
+        {
+            interpolation_has_valid_end(
+                source.clone(),
+                (pos.clone() + 1),
+                paren_depth.clone(),
+                bracket_depth.clone(),
+                brace_depth.clone(),
+                true,
+            )
+        } else {
+            interpolation_has_valid_end(
+                source.clone(),
+                (pos.clone() + 1),
+                paren_depth.clone(),
+                bracket_depth.clone(),
+                brace_depth.clone(),
+                saw_top_level_comma,
+            )
+        }
+    }
+}
+
 pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
     if ((pos.clone() + 1) >= string_length_ref(source.as_ref())) {
         false
     } else {
         {
             let next = char_at_ref(source.as_ref(), (pos.clone() + 1));
-            ((((((is_ident_start(next.clone()) || is_digit(next.clone()))
+            let can_start_expr = ((((((is_ident_start(next.clone()) || is_digit(next.clone()))
                 || (next.clone() == "\"".to_string()))
                 || (next.clone() == "[".to_string()))
                 || (next.clone() == "(".to_string()))
                 || (next.clone() == "!".to_string()))
-                || (next.clone() == "-".to_string()))
+                || (next.clone() == "-".to_string()));
+            if (can_start_expr == false) {
+                false
+            } else if (next.clone() == "\"".to_string()) {
+                match find_string_literal_end(source.clone(), (pos.clone() + 2)) {
+                    Some(end_quote) => interpolation_has_valid_end(
+                        source.clone(),
+                        (end_quote.clone() + 1),
+                        0,
+                        0,
+                        0,
+                        false,
+                    ),
+                    None => false,
+                }
+            } else {
+                interpolation_has_valid_end(source.clone(), (pos.clone() + 1), 0, 0, 0, false)
+            }
         }
     }
 }
