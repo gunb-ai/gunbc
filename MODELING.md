@@ -1690,6 +1690,47 @@ delete the function and derive from the data.
 
 Pattern matching should operate on type structure, not string extraction.
 
+### M9: Every type is a mathematical concept — name it
+
+Programs are applied mathematics with informal names. When a compiler
+type cannot be mapped to a standard algebraic structure, the type is
+either (a) a genuine new concept that should be added to std/ with an
+external authority citation, or (b) a reinvention of an existing
+structure under a different name. Case (b) is far more common.
+
+**The test:** before defining a new type, ask:
+1. Is this a term in an algebra? (Check std/algebra.dag)
+2. Is this a result/error monad? (Check M6)
+3. Is this a lattice/ordering? (Check std/algebra.dag Lattice)
+4. Is this an accumulator threaded through a fold? (Check std/iteration.dag)
+5. Is this a tree that should be Node?
+
+If yes to any, use the existing concept. Don't rename it.
+
+**Why this matters:** algebraic structures are permanent — they don't
+need refactoring because they ARE the foundation everything else
+refactors toward. A Semiring is a Semiring. A BoundedLattice is a
+BoundedLattice. When a compiler type is grounded in one of these, it
+inherits the structure's properties (commutativity, associativity,
+well-foundedness) for free. Ad-hoc types get none of this.
+
+**Worked examples from the pipeline audit:**
+
+| Ad-hoc type | Is actually | std/ structure | Consequence of not naming it |
+|---|---|---|---|
+| CostExpr (7 recursive variants) | Tropical semiring term | Semiring + Lattice (std/algebra.dag) | 11 hand-written walker functions, 30 CX violations |
+| SizeExpr (5 recursive variants) | Sub-algebra of CostExpr | CommutativeMonoid + Lattice | Separate type for the same algebra, doubling walker code |
+| ProgressKind (3 variants) | DescentEvidence (already exists) | BoundedLattice (std/termination.dag) | Duplicate type, bridge functions, 3 CX violations |
+| 36 parse result types | State monad | Writer × State (Moggi 1989) | 36 types instead of 1 generic |
+| 22 resolve/infer result types | Error-accumulating monad | Writer monad | 22 types instead of 1 generic |
+| AlgebraTypeTemplate (9 variants) | Type constructor free algebra | Node tree | Separate recursive type, 14 CX violations |
+| InferScope ≅ ModuleContext | Same inference context | Product type | 2 types for 1 concept |
+
+**The pattern:** every row is the same mistake — a standard algebraic
+structure implemented ad-hoc under a domain-specific name. The fix is
+always the same: identify the algebra, import or add it to std/, delete
+the ad-hoc type.
+
 ---
 
 ## Exemplary models
