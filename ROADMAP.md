@@ -44,7 +44,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 173 | 0 | Down from 315→313→173 via proof-constructor fixes (LitNull, ExprBlock var propagation, proof-before-branching). Remaining 173 = unfinished concept modeling, not analyzer bugs. Mapped to roadmap: ~60 parser/MatchPattern (M7), ~30 CostExpr/SizeExpr (CX dissolution), ~40 fold/catamorphism/Node.name (M4), ~25 emit/infer SCCs (M5), ~18 work-list/topo (M4/M5). |
+| Complexity violations | 164 | 0 | Down from 315→313→173→164 via proof-constructor fixes + arithmetic descent. Remaining 164 = unfinished concept modeling (see Pipeline Algebraic Grounding). ~60 parser/MatchPattern (M7), ~30 CostExpr/SizeExpr (tropical semiring dissolution), ~40 fold/catamorphism (M4), ~25 emit/infer SCCs (M5). |
 
 ---
 
@@ -588,6 +588,77 @@ are concept-modeling debt, not analyzer limitations.
 - Cycle detection simplifies to Node graph cycles only
 - `stacker::maybe_grow` calls reduce to Node-walking boundaries only
 - Cost algebra functions become ordinary Node walkers — ~40 violations dissolve
+
+---
+
+## Design Direction: Pipeline Algebraic Grounding
+
+Every type in the compiler pipeline is a mathematical concept in
+disguise. When the concept is named correctly and grounded in std/,
+ad-hoc reimplementations become obvious, composition is free, and the
+complexity analyzer handles everything uniformly (Node descent).
+
+**Thesis:** programs are applied mathematics with informal names. The
+compiler's types — CostExpr, SizeExpr, ProgressKind, AlgebraTypeTemplate,
+MatchPattern, TypeRendering — are all standard algebraic structures
+(semirings, lattices, free algebras, state monads) implemented ad-hoc.
+Grounding them in std/algebra.dag eliminates the ad-hoc implementations
+and makes new capabilities fall out of existing infrastructure.
+
+### Pipeline stage audit
+
+| Stage | File | Key types | Algebraic identity | Grounded in std/? |
+|-------|------|-----------|--------------------|-------------------|
+| Tokenize | 01_tokenize.dag | Token, TokenShape, ParserState | Finite alphabet, ℕ position | YES (std/syntax.dag) |
+| Parse | 02_parse.dag | 68 result types, MatchPattern | State monad `(T, State, Err?)`, discrimination algebra | NO — 68 identical structs, MatchPattern ungrounded |
+| Resolve | 03_resolve.dag | KahnDrainState, DFS/SCC accumulators | Graph algorithms (topological sort, SCC) | NO — ad-hoc graph traversal |
+| Infer | 04_infer.dag | TypeEnv, InferredNode, AlgebraTypeTemplate | Finite map (context), BoundedLattice, type constructor free algebra | PARTIAL — AlgebraTypeTemplate in std/ but recursive |
+| Emit | 05_emit*.dag | TypeRendering, LanguageSpec | Coercion homomorphism, language parameterization | PARTIAL — coercion designed, TypeRendering is bridge |
+| Complexity | complexity.dag | CostExpr, SizeExpr, DescentEvidence, ProgressKind | Tropical semiring, BoundedLattice (×2, duplicated) | NO — 6 types duplicated from std/termination.dag |
+
+### Concrete redundancies
+
+| What | Count | Is actually | Collapses to |
+|------|-------|-------------|-------------|
+| Parse result types | 68 types | State monad `ParseM<T>` | 1 generic type |
+| ProgressKind ≅ DescentEvidence | 2 types | Same BoundedLattice `(Strict > Same > Unknown)` | 1 type from std/termination.dag |
+| CostExpr (7 variants) + SizeExpr (5 variants) | 2 recursive types | Tropical semiring terms (Semiring + Lattice from std/algebra.dag) | Node trees |
+| AlgebraTypeTemplate (9 variants) | 1 recursive type | Type constructor free algebra | Node trees |
+| TypeRendering (7 recursive fields) | 1 recursive type | Coercion checkpoint | Dissolves into std/coercion.dag (M5) |
+| 6 termination types in complexity.dag | 6 types | Duplicates of std/termination.dag | Import from std/ |
+| method_cost_shape_table ≅ PrimitiveContract | 2 data tables | Same authority (operation cost) | Merge into std/primitives.dag |
+
+### Missing std/ concepts (proposed additions)
+
+**`std/discrimination.dag`** (new) — Pattern matching / coproduct elimination.
+The elimination form for Coproduct, dual to construction. MatchPattern
+dissolves into this. External authority: pattern calculus, tree automata.
+
+**`std/graph.dag`** (new) — Directed graph algebra.
+DAG, topological sort, SCC, cycle detection. Resolve stage's Kahn/DFS
+code derives from this. External authority: Cormen "Introduction to
+Algorithms", Tarjan (1972).
+
+**`std/algebra.dag` addition** — Signature + Term.
+A signature declares operation symbols with arities. Terms are Node
+trees conforming to the signature. Folds (catamorphisms) are the
+canonical elimination form. This grounds CostExpr/SizeExpr/
+AlgebraTypeTemplate dissolution. External authority: Baader & Nipkow
+"Term Rewriting and All That", universal algebra.
+
+**`std/termination.dag` note** — ProgressKind unification.
+ParserProgressKind is DescentEvidence applied to TokenPosition. No
+separate type needed.
+
+**`std/types.dag` addition** — Cardinality lattice.
+`Cardinality = Required | Optional | Repeated` as a BoundedLattice.
+Already exists as ReturnCardinality in 00_core.dag; should move to std/.
+
+### Impact estimate
+
+~90 types eliminated or consolidated, ~56 complexity violations dissolved,
+4 new std/ concepts grounded in external authorities. Parser alone drops
+from 68 result types to 1 generic. Complexity drops from 49 types to ~20.
 
 ---
 
