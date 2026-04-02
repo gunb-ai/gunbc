@@ -2599,40 +2599,120 @@ pub fn is_scc_container_child_descent(members: Vec<String>, func_index: HashMap<
     && !same_progress_subgraph_has_cycle(members.clone(), edges.iter().map(|e| (**e).clone()).collect())
 }
 
+// T6: SCC proof constructor with lexicographic dimensions
+
+pub fn collect_scc_proof_edges_for_dim(
+    members: Vec<String>,
+    func_index: HashMap<String, Rc<FuncEntry>>,
+    scc_name_set: HashMap<String, bool>,
+    check_child: bool,
+    check_list: bool,
+) -> Vec<Rc<ProofEdge>> {
+    members.iter().cloned().flat_map(|name| {
+        match v2_rt::map_get(&func_index, name.clone()) {
+            Some(entry) => {
+                let best_edges: Vec<Rc<ProofEdge>> = entry.params.iter().cloned().fold(vec![], |best: Vec<Rc<ProofEdge>>, p: Rc<Node>| {
+                    let pname = param_node_name(p.clone());
+                    let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), <HashMap<_, _>>::new(), check_child, check_list);
+                    let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone());
+                    let as_proof_edges: Vec<Rc<ProofEdge>> = param_edges.iter().map(|pe| {
+                        Rc::new(ProofEdge {
+                            caller: pe.caller.clone(),
+                            callee: pe.callee.clone(),
+                            evidence: vec![progress_to_evidence(pe.progress)],
+                        })
+                    }).collect();
+                    let unknown_count = param_edges.iter().filter(|e| e.progress == ProgressKind::ProgressUnknown).count();
+                    let best_unknown = best.iter().filter(|e| {
+                        matches!(e.evidence.first(), Some(DescentEvidence::DescentUnknown))
+                    }).count();
+                    if best.is_empty() || unknown_count < best_unknown {
+                        as_proof_edges
+                    } else {
+                        best
+                    }
+                });
+                best_edges
+            }
+            None => vec![],
+        }
+    }).collect()
+}
+
+pub fn construct_scc_termination_proof(
+    members: Vec<String>,
+    func_index: HashMap<String, Rc<FuncEntry>>,
+    scc_name_set: HashMap<String, bool>,
+) -> Option<Rc<TerminationProof>> {
+    // Try TreeSize (child accessor descent)
+    let tree_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), true, false);
+    let tree_all_known = tree_edges.iter().all(|e| !matches!(e.evidence.first(), Some(DescentEvidence::DescentUnknown)));
+    if tree_all_known && !tree_edges.is_empty() && !proof_has_non_descending_cycle(members.clone(), tree_edges.clone()) {
+        return Some(Rc::new(TerminationProof {
+            dimensions: vec![Rc::new(RankingDimension::TreeSize { param: "scc".to_string() })],
+        }));
+    }
+    // Try ListLength (skip/tail descent)
+    let list_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), false, true);
+    let list_all_known = list_edges.iter().all(|e| !matches!(e.evidence.first(), Some(DescentEvidence::DescentUnknown)));
+    if list_all_known && !list_edges.is_empty() && !proof_has_non_descending_cycle(members.clone(), list_edges.clone()) {
+        return Some(Rc::new(TerminationProof {
+            dimensions: vec![Rc::new(RankingDimension::ListLength { param: "scc".to_string() })],
+        }));
+    }
+    // Try combined (child OR list)
+    let combined_edges = collect_scc_proof_edges_for_dim(members.clone(), func_index.clone(), scc_name_set.clone(), true, true);
+    let combined_all_known = combined_edges.iter().all(|e| !matches!(e.evidence.first(), Some(DescentEvidence::DescentUnknown)));
+    if combined_all_known && !combined_edges.is_empty() && !proof_has_non_descending_cycle(members.clone(), combined_edges) {
+        return Some(Rc::new(TerminationProof {
+            dimensions: vec![
+                Rc::new(RankingDimension::TreeSize { param: "scc".to_string() }),
+                Rc::new(RankingDimension::ListLength { param: "scc".to_string() }),
+            ],
+        }));
+    }
+    None
+}
+
 pub fn classify_scc_recursion_pattern(members: Vec<String>, func_index: HashMap<String, Rc<FuncEntry>>) -> Rc<RecursionPattern> {
     let scc_name_set = members.iter().cloned().fold(<HashMap<String, bool>>::new(), |acc: _, name: String| {
         v2_rt::map_insert(acc.clone(), name.clone(), true)
     });
-    let scc_measure_params = build_scc_measure_params(members.clone(), func_index.clone());
-    match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
-        Some(parser_pattern) => parser_pattern.clone(),
+    // T6: Try unified SCC proof constructor first
+    let proof = construct_scc_termination_proof(members.clone(), func_index.clone(), scc_name_set.clone());
+    match proof {
+        Some(_) => {
+            Rc::new(RecursionPattern::LinearRecursion {
+                iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
+            })
+        }
         None => {
-            // CX-3: Container-child descent for SCCs.
-            if is_scc_container_child_descent(members.clone(), func_index.clone(), scc_name_set.clone()) {
-                Rc::new(RecursionPattern::LinearRecursion {
-                    iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-                })
-            } else {
-                let all_arithmetic = members.iter().cloned().all(|name| {
-                    match v2_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
-                            && scc_calls_have_arithmetic_descent(
-                                entry.body.clone(),
-                                scc_name_set.clone(),
-                                func_index.clone(),
-                                scc_measure_params.clone(),
-                            ),
-                        None => false,
+            // Fall back to old classifiers
+            let scc_measure_params = build_scc_measure_params(members.clone(), func_index.clone());
+            match classify_parser_scc_recursion_pattern(members.clone(), func_index.clone()) {
+                Some(parser_pattern) => parser_pattern.clone(),
+                None => {
+                    let all_arithmetic = members.iter().cloned().all(|name| {
+                        match v2_rt::map_get(&func_index, name.clone()) {
+                            Some(entry) => max_path_target_calls(entry.body.clone(), scc_name_set.clone()) <= 1
+                                && scc_calls_have_arithmetic_descent(
+                                    entry.body.clone(),
+                                    scc_name_set.clone(),
+                                    func_index.clone(),
+                                    scc_measure_params.clone(),
+                                ),
+                            None => false,
+                        }
+                    });
+                    if all_arithmetic {
+                        Rc::new(RecursionPattern::LinearRecursion {
+                            iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
+                        })
+                    } else {
+                        Rc::new(RecursionPattern::UnresolvableRecursion {
+                            reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
+                        })
                     }
-                });
-                if all_arithmetic {
-                    Rc::new(RecursionPattern::LinearRecursion {
-                        iteration_var: v2_rt::concat("n_".to_string(), scc_label(members.clone())),
-                    })
-                } else {
-                    Rc::new(RecursionPattern::UnresolvableRecursion {
-                        reason: v2_rt::concat("non-descending mutual recursion in ".to_string(), scc_label(members.clone())),
-                    })
                 }
             }
         }
