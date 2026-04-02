@@ -564,17 +564,29 @@ pub fn boolean_algebra_collection_templates() -> Vec<AlgebraFieldTemplate> {
         AlgebraFieldTemplate {
             name: "map".to_string(),
             param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
+                element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "MappedElement".to_string(),
+                }),
+            },
         },
         AlgebraFieldTemplate {
             name: "flat_map".to_string(),
             param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
+                element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "MappedElement".to_string(),
+                }),
+            },
         },
         AlgebraFieldTemplate {
             name: "fold".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            param_types: vec![AlgebraTypeTemplate::NamedTemplate {
+                name: "FoldAccumulator".to_string(),
+            }],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "FoldAccumulator".to_string(),
+            },
         },
         AlgebraFieldTemplate {
             name: "any".to_string(),
@@ -752,7 +764,11 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
         AlgebraFieldTemplate {
             name: "map".to_string(),
             param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
+                element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "MappedElement".to_string(),
+                }),
+            },
         },
         AlgebraFieldTemplate {
             name: "filter".to_string(),
@@ -762,12 +778,20 @@ pub fn free_monoid_collection_templates() -> Vec<AlgebraFieldTemplate> {
         AlgebraFieldTemplate {
             name: "flat_map".to_string(),
             param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            return_type: AlgebraTypeTemplate::ReceiverCollectionOf {
+                element: Box::new(AlgebraTypeTemplate::NamedTemplate {
+                    name: "MappedElement".to_string(),
+                }),
+            },
         },
         AlgebraFieldTemplate {
             name: "fold".to_string(),
-            param_types: vec![AlgebraTypeTemplate::ReceiverSelf],
-            return_type: AlgebraTypeTemplate::ReceiverSelf,
+            param_types: vec![AlgebraTypeTemplate::NamedTemplate {
+                name: "FoldAccumulator".to_string(),
+            }],
+            return_type: AlgebraTypeTemplate::NamedTemplate {
+                name: "FoldAccumulator".to_string(),
+            },
         },
         AlgebraFieldTemplate {
             name: "any".to_string(),
@@ -963,16 +987,6 @@ pub fn partial_function_templates() -> Vec<AlgebraFieldTemplate> {
         },
         AlgebraFieldTemplate {
             name: "map_has".to_string(),
-            param_types: vec![
-                AlgebraTypeTemplate::ReceiverSelf,
-                AlgebraTypeTemplate::ReceiverKey,
-            ],
-            return_type: AlgebraTypeTemplate::NamedTemplate {
-                name: "Bool".to_string(),
-            },
-        },
-        AlgebraFieldTemplate {
-            name: "emit_map_has".to_string(),
             param_types: vec![
                 AlgebraTypeTemplate::ReceiverSelf,
                 AlgebraTypeTemplate::ReceiverKey,

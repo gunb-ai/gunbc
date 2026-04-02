@@ -5116,6 +5116,26 @@ pub fn build_fielded_variants(modules: Vec<Rc<TypedModule>>, type_summaries: Has
     result
 }
 
+fn child_has_fn_type(child: &Node) -> bool {
+    match child.inferred.as_ref() {
+        Some(inf) => match &**inf {
+            Resolved { node: rt, .. } => !rt.params.is_empty(),
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+pub fn build_value_contexts(modules: &[Rc<TypedModule>]) -> HashMap<String, Rc<ValueContext>> {
+    modules.iter().fold(<HashMap<String, Rc<ValueContext>>>::new(), |acc, m| {
+        m.items.iter().fold(acc, |mut inner, item| {
+            let has_fn_fields = item.children.iter().any(|child| child_has_fn_type(child));
+            inner.insert(item.name.clone(), Rc::new(ValueContext { has_fn_fields }));
+            inner
+        })
+    })
+}
+
 pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
@@ -5142,10 +5162,12 @@ pub fn build_emit_graph_info(modules: Vec<Rc<TypedModule>>) -> Rc<EmitGraphInfo>
             },
         );
         let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
+        let value_ctxs = build_value_contexts(&modules);
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: fielded,
+            value_contexts: value_ctxs,
         })
     }
 }

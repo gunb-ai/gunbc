@@ -84,7 +84,6 @@ pub struct TypeSummary {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ValueContext {
-    pub is_constant: bool,
     pub has_fn_fields: bool,
 }
 
@@ -93,6 +92,7 @@ pub struct EmitGraphInfo {
     pub type_summaries: HashMap<String, Rc<TypeSummary>>,
     pub recursive_type_set: HashMap<String, bool>,
     pub fielded_variants: HashMap<String, bool>,
+    pub value_contexts: HashMap<String, Rc<ValueContext>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,6 +124,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     type_summaries: <HashMap<_, _>>::new(),
     recursive_type_set: <HashMap<_, _>>::new(),
     fielded_variants: <HashMap<_, _>>::new(),
+    value_contexts: <HashMap<_, _>>::new(),
 })
 }
 

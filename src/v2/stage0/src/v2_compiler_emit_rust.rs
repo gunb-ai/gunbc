@@ -637,15 +637,10 @@ if is_product.clone() {
 
 pub fn emit_struct_from_children(name: String, type_params: String, children: Vec<Rc<Node>>, recursive_types: HashMap<String, bool>, rc_types: HashMap<String, bool>, env: Rc<TypeEnv>, emit_info: Rc<EmitGraphInfo>) -> String {
     {
-        let has_fn_fields = children.iter().any(|child| {
-            match child.inferred.as_ref() {
-                Some(inf) => match &**inf {
-                    InferredNode::Resolved { node: rt, .. } => !rt.params.is_empty(),
-                    _ => false,
-                },
-                None => false,
-            }
-        });
+        let has_fn_fields = match v2_rt::map_get(&emit_info.value_contexts, name.clone()) {
+            Some(vc) => vc.has_fn_fields,
+            None => false,
+        };
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
         } else if emit_map_has(rc_types.clone(), name.clone()) {
