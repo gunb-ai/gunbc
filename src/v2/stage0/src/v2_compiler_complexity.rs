@@ -52,7 +52,7 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
     }
 }
 
-pub use crate::v2_std_core::{Node, ExprData, SourceSpan, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
+pub use crate::v2_std_core::{Node, ExprData, SourceSpan, MatchPattern, arg_name, arg_value, arm_body, arm_guard, arm_pattern, MethodSemantics, binop_left, binop_right, field_binding_name, field_binding_pattern, field_init_node_name, field_init_node_value, foreach_collection, foreach_body, if_condition, if_then_branch, if_else_branch, let_value, let_body, match_scrutinee, match_arm_nodes, method_receiver, method_arg_nodes, param_node_name, param_node_type_expr, return_value, expr_var_name, field_access_base, field_access_field, expr_call_func, expr_method_name, let_binding_name, foreach_variable, lambda_param_names, record_lit_type_name};
 use crate::v2_std_core::ExprData::{ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprBlock, ExprForEach, ExprReturn};
 use crate::v2_std_core::MethodSemantics::{AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics};
 use crate::v2_std_core::BinOpKind;
@@ -164,6 +164,49 @@ pub fn method_cost_shape(method_name: String) -> Option<Rc<CostShape>> {
     else if method_name == "split" { Some(Rc::new(CostShape::ShapeLinearScan { produces_collection: true })) }
     else if method_name == "append" { Some(Rc::new(CostShape::ShapeConstant)) }
     else { None }
+}
+
+// =========================================================================
+// Child accessor table — closed-world set of functions that project
+// into Node.children. Used by container-child descent proof (CX-1).
+// Adding a new accessor = one line here.
+// =========================================================================
+
+pub fn child_accessor_table() -> HashMap<String, bool> {
+    let mut m = HashMap::new();
+    m.insert("if_condition".to_string(), true);
+    m.insert("if_then_branch".to_string(), true);
+    m.insert("if_else_branch".to_string(), true);
+    m.insert("match_scrutinee".to_string(), true);
+    m.insert("binop_left".to_string(), true);
+    m.insert("binop_right".to_string(), true);
+    m.insert("unaryop_operand".to_string(), true);
+    m.insert("field_access_base".to_string(), true);
+    m.insert("field_access_field".to_string(), true);
+    m.insert("method_receiver".to_string(), true);
+    m.insert("lambda_body".to_string(), true);
+    m.insert("let_value".to_string(), true);
+    m.insert("let_body".to_string(), true);
+    m.insert("cast_expr".to_string(), true);
+    m.insert("cast_target".to_string(), true);
+    m.insert("foreach_collection".to_string(), true);
+    m.insert("foreach_body".to_string(), true);
+    m.insert("index_base".to_string(), true);
+    m.insert("index_expr".to_string(), true);
+    m.insert("slice_base".to_string(), true);
+    m.insert("slice_start".to_string(), true);
+    m.insert("slice_end".to_string(), true);
+    m.insert("return_value".to_string(), true);
+    m.insert("arg_value".to_string(), true);
+    m.insert("arm_body".to_string(), true);
+    m.insert("arm_guard".to_string(), true);
+    m.insert("arm_pattern".to_string(), true);
+    m.insert("field_init_node_value".to_string(), true);
+    m
+}
+
+pub fn is_known_child_accessor(name: String) -> bool {
+    child_accessor_table().contains_key(&name)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1661,6 +1704,298 @@ pub fn has_arithmetic_descent(body: Rc<Node>, func_name: String) -> bool {
     })
 }
 
+// =========================================================================
+// CX-1: Container-child descent and list-shrinkage proofs.
+//
+// Container-child descent: function matches on param.expr_data (or
+// unwraps param.children) and recurses on accessor(param) results.
+// Each accessor projects into param.children -> strict tree descent.
+//
+// List shrinkage: function matches on list |> first, recurses on
+// list |> skip(1). List length strictly decreases.
+// =========================================================================
+
+// Check if an expression is `accessor(param)` where accessor is a known
+// child-position accessor from 00_core.dag.
+pub fn is_accessor_of_param(expr: Rc<Node>, param_name: String) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(expr.clone());
+            is_known_child_accessor(callee.clone())
+            && expr.children.clone().iter().any(|arg_node| {
+                match (*arg_value(arg_node.clone()).expr_data.clone()).clone() {
+                    ExprData::ExprVar { .. } => expr_var_name(arg_value(arg_node.clone())) == param_name,
+                    _ => false,
+                }
+            })
+        },
+        _ => false,
+    }
+}
+
+// Check if an expression accesses param.children (for direct child access
+// patterns like `param.children |> first` or `param.children |> skip(N)`).
+pub fn is_children_of_param(expr: Rc<Node>, param_name: String) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprFieldAccess { .. } => {
+            let base = field_access_base(expr.clone());
+            let field = field_access_field(expr.clone());
+            field == "children"
+            && match (*base.expr_data.clone()).clone() {
+                ExprData::ExprVar { .. } => expr_var_name(base.clone()) == param_name,
+                _ => false,
+            }
+        },
+        ExprData::ExprMethodCall { .. } => {
+            // Handle `param.children |> skip(N)` or `param.children |> take(N)`
+            let mname = expr_call_func(expr.clone());
+            (mname == "skip" || mname == "take")
+            && is_children_of_param(method_receiver(expr.clone()), param_name.clone())
+        },
+        _ => false,
+    }
+}
+
+// Check if an expression is a child-descending argument: either
+// accessor(param), param.children |> first/last, or a let-bound alias.
+pub fn is_child_descent_expr(expr: Rc<Node>, param_name: String) -> bool {
+    if is_accessor_of_param(expr.clone(), param_name.clone()) { true }
+    else {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprMethodCall { .. } => {
+                let mname = expr_call_func(expr.clone());
+                if mname == "first" || mname == "last" {
+                    is_children_of_param(method_receiver(expr.clone()), param_name.clone())
+                } else { false }
+            },
+            _ => false,
+        }
+    }
+}
+
+// Check if an expression is a list-shrinking argument:
+// param |> skip(N) where N >= 1.
+pub fn is_list_shrink_expr(expr: Rc<Node>, param_name: String) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprMethodCall { .. } => {
+            let mname = expr_call_func(expr.clone());
+            mname == "skip"
+            && match (*method_receiver(expr.clone()).expr_data.clone()).clone() {
+                ExprData::ExprVar { .. } => expr_var_name(method_receiver(expr.clone())) == param_name,
+                _ => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+// Check if an expression is a descent argument -- either a direct descent
+// expression or a variable previously bound to one.
+pub fn is_descent_arg(expr: Rc<Node>, param_name: String, descent_vars: HashMap<String, bool>, check_child: bool, check_list: bool) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprVar { .. } => {
+            let vname = expr_var_name(expr.clone());
+            set_has(descent_vars, vname)
+        },
+        _ => {
+            (check_child && is_child_descent_expr(expr.clone(), param_name.clone()))
+            || (check_list && is_list_shrink_expr(expr.clone(), param_name.clone()))
+        },
+    }
+}
+
+// Check if an expression contains a child descent, looking through
+// if/block/match wrappers. Handles `if cond { n.children |> first } else { none }`.
+pub fn expr_contains_descent(expr: Rc<Node>, param_name: String, vars: HashMap<String, bool>, check_child: bool, check_list: bool) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    if (check_child && is_child_descent_expr(expr.clone(), param_name.clone()))
+        || (check_list && is_list_shrink_expr(expr.clone(), param_name.clone())) {
+        true
+    } else {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprIf { .. } => {
+                expr_contains_descent(if_then_branch(expr.clone()), param_name.clone(), vars.clone(), check_child, check_list)
+                || match if_else_branch(expr.clone()) {
+                    Some(eb) => expr_contains_descent(eb.clone(), param_name.clone(), vars.clone(), check_child, check_list),
+                    None => false,
+                }
+            },
+            ExprData::ExprBlock { .. } => {
+                match expr.children.clone().last() {
+                    Some(last_stmt) => expr_contains_descent(last_stmt.clone(), param_name.clone(), vars.clone(), check_child, check_list),
+                    None => false,
+                }
+            },
+            ExprData::ExprVar { .. } => {
+                v2_rt::map_get(&vars, expr_var_name(expr.clone())).is_some()
+            },
+            _ => false,
+        }
+    }
+    })
+}
+
+// Collect variable bindings that resolve to child descent expressions.
+// Tracks: `let x = accessor(param)`, `match accessor(param) { Some { value: x } => ... }`,
+// `let x = param.children |> first`, etc.
+pub fn collect_descent_vars(body: Rc<Node>, param_name: String, vars: HashMap<String, bool>, check_child: bool, check_list: bool) -> HashMap<String, bool> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprLet { .. } => {
+            let val = let_value(body.clone());
+            let val_is_descent = expr_contains_descent(val.clone(), param_name.clone(), vars.clone(), check_child, check_list);
+            let next_vars = if val_is_descent {
+                v2_rt::map_insert(vars.clone(), let_binding_name(body.clone()), true)
+            } else { vars.clone() };
+            match let_body(body.clone()) {
+                Some(b) => collect_descent_vars(b.clone(), param_name.clone(), next_vars, check_child, check_list),
+                None => next_vars,
+            }
+        },
+        ExprData::ExprMatch { .. } => {
+            // If scrutinee is a descent expr or a descent var,
+            // then Some { value: x } bindings are also descent.
+            let scrut = match_scrutinee(body.clone());
+            let scrut_is_descent = expr_contains_descent(scrut.clone(), param_name.clone(), vars.clone(), check_child, check_list);
+            let with_patterns = if scrut_is_descent {
+                // Propagate to Some { value: x } pattern bindings in each arm
+                match_arm_nodes(body.clone()).iter().fold(vars.clone(), |acc, arm_node| {
+                    match (*arm_pattern(arm_node.clone())).clone() {
+                        MatchPattern::VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } => {
+                            if vname == "Some" {
+                                bindings.iter().fold(acc.clone(), |inner, fb| {
+                                    match (*field_binding_pattern(fb.clone())).clone() {
+                                        MatchPattern::Bind { name: binding_name } => v2_rt::map_insert(inner.clone(), binding_name.clone(), true),
+                                        _ => inner,
+                                    }
+                                })
+                            } else { acc }
+                        },
+                        MatchPattern::Bind { name: binding_name } => v2_rt::map_insert(acc.clone(), binding_name.clone(), true),
+                        _ => acc,
+                    }
+                })
+            } else { vars.clone() };
+            // Recurse into arm bodies to find nested let bindings
+            match_arm_nodes(body.clone()).iter().fold(with_patterns, |acc, arm_node| {
+                collect_descent_vars(arm_body(arm_node.clone()), param_name.clone(), acc, check_child, check_list)
+            })
+        },
+        ExprData::ExprIf { .. } => {
+            let then_vars = collect_descent_vars(if_then_branch(body.clone()), param_name.clone(), vars.clone(), check_child, check_list);
+            match if_else_branch(body.clone()) {
+                Some(eb) => collect_descent_vars(eb, param_name.clone(), then_vars, check_child, check_list),
+                None => then_vars,
+            }
+        },
+        ExprData::ExprBlock { .. } => {
+            body.children.clone().iter().fold(vars.clone(), |acc, stmt| {
+                collect_descent_vars(stmt.clone(), param_name.clone(), acc, check_child, check_list)
+            })
+        },
+        _ => vars,
+    }
+    })
+}
+
+// Verify every self-call in `body` passes a child-descending or
+// list-shrinking expression as the argument at `param_name`.
+// Tracks descent variable bindings to handle let/match patterns.
+// Fail-closed: any unrecognizable self-call argument -> false.
+pub fn all_self_calls_descend(body: Rc<Node>, func_name: String, param_name: String, check_child: bool, check_list: bool) -> bool {
+    let descent_vars = collect_descent_vars(body.clone(), param_name.clone(), <HashMap<_, _>>::new(), check_child, check_list);
+    all_self_calls_descend_with_vars(body, func_name, param_name, descent_vars, check_child, check_list)
+}
+
+pub fn all_self_calls_descend_with_vars(body: Rc<Node>, func_name: String, param_name: String, descent_vars: HashMap<String, bool>, check_child: bool, check_list: bool) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func(body.clone());
+            let own_ok = if callee == func_name {
+                // This is a self-call. Find the argument targeting param_name.
+                body.children.clone().iter().any(|arg_node| {
+                    let targets_param = arg_name(arg_node.clone()) == Some(param_name.clone());
+                    if !targets_param { false }
+                    else {
+                        is_descent_arg(arg_value(arg_node.clone()), param_name.clone(), descent_vars.clone(), check_child, check_list)
+                    }
+                })
+            } else { true };
+            own_ok
+            && body.children.clone().iter().all(|child| {
+                all_self_calls_descend_with_vars(child.clone(), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list)
+            })
+        },
+        _ => {
+            body.children.clone().iter().all(|child| {
+                all_self_calls_descend_with_vars(child.clone(), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list)
+            })
+        },
+    }
+    })
+}
+
+// Peel let/block wrappers to find the outermost match expression.
+pub fn unwrap_to_match(body: Rc<Node>) -> Option<Rc<Node>> {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprMatch { .. } => Some(body.clone()),
+        ExprData::ExprLet { .. } => {
+            match let_body(body.clone()) {
+                Some(b) => unwrap_to_match(b.clone()),
+                None => None,
+            }
+        },
+        ExprData::ExprBlock { .. } => {
+            match body.children.clone().last().cloned() {
+                Some(last_stmt) => unwrap_to_match(last_stmt.clone()),
+                None => None,
+            }
+        },
+        _ => None,
+    }
+}
+
+// Check if the body matches on `param_name.expr_data`.
+pub fn matches_on_expr_data(body: Rc<Node>, param_name: String) -> bool {
+    match unwrap_to_match(body.clone()) {
+        Some(m) => {
+            let scrut = match_scrutinee(m.clone());
+            match (*scrut.expr_data.clone()).clone() {
+                ExprData::ExprFieldAccess { .. } => {
+                    let base = field_access_base(scrut.clone());
+                    let field = field_access_field(scrut.clone());
+                    field == "expr_data"
+                    && match (*base.expr_data.clone()).clone() {
+                        ExprData::ExprVar { .. } => expr_var_name(base.clone()) == param_name,
+                        _ => false,
+                    }
+                },
+                _ => false,
+            }
+        },
+        None => false,
+    }
+}
+
+// CX-1a: Container-child descent. Every self-call passes accessor(param),
+// param.children |> first, or a variable bound to such an expression.
+pub fn is_container_child_descent(body: Rc<Node>, func_name: String, params: Vec<Rc<Node>>) -> bool {
+    params.iter().any(|p| {
+        let pname = param_node_name(p.clone());
+        all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), true, false)
+    })
+}
+
+// CX-1b: List-shrinkage descent. Every self-call passes param |> skip(N).
+// Covers emit_*_block_stmts, kahn_drain with fuel, init_block_stmts.
+pub fn is_list_shrinkage_descent(body: Rc<Node>, func_name: String, params: Vec<Rc<Node>>) -> bool {
+    params.iter().any(|p| {
+        let pname = param_node_name(p.clone());
+        all_self_calls_descend(body.clone(), func_name.clone(), pname.clone(), false, true)
+    })
+}
+
 pub fn classify_recursion_pattern(
     func_name: String,
     body: Rc<Node>,
@@ -1674,6 +2009,14 @@ pub fn classify_recursion_pattern(
         Rc::new(initial_witnesses.clone()),
     );
     if (path_calls.clone() == 0) {
+        Rc::new(RecursionPattern::LinearRecursion {
+            iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
+        })
+    } else if (path_calls.clone() == 1)
+        && (is_container_child_descent(body.clone(), func_name.clone(), params.clone())
+            || is_list_shrinkage_descent(body.clone(), func_name.clone(), params.clone())) {
+        // CX-1: accessor projects into Node.children (tree descent) or
+        // list |> skip(N) (list shrinkage). Strictly descending.
         Rc::new(RecursionPattern::LinearRecursion {
             iteration_var: v2_rt::concat("n_".to_string(), func_name.clone()),
         })

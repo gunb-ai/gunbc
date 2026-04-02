@@ -142,6 +142,33 @@ fn method_cost_shape(method_name: String) -> CostShape? {
 }
 
 // =========================================================================
+// Child accessor table — closed-world set of functions that project
+// into Node.children. Used by container-child descent proof (CX-1).
+// Adding a new accessor = one line here.
+// =========================================================================
+data child_accessor_table: Map<String, Bool> = {
+  "if_condition": true, "if_then_branch": true, "if_else_branch": true,
+  "match_scrutinee": true,
+  "binop_left": true, "binop_right": true,
+  "unaryop_operand": true,
+  "field_access_base": true, "field_access_field": true,
+  "method_receiver": true,
+  "lambda_body": true,
+  "let_value": true, "let_body": true,
+  "cast_expr": true, "cast_target": true,
+  "foreach_collection": true, "foreach_body": true,
+  "index_base": true, "index_expr": true,
+  "slice_base": true, "slice_start": true, "slice_end": true,
+  "return_value": true,
+  "arg_value": true, "arm_body": true, "arm_guard": true, "arm_pattern": true,
+  "field_init_node_value": true
+}
+
+fn is_known_child_accessor(name: String) -> Bool {
+  lookup(child_accessor_table, key: name) != none
+}
+
+// =========================================================================
 // Complexity summary -- the main output type
 //
 // Attaches to a function, expression, or DAG node to describe its
@@ -1677,31 +1704,288 @@ fn has_arithmetic_descent(body: Node, func_name: String) -> Bool {
   }
 }
 
+// =========================================================================
+// CX-1: Container-child descent and list-shrinkage proofs.
+//
+// Container-child descent: function matches on param.expr_data (or
+// unwraps param.children) and recurses on accessor(param) results.
+// Each accessor projects into param.children → strict tree descent.
+//
+// List shrinkage: function matches on list |> first, recurses on
+// list |> skip(1). List length strictly decreases.
+// =========================================================================
+
+// Check if an expression is `accessor(param)` where accessor is a known
+// child-position accessor from 00_core.dag.
+fn is_accessor_of_param(expr: Node, param_name: String) -> Bool {
+  match expr.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: expr)
+      is_known_child_accessor(name: callee)
+      && (expr.children |> any(arg_node =>
+        match arg_value(n: arg_node).expr_data {
+          ExprVar { binding_kind: _ } => expr_var_name(texpr: arg_value(n: arg_node)) == param_name
+          _ => false
+        }
+      ))
+    _ => false
+  }
+}
+
+// Check if an expression accesses param.children (for direct child access
+// patterns like `param.children |> first` or `param.children |> skip(N)`).
+fn is_children_of_param(expr: Node, param_name: String) -> Bool {
+  match expr.expr_data {
+    ExprFieldAccess =>
+      let base = field_access_base(texpr: expr)
+      let field = field_access_field(texpr: expr)
+      field == "children"
+      && match base.expr_data {
+        ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == param_name
+        _ => false
+      }
+    ExprMethodCall { method_semantics: _ } =>
+      // Handle `param.children |> skip(N)` or `param.children |> take(N)`
+      let mname = expr_call_func(texpr: expr)
+      (mname == "skip" || mname == "take")
+      && is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name)
+    _ => false
+  }
+}
+
+// Check if an expression is a child-descending argument: either
+// accessor(param), param.children |> first/last, or a let-bound alias.
+fn is_child_descent_expr(expr: Node, param_name: String) -> Bool {
+  if is_accessor_of_param(expr: expr, param_name: param_name) { true }
+  else {
+    match expr.expr_data {
+      ExprMethodCall { method_semantics: _ } =>
+        let mname = expr_call_func(texpr: expr)
+        if mname == "first" || mname == "last" {
+          is_children_of_param(expr: method_receiver(texpr: expr), param_name: param_name)
+        } else { false }
+      _ => false
+    }
+  }
+}
+
+// Check if an expression is a list-shrinking argument:
+// param |> skip(N) where N >= 1.
+fn is_list_shrink_expr(expr: Node, param_name: String) -> Bool {
+  match expr.expr_data {
+    ExprMethodCall { method_semantics: _ } =>
+      let mname = expr_call_func(texpr: expr)
+      mname == "skip"
+      && match method_receiver(texpr: expr).expr_data {
+        ExprVar { binding_kind: _ } => expr_var_name(texpr: method_receiver(texpr: expr)) == param_name
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Check if an expression is a descent argument — either a direct descent
+// expression or a variable previously bound to one.
+fn is_descent_arg(expr: Node, param_name: String, descent_vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
+  match expr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let vname = expr_var_name(texpr: expr)
+      set_has(m: descent_vars, key: vname)
+    _ =>
+      (check_child && is_child_descent_expr(expr: expr, param_name: param_name))
+      || (check_list && is_list_shrink_expr(expr: expr, param_name: param_name))
+  }
+}
+
+// Check if an expression contains a child descent, looking through
+// if/block/match wrappers. Handles `if cond { n.children |> first } else { none }`.
+fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
+  if (check_child && is_child_descent_expr(expr: expr, param_name: param_name))
+    || (check_list && is_list_shrink_expr(expr: expr, param_name: param_name)) {
+    true
+  } else {
+    match expr.expr_data {
+      ExprIf =>
+        expr_contains_descent(expr: if_then_branch(texpr: expr), param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+        || match if_else_branch(texpr: expr) {
+          Some { value: eb } => expr_contains_descent(expr: eb, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          None => false
+        }
+      ExprBlock =>
+        match expr.children |> last {
+          Some { value: last_stmt } => expr_contains_descent(expr: last_stmt, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+          None => false
+        }
+      ExprVar { binding_kind: _ } =>
+        set_has(m: vars, key: expr_var_name(texpr: expr))
+      _ => false
+    }
+  }
+}
+
+// Collect variable bindings that resolve to child descent expressions.
+// Tracks: `let x = accessor(param)`, `match accessor(param) { Some { value: x } => ... }`,
+// `let x = param.children |> first`, etc.
+fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Map<String, Bool> {
+  match body.expr_data {
+    ExprLet =>
+      let val = let_value(texpr: body)
+      let val_is_descent = expr_contains_descent(expr: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      let next_vars = if val_is_descent {
+        map_insert(vars, let_binding_name(texpr: body), true)
+      } else { vars }
+      match let_body(texpr: body) {
+        Some { value: b } => collect_descent_vars(body: b, param_name: param_name, vars: next_vars, check_child: check_child, check_list: check_list)
+        None => next_vars
+      }
+    ExprMatch =>
+      // If scrutinee is a descent expr or a descent var,
+      // then Some { value: x } bindings are also descent.
+      let scrut = match_scrutinee(texpr: body)
+      let scrut_is_descent = expr_contains_descent(expr: scrut, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      let with_patterns = if scrut_is_descent {
+        match_arm_nodes(texpr: body) |> fold(init: vars, f: (acc, arm_node) =>
+          match arm_pattern(n: arm_node) {
+            VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
+              if vname == "Some" {
+                bindings |> fold(init: acc, f: (inner, fb) =>
+                  match field_binding_pattern(n: fb) {
+                    Bind { name: binding_name } => map_insert(inner, binding_name, true)
+                    _ => inner
+                  }
+                )
+              } else { acc }
+            Bind { name: binding_name } => map_insert(acc, binding_name, true)
+            _ => acc
+          }
+        )
+      } else { vars }
+      // Recurse into arm bodies to find nested let bindings
+      match_arm_nodes(texpr: body) |> fold(init: with_patterns, f: (acc, arm_node) =>
+        collect_descent_vars(body: arm_body(n: arm_node), param_name: param_name, vars: acc, check_child: check_child, check_list: check_list)
+      )
+    ExprIf =>
+      let then_vars = collect_descent_vars(body: if_then_branch(texpr: body), param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      match if_else_branch(texpr: body) {
+        Some { value: eb } => collect_descent_vars(body: eb, param_name: param_name, vars: then_vars, check_child: check_child, check_list: check_list)
+        None => then_vars
+      }
+    ExprBlock =>
+      body.children |> fold(init: vars, f: (acc, stmt) =>
+        collect_descent_vars(body: stmt, param_name: param_name, vars: acc, check_child: check_child, check_list: check_list)
+      )
+    _ => vars
+  }
+}
+
+// Verify every self-call in `body` passes a child-descending or
+// list-shrinking expression as the argument at `param_name`.
+// Tracks descent variable bindings to handle let/match patterns.
+// Fail-closed: any unrecognizable self-call argument → false.
+fn all_self_calls_descend(body: Node, func_name: String, param_name: String, check_child: Bool, check_list: Bool) -> Bool {
+  let descent_vars = collect_descent_vars(body: body, param_name: param_name, vars: empty_map(), check_child: check_child, check_list: check_list)
+  all_self_calls_descend_with_vars(body: body, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+}
+
+fn all_self_calls_descend_with_vars(body: Node, func_name: String, param_name: String, descent_vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
+  match body.expr_data {
+    ExprCall { call_semantics: _ } =>
+      let callee = expr_call_func(texpr: body)
+      let own_ok = if callee == func_name {
+        body.children |> any(arg_node =>
+          let targets_param = arg_name(n: arg_node) == param_name
+          if targets_param == false { false }
+          else {
+            is_descent_arg(expr: arg_value(n: arg_node), param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+          }
+        )
+      } else { true }
+      own_ok
+      && (body.children |> all(child =>
+        all_self_calls_descend_with_vars(body: child, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+      ))
+    _ =>
+      body.children |> all(child =>
+        all_self_calls_descend_with_vars(body: child, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+      )
+  }
+}
+
+// Peel let/block wrappers to find the outermost match expression.
+fn unwrap_to_match(body: Node) -> Node? {
+  match body.expr_data {
+    ExprMatch => Some { value: body }
+    ExprLet =>
+      match let_body(texpr: body) {
+        Some { value: b } => unwrap_to_match(body: b)
+        None => none
+      }
+    ExprBlock =>
+      match body.children |> last {
+        Some { value: last_stmt } => unwrap_to_match(body: last_stmt)
+        None => none
+      }
+    _ => none
+  }
+}
+
+// Check if the body matches on `param_name.expr_data`.
+fn matches_on_expr_data(body: Node, param_name: String) -> Bool {
+  match unwrap_to_match(body: body) {
+    Some { value: m } =>
+      let scrut = match_scrutinee(texpr: m)
+      match scrut.expr_data {
+        ExprFieldAccess =>
+          let base = field_access_base(texpr: scrut)
+          let field = field_access_field(texpr: scrut)
+          field == "expr_data"
+          && match base.expr_data {
+            ExprVar { binding_kind: _ } => expr_var_name(texpr: base) == param_name
+            _ => false
+          }
+        _ => false
+      }
+    None => false
+  }
+}
+
+// CX-1a: Container-child descent. Every self-call passes accessor(param),
+// param.children |> first, or a variable bound to such an expression.
+fn is_container_child_descent(body: Node, func_name: String, params: List<Node>) -> Bool {
+  params |> any(p =>
+    let pname = param_node_name(n: p)
+    all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: true, check_list: false)
+  )
+}
+
+// CX-1b: List-shrinkage descent. Every self-call passes param |> skip(N).
+// Covers emit_*_block_stmts, kahn_drain with fuel, init_block_stmts.
+fn is_list_shrinkage_descent(body: Node, func_name: String, params: List<Node>) -> Bool {
+  params |> any(p =>
+    let pname = param_node_name(n: p)
+    all_self_calls_descend(body: body, func_name: func_name, param_name: pname, check_child: false, check_list: true)
+  )
+}
+
 fn classify_recursion_pattern(func_name: String, body: Node, params: List<Node>, parser_always_advancing: Map<String, Bool>) -> RecursionPattern {
   let path_calls = max_path_self_calls(body: body, func_name: func_name)
   let initial_witnesses = recursive_measure_param_names(body: body, params: params)
   let descending_witness_names = collect_descending_witness_names(body: body, descending_witness_names: initial_witnesses)
   if path_calls == 0 {
     LinearRecursion { iteration_var: concat("n_", func_name) }
+  } else if path_calls == 1
+    && (is_container_child_descent(body: body, func_name: func_name, params: params)
+        || is_list_shrinkage_descent(body: body, func_name: func_name, params: params)) {
+    // CX-1: accessor projects into Node.children (tree descent) or
+    // list |> skip(N) (list shrinkage). Strictly descending.
+    LinearRecursion { iteration_var: concat("n_", func_name) }
   } else if path_calls > 1 {
     DivideAndConquer { split_factor: path_calls }
   } else if self_calls_have_descending_witness(body: body, func_name: func_name, params: params, descending_witness_names: descending_witness_names)
     || self_calls_have_strict_parser_progress(func_name: func_name, body: body, params: params, parser_always_advancing: parser_always_advancing)
     {
-    // path_calls == 1, not structural descent, but at least one
-    // self-call arg is param - expr or param / expr. Proven descent.
     LinearRecursion { iteration_var: concat("n_", func_name) }
   } else {
-    // path_calls == 1, not structural descent, no proven descent.
-    // Remaining witness gaps (313→0 path):
-    //   (c) type-normalization: normalize_access_type_node and family
-    //       recurse on node.children |> first (child-node descent).
-    //       The expr_descending_witness_source extension handles field
-    //       access / method chains; let-binding propagation through
-    //       if/match optionals is the remaining gap.
-    //   (d) cache/frontier: resolve_callback_cost cycle terminates by
-    //       finite key space (function names) + placeholder cache.
-    //       Needs a dedicated finite-frontier witness, not descent.
     UnresolvableRecursion { reason: concat("non-descending recursion in ", func_name) }
   }
 }
