@@ -314,6 +314,105 @@ pub struct ParserProgressAcc {
     pub env: ParserProgressEnv,
 }
 
+// =========================================================================
+// Well-founded descent model (grounded in std/termination.dag)
+// =========================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DescentEvidence {
+    Strict,
+    NonIncreasing,
+    DescentUnknown,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RankingDimension {
+    TreeSize { param: String },
+    ListLength { param: String },
+    ArithmeticValue { param: String },
+    TokenPosition { param: String },
+    SetCardinality { param: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DescentSource {
+    ChildAccessor { accessor: String },
+    ListShrink { amount: i64 },
+    ArithmeticDecrease { op: String, by: i64 },
+    ParserAdvance { witness: String },
+    SetRemoval { element: String },
+    FoldIteration,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TerminationProof {
+    pub dimensions: Vec<Rc<RankingDimension>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProofEdge {
+    pub caller: String,
+    pub callee: String,
+    pub evidence: Vec<DescentEvidence>,
+}
+
+pub fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+    match a {
+        DescentEvidence::Strict => match b {
+            DescentEvidence::Strict => DescentEvidence::Strict,
+            DescentEvidence::NonIncreasing => DescentEvidence::NonIncreasing,
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+        },
+        DescentEvidence::NonIncreasing => match b {
+            DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+            _ => DescentEvidence::NonIncreasing,
+        },
+        DescentEvidence::DescentUnknown => DescentEvidence::DescentUnknown,
+    }
+}
+
+pub fn progress_to_evidence(pk: ProgressKind) -> DescentEvidence {
+    match pk {
+        ProgressKind::ProgressStrict => DescentEvidence::Strict,
+        ProgressKind::ProgressSame => DescentEvidence::NonIncreasing,
+        ProgressKind::ProgressUnknown => DescentEvidence::DescentUnknown,
+    }
+}
+
+pub fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
+    match de {
+        DescentEvidence::Strict => ProgressKind::ProgressStrict,
+        DescentEvidence::NonIncreasing => ProgressKind::ProgressSame,
+        DescentEvidence::DescentUnknown => ProgressKind::ProgressUnknown,
+    }
+}
+
+pub fn is_lexicographic_descent(evidence: Vec<DescentEvidence>) -> bool {
+    match evidence.first() {
+        None => false,
+        Some(e) => match e {
+            DescentEvidence::Strict => true,
+            DescentEvidence::NonIncreasing => is_lexicographic_descent(evidence.iter().skip(1).cloned().collect()),
+            DescentEvidence::DescentUnknown => false,
+        },
+    }
+}
+
+pub fn proof_has_non_descending_cycle(members: Vec<String>, edges: Vec<Rc<ProofEdge>>) -> bool {
+    let non_descending: Vec<Rc<ProofEdge>> = edges.iter()
+        .filter(|e| !is_lexicographic_descent(e.evidence.clone()))
+        .cloned()
+        .collect();
+    let nd_progress_edges: Vec<ParserProgressEdge> = non_descending.iter()
+        .map(|e| ParserProgressEdge {
+            caller: e.caller.clone(),
+            callee: e.callee.clone(),
+            progress: ProgressKind::ProgressSame,
+        })
+        .collect();
+    same_progress_subgraph_has_cycle(members, nd_progress_edges)
+}
+
 pub fn cost_contains_computing_ref(expr: Rc<CostExpr>, func_name: String) -> bool {
     let target = v2_rt::concat("computing: ".to_string(), func_name.clone());
     match (*expr).clone() {

@@ -289,6 +289,111 @@ type ParserProgressAcc {
   env: ParserProgressEnv
 }
 
+// =========================================================================
+// Well-founded descent model (grounded in std/termination.dag)
+//
+// These types formalize the termination proof structure. They replace
+// the ad-hoc pattern-matching approach with a universal framework:
+//   - DescentEvidence: what happens to a ranking at one call edge
+//   - RankingDimension: what's being measured for descent
+//   - DescentSource: HOW descent is witnessed at a call site
+//   - TerminationProof: lexicographic ordering over dimensions
+//   - ProofEdge: evidence per dimension per call edge
+//
+// Migration: defined locally for now (bootstrap constraint). After
+// bootstrap is green, import from std.termination instead.
+// =========================================================================
+
+type DescentEvidence
+  = Strict           // value provably decreases
+  | NonIncreasing    // value does not increase (same or smaller)
+  | DescentUnknown   // cannot determine (fail-closed)
+
+type RankingDimension
+  = TreeSize { param: String }           // |subtree| via child accessor
+  | ListLength { param: String }         // |list| via skip/tail
+  | ArithmeticValue { param: String }    // integer via n-1, n/2
+  | TokenPosition { param: String }      // parser state.position
+  | SetCardinality { param: String }     // |set| via remove
+
+type DescentSource
+  = ChildAccessor { accessor: String }         // e.g. "binop_left" — in ChildRole model
+  | ListShrink { amount: Int }                 // skip(amount), amount >= 1
+  | ArithmeticDecrease { op: String, by: Int } // "subtract" by 1, "divide" by 2
+  | ParserAdvance { witness: String }          // "advance", "expect", "eat"
+  | SetRemoval { element: String }             // set remove in work-list drain
+  | FoldIteration                              // body of fold — bounded by |collection|
+
+type TerminationProof {
+  dimensions: List<RankingDimension>
+}
+
+type ProofEdge {
+  caller: String
+  callee: String
+  evidence: List<DescentEvidence>   // one per dimension, same order as proof.dimensions
+}
+
+// Merge two descent evidences (from two branches of if/match).
+// Conservative: if EITHER branch is unknown, result is unknown.
+// Lattice: DescentUnknown < NonIncreasing < Strict
+fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+  match a {
+    Strict => match b {
+      Strict => Strict
+      NonIncreasing => NonIncreasing
+      DescentUnknown => DescentUnknown
+    }
+    NonIncreasing => match b {
+      DescentUnknown => DescentUnknown
+      _ => NonIncreasing
+    }
+    DescentUnknown => DescentUnknown
+  }
+}
+
+// Bridge: convert ProgressKind → DescentEvidence (migration aid)
+fn progress_to_evidence(pk: ProgressKind) -> DescentEvidence {
+  match pk {
+    ProgressStrict => Strict
+    ProgressSame => NonIncreasing
+    ProgressUnknown => DescentUnknown
+  }
+}
+
+// Bridge: convert DescentEvidence → ProgressKind (migration aid)
+fn evidence_to_progress(de: DescentEvidence) -> ProgressKind {
+  match de {
+    Strict => ProgressStrict
+    NonIncreasing => ProgressSame
+    DescentUnknown => ProgressUnknown
+  }
+}
+
+// Check if a lexicographic proof edge is descending:
+// first Strict dimension wins; all higher dimensions must be NonIncreasing.
+fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
+  match evidence |> first {
+    None => false  // no dimensions = no proof
+    Some { value: e } =>
+      match e {
+        Strict => true
+        NonIncreasing => is_lexicographic_descent(evidence: evidence |> skip(1))
+        DescentUnknown => false
+      }
+  }
+}
+
+// Check if a set of proof edges forms a valid termination proof:
+// the subgraph of non-descending edges (all dims NonIncreasing) must be acyclic.
+fn proof_has_non_descending_cycle(members: List<String>, edges: List<ProofEdge>) -> Bool {
+  let non_descending = edges |> filter(e => is_lexicographic_descent(evidence: e.evidence) == false)
+  let nd_progress_edges = non_descending |> map(e =>
+    ParserProgressEdge { caller: e.caller, callee: e.callee, progress: ProgressSame }
+  )
+  same_progress_subgraph_has_cycle(members: members, edges: nd_progress_edges)
+}
+
 // Check if a CostExpr contains a placeholder for a self-recursive call.
 // The placeholder reason is "computing: <func_name>", inserted by
 // get_or_compute_summary before walking the body.
