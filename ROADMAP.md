@@ -102,10 +102,10 @@ path). No overlap with Category A.
 
 **External review fix order (2026-04-02):**
 
-1. ~~`child_inferred_or_empty` → structural error propagation (M2 blocker 1)~~ **DONE** (PR #300)
-2. ~~`authored_name_at` semantic fallback → carry names structurally (M4 L2)~~ **DONE** (PR #300)
+1. `child_inferred_or_empty` → structural error propagation (M2 blocker 1) — **PARTIAL** (PR #300: InferError/Variable/Untyped→error_type, but None-path still leaks error-typed fields into outputs)
+2. `authored_name_at` semantic fallback → carry names structurally (M4 L2) — **PARTIAL** (PR #300: `_at` accessor wrappers added, but all still call `authored_name_at` — wrapper migration only, not structural)
 3. Finish EmitContext/boundary migration → emit consumes, not rediscovers (E0c)
-4. ~~Transport/config → one authority (M2 structural debt)~~ **DONE** (PR #300)
+4. Transport/config → one authority (M2 structural debt) — **PARTIAL** (PR #300: config keys centralized into constants, but transport kind still name-based: `t.name == "rest"/"shell"/"file"`)
 5. `CallableOf` + clean `partial_function_templates` (M4 L1 Tier 2.5)
 6. **Eliminate bare containers at inference boundary (M2 blocker 2) — ACTIVE BOOTSTRAP BLOCKER (110 errors)**
 
@@ -261,11 +261,15 @@ semantics (when to apply them, how they interact, what constraints they
 impose). Emitters compensate by embedding semantic decisions as code. The
 INVARIANTS.md table at §Emission lists 8 known violations of this pattern.
 
-**Live bootstrap blocker:** 110 `compile_error!("empty_map: value type
-unresolved")` safety valves — bare `Map<K, V>` reaching emit without resolved
-value types. Concentrated in complexity (51), infer (23), emit (11),
-emit_info (9). This is fix order #6 (M2 blocker 2): incomplete
-parameterized types leaking past the inference boundary.
+**Live bootstrap blockers:**
+- **B scaffolding:** 41 `Rc::new(HashMap::new())` replacing `compile_error!("empty_map")`.
+  Defers type proofs to Rust inference — scaffolding, not fix.
+- **C regression:** Regenerated binary produces 548 typed errors (297 "unresolved
+  type Callable" + cascading). Committed binary produces 0 on same input.
+  Root cause: type inference regression in regenerated code. Three perf
+  blockers resolved (tokenizer O(n^2), dag_syntax_spec cache, shape binop).
+- Fix order #6 (M2 blocker 2) remains: incomplete parameterized types
+  leaking past the inference boundary.
 
 ---
 
