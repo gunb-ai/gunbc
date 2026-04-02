@@ -22,7 +22,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 |--------|-------|--------|-------|
 | .dag files | 91 | — | `dsl/` (+3 transport extdeps) |
 | Self-compile time | 6.47s | <30s | Release. Tokenize 4.87s dominates |
-| Self-compile diagnostics | 0 | 0 | Green |
+| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count` via stage0 binary (DIAG_RATCHET). All 316 are indirect-recursion complexity violations |
 | Files emitted | 40 | — | Rust target |
 | `full_dsl_compiles` | PASSES (0 diag) | 0 | 91 dsl + 29 v2 files, M1 complete |
 | Bootstrap diagnostics (A) | 0 | 0 | Green — PR #264. Cherry-picked source-root fixes + removed mutual-recursion false positives |
@@ -32,7 +32,7 @@ Modeling guidelines: [MODELING.md](MODELING.md)
 | L2 emit `.name` reads | 0 | 0 | All emit accessors migrated to `authored_name_at` |
 | L2 resolve `.name` reads | 0 | 0 | `authored_name` eliminated; accessor layer still uses `node.name` internally |
 | L2 `Node.name` constructors | ~256 | 0 | `make_*` helpers + direct constructions (D6) |
-| Complexity violations | 255 | 0 | 51 root functions → 255 errors (ratcheted). **Analyzer-language mismatch:** proof model targets variant-field recursion but language uses container-child recursion (Node.children + accessors). See Exploratory Directions for redesign plan (CX lane). |
+| Complexity violations | 315 | 0 | 51 root functions → 315 errors (ratcheted). **Analyzer-language mismatch:** proof model targets variant-field recursion but language uses container-child recursion (Node.children + accessors). Unsound witnesses reverted. See Exploratory Directions for CX lane redesign plan. |
 
 ---
 
@@ -1108,11 +1108,18 @@ compiler verifies the SCC has a shared decreasing measure:
 If no shared decreasing measure exists, the SCC is a compilation
 error — same as case 4 above.
 
-**Current state (2026-04-01):** 51 root functions → 255 complexity
-violations (ratcheted, on `complexity/holistic-descent-design` branch).
+**Current state (2026-04-01):** 51 root functions → 315 complexity
+violations (ratcheted). Existing infrastructure:
+- direct recursion is fail-closed on the actual measured parameter
+- SCC ownership is explicit, so callers into a cycle do not inherit the
+  cycle's violation
+- parser progress is parse-owned via typed helper identities
+- unsound `ExprFieldAccess`/`ExprMethodCall` witness arms reverted
+  (soundness audit W-1, W-2)
 
-**Audit finding (2026-04-01):** The analyzer's proof model is
-structurally mismatched with the language's recursion model:
+**Audit finding (2026-04-01):** The remaining 315 violations trace to a
+structural mismatch between the analyzer's proof model and the language's
+actual recursion model:
 
 - **The analyzer assumes variant-field recursion.** `RecursiveVariantFieldWitness`,
   `structural_param_from_body`, `is_structural_descent_with_param` — all require
@@ -1159,13 +1166,32 @@ provides: `Node.children`, `Node.expr_data`, accessor function identities
 **What to delete** (~350 lines):
 - `RecursiveVariantFieldWitness` coupling and variant-field descent functions
 - `recursive_variant_fields` threading through `RecursionContext` and `FuncEntry`
-- Unsound heuristic proofs: fresh-substructure check, match witness scope leak,
-  single-member finite frontier
 
 **What to rebuild** (proof model, simpler than current):
 - `classify_recursion_pattern` — new dispatcher with correct proof order
 - Container-child descent proof — replaces variant-field descent
 - Catamorphism proof — replaces branching-rejection-with-no-recovery
+
+**Witness soundness audit (2026-04-01).**
+
+Review identified five classes of unsound witness propagation. The
+governing principle: complexity should consume resolved descent
+witnesses owned by resolve/infer, not recover them from expression
+shape, names, or helper-call patterns.
+
+| # | Class | Status | What's unsound | Fix |
+|---|-------|--------|---------------|-----|
+| W-1 | `ExprFieldAccess` in `expr_descending_witness_source` | **FIXED** | Any field access propagated descent, but `x.metadata` is not smaller than `x` | Removed arm; CX-1 re-enables via accessor identity |
+| W-2 | `ExprMethodCall` (first/last) in `expr_descending_witness_source` | **FIXED** | Collection extraction treated as descent without proving the collection holds recursive children | Removed arm; CX-1 re-enables via accessor identity |
+| W-3 | `ExprIf`/`ExprMatch` in witness propagation | **Safe** (not propagated) | If either branch yielded a witness, it would be unsound (`if cond { n-1 } else { n }`) | `collect_descending_witness_names` does not propagate through if/match |
+| W-4 | Pattern-binding witness promotion | **Not applicable** | Pattern bindings do not auto-promote to witnesses | If added, must restrict to resolved recursive positions |
+| W-5 | SCC `all_arithmetic` classification | **Documented** | `max_path <= 1 && scc_calls_have_arithmetic_descent` necessary but not sufficient | Design target: CX-3 |
+
+Regression tests (on main):
+- `soundness_fib_like_stays_non_linear` — branching recursion stays violation
+- `soundness_conditional_descent_not_accepted` — if/else partial descent rejected
+- `soundness_partial_match_descent_not_accepted` — match partial descent documented
+- `soundness_arithmetic_descent_single_call_accepted` — valid single-call descent works
 
 **CX-0: Delete dead infrastructure.** Remove variant-field descent model.
 ~350 lines deleted. No behavior change (fires on zero types).
@@ -1501,10 +1527,10 @@ the first level the language recognizes.
 
 | Ratchet | Current | Target | Command |
 |---------|---------|--------|---------|
-| Self-compile diagnostics | 255 | 0 | `strict_compile_diagnostic_count -- --ignored` (all 255 are complexity violations from analyzer-language mismatch; see CX lane) |
+| Self-compile diagnostics | 316 | 0 | `strict_compile_diagnostic_count -- --ignored` (DIAG_RATCHET in bootstrap.rs; all are complexity violations from analyzer-language mismatch) |
 | full_dsl_compiles | 0 | 0 | `full_dsl_compiles -- --ignored` |
 | L1 type knowledge | 21 | 0 | `scripts/l1-ratchet.sh --check` |
-| Complexity violations | 255 | 0 | `strict_complexity_violation_count -- --ignored` (51 root functions; resolves with CX lane analyzer redesign) |
+| Complexity violations | 315 | 0 | `strict_complexity_violation_count -- --ignored` (51 root functions; resolves with CX lane analyzer redesign) |
 | Emitted Rust errors | 1 | 0 | `bootstrap_stage0_to_stage1 -- --ignored` |
 | Bootstrap fixed point | PASSES | PASSES | `bootstrap_fixed_point -- --ignored` |
 | Performance | <30s | <30s | `performance_ratchet -- --ignored` |
