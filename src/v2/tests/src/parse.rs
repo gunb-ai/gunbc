@@ -176,6 +176,21 @@ fn demo() -> String {
 }
 
 #[test]
+fn string_interpolation_leaves_literal_braces_and_quantifiers_alone() {
+    let source = r#"module interp_literal_braces
+type ProjectId = String where pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+
+fn braces() -> String {
+  "{"
+}
+"#;
+    assert_parses(
+        source,
+        "string_interpolation_leaves_literal_braces_and_quantifiers_alone",
+    );
+}
+
+#[test]
 fn nested_match_with_pipe() {
     let source = r#"module test
 fn foo(item: String) -> List<String> {

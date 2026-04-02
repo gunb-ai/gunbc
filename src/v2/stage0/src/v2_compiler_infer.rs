@@ -1645,25 +1645,103 @@ pub fn method_arg_expected_type(
     }
 }
 
-pub fn type_matches_expected_shape(actual: Rc<Node>, expected: Rc<Node>) -> bool {
+pub fn shape_child_type(n: Rc<Node>) -> Rc<Node> {
+    if n.inferred.clone() != None {
+        rt_type(n.clone())
+    } else if !n.children.is_empty() && n.connective == None {
+        field_node_type_expr(n.clone())
+    } else {
+        n.clone()
+    }
+}
+
+pub fn type_matches_expected_shape(
+    actual: Rc<Node>,
+    expected: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> bool {
     if is_bridge_placeholder_type_name(expected.name.clone()) {
         return true;
     }
-    if actual.name != expected.name || actual.return_cardinality != expected.return_cardinality {
+    let resolved_actual = resolve_node(actual.clone(), env.clone(), module_name.clone())
+        .resolved
+        .clone();
+    let resolved_expected = resolve_node(expected.clone(), env.clone(), module_name.clone())
+        .resolved
+        .clone();
+    if resolved_actual.connective == Some(Connective::Conj)
+        && resolved_expected.connective == Some(Connective::Conj)
+    {
+        if resolved_actual.children.len() != resolved_expected.children.len() {
+            return false;
+        }
+        return resolved_expected.children.iter().all(|expected_child| {
+            match resolved_actual
+                .children
+                .iter()
+                .find(|actual_child| actual_child.name == expected_child.name)
+                .cloned()
+            {
+                Some(actual_child) => type_matches_expected_shape(
+                    shape_child_type(actual_child.clone()),
+                    shape_child_type(expected_child.clone()),
+                    env.clone(),
+                    module_name.clone(),
+                ),
+                None => false,
+            }
+        });
+    }
+    if !resolved_actual.params.is_empty() && !resolved_expected.params.is_empty() {
+        if resolved_actual.params.len() != resolved_expected.params.len() {
+            return false;
+        }
+        let params_match = resolved_actual
+            .params
+            .iter()
+            .cloned()
+            .zip(resolved_expected.params.iter().cloned())
+            .all(|(actual_param, expected_param)| {
+                type_matches_expected_shape(
+                    param_node_type_expr(actual_param.clone()),
+                    param_node_type_expr(expected_param.clone()),
+                    env.clone(),
+                    module_name.clone(),
+                )
+            });
+        if !params_match {
+            return false;
+        }
+        return type_matches_expected_shape(
+            callable_inferred(resolved_actual.clone()),
+            callable_inferred(resolved_expected.clone()),
+            env.clone(),
+            module_name.clone(),
+        );
+    }
+    if resolved_actual.name != resolved_expected.name
+        || resolved_actual.return_cardinality != resolved_expected.return_cardinality
+    {
         return false;
     }
-    if expected.children.is_empty() {
+    if resolved_expected.children.is_empty() {
         return true;
     }
-    if actual.children.len() != expected.children.len() {
+    if resolved_actual.children.len() != resolved_expected.children.len() {
         return false;
     }
-    actual
+    resolved_actual
         .children
         .iter()
-        .zip(expected.children.iter())
+        .zip(resolved_expected.children.iter())
         .all(|(actual_child, expected_child)| {
-            type_matches_expected_shape(actual_child.clone(), expected_child.clone())
+            type_matches_expected_shape(
+                actual_child.clone(),
+                expected_child.clone(),
+                env.clone(),
+                module_name.clone(),
+            )
         })
 }
 
@@ -2137,8 +2215,11 @@ pub fn infer_expr(
                             if (func_name.clone() == "empty_map".to_string()) {
                                 let empty_map_type = match expected.clone() {
                                     Some(ref exp)
-                                        if (exp.name == "Map".to_string())
-                                            || node_is_keyed_collection(exp.clone()) =>
+                                        if node_is_keyed_collection(exp.clone())
+                                            || node_type_equals(
+                                                exp.clone(),
+                                                bare_map_node(),
+                                            ) =>
                                     {
                                         exp.clone()
                                     }
@@ -2996,6 +3077,8 @@ pub fn infer_expr(
                         if type_matches_expected_shape(
                             rt_type(body_typed.clone()),
                             expected_ret.clone(),
+                            scope.type_env.clone(),
+                            scope.module_name.clone(),
                         ) {
                             vec![]
                         } else {
