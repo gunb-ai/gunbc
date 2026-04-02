@@ -467,6 +467,42 @@ fn parser_state_arg_expr(call_node: Node, state_param: ParserStateParam) -> Node
   )
 }
 
+// Resolve .state field access progress: try result_sources first (for call
+// results like expect/advance), then fall back to state_aliases (for
+// if-expression bindings where result_source is opaque but branch progress
+// was already merged by parser_state_expr_progress for ExprIf).
+fn parser_field_access_state_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
+  let rs = env.result_sources
+  let sa = env.state_aliases
+  match parser_state_base_var(expr: expr) {
+    Some { value: result_name } =>
+      parser_field_access_resolve(rn: result_name, rs: rs, sa: sa, paa: parser_always_advancing, cts: consumed_true_set)
+    None => ProgressUnknown
+  }
+}
+
+fn parser_field_access_resolve(rn: String, rs: Map<String, ParserResultSource>, sa: Map<String, ProgressKind>, paa: Map<String, Bool>, cts: Map<String, Bool>) -> ProgressKind {
+  match parser_field_access_from_result(rn: rn, rs: rs, paa: paa, cts: cts) {
+    ProgressUnknown => parser_field_access_from_alias(rn: rn, sa: sa)
+    ProgressSame => ProgressSame
+    ProgressStrict => ProgressStrict
+  }
+}
+
+fn parser_field_access_from_result(rn: String, rs: Map<String, ParserResultSource>, paa: Map<String, Bool>, cts: Map<String, Bool>) -> ProgressKind {
+  match map_get(rs, rn) {
+    Some { value: source } => parser_result_state_progress(source: source, parser_always_advancing: paa, consumed_true_set: cts, result_name: rn)
+    None => ProgressUnknown
+  }
+}
+
+fn parser_field_access_from_alias(rn: String, sa: Map<String, ProgressKind>) -> ProgressKind {
+  match map_get(sa, rn) {
+    Some { value: p } => p
+    None => ProgressUnknown
+  }
+}
+
 fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: ParserProgressEnv, parser_always_advancing: Map<String, Bool>, consumed_true_set: Map<String, Bool>) -> ProgressKind {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -482,20 +518,13 @@ fn parser_state_expr_progress(expr: Node, state_param: ParserStateParam, env: Pa
 
     ExprFieldAccess =>
       if field_access_field(texpr: expr) == "state" {
-        match parser_state_base_var(expr: expr) {
-          Some { value: result_name } =>
-            match map_get(env.result_sources, result_name) {
-              Some { value: source } =>
-                parser_result_state_progress(
-                  source: source,
-                  parser_always_advancing: parser_always_advancing,
-                  consumed_true_set: consumed_true_set,
-                  result_name: result_name
-                )
-              None => ProgressUnknown
-            }
-          None => ProgressUnknown
-        }
+        parser_field_access_state_progress(
+          expr: expr,
+          state_param: state_param,
+          env: env,
+          parser_always_advancing: parser_always_advancing,
+          consumed_true_set: consumed_true_set
+        )
       } else {
         ProgressUnknown
       }

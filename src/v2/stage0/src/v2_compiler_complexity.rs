@@ -500,9 +500,21 @@ pub fn parser_state_expr_progress(expr: Rc<Node>, state_param: ParserStateParam,
         ExprData::ExprFieldAccess { .. } => {
             if (field_access_field(expr.clone()) == "state".to_string()) {
                 match parser_state_base_var(expr.clone()) {
-                    Some(result_name) => match env.result_sources.get(&result_name) {
-                        Some(source) => parser_result_state_progress(source.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_name.clone()),
-                        None => ProgressKind::ProgressUnknown,
+                    Some(result_name) => {
+                        let from_source = match env.result_sources.get(&result_name) {
+                            Some(source) => parser_result_state_progress(source.clone(), parser_always_advancing.clone(), consumed_true_set.clone(), result_name.clone()),
+                            None => ProgressKind::ProgressUnknown,
+                        };
+                        // If result_source gives Unknown (opaque binding like if-expr),
+                        // fall back to state_aliases which tracks merged branch progress.
+                        if from_source == ProgressKind::ProgressUnknown {
+                            match env.state_aliases.get(&result_name) {
+                                Some(alias_progress) => alias_progress.clone(),
+                                None => ProgressKind::ProgressUnknown,
+                            }
+                        } else {
+                            from_source
+                        }
                     },
                     None => ProgressKind::ProgressUnknown,
                 }
@@ -744,16 +756,17 @@ pub fn collect_parser_progress_edges(caller: String, body: Rc<Node>, state_param
             let mut own_edges = vec![];
             let callee = expr_call_func(body.clone());
             if scc_name_set.contains_key(&callee) {
-                own_edges.push(ParserProgressEdge {
-                    caller: caller.clone(),
-                    callee: callee.clone(),
-                    progress: parser_call_edge_progress(
+                let prog = parser_call_edge_progress(
                         body.clone(),
                         state_param.clone(),
                         env.clone(),
                         parser_always_advancing.clone(),
                         consumed_true_set.clone(),
-                    ),
+                );
+                own_edges.push(ParserProgressEdge {
+                    caller: caller.clone(),
+                    callee: callee.clone(),
+                    progress: prog.clone(),
                 });
             }
             let child_edges = body.children.clone().iter().cloned().flat_map(|child| {
