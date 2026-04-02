@@ -1920,6 +1920,28 @@ pub fn expr_contains_descent(expr: Rc<Node>, param_name: String, vars: HashMap<S
 // Collect variable bindings that resolve to child descent expressions.
 // Tracks: `let x = accessor(param)`, `match accessor(param) { Some { value: x } => ... }`,
 // `let x = param.children |> first`, etc.
+// RC-2: Check if an if-expression produces Option where the descent branch
+// returns Some(child) and the non-descent branch returns none.
+pub fn is_if_option_descent(val: Rc<Node>, param_name: String, vars: HashMap<String, bool>, check_child: bool, check_list: bool) -> bool {
+    match (*val.expr_data.clone()).clone() {
+        ExprData::ExprIf { .. } => {
+            let then_branch = if_then_branch(val.clone());
+            let then_has_descent = expr_contains_descent(then_branch.clone(), param_name.clone(), vars.clone(), check_child, check_list);
+            let else_is_none = match if_else_branch(val.clone()) {
+                Some(eb) => {
+                    match (*eb.expr_data.clone()).clone() {
+                        ExprData::ExprVar { .. } => expr_var_name(eb.clone()) == "none",
+                        _ => false,
+                    }
+                }
+                None => true,
+            };
+            then_has_descent && else_is_none
+        }
+        _ => false,
+    }
+}
+
 pub fn collect_descent_vars(body: Rc<Node>, param_name: String, vars: HashMap<String, bool>, check_child: bool, check_list: bool) -> HashMap<String, bool> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
     match (*body.expr_data.clone()).clone() {
@@ -1927,13 +1949,17 @@ pub fn collect_descent_vars(body: Rc<Node>, param_name: String, vars: HashMap<St
             let val = let_value(body.clone());
             // Soundness: only accept direct descent for let-bindings.
             // Do NOT look through if/match wrappers (W-3 class).
+            // RC-2 EXCEPTION: if cond { descent } else { none } is safe
+            // because the subsequent match on Some { value: x } guarantees
+            // we only recurse when the descent branch was taken.
             let val_is_descent =
                 (check_child && is_child_descent_expr(val.clone(), param_name.clone()))
                 || (check_list && is_list_shrink_expr(val.clone(), param_name.clone()))
                 || match (*val.expr_data.clone()).clone() {
                     ExprData::ExprVar { .. } => set_has(vars.clone(), expr_var_name(val.clone())),
                     _ => false,
-                };
+                }
+                || is_if_option_descent(val.clone(), param_name.clone(), vars.clone(), check_child, check_list);
             let next_vars = if val_is_descent {
                 v2_rt::map_insert(vars.clone(), let_binding_name(body.clone()), true)
             } else { vars.clone() };
@@ -2134,6 +2160,16 @@ fn merge_option_evidence(a: Option<DescentEvidence>, b: Option<DescentEvidence>)
     }
 }
 
+pub fn merge_optional_evidence(a: Option<DescentEvidence>, b: Option<DescentEvidence>) -> Option<DescentEvidence> {
+    match a {
+        None => b,
+        Some(ea) => match b {
+            None => a,
+            Some(eb) => Some(merge_evidence(ea, eb)),
+        },
+    }
+}
+
 pub fn collect_self_call_evidence(
     body: Rc<Node>,
     func_name: String,
@@ -2142,6 +2178,7 @@ pub fn collect_self_call_evidence(
     check_child: bool,
     check_list: bool,
 ) -> Option<DescentEvidence> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
     match &*body.expr_data {
         ExprData::ExprCall { .. } => {
             let callee = expr_call_func(body.clone());
@@ -2158,11 +2195,11 @@ pub fn collect_self_call_evidence(
             } else {
                 None
             };
-            let child_evidence = body.children.iter().fold(None, |acc, child| {
+            let child_evidence = body.children.iter().fold(None, |acc: Option<DescentEvidence>, child| {
                 let ce = collect_self_call_evidence(child.clone(), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list);
-                merge_option_evidence(acc, ce)
+                merge_optional_evidence(acc, ce)
             });
-            merge_option_evidence(own_evidence, child_evidence)
+            merge_optional_evidence(own_evidence, child_evidence)
         }
         ExprData::ExprLet { .. } => {
             let val_ev = collect_self_call_evidence(let_value(body.clone()), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list);
@@ -2170,15 +2207,16 @@ pub fn collect_self_call_evidence(
                 Some(b) => collect_self_call_evidence(b, func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list),
                 None => None,
             };
-            merge_option_evidence(val_ev, body_ev)
+            merge_optional_evidence(val_ev, body_ev)
         }
         _ => {
-            body.children.iter().fold(None, |acc, child| {
+            body.children.iter().fold(None, |acc: Option<DescentEvidence>, child| {
                 let ce = collect_self_call_evidence(child.clone(), func_name.clone(), param_name.clone(), descent_vars.clone(), check_child, check_list);
-                merge_option_evidence(acc, ce)
+                merge_optional_evidence(acc, ce)
             })
         }
     }
+    })
 }
 
 pub fn try_dimension_for_param(

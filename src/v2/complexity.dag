@@ -317,12 +317,12 @@ type RankingDimension
   | SetCardinality { param: String }     // |set| via remove
 
 type DescentSource
-  = ChildAccessor { accessor: String }         // e.g. "binop_left" — in ChildRole model
-  | ListShrink { amount: Int }                 // skip(amount), amount >= 1
-  | ArithmeticDecrease { op: String, by: Int } // "subtract" by 1, "divide" by 2
-  | ParserAdvance { witness: String }          // "advance", "expect", "eat"
-  | SetRemoval { element: String }             // set remove in work-list drain
-  | FoldIteration                              // body of fold — bounded by |collection|
+  = ChildAccessor { accessor: String }
+  | ListShrink { amount: Int }
+  | ArithmeticDecrease { op: String, by: Int }
+  | ParserAdvance { witness: String }
+  | SetRemoval { element: String }
+  | FoldIteration
 
 type TerminationProof {
   dimensions: List<RankingDimension>
@@ -1927,6 +1927,29 @@ fn expr_contains_descent(expr: Node, param_name: String, vars: Map<String, Bool>
 // is not guaranteed descent (W-3 witness propagation class).
 // For match scrutinees, expr_contains_descent IS safe because the match
 // extracts the descending component (W-4 is safe when gated by match).
+// RC-2: Check if an if-expression produces Option where the descent branch
+// returns Some(child) and the non-descent branch returns none.
+// This is safe because the subsequent match on Some { value: x } guarantees
+// we only recurse when the descent branch was taken.
+// NOT a general relaxation of W-3 — only applies when else-branch is none.
+fn is_if_option_descent(val: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Bool {
+  match val.expr_data {
+    ExprIf =>
+      let then_branch = if_then_branch(texpr: val)
+      let then_has_descent = expr_contains_descent(expr: then_branch, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      let else_is_none = match if_else_branch(texpr: val) {
+        Some { value: eb } =>
+          match eb.expr_data {
+            ExprVar { binding_kind: _ } => expr_var_name(texpr: eb) == "none"
+            _ => false
+          }
+        None => true
+      }
+      then_has_descent && else_is_none
+    _ => false
+  }
+}
+
 fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> Map<String, Bool> {
   match body.expr_data {
     ExprLet =>
@@ -1937,7 +1960,9 @@ fn collect_descent_vars(body: Node, param_name: String, vars: Map<String, Bool>,
         ExprVar { binding_kind: _ } => set_has(m: vars, key: expr_var_name(texpr: val))
         _ => false
       }
-      let val_is_descent = is_direct_descent || is_descent_var
+      // RC-2: if cond { descent } else { none } → conditional descent via Option
+      let is_option_descent = is_if_option_descent(val: val, param_name: param_name, vars: vars, check_child: check_child, check_list: check_list)
+      let val_is_descent = is_direct_descent || is_descent_var || is_option_descent
       let next_vars = if val_is_descent {
         map_insert(vars, let_binding_name(texpr: body), true)
       } else { vars }
@@ -2113,12 +2138,23 @@ fn try_dimension_for_param(body: Node, func_name: String, param_name: String, ch
 
 // Collect the WORST evidence across all self-calls for a given param/dimension.
 // Returns None if no self-calls found, Some(worst_evidence) otherwise.
+// Merge two optional evidence values (helper for fold accumulation)
+fn merge_optional_evidence(a: DescentEvidence?, b: DescentEvidence?) -> DescentEvidence? {
+  match a {
+    None => b
+    Some { value: ea } =>
+      match b {
+        None => a
+        Some { value: eb } => Some { value: merge_evidence(a: ea, b: eb) }
+      }
+  }
+}
+
 fn collect_self_call_evidence(body: Node, func_name: String, param_name: String, descent_vars: Map<String, Bool>, check_child: Bool, check_list: Bool) -> DescentEvidence? {
   match body.expr_data {
     ExprCall { call_semantics: _ } =>
       let callee = expr_call_func(texpr: body)
       let own_evidence = if callee == func_name {
-        // Find the argument at param_name position
         let arg_evidence = body.children |> fold(init: DescentUnknown, f: (acc, arg_node) =>
           let aname = arg_name(n: arg_node)
           if aname == param_name {
@@ -2127,49 +2163,23 @@ fn collect_self_call_evidence(body: Node, func_name: String, param_name: String,
         )
         Some { value: arg_evidence }
       } else { none }
-      // Recurse into children for nested self-calls
       let child_evidence = body.children |> fold(init: none, f: (acc, child) =>
         let ce = collect_self_call_evidence(body: child, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
-        match (acc, ce) {
-          (None, _) => ce
-          (_, None) => acc
-          (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
-        }
+        merge_optional_evidence(a: acc, b: ce)
       )
-      // Skip lambda bodies (consistent with path counter — iteration-bounded)
-      let skip_lambdas = match body.expr_data {
-        ExprCall { call_semantics: _ } => false
-        _ => false
+      merge_optional_evidence(a: own_evidence, b: child_evidence)
+    ExprLet =>
+      let val_ev = collect_self_call_evidence(body: let_value(texpr: body), func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+      let body_ev = match let_body(texpr: body) {
+        Some { value: b } => collect_self_call_evidence(body: b, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+        None => none
       }
-      match (own_evidence, child_evidence) {
-        (None, _) => child_evidence
-        (_, None) => own_evidence
-        (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
-      }
+      merge_optional_evidence(a: val_ev, b: body_ev)
     _ =>
-      // Skip lambda bodies
-      match body.expr_data {
-        ExprLet =>
-          let val_ev = collect_self_call_evidence(body: let_value(texpr: body), func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
-          let body_ev = match let_body(texpr: body) {
-            Some { value: b } => collect_self_call_evidence(body: b, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
-            None => none
-          }
-          match (val_ev, body_ev) {
-            (None, _) => body_ev
-            (_, None) => val_ev
-            (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
-          }
-        _ =>
-          body.children |> fold(init: none, f: (acc, child) =>
-            let ce = collect_self_call_evidence(body: child, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
-            match (acc, ce) {
-              (None, _) => ce
-              (_, None) => acc
-              (Some { value: a }, Some { value: b }) => Some { value: merge_evidence(a: a, b: b) }
-            }
-          )
-      }
+      body.children |> fold(init: none, f: (acc, child) =>
+        let ce = collect_self_call_evidence(body: child, func_name: func_name, param_name: param_name, descent_vars: descent_vars, check_child: check_child, check_list: check_list)
+        merge_optional_evidence(a: acc, b: ce)
+      )
   }
 }
 
